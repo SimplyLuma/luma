@@ -165,13 +165,14 @@
     "-Dsnap=false",
     "-Dlocation-services=enabled"
    ]
-  }
+  },
+  "monitor": "1920x1080"
  },
  "pairs": [
   {
    "name": "island",
    "spec": "#island",
-   "gtk": "LumaNavigationSidebar"
+   "gtk": "cf-sidebar"
   }
  ],
  "states": [

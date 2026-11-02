@@ -30,7 +30,8 @@
   "env": {
    "LUMA_POSTURE": "tv",
    "GSETTINGS_BACKEND": "memory"
-  }
+  },
+  "monitor": "1920x1080"
  },
  "pairs": [
   {

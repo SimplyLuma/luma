@@ -23,7 +23,7 @@ const fs = require("fs"), [scn, out, theme] = process.argv.slice(1), s = JSON.pa
 const want = new Set(m.states.map(x => x.name)), win = m.states[0].window;
 const appId = s.gtk.app_id || (/^[a-z_]+$/.test(s.gtk.module || "") && s.gtk.module !== "gallery" ? "org.projectluma." + s.gtk.module[0].toUpperCase() + s.gtk.module.slice(1) : "");
 fs.writeFileSync(out + "/gtk-plan.json", JSON.stringify({ module: s.gtk.module || "", binary: s.gtk.binary || "", args: s.gtk.args || [], app_id: appId, pythonpath: s.gtk.pythonpath || [], theme, phone: m.phone === true, size: `${Math.round(win.w)}x${Math.round(win.h)}`, env: s.gtk.env || {},
-  font: s.gtk.font || "Figtree 11", renderer: process.env.LUMAUI_CONFORM_RENDERER || "cairo", monitor: "1920x1200",
+  font: s.gtk.font || "Figtree 11", renderer: process.env.LUMAUI_CONFORM_RENDERER || "cairo", monitor: s.gtk.monitor || "1920x1200",
   states: s.states.filter(x => want.has(x.name)).map(x => { const w = (m.states.find(y => y.name === x.name) || {}).window || win;
     return { name: x.name, size: `${Math.round(w.w)}x${Math.round(w.h)}`, actions: (m.phone === true && x.gtk_phone) || x.gtk || [] }; }) }, null, 1));' "$scenario" "$out" "$theme"
 
