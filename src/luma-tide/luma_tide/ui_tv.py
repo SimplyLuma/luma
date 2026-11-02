@@ -20,7 +20,8 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, GLib, Gtk, Pango  # noqa: E402
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from luma_appkit import icons  # noqa: E402
 from luma_appkit import lumaui_tokens as tokens  # noqa: E402
@@ -615,7 +616,11 @@ class TideTV:
         self._shown = self._signature()
         self._field, self._results, self._page_items = None, [], []
         self._np = {}
+        layer = self._page_layer()
         if self.page is not None:
+            fade = getattr(self.page, "_tv_fade", None)
+            if fade is not None:
+                fade.pause()
             self.stage.remove(self.page)
             self.page = None
         kind = self.view["kind"]
@@ -628,6 +633,7 @@ class TideTV:
             self._slide.offset = self._slide.target = offset
         self.page = page
         self.stage.place(page, **pin)
+        self._take_layer(page, layer)
         self.stage.raise_child(self.bar)
         self.stage.raise_child(self.calm)
         self.bar.set_open(self._place_index())
@@ -638,6 +644,29 @@ class TideTV:
                 self.focus.focus(target)
         self._room_for(self.focus.focused if self.focus.group_of(self.focus.focused) == "page" else None)
         self._sync_idle()
+
+    def _page_layer(self) -> tuple[float, float, int]:
+        """Where the page layer's idle cross-fade stands: (opacity now, target, ms left).
+        A page rebuilt mid-fade (a new track while idle, or while waking) carries it on."""
+        target = 0.0 if self.idle else 1.0
+        old = self.page
+        if old is None:
+            return target, target, 0
+        now = old.get_opacity()
+        fade = getattr(old, "_tv_fade", None)
+        left = 0
+        if fade is not None and fade.get_state() == Adw.AnimationState.PLAYING:
+            span = abs(fade.get_value_to() - fade.get_value_from())
+            left = int(fade.get_duration() * (abs(target - now) / span)) if span > 0.001 else 0
+        return now, target, left
+
+    def _take_layer(self, page, layer) -> None:
+        now, target, left = layer
+        page.set_opacity(now)
+        if abs(now - target) > 0.001:
+            if left <= 0:
+                left = TV["motion"].get("idle_fade_ms", 900) // 2
+            tv_fade(page, target, left)
 
     def _add(self, widget, key, on_activate, *, album: Album | None = None, hues=None, first: bool = False,
              menu=None):
