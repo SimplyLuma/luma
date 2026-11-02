@@ -326,7 +326,8 @@ static int orientation_of(GtkWidget *widget) {
   return (int)gtk_orientable_get_orientation(GTK_ORIENTABLE(widget));
 }
 
-static const char *const page_parts[] = { "header", "back", "hero", "group", "card", "row", NULL };
+static const char *const page_parts[] = { "header", "back", "hero", "group", "card", "row",
+                                           "title", "lede", "emblem", "buttons", "footnote", NULL };
 
 void luma_ui_set_part(GtkWidget *widget, const char *part) {
   g_return_if_fail(GTK_IS_WIDGET(widget));

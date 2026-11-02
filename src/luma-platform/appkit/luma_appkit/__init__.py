@@ -94,6 +94,8 @@ __all__ = [
     "watch_posture",
     "tv_unit",
     "device_noun",
+    "set_part",
+    "open_link",
     # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
     "TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade",
     "TvFocus", "tv_nearest",
@@ -389,6 +391,12 @@ def __getattr__(name: str):
                 "device_noun"}:
         from . import lumaui
         return getattr(lumaui, name)
+    if name == "set_part":
+        from .tv_frame import set_part
+        return set_part
+    if name == "open_link":
+        from .tv_link import open_link
+        return open_link
     if name in {"lumaui_icon"}:
         from . import icons
         return getattr(icons, name)

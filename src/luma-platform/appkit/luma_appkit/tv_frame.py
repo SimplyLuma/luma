@@ -291,3 +291,12 @@ def _sidebar_extras(sidebar: Gtk.Widget) -> list[Gtk.Widget]:
         if widget is not None:
             extras.append(widget)
     return extras
+
+
+def set_part(widget: Gtk.Widget, part: str | None) -> None:
+    """Name the page part `widget` is (`LumaUI.ui_set_part`: header, back, hero, group, card, row,
+    title, lede, emblem, buttons, footnote). Nothing changes outside TV posture; an older kit
+    without page parts ignores it."""
+    setter = getattr(LumaUI, "ui_set_part", None)
+    if setter is not None:
+        setter(widget, part)

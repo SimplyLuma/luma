@@ -417,7 +417,86 @@ static const char *const tv_parts_sheet =
 ".lumaui-tv-frame > .lumaui-tv-island scrolledwindow, .lumaui-tv-frame > .lumaui-tv-island list, .lumaui-tv-frame > .lumaui-tv-island viewport {\n"
 "  background: none; padding: 0; margin: 0; border: none; box-shadow: none; }\n"
 ".lumaui-tv-frame > .lumaui-tv-island .luma-navigation-face, .lumaui-tv-frame > .lumaui-tv-island .luma-navigation-icon {\n"
-"  min-width: 30tv; min-height: 30tv; padding: 0; margin: 0; background: none; box-shadow: none; border: none; }\n";
+"  min-width: 30tv; min-height: 30tv; padding: 0; margin: 0; background: none; box-shadow: none; border: none; }\n"
+/* a page's title and lede, named as parts (a page without LumaUI type roles) */
+".lumaui-tv-frame label.lumaui-part-title { font-family: Figtree, sans-serif; font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; color: @ink@; }\n"
+".lumaui-tv-frame label.lumaui-part-lede { font-family: Figtree, sans-serif; font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 8tv; }\n"
+".lumaui-tv-frame .lumaui-part-header { border-spacing: 0; margin-bottom: 6tv; }\n"
+".lumaui-tv-frame .lumaui-part-header > box { border-spacing: 24tv; }\n"
+/* a centred window: the emblem with soft light behind it, a large title, a balanced lede, its
+ * buttons in a row, the footnote on the bottom safe line */
+".lumaui-tv-frame image.lumaui-part-emblem { -gtk-icon-size: 184tv; min-width: 184tv; min-height: 184tv; margin: 0;\n"
+"  -gtk-icon-shadow: 0 24tv 40tv rgba(0, 0, 0, 0.45), 0 0 150tv rgba(84, 140, 255, 0.34); }\n"
+".lumaui-tv-frame image.lumaui-part-emblem.lumaui-light-orange { -gtk-icon-shadow: 0 24tv 40tv rgba(0, 0, 0, 0.45), 0 0 150tv rgba(255, 128, 48, 0.38); }\n"
+".lumaui-tv-centred label.lumaui-part-title { font-size: 40tv; font-weight: 700; letter-spacing: -0.8tv; margin-top: 0; }\n"
+".lumaui-tv-centred image.lumaui-part-emblem ~ label.lumaui-part-title { font-size: 64tv; font-weight: 750; letter-spacing: -1.6tv; margin-top: 44tv; }\n"
+".lumaui-tv-centred label.lumaui-part-lede { font-size: 28tv; margin-top: 14tv; }\n"
+".lumaui-tv-centred .lumaui-part-buttons { margin-top: 44tv; }\n"
+".lumaui-tv-frame label.lumaui-part-footnote { font-family: Figtree, sans-serif; font-size: 20tv; font-weight: 600; color: @ink_3@; margin: 0; }\n"
+/* TV buttons (66 tall, radius 22, 25/650): a row of buttons, an empty state's actions, a page's
+ * FlowBox of actions. The suggested one rests in the accent; the focused one is the key. */
+".lumaui-tv-frame .lumaui-part-buttons { border-spacing: 14tv; }\n"
+".lumaui-tv-frame .lumaui-part-buttons > button, .lumaui-tv-frame > .luma-island flowboxchild > button,\n"
+".lumaui-tv-frame .luma-empty-actions button {\n"
+"  min-height: 66tv; min-width: 130tv; padding: 0 30tv; margin: 0; border-radius: 22tv; border: none; outline: none;\n"
+"  font-family: Figtree, sans-serif; font-size: 25tv; font-weight: 650; color: @ink@; background-color: @chip@; background-image: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+".lumaui-tv-frame .lumaui-part-buttons > button label, .lumaui-tv-frame > .luma-island flowboxchild > button label,\n"
+".lumaui-tv-frame .luma-empty-actions button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
+".lumaui-tv-frame > .luma-island flowboxchild > button image, .lumaui-tv-frame .lumaui-part-buttons > button image { -gtk-icon-size: 26tv; color: inherit; }\n"
+".lumaui-tv-frame .lumaui-part-buttons > button.suggested-action, .lumaui-tv-frame > .luma-island flowboxchild > button.suggested-action,\n"
+".lumaui-tv-frame .luma-empty-actions button.suggested-action, .lumaui-tv-frame .luma-empty-actions button.primary { background-color: @accent@; color: white;\n"
+"  box-shadow: inset 0 1.5tv 0 rgba(255, 255, 255, 0.22); }\n"
+".lumaui-tv-frame .lumaui-part-buttons > button:focus-visible, .lumaui-tv-frame > .luma-island flowboxchild > button:focus-visible,\n"
+".lumaui-tv-frame .luma-empty-actions button:focus-visible {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+".lumaui-tv-frame .lumaui-part-buttons > button:disabled, .lumaui-tv-frame > .luma-island flowboxchild > button:disabled { opacity: 0.38; }\n"
+".lumaui-tv-frame > .luma-island flowbox { border-spacing: 14tv; padding: 4tv 0 6tv 0; }\n"
+/* a page's own buttons outside its rows (a suggested or destructive action, the header's action) */
+".lumaui-tv-frame > .luma-island button.suggested-action:not(.lumaui-part-row), .lumaui-tv-frame > .luma-island button.destructive-action,\n"
+".lumaui-tv-frame .lumaui-part-header button:not(.lumaui-part-back) {\n"
+"  min-height: 66tv; padding: 0 30tv; border-radius: 22tv; border: none; outline: none; font-size: 25tv; font-weight: 650;\n"
+"  color: @ink@; background-color: @chip@; background-image: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+".lumaui-tv-frame > .luma-island button.suggested-action:not(.lumaui-part-row) { background-color: @accent@; color: white; }\n"
+".lumaui-tv-frame > .luma-island button.destructive-action { color: #ff8a80; }\n"
+".lumaui-tv-frame > .luma-island button.suggested-action label, .lumaui-tv-frame > .luma-island button.destructive-action label,\n"
+".lumaui-tv-frame .lumaui-part-header button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
+".lumaui-tv-frame > .luma-island button.suggested-action:focus-visible, .lumaui-tv-frame > .luma-island button.destructive-action:focus-visible,\n"
+".lumaui-tv-frame .lumaui-part-header button:focus-visible {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+".lumaui-tv-frame > .luma-island flowboxchild { padding: 0; margin: 0; background: none; outline: none; }\n"
+/* the empty state (luma_appkit EmptyState): a bar card, a 112 icon tile with soft accent light,
+ * a 34/700 title, a 24 sentence, then its actions */
+".lumaui-tv-frame .luma-empty-state { margin-top: 30tv; padding: 64tv 40tv 56tv 40tv; border-radius: 30tv; border: none;\n"
+"  background-color: @bar@; background-image: none; box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+".lumaui-tv-frame .luma-empty-state .luma-empty-disc { min-width: 112tv; min-height: 112tv; border-radius: 32tv; margin: 0;\n"
+"  background-color: alpha(white, 0.08); background-image: none; box-shadow: 0 0 120tv 30tv rgba(84, 140, 255, 0.16); }\n"
+".lumaui-tv-frame .luma-empty-state image.luma-empty-icon { -gtk-icon-size: 54tv; color: @ink_2@; }\n"
+".lumaui-tv-frame .luma-empty-state label.luma-empty-title { font-family: Figtree, sans-serif; font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; color: @ink@; margin-top: 28tv; }\n"
+".lumaui-tv-frame .luma-empty-state label.luma-empty-description { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 500; color: @ink_2@; margin-top: 10tv; }\n"
+".lumaui-tv-frame .luma-empty-state .luma-empty-actions { margin-top: 32tv; }\n"
+/* a modal card over the page (luma_appkit LayerHost): a TV sheet */
+"window.lumaui-tv .lumaui-scrim { background-color: rgba(3, 4, 8, 0.78); background-image: none; }\n"
+"window.lumaui-tv .lumaui-modal { min-width: 980tv; padding: 40tv; border-radius: 36tv; border: none;\n"
+"  background-color: @sheet@; background-image: none; color: @ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv .lumaui-modal label { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 500; color: @ink_2@; line-height: 1.4; }\n"
+"window.lumaui-tv .lumaui-modal label.lumaui-part-title, window.lumaui-tv .lumaui-modal label.lumaui-t-title-1 { font-size: 40tv; font-weight: 700; color: @ink@; }\n"
+"window.lumaui-tv .lumaui-modal button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv; border: none; outline: none;\n"
+"  font-size: 25tv; font-weight: 650; color: @ink@; background-color: @chip@; background-image: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+"window.lumaui-tv .lumaui-modal button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
+"window.lumaui-tv .lumaui-modal button.suggested-action { background-color: @accent@; color: white; }\n"
+"window.lumaui-tv .lumaui-modal button:focus-visible { background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+"window.lumaui-tv .lumaui-modal button:disabled { opacity: 0.38; }\n"
+"window.lumaui-tv .lumaui-modal entry, window.lumaui-tv .lumaui-modal text { min-height: 66tv; font-size: 25tv; color: @ink@; }\n"
+"window.lumaui-tv .lumaui-modal entry { padding: 0 22tv; border-radius: 22tv; border: none; background-color: @well@; background-image: none; outline: none;\n"
+"  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@; }\n"
+"window.lumaui-tv .lumaui-modal entry:focus-within { box-shadow: inset 0 0 0 3tv @accent@; }\n";
 
 static char *material(const char *rgba, gboolean opaque) {
   if (!opaque || !g_str_has_prefix(rgba, "rgba("))
@@ -706,7 +785,65 @@ static void unplace_lead(GtkWidget *lead) {
   g_object_set_data(G_OBJECT(lead), "luma-tv-lead", NULL);
 }
 
+/* Parts laid out differently on a TV: a row of buttons runs across; a centred column with a
+ * footnote centres its content in the safe area and puts the footnote on the bottom line; an
+ * emblem takes the TV's size. What is changed is kept on the widget and put back on leaving. */
+typedef struct { int orientation, valign, vexpand, halign, pixel_size; } TvSaved;
+
+static void hold_layout(GtkWidget *w) {
+  if (g_object_get_data(G_OBJECT(w), "luma-tv-layout") != NULL) return;
+  TvSaved *saved = g_new(TvSaved, 1);
+  saved->orientation = GTK_IS_ORIENTABLE(w) ? (int)gtk_orientable_get_orientation(GTK_ORIENTABLE(w)) : -1;
+  saved->valign = gtk_widget_get_valign(w);
+  saved->halign = gtk_widget_get_halign(w);
+  saved->vexpand = gtk_widget_get_vexpand_set(w) ? gtk_widget_get_vexpand(w) : -1;
+  saved->pixel_size = GTK_IS_IMAGE(w) ? gtk_image_get_pixel_size(GTK_IMAGE(w)) : 0;
+  g_object_set_data_full(G_OBJECT(w), "luma-tv-layout", saved, g_free);
+}
+
+static void let_layout(GtkWidget *w) {
+  TvSaved *saved = g_object_get_data(G_OBJECT(w), "luma-tv-layout");
+  if (saved == NULL) return;
+  if (saved->orientation >= 0) gtk_orientable_set_orientation(GTK_ORIENTABLE(w), saved->orientation);
+  gtk_widget_set_valign(w, saved->valign);
+  gtk_widget_set_halign(w, saved->halign);
+  if (saved->vexpand < 0) gtk_widget_set_vexpand_set(w, FALSE);
+  else gtk_widget_set_vexpand(w, saved->vexpand);
+  if (GTK_IS_IMAGE(w)) gtk_image_set_pixel_size(GTK_IMAGE(w), saved->pixel_size);
+  g_object_set_data(G_OBJECT(w), "luma-tv-layout", NULL);
+}
+
+static void lay_out_part(GtkWidget *w) {
+  if (g_object_get_data(G_OBJECT(w), "luma-tv-layout") != NULL) return;
+  if (gtk_widget_has_css_class(w, "lumaui-part-buttons") && GTK_IS_BOX(w)) {
+    hold_layout(w);
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(w), GTK_ORIENTATION_HORIZONTAL);
+  } else if (GTK_IS_IMAGE(w) && gtk_image_get_pixel_size(GTK_IMAGE(w)) > 0) {
+    hold_layout(w);
+    gtk_image_set_pixel_size(GTK_IMAGE(w), -1); /* an icon the app sized: the TV sheet sizes it */
+  } else if (gtk_widget_has_css_class(w, "luma-empty-state")) {
+    hold_layout(w);
+    gtk_widget_set_vexpand(w, FALSE); /* the empty state is a card as tall as what it says */
+    gtk_widget_set_valign(w, GTK_ALIGN_START);
+  } else if (gtk_widget_has_css_class(w, "lumaui-part-footnote")) {
+    GtkWidget *column = gtk_widget_get_parent(w);
+    GtkWidget *first = column != NULL ? gtk_widget_get_first_child(column) : NULL;
+    if (column == NULL || first == NULL || first == w) return;
+    hold_layout(w);
+    hold_layout(column);
+    hold_layout(first);
+    gtk_widget_set_valign(column, GTK_ALIGN_FILL);
+    gtk_widget_set_vexpand(column, TRUE);
+    /* the space above the content and above the footnote share what is left: the content centres */
+    gtk_widget_set_vexpand(first, TRUE);
+    gtk_widget_set_valign(first, GTK_ALIGN_END);
+    gtk_widget_set_vexpand(w, TRUE);
+    gtk_widget_set_valign(w, GTK_ALIGN_END);
+  }
+}
+
 static void release_page(TvFrame *f, GtkWidget *widget) {
+  lay_out_part(widget);
   if ((gtk_widget_has_css_class(widget, "lumaui-part-mark") || gtk_widget_has_css_class(widget, "lumaui-part-lead")) &&
       within_row(widget))
     place_lead(f, widget);
@@ -747,6 +884,14 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
 
 static void restore_page(GtkWidget *widget) {
   unplace_lead(widget);
+  if (gtk_widget_has_css_class(widget, "lumaui-part-footnote")) {
+    GtkWidget *column = gtk_widget_get_parent(widget);
+    if (column != NULL) {
+      let_layout(column);
+      if (gtk_widget_get_first_child(column) != NULL) let_layout(gtk_widget_get_first_child(column));
+    }
+  }
+  let_layout(widget);
   if (gtk_widget_has_css_class(widget, "lumaui-tv-named")) {
     gtk_widget_remove_css_class(widget, "lumaui-tv-named");
     gtk_widget_remove_css_class(widget, adw_part(widget));
@@ -1145,7 +1290,7 @@ static gboolean editable(GtkWidget *focus) {
 /* A question over the page (LumaUI's dialog in the window's modal layer, a libadwaita dialog): on a
  * TV it is driven like the page, the remote's focus held inside it, Back as its Cancel. */
 static gboolean is_modal(GtkWidget *w) {
-  return gtk_widget_has_css_class(w, "lumaui-dialog") || ADW_IS_DIALOG(w);
+  return gtk_widget_has_css_class(w, "lumaui-dialog") || gtk_widget_has_css_class(w, "lumaui-modal") || ADW_IS_DIALOG(w);
 }
 
 static GtkWidget *find_modal(GtkWidget *w) {
@@ -1173,10 +1318,31 @@ static GtkWidget *find_class(GtkWidget *w, const char *cls) {
 }
 
 /* Bring the remote into an open question: its Cancel first (the safe answer), else its first control. */
+static void release_modal(TvFrame *f, GtkWidget *w) {
+  lay_out_part(w);
+  if (ADW_IS_CLAMP(w) && g_object_get_data(G_OBJECT(w), "luma-tv-clamp") == NULL) {
+    int *saved = g_new0(int, 6);
+    GtkWidget *child = adw_clamp_get_child(ADW_CLAMP(w));
+    saved[0] = adw_clamp_get_maximum_size(ADW_CLAMP(w));
+    saved[1] = adw_clamp_get_tightening_threshold(ADW_CLAMP(w));
+    if (child) {
+      saved[2] = gtk_widget_get_margin_start(child); saved[3] = gtk_widget_get_margin_end(child);
+      saved[4] = gtk_widget_get_margin_top(child); saved[5] = gtk_widget_get_margin_bottom(child);
+    }
+    g_object_set_data_full(G_OBJECT(w), "luma-tv-clamp", saved, g_free);
+    adw_clamp_set_maximum_size(ADW_CLAMP(w), (int)round(900 * f->unit));
+    adw_clamp_set_tightening_threshold(ADW_CLAMP(w), (int)round(900 * f->unit));
+  }
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c))
+    release_modal(f, c);
+}
+
 static GtkWidget *hold_modal(TvFrame *f) {
   GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
   if (modal == NULL)
     return NULL;
+  if (gtk_widget_has_css_class(modal, "lumaui-modal"))
+    release_modal(f, modal);
   GtkWidget *focus = focus_of(f);
   if (focus == NULL || (focus != modal && !gtk_widget_is_ancestor(focus, modal))) {
     GtkWidget *cancel = find_class(modal, "lumaui-dialog-cancel");
@@ -1198,6 +1364,7 @@ static gboolean modal_key(TvFrame *f, GtkWidget *modal, guint key) {
       GtkWidget *cancel = find_class(modal, "lumaui-dialog-cancel");
       if (cancel != NULL) gtk_widget_activate(cancel);
       else if (ADW_IS_DIALOG(modal)) adw_dialog_close(ADW_DIALOG(modal));
+      else return GDK_EVENT_PROPAGATE; /* a modal card: its layer's own Back (luma_appkit LayerHost) */
       return GDK_EVENT_STOP;
     }
     return GDK_EVENT_PROPAGATE; /* OK presses the focused button; typing types */
@@ -1498,6 +1665,9 @@ static void leave(TvFrame *f) {
   g_object_unref(f->content);
 
   restore_page(f->island);
+  GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
+  if (modal != NULL && gtk_widget_has_css_class(modal, "lumaui-modal"))
+    restore_page(modal);
   if (f->sidebar != NULL) {
     luma_ui_set_css_class(f->sidebar, "lumaui-tv-rail", FALSE);
     sidebar_set_tv(f, FALSE, FALSE);
