@@ -10,7 +10,11 @@ const args = process.argv.slice(2), opt = k => { const i = args.indexOf('--' + k
 const scenario = JSON.parse(fs.readFileSync(opt('scenario'), 'utf8'));
 const theme = opt('theme') || 'dark', phone = !!opt('phone'), out = opt('out'), base = (opt('base') || process.env.LUMAUI_CONFORM_BASE || 'http://127.0.0.1:8787/').replace(/\/?$/, '/');
 fs.mkdirSync(out, { recursive: true });
-const studioRoot = process.env.LUMAUI_CONFORM_STUDIO_ROOT || path.join(require('os').homedir(), 'Downloads', 'Operating system window treatment');
+// spec.root "design-center": a Design Center page (the TV mockups) instead of a Studio take. It has no
+// Studio chrome (no .review, no mode switch): the page is the reference as it stands, in its own theme.
+const designCenter = scenario.spec.root === 'design-center';
+const studioRoot = designCenter ? (process.env.LUMAUI_CONFORM_DESIGN_CENTER || path.join(require('os').homedir(), 'Luma', 'design-center'))
+  : process.env.LUMAUI_CONFORM_STUDIO_ROOT || path.join(require('os').homedir(), 'Downloads', 'Operating system window treatment');
 
 // Runs in the page: dump everything visible inside the window.
 function dump({ winSel, groups, exclude, pairSels }) {
@@ -122,9 +126,9 @@ function dump({ winSel, groups, exclude, pairSels }) {
   // Figtree comes out about 10% wide (I1); the Mac never hints, so both routes measure the same text.
   const browser = await chromium.launch({ args: ['--font-render-hinting=none'] });
   // A state may hold for some themes only (Luma's Frost is one light appearance).
-  const states = (phone ? scenario.states.filter(s => (scenario.phone_states || []).includes(s.name)) : scenario.states).filter(s => !s.themes || s.themes.includes(theme));
-  const specUrl = phone && scenario.spec.phone_url ? scenario.spec.phone_url : scenario.spec.url;
-  const meta = { app: scenario.app, theme, phone, url: base + specUrl, states: [] };
+  const states = (phone ? scenario.states.filter(s => (scenario.phone_states || []).includes(s.name)) : scenario.states).filter(s => (!s.themes || s.themes.includes(theme)) && (phone || !s.phone_only));
+  // spec.phone_url: the phone layer's own Studio file (v71 added the mobile layer; v70's phone view is frozen).
+  const meta = { app: scenario.app, theme, phone, url: base + (phone && scenario.spec.phone_url || scenario.spec.url), states: [] };
   for (const st of states) {
     // A state may ask for its own viewport (a maximized window fills the desk, so the desk sets its size).
     const vp = st.viewport || (phone && scenario.spec.phone_viewport) || scenario.spec.viewport || { width: 1600, height: 1000 };
@@ -137,16 +141,11 @@ function dump({ winSel, groups, exclude, pairSels }) {
       let body = fs.existsSync(local) && fs.statSync(local).isFile() ? fs.readFileSync(local) : null;
       if (body == null) { for (let i = 0; i < 4 && body == null; i++) { try { const r = await route.fetch(); if (r.status() >= 400) return route.fulfill({ response: r }); body = await r.body(); } catch (e) { await new Promise(r => setTimeout(r, 150 * (i + 1))); } } }
       if (body == null) return route.abort();
-      // Take 73 loads Lucide marks in one JSON bundle. Preserve the same names
-      // that individual SVG fetches carry so these icons are measured too.
-      if (/\/icons\/_bundle\.json$/.test(u.pathname)) {
-        const bundle = JSON.parse(body.toString('utf8'));
-        for (const [name, svg] of Object.entries(bundle)) {
-          if (typeof svg === 'string' && /^[a-z0-9-]+$/.test(name)) bundle[name] = svg.replace('<svg', `<svg data-icon="${name}"`);
-        }
-        body = Buffer.from(JSON.stringify(bundle));
-      }
       if (/\/icons\/[^/]+\.svg$/.test(u.pathname)) body = Buffer.from(body.toString('utf8').replace('<svg', `<svg data-icon="${decodeURIComponent(u.pathname.split('/').pop().replace(/\.svg$/, ''))}"`));
+      // v71+ loads every icon from one bundle ({name: svg}): name each as the single files are named.
+      if (/\/icons\/_bundle\.json$/.test(u.pathname)) { const b = JSON.parse(body.toString('utf8'));
+        for (const k of Object.keys(b)) if (typeof b[k] === 'string') b[k] = b[k].replace('<svg', `<svg data-icon="${k}"`);
+        body = Buffer.from(JSON.stringify(b)); }
       route.fulfill({ status: 200, contentType: TYPES[path.extname(u.pathname).toLowerCase()] || 'application/octet-stream', body }); });
     // A fixed clock (scenario.spec.clock, e.g. "2026-09-25T22:54:00") for pages that show the time.
     if (scenario.spec.clock) await page.clock.setFixedTime(new Date(scenario.spec.clock));
@@ -157,16 +156,18 @@ function dump({ winSel, groups, exclude, pairSels }) {
     // the state's actions (a popover, a drawer, a pane named as the window) is waited for after them.
     // Studio is up (spec.ready, or its review chrome); each action waits for its own target, and the window
     // (which may be a popover or pane that only a click opens) is waited for after the actions.
-    await page.waitForSelector(scenario.spec.ready || '.review', { state: 'attached' });
+    await page.waitForSelector(scenario.spec.ready || (designCenter ? scenario.spec.window : '.review'), { state: 'attached' });
     await page.evaluate(() => document.fonts.ready);
     // Studio's own switch sets body[data-mode]; colorScheme alone does not.
-    await page.evaluate(t => { const b = document.querySelector(`.review [data-set-mode="${t}"]`); if (!b) throw new Error('no Studio mode switch for ' + t); b.click(); }, theme);
-    if (phone) await page.evaluate(() => document.querySelector('.review #phone, #phone').click());
+    if (!designCenter) await page.evaluate(t => { const b = document.querySelector(`.review [data-set-mode="${t}"]`); if (!b) throw new Error('no Studio mode switch for ' + t); b.click(); }, theme);
+    // A phone_url page is already the phone (v71+ ?phone=1): its apps open through the phone (spec.phone_before).
+    if (phone && !scenario.spec.phone_url) await page.evaluate(() => document.querySelector('.review #phone, #phone').click());
+    if (phone) for (const a of scenario.spec.phone_before || []) { if (a.eval) await page.evaluate(a.eval); await page.waitForTimeout(a.wait || 600); }
     await page.waitForTimeout(500);
     // Pointer states (hover, press) keep the pointer where the state put it; the rest park it off the window.
     let pointer = false;
     const target = sel => sel && page.waitForSelector(sel, { state: 'attached', timeout: 15000 });
-    for (const a of [...(scenario.spec.before || []), ...(st.spec || [])]) {
+    for (const a of [...(scenario.spec.before || []), ...((phone && st.spec_phone) || st.spec || [])]) {
       if (a.waitFor) await page.waitForSelector(a.waitFor, { state: 'visible', timeout: 15000 });  // late content (Depot's monogram)
       await target(a.click || a.dblclick || a.hover || a.press || a.focus);
       if (a.click) await page.evaluate(s => { const e = document.querySelector(s); if (!e) throw new Error('no element ' + s); e.click(); }, a.click);
@@ -201,7 +202,8 @@ function dump({ winSel, groups, exclude, pairSels }) {
         if (node.nodeId) d.platformFonts[probe.text] = (await cdp.send('CSS.getPlatformFontsForNode', { nodeId: node.nodeId })).fonts;
       }
     }
-    if (d.mode !== theme) throw new Error(`Studio mode is ${d.mode}, wanted ${theme}`);
+    if (designCenter) d.mode = theme;   // the page's own theme (the scenario's states name the themes they hold)
+    else if (d.mode !== theme) throw new Error(`Studio mode is ${d.mode}, wanted ${theme}`);
     const box = await page.locator(st.window || scenario.spec.window).first().boundingBox();  // the first match, as the dump takes it
     await page.screenshot({ path: path.join(out, `spec-${st.name}.png`), clip: { x: box.x, y: box.y, width: Math.round(box.width), height: Math.round(box.height) } });
     d.state = st.name; d.about = st.about;

@@ -1,0 +1,247 @@
+{
+ "app": "tv-connect",
+ "title": "Luma Connect on TV",
+ "about": "Luma Connect (src/luma-continuity) in TV posture through LumaUI's TV frame, against the Design Center's TV mockup at 1920x1080, every state from synthetic data (tools/lumaui-conform/fixtures/connect_tv.py mirrors the mockup's). Signed-in pages use the floating island, which must be as tall as its rows (pair \"island\"); signed-out and unavailable are centred with no island. Dark only.",
+ "spec": {
+  "root": "design-center",
+  "url": "mockups/luma-tv-connect.html",
+  "window": "#stage",
+  "ready": "#island",
+  "viewport": {
+   "width": 1920,
+   "height": 1080
+  },
+  "clock": "2026-11-01T21:12:00",
+  "exclude": [
+   ".bg",
+   ".shade",
+   "#clock",
+   ".tv-toast"
+  ]
+ },
+ "gtk": {
+  "module": "connect_tv",
+  "pythonpath": [
+   "src/luma-continuity",
+   "tools/lumaui-conform/fixtures"
+  ],
+  "app_id": "org.projectluma.Connect",
+  "build": {},
+  "env": {
+   "LUMA_POSTURE": "tv",
+   "GSETTINGS_BACKEND": "memory",
+   "LUMAUI_CONFORM_GSETTINGS": "[[\"org.gnome.desktop.background\", \"picture-uri\", \"'file://{run}/fixtures/room-prism.png'\"], [\"org.gnome.desktop.background\", \"picture-uri-dark\", \"'file://{run}/fixtures/room-prism.png'\"]]",
+   "LUMAUI_CONFORM_IGNORE_FADE": "1"
+  },
+  "monitor": "1920x1080",
+  "fixtures": [
+   "assets/wallpapers/prism.png",
+   "tests/fixtures/tv/room-prism.png"
+  ],
+  "exclude": [
+   ".lumaui-tv-clock"
+  ]
+ },
+ "pairs": [
+  {
+   "name": "island",
+   "spec": "#island",
+   "gtk": "luma_appkit+widgets+NavigationSidebar"
+  }
+ ],
+ "states": [
+  {
+   "name": "account",
+   "about": "Signed in: Account open, the remote in the island",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.page = S.focus = 'account'; draw()",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "account"
+     }
+    }
+   ]
+  },
+  {
+   "name": "sync",
+   "about": "Signed in: Syncing",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.page = S.focus = 'sync'; draw()",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "sync"
+     }
+    }
+   ]
+  },
+  {
+   "name": "devices",
+   "about": "Signed in: Devices",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.page = S.focus = 'devices'; draw()",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "devices"
+     }
+    }
+   ]
+  },
+  {
+   "name": "phones",
+   "about": "Signed in: Phones, two phones",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.page = S.focus = 'phones'; draw()",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "phones"
+     }
+    }
+   ]
+  },
+  {
+   "name": "out",
+   "about": "Signed out: the welcome, centred, no island",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "preview('out')",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "out"
+     }
+    }
+   ]
+  },
+  {
+   "name": "solo",
+   "about": "Phones without an account: the Phones page, no island",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "preview('solo')",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "solo"
+     }
+    }
+   ]
+  },
+  {
+   "name": "nophones",
+   "about": "No phones yet: the empty state in the Phones page",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "preview('nophones')",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "nophones"
+     }
+    }
+   ]
+  },
+  {
+   "name": "off",
+   "about": "Luma Connect off: the switch on top, phones listed with buttons off",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "preview('off')",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "off"
+     }
+    }
+   ]
+  },
+  {
+   "name": "unavailable",
+   "about": "The daemon did not answer: centred icon, sentence, Try Again",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "preview('unavailable')",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_CONNECT_STATE": "unavailable"
+     }
+    }
+   ]
+  }
+ ],
+ "icon_aliases": {
+  "luma-connect-sync": "sync",
+  "luma-connect-laptop": "laptop",
+  "luma-connect-phone": "phone",
+  "luma-connect-plus": "plus",
+  "luma-connect-more": "more",
+  "luma-connect-ring": "ring",
+  "luma-connect-webcam": "webcam",
+  "luma-connect-screen": "screen",
+  "luma-connect-chevron": "chev",
+  "luma-connect-external": "ext",
+  "luma-chevron-left": "back"
+ }
+}
