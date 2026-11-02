@@ -165,7 +165,9 @@ export class CallTakeover {
         const ringing = MessageList.isIncomingCallNotification(notification);
         const locked = Main.sessionMode.isLocked;
         const identity = !locked || this._privacy.get_boolean('show-in-lock-screen');
-        this._status.text = ringing ? 'Incoming call' : notification.body || 'Call';
+        this._syncClock(ringing ? '' : notification.body);
+        if (!this._clock)
+            this._status.text = ringing ? 'Incoming call' : notification.body || 'Call';
         this._caller.text = identity ? notification.title || 'Unknown caller' : 'Phone call';
         this._detail.text = identity ? '' : 'Unlock to see who is calling';
         this._detail.visible = !identity;
@@ -197,6 +199,30 @@ export class CallTakeover {
         }
     }
 
+    // The in-call notification refreshes its elapsed time only now and then;
+    // count the seconds here from each update so the call screen ticks.
+    _syncClock(body) {
+        const match = /^(\d+):(\d{2})$/.exec(body ?? '');
+        if (!match) {
+            this._stopClock();
+            return;
+        }
+        this._clockBase = GLib.get_monotonic_time() / 1e6 - (Number(match[1]) * 60 + Number(match[2]));
+        const tick = () => {
+            const elapsed = Math.max(0, Math.floor(GLib.get_monotonic_time() / 1e6 - this._clockBase));
+            this._status.text = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+            return GLib.SOURCE_CONTINUE;
+        };
+        tick();
+        this._clock ??= GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, tick);
+    }
+
+    _stopClock() {
+        if (this._clock)
+            GLib.source_remove(this._clock);
+        this._clock = 0;
+    }
+
     _release() {
         if (this._grab)
             Main.popModal(this._grab);
@@ -204,11 +230,13 @@ export class CallTakeover {
     }
 
     _hide() {
+        this._stopClock();
         this._release();
         this._actor?.hide();
     }
 
     destroy() {
+        this._stopClock();
         this._release();
         Main.messageTray.disconnect(this._sourceAdded);
         Main.sessionMode.disconnect(this._lockChanged);
