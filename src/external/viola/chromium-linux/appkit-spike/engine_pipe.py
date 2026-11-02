@@ -83,7 +83,11 @@ class EnginePipe:
         if manual_browsing:
             # This user-operated browser uses the pipe as internal IPC, not a
             # WebDriver session. Keep QA's normal automation marker unchanged.
-            probe_flags.append('--disable-blink-features=AutomationControlled')
+            # Chromium's passkey/security-key dialog is a Views bubble on the
+            # hidden engine display, so a WebAuthn request would wait on UI
+            # the user never sees. Until the host owns that dialog, do not
+            # advertise WebAuthn; sites then offer their other sign-in methods.
+            probe_flags.append('--disable-blink-features=AutomationControlled,WebAuth')
         if native_media_probe:
             probe_flags.append('--viola-native-media-probe')
         if native_menu_probe:
