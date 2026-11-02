@@ -174,6 +174,14 @@ class _KitView:
     def focus_field(self) -> None:
         self.field.grab_focus()
 
+    def toggle(self) -> None:
+        """The switch flipped by the person (what a click or OK does)."""
+        self.switch.set_active(not self.switch.get_active())
+
+    def texts(self) -> tuple[str, str, str]:
+        return (self.title_label.label.get_label(), self.line.label.get_label(),
+                self.switch_label.label.get_label())
+
 
 _STYLE = """
 .luma-keyring-body label.error { color: @error_color; }

@@ -206,3 +206,9 @@ class KeyringTV(TvStage):
     def focus_field(self) -> None:
         if self.field.get_visible():
             self.focus.focus(self.field.text)
+
+    def toggle(self) -> None:
+        self.switch_row.toggle()
+
+    def texts(self) -> tuple[str, str, str]:
+        return self.title.get_label(), self.line.get_label(), self.switch_row.title.get_label()

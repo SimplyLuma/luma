@@ -97,7 +97,7 @@ def main() -> int:
             seen["ready"] = b""
         seen["gate_ours"] = owner() == bus.get_unique_name()
         seen["title"] = sheet.get_title()
-        sheet.field.text = PASSWORD
+        sheet.password = PASSWORD
         sheet._on_primary()
         return GLib.SOURCE_REMOVE
 
