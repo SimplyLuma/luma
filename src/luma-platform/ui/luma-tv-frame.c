@@ -244,6 +244,17 @@ static const char *const tv_sheet =
 "  background-color: @bar@; background-image: none; border: none; outline: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
 ".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail { min-width: 76tv; }\n"
+/* a choice's drop list (a LumaUI floating menu, lumaui-tv-menu): the mockup's .drop and .opt */
+".lumaui-tv-menu { padding: 12tv; border-radius: 30tv; border: none; border-spacing: 2tv; background-color: rgba(34, 36, 40, 0.95); background-image: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+".lumaui-tv-menu button.lumaui-menu-item { min-height: 68tv; padding: 0 22tv; margin: 0; border-radius: 20tv; border: none; outline: none;\n"
+"  background: none; box-shadow: none; color: @ink@; }\n"
+".lumaui-tv-menu button.lumaui-menu-item box { border-spacing: 16tv; }\n"
+".lumaui-tv-menu button.lumaui-menu-item label { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 600; line-height: 1; color: inherit; }\n"
+".lumaui-tv-menu button.lumaui-menu-item image { -gtk-icon-size: 24tv; color: inherit; }\n"
+".lumaui-tv-menu button.lumaui-menu-item:focus-visible, .lumaui-tv-menu button.lumaui-menu-item:focus {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
 /* folded, a row's icon keeps its place (19 in, as open), not centred in the rail */
 ".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail .luma-navigation-row { padding: 0 27tv 0 19tv; }\n"
 ".lumaui-tv-frame > .luma-navigation-sidebar scrolledwindow, .lumaui-tv-frame > .luma-navigation-sidebar list {\n"
@@ -340,17 +351,19 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame list.lumaui-part-card { background-color: @bar@; }\n"
 ".lumaui-tv-frame list.lumaui-part-card > row { border: none; }\n"
 /* the hero's lead: the thing's own tile, 92 in the accent (the mockup's .hero .big) */
-".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { min-width: 92tv; min-height: 92tv; border-radius: 26tv; padding: 0; margin: 0 10tv 0 0;\n"
+".lumaui-tv-frame .lumaui-part-hero > box.horizontal { border-spacing: 28tv; }\n"
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { min-width: 92tv; min-height: 92tv; border-radius: 26tv; padding: 0; margin: 0;\n"
 "  background-color: @accent_fill@; background-image: none; color: white; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; color: white; }\n"
 /* a drawn lead (signal bars): 2.5 times its size, about its centre, in the lead's place */
 ".lumaui-tv-frame .lumaui-part-mark { transform: scale(2.5); transform-origin: 50% 50%; }\n"
 /* a hero's drawn mark (a logo, a monogram): larger, and no decorative ring around it */
-".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark { transform: scale(1.533); transform-origin: 50% 50%; margin: 0 28tv 0 16tv;\n"
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark { transform: scale(1.533); transform-origin: 50% 50%; margin: 0 16tv;\n"
 "  border: none; outline: none; box-shadow: none; background: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark * { border: none; outline: none; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { border: none; outline: none; }\n"
 /* a lead that is a picture in full colour (a logo, an app's icon): itself, no tile or ring behind it */
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead.lumaui-part-picture { min-width: 92tv; min-height: 92tv; }\n"
 ".lumaui-tv-frame .lumaui-part-lead.lumaui-part-picture, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead.lumaui-part-picture {\n"
 "  background: none; box-shadow: none; border: none; outline: none; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
@@ -375,6 +388,7 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row scale ~ label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { font-size: 22tv; font-weight: 650; color: @ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { color: alpha(@key_ink@, 0.62); }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within scale ~ label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { color: @key_ink@; }\n"
+".lumaui-tv-frame .lumaui-part-row label + scale + label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { font-size: 23tv; font-weight: 600; color: @ink_2@; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-part-lead { min-width: 48tv; min-height: 48tv; border-radius: 14tv; padding: 0; margin: 0;\n"
 "  background-color: alpha(white, 0.08); color: @ink_2@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead { background-color: alpha(black, 0.08); color: @key_ink@; }\n"
@@ -435,17 +449,20 @@ static const char *const tv_sheet =
  * the key, the focused chip lifts with a white ring; the chosen one keeps a quiet ring */
 ".lumaui-tv-frame .lumaui-part-row.lumaui-tv-holder:focus-within { background-image: none; background-color: transparent;\n"
 "  box-shadow: none; color: @ink@; }\n"
-".lumaui-tv-frame .lumaui-part-chips { padding: 8tv 0; }\n"
+".lumaui-tv-frame .lumaui-part-chips { padding: 0; }\n"
 ".lumaui-tv-frame .lumaui-part-chip { border-radius: 16tv; padding: 0; margin: 0; outline: none;\n"
 "  box-shadow: 0 8tv 20tv alpha(black, 0.4); transition: transform 150ms ease-out; }\n"
-".lumaui-tv-frame .lumaui-part-chip.on, .lumaui-tv-frame .lumaui-part-chip:checked { box-shadow: 0 0 0 3tv alpha(white, 0.6), 0 8tv 20tv alpha(black, 0.4); }\n"
+".lumaui-tv-frame .lumaui-part-chip.on, .lumaui-tv-frame .lumaui-part-chip:checked { box-shadow: 0 0 0 3tv alpha(white, 0.6); }\n"
+/* a chip with no picture of its own (Add a picture): a chip of the chip material, its glyph in ink 2 */
+".lumaui-tv-frame button.lumaui-part-chip.image-button { background-color: @chip@; background-image: none; color: @ink_2@; }\n"
+".lumaui-tv-frame button.lumaui-part-chip.image-button image { -gtk-icon-size: 26tv; color: inherit; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-chip:focus-visible { transform: scale(1.06); background-image: none;\n"
 "  box-shadow: 0 0 0 5tv white, 0 14tv 30tv alpha(black, 0.5); }\n"
 ".lumaui-tv-frame .lumaui-part-swatch { min-width: 52tv; min-height: 52tv; padding: 0; margin: 0; border-radius: 9999px; outline: none;\n"
 "  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2); transition: transform 150ms ease-out; }\n"
 ".lumaui-tv-frame .lumaui-part-swatch.on, .lumaui-tv-frame .lumaui-part-swatch:checked {\n"
 "  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2), 0 0 0 4tv alpha(white, 0.5); }\n"
-".lumaui-tv-frame > .luma-island .lumaui-part-swatch:focus-visible { transform: scale(1.15); background-image: none; box-shadow: 0 0 0 4tv white; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-swatch:focus-visible { transform: scale(1.15); background-image: none; box-shadow: 0 0 0 4tv white; border-radius: 9999px; }\n"
 /* a switch outside any row (a page's on/off beside its title) holding the focus: the key's ring */
 ".lumaui-tv-frame > .luma-island button:focus-visible switch, .lumaui-tv-frame > .luma-island switch:focus-visible {\n"
 "  box-shadow: 0 0 0 4tv white, 0 3tv 10tv @key_drop@; }\n"
@@ -1048,7 +1065,7 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
     GtkWidget *row = part_row_of(f, widget);
     if (row != NULL) gtk_widget_add_css_class(row, "lumaui-tv-holder");
     if (g_object_get_data(G_OBJECT(widget), "luma-tv-chips") == NULL) {
-      int *saved = g_new(int, 2);
+      int *saved = g_new(int, 3);
       if (ADW_IS_WRAP_BOX(widget)) {
         saved[0] = adw_wrap_box_get_child_spacing(ADW_WRAP_BOX(widget));
         saved[1] = adw_wrap_box_get_line_spacing(ADW_WRAP_BOX(widget));
@@ -1061,6 +1078,8 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
       } else {
         saved[0] = saved[1] = -1;
       }
+      saved[2] = gtk_widget_get_valign(widget);
+      gtk_widget_set_valign(widget, GTK_ALIGN_CENTER);
       g_object_set_data_full(G_OBJECT(widget), "luma-tv-chips", saved, g_free);
     }
   }
@@ -1118,6 +1137,7 @@ static void restore_page(GtkWidget *widget) {
     } else if (GTK_IS_BOX(widget) && chips[0] >= 0) {
       gtk_box_set_spacing(GTK_BOX(widget), chips[0]);
     }
+    gtk_widget_set_valign(widget, (GtkAlign)chips[2]);
     g_object_set_data(G_OBJECT(widget), "luma-tv-chips", NULL);
   }
   if (gtk_widget_has_css_class(widget, "lumaui-tv-named")) {

@@ -4,6 +4,7 @@
 #include "luma-menu-drawer.h"
 #include "luma-action-private.h"
 #include "luma-layer-host.h"
+#include "luma-tv-frame-private.h"
 #include "luma-ui-private.h"
 
 #include <math.h>
@@ -845,10 +846,23 @@ void luma_floating_menu_popup(LumaFloatingMenu *self, GtkWidget *anchor) {
   luma_layer_host_add_layer(host, self->catcher);
   luma_layer_host_add_layer(host, GTK_WIDGET(self));
   GdkRectangle rect = luma_ui_rect_in(host, anchor, NULL);
+  /* On a TV the list drops from the value it changes (the TV mockup's drop list): under it, its right
+   * edges on the value's, 400 wide at least, in the TV look (lumaui-tv-menu in the frame's sheet). */
+  gboolean tv = GTK_IS_WINDOW(root) && luma_tv_frame_is_active(GTK_WINDOW(root));
+  if (tv)
+    gtk_widget_add_css_class(GTK_WIDGET(self), "lumaui-tv-menu");
+  else
+    gtk_widget_remove_css_class(GTK_WIDGET(self), "lumaui-tv-menu");
+  if (tv) {
+    double u = luma_ui_tv_unit(gtk_widget_get_width(host), gtk_widget_get_height(host));
+    luma_ui_float_at(host, GTK_WIDGET(self), &rect, LUMA_FLOAT_BELOW, LUMA_FLOAT_ALIGN_END, (int)round(10 * u),
+                     (int)round(40 * u), -1, MAX((int)round(400 * u), rect.width));
+  } else {
   LumaFloatSide prefer = rect.y > gtk_widget_get_height(host) * 0.5 ? LUMA_FLOAT_ABOVE : LUMA_FLOAT_BELOW;
   /* A picker is at least as wide as what it picks for (200 at least) and sits 6 from it (v70 cfPop). */
   int width = self->picker ? MAX(200, rect.width) : 0;
   luma_ui_float_at(host, GTK_WIDGET(self), &rect, prefer, self->align, self->picker ? 6 : 8, 8, -1, width);
+  }
   if (root != NULL) {
     self->keys = gtk_event_controller_key_new();
     gtk_event_controller_set_propagation_phase(self->keys, GTK_PHASE_CAPTURE);
