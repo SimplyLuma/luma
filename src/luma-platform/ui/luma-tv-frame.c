@@ -284,6 +284,7 @@ typedef struct {
   gboolean page_zone;    /* the remote is in the page */
   /* luma_window_set_tv_frame (any window, any sidebar): */
   gboolean generic;      /* the sidebar is not a LumaNavigationSidebar: it is told by classes */
+  gboolean solo;         /* no sidebar, but a page (a header over groups): the page at full width, not centred */
   GtkWidget *scroll;     /* a generic sidebar's scrolled list */
   GtkAlign sidebar_valign;
   GtkWidget *page_modal; /* a modal card drawn as a page in the frame (weak) */
@@ -367,9 +368,12 @@ static const char *const tv_sheet =
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
 ".lumaui-tv-frame .lumaui-part-group { margin-top: 34tv; }\n"
 ".lumaui-tv-frame .lumaui-part-group > box:not(.lumaui-part-card) { margin: 0; padding: 0; min-height: 0; }\n"
+/* libadwaita's group spaces its heading from its card by 6: the TV's heading carries its own 12 */
+".lumaui-tv-frame preferencesgroup.lumaui-part-group > box { border-spacing: 0; }\n"
 /* the first block under a page's header sits 6 lower than its margin says (measured); the mockup's 28 and 34 */
 ".lumaui-tv-frame .lumaui-part-header + .lumaui-part-hero { margin-top: 22tv; }\n"
 ".lumaui-tv-frame .lumaui-part-header + .lumaui-part-group { margin-top: 28tv; }\n"
+".lumaui-tv-frame .lumaui-part-header + * > .luma-empty-state, .lumaui-tv-frame .lumaui-part-header + .luma-empty-state { margin-top: 24tv; }\n"
 ".lumaui-tv-frame .lumaui-part-group .lumaui-t-group-heading { font-size: 20tv; font-weight: 650; letter-spacing: 1tv;\n"
 "  text-transform: uppercase; color: @ink_3@; margin: 0 0 12tv 26tv; }\n"
 ".lumaui-tv-frame .lumaui-part-card { padding: 8tv; border-radius: 30tv; border: none; background-color: @bar@; background-image: none;\n"
@@ -419,6 +423,13 @@ static const char *const tv_sheet =
 "  text-transform: uppercase; color: @ink_3@; margin: 0 0 12tv 26tv; }\n"
 ".lumaui-tv-frame list.lumaui-part-card { background-color: @bar@; }\n"
 ".lumaui-tv-frame list.lumaui-part-card > row { border: none; }\n"
+/* an expander row is its header row (the line that opens it, padded as a row) over what it opens */
+".lumaui-tv-frame row.expander.lumaui-part-row { padding: 0; }\n"
+".lumaui-tv-frame row.expander.lumaui-part-row > box.vertical { border-spacing: 0; }\n"
+/* libadwaita's arrow draws larger in its box than Lucide's chevron-down: the same 12 x 6 glyph in a 24 box */
+".lumaui-tv-frame row.expander image.expander-row-arrow { -gtk-icon-size: 19.2tv; min-width: 24tv; min-height: 24tv; color: @ink_3@; opacity: 1; }\n"
+/* a card's rows 2 apart (the mockup's .tv-card gap), as a box of rows is by its spacing */
+".lumaui-tv-frame list.lumaui-part-card > row + row { margin-top: 2tv; }\n"
 /* the hero's lead: the thing's own tile, 92 in the accent (the mockup's .hero .big) */
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { min-width: 92tv; min-height: 92tv; border-radius: 26tv; padding: 0; margin: 0;\n"
 "  background-color: @accent_fill@; background-image: none; color: white; box-shadow: none; }\n"
@@ -432,6 +443,7 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { border: none; outline: none; }\n"
 /* a lead that is a picture in full colour (a logo, an app's icon): itself, no tile or ring behind it */
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead.lumaui-part-picture { min-width: 92tv; min-height: 92tv; }\n"
+".lumaui-tv-frame .lumaui-part-row image.lumaui-part-lead.lumaui-part-picture { -gtk-icon-size: 48tv; }\n"
 ".lumaui-tv-frame .lumaui-part-lead.lumaui-part-picture, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead.lumaui-part-picture {\n"
 "  background: none; box-shadow: none; border: none; outline: none; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
@@ -449,7 +461,7 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row .lumaui-t-row-title { font-size: 25tv; font-weight: 600; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-t-row-subtitle { font-size: 19tv; font-weight: 500; color: @ink_3@; }\n"
 /* a row's detail is ink 3 itself, never dimmed again (libadwaita's subtitle opacity) */
-".lumaui-tv-frame .lumaui-part-row label.subtitle, .lumaui-tv-frame .lumaui-part-row label.dim-label { opacity: 1; }\n"
+".lumaui-tv-frame .lumaui-part-row label.subtitle, .lumaui-tv-frame .lumaui-part-row label.dim-label, .lumaui-tv-frame .lumaui-part-row image.dim-label { opacity: 1; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-row-subtitle, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-t-muted,\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within label.dim-label { color: alpha(@key_ink@, 0.62); }\n"
 ".lumaui-tv-frame .lumaui-part-row label { font-size: 23tv; font-weight: 600; }\n"
@@ -469,11 +481,21 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row .lumaui-part-lead image { color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within image:not(.lumaui-part-lead) { color: alpha(@key_ink@, 0.62); }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead image { color: inherit; }\n"
+/* a card's subject (a phone heading its card, set_part "subject"): 104 tall, its lead a 64 tile in the accent,
+ * the glyph 32 in white, its name 30/700; while reachable a dot before its details; away, the tile is quiet */
+".lumaui-tv-frame .lumaui-part-row.lumaui-part-subject { min-height: 80tv; }\n"
+".lumaui-tv-frame .lumaui-part-subject .lumaui-part-lead { min-width: 64tv; min-height: 64tv; border-radius: 18tv; background-color: @accent_fill@; color: white; }\n"
+".lumaui-tv-frame .lumaui-part-subject .lumaui-part-lead image { -gtk-icon-size: 32tv; color: white; }\n"
+".lumaui-tv-frame .lumaui-part-subject.lumaui-away .lumaui-part-lead { background-color: alpha(white, 0.1); color: @ink_2@; }\n"
+".lumaui-tv-frame .lumaui-part-subject.lumaui-away .lumaui-part-lead image { color: @ink_2@; }\n"
+".lumaui-tv-frame .lumaui-part-subject label.title { font-size: 30tv; font-weight: 700; letter-spacing: -0.3tv; }\n"
+".lumaui-tv-frame .lumaui-part-subject:not(.lumaui-away) label.subtitle { padding-left: 22tv; background-repeat: no-repeat;\n"
+"  background-size: 12tv 12tv; background-position: 0 55%; background-image: radial-gradient(circle closest-side, #5fd37f 92%, alpha(#5fd37f, 0) 100%); }\n"
 /* controls at TV size, inside rows */
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip),\n"
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):hover,\n"
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):focus-visible {\n"
-"  background: none; box-shadow: none; border: none; outline: none; min-height: 0; padding: 0; color: inherit; }\n"/* ...but the button a row is drawn as (a box holding it, the row's whole content) keeps the row's 60 */
+"  background: none; box-shadow: none; border: none; outline: none; min-height: 0; min-width: 0; padding: 0; color: inherit; }\n"/* ...but the button a row is drawn as (a box holding it, the row's whole content) keeps the row's 60 */
 ".lumaui-tv-frame .lumaui-part-row.vertical > button:not(.lumaui-part-swatch):not(.lumaui-part-chip) { min-height: 60tv; }\n"
 
 ".lumaui-tv-frame > .luma-island switch { min-width: 30tv; min-height: 34tv; padding: 4tv 2tv; border-radius: 21tv; border: none;\n"
@@ -585,7 +607,9 @@ static const char *const tv_sheet =
  * empty state, a row of TV buttons, an external link's QR. */
 static const char *const tv_parts_sheet =
 /* a centred window (no sidebar): the page in the safe area under the bar, no island */
-".lumaui-tv-frame.lumaui-tv-centred > .luma-island { margin: 166tv 96tv 56tv 96tv; }\n"
+".lumaui-tv-frame.lumaui-tv-centred > .luma-island { margin: 130tv 96tv 56tv 96tv; }\n"
+/* a page without the island (phones without an account): the page from the safe edge (the mockup's .tv-page.solo) */
+".lumaui-tv-frame.lumaui-tv-solo > .luma-island { margin: 166tv 96tv 0 96tv; }\n"
 /* a generic sidebar in the island (luma_window_set_tv_frame): the frame sizes it as the C sidebar */
 ".lumaui-tv-frame > .lumaui-tv-island { margin: 166tv 0 56tv 96tv; min-width: 376tv; padding: 12tv; border-radius: 36tv;\n"
 "  background-color: @bar@; background-image: none; border: none; outline: none;\n"
@@ -595,40 +619,63 @@ static const char *const tv_parts_sheet =
 "  background: none; padding: 0; margin: 0; border: none; box-shadow: none; }\n"
 ".lumaui-tv-frame > .lumaui-tv-island .luma-navigation-face, .lumaui-tv-frame > .lumaui-tv-island .luma-navigation-icon {\n"
 "  min-width: 30tv; min-height: 30tv; padding: 0; margin: 0; background: none; box-shadow: none; border: none; }\n"
+/* a person as a row's lead (the mockup's .row .av): a 30 disc in their tone, the initial 24/600 in white */
+".lumaui-tv-frame > .lumaui-tv-island .luma-navigation-icon.luma-avatar { border-radius: 9999px; }\n"
+".lumaui-tv-frame > .lumaui-tv-island .luma-navigation-icon.luma-avatar.tone-green { background-color: #33854a; background-image: none; }\n"
+".lumaui-tv-frame > .lumaui-tv-island .luma-navigation-icon.luma-avatar .luma-avatar-initials { font-size: 24tv; font-weight: 600; line-height: 1; color: white; }\n"
 /* a page's title and lede, named as parts (a page without LumaUI type roles) */
-".lumaui-tv-frame label.lumaui-part-title { font-family: Figtree, sans-serif; font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; color: @ink@; }\n"
-".lumaui-tv-frame label.lumaui-part-lede { font-family: Figtree, sans-serif; font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 8tv; }\n"
+".lumaui-tv-frame label.lumaui-part-title { font-family: Figtree, sans-serif; font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; color: @ink@; line-height: 0.88; }\n"
+".lumaui-tv-frame label.lumaui-part-lede { font-family: Figtree, sans-serif; font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 8tv; line-height: 1.14; opacity: 1; }\n"
 ".lumaui-tv-frame .lumaui-part-header { border-spacing: 0; margin-bottom: 6tv; }\n"
 ".lumaui-tv-frame .lumaui-part-header > box { border-spacing: 24tv; }\n"
+/* a header as a column: its line (a way back, the title, the page's own button) 14 apart (the mockup's .head .line) */
+".lumaui-tv-frame .lumaui-part-header.vertical { border-spacing: 0; }\n"
+".lumaui-tv-frame .lumaui-part-header.vertical > box.horizontal { border-spacing: 14tv; }\n"
+/* a header's way back (the mockup's .head .back): a 26 glyph in ink 2 on a 28 square, no chip of its own */
+".lumaui-tv-frame .lumaui-part-header button.lumaui-part-back { min-width: 28tv; min-height: 28tv; padding: 0; margin: 0; border: none; outline: none;\n"
+"  background: none; box-shadow: none; color: @ink_2@; }\n"
+".lumaui-tv-frame .lumaui-part-header button.lumaui-part-back image { -gtk-icon-size: 26tv; color: inherit; }\n"
 /* a centred window: the emblem with soft light behind it, a large title, a balanced lede, its
  * buttons in a row, the footnote on the bottom safe line */
 ".lumaui-tv-frame image.lumaui-part-emblem { -gtk-icon-size: 184tv; min-width: 184tv; min-height: 184tv; margin: 0;\n"
 "  -gtk-icon-shadow: 0 24tv 40tv rgba(0, 0, 0, 0.45), 0 0 150tv rgba(84, 140, 255, 0.34); }\n"
 ".lumaui-tv-frame image.lumaui-part-emblem.lumaui-light-orange { -gtk-icon-shadow: 0 24tv 40tv rgba(0, 0, 0, 0.45), 0 0 150tv rgba(255, 128, 48, 0.38); }\n"
-".lumaui-tv-centred label.lumaui-part-title { font-size: 40tv; font-weight: 700; letter-spacing: -0.8tv; margin-top: 0; }\n"
+".lumaui-tv-centred label.lumaui-part-title { font-size: 40tv; font-weight: 700; letter-spacing: -0.8tv; margin-top: 32tv; line-height: 1; }\n"
 ".lumaui-tv-centred image.lumaui-part-emblem ~ label.lumaui-part-title { font-size: 64tv; font-weight: 750; letter-spacing: -1.6tv; margin-top: 44tv; }\n"
-".lumaui-tv-centred label.lumaui-part-lede { font-size: 28tv; margin-top: 14tv; }\n"
-".lumaui-tv-centred .lumaui-part-buttons { margin-top: 44tv; }\n"
-".lumaui-tv-frame label.lumaui-part-footnote { font-family: Figtree, sans-serif; font-size: 20tv; font-weight: 600; color: @ink_3@; margin: 0; }\n"
+/* the mockup's 14 over a 1.4 line; Pango sets the first line 2 lower in its box than Chromium does */
+".lumaui-tv-centred label.lumaui-part-lede { font-size: 28tv; margin-top: 12tv; }\n"
+/* the buttons' row: a bare group (30 over) of a holder row (12 in) of .btns (4 over, 6 under), 48 under a lede
+ * (.welcome .btns), 40 under a lone title (.unavail .btns); a lone button is that row */
+".lumaui-tv-centred .lumaui-part-buttons, .lumaui-tv-centred label.lumaui-part-title ~ button { margin-top: 86tv; margin-bottom: 18tv; }\n"
+".lumaui-tv-centred .lumaui-part-lede ~ .lumaui-part-buttons { margin-top: 96tv; }\n"
+".lumaui-tv-frame.lumaui-tv-centred > .luma-island label.lumaui-part-title ~ button { min-width: 130tv; }\n"
+".lumaui-tv-frame.lumaui-tv-centred > .luma-island label.lumaui-part-title ~ button:focus-visible { transform: scale(1.04); }\n"
+/* the focused button of a row lifts (the mockup's .btns .tv-btn.focus, scale 1.04) */
+".lumaui-tv-frame .lumaui-part-buttons > button:focus-visible, .lumaui-tv-frame > .luma-island flowboxchild > button:focus-visible,\n"
+".lumaui-tv-frame .luma-empty-actions button:focus-visible { transform: scale(1.04); }\n"
+".lumaui-tv-frame label.lumaui-part-footnote { font-family: Figtree, sans-serif; font-size: 20tv; font-weight: 600; color: @ink_3@; margin: 0; opacity: 1; }\n"
 /* TV buttons (66 tall, radius 22, 25/650): a row of buttons, an empty state's actions, a page's
  * FlowBox of actions. The suggested one rests in the accent; the focused one is the key. */
 ".lumaui-tv-frame .lumaui-part-buttons { border-spacing: 14tv; }\n"
+/* a button's icon (or spinner) and words, 12 apart (the mockup's .tv-btn gap), wherever the button stands */
+"window.lumaui-tv button > box.lumaui-tv-button-line { border-spacing: 12tv; }\n"
 ".lumaui-tv-frame .lumaui-part-buttons > button, .lumaui-tv-frame > .luma-island flowboxchild > button,\n"
 ".lumaui-tv-frame .luma-empty-actions button {\n"
-"  min-height: 66tv; min-width: 130tv; padding: 0 30tv; margin: 0; border-radius: 22tv; border: none; outline: none;\n"
+"  min-height: 66tv; min-width: 130tv; padding: 0 30tv; margin: 0; border-radius: 22tv; border: none; outline: none; filter: none;\n"
 "  font-family: Figtree, sans-serif; font-size: 25tv; font-weight: 650; color: @ink@; background-color: @chip@; background-image: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
 ".lumaui-tv-frame .lumaui-part-buttons > button label, .lumaui-tv-frame > .luma-island flowboxchild > button label,\n"
 ".lumaui-tv-frame .luma-empty-actions button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
 ".lumaui-tv-frame > .luma-island flowboxchild > button image, .lumaui-tv-frame .lumaui-part-buttons > button image { -gtk-icon-size: 26tv; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-buttons > button.suggested-action, .lumaui-tv-frame > .luma-island flowboxchild > button.suggested-action,\n"
-".lumaui-tv-frame .luma-empty-actions button.suggested-action, .lumaui-tv-frame .luma-empty-actions button.primary { background-color: @accent@; color: white;\n"
+".lumaui-tv-frame .luma-empty-actions button.suggested-action, .lumaui-tv-frame .luma-empty-actions button.primary { background-color: #2582dc; color: white;\n"
 "  box-shadow: inset 0 1.5tv 0 rgba(255, 255, 255, 0.22); }\n"
 ".lumaui-tv-frame .lumaui-part-buttons > button:focus-visible, .lumaui-tv-frame > .luma-island flowboxchild > button:focus-visible,\n"
 ".lumaui-tv-frame .luma-empty-actions button:focus-visible {\n"
 "  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
-".lumaui-tv-frame .lumaui-part-buttons > button:disabled, .lumaui-tv-frame > .luma-island flowboxchild > button:disabled { opacity: 0.38; }\n"
+".lumaui-tv-frame .lumaui-part-buttons > button:disabled, .lumaui-tv-frame > .luma-island flowboxchild > button:disabled { opacity: 0.38; filter: none; color: @ink@; }\n"
+".lumaui-tv-frame .lumaui-part-buttons > button:disabled *, .lumaui-tv-frame > .luma-island flowboxchild > button:disabled * { opacity: 1; filter: none; color: inherit; }\n"
 ".lumaui-tv-frame > .luma-island flowbox { border-spacing: 14tv; padding: 4tv 0 6tv 0; }\n"
 /* a page's own buttons outside its rows (a suggested or destructive action, the header's action) */
 ".lumaui-tv-frame > .luma-island button.suggested-action:not(.lumaui-part-row), .lumaui-tv-frame > .luma-island button.destructive-action,\n"
@@ -645,15 +692,20 @@ static const char *const tv_parts_sheet =
 "  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
 ".lumaui-tv-frame > .luma-island flowboxchild { padding: 0; margin: 0; background: none; outline: none; }\n"
+/* a card's row of actions (a FlowBox of buttons): a holder row, 12 over and 22 in, never a key itself */
+".lumaui-tv-frame list.lumaui-part-card > row.lumaui-tv-actions { padding: 12tv 22tv; min-height: 0; border-radius: 22tv; background: none; box-shadow: none; }\n"
 /* the empty state (luma_appkit EmptyState): a bar card, a 112 icon tile with soft accent light,
  * a 34/700 title, a 24 sentence, then its actions */
 ".lumaui-tv-frame .luma-empty-state { margin-top: 30tv; padding: 64tv 40tv 56tv 40tv; border-radius: 30tv; border: none;\n"
 "  background-color: @bar@; background-image: none; box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
 ".lumaui-tv-frame .luma-empty-state .luma-empty-disc { min-width: 112tv; min-height: 112tv; border-radius: 32tv; margin: 0;\n"
-"  background-color: alpha(white, 0.08); background-image: none; box-shadow: 0 0 120tv 30tv rgba(84, 140, 255, 0.16); }\n"
-".lumaui-tv-frame .luma-empty-state image.luma-empty-icon { -gtk-icon-size: 54tv; color: @ink_2@; }\n"
+"  background-color: alpha(white, 0.08); background-image: none; box-shadow: none; }\n"
+/* the tile's soft accent light (the mockup's .ico::before, 80 past the tile): light on the card itself, behind the tile */
+".lumaui-tv-frame .luma-empty-state image.luma-empty-icon { -gtk-icon-size: 54tv; color: @ink_2@; opacity: 1;\n"
+"  -gtk-icon-shadow: 0 0 36tv alpha(@accent_fill@, 0.9), 0 0 90tv alpha(@accent_fill@, 0.9); }\n"
 ".lumaui-tv-frame .luma-empty-state label.luma-empty-title { font-family: Figtree, sans-serif; font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; color: @ink@; margin-top: 28tv; }\n"
-".lumaui-tv-frame .luma-empty-state label.luma-empty-description { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 500; color: @ink_2@; margin-top: 10tv; }\n"
+".lumaui-tv-frame .luma-empty-state label.luma-empty-description { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 400; color: @ink_2@; margin-top: 10tv;\n"
+"  line-height: 1.14; opacity: 1; }\n"
 ".lumaui-tv-frame .luma-empty-state .luma-empty-actions { margin-top: 32tv; }\n"
 /* a modal card over the page (luma_appkit LayerHost): a TV sheet */
 "window.lumaui-tv .lumaui-scrim { background-color: rgba(3, 4, 8, 0.78); background-image: none; }\n"
@@ -953,6 +1005,156 @@ static gboolean in_sidebar(TvFrame *f, GtkWidget *w) {
   return f->sidebar != NULL && w != NULL && gtk_widget_is_ancestor(w, f->sidebar);
 }
 
+/* A box the TV sheet spaces (border-spacing): its own spacing steps aside, as GTK adds the two.
+ * The app's spacing is kept on the box and put back off the TV. */
+static void tv_spacing(GtkWidget *box, gboolean tv) {
+  if (!GTK_IS_BOX(box)) return;
+  int kept = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(box), "luma-tv-spacing"));
+  if (tv && kept == 0) {
+    g_object_set_data(G_OBJECT(box), "luma-tv-spacing", GINT_TO_POINTER(gtk_box_get_spacing(GTK_BOX(box)) + 1));
+    gtk_box_set_spacing(GTK_BOX(box), 0);
+  } else if (!tv && kept > 0) {
+    gtk_box_set_spacing(GTK_BOX(box), kept - 1);
+    g_object_set_data(G_OBJECT(box), "luma-tv-spacing", NULL);
+  }
+}
+
+static void sidebar_lines(GtkWidget *w, gboolean tv) {
+  if (gtk_widget_has_css_class(w, "luma-navigation-line")) tv_spacing(w, tv);
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c))
+    sidebar_lines(c, tv);
+}
+
+/* A lede no wider than the mockup's measure (max-width on its paragraph): at most `measure` px wide, in
+ * characters of the label's own styled font (GTK's own measure, taken once the label is styled), and
+ * with `fixed` exactly that wide (it wraps at the measure, not balanced). Kept and put back off the TV. */
+typedef struct { int chars, halign, width, measure; gboolean fixed; gulong mapped; } TvMeasure;
+
+static void measure_now(GtkWidget *label, TvMeasure *m) {
+  PangoFontMetrics *metrics = pango_context_get_metrics(gtk_widget_get_pango_context(label), NULL, NULL);
+  int glyph = MAX(pango_font_metrics_get_approximate_char_width(metrics), pango_font_metrics_get_approximate_digit_width(metrics));
+  pango_font_metrics_unref(metrics);
+  if (glyph > 0)
+    gtk_label_set_max_width_chars(GTK_LABEL(label), MAX(1, (int)floor((double)m->measure * PANGO_SCALE / glyph)));
+}
+
+static void measure_mapped(GtkWidget *label, gpointer data) {
+  measure_now(label, data);
+}
+
+static void cap_measure(GtkWidget *label, double measure, GtkAlign align, gboolean fixed) {
+  if (!GTK_IS_LABEL(label) || !gtk_label_get_wrap(GTK_LABEL(label)) || g_object_get_data(G_OBJECT(label), "luma-tv-measure") != NULL)
+    return;
+  TvMeasure *m = g_new0(TvMeasure, 1);
+  m->chars = gtk_label_get_max_width_chars(GTK_LABEL(label));
+  m->halign = gtk_widget_get_halign(label);
+  m->measure = (int)round(measure);
+  m->fixed = fixed;
+  gtk_widget_get_size_request(label, &m->width, NULL);
+  g_object_set_data_full(G_OBJECT(label), "luma-tv-measure", m, g_free);
+  m->mapped = g_signal_connect(label, "map", G_CALLBACK(measure_mapped), m);
+  if (gtk_widget_get_mapped(label)) measure_now(label, m);
+  if (m->halign == GTK_ALIGN_FILL) gtk_widget_set_halign(label, align);
+  if (fixed) gtk_widget_set_size_request(label, m->measure, -1);
+}
+
+static void uncap_measure(GtkWidget *label) {
+  TvMeasure *m = g_object_get_data(G_OBJECT(label), "luma-tv-measure");
+  if (m == NULL) return;
+  g_signal_handler_disconnect(label, m->mapped);
+  gtk_label_set_max_width_chars(GTK_LABEL(label), m->chars);
+  gtk_widget_set_halign(label, (GtkAlign)m->halign);
+  if (m->fixed) {
+    int height = -1;
+    gtk_widget_get_size_request(label, NULL, &height);
+    gtk_widget_set_size_request(label, m->width, height);
+  }
+  g_object_set_data(G_OBJECT(label), "luma-tv-measure", NULL);
+}
+
+/* Desktop margins and sizes the TV sheet replaces (a centred window's parts are placed by it alone). */
+static void hold_margins(GtkWidget *w, gboolean size) {
+  if (g_object_get_data(G_OBJECT(w), "luma-tv-margins") != NULL) return;
+  int *m = g_new(int, 7);
+  m[0] = gtk_widget_get_margin_start(w);
+  m[1] = gtk_widget_get_margin_end(w);
+  m[2] = gtk_widget_get_margin_top(w);
+  m[3] = gtk_widget_get_margin_bottom(w);
+  gtk_widget_get_size_request(w, &m[4], &m[5]);
+  m[6] = size;
+  g_object_set_data_full(G_OBJECT(w), "luma-tv-margins", m, g_free);
+  gtk_widget_set_margin_start(w, 0);
+  gtk_widget_set_margin_end(w, 0);
+  gtk_widget_set_margin_top(w, 0);
+  gtk_widget_set_margin_bottom(w, 0);
+  if (size) gtk_widget_set_size_request(w, -1, -1);
+}
+
+static void let_margins(GtkWidget *w) {
+  int *m = g_object_get_data(G_OBJECT(w), "luma-tv-margins");
+  if (m == NULL) return;
+  gtk_widget_set_margin_start(w, m[0]);
+  gtk_widget_set_margin_end(w, m[1]);
+  gtk_widget_set_margin_top(w, m[2]);
+  gtk_widget_set_margin_bottom(w, m[3]);
+  if (m[6]) gtk_widget_set_size_request(w, m[4], m[5]);
+  g_object_set_data(G_OBJECT(w), "luma-tv-margins", NULL);
+}
+
+/* A balanced paragraph (the mockup's text-wrap: balance inside a max-width): as many lines as the
+ * measure needs, each as short as that allows. GTK sizes a wrapped label for the height it is offered,
+ * so the label fills its column and margins leave it exactly that wide. */
+static void hold_layout(GtkWidget *w);
+static void balance_words(GtkWidget *label, double measure, double size, int weight, double column) {
+  if (!GTK_IS_LABEL(label) || g_object_get_data(G_OBJECT(label), "luma-tv-balanced") != NULL) return;
+  PangoLayout *layout = gtk_widget_create_pango_layout(label, gtk_label_get_text(GTK_LABEL(label)));
+  PangoFontDescription *desc = pango_font_description_new();
+  pango_font_description_set_family(desc, "Figtree");
+  pango_font_description_set_weight(desc, (PangoWeight)weight);
+  pango_font_description_set_absolute_size(desc, size * PANGO_SCALE);
+  pango_layout_set_font_description(layout, desc);
+  pango_font_description_free(desc);
+  pango_layout_set_wrap(layout, gtk_label_get_wrap_mode(GTK_LABEL(label)));
+  pango_layout_set_width(layout, (int)(measure * PANGO_SCALE));
+  int lines = pango_layout_get_line_count(layout), lo = 1, hi = (int)measure;
+  while (lo < hi) {
+    int mid = (lo + hi) / 2;
+    pango_layout_set_width(layout, mid * PANGO_SCALE);
+    if (pango_layout_get_line_count(layout) > lines) lo = mid + 1; else hi = mid;
+  }
+  pango_layout_set_width(layout, hi * PANGO_SCALE);
+  int width = 0;
+  pango_layout_get_pixel_size(layout, &width, NULL);
+  g_object_unref(layout);
+  int side = MAX(0, (int)floor((column - width - 2) / 2)); /* 1 px of slack each side for rounding */
+  hold_margins(label, FALSE);
+  hold_layout(label);
+  gtk_widget_set_halign(label, GTK_ALIGN_FILL);
+  gtk_widget_set_margin_start(label, side);
+  gtk_widget_set_margin_end(label, side);
+  g_object_set_data(G_OBJECT(label), "luma-tv-balanced", GINT_TO_POINTER(1));
+}
+
+/* An icon (or a spinner) then words, side by side in a button: the mockup's .tv-btn, 12 apart.
+ * Words then a mark (a choice's value over its drop arrow) keep their own gap. */
+static gboolean button_line(GtkWidget *button) {
+  if (!GTK_IS_BUTTON(button) || gtk_widget_has_css_class(button, "lumaui-part-row")) return FALSE;
+  GtkWidget *line = gtk_button_get_child(GTK_BUTTON(button));
+  if (line == NULL || !GTK_IS_BOX(line) || gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) != GTK_ORIENTATION_HORIZONTAL ||
+      g_object_get_data(G_OBJECT(line), "luma-tv-kept") != NULL)
+    return FALSE;
+  gboolean words = FALSE, mark = FALSE;
+  for (GtkWidget *c = gtk_widget_get_first_child(line); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    if (!gtk_widget_get_visible(c)) continue;
+    if (GTK_IS_LABEL(c)) {
+      if (!mark) return FALSE;
+      words = TRUE;
+    } else if (GTK_IS_IMAGE(c) || ADW_IS_SPINNER(c) || GTK_IS_SPINNER(c)) mark = TRUE;
+    else return FALSE;
+  }
+  return words && mark;
+}
+
 /* The sidebar in (or out of) the island. A LumaNavigationSidebar does it itself; any other sidebar
  * is told by its classes (lumaui-tv-island, with lumaui-tv-rail while folded) and is sized here:
  * as tall as its rows, a long list stopping at the bottom safe line. */
@@ -966,6 +1168,7 @@ static void sidebar_set_tv(TvFrame *f, gboolean tv, gboolean rail) {
     f->scroll = first_of_type(f->sidebar, GTK_TYPE_SCROLLED_WINDOW);
   }
   if (f->scroll != NULL) gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(f->scroll), tv);
+  sidebar_lines(f->sidebar, tv); /* a row's lead and title 18 apart, by the TV sheet alone */
   gtk_widget_set_valign(f->sidebar, tv ? GTK_ALIGN_START : f->sidebar_valign);
   luma_ui_set_css_class(f->sidebar, "lumaui-tv-island", tv);
 }
@@ -1065,9 +1268,10 @@ static void adapt_adw(TvFrame *f, GtkWidget *widget) {
     if (lead == NULL || !gtk_widget_get_visible(lead) || gtk_widget_has_css_class(lead, "lumaui-part-lead"))
       return;
     gboolean picture = image_full_colour(lead);
-    keep(widget, (TvKept){KEPT_LEAD, picture, 0, 0, 0, 0});
+    keep(widget, (TvKept){KEPT_LEAD, picture, gtk_widget_get_valign(lead), 0, 0, 0});
     gtk_widget_add_css_class(widget, "lumaui-part-leads");
     gtk_widget_add_css_class(lead, "lumaui-part-lead");
+    gtk_widget_set_valign(lead, GTK_ALIGN_CENTER); /* a 48 tile, centred on the row's lines */
     if (picture) {
       gtk_widget_add_css_class(lead, "lumaui-part-picture");
       keep(lead, (TvKept){KEPT_IMAGE, gtk_image_get_pixel_size(GTK_IMAGE(lead)), 0, 0, 0, 0});
@@ -1081,7 +1285,23 @@ static void adapt_adw(TvFrame *f, GtkWidget *widget) {
     keep(widget, (TvKept){KEPT_FLOW, gtk_flow_box_get_homogeneous(flow), (int)gtk_flow_box_get_column_spacing(flow),
                           (int)gtk_flow_box_get_row_spacing(flow), (int)gtk_flow_box_get_min_children_per_line(flow), 0});
     gtk_flow_box_set_homogeneous(flow, FALSE);
-    gtk_flow_box_set_column_spacing(flow, (guint)round(14 * f->unit));
+    /* the buttons at their own widths from the row's start (the mockup's .btns), the row a holder (.tv-row.holder) */
+    int *place = g_new(int, 5);
+    place[0] = gtk_widget_get_margin_start(widget);
+    place[1] = gtk_widget_get_margin_end(widget);
+    place[2] = gtk_widget_get_margin_top(widget);
+    place[3] = gtk_widget_get_margin_bottom(widget);
+    place[4] = gtk_widget_get_halign(widget);
+    g_object_set_data_full(G_OBJECT(widget), "luma-tv-flow-place", place, g_free);
+    gtk_widget_set_margin_start(widget, 0);
+    gtk_widget_set_margin_end(widget, 0);
+    gtk_widget_set_margin_top(widget, 0);
+    gtk_widget_set_margin_bottom(widget, 0);
+    if (place[4] == GTK_ALIGN_FILL) gtk_widget_set_halign(widget, GTK_ALIGN_START);
+    GtkWidget *holder = gtk_widget_get_parent(widget);
+    if (holder != NULL && GTK_IS_LIST_BOX_ROW(holder)) gtk_widget_add_css_class(holder, "lumaui-tv-actions");
+    /* one button alone needs no gap beside it (GTK still counts one in the row's width) */
+    gtk_flow_box_set_column_spacing(flow, gtk_widget_get_next_sibling(first) != NULL ? (guint)round(14 * f->unit) : 0);
     gtk_flow_box_set_row_spacing(flow, (guint)round(14 * f->unit));
     gtk_flow_box_set_min_children_per_line(flow, 1);
     for (GtkWidget *child = gtk_widget_get_first_child(widget); child != NULL; child = gtk_widget_get_next_sibling(child)) {
@@ -1106,7 +1326,19 @@ static void unadapt(GtkWidget *widget) {
   if (kept == NULL)
     return;
   switch (kept->kind) {
-  case KEPT_FLOW:
+  case KEPT_FLOW: {
+    int *place = g_object_get_data(G_OBJECT(widget), "luma-tv-flow-place");
+    if (place != NULL) {
+      gtk_widget_set_margin_start(widget, place[0]);
+      gtk_widget_set_margin_end(widget, place[1]);
+      gtk_widget_set_margin_top(widget, place[2]);
+      gtk_widget_set_margin_bottom(widget, place[3]);
+      gtk_widget_set_halign(widget, (GtkAlign)place[4]);
+      g_object_set_data(G_OBJECT(widget), "luma-tv-flow-place", NULL);
+    }
+    GtkWidget *holder = gtk_widget_get_parent(widget);
+    if (holder != NULL) gtk_widget_remove_css_class(holder, "lumaui-tv-actions");
+  }
     gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(widget), kept->a);
     gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(widget), (guint)kept->b);
     gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(widget), (guint)kept->c);
@@ -1124,7 +1356,10 @@ static void unadapt(GtkWidget *widget) {
     gtk_widget_remove_css_class(widget, "lumaui-part-leads");
     GtkWidget *prefixes = find_class(widget, "prefixes");
     GtkWidget *lead = prefixes != NULL ? gtk_widget_get_first_child(prefixes) : NULL;
-    if (lead != NULL) gtk_widget_remove_css_class(lead, "lumaui-part-lead");
+    if (lead != NULL) {
+      gtk_widget_remove_css_class(lead, "lumaui-part-lead");
+      gtk_widget_set_valign(lead, (GtkAlign)kept->b);
+    }
     break;
   }
   default:
@@ -1227,15 +1462,22 @@ static void lay_out_part(GtkWidget *w) {
     gtk_widget_set_valign(first, GTK_ALIGN_END);
     gtk_widget_set_vexpand(w, TRUE);
     gtk_widget_set_valign(w, GTK_ALIGN_END);
+    /* ...centred in the whole safe area, as the mockup's footnote stands out of the flow */
+    int minimum = 0, natural = 0;
+    gtk_widget_measure(w, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural, NULL, NULL);
+    hold_margins(first, FALSE);
+    gtk_widget_set_margin_top(first, natural / 2);
   }
 }
 
 static GtkWidget *part_row_of(TvFrame *f, GtkWidget *w);
+/* A centred window: no sidebar and no page (a welcome, an error: one column in the middle). */
+static gboolean centred(TvFrame *f) { return f->sidebar == NULL && !f->solo; }
 static void release_page(TvFrame *f, GtkWidget *widget) {
   lay_out_part(widget);
   /* A centred window's own action (Try Again under a sentence) keeps the buttons row's natural width,
    * centred, instead of stretching to the column. */
-  if (f->sidebar == NULL && GTK_IS_BUTTON(widget) && gtk_widget_get_halign(widget) == GTK_ALIGN_FILL &&
+  if (centred(f) && GTK_IS_BUTTON(widget) && gtk_widget_get_halign(widget) == GTK_ALIGN_FILL &&
       g_object_get_data(G_OBJECT(widget), "luma-tv-layout") == NULL) {
     GtkWidget *parent = gtk_widget_get_parent(widget);
     if (parent != NULL && GTK_IS_BOX(parent) && gtk_orientable_get_orientation(GTK_ORIENTABLE(parent)) == GTK_ORIENTATION_VERTICAL) {
@@ -1247,6 +1489,68 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
       within_row(widget))
     place_lead(f, widget);
   adapt_adw(f, widget);
+  if (gtk_widget_has_css_class(widget, "lumaui-part-back") && g_object_get_data(G_OBJECT(widget), "luma-tv-back") == NULL) {
+    /* the way back is the remote's Back key (back_part): the remote never stops on it */
+    g_object_set_data(G_OBJECT(widget), "luma-tv-back", GINT_TO_POINTER(gtk_widget_get_focusable(widget) + 1));
+    gboolean had = gtk_widget_has_focus(widget);
+    gtk_widget_set_focusable(widget, FALSE);
+    if (had && f->island != NULL) {
+      gtk_root_set_focus(gtk_widget_get_root(widget), NULL);
+      gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD);
+    }
+  }
+  if (gtk_widget_has_css_class(widget, "lumaui-part-buttons") && GTK_IS_BOX(widget) && !gtk_widget_has_css_class(widget, "lumaui-tv-spaced")) {
+    /* a row of buttons 14 apart (the mockup's .btns gap), by the TV sheet alone */
+    tv_spacing(widget, TRUE);
+    gtk_widget_add_css_class(widget, "lumaui-tv-spaced");
+  }
+  if (button_line(widget)) {
+    GtkWidget *line = gtk_button_get_child(GTK_BUTTON(widget));
+    tv_spacing(line, TRUE);
+    gtk_widget_add_css_class(line, "lumaui-tv-button-line");
+  }
+  if (centred(f) && (gtk_widget_has_css_class(widget, "lumaui-part-emblem") || gtk_widget_has_css_class(widget, "lumaui-part-title") ||
+      gtk_widget_has_css_class(widget, "lumaui-part-lede") || gtk_widget_has_css_class(widget, "lumaui-part-buttons") ||
+      gtk_widget_has_css_class(widget, "lumaui-part-footnote"))) {
+    /* a centred window's column (the mockup's .welcome, .unavail): the TV sheet spaces and sizes its parts */
+    hold_margins(widget, FALSE);
+    GtkWidget *column = gtk_widget_get_parent(widget);
+    if (column != NULL && GTK_IS_BOX(column) && !gtk_widget_has_css_class(column, "lumaui-tv-spaced")) {
+      tv_spacing(column, TRUE);
+      hold_margins(column, FALSE);
+      gtk_widget_add_css_class(column, "lumaui-tv-spaced");
+    }
+    if (gtk_widget_has_css_class(widget, "lumaui-part-buttons"))
+      for (GtkWidget *b = gtk_widget_get_first_child(widget); b != NULL; b = gtk_widget_get_next_sibling(b))
+        hold_margins(b, TRUE);
+  }
+  if (GTK_IS_LABEL(widget) && gtk_widget_has_css_class(widget, "lumaui-part-lede")) {
+    GtkWidget *parent = gtk_widget_get_parent(widget);
+    if (centred(f))
+      balance_words(widget, 820 * f->unit, 28 * f->unit, 500, 1200 * f->unit);  /* a centred window's lede (.welcome p) */
+    else if (parent != NULL && gtk_widget_has_css_class(parent, "lumaui-part-header"))
+      cap_measure(widget, 1080 * f->unit, GTK_ALIGN_START, TRUE);   /* a page's lede (.head p) */
+  }
+  if (gtk_widget_has_css_class(widget, "lumaui-part-header") && GTK_IS_BOX(widget) &&
+      gtk_orientable_get_orientation(GTK_ORIENTABLE(widget)) == GTK_ORIENTATION_VERTICAL) {
+    /* a header as a column (its line, then the lede): the TV sheet spaces both (the mockup's .head) */
+    tv_spacing(widget, TRUE);
+    gtk_widget_add_css_class(widget, "lumaui-tv-spaced");
+    GtkWidget *line = gtk_widget_get_first_child(widget);
+    if (line != NULL && GTK_IS_BOX(line) && gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) == GTK_ORIENTATION_HORIZONTAL) {
+      tv_spacing(line, TRUE);
+      gtk_widget_add_css_class(line, "lumaui-tv-spaced");
+    }
+  }
+  if (gtk_widget_has_css_class(widget, "lumaui-part-hero") && g_object_get_data(G_OBJECT(widget), "luma-tv-hero-margins") == NULL) {
+    /* the TV sheet places the hero (28 under the page's top): the app's own desktop margins step aside */
+    int *margins = g_new(int, 2);
+    margins[0] = gtk_widget_get_margin_top(widget);
+    margins[1] = gtk_widget_get_margin_bottom(widget);
+    g_object_set_data_full(G_OBJECT(widget), "luma-tv-hero-margins", margins, g_free);
+    gtk_widget_set_margin_top(widget, 0);
+    gtk_widget_set_margin_bottom(widget, 0);
+  }
   if (gtk_widget_has_css_class(widget, "lumaui-part-hero")) {
     /* the hero's lead, words and actions 28 apart (the mockup's .hero gap), whatever the app spaced them */
     GtkWidget *line = gtk_widget_get_first_child(widget);
@@ -1284,6 +1588,31 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
     gtk_widget_add_css_class(widget, part);
     gtk_widget_add_css_class(widget, "lumaui-tv-named");
   }
+  if (gtk_widget_has_css_class(widget, "luma-empty-state")) {
+    /* the empty state's column: the TV sheet spaces its tile, title, sentence and actions (the mockup's .tv-empty) */
+    GtkWidget *clamp = gtk_widget_get_first_child(widget);
+    GtkWidget *column = clamp != NULL ? gtk_widget_get_first_child(clamp) : NULL;
+    if (column != NULL && GTK_IS_BOX(column) && !gtk_widget_has_css_class(column, "lumaui-tv-spaced")) {
+      tv_spacing(column, TRUE);
+      gtk_widget_add_css_class(column, "lumaui-tv-spaced");
+      for (GtkWidget *c = gtk_widget_get_first_child(column); c != NULL; c = gtk_widget_get_next_sibling(c))
+        hold_margins(c, FALSE);
+    }
+  }
+  if (GTK_IS_LABEL(widget) && gtk_widget_has_css_class(widget, "luma-empty-description") &&
+      g_object_get_data(G_OBJECT(widget), "luma-tv-attributes") == NULL) {
+    /* the empty state's sentence: the TV sheet's line height (not the desktop's fixed one), balanced at 760 */
+    PangoAttrList *attrs = gtk_label_get_attributes(GTK_LABEL(widget));
+    g_object_set_data_full(G_OBJECT(widget), "luma-tv-attributes", attrs != NULL ? pango_attr_list_ref(attrs) : pango_attr_list_new(),
+                           (GDestroyNotify)pango_attr_list_unref);
+    gtk_label_set_attributes(GTK_LABEL(widget), NULL);
+    GtkWidget *column = gtk_widget_get_parent(widget);
+    if (column != NULL) { hold_layout(column); gtk_widget_set_halign(column, GTK_ALIGN_FILL); }
+    /* the page's column (the island less its 6 a side), less the card's 40 a side */
+    int island = f->island != NULL ? gtk_widget_get_width(f->island) : 0;
+    double page = island > 100 ? island - 12 * f->unit : 1272 * f->unit;
+    balance_words(widget, 760 * f->unit, 24 * f->unit, 400, page - 80 * f->unit);
+  }
   if (ADW_IS_CLAMP(widget) && g_object_get_data(G_OBJECT(widget), "luma-tv-clamp") == NULL) {
     AdwClamp *clamp = ADW_CLAMP(widget);
     GtkWidget *child = adw_clamp_get_child(clamp);
@@ -1296,10 +1625,14 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
     saved[5] = child ? gtk_widget_get_margin_bottom(child) : 0;
     g_object_set_data_full(G_OBJECT(widget), "luma-tv-clamp", saved, g_free);
     /* A centred window (no sidebar: a welcome, an error) keeps one readable column, centred. */
-    const gboolean centred = f->sidebar == NULL;
-    adw_clamp_set_maximum_size(clamp, centred ? (int)round(1200 * f->unit) : G_MAXINT / 4);
-    adw_clamp_set_tightening_threshold(clamp, centred ? (int)round(1200 * f->unit) : G_MAXINT / 4);
-    if (child && centred) {
+    const gboolean centred_page = centred(f);
+    /* a clamp inside a part (an empty state's) only stops clamping: the part spaces its own column */
+    const gboolean inner = gtk_widget_get_parent(widget) != NULL && gtk_widget_has_css_class(gtk_widget_get_parent(widget), "luma-empty-state");
+    adw_clamp_set_maximum_size(clamp, centred_page && !inner ? (int)round(1200 * f->unit) : G_MAXINT / 4);
+    adw_clamp_set_tightening_threshold(clamp, centred_page && !inner ? (int)round(1200 * f->unit) : G_MAXINT / 4);
+    if (inner) {
+      /* nothing more */
+    } else if (child && centred_page) {
       gtk_widget_set_margin_start(child, 0);
       gtk_widget_set_margin_end(child, 0);
     } else if (child) {
@@ -1320,6 +1653,27 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
 
 static void restore_page(GtkWidget *widget) {
   unplace_lead(widget);
+  g_object_set_data(G_OBJECT(widget), "luma-tv-balanced", NULL);
+  int back = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "luma-tv-back"));
+  if (back > 0) {
+    gtk_widget_set_focusable(widget, back - 1);
+    g_object_set_data(G_OBJECT(widget), "luma-tv-back", NULL);
+  }
+  uncap_measure(widget);
+  PangoAttrList *attrs = GTK_IS_LABEL(widget) ? g_object_get_data(G_OBJECT(widget), "luma-tv-attributes") : NULL;
+  if (attrs != NULL) {
+    gtk_label_set_attributes(GTK_LABEL(widget), attrs);
+    g_object_set_data(G_OBJECT(widget), "luma-tv-attributes", NULL);
+  }
+  let_margins(widget);
+  if (gtk_widget_has_css_class(widget, "lumaui-tv-button-line")) {
+    tv_spacing(widget, FALSE);
+    gtk_widget_remove_css_class(widget, "lumaui-tv-button-line");
+  }
+  if (gtk_widget_has_css_class(widget, "lumaui-tv-spaced")) {
+    tv_spacing(widget, FALSE);
+    gtk_widget_remove_css_class(widget, "lumaui-tv-spaced");
+  }
   if (gtk_widget_has_css_class(widget, "lumaui-part-footnote")) {
     GtkWidget *column = gtk_widget_get_parent(widget);
     if (column != NULL) {
@@ -1329,6 +1683,12 @@ static void restore_page(GtkWidget *widget) {
   }
   let_layout(widget);
   unadapt(widget);
+  int *hero_margins = g_object_get_data(G_OBJECT(widget), "luma-tv-hero-margins");
+  if (hero_margins != NULL) {
+    gtk_widget_set_margin_top(widget, hero_margins[0]);
+    gtk_widget_set_margin_bottom(widget, hero_margins[1]);
+    g_object_set_data(G_OBJECT(widget), "luma-tv-hero-margins", NULL);
+  }
   int hero_gap = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "luma-tv-hero-gap"));
   if (hero_gap > 0) {
     gtk_box_set_spacing(GTK_BOX(widget), hero_gap - 1);
@@ -1565,12 +1925,20 @@ static gboolean refind(TvFrame *f) {
   return FALSE;
 }
 
+/* The page in the frame, told whether it is centred or a page of its own (see centred()). */
+static void release_island(TvFrame *f) {
+  f->solo = f->sidebar == NULL && f->island != NULL && find_class(f->island, "lumaui-part-header") != NULL;
+  luma_ui_set_css_class(f->frame, "lumaui-tv-centred", centred(f));
+  luma_ui_set_css_class(f->frame, "lumaui-tv-solo", f->solo);
+  release_page(f, f->island);
+}
+
 static gboolean relax(gpointer data) {
   TvFrame *f = data;
   f->relax_id = 0;
   if (f->active) {
     gint64 start = g_get_monotonic_time();
-    release_page(f, f->island);
+    release_island(f);
     if (g_getenv("LUMA_TV_DEBUG") != NULL)
       g_printerr("tv timing: release_page %.1f ms\n", (g_get_monotonic_time() - start) / 1000.0);
     if (hold_modal(f) != NULL) return G_SOURCE_REMOVE;
@@ -1627,7 +1995,7 @@ static gboolean settle(gpointer data) {
   f->settle_id = 0;
   if (!f->active)
     return G_SOURCE_REMOVE;
-  release_page(f, f->island);
+  release_island(f);
   gtk_window_set_focus_visible(f->window, TRUE);
   /* A centred window opening (no key yet): the app's own focus, whatever GTK moved it to while the
    * content moved under the room. */
@@ -1800,7 +2168,7 @@ static gboolean focus_into_parts(GtkWidget *w) {
 }
 
 static gboolean to_page(TvFrame *f) {
-  release_page(f, f->island);
+  release_island(f);
   gtk_root_set_focus(GTK_ROOT(f->window), NULL);
   if (!focus_into_parts(f->island) && !gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD)) {
     to_island(f);
@@ -2372,7 +2740,9 @@ static void enter(TvFrame *f) {
   f->active = TRUE;
   f->rail = FALSE;
   gtk_widget_add_css_class(f->frame, "lumaui-tv-frame");
-  luma_ui_set_css_class(f->frame, "lumaui-tv-centred", f->sidebar == NULL);
+  f->solo = f->sidebar == NULL && f->island != NULL && find_class(f->island, "lumaui-part-header") != NULL;
+  luma_ui_set_css_class(f->frame, "lumaui-tv-centred", centred(f));
+  luma_ui_set_css_class(f->frame, "lumaui-tv-solo", f->solo);
   if (f->sidebar != NULL) {
     gtk_widget_get_size_request(f->sidebar, &f->sidebar_width, &f->sidebar_height);
     f->sidebar_margin = gtk_widget_get_margin_end(f->sidebar);
@@ -2481,6 +2851,7 @@ static void leave(TvFrame *f) {
   }
   gtk_widget_remove_css_class(f->frame, "lumaui-tv-frame");
   gtk_widget_remove_css_class(f->frame, "lumaui-tv-centred");
+  gtk_widget_remove_css_class(f->frame, "lumaui-tv-solo");
   f->rail = FALSE;
 }
 

@@ -128,7 +128,7 @@ double luma_ui_tv_unit(int width, int height);
  * luma_ui_set_part:
  * @widget: a widget on a page
  * @part: "header", "back", "hero", "group", "card", "row", "title", "lede", "emblem", "buttons",
- *   "footnote", "ways", "way", "chips", "chip", "swatch" or %NULL
+ *   "footnote", "ways", "way", "chips", "chip", "swatch", "subject" or %NULL
  *
  * Name the page part @widget is (class `lumaui-part-<part>`), replacing any
  * other: the page's header (its title and one-line summary), its way back up
@@ -140,7 +140,8 @@ double luma_ui_tv_unit(int width, int height);
  * bottom safe line of a centred window), and ways (alternatives, each a "way": equal cards side
  * by side on a TV), or a row of choices drawn as themselves (chips: a wallpaper's picture is a
  * chip, an accent colour a round swatch; the one in use carries the class `on` or the checked
- * state). Nothing changes on a desktop, tablet or
+ * state), or a subject (a row heading its card, the thing it is about, drawn larger; also a "row";
+ * the class `lumaui-away` on it while the thing is out of reach). Nothing changes on a desktop, tablet or
  * phone; in TV posture LumaUI draws the parts at TV size (the floating
  * island's page) and Back activates the page's back part, so an app needs no
  * TV-specific code. An unknown part is

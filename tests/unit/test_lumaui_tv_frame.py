@@ -189,6 +189,15 @@ class TvFrame(unittest.TestCase):
         self.assertFalse(field.has_css_class("lumaui-code-source"))
         window.destroy()
 
+    def test_base32_code_field(self):
+        from luma_appkit import TextField, set_code_field
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        field = TextField("Code")
+        box.append(field)
+        set_code_field(field, length=8, group=4, alphabet="base32")
+        field.entry.set_text("ab01 89xy-z7q")
+        self.assertEqual(field.entry.get_text(), "ABOIBXYZ")    # 0, 1, 8 read as O, I, B; 9 dropped
+
 
 if __name__ == "__main__":
     unittest.main()

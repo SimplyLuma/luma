@@ -184,9 +184,23 @@ class _CodeBoxes(Gtk.Box):
         (self.add_css_class if focused else self.remove_css_class)("lumaui-code-focus")
 
 
+# Base32 codes (A-Z, 2-7): the digits that cannot occur read as the letters they look like.
+_BASE32_TYPED = str.maketrans({"0": "O", "1": "I", "8": "B"})
+
+
+def _clean_code(text: str, alphabet: str | None, length: int) -> str:
+    text = text.upper()
+    if alphabet == "base32":
+        return re.sub(r"[^A-Z2-7]", "", text.translate(_BASE32_TYPED))[:length]
+    return re.sub(r"[^A-Z0-9]", "", text)[:length]
+
+
 def set_code_field(field: Gtk.Widget, *, length: int = 8, group: int = 4, next: Gtk.Widget | None = None,
-                   status: Gtk.Label | None = None) -> None:
-    """On a TV, draw `field` (a luma_appkit TextField) as a one-time code of `length` wells."""
+                   status: Gtk.Label | None = None, alphabet: str | None = None) -> None:
+    """On a TV, draw `field` (a luma_appkit TextField) as a one-time code of `length` wells.
+
+    `alphabet="base32"` keeps A-Z and 2-7 in every posture: 0, 1 and 8 typed become O, I and B,
+    other characters are dropped."""
     entry = getattr(field, "entry", field)
     words = getattr(status, "label", status) if status is not None else None  # a TypeLabel's own label
     label = getattr(getattr(field, "label", None), "get_text", lambda: "Code")()
@@ -194,10 +208,10 @@ def set_code_field(field: Gtk.Widget, *, length: int = 8, group: int = 4, next: 
     holder = {"boxes": None, "tv": False, "fixing": False, "hiding": False, "status_shown": False}
 
     def normalised(*_args) -> None:
-        if not holder["tv"] or holder["fixing"]:
+        if holder["fixing"] or not (holder["tv"] or alphabet):
             return
         text = entry.get_text()
-        clean = re.sub(r"[^A-Z0-9]", "", text.upper())[:length]
+        clean = _clean_code(text, alphabet, length)
         if clean != text:
             holder["fixing"] = True
             entry.set_text(clean)

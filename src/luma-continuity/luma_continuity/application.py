@@ -24,6 +24,10 @@ from luma_appkit import (add_style_builder, AppWindow,AppContext,PresentationMod
     IslandSplitView,NavigationSidebar,NavigationRow,EmptyState,install_appkit,
     Card,LayerHost,TextField,TypeLabel,TextButton)
 try:
+    from luma_appkit import app_icon_paintable
+except ImportError:  # an older kit: app icons through GTK's own loader
+    app_icon_paintable=None
+try:
     from luma_appkit import Avatar
 except ImportError:  # an older kit; the account page then shows no portrait
     Avatar=None
@@ -81,6 +85,7 @@ TV_PHONE_TO_DESKTOP=('notifications.mirror','device.status','links.open','media.
 TV_DESKTOP_TO_PHONE=('device.ring','media.control','screen.view','camera.stream','bluetooth.bond')
 TV_PHONES_LEDE='Your phone on this TV: find it, show its screen, use its camera, and take its calls.'
 TV_NO_PHONES='Pair an Android phone to find it, see its screen and take its calls on this TV.'
+TV_SIGN_IN_ROW='Keep your photos, contacts, calendar and notes in step on this TV too.'
 
 def runs_on_tv(app_id):
     """Whether an installed app opts in to the TV (X-Luma-TV, docs/developer-platform/tv-mode.md)."""
@@ -156,11 +161,13 @@ class PhonesMixin:
             Gio.DBusCallFlags.NONE,timeout,None,finished)
 
     def _phones(self,page,mobile):
-        state=self.state or {};enabled=bool(state.get('enabled'))
+        # Nothing until the first load: never "No phones yet" or a dead switch before the service answers.
+        if self.state is None:return
+        state=self.state;enabled=bool(state.get('enabled'))
         if not enabled:
             group=Adw.PreferencesGroup();page.add(group)
             row=Adw.SwitchRow(title='Luma Connect',subtitle=tv_words('Turn it on to use a phone with this computer.'),active=False)
-            row.set_sensitive(self.state is not None and not state.get('busy'))
+            row.set_sensitive(not state.get('busy'))
             row.connect('notify::active',lambda widget,_p:widget.get_active() and self._invoke('SetEnabled','(b)',(True,)))
             group.add(row)
         devices=state.get('companion_devices') or []
@@ -183,7 +190,8 @@ class PhonesMixin:
         if network and device.get('reachable'):details.append(network)
         if device.get('seen_at') and not device.get('reachable'):details.append(when_text(device['seen_at'],prefix='Seen '))
         head=Adw.ActionRow(title=name,subtitle=' · '.join(details) or (device.get('model') or ''),use_markup=False)
-        head.add_css_class('luma-connect-phone-head')
+        head.add_css_class('luma-connect-phone-head');set_part(head,'subject')
+        if not (enabled and device.get('reachable')):head.add_css_class('lumaui-away')
         head.add_prefix(tile('luma-connect-phone-symbolic'))
         more=Gtk.MenuButton(icon_name='luma-connect-more-symbolic',valign=Gtk.Align.CENTER,tooltip_text=f'More for {name}')
         more.add_css_class('flat')
@@ -786,7 +794,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         connect=TextButton('Sign In',style='key',sensitive=False)
         actions.append(back);actions.append(connect);second.append(actions)
         set_part(actions,'buttons');set_part(back,'back')
-        set_code_field(code,length=8,group=4,next=connect,status=status)
+        set_code_field(code,length=8,group=4,next=connect,status=status,alphabet='base32')
         pages.add_named(second,'code')
         busy=False
         def update(*_):
@@ -916,6 +924,14 @@ class ConnectWindow(PhonesMixin,AppWindow):
         if style:button.add_css_class(style)
         button.connect('clicked',lambda *_:callback());return button
     def _app_icon(self,app_id,fallback,size=32):
+        if app_icon_paintable is not None:
+            # The icon's SVG drawn at its size in this process: the loader sandbox renders Luma's
+            # 1024 app icons whole, about a second each on a Pi, with the page waiting.
+            paintable=app_icon_paintable(app_id,size,self)
+            if paintable is None:return tile(fallback)
+            image=Gtk.Image.new_from_paintable(paintable);image.set_pixel_size(size);image.set_valign(Gtk.Align.CENTER)
+            image.app_id=app_id
+            return image
         display=Gdk.Display.get_default()
         theme=Gtk.IconTheme.get_for_display(display) if display else None
         if app_id and theme is not None and theme.has_icon(app_id):
@@ -1261,6 +1277,14 @@ class ConnectWindow(PhonesMixin,AppWindow):
             back.add_css_class('flat');back.connect('clicked',lambda *_:(setattr(self,'phones_only',False),self._update()))
         page=Page('Phones',TV_PHONES_LEDE if tv_posture() else 'Your phone’s notifications and texts on this computer, copied text and files back and forth, and calls.',suffix=pair,back=back)
         self._phones(page,self.compact)
+        if self.shape=='phones-only' and tv_posture():
+            # On a TV the way back to an account is a row the remote reaches, not only the header's Back.
+            group=Adw.PreferencesGroup(title='Luma Account');page.add(group)
+            row=Adw.ActionRow(title='Sign In…',subtitle=TV_SIGN_IN_ROW,use_markup=False,activatable=True)
+            row.add_prefix(Gtk.Image(icon_name='luma-connect-user-symbolic'))
+            def sign_in(*_):
+                self.phones_only=False;self._update();self._sign_in_dialog()
+            row.connect('activated',sign_in);group.add(row)
         if self._relay_signed_in() or (state.get('message_devices') or state.get('call_devices')):
             self._relay_section(page)
         elif state.get('account_status')=='locked':

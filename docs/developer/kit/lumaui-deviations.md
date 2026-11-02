@@ -126,3 +126,6 @@ PENDING google-figtree-fonts 1.luma.4 (U+2010/U+2011 mapped to Figtree's hyphen)
 
 v70 leaves some inputs on Chromium's placeholder grey #757575, 3.8:1 on the dark well; the coordinator ruled an AA dark value, so @luma_placeholder_ink is #85878b in dark. Only that pair.
 
+## tv-page-edge-fade
+
+A TV page's scroll edge fades are longer and eased (about 48 at the top, 128 at the bottom, only where the page continues), Nick's ruling of 1 November 2026 over the mockup's 12/40 linear mask. A glyph in the bottom strip (from y 952 at 1080) stands on a differently faded ground, so its sampled colour differs by up to ΔE 8. Glyph colour only, in that strip; never positions, sizes or other parts.

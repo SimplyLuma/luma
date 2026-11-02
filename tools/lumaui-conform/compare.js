@@ -191,7 +191,8 @@ function gtkModel(G) {
   const liveOps = G.ops.filter(o => !o.hidden && (o.op ?? 1) > 0.02 && o.k !== 'rclip');
   const shows = c => c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.rule || c.paint.shadows ? (c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.rule || c.paint.shadows[0]).op > 0.02 : liveOps.some(o => inside(B(o.box), B(c.w.box)));
   // GtkText inside an entry is the entry's own text area, not a control of its own (its selection is paint).
-  const cands = ws.filter(w => w.parent != null && vis(w) && w.box[2] >= 6 && w.box[3] >= 6 && !((w.css === 'text' || w.css === 'textview') && byId.get(w.parent)?.css === 'entry' && !(byId.get(w.parent)?.classes || []).includes('lumaui-bar-search'))).map(w => ({ w, role: w.activatable === false ? 'generic' : roleOf(w.role), paint: paintOf(w) }))
+  // A GtkMenuButton's own toggle is that menu button (one control, named by the menu button), not a second one.
+  const cands = ws.filter(w => w.parent != null && vis(w) && w.box[2] >= 6 && w.box[3] >= 6 && !(w.type === 'GtkToggleButton' && byId.get(w.parent)?.type === 'GtkMenuButton') && !((w.css === 'text' || w.css === 'textview') && byId.get(w.parent)?.css === 'entry' && !(byId.get(w.parent)?.classes || []).includes('lumaui-bar-search'))).map(w => ({ w, role: w.activatable === false ? 'generic' : roleOf(w.role), paint: paintOf(w) }))
     .filter(c => (CONTROL.has(c.role) || c.paint.fill || c.paint.gradient || c.paint.border || c.paint.ring || c.paint.rule || c.paint.shadows) && shows(c));
   // A bare text field inside a painted well (SidebarFoot's search, BarSearch) is one control, as the spec
   // merges label.srch around its <input>: the field takes the well's box and paint, and the well is not a
@@ -285,7 +286,9 @@ function compareState(st, S, G, samples) {
     const gSh = gp.shadows || [], sMax = Math.max(0, ...sSh.map(x => x.blur)), gMax = Math.max(0, ...gSh.map(x => x.blur));
     if (!!sSh.length !== !!gSh.length || Math.abs(sMax - gMax) > 4) add(Math.abs(sMax - gMax) > 8 || !!sSh.length !== !!gSh.length ? 'major' : 'minor', s.box, name, 'shadow', sSh.length ? `${sSh.length} (blur ≤${sMax})` : 'none', gSh.length ? `${gSh.length} (blur ≤${gMax})` : 'none',
       !sSh.length ? `${name}: GTK drops a shadow (blur ${gMax}); the spec has none (it sits in, not floating)` : !gSh.length ? `${name}: the spec has a shadow (blur ${sMax}); GTK has none` : `${name}: shadow blur ${sMax} in spec, ${gMax} in GTK`);
-    if (cs && cg && (sp.background || sGrad || gp.fill || gp.gradient)) { const d = dE00(cs, cg); if (d > TOL.dE) add(d > TOL.majorDE ? 'major' : 'minor', s.box, name, 'surface colour', hex(cs), hex(cg), `${name}: surface ${hex(cs)} in spec, ${hex(cg)} in GTK (ΔE ${f1(d)})`, { mag: d }); }
+    // A box the window's edge cuts to a sliver (under a third of it shows) is sampled from too few pixels, under the page's edge fade.
+    const sliver = s.box.h < sb.h / 3 || s.box.w < sb.w / 3;
+    if (cs && cg && !sliver && (sp.background || sGrad || gp.fill || gp.gradient)) { const d = dE00(cs, cg); if (d > TOL.dE) add(d > TOL.majorDE ? 'major' : 'minor', s.box, name, 'surface colour', hex(cs), hex(cg), `${name}: surface ${hex(cs)} in spec, ${hex(cg)} in GTK (ΔE ${f1(d)})`, { mag: d }); }
   };
   const pairedS = new Set(), pairedG = new Set();
   for (const p of scenario.pairs || []) {
@@ -337,7 +340,8 @@ function compareState(st, S, G, samples) {
   // frame makes it the menu button it implies (F0). Its control is window chrome, reported as info.
   const gById = new Map(G.widgets.map(w => [w.id, w]));
   const inIdentity = w => { for (let a = w, n = 0; a && n < 4; a = gById.get(a.parent), n++) if ((a.classes || []).includes('luma-identity-button')) return true; return false; };
-  for (const g of compRes.lonelyB) { if (!g.label || !CONTROL.has(g.role)) continue; add(inIdentity(g.w) ? 'info' : 'minor', g.box, `${g.role} "${g.label}"`, 'extra', 'absent', 'present', `${g.role} "${g.label}": GTK has it, the spec does not${inIdentity(g.w) ? ' (the identity menu, window chrome)' : ''}`); }
+  // A control the window's edge cuts to a sliver (under a third shows) is not one to see, on either side.
+  for (const g of compRes.lonelyB) { if (!g.label || !CONTROL.has(g.role) || g.box.h < g.full.h / 3 || g.box.w < g.full.w / 3) continue; add(inIdentity(g.w) ? 'info' : 'minor', g.box, `${g.role} "${g.label}"`, 'extra', 'absent', 'present', `${g.role} "${g.label}": GTK has it, the spec does not${inIdentity(g.w) ? ' (the identity menu, window chrome)' : ''}`); }
   const movedWith = b => moved.filter(([mb]) => inside(b, mb)).sort((p, q) => p[0].w * p[0].h - q[0].w * q[0].h)[0];
 
   // Texts
@@ -402,11 +406,19 @@ function compareState(st, S, G, samples) {
     const edgeCut = g.clipped || s.box.w > 0 && Math.abs(s.box.w - s.box.h) > 1 && Math.abs(g.box.w - g.box.h) <= 1 && Math.min(s.box.w, s.box.h) < Math.min(g.box.w, g.box.h) - 1;
     if (edgeCut && (Math.abs(gi.w - si.w) > 1 || Math.abs(gi.h - si.h) > 1)) { add('info', s.box, nm, 'sliver', `ink ${f1(si.w)}×${f1(si.h)}`, `ink ${f1(gi.w)}×${f1(gi.h)}`, `${nm}: cut by a scroller's edge (ink ${f1(si.w)}×${f1(si.h)} in spec, ${f1(gi.w)}×${f1(gi.h)} in GTK)`); }
     else if (Math.abs(gi.w - si.w) > 1 || Math.abs(gi.h - si.h) > 1) add('minor', s.box, nm, 'size', `${f1(s.box.w)}px (ink ${f1(si.w)}×${f1(si.h)})`, `ink ${f1(gi.w)}×${f1(gi.h)}`, `${nm}: ${f1(s.box.w)} px in spec, about ${f1(s.box.w * gi.w / Math.max(0.1, si.w))} px in GTK (ink ${f1(si.w)}×${f1(si.h)} vs ${f1(gi.w)}×${f1(gi.h)})`);
-    if (s.color && g.color) { const sb = bg('spec', s.box) || { r: 0, g: 0, b: 0 }; const cs = over(s.color, sb, s.opacity ?? 1), cg = over(g.color, bg('gtk', g.box) || sb); const d = dE00(cs, cg);
+    // The ground an icon stands on is the mode of its box, unless that mode is the glyph's own ink (a glyph of
+    // long straight strokes on a flat ground): then it is the box's edge, where a glyph rarely draws.
+    const ground = (which, b, color, opacity) => { const m = bg(which, b), e = which === 'spec' ? samples.specEdge(b) : samples.gtkEdge(b);
+      return m && e && dE00(over(color, e, opacity), m) < 3 ? e : m; };
+    if (s.color && g.color) { const sb = ground('spec', s.box, s.color, s.opacity ?? 1) || { r: 0, g: 0, b: 0 }; const cs = over(s.color, sb, s.opacity ?? 1), cg = over(g.color, ground('gtk', g.box, g.color, 1) || sb); const d = dE00(cs, cg);
       if (d > TOL.dE) add(d > TOL.majorDE ? 'major' : 'minor', s.box, nm, 'colour', hex(cs), hex(cg), `${nm}: colour ${hex(cs)} in spec, ${hex(cg)} in GTK (ΔE ${f1(d)})`, { mag: d }); }
   }
   for (const g of G.icons.filter(i => i.generic)) add('major', g.box, 'icon app-icon', 'generic', 'app icon', 'application-x-executable', 'icon app-icon: GTK shows the generic executable icon, not the app\'s own (the identity cannot find the app\'s icon)');
-  for (const s of iRes.lonelyA) add('critical', s.box, `icon ${s.name}`, 'missing', 'present', 'absent', `icon ${s.name} at ${f1(s.box.x)},${f1(s.box.y)} is missing in GTK`);
+  // An icon the spec shows only as a sliver at the window's edge (under 2 px of its box, its ink beyond) is not there to see.
+  const iconSliver = i => Math.min(i.box.w, i.box.h) < 2 && (i.ink.y >= S.window.h || i.ink.x >= S.window.w || i.ink.y + i.ink.h <= 0 || i.ink.x + i.ink.w <= 0);
+  for (const s of iRes.lonelyA) iconSliver(s)
+    ? add('info', s.box, `icon ${s.name}`, 'sliver', 'present', 'absent', `icon ${s.name}: the spec shows only ${f1(Math.min(s.box.w, s.box.h))} px of it at an edge, its ink beyond; GTK none`)
+    : add('critical', s.box, `icon ${s.name}`, 'missing', 'present', 'absent', `icon ${s.name} at ${f1(s.box.x)},${f1(s.box.y)} is missing in GTK`);
   for (const g of iRes.lonelyB) add('major', g.box, `icon ${g.name}`, 'extra', 'absent', 'present', `icon ${g.name} at ${f1(g.box.x)},${f1(g.box.y)} is in GTK but not in the spec`);
 
   if (scenario.frame) frameChecks(S, G, add, samples);
