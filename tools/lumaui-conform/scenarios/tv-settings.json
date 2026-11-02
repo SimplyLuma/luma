@@ -1,0 +1,466 @@
+{
+ "app": "tv-settings",
+ "title": "Settings on TV",
+ "about": "Settings in TV posture (LUMA_POSTURE=tv, LumaUI's TV frame) against the Design Center's TV mockup at 1920x1080: the floating island open and folded to its rail, grouped rows, chip rows, a choice list and the TV keyboard. The island must be as tall as its rows (pair \"island\"). Dark only: a TV is always dark.",
+ "spec": {
+  "root": "design-center",
+  "url": "mockups/luma-tv-settings.html",
+  "window": "#stage",
+  "ready": "#island .row",
+  "viewport": {
+   "width": 1920,
+   "height": 1080
+  },
+  "clock": "2026-11-01T16:12:00",
+  "exclude": [
+   ".bg",
+   ".shade",
+   "#clock",
+   ".tv-toast"
+  ]
+ },
+ "gtk": {
+  "module": "settings",
+  "fixtures": [
+   "tests/fixtures/settings-v70.json",
+   "assets/wallpapers/prism.png",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-documents.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-browser.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-messages.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-files.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-music.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-mail.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-photos.svg",
+   "assets/wallpapers/meadow.png",
+   "assets/wallpapers/ember.png",
+   "src/luma-platform/ui/luma-creatives.png",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-calendar.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-phone.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-clock.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-app-store.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-maps.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-settings.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-calculator.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-contacts.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-notes.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-terminal.svg",
+   "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Tasks.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-video-editor.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-camera.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-ari.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-designer.svg",
+   "assets/icon-theme/Prairie/scalable/apps/org.projectluma.VoiceMemos.svg",
+   "assets/icon-theme/Prairie/scalable/apps/luma-v3-weather.svg"
+  ],
+  "env": {
+   "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-v70.json",
+   "GSETTINGS_BACKEND": "memory",
+   "XDG_CURRENT_DESKTOP": "GNOME",
+   "LUMA_POSTURE": "tv"
+  },
+  "app_id": "org.luma.Settings.Fixture",
+  "binary": "bin/gnome-control-center",
+  "build": {
+   "patched_upstream": "gnome-control-center",
+   "patches": "patches/gnome-control-center",
+   "patch_series": [
+    "0001-luma-preferred-choice-order.patch",
+    "0002-luma-touchpad-gestures-section.patch",
+    "0003-luma-shared-preferences-layout.patch",
+    "0004-luma-native-islands-persistent-search.patch",
+    "0005-luma-native-identity-centered-navigation.patch",
+    "0006-luma-dash-settings-panel.patch",
+    "0007-luma-dash-preview-physical-corners.patch",
+    "0008-luma-dash-padding-control.patch",
+    "0009-luma-dash-status-settings.patch",
+    "0010-luma-status-divider-preview.patch",
+    "0011-appearance-Add-native-Luma-surface-treatments.patch",
+    "0012-luma-settings-material-navigation-sections.patch",
+    "0013-luma-displays-panel-composition.patch",
+    "0014-luma-background-activity-page.patch",
+    "0015-luma-sound-new-devices-and-network-outputs.patch",
+    "0016-luma-cast-settings-page.patch",
+    "0017-luma-about-names-luma.patch",
+    "0018-luma-device-name-static-slug.patch",
+    "0019-luma-about-legacy-os-release.patch",
+    "0020-luma-notifications-badge-app-icon.patch",
+    "0021-luma-mouse-trackpoint-page.patch",
+    "0022-luma-dash-allow-free-placement.patch",
+    "0023-luma-dash-span-and-float-follow-islands.patch",
+    "0024-luma-dash-dock-folders.patch",
+    "0025-users-Saved-passwords-follow-a-password-change.patch",
+    "0026-mouse-Scroll-Speed-for-the-mouse-and-the-touchpad.patch",
+    "0027-lumaui-sidebar-foot.patch",
+    "0028-lumaui-fixture-model.patch",
+    "0029-lumaui-fixture-startup-wifi.patch",
+    "0030-lumaui-network-actions-draft.patch",
+    "0031-lumaui-wifi-join-undo.patch",
+    "0032-lumaui-wifi-capture-variants.patch",
+    "0033-lumaui-bluetooth-fixture.patch",
+    "0034-lumaui-page-modules.patch",
+    "0035-lumaui-windows-model.patch",
+    "0036-lumaui-network-copy.patch",
+    "0037-lumaui-fixture-assets.patch",
+    "0038-lumaui-windows-page.patch",
+    "0039-lumaui-shelf-model.patch",
+    "0040-lumaui-shelf-page.patch",
+    "0041-lumaui-appearance-model.patch",
+    "0042-lumaui-appearance-page.patch",
+    "0043-lumaui-discovery-model.patch",
+    "0044-lumaui-discovery-pages.patch",
+    "0045-lumaui-adaptive-padding-and-navigation.patch",
+    "0046-lumaui-live-network-adapter.patch",
+    "0047-lumaui-display-draft-model.patch",
+    "0048-settings-add-native-read-adapters-and-isolated-fixtu.patch",
+    "0049-settings-fix-fixture-artwork-and-verify-native-surfa.patch",
+    "0050-settings-add-Apps-fixture-routes-and-scoped-action-c.patch",
+    "0051-settings-add-accessibility-routes-and-bounded-native-reader-action.patch",
+    "0052-settings-add-scoped-native-preference-edits-with-durable-recovery.patch",
+    "0053-settings-compose-scoped-Privacy-routes-and-native-schema-contracts.patch",
+    "0054-settings-scoped-native-permission-edits.patch",
+    "0055-settings-native-screen-lock-view.patch",
+    "0056-settings-native-permission-views.patch",
+    "0057-settings-empty-native-permission-list.patch",
+    "0058-luma-hide-inapplicable-span-row.patch",
+    "0059-lumaui-settings-v70-finish.patch",
+    "0060-lumaui-settings-phone-search-bar.patch",
+    "0061-lumaui-settings-search-control-names.patch",
+    "0062-lumaui-settings-fixture-account-hue.patch",
+    "0063-lumaui-shelf-phone-choices.patch",
+    "0064-lumaui-phone-first-section-spacing.patch",
+    "0065-lumaui-stable-display-drag.patch",
+    "0066-settings-use-shared-device-identity.patch",
+    "0067-settings-open-handheld-destination-list.patch",
+    "0068-settings-native-session-identity.patch",
+    "0069-settings-retain-decoded-artwork.patch",
+    "0070-settings-dark-first-appearance.patch",
+    "0071-settings-native-network-editor-frame.patch",
+    "0072-settings-native-scroll-speed.patch",
+    "0073-settings-native-bluetooth-operations.patch",
+    "0074-settings-native-wifi-lifecycle.patch",
+    "0075-settings-bluetooth-error-notice.patch",
+    "0076-settings-retained-bluetooth-and-wifi-drafts.patch",
+    "0077-settings-native-pointer-write-qualification.patch",
+    "0078-settings-tiling-controls-native-autotiling.patch",
+    "0079-settings-display-apply-preview.patch",
+    "0080-settings-retain-live-display-apply-bar.patch",
+    "0081-settings-native-microphone-controls.patch",
+    "0082-settings-retain-native-pane-actions.patch",
+    "0083-maximized-window-border-settings.patch",
+    "0084-live-window-spacing-controls.patch",
+    "0085-night-light-start-end-time-controls.patch",
+    "0086-applications-dock-folder-settings.patch",
+    "0087-live-dock-shortcut-controls.patch",
+    "0088-dash-presets-and-shared-layout.patch",
+    "0089-home-screen-preferences.patch",
+    "0090-lumaui-tv-opt-in-and-panel-set.patch",
+    "0091-lumaui-tv-pages.patch",
+    "0092-lumaui-tv-saved-network-actions.patch",
+    "0093-lumaui-tv-account-appearance-sound.patch"
+   ],
+   "meson_options": [
+    "-Dtests=false",
+    "-Ddocumentation=false",
+    "-Dmalcontent=false",
+    "-Dsnap=false",
+    "-Dlocation-services=enabled"
+   ]
+  }
+ },
+ "pairs": [
+  {
+   "name": "island",
+   "spec": "#island",
+   "gtk": "LumaNavigationSidebar"
+  }
+ ],
+ "states": [
+  {
+   "name": "island",
+   "about": "The island open on Wi-Fi, the remote in it",
+   "themes": [
+    "dark"
+   ],
+   "spec": [],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETTINGS_PAGE": "wifi"
+     }
+    }
+   ]
+  },
+  {
+   "name": "rail",
+   "about": "Right: the remote in the Wi-Fi page, the island folded to its rail",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "key": "ArrowRight",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETTINGS_PAGE": "wifi"
+     }
+    },
+    {
+     "key": "Right",
+     "wait": 400
+    }
+   ]
+  },
+  {
+   "name": "display",
+   "about": "Down twice: Display opens from the island (rows, a slider)",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETTINGS_PAGE": "wifi"
+     }
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    }
+   ]
+  },
+  {
+   "name": "appearance-chips",
+   "about": "Appearance, the remote on its wallpaper chips",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowRight",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETTINGS_PAGE": "wifi"
+     }
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Right",
+     "wait": 400
+    }
+   ]
+  },
+  {
+   "name": "choice",
+   "about": "Display, OK on its first choice row: the list drops from the row",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowRight",
+     "wait": 300
+    },
+    {
+     "key": "Enter",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETTINGS_PAGE": "wifi"
+     }
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Right",
+     "wait": 400
+    },
+    {
+     "key": "Return",
+     "wait": 400
+    }
+   ]
+  },
+  {
+   "name": "keyboard",
+   "about": "About, OK on Name: the TV keyboard docks, the row lifts above it",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
+     "wait": 300
+    },
+    {
+     "key": "ArrowRight",
+     "wait": 300
+    },
+    {
+     "key": "Enter",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETTINGS_PAGE": "wifi"
+     }
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Down",
+     "wait": 400
+    },
+    {
+     "key": "Right",
+     "wait": 400
+    },
+    {
+     "key": "Return",
+     "wait": 400
+    }
+   ]
+  }
+ ]
+}

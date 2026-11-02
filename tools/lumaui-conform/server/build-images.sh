@@ -16,15 +16,24 @@ umask 022
 root=/srv/lumaui-conform
 data=${LUMAUI_CONFORM_DATA:-/srv/dev-storage/projects/lumaui-conform}
 store=$data/containers/storage
+# podman stages image blobs and layers in TMPDIR (/var/tmp by default, on the root filesystem).
+export TMPDIR=$data/tmp
 tools=$root/tools/lumaui-conform
 podman() { command podman --root "$store" --runroot /run/lumaui-conform/containers "$@"; }
 heavy=(); command -v luma-heavy >/dev/null 2>&1 && heavy=(luma-heavy)
 mountpoint -q "$(df --output=target "$(dirname "$data")" | tail -1)" || { echo "build-images: $data is not on a mounted data disk" >&2; exit 3; }
-mkdir -p "$store" "$data/build"
+mkdir -p "$store" "$data/build" "$TMPDIR"
 # The data disk's project tree carries default ACLs; container storage must not inherit them.
 setfacl -R -b -k "$data/containers" 2>/dev/null || true
 
-manifest=${LUMAUI_CONFORM_SHIP_MANIFEST:-$(ls -t /srv/luma-build/nightly-*/pipeline/builds/*/packages-installed.tsv 2>/dev/null | head -1)}
+# The newest x86_64 build's manifest (the same nightly also builds for aarch64).
+newest_x86() {
+  local m
+  for m in $(ls -t /srv/luma-build/nightly-*/pipeline/builds/*/packages-installed.tsv 2>/dev/null); do
+    awk -F'\t' '$1 == "kernel-core" && $5 == "x86_64" {found = 1} END {exit !found}' "$m" && { echo "$m"; return; }
+  done
+}
+manifest=${LUMAUI_CONFORM_SHIP_MANIFEST:-$(newest_x86)}
 [ -f "$manifest" ] || { echo "build-images: no nightly manifest (LUMAUI_CONFORM_SHIP_MANIFEST)" >&2; exit 3; }
 pool=${LUMAUI_CONFORM_POOL:-$(dirname "$(dirname "$(dirname "$manifest")")")/rpms/pool}
 [ -d "$pool" ] || { echo "build-images: no pool at $pool (LUMAUI_CONFORM_POOL)" >&2; exit 3; }

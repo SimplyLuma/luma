@@ -22,6 +22,8 @@ root=/srv/lumaui-conform
 # root filesystem; root= keeps only the tools, locks and queue.
 data=${LUMAUI_CONFORM_DATA:-/srv/dev-storage/projects/lumaui-conform}
 store=$data/containers/storage
+# podman stages image blobs and layers in TMPDIR (/var/tmp by default, on the root filesystem).
+export TMPDIR=$data/tmp
 # The Design Center (TV and later mockups), checked out by its post-receive hook.
 design_center=${LUMAUI_CONFORM_DESIGN_CENTER:-/srv/dev/projects/design-center}
 image=localhost/lumaui-conform-thinkpad
@@ -78,7 +80,7 @@ parent=$PPID
 mountpoint -q "$(df --output=target "$data" 2>/dev/null | tail -1)" && [ -d "$store" ] || { say "the data disk ($data) is not mounted or has no container storage; run install.sh --image"; exit 4; }
 free_gb=$(df --output=avail -BG "$data" | tail -1 | tr -dc 0-9)
 if [ "${free_gb:-0}" -lt $min_free_gb ]; then say "the server has ${free_gb} GB free on $data (keeps $min_free_gb GB); try later"; exit 4; fi
-mkdir -p "$work/src" "$work/tools" "$work/out" "$root/slots"
+mkdir -p "$work/src" "$work/tools" "$work/out" "$root/slots" "$TMPDIR"
 chown -R 1000:1000 "$work"
 # The nightly OS build must never starve. It is a oneshot, so while it runs systemd reports it
 # "activating" (not "active"); any luma-os-nightly* unit counts, and so does the quarter hour

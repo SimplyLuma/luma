@@ -392,8 +392,9 @@ class Capture:
             if time.monotonic() - self.sized_at < SETTLE_MS / 1000:
                 return True
             if self.acted_at is None:
-                self.act()
-                self.acted_at = time.monotonic()
+                if not getattr(self, "acting", False):
+                    self.acting = True
+                    self.act()
                 return True
             if ACTIONS and time.monotonic() - self.acted_at < 1.2:
                 return True
@@ -424,63 +425,104 @@ class Capture:
     STATE_FLAGS = {"prelight": "PRELIGHT", "active": "ACTIVE", "focus-visible": "FOCUS_VISIBLE", "checked": "CHECKED"}
 
     def act(self) -> None:
+        # Actions run in order; a TV key ("key": "Right") is followed by a pause of its own
+        # ("wait", default 350 ms) so focus moves, folds and drops settle before the next one.
+        self.queue = list(ACTIONS)
+        self.step()
+
+    def step(self) -> bool:
+        while self.queue:
+            action = self.queue.pop(0)
+            if "key" in action:
+                self.press(action["key"])
+                self.GLib.timeout_add(int(action.get("wait", 350)), self.step)
+                return False
+            self.act_one(action)
+        self.acted_at = time.monotonic()
+        return False
+
+    def press(self, name: str) -> None:
+        """A remote's key, as the window's key controllers receive it (TV frames read keys
+        in the capture phase on the window); the focused widget's own controllers next."""
+        from gi.repository import Gdk, Gtk
+
+        keyval = Gdk.keyval_from_name(name)
+        if not keyval or keyval == Gdk.KEY_VoidSymbol:
+            self.notes.append(f"no key named {name}")
+            return
+        targets = [self.window]
+        focus = self.window.get_focus()
+        while focus is not None and focus is not self.window:
+            targets.append(focus)
+            focus = focus.get_parent()
+        for widget in targets:
+            controllers = widget.observe_controllers()
+            for index in range(controllers.get_n_items()):
+                controller = controllers.get_item(index)
+                if not isinstance(controller, Gtk.EventControllerKey):
+                    continue
+                if controller.emit("key-pressed", keyval, 0, Gdk.ModifierType(0)):
+                    controller.emit("key-released", keyval, 0, Gdk.ModifierType(0))
+                    return
+        self.notes.append(f"no key controller took {name}")
+
+    def act_one(self, action) -> None:
         from gi.repository import Gtk
 
-        for action in ACTIONS:
-            if "wait" in action:
-                # Let timed work run (a panel that grows on a timer) before the next action.
-                from gi.repository import GLib
-                context, end = GLib.MainContext.default(), time.monotonic() + action["wait"] / 1000
-                while time.monotonic() < end:
-                    if not context.iteration(False):
-                        time.sleep(0.01)
-                continue
-            # Pointer and focus states the headless compositor has no pointer for: the
-            # state flags GTK itself would set (hover = PRELIGHT, pressed = ACTIVE).
-            if "flags" in action:
-                target = self.find(self.window, action.get("widget", ""))
-                if target is None:
-                    self.notes.append(f"no widget named {action.get('widget')}")
-                    continue
-                flags = Gtk.StateFlags(0)
-                for flag in action["flags"].split("|"):
-                    flags |= getattr(Gtk.StateFlags, self.STATE_FLAGS[flag])
-                target.set_state_flags(flags, False)
-                continue
-            if action.get("backdrop"):
-                # An inactive window: GTK sets BACKDROP on the toplevel and it propagates.
-                self.window.set_state_flags(Gtk.StateFlags.BACKDROP, False)
-                continue
-            if "focus" in action:
-                target = self.find(self.window, action["focus"])
-                if target is None:
-                    self.notes.append(f"no widget named {action['focus']}")
-                    continue
-                self.window.set_focus_visible(True)
-                target.grab_focus()
-                continue
-            if action.get("maximize"):
-                if not self.window.is_maximized():
-                    self.notes.append("the window did not maximize")
-                continue
-            if "activate" in action:
-                target = self.find(self.window, action["activate"])
-                if target is None:
-                    self.notes.append(f"no widget named {action['activate']}")
-                    continue
-                from gi.repository import Gtk
+        if "wait" in action:
+            # Let timed work run (a panel that grows on a timer) before the next action.
+            from gi.repository import GLib
+            context, end = GLib.MainContext.default(), time.monotonic() + action["wait"] / 1000
+            while time.monotonic() < end:
+                if not context.iteration(False):
+                    time.sleep(0.01)
+            return
+        # Pointer and focus states the headless compositor has no pointer for: the
+        # state flags GTK itself would set (hover = PRELIGHT, pressed = ACTIVE).
+        if "flags" in action:
+            target = self.find(self.window, action.get("widget", ""))
+            if target is None:
+                self.notes.append(f"no widget named {action.get('widget')}")
+                return
+            flags = Gtk.StateFlags(0)
+            for flag in action["flags"].split("|"):
+                flags |= getattr(Gtk.StateFlags, self.STATE_FLAGS[flag])
+            target.set_state_flags(flags, False)
+            return
+        if action.get("backdrop"):
+            # An inactive window: GTK sets BACKDROP on the toplevel and it propagates.
+            self.window.set_state_flags(Gtk.StateFlags.BACKDROP, False)
+            return
+        if "focus" in action:
+            target = self.find(self.window, action["focus"])
+            if target is None:
+                self.notes.append(f"no widget named {action['focus']}")
+                return
+            self.window.set_focus_visible(True)
+            target.grab_focus()
+            return
+        if action.get("maximize"):
+            if not self.window.is_maximized():
+                self.notes.append("the window did not maximize")
+            return
+        if "activate" in action:
+            target = self.find(self.window, action["activate"])
+            if target is None:
+                self.notes.append(f"no widget named {action['activate']}")
+                return
+            from gi.repository import Gtk
 
-                if isinstance(target, Gtk.Button):
-                    target.emit("clicked")
-                elif not target.activate():
-                    self.notes.append(f"{action['activate']} did not activate")
-                # What the activation set up on idle (a grown panel, a popover's rows) exists before the next action.
-                from gi.repository import GLib
-                context = GLib.MainContext.default()
-                for _ in range(200):
-                    if not context.pending():
-                        break
-                    context.iteration(False)
+            if isinstance(target, Gtk.Button):
+                target.emit("clicked")
+            elif not target.activate():
+                self.notes.append(f"{action['activate']} did not activate")
+            # What the activation set up on idle (a grown panel, a popover's rows) exists before the next action.
+            from gi.repository import GLib
+            context = GLib.MainContext.default()
+            for _ in range(200):
+                if not context.pending():
+                    break
+                context.iteration(False)
 
     # ── the dump ───────────────────────────────────────────────────────
     def finish(self) -> None:

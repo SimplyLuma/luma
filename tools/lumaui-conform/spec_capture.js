@@ -10,7 +10,11 @@ const args = process.argv.slice(2), opt = k => { const i = args.indexOf('--' + k
 const scenario = JSON.parse(fs.readFileSync(opt('scenario'), 'utf8'));
 const theme = opt('theme') || 'dark', phone = !!opt('phone'), out = opt('out'), base = (opt('base') || process.env.LUMAUI_CONFORM_BASE || 'http://127.0.0.1:8787/').replace(/\/?$/, '/');
 fs.mkdirSync(out, { recursive: true });
-const studioRoot = process.env.LUMAUI_CONFORM_STUDIO_ROOT || path.join(require('os').homedir(), 'Downloads', 'Operating system window treatment');
+// spec.root "design-center": a Design Center page (the TV mockups) instead of a Studio take. It has no
+// Studio chrome (no .review, no mode switch): the page is the reference as it stands, in its own theme.
+const designCenter = scenario.spec.root === 'design-center';
+const studioRoot = designCenter ? (process.env.LUMAUI_CONFORM_DESIGN_CENTER || path.join(require('os').homedir(), 'Luma', 'design-center'))
+  : process.env.LUMAUI_CONFORM_STUDIO_ROOT || path.join(require('os').homedir(), 'Downloads', 'Operating system window treatment');
 
 // Runs in the page: dump everything visible inside the window.
 function dump({ winSel, groups, exclude, pairSels }) {
@@ -152,10 +156,10 @@ function dump({ winSel, groups, exclude, pairSels }) {
     // the state's actions (a popover, a drawer, a pane named as the window) is waited for after them.
     // Studio is up (spec.ready, or its review chrome); each action waits for its own target, and the window
     // (which may be a popover or pane that only a click opens) is waited for after the actions.
-    await page.waitForSelector(scenario.spec.ready || '.review', { state: 'attached' });
+    await page.waitForSelector(scenario.spec.ready || (designCenter ? scenario.spec.window : '.review'), { state: 'attached' });
     await page.evaluate(() => document.fonts.ready);
     // Studio's own switch sets body[data-mode]; colorScheme alone does not.
-    await page.evaluate(t => { const b = document.querySelector(`.review [data-set-mode="${t}"]`); if (!b) throw new Error('no Studio mode switch for ' + t); b.click(); }, theme);
+    if (!designCenter) await page.evaluate(t => { const b = document.querySelector(`.review [data-set-mode="${t}"]`); if (!b) throw new Error('no Studio mode switch for ' + t); b.click(); }, theme);
     // A phone_url page is already the phone (v71+ ?phone=1): its apps open through the phone (spec.phone_before).
     if (phone && !scenario.spec.phone_url) await page.evaluate(() => document.querySelector('.review #phone, #phone').click());
     if (phone) for (const a of scenario.spec.phone_before || []) { if (a.eval) await page.evaluate(a.eval); await page.waitForTimeout(a.wait || 600); }
@@ -198,7 +202,8 @@ function dump({ winSel, groups, exclude, pairSels }) {
         if (node.nodeId) d.platformFonts[probe.text] = (await cdp.send('CSS.getPlatformFontsForNode', { nodeId: node.nodeId })).fonts;
       }
     }
-    if (d.mode !== theme) throw new Error(`Studio mode is ${d.mode}, wanted ${theme}`);
+    if (designCenter) d.mode = theme;   // the page's own theme (the scenario's states name the themes they hold)
+    else if (d.mode !== theme) throw new Error(`Studio mode is ${d.mode}, wanted ${theme}`);
     const box = await page.locator(st.window || scenario.spec.window).first().boundingBox();  // the first match, as the dump takes it
     await page.screenshot({ path: path.join(out, `spec-${st.name}.png`), clip: { x: box.x, y: box.y, width: Math.round(box.width), height: Math.round(box.height) } });
     d.state = st.name; d.about = st.about;
