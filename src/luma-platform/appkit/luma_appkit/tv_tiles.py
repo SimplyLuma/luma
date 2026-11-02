@@ -79,7 +79,7 @@ def _sheet(opaque: bool) -> str:
 .tv-tile-meta.tv-ok {{ color: #86d39c; }}
 .tv-shelf-row {{ border-spacing: {SHELF_GAP}tv; }}
 .tv-tile-grid {{ border-spacing: {GRID_ROW_GAP}tv {GRID_ROW_GAP}tv; }}
-.tv-progress-btn {{ min-width: 220tv; }}
+.tv-progress-btn {{ min-width: {220 - 2 * TV['button']['padding_x']}tv; }}
 .tv-shot-viewer {{ background-color: rgba(0, 0, 0, .85); }}
 .tv-empty {{ padding: 64tv 40tv 56tv 40tv; border-radius: 30tv; border-spacing: 0; }}
 .tv-empty-disc {{ min-width: 112tv; min-height: 112tv; border-radius: 32tv; }}

@@ -58,8 +58,8 @@ def _sheet(opaque: bool) -> str:
 .depot-tv-sec {{ margin-bottom: 54tv; }}
 .depot-tv-sec-head {{ border-spacing: 16tv; margin-bottom: 22tv; }}
 .depot-tv-small {{ font-size: 20tv; font-weight: 600; color: {m('ink_3')}; }}
-.depot-tv-count {{ min-width: 28tv; min-height: 28tv; padding: 0 8tv; margin-left: 10tv; border-radius: 14tv;
-  font-size: 17tv; font-weight: 700; color: white; background-color: #e5484d; }}
+.lumaui-tv-stage label.depot-tv-count {{ min-width: 28tv; min-height: 28tv; padding: 0 8tv; margin-left: 10tv;
+  border-radius: 14tv; font-size: 17tv; font-weight: 650; color: white; background-color: #e5484d; }}
 .depot-tv-feature {{ min-height: 430tv; margin-bottom: 54tv; }}
 .depot-tv-feature-text {{ margin-left: 56tv; border-spacing: 14tv; }}
 .depot-tv-kicker {{ font-size: 20tv; font-weight: 700; letter-spacing: 1.2tv; color: #e8c15a; }}
@@ -100,7 +100,8 @@ def _sheet(opaque: bool) -> str:
 .depot-tv-divider {{ min-height: 1.5tv; margin: 0 22tv; background-color: alpha(white, .08); }}
 .depot-tv-divider.depot-tv-inset {{ margin-left: 90tv; }}
 .depot-tv-search {{ border-spacing: 40tv; }}
-.depot-tv-search .tv-field {{ min-width: 900tv; min-height: 88tv; border-radius: 28tv; padding: 0 32tv; font-size: 32tv; }}
+.depot-tv-search .tv-field {{ min-width: 836tv; min-height: 88tv; border-radius: 28tv; padding: 0 32tv; font-size: 32tv; }}
+.depot-tv-search .tv-field text {{ font-size: 32tv; }}
 .depot-tv-search .tv-field image {{ -gtk-icon-size: 34tv; margin-right: 18tv; }}
 .depot-tv-hint {{ font-size: 24tv; color: {m('ink_3')}; }}
 """
@@ -277,6 +278,9 @@ class _Feature(Gtk.Widget):
         rect.init_from_rect(Graphene.Rect().init(0, 0, w, h), 40 * u)
         bar = Gdk.RGBA()
         bar.parse(TV["materials"]["bar"])
+        drop = Gdk.RGBA()
+        drop.parse(TV["materials"]["bar_drop"])
+        snapshot.append_outset_shadow(rect, drop, 0, 18 * u, -10 * u, 44 * u)
         if self._focused:
             ring = Gdk.RGBA()
             ring.parse("white")
