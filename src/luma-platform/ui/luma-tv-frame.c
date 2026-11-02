@@ -204,6 +204,7 @@ typedef struct {
   GtkWidget *scroll;     /* a generic sidebar's scrolled list */
   GtkAlign sidebar_valign;
   GtkWidget *page_modal; /* a modal card drawn as a page in the frame (weak) */
+  GtkWidget *app_focus;  /* what the app had focused when the frame took the window (weak) */
 } TvFrame;
 
 static const char *const tv_sheet =
@@ -1207,6 +1208,20 @@ static void dump(GtkWidget *w, int depth) {
     if (gtk_widget_get_visible(c)) dump(c, depth + 1);
 }
 
+/* The first control of a page in reading order, found by walking it (gtk_widget_child_focus would
+ * start from a container's remembered focus child and move on past it). */
+static GtkWidget *first_control(GtkWidget *w) {
+  if (!gtk_widget_get_visible(w) || !gtk_widget_is_sensitive(w)) return NULL;
+  if (gtk_widget_get_focusable(w) && (GTK_IS_BUTTON(w) || GTK_IS_EDITABLE(w) || GTK_IS_SWITCH(w) ||
+                                      GTK_IS_LIST_BOX_ROW(w) || GTK_IS_CHECK_BUTTON(w)))
+    return w;
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    GtkWidget *found = first_control(c);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
 static gboolean settle(gpointer data) {
   TvFrame *f = data;
   f->settle_id = 0;
@@ -1214,6 +1229,13 @@ static gboolean settle(gpointer data) {
     return G_SOURCE_REMOVE;
   release_page(f, f->island);
   gtk_window_set_focus_visible(f->window, TRUE);
+  /* A centred window opening (no key yet): the app's own focus, whatever GTK moved it to while the
+   * content moved under the room. */
+  if (f->sidebar == NULL && !f->keyed && f->app_focus != NULL && focus_of(f) != f->app_focus &&
+      in_page(f, f->app_focus) && gtk_widget_get_visible(f->app_focus) && gtk_widget_is_sensitive(f->app_focus)) {
+    gtk_widget_grab_focus(f->app_focus);
+    return G_SOURCE_REMOVE;
+  }
   if (refind(f))
     return G_SOURCE_REMOVE;
   if (focus_lost(f)) {
@@ -1226,12 +1248,13 @@ static gboolean settle(gpointer data) {
        * moved under the room), else its first. Never child_focus from a stale focus: that moves on to
        * the next control (OK on a welcome would press its second button). */
       GtkWidget *focus = focus_of(f);
-      if (focus != NULL && in_page(f, focus) && gtk_widget_get_focusable(focus) && gtk_widget_get_visible(focus)) {
+      if (focus == NULL || !in_page(f, focus)) focus = f->app_focus; /* moving the content dropped it */
+      if (focus != NULL && in_page(f, focus) && gtk_widget_get_focusable(focus) && gtk_widget_get_visible(focus) &&
+          gtk_widget_is_sensitive(focus)) {
         gtk_widget_grab_focus(focus);
       } else {
-        gtk_root_set_focus(GTK_ROOT(f->window), NULL);
-        if (!focus_into_parts(f->island))
-          gtk_widget_child_focus(f->island, GTK_DIR_TAB_FORWARD);
+        GtkWidget *first = first_control(f->island);
+        if (first != NULL) gtk_widget_grab_focus(first);
       }
     }
   }
@@ -1746,7 +1769,9 @@ static void enter(TvFrame *f) {
   const char *name = gtk_window_get_title(f->window);
   gtk_label_set_text(GTK_LABEL(f->title), name && *name ? name : g_get_application_name());
 
-  /* The window's content goes over the room, under the bar's place. */
+  /* The window's content goes over the room, under the bar's place; the app's focus is kept. */
+  g_clear_weak_pointer(&f->app_focus);
+  g_set_weak_pointer(&f->app_focus, focus_of(f));
   g_object_ref(f->content);
   adw_application_window_set_content(ADW_APPLICATION_WINDOW(f->window), NULL);
   gtk_overlay_add_overlay(GTK_OVERLAY(f->overlay), f->content);
@@ -1840,6 +1865,7 @@ static void frame_free(TvFrame *f) {
   g_clear_weak_pointer(&f->ok_widget);
   g_clear_weak_pointer(&f->held);
   g_clear_weak_pointer(&f->page_modal);
+  g_clear_weak_pointer(&f->app_focus);
   g_free(f->held_title);
   g_free(f->held_page);
   g_free(f);
@@ -1910,7 +1936,10 @@ void luma_window_set_tv_frame(GtkWindow *window, GtkWidget *content, GtkWidget *
   g_return_if_fail(island == NULL || GTK_IS_WIDGET(island));
   TvFrame *old = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
   gboolean was_active = old != NULL && old->active;
+  GtkWidget *keep = gtk_root_get_focus(GTK_ROOT(window)); /* the app's focus, across the move */
+  if (keep != NULL) g_object_ref(keep);
   if (content == NULL || frame == NULL || island == NULL) {
+    g_clear_object(&keep);
     luma_tv_frame_attach(window, NULL, NULL, NULL, NULL); /* no frame: the window's own layout */
     return;
   }
@@ -1937,6 +1966,14 @@ void luma_window_set_tv_frame(GtkWindow *window, GtkWidget *content, GtkWidget *
   TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
   if (f != NULL) f->generic = sidebar != NULL && !LUMA_IS_NAVIGATION_SIDEBAR(sidebar);
   if (was_active) luma_tv_frame_set_active(window, TRUE);
+  /* GTK may move the focus while the content moves out of one frame and into the next: the focus the
+   * app had before any of it is the one kept. */
+  if (f != NULL && keep != NULL && gtk_widget_is_ancestor(keep, island)) {
+    g_clear_weak_pointer(&f->app_focus);
+    g_set_weak_pointer(&f->app_focus, keep);
+    if (f->active) queue_settle(f);
+  }
+  g_clear_object(&keep);
 }
 
 void luma_window_set_tv_active(GtkWindow *window, gboolean tv) {
