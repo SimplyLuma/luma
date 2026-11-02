@@ -866,6 +866,12 @@ class TvRoom(Gtk.Widget):
         self._previous: Gdk.Texture | None = None
         self._mix = 1.0
         self._animation: Adw.Animation | None = None
+        from .tv_stage import TvRaster
+        self._shade = TvRaster(size=1)
+
+    def do_unroot(self) -> None:
+        self._shade.clear()
+        Gtk.Widget.do_unroot(self)
 
     def set_artwork(self, artwork: str | None = None, *, hues: tuple[int, int, int] | None = None) -> None:
         if artwork:
@@ -910,11 +916,20 @@ class TvRoom(Gtk.Widget):
             target = cover_rect(texture.get_width(), texture.get_height(), box)
             if opacity < 0.999:
                 snapshot.push_opacity(opacity)
-            snapshot.append_scaled_texture(texture, Gsk.ScalingFilter.LINEAR, target)
+            snapshot.append_texture(texture, target)
             if opacity < 0.999:
                 snapshot.pop()
+        # The shade is a full-screen gradient: rendered once per size at a quarter
+        # of it (a 4K gradient costs the Raspberry Pi 5's V3D ~100 ms a frame).
         stops = [_stop(offset, _black(alpha)) for offset, alpha in MEDIA["room"]["shade"]]
-        snapshot.append_linear_gradient(bounds, Graphene.Point().init(0, 0), Graphene.Point().init(0, h), stops)
+
+        def shade(s: Gtk.Snapshot) -> None:
+            s.append_linear_gradient(bounds, Graphene.Point().init(0, 0), Graphene.Point().init(0, h), stops)
+        texture = self._shade.get(self, (w, h), w, h, shade, scale=.25)
+        if texture is None:
+            shade(snapshot)
+        else:
+            snapshot.append_texture(texture, bounds)
 
 
 def _black(alpha: float) -> Gdk.RGBA:
