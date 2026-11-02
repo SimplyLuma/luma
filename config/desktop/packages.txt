@@ -102,7 +102,7 @@ python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 
 # Compatibility (Android and Windows applications)
 luma-android-runtime-0.1.0-1.luma.104.fc44.noarch
-luma-android-images-20.0-1.luma.13.fc44.x86_64
+luma-android-images-20.0-1.luma.14.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
 luma-application-installer-0.1.0-1.luma.83.fc44.noarch
 luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
