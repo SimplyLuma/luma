@@ -962,6 +962,12 @@
         "focus_drop": [0, 0, 0, 0.55]
       }
     },
+    "scroll": {
+      "_doc": "Pages and grids that slide past an edge (luma_appkit.tv_media.TvSlide) fade out there, never a hard cut, as the C island's page: eased (ease-out over fade_stops stops, steep only at the very edge), fade_top units at the top, fade_bottom at the bottom, each growing in over its own length only while content continues past that edge. Only the edge strips are masked.",
+      "fade_top": 48,
+      "fade_bottom": 128,
+      "fade_stops": 8
+    },
     "idle": {
       "_doc": "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay.",
       "weather_seconds": 20,

@@ -950,12 +950,18 @@ class TvSlide(Gtk.Widget):
     keeping `lead` units above the focused row. `clip=False` lets a shelf run to
     the screen's edges (the stage clips there). Call `reveal(widget)` from the
     focus engine's change callback.
+
+    A vertical slide fades out at an edge while its content runs on past it
+    (`tv.scroll`: long eased fades, never a hard cut, as the C island's page);
+    The top fade is on by default and the bottom one off (grids end at the screen);
+    `fade_top`/`fade_bottom` choose. Only the edge strips are masked.
     """
 
     __gtype_name__ = "LumaUITvSlide"
 
     def __init__(self, child: Gtk.Widget, *, orientation: Gtk.Orientation = Gtk.Orientation.VERTICAL,
-                 peek: float = 120, lead: float = 40, clip: bool = True) -> None:
+                 peek: float = 120, lead: float = 40, clip: bool = True, fade_top: bool = True,
+                 fade_bottom: bool = False) -> None:
         super().__init__(overflow=Gtk.Overflow.HIDDEN if clip else Gtk.Overflow.VISIBLE,
                          hexpand=orientation == Gtk.Orientation.HORIZONTAL or clip,
                          vexpand=orientation == Gtk.Orientation.VERTICAL)
@@ -963,6 +969,8 @@ class TvSlide(Gtk.Widget):
         self.orientation = orientation
         self.peek, self.lead = peek, lead
         self.offset = 0.0
+        self._length = 0.0  # the content's length along the slide, as last allocated
+        self._fades = (fade_top, fade_bottom) if orientation == Gtk.Orientation.VERTICAL else (False, False)
         self._animation: Adw.Animation | None = None
         child.set_parent(self)
 
@@ -989,6 +997,7 @@ class TvSlide(Gtk.Widget):
         if self.child is None:
             return
         content = self._content(width, height)
+        self._length = content
         view = width if self.orientation == Gtk.Orientation.HORIZONTAL else height
         self.offset = max(0.0, min(self.offset, max(0.0, content - view)))
         if self.orientation == Gtk.Orientation.HORIZONTAL:
@@ -1017,7 +1026,8 @@ class TvSlide(Gtk.Widget):
         start = bounds.get_x() if horizontal else bounds.get_y()
         length = bounds.get_width() if horizontal else bounds.get_height()
         view = self.get_width() if horizontal else self.get_height()
-        content = self._content(self.get_width(), self.get_height())
+        # the length as allocated; measuring again here would re-measure a whole grid on every move
+        content = self._length or self._content(self.get_width(), self.get_height())
         u = self._unit()
         margin = (self.peek if horizontal else self.lead) * u
         tail = self.peek * u if horizontal else self.lead * u
@@ -1043,6 +1053,56 @@ class TvSlide(Gtk.Widget):
             return
         self._animation = _animate(self, self.offset, target, int(TV["motion"].get("page_ms", 250)) + 100, step,
                                    self._animation)
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        child = self.child
+        if child is None:
+            return
+        width, height = self.get_width(), self.get_height()
+        scroll, u = TV["scroll"], self._unit()
+        # each edge fades in over its own length as content passes it (none at the top of a page)
+        above = min(1.0, self.offset / (scroll["fade_top"] * u)) if self._fades[0] else 0.0
+        below = (min(1.0, max(0.0, self._length - height - self.offset) / (scroll["fade_bottom"] * u))
+                 if self._fades[1] else 0.0)
+        top = min(0.45 * height, scroll["fade_top"] * u) if above > 1e-3 else 0.0
+        bottom = min(0.45 * height, scroll["fade_bottom"] * u) if below > 1e-3 else 0.0
+        if top <= 0 and bottom <= 0 or width <= 0 or height <= 0:
+            self.snapshot_child(child, snapshot)
+            return
+        # The child's nodes are recorded once and drawn three times: plain in the middle, and masked
+        # in the two edge strips, so only the strips go through an offscreen.
+        recorder = Gtk.Snapshot()
+        self.snapshot_child(child, recorder)
+        node = recorder.to_node()
+        if node is None:
+            return
+        middle = Graphene.Rect().init(0, top, width, height - top - bottom)
+        snapshot.push_clip(middle)
+        snapshot.append_node(node)
+        snapshot.pop()
+        for length, strength, edge, inward in ((top, above, 0.0, 1.0), (bottom, below, height, -1.0)):
+            if length <= 0:
+                continue
+            strip = Graphene.Rect().init(0, edge if inward > 0 else edge - length, width, length)
+            snapshot.push_clip(strip)
+            snapshot.push_mask(Gsk.MaskMode.ALPHA)
+            snapshot.append_linear_gradient(strip, Graphene.Point().init(0, edge),
+                                            Graphene.Point().init(0, edge + inward * length),
+                                            _fade_stops(strength, scroll["fade_stops"]))
+            snapshot.pop()
+            snapshot.append_node(node)
+            snapshot.pop()
+            snapshot.pop()
+
+
+def _fade_stops(strength: float, count: int) -> list[Gsk.ColorStop]:
+    """An edge fade from the edge inwards: ease-out, steep only at the very edge, gentle into 1."""
+    stops = []
+    for i in range(count):
+        t = i / (count - 1)
+        eased = 1.0 - (1.0 - t) * (1.0 - t)
+        stops.append(_stop(t, Gdk.RGBA(red=0, green=0, blue=0, alpha=1.0 - strength * (1.0 - eased))))
+    return stops
 
 
 # ── Styles ───────────────────────────────────────────────────────────────────
