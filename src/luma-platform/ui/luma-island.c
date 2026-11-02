@@ -22,6 +22,8 @@ static void luma_island_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   GtkRoot *root = gtk_widget_get_root(widget);
   if (root != NULL && gtk_widget_has_css_class(GTK_WIDGET(root), "lumaui-phone-device"))
     return; /* a physical phone has no desktop island rim */
+  if (root != NULL && gtk_widget_has_css_class(GTK_WIDGET(root), "lumaui-tv"))
+    return; /* on a TV the page is open to the room (luma-tv-frame.c) */
   int width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
   if (width <= 0 || height <= 0 || gtk_widget_has_css_class(widget, "compact") ||
       gtk_widget_has_css_class(widget, "drawer") || gtk_widget_has_css_class(widget, "embedded"))

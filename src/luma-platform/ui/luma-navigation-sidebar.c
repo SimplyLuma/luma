@@ -11,6 +11,8 @@ struct _LumaNavigationSidebar {
   GtkWidget *scroll;
   gboolean footer_fade;
   char *variant;
+  gboolean tv, rail;
+  gboolean header_shown, footer_shown; /* as the app left them, for leaving TV posture */
 };
 G_DEFINE_FINAL_TYPE(LumaNavigationSidebar, luma_navigation_sidebar, GTK_TYPE_BOX)
 
@@ -174,9 +176,12 @@ void luma_navigation_sidebar_append_footer(LumaNavigationSidebar *self, GtkWidge
   gtk_box_append(GTK_BOX(self->footer), child);
   gtk_widget_set_visible(self->footer, TRUE);
 }
+static void row_tv(GtkWidget *row, gboolean tv, gboolean rail);
 void luma_navigation_sidebar_append_row(LumaNavigationSidebar *self, GtkListBoxRow *row) {
   g_return_if_fail(LUMA_IS_NAVIGATION_SIDEBAR(self) && GTK_IS_LIST_BOX_ROW(row));
   gtk_list_box_append(GTK_LIST_BOX(self->list), GTK_WIDGET(row));
+  if (self->tv && LUMA_IS_NAVIGATION_ROW(row))
+    row_tv(GTK_WIDGET(row), TRUE, self->rail);
 }
 void luma_navigation_sidebar_append_section(LumaNavigationSidebar *self, const char *label) {
   g_return_if_fail(LUMA_IS_NAVIGATION_SIDEBAR(self) && label != NULL);
@@ -195,6 +200,7 @@ void luma_navigation_sidebar_append_section(LumaNavigationSidebar *self, const c
   gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), line);
   luma_ui_set_accessible_label(row, label);
   gtk_list_box_append(GTK_LIST_BOX(self->list), row);
+  gtk_widget_set_visible(heading, !self->tv); /* on a TV a section is a hairline */
 }
 void luma_navigation_sidebar_clear(LumaNavigationSidebar *self) {
   g_return_if_fail(LUMA_IS_NAVIGATION_SIDEBAR(self));
@@ -307,8 +313,21 @@ struct _LumaNavigationRow {
   GtkWidget *title;
   GtkWidget *subtitle;
   GtkWidget *meta;
+  gboolean tv; /* in the TV island: the title alone */
 };
 G_DEFINE_FINAL_TYPE(LumaNavigationRow, luma_navigation_row, GTK_TYPE_LIST_BOX_ROW)
+static void row_tv(GtkWidget *widget, gboolean tv, gboolean rail) {
+  LumaNavigationRow *self = LUMA_NAVIGATION_ROW(widget);
+  self->tv = tv;
+  GtkWidget *labels = gtk_widget_get_parent(gtk_widget_get_parent(self->title));
+  gtk_widget_set_visible(labels, !rail);
+  gtk_widget_set_visible(self->meta, !tv && *gtk_label_get_text(GTK_LABEL(self->meta)) != '\0');
+  gtk_widget_set_visible(self->subtitle, !tv && *gtk_label_get_text(GTK_LABEL(self->subtitle)) != '\0');
+  if (self->trail != NULL) gtk_widget_set_visible(self->trail, !tv);
+  gtk_widget_set_halign(self->line, rail ? GTK_ALIGN_CENTER : GTK_ALIGN_FILL);
+  if (tv) gtk_widget_set_tooltip_text(widget, NULL);
+}
+
 static void luma_navigation_row_class_init(LumaNavigationRowClass *klass G_GNUC_UNUSED) {}
 static void speak(LumaNavigationRow *self) {
   const char *title = gtk_label_get_text(GTK_LABEL(self->title));
@@ -369,13 +388,13 @@ void luma_navigation_row_set_title(LumaNavigationRow *self, const char *title) {
 void luma_navigation_row_set_subtitle(LumaNavigationRow *self, const char *subtitle) {
   g_return_if_fail(LUMA_IS_NAVIGATION_ROW(self));
   gtk_label_set_text(GTK_LABEL(self->subtitle), subtitle != NULL ? subtitle : "");
-  gtk_widget_set_visible(self->subtitle, subtitle != NULL && *subtitle != '\0');
+  gtk_widget_set_visible(self->subtitle, !self->tv && subtitle != NULL && *subtitle != '\0');
   speak(self);
 }
 void luma_navigation_row_set_meta(LumaNavigationRow *self, const char *meta) {
   g_return_if_fail(LUMA_IS_NAVIGATION_ROW(self));
   gtk_label_set_text(GTK_LABEL(self->meta), meta != NULL ? meta : "");
-  gtk_widget_set_visible(self->meta, meta != NULL && *meta != '\0');
+  gtk_widget_set_visible(self->meta, !self->tv && meta != NULL && *meta != '\0');
 }
 void luma_navigation_row_set_lead(LumaNavigationRow *self, GtkWidget *lead) {
   g_return_if_fail(LUMA_IS_NAVIGATION_ROW(self) && (lead == NULL || GTK_IS_WIDGET(lead)));
@@ -395,7 +414,36 @@ void luma_navigation_row_set_trail(LumaNavigationRow *self, GtkWidget *trail) {
   if (self->trail != NULL) gtk_box_remove(GTK_BOX(self->line), self->trail);
   self->trail = trail;
   if (trail != NULL) {
+    gtk_widget_set_visible(trail, !self->tv);
     gtk_widget_add_css_class(trail, "lumaui-row-trail");
     gtk_box_append(GTK_BOX(self->line), trail);
+  }
+}
+
+/* The floating island (luma-tv-frame.c): in TV posture the island carries the destinations only:
+ * the header and foot step aside, a section heading is a hairline, a row shows its lead and title
+ * (no meta, subtitle or trail), and the folded rail shows leads alone. Leaving restores all of it. */
+static void row_tv(GtkWidget *row, gboolean tv, gboolean rail);
+
+void luma_navigation_sidebar_set_tv(LumaNavigationSidebar *self, gboolean tv, gboolean rail) {
+  g_return_if_fail(LUMA_IS_NAVIGATION_SIDEBAR(self));
+  if (tv && !self->tv) {
+    self->header_shown = gtk_widget_get_visible(self->header);
+    self->footer_shown = gtk_widget_get_visible(self->footer);
+  }
+  if (tv != self->tv) {
+    gtk_widget_set_visible(self->header, tv ? FALSE : self->header_shown);
+    gtk_widget_set_visible(self->footer, tv ? FALSE : self->footer_shown);
+  }
+  self->tv = tv;
+  self->rail = tv && rail;
+  for (GtkWidget *row = gtk_widget_get_first_child(self->list); row != NULL; row = gtk_widget_get_next_sibling(row)) {
+    if (gtk_widget_has_css_class(row, "luma-navigation-section")) {
+      GtkWidget *line = gtk_list_box_row_get_child(GTK_LIST_BOX_ROW(row));
+      GtkWidget *heading = line ? gtk_widget_get_first_child(line) : NULL;
+      if (heading != NULL) gtk_widget_set_visible(heading, !tv);
+    } else if (LUMA_IS_NAVIGATION_ROW(row)) {
+      row_tv(row, tv, rail);
+    }
   }
 }

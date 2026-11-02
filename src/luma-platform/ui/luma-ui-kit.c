@@ -280,7 +280,66 @@ int luma_ui_window_width(GtkWidget *widget) {
 /* Device identity, independent of window width. Keep the precedence aligned
  * with Python's lumaui.mobile_form_factor: explicit override, Luma device
  * class (environment then image marker), legacy systemd chassis. */
+gboolean luma_ui_tv_posture(void) {
+  const char *forced = g_getenv("LUMA_POSTURE");
+  if (forced != NULL && *forced != '\0') {
+    g_autofree char *value = g_strstrip(g_ascii_strdown(forced, -1));
+    return g_str_equal(value, "tv");
+  }
+  /* One settings object for the process: the key is read live, the schema looked up once. */
+  static GSettings *state = NULL;
+  static gsize looked_up = 0;
+  if (g_once_init_enter(&looked_up)) {
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default();
+    g_autoptr(GSettingsSchema) schema = source != NULL
+        ? g_settings_schema_source_lookup(source, "org.project_luma.shell-state", TRUE) : NULL;
+    if (schema != NULL && g_settings_schema_has_key(schema, "posture"))
+      state = g_settings_new("org.project_luma.shell-state");
+    g_once_init_leave(&looked_up, 1);
+  }
+  g_autofree char *selected = state != NULL ? g_settings_get_string(state, "posture") : g_strdup("automatic");
+  if (g_str_equal(selected, "tv"))
+    return TRUE;
+  if (!g_str_equal(selected, "automatic"))
+    return FALSE;
+  g_autofree char *device = NULL;
+  if (!g_file_get_contents("/etc/luma-device-class", &device, NULL, NULL))
+    return FALSE;
+  g_strstrip(device);
+  return g_ascii_strcasecmp(device, "tv") == 0;
+}
+
+double luma_ui_tv_unit(int width, int height) {
+  if (width <= 0 || height <= 0)
+    return 0.0;
+  return MIN((double)width / LUMA_UI_TV_LAYOUT_BASE_WIDTH, (double)height / LUMA_UI_TV_LAYOUT_BASE_HEIGHT);
+}
+
+static const char *const page_parts[] = { "header", "back", "hero", "group", "card", "row", NULL };
+
+void luma_ui_set_part(GtkWidget *widget, const char *part) {
+  g_return_if_fail(GTK_IS_WIDGET(widget));
+  if (part != NULL && !g_strv_contains(page_parts, part)) {
+    g_critical("unknown LumaUI page part '%s'", part);
+    return;
+  }
+  for (guint i = 0; page_parts[i] != NULL; i++) {
+    g_autofree char *name = g_strconcat("lumaui-part-", page_parts[i], NULL);
+    luma_ui_set_css_class(widget, name, g_strcmp0(page_parts[i], part) == 0);
+  }
+  /* A row that starts with a lead (an icon or picture before its text): its divider insets past it. */
+  GtkWidget *line = GTK_IS_BUTTON(widget) ? gtk_button_get_child(GTK_BUTTON(widget)) : widget;
+  GtkWidget *first = line != NULL && GTK_IS_BOX(line) ? gtk_widget_get_first_child(line) : NULL;
+  gboolean leads = g_strcmp0(part, "row") == 0 && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
+                   !gtk_widget_get_hexpand(first) && !GTK_IS_LABEL(first);
+  luma_ui_set_css_class(widget, "lumaui-part-leads", leads);
+  if (leads)
+    gtk_widget_add_css_class(first, "lumaui-part-lead");
+}
+
 gboolean luma_ui_mobile_form_factor(void) {
+  if (luma_ui_tv_posture())
+    return FALSE;
   const char *value = g_getenv("LUMA_FORM_FACTOR");
   g_autofree char *override = g_ascii_strdown(value != NULL ? value : "", -1);
   g_strstrip(override);

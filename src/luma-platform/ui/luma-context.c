@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "luma-context.h"
 #include <gio/gio.h>
+#include "luma-ui-kit.h"
 
 struct _LumaContext {
   GObject parent_instance;
@@ -8,6 +9,8 @@ struct _LumaContext {
   LumaInputMode input;
   GDBusProxy *session;
   const char *experience;
+  gboolean tv;
+  gboolean tv_forced; /* LUMA_POSTURE decides; the bus does not override it */
 };
 G_DEFINE_FINAL_TYPE(LumaContext, luma_context, G_TYPE_OBJECT)
 G_DEFINE_ENUM_TYPE(LumaPresentationMode, luma_presentation_mode,
@@ -17,7 +20,7 @@ G_DEFINE_ENUM_TYPE(LumaPresentationMode, luma_presentation_mode,
 G_DEFINE_ENUM_TYPE(LumaInputMode, luma_input_mode,
                    G_DEFINE_ENUM_VALUE(LUMA_INPUT_POINTER, "pointer"),
                    G_DEFINE_ENUM_VALUE(LUMA_INPUT_TOUCH, "touch"))
-enum { PROP_0, PROP_PRESENTATION, PROP_INPUT, PROP_EXPERIENCE, N_PROPS };
+enum { PROP_0, PROP_PRESENTATION, PROP_INPUT, PROP_EXPERIENCE, PROP_TV, N_PROPS };
 static GParamSpec *properties[N_PROPS];
 
 static void apply_session(LumaContext *self) {
@@ -36,6 +39,16 @@ static void apply_session(LumaContext *self) {
         self->presentation = presentation;
         g_object_notify_by_pspec(G_OBJECT(self), properties[PROP_PRESENTATION]);
       }
+    }
+  }
+  /* The shell's effective posture (desktop, tablet, mobile or tv); an older
+   * service without the property keeps the system's answer. */
+  g_autoptr(GVariant) posture = g_dbus_proxy_get_cached_property(self->session, "Posture");
+  if (!self->tv_forced && posture && g_variant_is_of_type(posture, G_VARIANT_TYPE_STRING)) {
+    gboolean tv = g_str_equal(g_variant_get_string(posture, NULL), "tv");
+    if (self->tv != tv) {
+      self->tv = tv;
+      g_object_notify_by_pspec(G_OBJECT(self), properties[PROP_TV]);
     }
   }
   g_autoptr(GVariant) capabilities = g_dbus_proxy_get_cached_property(self->session, "InputCapabilities");
@@ -87,6 +100,9 @@ static void luma_context_get_property(GObject *o, guint id, GValue *v,
   case PROP_EXPERIENCE:
     g_value_set_string(v, s->experience);
     break;
+  case PROP_TV:
+    g_value_set_boolean(v, s->tv);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(o, id, p);
   }
@@ -120,6 +136,10 @@ static void luma_context_class_init(LumaContextClass *k) {
       G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
   properties[PROP_EXPERIENCE] = g_param_spec_string(
       "experience", NULL, NULL, "desktop", G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+  /* TV posture (docs/developer-platform/tv-mode.md): independent of the
+   * presentation, which stays a desktop's underneath. */
+  properties[PROP_TV] = g_param_spec_boolean(
+      "tv", NULL, NULL, FALSE, G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
   g_object_class_install_properties(o, N_PROPS, properties);
 }
 static void luma_context_init(LumaContext *s) {
@@ -169,6 +189,9 @@ LumaContext *luma_context_new_from_environment(void) {
       g_warning("Ignoring invalid LUMA_INPUT_MODE=%s", i);
   }
   LumaContext *context = luma_context_new(pm, im);
+  const char *posture = g_getenv("LUMA_POSTURE");
+  context->tv_forced = posture != NULL && *posture != '\0';
+  context->tv = luma_ui_tv_posture();
   g_dbus_proxy_new_for_bus(G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE, NULL,
       "org.project_luma.ShellState1", "/org/project_luma/ShellState1",
       "org.project_luma.ShellState1", NULL, session_ready, g_object_ref(context));
@@ -187,6 +210,11 @@ gboolean luma_context_get_decorated(LumaContext *s) {
 }
 gboolean luma_context_get_touch_targets(LumaContext *s) {
   return luma_context_get_input(s) == LUMA_INPUT_TOUCH;
+}
+
+gboolean luma_context_get_tv(LumaContext *s) {
+  g_return_val_if_fail(LUMA_IS_CONTEXT(s), FALSE);
+  return s->tv;
 }
 
 const char *luma_context_get_experience(LumaContext *s) {

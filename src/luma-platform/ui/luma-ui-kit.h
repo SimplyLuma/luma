@@ -18,7 +18,7 @@ G_BEGIN_DECLS
  * `luma_appkit.LUMAUI_API_LEVEL`. It rises by one whenever a public name, an
  * argument or a toast kind is added; within a level nothing is removed.
  */
-#define LUMA_UI_API_LEVEL 4
+#define LUMA_UI_API_LEVEL 6
 
 /**
  * luma_ui_get_api_level:
@@ -94,9 +94,52 @@ gboolean luma_ui_reduced_motion(void);
  * determines layout separately. Applications should use this shared policy
  * rather than maintaining their own device detection.
  *
+ * In TV posture nothing is a phone: the TV presentation replaces the phone one.
+ *
  * Returns: whether the current device uses phone presentation
  */
 gboolean luma_ui_mobile_form_factor(void);
+
+/**
+ * luma_ui_tv_posture:
+ *
+ * Whether the shell is in TV posture, as the system states it: LUMA_POSTURE,
+ * then the shell-state `posture` key, then a device that declares itself a
+ * television (/etc/luma-device-class) while that key is automatic. Never
+ * inferred from a screen's size. A window follows the live value through its
+ * #LumaContext (`tv`); see docs/developer-platform/tv-mode.md. Since API level 6.
+ *
+ * Returns: %TRUE in TV posture
+ */
+gboolean luma_ui_tv_posture(void);
+
+/**
+ * luma_ui_tv_unit:
+ * @width: the screen or window width
+ * @height: its height
+ *
+ * One TV layout pixel at this size: min(width/1920, height/1080). Since API level 6.
+ *
+ * Returns: the unit, 0 for an empty size
+ */
+double luma_ui_tv_unit(int width, int height);
+
+/**
+ * luma_ui_set_part:
+ * @widget: a widget on a page
+ * @part: "header", "back", "hero", "group", "card", "row" or %NULL
+ *
+ * Name the page part @widget is (class `lumaui-part-<part>`), replacing any
+ * other: the page's header (its title and one-line summary), its way back up
+ * to the parent page, its hero (the thing itself), a group (a heading over a
+ * card), the group's card of rows, or one row (a row that starts with a lead
+ * also gets `lumaui-part-leads`, and the lead `lumaui-part-lead`). Nothing changes on a desktop, tablet or
+ * phone; in TV posture LumaUI draws the parts at TV size (the floating
+ * island's page) and Back activates the page's back part, so an app needs no
+ * TV-specific code. An unknown part is
+ * refused with a critical. Since API level 6.
+ */
+void luma_ui_set_part(GtkWidget *widget, const char *part);
 
 /**
  * luma_ui_is_phone_width:
