@@ -47,8 +47,17 @@ function shownIn(root, actor) {
     return true;
 }
 
+// A button that says something: its label, or a label among its parts (a
+// glyph and a word, as a Details toggle is).
 function textButton(actor) {
-    return actor instanceof St.Button && Boolean(actor.label);
+    if (!(actor instanceof St.Button)) return false;
+    if (actor.label) return true;
+    let found = false;
+    walk(actor, child => {
+        if (child instanceof St.Label) found = true;
+        return !found;
+    });
+    return found;
 }
 
 export class TvDialogs {
@@ -316,9 +325,15 @@ export class TvDialogs {
                         if (child instanceof St.Label)
                             this._set(record, child, 'style', `${this._font(type.body.size, type.body.weight)} color: inherit;`);
                     });
-                } else if (!textButton(actor)) {
+                } else {
+                    const text = textButton(actor);
                     walk(actor, child => {
-                        if (child instanceof St.Icon) this._set(record, child, 'style', `icon-size: ${this._px(button.icon)};`);
+                        if (child === actor) return true;
+                        if (child instanceof St.Icon && !text) this._set(record, child, 'style', `icon-size: ${this._px(button.icon)};`);
+                        else if (child instanceof St.Label && !actor.label)
+                            this._set(record, child, 'style', `${this._font(TOKENS.sheet.action_size, 650)} color: inherit;`);
+                        else this._scaleFixed(record, child);
+                        return true;
                     });
                 }
                 return false;
@@ -352,6 +367,8 @@ export class TvDialogs {
                 }
                 return false;
             }
+            // A glyph or a badge drawn at a size its stylesheet fixes.
+            if (this._scaleFixed(record, actor)) return !(actor instanceof St.DrawingArea);
             if (actor instanceof St.BoxLayout && actor.orientation === Clutter.Orientation.VERTICAL) {
                 this._set(record, actor, 'style', `margin: 0; padding: 0; spacing: ${this._px(record.standard &&
                     (actor === dialog.contentLayout || actor.get_parent() === dialog.contentLayout) ? sheet.gap : 12)};`);
@@ -363,6 +380,30 @@ export class TvDialogs {
         this._drawFocus(record);
         this._labelFields(record);
         this._queuePlace(record);
+    }
+
+    // An actor its stylesheet gives a fixed size (a drawn glyph, the disc
+    // behind it) grows as icons do: its desktop size, measured once, half
+    // again in TV units, corners with it. False for anything sized by its
+    // content.
+    _scaleFixed(record, actor) {
+        if (!(actor instanceof St.Widget)) return false;
+        record.fixedSizes ??= new Map();
+        if (!record.fixedSizes.has(actor)) {
+            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
+            const node = actor.get_theme_node();
+            const width = node.get_width(), height = node.get_height();
+            record.fixedSizes.set(actor, width > 0 || height > 0 ? {
+                width: width > 0 ? width / scale : 0, height: height > 0 ? height / scale : 0,
+                radius: node.get_border_radius(St.Corner.TOPLEFT) / scale,
+            } : null);
+        }
+        const size = record.fixedSizes.get(actor);
+        if (!size) return false;
+        const grow = value => this._px(Math.round(value * 1.5));
+        this._set(record, actor, 'style', `${size.width ? `width: ${grow(size.width)};` : ''}
+            ${size.height ? `height: ${grow(size.height)};` : ''} ${size.radius ? `border-radius: ${grow(size.radius)};` : ''}`);
+        return true;
     }
 
     // A field is the entry, or the row that holds it with its own buttons

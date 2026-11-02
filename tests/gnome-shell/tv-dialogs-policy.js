@@ -88,6 +88,9 @@ assert(/_placeMover\(record, monitor, width\) \{[\s\S]*?fixed_position_set[\s\S]
     /if \(this\._placeMover\(record, monitor,/.test(dialogs), 'a card its dialog places itself takes the sheet width');
 assert(/record\.containers\.add\(actor\);\s*actor\.connectObject\('child-added'/.test(dialogs) &&
     /for \(const actor of record\.containers\) actor\.disconnectObject\(this\)/.test(dialogs), 'rows added later are styled');
+assert(/_scaleFixed\(record, actor\) \{[\s\S]*?node\.get_width\(\)[\s\S]*?value \* 1\.5/.test(dialogs) &&
+    /if \(this\._scaleFixed\(record, actor\)\)/.test(dialogs), 'glyphs and discs a stylesheet sizes grow as icons do');
+assert(/function textButton\(actor\) \{[\s\S]*?child instanceof St\.Label/.test(dialogs), 'a button with a word in it is an action');
 assert(/effect instanceof Shell\.BlurEffect[\s\S]*?effect\.enabled = false/.test(dialogs), 'no live blur');
 assert(/setFieldAction\?\.\(entry\.clutter_text/.test(dialogs), "the keyboard's action key is the dialog's");
 assert(/for \(const effect of record\.blurs\) effect\.enabled = true/.test(dialogs) &&
