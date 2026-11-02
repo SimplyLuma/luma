@@ -12,8 +12,8 @@ if code is None:
     # Decided before GTK loads: the session waits for this when it has nothing to ask.
     from luma_keyring.ready import decide
 
-    ask_first = decide(sys.argv)
+    ask_first, prompter = decide(sys.argv)
     from luma_keyring.service import main
 
-    code = main(ask_first=ask_first)
+    code = main(ask_first=ask_first, prompter=prompter)
 raise SystemExit(code)

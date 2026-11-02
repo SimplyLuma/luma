@@ -27,6 +27,8 @@ Requires:       libadwaita
 Requires:       luma-developer-platform
 # The keyring this looks after, and the PAM module that unlocks it at login.
 Requires:       gnome-keyring
+# Gcr's secret exchange: the sheet answers gnome-keyring's prompts as the system prompter.
+Requires:       gcr-libs
 Requires:       pam
 # Seals the keyring key of an account that signs in automatically, and wraps
 # it with Argon2id and AES-256-GCM for recovery.
@@ -81,10 +83,9 @@ state worth reporting.
 %install
 %meson_install
 # Enabled by the package itself: a preset applies only on first install.
-install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
-ln -s ../luma-keyring.service \
-  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-keyring.service
 install -d %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants
+ln -s ../luma-keyring.service \
+  %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring.service
 ln -s ../luma-keyring-autologin.service \
   %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
 
@@ -127,7 +128,7 @@ fi
 %{_datadir}/luma-keyring/
 %{python3_sitelib}/luma_keyring/
 %{_userunitdir}/luma-keyring.service
-%{_userunitdir}/graphical-session.target.wants/luma-keyring.service
+%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring.service
 %{_userunitdir}/luma-keyring-autologin.service
 %{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
 %{_datadir}/applications/org.projectluma.Keyring.desktop

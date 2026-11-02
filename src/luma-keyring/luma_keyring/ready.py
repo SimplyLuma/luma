@@ -19,6 +19,8 @@ log = logging.getLogger("luma-keyring")
 
 READY_BOUND_SECONDS = 8
 DECIDE_TIMEOUT_MS = 3000
+# How long the service waits, before the Shell, for the display the sheet needs.
+DISPLAY_WAIT_SECONDS = 120
 
 _ready_sent = False
 
@@ -46,10 +48,16 @@ def notify_ready() -> bool:
     return False
 
 
-def decide(argv: list[str]) -> bool:
-    """Whether this service run starts with the first-unlock sheet."""
+def decide(argv: list[str]):
+    """Whether this service run starts with the first-unlock sheet, and its prompter.
+
+    Runs before graphical-session-pre.target, before the Shell: when Luma will
+    ask, it takes the keyring prompter's name now, so no prompt in the session
+    reaches anything else first. Then it tells systemd it is ready and waits
+    for the display the sheet needs. Returns (ask, prompter or None).
+    """
     if "--gapplication-service" not in argv:
-        return False
+        return False, None
     from .first_unlock import should_ask
     from .secrets import Keyring
 
@@ -60,9 +68,64 @@ def decide(argv: list[str]) -> bool:
     except Exception as error:  # noqa: BLE001 - never hold the session up over this
         log.info("could not tell whether to ask: %s", error)
         ask = False
-    if ask and not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
-        log.info("no display to ask on; the notification will ask instead")
-        ask = False
-    if not ask:
-        notify_ready()
-    return ask
+    prompter = None
+    if ask:
+        try:
+            from .prompter import LumaPrompter
+
+            prompter = LumaPrompter()
+            if not prompter.take(replace=True):
+                prompter = None
+        except Exception as error:  # noqa: BLE001 - the sheet still asks, the Shell may too
+            log.info("could not become the keyring prompter: %s", error)
+            prompter = None
+    notify_ready()
+    if not wait_for_display():
+        log.info("no display came; nothing to ask on")
+        if prompter is not None:
+            prompter.release()
+        return False, None
+    return ask, prompter
+
+
+def wait_for_display(seconds: float = DISPLAY_WAIT_SECONDS) -> bool:
+    """Until the session's display exists (the user manager's environment says so).
+
+    Started before the Shell, this process has no WAYLAND_DISPLAY of its own;
+    the Shell exports it to the user manager when it is up. The main loop
+    turns meanwhile, so prompts that arrive already are held, not lost.
+    """
+    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"):
+        return True
+    from gi.repository import Gio, GLib
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    loop = GLib.MainLoop()
+    state = {"ok": False, "left": int(seconds * 4)}
+
+    def look() -> bool:
+        try:
+            env = bus.call_sync("org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+                                "org.freedesktop.DBus.Properties", "Get",
+                                GLib.Variant("(ss)", ("org.freedesktop.systemd1.Manager", "Environment")),
+                                GLib.VariantType.new("(v)"), Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
+        except GLib.Error:
+            env = []
+        found = dict(item.split("=", 1) for item in env if "=" in item)
+        if found.get("WAYLAND_DISPLAY") or found.get("DISPLAY"):
+            for name in ("WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE"):
+                if found.get(name):
+                    os.environ[name] = found[name]
+            state["ok"] = True
+            loop.quit()
+            return False
+        state["left"] -= 1
+        if state["left"] <= 0:
+            loop.quit()
+            return False
+        return True
+
+    if look():
+        GLib.timeout_add(250, look)
+        loop.run()
+    return state["ok"]

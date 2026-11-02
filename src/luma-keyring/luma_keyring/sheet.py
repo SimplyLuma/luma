@@ -55,6 +55,7 @@ MANAGE_TITLE = "Saved passwords"
 class Use(enum.Enum):
     FIRST = "first"
     MANAGE = "manage"
+    PROMPT = "prompt"     # gnome-keyring's own question (another keyring, a key), in this sheet
 
 
 class Posture(enum.Enum):
@@ -174,6 +175,12 @@ class _KitView:
     def focus_field(self) -> None:
         self.field.grab_focus()
 
+    def set_labels(self, switch: str, primary: str, cancel: str) -> None:
+        self.switch_label.label.set_label(switch)
+        self.switch.update_property([Gtk.AccessibleProperty.LABEL], [switch])
+        self.primary.label_widget.set_label(primary)
+        self.cancel.label_widget.set_label(cancel)
+
     def toggle(self) -> None:
         """The switch flipped by the person (what a click or OK does)."""
         self.switch.set_active(not self.switch.get_active())
@@ -181,6 +188,11 @@ class _KitView:
     def texts(self) -> tuple[str, str, str]:
         return (self.title_label.label.get_label(), self.line.label.get_label(),
                 self.switch_label.label.get_label())
+
+
+def _prompt_title(request) -> str:
+    props = request.properties if request is not None else {}
+    return str(props.get("message") or props.get("title") or "Authentication required")
 
 
 _STYLE = """
@@ -210,11 +222,12 @@ class UnlockSheet(Adw.ApplicationWindow):
                  noun: str | None = None, autologin: bool | None = None,
                  work: Callable[..., Result] | None = None,
                  on_done: Callable[[Result | None], None] | None = None,
-                 presentation: Posture | None = None) -> None:
+                 presentation: Posture | None = None, request=None) -> None:
         install_lumaui()  # the kit's sheets and icons, once per display
         _install_style()
         self.presentation = presentation or posture()
-        title = FIRST_TITLE if use is Use.FIRST else MANAGE_TITLE
+        self._request = request
+        title = {Use.FIRST: FIRST_TITLE, Use.MANAGE: MANAGE_TITLE}.get(use) or _prompt_title(request)
         if self.presentation is Posture.DESKTOP:
             super().__init__(application=application, title=title,
                              default_width=460, default_height=-1, resizable=False)
@@ -251,6 +264,8 @@ class UnlockSheet(Adw.ApplicationWindow):
         if use is Use.FIRST:
             self.view.set_texts(title, FIRST_LINE)
             self.view.focus_field()
+        elif use is Use.PROMPT:
+            self.prompt_again(request)
         else:
             self._show_state()
 
@@ -283,6 +298,43 @@ class UnlockSheet(Adw.ApplicationWindow):
             self._modal = BarFrame.present(self._screen, self.view.body, kind="sheet", title=self.get_title(),
                                            on_cancel=self._on_cancel, initial_focus=self.view.field.entry)
         return GLib.SOURCE_REMOVE
+
+    # -- gnome-keyring's own questions ---------------------------------------
+    def prompt_again(self, request) -> None:
+        """Show (again) what gnome-keyring asks: its words, its choice, its warning."""
+        self._request = request
+        props = request.properties
+        choice = str(props.get("choice-label") or "")
+        password = request.kind != "confirm"
+        self.view.set_texts(_prompt_title(request), str(props.get("description") or ""))
+        self.view.set_shown(field=password, switch=bool(choice), buttons=True, cancel=True,
+                            primary=str(props.get("continue-label") or ("Unlock" if password else "Continue")))
+        self.view.set_labels(choice or automatic_label(self._noun),
+                             str(props.get("continue-label") or ("Unlock" if password else "Continue")),
+                             str(props.get("cancel-label") or "Cancel"))
+        self.view.set_automatic(bool(props.get("choice-chosen")))
+        self._set_busy(False)
+        self.view.say(request.warning, True)
+        if password:
+            self.view.focus_field()
+
+    def _answer_prompt(self, cancel: bool) -> None:
+        request = self._request
+        if request is None or request.closed or not request.waiting:
+            return
+        if cancel:
+            request.answer(None) if request.kind != "confirm" else request.confirm(False)
+            return
+        if request.kind == "confirm":
+            request.confirm(True)
+        else:
+            password = self.view.password
+            if not password:
+                self.view.say("Type the password.", True)
+                return
+            request.answer(password, self.view.automatic if request.properties.get("choice-label") else None)
+        self.view.password = ""
+        self._set_busy(True)
 
     # -- what tests and the service read -----------------------------------
     @property
@@ -337,12 +389,15 @@ class UnlockSheet(Adw.ApplicationWindow):
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
         primary = self.view.shown()["primary"]
-        if self._use is Use.FIRST:
+        if self._use is Use.FIRST and self._result is None:
             primary = "Unlocking…" if busy else "Unlock"
         self.view.set_busy(busy, primary)
 
     def _on_primary(self) -> None:
         if self._busy:
+            return
+        if self._use is Use.PROMPT:
+            self._answer_prompt(cancel=False)
             return
         if self._result is not None and self._result.kind is Kind.UNLOCKED_ONLY:
             self._finish(self._result)
@@ -389,6 +444,9 @@ class UnlockSheet(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _on_cancel(self) -> None:
+        if self._use is Use.PROMPT:
+            self._answer_prompt(cancel=True)
+            return
         if self._use is Use.MANAGE and self.view.shown()["field"]:
             self._show_state()
             self.view.say("", False)
