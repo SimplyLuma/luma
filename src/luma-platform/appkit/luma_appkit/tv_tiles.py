@@ -53,7 +53,7 @@ from .tv_media import TvSlide, _UnitFollower, _animate, _at, _black, _lift_ms, _
 from .tv_parts import TvButton  # noqa: E402
 from .tv_stage import add_tv_style, tv_fade, tv_material  # noqa: E402
 
-__all__ = ["TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvScreenshotViewer",
+__all__ = ["TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvShot", "TvScreenshotViewer",
            "TvEmptyState", "compose_wide_tile", "wide_tile_art", "CATEGORY_HUES"]
 
 TV = tokens.TV
@@ -67,6 +67,9 @@ CATEGORY_HUES = {"create": 25, "work": 250, "media": 330, "play": 150, "tools": 
 GRID_COLUMNS = 5
 GRID_ROW_GAP = TILE["row_gap"]
 SHELF_GAP = 36
+#: Captioned tiles (a name and a line under each, as an app list's) run four across at the
+#: shelf's gap, 46 between rows: the caption already separates the rows.
+CAPTIONED_COLUMNS, CAPTIONED_ROW_GAP = 4, 46
 SHELF_TILE = TV["cover"]["landscape"]
 SHELF_PEEK = 0.12 * (TV["layout"]["base_width"] - 2 * TV["layout"]["safe_x"])
 
@@ -74,11 +77,16 @@ SHELF_PEEK = 0.12 * (TV["layout"]["base_width"] - 2 * TV["layout"]["safe_x"])
 def _sheet(opaque: bool) -> str:
     m = lambda name: tv_material(name, opaque=opaque)  # noqa: E731
     return f"""
-.tv-tile-name {{ font-size: 22tv; font-weight: 650; color: {m('ink')}; margin-top: 14tv; }}
-.tv-tile-meta {{ font-size: 18tv; font-weight: 600; color: {m('ink_3')}; margin-top: 4tv; }}
+.tv-tile-name {{ font-size: 22tv; font-weight: 650; line-height: 27tv; color: {m('ink')}; margin-top: 14tv; }}
+.tv-tile-meta {{ font-size: 18tv; font-weight: 600; line-height: 22tv; color: {m('ink_3')}; margin-top: 4tv; }}
+.lumaui-tv-stage label.tv-tile-plate-name {{ font-size: 40tv; font-weight: 750; letter-spacing: -0.8tv; line-height: 48tv; color: white; }}
 .tv-tile-meta.tv-ok {{ color: #86d39c; }}
 .tv-shelf-row {{ border-spacing: {SHELF_GAP}tv; }}
 .tv-tile-grid {{ border-spacing: {GRID_ROW_GAP}tv {GRID_ROW_GAP}tv; }}
+.tv-tile-grid.captioned {{ border-spacing: {SHELF_GAP}tv {CAPTIONED_ROW_GAP}tv; }}
+.tv-tile-meta-line {{ margin-top: 4tv; }}
+.tv-tile-meta-line .tv-tile-meta {{ margin-top: 0; }}
+.tv-tile-meta-line image {{ -gtk-icon-size: 18tv; color: #86d39c; margin-bottom: 4tv; }}
 .tv-progress-btn {{ min-width: {220 - 2 * TV['button']['padding_x']}tv; }}
 .tv-shot-viewer {{ background-color: rgba(0, 0, 0, .85); }}
 .tv-empty {{ padding: 64tv 40tv 56tv 40tv; border-radius: 30tv; border-spacing: 0; }}
@@ -253,7 +261,7 @@ def _tile_rect(w: float, h: float) -> Gsk.RoundedRect:
 # ── The wide tile ───────────────────────────────────────────────────────────
 
 class _TileArt(_UnitFollower, Gtk.Widget):
-    """The 16:9 art of a wide tile (see TvWideTile); draws itself, no children."""
+    """The 16:9 art of a wide tile (see TvWideTile); draws itself, its only child the name a plate carries."""
 
     __gtype_name__ = "LumaUITvTileArt"
 
@@ -267,6 +275,19 @@ class _TileArt(_UnitFollower, Gtk.Widget):
         self._requested = 0
         self._scale, self._focus, self._focused = 1.0, 0.0, False
         self._animation = None
+        self.plate_label = None
+        if kind == "name":  # the plate's name is words, as the mockup's: 40/750, centred, at most two lines
+            self.plate_label = Gtk.Label(label=name, justify=Gtk.Justification.CENTER, wrap=True,
+                                         wrap_mode=Pango.WrapMode.WORD_CHAR, lines=2,
+                                         ellipsize=Pango.EllipsizeMode.END)
+            self.plate_label.add_css_class("tv-tile-plate-name")
+            self.plate_label.set_parent(self)
+
+    def do_dispose(self) -> None:
+        if self.plate_label is not None:
+            self.plate_label.unparent()
+            self.plate_label = None
+        Gtk.Widget.do_dispose(self)
 
     def set_tv_focus(self, on: bool) -> None:
         if on == self._focused:
@@ -306,6 +327,11 @@ class _TileArt(_UnitFollower, Gtk.Widget):
         return h, h, -1, -1
 
     def do_size_allocate(self, width: int, height: int, _baseline: int) -> None:
+        if self.plate_label is not None:
+            w = int(width * 0.8)
+            h = min(height, self.plate_label.measure(Gtk.Orientation.VERTICAL, w)[1])
+            self.plate_label.allocate(w, h, -1, Gsk.Transform.new().translate(
+                Graphene.Point().init((width - w) / 2, (height - h) / 2)))
         if self._source:
             self._load(height if self.kind != "mark" else height * 0.44)
 
@@ -376,22 +402,8 @@ class _TileArt(_UnitFollower, Gtk.Widget):
             side = h * 0.44
             snapshot.append_scaled_texture(self._texture, Gsk.ScalingFilter.TRILINEAR,
                                            Graphene.Rect().init((w - side) / 2, (h - side) / 2, side, side))
-        elif self.kind == "name":
-            layout = self.create_pango_layout(self.name)
-            font = Pango.FontDescription.from_string("Figtree")
-            font.set_weight(Pango.Weight.BOLD)
-            font.set_absolute_size(40 * u * Pango.SCALE)
-            layout.set_font_description(font)
-            layout.set_width(int(w * 0.8 * Pango.SCALE))
-            layout.set_wrap(Pango.WrapMode.WORD_CHAR)
-            layout.set_alignment(Pango.Alignment.CENTER)
-            layout.set_ellipsize(Pango.EllipsizeMode.END)
-            layout.set_height(-2)
-            _ink_w, ink_h = layout.get_pixel_size()
-            snapshot.save()
-            snapshot.translate(Graphene.Point().init(w * 0.1, (h - ink_h) / 2))
-            snapshot.append_layout(layout, _white(1.0))
-            snapshot.restore()
+        elif self.kind == "name" and self.plate_label is not None:
+            self.snapshot_child(self.plate_label, snapshot)
 
 
 class TvWideTile(Gtk.Box):
@@ -410,7 +422,8 @@ class TvWideTile(Gtk.Box):
     def __init__(self, name: str, *, app_id: str | None = None, icon: Gio.Icon | str | None = None,
                  art: str | None = None, brand: str | None = None, category: str | None = None,
                  hue: float | None = None, width: float | None = None, caption: bool = True,
-                 meta: str = "", meta_ok: bool = False, accessible: str | None = None, lift: bool = True) -> None:
+                 meta: str = "", meta_ok: bool = False, meta_icon: str | None = None,
+                 accessible: str | None = None, lift: bool = True) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.START,
                          halign=Gtk.Align.START if width is not None else Gtk.Align.FILL,
                          accessible_role=Gtk.AccessibleRole.BUTTON if lift else Gtk.AccessibleRole.IMG)
@@ -436,7 +449,14 @@ class TvWideTile(Gtk.Box):
                 self.meta_label.add_css_class("tv-tile-meta")
                 if meta_ok:
                     self.meta_label.add_css_class("tv-ok")
-                self.append(self.meta_label)
+                if meta_icon:
+                    line = Gtk.Box()
+                    line.add_css_class("tv-tile-meta-line")
+                    line.append(icons.image(meta_icon))
+                    line.append(self.meta_label)
+                    self.append(line)
+                else:
+                    self.append(self.meta_label)
         self.update_property([Gtk.AccessibleProperty.LABEL], [accessible or " · ".join(x for x in (name, meta) if x)])
 
     @property
@@ -487,16 +507,21 @@ class TvShelf(Gtk.Box):
 
 
 class TvTileGrid(Gtk.Grid):
-    """Columns of wide tiles filling the safe width edge to edge (five at 16:9), 52 between rows.
+    """Columns of wide tiles filling the safe width edge to edge (five at 16:9), 52 between rows;
+    `captioned` tiles (name and line) four across, 36 apart, 46 between rows.
     Up and Down move by row (spatial focus finds the tile above or below); Up from the first row
     reaches the tabs."""
 
     __gtype_name__ = "LumaUITvTileGrid"
 
-    def __init__(self, tiles: Sequence[Gtk.Widget] = (), *, columns: int = GRID_COLUMNS) -> None:
+    def __init__(self, tiles: Sequence[Gtk.Widget] = (), *, columns: int | None = None,
+                 captioned: bool = False) -> None:
         super().__init__(column_homogeneous=True, hexpand=True)
         _style()
         self.add_css_class("tv-tile-grid")
+        if captioned:
+            self.add_css_class("captioned")
+        columns = columns or (CAPTIONED_COLUMNS if captioned else GRID_COLUMNS)
         self.columns = columns
         self.count = 0
         for tile in tiles:
@@ -588,6 +613,7 @@ class TvProgressButton(TvButton):
         super().__init__(label, icon=icon, accent=True)
         _style()
         self.add_css_class("tv-progress-btn")
+        self.get_first_child().set_hexpand(True)  # the words sit in the middle of its 220
         self.fraction: float | None = None
         self._icon = self.get_first_child().get_first_child() if icon else None
 
@@ -631,6 +657,94 @@ class TvProgressButton(TvButton):
 
 
 # ── The screenshot viewer ───────────────────────────────────────────────────
+
+class TvShot(_UnitFollower, Gtk.Widget):
+    """A screenshot in a row: 320 tall in one of two shapes, a desktop's 16:10 or a phone's 9:19.5,
+    whichever the picture is closer to (the catalogue's `aspect` when it gives one, else the
+    picture's own once it arrives), filled edge to edge; radius 22 on black, the lift and white
+    ring with the focus."""
+
+    __gtype_name__ = "LumaUITvShot"
+    HEIGHT, RADIUS = 320, 22
+    WIDE, TALL = 16 / 10, 9 / 19.5
+
+    @classmethod
+    def shape(cls, aspect: float) -> float:
+        return cls.WIDE if aspect >= 1 else cls.TALL
+
+    def __init__(self, path: str, *, aspect: float | None = None, accessible: str = "") -> None:
+        super().__init__(overflow=Gtk.Overflow.VISIBLE, accessible_role=Gtk.AccessibleRole.BUTTON)
+        self.path, self.aspect = path, self.shape(aspect or self.WIDE)
+        self._texture: Gdk.Texture | None = None
+        self._request = None
+        self._scale, self._focus, self._focused, self._animation = 1.0, 0.0, False, None
+        if accessible:
+            self.update_property([Gtk.AccessibleProperty.LABEL], [accessible])
+
+    def do_root(self) -> None:
+        Gtk.Widget.do_root(self)
+        self._follow_stage()
+        if self._texture is None and self._request is None:
+            from .media_style import TextureLoader
+            self._request = TextureLoader.shared().request(self.path, 640, self._arrived)
+
+    def do_unroot(self) -> None:
+        self._leave_stage()
+        if self._request is not None:
+            self._request.cancel()
+            self._request = None
+        Gtk.Widget.do_unroot(self)
+
+    def _arrived(self, texture: Gdk.Texture | None) -> None:
+        self._request = None
+        if texture is None:
+            return
+        self._texture = texture
+        aspect = self.shape(texture.get_width() / max(1, texture.get_height()))
+        if aspect != self.aspect:
+            self.aspect = aspect
+            self.queue_resize()
+        self.queue_draw()
+
+    def set_tv_focus(self, on: bool) -> None:
+        if on == self._focused:
+            return
+        self._focused = on
+
+        def step(value: float) -> None:
+            self._focus = value
+            self._scale = 1.0 + 0.04 * value
+            self.queue_draw()
+        self._animation = _animate(self, self._focus, 1.0 if on else 0.0, _lift_ms(), step, self._animation)
+
+    def do_measure(self, orientation: Gtk.Orientation, _for_size: int) -> tuple[int, int, int, int]:
+        h = round(self.HEIGHT * self._unit())
+        size = h if orientation == Gtk.Orientation.VERTICAL else round(h * self.aspect)
+        return size, size, -1, -1
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        u = self._unit()
+        w, h = float(self.get_width()), float(self.get_height())
+        box = Graphene.Rect().init(0, 0, w, h)
+        shape = Gsk.RoundedRect()
+        shape.init_from_rect(box, self.RADIUS * u)
+        snapshot.save()
+        snapshot.translate(Graphene.Point().init(w / 2, h / 2))
+        snapshot.scale(self._scale, self._scale)
+        snapshot.translate(Graphene.Point().init(-w / 2, -h / 2))
+        t = self._focus
+        snapshot.append_outset_shadow(shape, _black(0.45 + 0.15 * t), 0, (14 + 10 * t) * u, 0, (30 + 20 * t) * u)
+        if t > 1e-3:
+            snapshot.append_outset_shadow(shape, _white(t), 0, 0, 5 * u, 0)
+        snapshot.push_rounded_clip(shape)
+        snapshot.append_color(_black(1.0), box)
+        if self._texture is not None:
+            from .media_style import cover_rect
+            snapshot.append_scaled_texture(self._texture, Gsk.ScalingFilter.TRILINEAR,
+                                           cover_rect(self._texture.get_width(), self._texture.get_height(), box))
+        snapshot.pop()
+        snapshot.restore()
+
 
 class TvScreenshotViewer(Gtk.Widget):
     """A screenshot full screen over a dark scrim: Left/Right move through them, Back closes and
