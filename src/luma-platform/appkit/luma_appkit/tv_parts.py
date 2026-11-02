@@ -37,7 +37,7 @@ class TvTab(Gtk.Box):
                  accessible: str | None = None) -> None:
         super().__init__(valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.TAB)
         self.add_css_class("tv-tab")
-        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, hexpand=True)
+        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         self.append(inner)
         self.lead = lead if lead is not None else (icons.image(icon) if icon else None)
         if self.lead is not None:
@@ -167,9 +167,10 @@ class TvButton(Gtk.Box):
     def __init__(self, label: str, *, icon: str | None = None, danger: bool = False,
                  hexpand: bool = False) -> None:
         super().__init__(hexpand=hexpand, accessible_role=Gtk.AccessibleRole.BUTTON)
+        self.set_hexpand_set(True)
         for name in ("tv-btn", "tv-chip") + (("tv-danger",) if danger else ()):
             self.add_css_class(name)
-        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, hexpand=True, spacing=0)
+        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, spacing=0)
         if icon:
             inner.append(icons.image(icon))
         self.label = Gtk.Label(label=label)
