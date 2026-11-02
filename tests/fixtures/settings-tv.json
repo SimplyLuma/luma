@@ -252,7 +252,7 @@
   "zoomF": "push",
   "cross": false,
   "invert": false,
-  "devName": "Nick’s ThinkPad",
+  "devName": "Living room",
   "fileShare": false,
   "fsPass": true,
   "media2": false,
@@ -293,7 +293,14 @@
   "fmFiles": false,
   "ncFiles": true,
   "ncCal": true,
-  "ncCon": false
+  "ncCon": false,
+  "sys": {
+   "model": "Raspberry Pi 5",
+   "mem": "8 GB",
+   "cpu": "Arm Cortex-A76 × 4",
+   "gpu": "VideoCore VII",
+   "disk": "23 GB used of 64 GB"
+  }
  },
  "data": {
   "CFNETS": [

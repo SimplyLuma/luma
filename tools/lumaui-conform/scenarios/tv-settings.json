@@ -51,7 +51,8 @@
    "assets/icon-theme/Prairie/scalable/apps/org.projectluma.VoiceMemos.svg",
    "assets/icon-theme/Prairie/scalable/apps/luma-v3-weather.svg",
    "tests/fixtures/settings-tv.json",
-   "tests/fixtures/tv/blue-fog.png"
+   "tests/fixtures/tv/blue-fog.png",
+   "tests/fixtures/tv/luma-favicon.svg"
   ],
   "env": {
    "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-tv.json",
@@ -353,7 +354,7 @@
   },
   {
    "name": "choice",
-   "about": "Display, OK on its first choice row: the list drops from the row",
+   "about": "Display, Right to its arrangement, Down to Resolution, OK: the list drops from the row",
    "themes": [
     "dark"
    ],
@@ -368,6 +369,10 @@
     },
     {
      "key": "ArrowRight",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
      "wait": 300
     },
     {
@@ -394,6 +399,10 @@
      "wait": 400
     },
     {
+     "key": "Down",
+     "wait": 400
+    },
+    {
      "key": "Return",
      "wait": 400
     }
@@ -401,7 +410,7 @@
   },
   {
    "name": "keyboard",
-   "about": "About, OK on Name: the TV keyboard docks, the row lifts above it",
+   "about": "About, Right to Updates, Down to Computer name, OK: the TV keyboard docks, the row lifts above it",
    "themes": [
     "dark"
    ],
@@ -448,6 +457,10 @@
     },
     {
      "key": "ArrowRight",
+     "wait": 300
+    },
+    {
+     "key": "ArrowDown",
      "wait": 300
     },
     {
@@ -506,8 +519,12 @@
      "wait": 400
     },
     {
-     "key": "Return",
+     "key": "Down",
      "wait": 400
+    },
+    {
+     "key": "Return",
+     "wait": 600
     }
    ]
   }
