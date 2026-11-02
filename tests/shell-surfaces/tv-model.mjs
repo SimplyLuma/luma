@@ -2,7 +2,7 @@
 // The TV home's pure rules: opt-in, search, the tile grid, spatial focus, keys.
 import assert from 'node:assert/strict';
 import {tv} from '../../src/luma-shell-presentation/tvTokens.js';
-import {nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit, weatherGlyph, greetingPart}
+import {nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit, weatherGlyph, greetingPart}
     from '../../src/luma-shell-presentation/tvModel.js';
 
 // One unit is a pixel of 1920x1080, whatever the screen.
@@ -71,4 +71,7 @@ assert.equal(weatherGlyph('Rain', 13).tint, null);
 assert.equal(greetingPart(9), 'morning');
 assert.equal(greetingPart(15), 'afternoon');
 assert.equal(greetingPart(20), 'evening');
+// A held key: only the arrows repeat.
+assert.ok(['up', 'down', 'left', 'right'].every(repeatAllowed));
+assert.ok(!repeatAllowed('ok') && !repeatAllowed('back') && !repeatAllowed('menu'));
 console.log('tv-model: ok');

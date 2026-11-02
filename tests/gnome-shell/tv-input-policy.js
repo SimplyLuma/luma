@@ -103,8 +103,9 @@ assert(/for \(const name of Object\.keys\(REMOTE_KEYS\)\)[\s\S]*?Meta\.KeyBindin
 assert(/destroy\(\) \{[\s\S]*?ungrab_accelerator/.test(service), 'and given back');
 // OK is held, not tapped (TvFocus's long press opens a menu): Return down with
 // the pad's button or the remote key and up with it; everything else taps.
-assert(/REMOTE_KEYS\[name\] === 'ok' \? Meta\.KeyBindingFlags\.TRIGGER_RELEASE/.test(service),
-    'remote OK keys report their release');
+assert(/const held = name => REMOTE_KEYS\[name\] === 'ok' \|\| REMOTE_KEYS\[name\] === 'home'/.test(service) &&
+    /held\(name\) \? Meta\.KeyBindingFlags\.TRIGGER_RELEASE/.test(service),
+    'remote OK and Home keys report their release');
 assert(/'accelerator-deactivated'[\s\S]*?this\._okUp\(/.test(service), 'remote OK goes up on release');
 assert(/action === 'ok' && !pressed\) this\._okUp\(source\)/.test(service) &&
     /if \(translates\(action, this\._context\(\)\)\) this\._okDown\(source\)/.test(service),
@@ -114,7 +115,7 @@ assert(/_okDown\(source\) \{[\s\S]*?KeyState\.PRESSED[\s\S]*?_okUp\(source\) \{[
 assert(/destroy\(\) \{[\s\S]*?this\._okUp\(source\)/.test(service), 'never left down');
 assert(/_tap\(action\) \{[\s\S]*?PRESSED\);\s*this\._keys\.notify_keyval\(time, keyval, Clutter\.KeyState\.RELEASED/.test(service),
     'Back, Menu and the arrows stay whole presses');
-assert(/action === 'ok' && \(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\)/.test(home),
+assert(/action === 'ok' && \(event\.get_flags\(\) & Clutter\.EventFlags\.FLAG_REPEATED\)/.test(home),
     "the TV home takes a held OK once");
 assert(/create_virtual_device\(Clutter\.InputDeviceType\.KEYBOARD_DEVICE\)/.test(service), 'a virtual keyboard');
 assert(/await import\('gi:\/\/Manette\?version=0\.2'\)[\s\S]*?catch/.test(service), 'libmanette is optional');
@@ -126,6 +127,12 @@ assert(/settings_schema\.has_key\(CONFIRM_KEY\)/.test(service) && /changed::\$\{
     'the confirm setting is optional and applied live');
 assert(/buttonAction\(code, pad\.confirm\)/.test(service), 'per pad');
 
+// A held pad button is one press and one release: a down while down is dropped, and an up is
+// held back BOUNCE_MS so a bouncing contact is no release (Pi, 1 Nov: a stream of OKs).
+assert(/if \(pressed && pad\.buttons\.has\(code\)\) return;/.test(service), 'a down while down is not a press');
+assert(/const BOUNCE_MS = \d+;/.test(service) && /this\._released\.set\(control, GLib\.timeout_add\(GLib\.PRIORITY_DEFAULT, BOUNCE_MS/.test(service) &&
+    /if \(pressed && pending\) \{\s*GLib\.source_remove\(pending\);/.test(service), 'a bounce is no release and no new press');
+assert(/LUMA_TV_INPUT_DEBUG/.test(service) && /5 OK presses within a second/.test(service), 'a stream of OKs shows in the journal');
 print('tv-input-policy: ok');
 
 function print(message) {

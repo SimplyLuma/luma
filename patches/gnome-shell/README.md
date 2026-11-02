@@ -437,3 +437,35 @@ window) about the centre by `1 - tv-screen-edges/100` (shell-state key,
 0–10 %), live, for a TV that overscans; leaving TV posture restores scale 1.
 Settings › Display › Fit › Screen edges writes the key. Without the key (an
 older shell-state) nothing changes. Applies after 0311.
+
+`0313-tv-quick-panel.patch`: registers `lumaPresentation/tvQuickPanel.js` and
+its pure rules `tvQuickPanelModel.js` in the JS resource. In TV posture, OK on
+the TV home bar's weather | time cluster (Right past Search) or a long press
+of Home (`tv.quick_panel.home_hold_ms`; a remote's Home or CEC Root Menu, a
+pad's Guide; Select+Start still goes home at once) opens the quick panel:
+a full-height sheet sliding out from the right screen edge that adopts the bar's
+cluster as its header. It is a view of the
+existing Quick Options and notification list, not a second backend: the
+account (AccountsService), NetworkManager's Wi-Fi toggle, gnome-bluetooth's
+toggle and the Do Not Disturb setting as chips, the output stream slider and
+its devices, MessageTray's notifications (OK runs the default action, Clear
+all dismisses as the tray does), Settings, Sleep (suspend, or the
+screensaver's blank where logind cannot suspend) and Power (Restart… and
+Power Off… through SystemActions, confirmed by the TV dialog). Rows without
+a backend are not drawn. Back or Left off the island closes it and the focus
+returns to the cluster. docs/developer-platform/tv-mode.md "The quick panel".
+Test: `tv-quick-panel-policy.js` in %check. Numbered 0313 to leave 0312 to
+`work/tv-settings` (screen edges).
+
+`0314-tv-app-switcher.patch`: registers `lumaPresentation/tvAppSwitcher.js`
+and its pure rules `tvAppSwitcherModel.js` in the JS resource. In TV posture,
+Home pressed twice (`tv.app_switcher.double_ms`) opens the app switcher: the
+running apps (`Shell.AppSystem` and `sessionApplications.js`, newest first in
+Alt+Tab order) as cards of their latest window picture (a `Clutter.Clone`) or
+TV tile over the TV home's scrim, the bar staying. OK switches, Back returns.
+Up, a held OK or Menu on a card offers Close, the desktop's Quit
+(`requestQuit`); an app still running after `force_after_ms` offers Force
+Close (`Meta.Window.kill()`, as the not-responding dialog). The TV home's
+tiles get a running dot and a held-OK menu with Open and Close. A single Home
+now goes home after the double-press window. docs/developer-platform/
+tv-mode.md "Closing apps". Test: `tv-app-switcher-policy.js` in %check.

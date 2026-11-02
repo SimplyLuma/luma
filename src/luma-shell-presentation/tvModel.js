@@ -109,6 +109,13 @@ export function weatherGlyph(condition, hour) {
 // arrive as these keys (tvInput.js turns XF86Back, XF86OK, CEC keys and pad
 // buttons into them, and opens the TV home for Home), so a keyboard's are
 // the only names here.
+// A held key repeats. Only moving the focus (and stepping a slider) may follow a repeat;
+// OK and Back act once per press, so holding a key never flips a switch, opens a menu twice
+// or confirms what the press opened.
+export function repeatAllowed(action) {
+    return action === 'up' || action === 'down' || action === 'left' || action === 'right';
+}
+
 export function remoteAction(name) {
     switch (name) {
     case 'Up': case 'Down': case 'Left': case 'Right':
