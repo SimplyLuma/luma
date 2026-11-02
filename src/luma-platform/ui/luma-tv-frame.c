@@ -300,6 +300,9 @@ static const char *const tv_sheet =
 "  border: none; outline: none; box-shadow: none; background: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-mark * { border: none; outline: none; box-shadow: none; }\n"
 ".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { border: none; outline: none; }\n"
+/* a lead that is a picture in full colour (a logo, an app's icon): itself, no tile or ring behind it */
+".lumaui-tv-frame .lumaui-part-lead.lumaui-part-picture, .lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead.lumaui-part-picture {\n"
+"  background: none; box-shadow: none; border: none; outline: none; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
  * lead when both rows have one), drawn inside the row so it never follows a rounded corner */
 ".lumaui-tv-frame .lumaui-part-row:not(:focus-within) + .lumaui-part-row:not(:focus-within) { background-image: linear-gradient(@divider@, @divider@);\n"
