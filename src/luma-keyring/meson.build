@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
-project('luma-keyring', version: '0.1.0', meson_version: '>= 1.3.0', license: 'MPL-2.0')
+project('luma-keyring', 'c', version: '0.2.0', meson_version: '>= 1.3.0', license: 'MPL-2.0',
+        default_options: ['c_std=gnu17', 'warning_level=2'])
 
 python = import('python').find_installation('python3')
 prefix = get_option('prefix')
@@ -20,6 +21,21 @@ python.install_sources(
 )
 
 install_data('bin/luma-keyring', install_dir: get_option('libexecdir'), install_mode: 'rwxr-xr-x')
+
+# The passwd stack's hook: hands the new password to luma-keyring --pam-rewrap
+# once it verifies against /etc/shadow; never prompts, never fails a change.
+pam_dep = dependency('pam')
+crypt_dep = dependency('libxcrypt')
+shared_module('pam_luma_keyring', 'pam/pam_luma_keyring.c',
+  name_prefix: '',
+  dependencies: [pam_dep, crypt_dep],
+  c_args: ['-DLUMA_KEYRING_HELPER="@0@"'.format(prefix / get_option('libexecdir') / 'luma-keyring')],
+  gnu_symbol_visibility: 'hidden',
+  link_args: ['-Wl,-z,relro', '-Wl,-z,now', '-Wl,--no-undefined'],
+  install: true,
+  install_dir: get_option('libdir') / 'security')
+# The tests drive pam_chauthtok as passwd does; never installed.
+executable('chauthtok', 'tests/pam/chauthtok.c', dependencies: [pam_dep], install: false)
 # Adds or removes the password-change hook in the passwd PAM stack.
 install_data('data/pam/luma-keyring-pam-setup', install_dir: get_option('libexecdir'),
              install_mode: 'rwxr-xr-x')

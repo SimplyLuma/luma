@@ -5,13 +5,17 @@
 Standalone on purpose: it needs python3-cryptography, python3-gobject and
 systemd-creds, and nothing from luma-keyring, so it still works after a
 rollback to a luma-keyring that predates the keyring key (0.1.x), or on any
-system the home folder is restored to. Run it in the person's session:
+system the home folder is restored to. luma-keyring keeps a copy of it next
+to the slots, so it survives a rollback of /usr. Run it in the person's
+session:
 
-    python3 luma-keyring-recover-standalone
+    ~/.local/state/luma-keyring/luma-keyring-recover
 
-It opens the keyring key from the device seal (~/.local/state/luma-keyring/
-login.cred) or, failing that, from the recovery copy (login.wrap) with the
-account password, then re-keys the login keyring to the login password with
+It tries every device seal (login.cred, login.cred.new); a seal that opens
+but holds a key the keyring does not take counts as not opening. Failing
+that, it asks for the account password and tries every recovery copy
+(login.wrap, login.wrap.new, login.wrap.prev). The first key the keyring
+takes is used to re-key the login keyring to the login password with
 gnome-keyring's own interface, so pam_gnome_keyring unlocks it at login
 again. The slots are left in place; remove them once the keyring opens.
 Passwords are read from the terminal only.
@@ -20,42 +24,95 @@ Passwords are read from the terminal only.
 import base64
 import getpass
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
 
 STATE = Path.home() / ".local" / "state" / "luma-keyring"
-HEADER = ("magic", "version", "kdf", "kdf_params", "aead", "salt", "nonce",
-          "password_changed", "wrapped_at")
+SEALS = ("login.cred", "login.cred.new")
+WRAPS = ("login.wrap", "login.wrap.new", "login.wrap.prev")
+HEADERS = {
+    2: ("magic", "version", "kdf", "kdf_params", "aead", "salt", "nonce",
+        "password_changed", "wrapped_at"),
+    3: ("magic", "version", "kdf", "kdf_params", "aead", "salt", "nonce",
+        "password_changed", "wrapped_at", "password_id"),
+}
+BOUNDS = {"memory_cost": (19456, 1048576), "iterations": (2, 16), "lanes": (1, 16)}
 
 
-def from_seal():
-    done = subprocess.run(["systemd-creds", "--user", "--name=luma-login-keyring", "decrypt",
-                           str(STATE / "login.cred"), "-"], capture_output=True, check=False)
-    return done.stdout.decode("ascii").strip() if done.returncode == 0 else None
+def read_slot(path):
+    """A regular file's bytes (never a link, FIFO or device), or None."""
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return None
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 1 << 20:
+            return None
+        return handle.read()
 
 
-def from_wrap(password):
+def from_seals():
+    for name in SEALS:
+        data = read_slot(STATE / name)
+        if data is None:
+            continue
+        try:
+            done = subprocess.run(["systemd-creds", "--user", "--name=luma-login-keyring",
+                                   "decrypt", "-", "-"], input=data, capture_output=True,
+                                  timeout=30, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if done.returncode == 0:
+            yield name, done.stdout.decode("ascii", errors="replace").strip()
+
+
+def unwrap(data, password):
+    """The key in a recovery copy, or None (wrong password, damaged, unknown)."""
+    from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
     from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
-    record = json.loads((STATE / "login.wrap").read_bytes())
-    if record.get("magic") != "luma-login-keyring-wrap" or record.get("version") != 2:
-        raise SystemExit("unknown recovery file format")
-    params = record["kdf_params"]
-    if not (19456 <= params["memory_cost"] <= 1048576 and 2 <= params["iterations"] <= 16
-            and 1 <= params["lanes"] <= 16):
-        raise SystemExit("recovery file parameters out of bounds")
-    derived = Argon2id(salt=base64.b64decode(record["salt"]), length=32,
-                       iterations=params["iterations"], lanes=params["lanes"],
-                       memory_cost=params["memory_cost"]).derive(password.encode())
-    aad = json.dumps({k: record.get(k) for k in HEADER}, sort_keys=True,
-                     separators=(",", ":")).encode()
-    return AESGCM(derived).decrypt(base64.b64decode(record["nonce"]),
-                                   base64.b64decode(record["ciphertext"]), aad).decode("ascii")
+    try:
+        record = json.loads(data)
+        header = HEADERS[record["version"]]
+        if record["magic"] != "luma-login-keyring-wrap" or record["kdf"] != "argon2id" \
+                or record["aead"] != "aes-256-gcm":
+            return None
+        params = record["kdf_params"]
+        for name, (low, high) in BOUNDS.items():
+            if not isinstance(params[name], int) or not low <= params[name] <= high:
+                return None
+        salt = base64.b64decode(record["salt"], validate=True)
+        nonce = base64.b64decode(record["nonce"], validate=True)
+        if len(salt) < 16 or len(nonce) != 12:
+            return None
+        derived = Argon2id(salt=salt, length=32, iterations=params["iterations"],
+                           lanes=params["lanes"],
+                           memory_cost=params["memory_cost"]).derive(password.encode("utf-8"))
+        aad = json.dumps({k: record.get(k) for k in header}, sort_keys=True,
+                         separators=(",", ":")).encode("utf-8")
+        sealed = base64.b64decode(record["ciphertext"], validate=True)
+        return AESGCM(derived).decrypt(nonce, sealed, aad).decode("ascii")
+    except (ValueError, KeyError, TypeError, AttributeError, InvalidTag):
+        return None
+
+
+def from_wraps(password):
+    for name in WRAPS:
+        data = read_slot(STATE / name)
+        if data is None:
+            continue
+        key = unwrap(data, password)
+        if key is not None:
+            yield name, key
 
 
 def change(old, new):
+    """Re-key the login keyring. False when `old` is not its password."""
     from gi.repository import Gio, GLib
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -67,24 +124,44 @@ def change(old, new):
     def secret(text):
         return (session, b"", text.encode(), "text/plain")
 
-    bus.call_sync("org.freedesktop.secrets", "/org/freedesktop/secrets",
-                  "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
-                  "ChangeWithMasterPassword",
-                  GLib.Variant("(o(oayays)(oayays))", ("/org/freedesktop/secrets/collection/login",
-                                                      secret(old), secret(new))),
-                  None, 0, 20000, None)
+    try:
+        bus.call_sync("org.freedesktop.secrets", "/org/freedesktop/secrets",
+                      "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
+                      "ChangeWithMasterPassword",
+                      GLib.Variant("(o(oayays)(oayays))",
+                                   ("/org/freedesktop/secrets/collection/login",
+                                    secret(old), secret(new))),
+                      None, 0, 20000, None)
+    except GLib.Error:
+        return False
+    return True
+
+
+def recover(login, ask_password, seals=from_seals, wraps=from_wraps, rekey=change):
+    """Re-key with the first slot whose key the keyring takes; its name or None."""
+    for name, key in seals():
+        if rekey(key, login):
+            return name
+    password = ask_password()
+    for name, key in wraps(password):
+        if rekey(key, login):
+            return name
+    return None
 
 
 def main():
-    key = from_seal()
-    if key is None:
-        print("This device cannot open its seal; using the recovery copy.")
-        key = from_wrap(getpass.getpass("Account password the recovery copy was made with: "))
     login = getpass.getpass("Login password to lock the keyring with: ")
     if login != getpass.getpass("Again: "):
         raise SystemExit("The passwords differ; nothing changed.")
-    change(key, login)
-    print("The login keyring now unlocks with your login password.")
+
+    def ask_password():
+        print("No device seal opens the keyring; using the recovery copies.")
+        return getpass.getpass("Account password the recovery copy was made with: ")
+
+    name = recover(login, ask_password)
+    if name is None:
+        raise SystemExit("Nothing here opens the keyring with that password; nothing changed.")
+    print(f"The login keyring now unlocks with your login password ({name}).")
     return 0
 
 

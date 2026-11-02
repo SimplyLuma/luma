@@ -105,6 +105,9 @@ class Paths(unittest.TestCase):
         self.patch(autounlock, "ARGON2ID_BOUNDS",
                    {"memory_cost": (8, 1048576), "iterations": (1, 16), "lanes": (1, 16)})
         self.patch(autounlock, "password_changed", lambda user=None: None)
+        self.patch(autounlock, "account_password_hash", lambda user=None: None)
+        self.patch(autounlock, "own_password_hash", lambda: None)
+        self.patch(autounlock, "RECOVERY_TOOL", self.root / "no-recovery-tool")
         self.patch(autounlock, "seal_key", seal)
         self.patch(autounlock, "unseal_key", unseal)
         self.patch(repair, "password_quality_note", lambda password: "")
@@ -126,6 +129,11 @@ class Paths(unittest.TestCase):
     def slots(self, key=KEY, password=PASSWORD):
         autounlock.write_private(autounlock.credential_path(), seal(key))
         autounlock.write_private(autounlock.wrap_path(), autounlock.wrap_key(key, password))
+
+    def slot_names(self):
+        """What is in the state folder, less its not-for-backup marker."""
+        return sorted(p.name for p in autounlock.state_dir().iterdir()
+                      if p.name != autounlock.BACKUP_IGNORE)
 
     def ensure(self, keyring, autologin=True):
         return autounlock.ensure(keyring, autologin=autologin, wait=0, unseal=unseal)
@@ -218,11 +226,27 @@ class WrapTests(Paths):
     def test_real_parameters_are_stored_and_versioned(self):
         autounlock.ARGON2ID = {"memory_cost": 65536, "iterations": 3, "lanes": 4}
         record = json.loads(autounlock.wrap_key(KEY, "pw", changed=86400, now=90000))
-        self.assertEqual((record["magic"], record["version"]), ("luma-login-keyring-wrap", 2))
+        self.assertEqual((record["magic"], record["version"]), ("luma-login-keyring-wrap", 3))
         self.assertEqual(record["kdf_params"], {"memory_cost": 65536, "iterations": 3, "lanes": 4})
         self.assertEqual(len(base64.b64decode(record["salt"])), 16)
         self.assertEqual((record["password_changed"], record["wrapped_at"]), (86400, 90000))
         self.assertNotIn(KEY, json.dumps(record))
+
+    def test_version_2_wraps_still_open(self):
+        self.patch(autounlock, "WRAP_VERSION", 2)
+        record = json.loads(autounlock.wrap_key(KEY, "pw", changed=86400))
+        del record["password_id"]  # version 2 had no such field
+        self.assertEqual(autounlock.unwrap_key(json.dumps(record).encode(), "pw"), KEY)
+
+    def test_password_id_is_authenticated_and_keyed(self):
+        record = json.loads(autounlock.wrap_key(KEY, "pw", hashed="$y$j9T$salt$hash"))
+        self.assertEqual(record["password_id"], autounlock.password_id(KEY, "$y$j9T$salt$hash"))
+        self.assertNotEqual(record["password_id"],
+                            autounlock.password_id("other-key", "$y$j9T$salt$hash"))
+        self.assertNotIn("salt$hash", json.dumps(record))
+        broken = json.dumps({**record, "password_id": "forged"}).encode()
+        with self.assertRaises(autounlock.WrongPassword):
+            autounlock.unwrap_key(broken, "pw")
 
     def test_salts_and_nonces_are_fresh(self):
         one, two = (json.loads(autounlock.wrap_key(KEY, "pw")) for _ in range(2))
@@ -234,6 +258,7 @@ class WrapTests(Paths):
         other_salt = base64.b64encode(os.urandom(16)).decode()
         for change in ({"kdf_params": {"memory_cost": 16, "iterations": 1, "lanes": 1}},
                        {"salt": other_salt}, {"password_changed": 0}, {"wrapped_at": 1},
+                       {"password_id": "x"}, {"version": 2},
                        {"nonce": base64.b64encode(os.urandom(12)).decode()},
                        {"ciphertext": base64.b64encode(os.urandom(40)).decode()}):
             broken = json.dumps({**record, **change}).encode()
@@ -269,12 +294,44 @@ class StorageTests(Paths):
         self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
         for path in (autounlock.credential_path(), autounlock.wrap_path()):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
-        self.assertEqual(sorted(p.name for p in directory.iterdir()), ["login.cred", "login.wrap"])
+        self.assertEqual(self.slot_names(), ["login.cred", "login.wrap"])
+        # Deja Dup leaves out a folder holding .deja-dup-ignore.
+        self.assertTrue((directory / ".deja-dup-ignore").is_file())
         try:
             value = os.getxattr(autounlock.wrap_path(), "user.xdg.robots.backup")
         except OSError:
             self.skipTest("no user xattrs on this file system")
         self.assertEqual(value, b"false")
+
+    def test_a_planted_fifo_or_link_is_never_read(self):
+        directory = autounlock.state_dir()
+        directory.mkdir(parents=True, mode=0o700)
+        os.mkfifo(autounlock.credential_path(), 0o600)
+        with self.assertRaises(KeyringError):
+            autounlock.read_slot(autounlock.credential_path())  # does not block
+        victim = self.root / "victim"
+        victim.write_bytes(b"secret")
+        autounlock.wrap_path().symlink_to(victim)
+        with self.assertRaises(KeyringError):
+            autounlock.read_slot(autounlock.wrap_path())
+        self.assertIsNone(autounlock.read_slot(directory / "missing"))
+
+    def test_the_recovery_script_is_copied_next_to_the_slots(self):
+        tool = self.root / "luma-keyring-recover-standalone"
+        tool.write_bytes(b"#!/usr/bin/python3\n")
+        self.patch(autounlock, "RECOVERY_TOOL", tool)
+        self.keyring_file()
+        self.assertTrue(repair.enable_auto_unlock(PASSWORD, FakeKeyring(password=PASSWORD,
+                                                                        files=self.keyrings),
+                                                  seal=seal, verify=verify).ok)
+        copy = autounlock.recovery_copy_path()
+        self.assertEqual(copy.read_bytes(), tool.read_bytes())
+        self.assertEqual(stat.S_IMODE(copy.stat().st_mode), 0o700)
+        # Refreshed when the installed one changes, at the next session start.
+        tool.write_bytes(b"#!/usr/bin/python3\n# newer\n")
+        keyring = FakeKeyring(password=unseal(autounlock.credential_path()), files=self.keyrings)
+        self.assertEqual(self.ensure(keyring), Result.UNLOCKED)
+        self.assertEqual(copy.read_bytes(), tool.read_bytes())
 
     def test_a_planted_link_is_replaced_not_followed(self):
         directory = autounlock.state_dir()
@@ -310,13 +367,54 @@ class StorageTests(Paths):
 
 
 class SealPolicyTests(Paths):
-    def test_pcr7_only_with_full_disk_encryption(self):
-        crypttab = self.root / "crypttab"
-        self.assertEqual(autounlock.seal_args(crypttab), ("--with-key=auto", "--tpm2-pcrs="))
-        crypttab.write_text("# none\n\n")
-        self.assertEqual(autounlock.seal_args(crypttab), ("--with-key=auto", "--tpm2-pcrs="))
-        crypttab.write_text("luks-1234 UUID=1234 none discard,tpm2-device=auto\n")
-        self.assertEqual(autounlock.seal_args(crypttab), ("--with-key=auto", "--tpm2-pcrs=7"))
+    def sysfs(self, devices):
+        """A /sys/dev/block with {"M:m": (dm uuid or None, [lower "M:m", ...])}."""
+        root = Path(tempfile.mkdtemp(dir=self.root))
+        for number, (uuid, lower) in devices.items():
+            node = root / "dev" / "block" / number
+            (node / "slaves").mkdir(parents=True, exist_ok=True)
+            if uuid:
+                (node / "dm").mkdir()
+                (node / "dm" / "uuid").write_text(uuid + "\n")
+            for index, below in enumerate(lower):
+                slave = node / "slaves" / f"lower{index}"
+                slave.mkdir()
+                (slave / "dev").write_text(below + "\n")
+        return root
+
+    def mountinfo(self, *mounts):
+        path = self.root / "mountinfo"
+        path.write_text("".join(f"{i} 1 0:{i} / {target} rw shared:1 - {kind} {source} rw\n"
+                                for i, (target, kind, source) in enumerate(mounts, 20)))
+        return path
+
+    def encrypted(self, mounts, devices, numbers):
+        return autounlock.root_encrypted(self.mountinfo(*mounts), self.sysfs(devices),
+                                         device_number=lambda source: numbers[source])
+
+    def test_pcr7_only_when_the_root_itself_is_encrypted(self):
+        self.assertEqual(autounlock.seal_args(False), ("--with-key=auto", "--tpm2-pcrs="))
+        self.assertEqual(autounlock.seal_args(True), ("--with-key=auto", "--tpm2-pcrs=7"))
+        plain = {"8:2": (None, [])}
+        self.assertFalse(self.encrypted([("/", "btrfs", "/dev/sda2")], plain, {"/dev/sda2": "8:2"}))
+        # LUKS directly under the root (btrfs: st_dev is anonymous, the source is not).
+        luks = {"253:0": ("CRYPT-LUKS2-abcd-luks-abcd", ["8:3"]), "8:3": (None, [])}
+        self.assertTrue(self.encrypted([("/", "btrfs", "/dev/mapper/luks-abcd")], luks,
+                                       {"/dev/mapper/luks-abcd": "253:0"}))
+        # LVM on LUKS: the logical volume sits on the crypt mapping.
+        lvm = {"253:1": ("LVM-xyz", ["253:0"]), "253:0": ("CRYPT-LUKS2-abcd-luks", ["8:3"]),
+               "8:3": (None, [])}
+        self.assertTrue(self.encrypted([("/", "xfs", "/dev/mapper/vg-root")], lvm,
+                                       {"/dev/mapper/vg-root": "253:1"}))
+        # OSTree: the real root is /sysroot; / is a composefs overlay.
+        self.assertTrue(self.encrypted([("/sysroot", "btrfs", "/dev/mapper/luks-abcd"),
+                                        ("/", "overlay", "composefs")], luks,
+                                       {"/dev/mapper/luks-abcd": "253:0"}))
+        # An encrypted data disk alone is not an encrypted root.
+        self.assertFalse(self.encrypted([("/", "ext4", "/dev/sda2"),
+                                         ("/data", "ext4", "/dev/mapper/luks-data")],
+                                        {**plain, **luks}, {"/dev/sda2": "8:2",
+                                                            "/dev/mapper/luks-data": "253:0"}))
 
 
 class SecretsInputTests(unittest.TestCase):
@@ -340,31 +438,80 @@ class PasswordChangeTests(Paths):
 
     def test_a_later_day_is_a_change(self):
         self.wrap(self.DAY, self.DAY + 3600)
-        self.assertTrue(autounlock.wrap_is_stale(changed=self.DAY + 86400, shadow_mtime=0))
+        self.assertTrue(autounlock.wrap_is_stale(changed=self.DAY + 86400, hashed=None))
 
-    def test_a_same_day_change_after_the_wrap_counts(self):
+    def test_other_writes_to_shadow_on_the_day_are_no_change(self):
+        # Only the day is known without the hash: a same-day write never prompts.
         self.wrap(self.DAY, self.DAY + 3600)
-        self.assertTrue(autounlock.wrap_is_stale(changed=self.DAY, shadow_mtime=self.DAY + 7200))
-
-    def test_no_change_since_the_wrap_is_not_stale(self):
-        self.wrap(self.DAY, self.DAY + 3600)
-        self.assertFalse(autounlock.wrap_is_stale(changed=self.DAY, shadow_mtime=self.DAY + 1800))
-        # Made on a later day than the last change: same answer.
+        self.assertFalse(autounlock.wrap_is_stale(changed=self.DAY, hashed=None))
         self.wrap(self.DAY, self.DAY + 5 * 86400)
-        self.assertFalse(autounlock.wrap_is_stale(changed=self.DAY, shadow_mtime=self.DAY + 6 * 86400))
+        self.assertFalse(autounlock.wrap_is_stale(changed=self.DAY, hashed=None))
 
-    def test_pam_rewrap_needs_only_the_new_password(self):
+    def hashed_wrap(self, name, password, hashed):
+        autounlock.write_private(autounlock.state_dir() / name,
+                                 autounlock.wrap_key(KEY, password, changed=self.DAY,
+                                                     hashed=hashed))
+
+    def test_the_accounts_own_hash_decides(self):
+        self.slots()
+        self.hashed_wrap("login.wrap", PASSWORD, "$y$new")
+        # Same hash: not stale, whatever the day says.
+        self.assertFalse(autounlock.wrap_is_stale(changed=self.DAY + 86400, hashed="$y$new",
+                                                  unseal=unseal))
+        # Another hash on the same day (a change that bypassed PAM): stale.
+        self.assertTrue(autounlock.wrap_is_stale(changed=self.DAY, hashed="$y$other",
+                                                 unseal=unseal))
+
+    def test_a_confirmed_change_drops_the_previous_wrap(self):
+        self.slots()
+        self.hashed_wrap("login.wrap.prev", "old", "$y$old")
+        self.hashed_wrap("login.wrap", PASSWORD, "$y$new")
+        self.assertFalse(autounlock.wrap_is_stale(hashed="$y$new", unseal=unseal))
+        self.assertFalse(autounlock.previous(autounlock.wrap_path()).exists())
+
+    def test_a_change_that_did_not_stick_puts_the_previous_wrap_back(self):
+        self.slots()
+        self.hashed_wrap("login.wrap.prev", "old", "$y$old")
+        self.hashed_wrap("login.wrap", PASSWORD, "$y$new")
+        self.assertFalse(autounlock.wrap_is_stale(hashed="$y$old", unseal=unseal))
+        self.assertEqual(autounlock.unwrap_key(autounlock.wrap_path().read_bytes(), "old"), KEY)
+        self.assertFalse(autounlock.previous(autounlock.wrap_path()).exists())
+
+    def test_pam_rewrap_needs_only_the_new_password_and_keeps_the_previous(self):
         account = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(self.home),
                                         pw_name="me")
         self.patch(autounlock.pwd, "getpwnam", lambda user: account)
+        self.patch(autounlock, "account_password_hash", lambda user=None: "$y$new")
         self.slots(password="old-password")
         self.assertTrue(autounlock.pam_rewrap("me", "new-password"))
         wrapped = autounlock.wrap_path().read_bytes()
         self.assertEqual(autounlock.unwrap_key(wrapped, "new-password"), KEY)
         with self.assertRaises(autounlock.WrongPassword):
             autounlock.unwrap_key(wrapped, "old-password")
-        self.assertFalse(autounlock.wrap_is_stale(changed=json.loads(wrapped)["password_changed"],
-                                                  shadow_mtime=0))
+        earlier = autounlock.previous(autounlock.wrap_path()).read_bytes()
+        self.assertEqual(autounlock.unwrap_key(earlier, "old-password"), KEY)
+        self.assertEqual(json.loads(wrapped)["password_id"], autounlock.password_id(KEY, "$y$new"))
+        self.assertFalse(autounlock.wrap_is_stale(hashed="$y$new", unseal=unseal))
+
+    def test_pam_rewrap_keeps_each_pending_seal_with_its_own_wrap(self):
+        account = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(self.home))
+        self.patch(autounlock.pwd, "getpwnam", lambda user: account)
+        self.slots(password="old-password")
+        autounlock.write_private(autounlock.pending(autounlock.credential_path()), seal("next-key"))
+        autounlock.write_private(autounlock.pending(autounlock.wrap_path()),
+                                 autounlock.wrap_key("next-key", "old-password"))
+        self.assertTrue(autounlock.pam_rewrap("me", "new-password"))
+        pending = autounlock.pending(autounlock.wrap_path()).read_bytes()
+        self.assertEqual(autounlock.unwrap_key(pending, "new-password"), "next-key")
+
+    def test_pam_rewrap_reports_a_seal_that_does_not_open(self):
+        account = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(self.home))
+        self.patch(autounlock.pwd, "getpwnam", lambda user: account)
+        self.slots(password="old-password")
+        autounlock.write_private(autounlock.credential_path(), b"from another board")
+        before = autounlock.wrap_path().read_bytes()
+        self.assertFalse(autounlock.pam_rewrap("me", "new-password"))
+        self.assertEqual(autounlock.wrap_path().read_bytes(), before)
 
     def test_pam_rewrap_leaves_accounts_without_slots_alone(self):
         account = types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid(), pw_dir=str(self.home))
@@ -398,8 +545,7 @@ class FlowTests(Paths):
         self.assertEqual(keyring.password, key)
         self.assertNotEqual(key, PASSWORD)
         self.assertEqual(autounlock.unwrap_key(autounlock.wrap_path().read_bytes(), PASSWORD), key)
-        self.assertEqual(sorted(p.name for p in autounlock.state_dir().iterdir()),
-                         ["login.cred", "login.wrap"])
+        self.assertEqual(self.slot_names(), ["login.cred", "login.wrap"])
 
     def test_enable_with_a_wrong_or_mismatched_password_changes_nothing(self):
         self.keyring_file()
@@ -408,7 +554,7 @@ class FlowTests(Paths):
         keyring = FakeKeyring(password="older", files=self.keyrings)
         self.assertFalse(self.enable(keyring).ok)
         self.assertEqual(keyring.password, "older")
-        self.assertFalse(autounlock.state_dir().exists() and any(autounlock.state_dir().iterdir()))
+        self.assertFalse(autounlock.state_dir().exists() and self.slot_names())
 
     def test_a_failed_seal_changes_nothing(self):
         self.keyring_file()
@@ -435,6 +581,17 @@ class FlowTests(Paths):
         outcome = repair.recover(PASSWORD, keyring, seal=seal, verify=verify)
         self.assertTrue(outcome.ok, outcome.message)
         self.assertFalse(keyring.locked)
+        self.assertEqual(unseal(autounlock.credential_path()), KEY)
+
+    def test_recover_with_the_password_before_an_unconfirmed_change(self):
+        self.keyring_file()
+        self.slots(password="new")
+        autounlock.write_private(autounlock.previous(autounlock.wrap_path()),
+                                 autounlock.wrap_key(KEY, PASSWORD))
+        autounlock.write_private(autounlock.credential_path(), b"from another board")
+        keyring = FakeKeyring(password=KEY, files=self.keyrings)
+        outcome = repair.recover(PASSWORD, keyring, seal=seal, verify=verify)
+        self.assertTrue(outcome.ok, outcome.message)
         self.assertEqual(unseal(autounlock.credential_path()), KEY)
 
     def test_recover_with_a_corrupt_wrap_leaves_everything(self):
@@ -468,7 +625,51 @@ class FlowTests(Paths):
         outcome = repair.use_login_password(PASSWORD, keyring, unseal=unseal, verify=verify)
         self.assertTrue(outcome.ok, outcome.message)
         self.assertEqual(keyring.password, PASSWORD)
-        self.assertEqual(list(autounlock.state_dir().iterdir()), [])
+        self.assertEqual(self.slot_names(), [])
+
+
+class StandaloneRecoveryTests(Paths):
+    """tools/luma-keyring-recover-standalone, for a system rolled back past 0.2."""
+
+    def setUp(self):
+        super().setUp()
+        import importlib.machinery
+        import importlib.util
+
+        path = Path(__file__).resolve().parents[1] / "tools" / "luma-keyring-recover-standalone"
+        loader = importlib.machinery.SourceFileLoader("luma_keyring_recover", str(path))
+        self.tool = importlib.util.module_from_spec(
+            importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(self.tool)
+        self.tool.STATE = autounlock.state_dir()
+        self.tool.BOUNDS = autounlock.ARGON2ID_BOUNDS
+
+    def test_every_wrap_and_version_is_tried(self):
+        self.slots(password="new")
+        autounlock.write_private(autounlock.previous(autounlock.wrap_path()),
+                                 autounlock.wrap_key(KEY, "old"))
+        self.patch(autounlock, "WRAP_VERSION", 2)
+        record = json.loads(autounlock.wrap_key("pending-key", "old"))
+        del record["password_id"]
+        autounlock.write_private(autounlock.pending(autounlock.wrap_path()),
+                                 json.dumps(record).encode())
+        self.assertEqual(dict(self.tool.from_wraps("new")), {"login.wrap": KEY})
+        self.assertEqual(dict(self.tool.from_wraps("old")),
+                         {"login.wrap.new": "pending-key", "login.wrap.prev": KEY})
+
+    def test_a_seal_with_the_wrong_key_falls_back_to_the_wraps(self):
+        self.slots()
+        tried = []
+
+        def rekey(old, new):
+            tried.append(old)
+            return old == KEY
+
+        name = self.tool.recover("login", lambda: PASSWORD,
+                                 seals=lambda: iter([("login.cred", "stale-key")]), rekey=rekey)
+        self.assertEqual((name, tried), ("login.wrap", ["stale-key", KEY]))
+        self.assertIsNone(self.tool.recover("login", lambda: "wrong", seals=lambda: iter([]),
+                                            rekey=rekey))
 
 
 class CrashTests(Paths):

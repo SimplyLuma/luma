@@ -28,12 +28,14 @@ once per unlock method, and any one slot opens it.
     can open it.
   - Where there is a TPM2, the seal is bound to the TPM2 and the
     installation's host key; otherwise to the host key alone.
-  - Where the system disk is encrypted (a volume is listed in
-    `/etc/crypttab`), the seal is also bound to PCR 7, the Secure Boot state
-    (`--tpm2-pcrs=7`). It then opens only under the same Secure Boot chain,
-    and a Secure Boot database update needs the password once. Without
-    full-disk encryption no PCR policy is used; the threat model below says
-    what that means.
+  - Where the root file system itself is on dm-crypt (LUKS), the seal is
+    also bound to PCR 7, the Secure Boot state (`--tpm2-pcrs=7`). The root
+    is found from `/proc/self/mountinfo` (`/sysroot` on OSTree, else `/`)
+    and its device followed through device-mapper in sysfs, so LVM on LUKS
+    and btrfs are both seen; an encrypted data disk or swap alone does not
+    count. A Secure Boot database update then needs the password once.
+    Without an encrypted root no PCR policy is used; the threat model below
+    says what each case protects.
   - At the start of each session, `luma-keyring-autologin.service` (a user
     unit before `graphical-session-pre.target`) unseals the key. It then
     unlocks the keyring with gnome-keyring's `UnlockWithMasterPassword`, the
@@ -50,9 +52,14 @@ once per unlock method, and any one slot opens it.
   - Both primitives come from python-cryptography, which wraps OpenSSL and
     is in Fedora. There is no custom construction and no unauthenticated
     mode.
-  - The file is versioned JSON: `magic`, `version` (2), `kdf`, `kdf_params`,
-    `aead`, `salt`, `nonce`, `password_changed`, `wrapped_at`, and
-    `ciphertext`.
+  - The file is versioned JSON: `magic`, `version` (3), `kdf`, `kdf_params`,
+    `aead`, `salt`, `nonce`, `password_changed`, `wrapped_at`,
+    `password_id`, and `ciphertext`. Version 2 files (no `password_id`)
+    still open.
+  - `password_id` is HMAC-SHA256, under the keyring key, of the account's
+    crypt(3) hash at wrap time. It tells the session whether the password
+    changed since the wrap, and it is useless without the key, so it is no
+    password verifier even for a weak legacy hash.
   - Every header field, canonically encoded, is the GCM associated data, so
     no field can be changed without the password.
   - `kdf_params` and the salt length are bounds-checked before any work
@@ -69,8 +76,9 @@ Every change of key writes the new wrap and seal as `login.wrap.new` and
 then promotes the wrap before the seal (rename, then fsync the directory).
 `ensure` tries `login.cred` and `login.cred.new` and promotes whichever opens
 the keyring (a `*.new` left by a key change that never reached the keyring is
-discarded); `recover` tries `login.wrap` and `login.wrap.new`, and falls back
-to the password itself when the keyring never moved. So at every instant a
+discarded); `recover` tries `login.wrap`, `login.wrap.new` and
+`login.wrap.prev`, and falls back to the password itself when the keyring
+never moved. So at every instant a
 slot on disk opens the keyring. The unit tests kill the enrolment after each
 step and check this.
 
@@ -122,36 +130,69 @@ Each account is enrolled at a point where its password is already in hand.
 A line in the passwd PAM stack keeps the wrap in step, the way
 `pam_gnome_keyring use_authtok` keeps the login keyring in step:
 
-    -password   optional	pam_exec.so quiet expose_authtok /usr/libexec/luma-keyring --pam-rewrap
+    -password   optional	pam_luma_keyring.so
 
 `luma-keyring-pam-setup` adds it after `pam_gnome_keyring` (package `%post`
-and a trigger on shadow-utils, which owns `/etc/pam.d/passwd`) and removes it
-on uninstall. pam_exec hands the new password on stdin after `pam_unix` has
-set it; the helper unseals the key on the device (as the person, or as root
-with `--uid` for an administrator's change), wraps it with the new password
-and writes the slot as the account. It always exits 0, and the leading `-`
-skips the line if pam_exec is missing, so it can never fail a password
-change. `passwd` and Settings (which runs `passwd`) go through it.
+with `Requires(post): passwd`, and a trigger on `passwd` and `shadow-utils`,
+either of which owns `/etc/pam.d/passwd` depending on the Fedora release)
+and removes it on uninstall. It replaces the `pam_exec` line of earlier
+builds.
 
-Changes that bypass PAM (an administrator setting a hash through
-AccountsService or `usermod -p`) are caught by a fallback: each wrap records
-the password-change day (AccountsService) and when it was made; the session
-service asks for the new password once when the change day is later than the
-recorded one, or on or after the wrap's day while `/etc/shadow` was written
-after the wrap (Luma is single-person, so that is the password changing).
+`pam_luma_keyring.so` is a small native module (C, built with meson,
+`/usr/lib64/security`). Optional lines still run after a failing substack,
+so it trusts nothing the stack says and checks the outcome itself:
+
+- In the update phase only, it reads `PAM_AUTHTOK` with `pam_get_item`. It
+  never starts a conversation, so it cannot add a "Password:" prompt (which
+  `pam_exec expose_authtok` does when a module before it cleared the token,
+  and which confuses GNOME Settings driving `passwd`). No token is
+  `PAM_IGNORE`.
+- Accounts without a seal are left alone without starting anything.
+- The new password must verify against the account's own hash in
+  `/etc/shadow` (`crypt_rn` from libxcrypt, compared in constant time).
+  Otherwise the change did not happen (`pam_unix` failed after
+  `pam_pwquality` set the token) and nothing is written.
+- Only then does it run `/usr/libexec/luma-keyring --pam-rewrap` with a
+  clean environment and the password on a socket, bounded to 20 seconds.
+  It always returns `PAM_IGNORE`, so it can neither fail nor pass a
+  password change. The leading `-` skips the line if the module is missing
+  (after a rollback).
+
+The helper does everything that touches the account's files as the
+account: it reads each seal itself (no links, FIFOs or devices), opens it
+with `systemd-creds --user` on standard input, wraps the key with the new
+password, and writes the slot. The wrap it replaces is kept as
+`login.wrap.prev` until the session confirms the change. Each pending seal
+keeps its own wrap. `passwd`, Settings (which runs `passwd`) and an
+administrator's `passwd USER` go through it.
+
+At each session start of an automatic sign-in, the session compares the
+account's own hash, which systemd-userdbd gives to the account itself, with
+the wrap's `password_id`:
+
+- Equal: the change is confirmed and `login.wrap.prev` is removed.
+- Equal to the previous wrap's: the change did not stick (`/etc` rolled
+  back), so the previous wrap is put back.
+- Neither: the password changed outside PAM (AccountsService,
+  `usermod -p`, `chpasswd`); the person is asked for the new password once.
+
+Without userdbd the change day (AccountsService) is compared instead, and
+only a later day counts. Other writes to `/etc/shadow` never raise a prompt.
 
 ## Storage hygiene
 
-- Both files live in `~/.local/state/luma-keyring` (0700; the same path for
+- The slots live in `~/.local/state/luma-keyring` (0700; the same path for
   the installer, PAM and the session). The files are 0600 and owned by the
-  user.
+  user. A copy of the standalone recovery script sits next to them (0700).
 - Every write goes to a temporary file created with `O_CREAT|O_EXCL|O_NOFOLLOW`
   (after removing anything there), is fsynced, renamed into place, and the
   directory fsynced. A linked or group/other-accessible directory is refused.
-- Root callers (the installer's `--enrol`, an administrator's password
-  change) seal as root but write in a child that has dropped to the
-  account's uid and gid, so a planted link can only point where the account
-  could write anyway.
+- The installer's `--enrol` seals as root (`--uid`) and writes in a child
+  that has dropped to the account's uid and gid. The password-change hook
+  does all of its work in such a child. A planted link, FIFO or device is
+  never opened with root's rights: slots are read with
+  `O_NOFOLLOW|O_NONBLOCK` and must be regular files, and are handed to
+  `systemd-creds` on standard input rather than by path.
 - Secrets reach `systemd-creds` and the CLI on stdin only, never in argv or
   the environment. One secret is the whole input less one trailing newline
   or NUL, so a password may contain newlines. Two are each NUL-terminated.
@@ -172,7 +213,8 @@ after the wrap (Luma is single-person, so that is the password changing).
 | Sealing fails | Nothing changes; the keyring stays on the password; Luma asks again later |
 | Crash during a key change | Some slot on disk always opens the keyring (see crash consistency) |
 | Wrap corrupt or missing | Keyring left intact; the person is told plainly; "Start a new keyring" keeps the old file aside |
-| Password changed | Re-wrapped at the change by the PAM hook; otherwise the fallback asks for the new password once |
+| Password changed | Re-wrapped at the change by pam_luma_keyring.so; the previous wrap is kept until the session confirms it; otherwise the session asks for the new password once |
+| Password change fails | The new password does not verify against /etc/shadow; nothing is written; no extra prompt |
 | Automatic sign-in turned off | The seal keeps unlocking (nothing breaks); one notification offers to move the keyring back onto the login password, which deletes both slots |
 | Wrong password at any prompt | Nothing changes |
 
@@ -187,19 +229,26 @@ and open sessions. This is the model of TVs and set-top boxes. Someone who
 wants a typed password to stand between the device and their secrets should
 not turn on automatic sign-in.
 
-**With a TPM2 and full-disk encryption:**
+**With a TPM2 and an encrypted root:**
 - Protected: a copied home folder or keyring, a removed disk, a backup
-  restored on other hardware, and another boot chain on the same device
-  (PCR 7). None of these opens the keyring without the account password.
+  restored on other hardware, and booting the device with Secure Boot off
+  or under other keys (PCR 7). None of these opens the keyring without the
+  account password.
+- PCR 7 does not tell apart other media signed under the same Secure Boot
+  chain, such as a distribution's live image. Against those, the seal rests
+  on the host key, which is on the encrypted root: the protection is as
+  strong as the disk's unlock. If the disk itself unlocks from the TPM2
+  with PCR 7 alone, such media can unlock it too; a disk passphrase or a
+  TPM2 PIN closes that.
 - Offline guessing against `login.wrap` costs one Argon2id evaluation
   (64 MiB) per guess.
 
-**With a TPM2 and no full-disk encryption:** no PCR policy is used, so the
+**With a TPM2 and no encrypted root:** no PCR policy is used, so the
 TPM2 releases the seal to whatever boots. Someone with physical access can
 boot another system from a USB stick, read the host key from the
 unencrypted disk and unseal the key through the same TPM2. The TPM2 then
-protects only against the disk being read on another machine. Full-disk
-encryption is what closes this; with it, the seal is also bound to PCR 7.
+protects only against the disk being read on another machine. Encrypting
+the root is what closes this; with it, the seal is also bound to PCR 7.
 
 **Without a TPM2 (for example a Raspberry Pi 5):**
 - Protected: the keyring, credential or wrap copied on their own, such as a
@@ -215,10 +264,14 @@ encryption is what closes this; with it, the seal is also bound to PCR 7.
 device.
 
 **The recovery copy is an offline password verifier.** Anyone who has
-`login.wrap` can guess at the account password, at one Argon2id run (64 MiB)
-per guess. It is therefore marked `user.xdg.robots.backup=false` (freedesktop
-Common Extended Attributes, honoured by backup tools that read it) and should
-be excluded from any backup or sync that does not. A restore onto new
+`login.wrap` (or `login.wrap.prev`) can guess at the account password, at
+one Argon2id run (64 MiB) per guess. The state folder therefore holds a
+`.deja-dup-ignore` file, which Deja Dup (42.1 and later), GNOME's backup
+tool, honours by leaving the folder out. The files are also marked
+`user.xdg.robots.backup=false` (freedesktop Common Extended Attributes), but
+few tools read that; any other backup or sync should exclude
+`~/.local/state/luma-keyring`. `CACHEDIR.TAG` is not used: the folder is not
+a cache, and cleaners delete tagged folders. A restore onto new
 hardware without it loses saved passwords unless the old disk comes along.
 When the password a person types is weak (libpwquality's `pwscore` below 50),
 Luma says so and recommends a stronger one.
@@ -230,14 +283,18 @@ keyring stays locked and the older "locked with an older password" window
 appears. Two ways out:
 
 - **Standalone script.** `luma-keyring-recover-standalone` is installed at
-  `/usr/share/luma-keyring/` and kept in the source tree at
-  `src/luma-keyring/tools/`. It needs only python3-cryptography,
-  python3-gobject and systemd-creds. Copy it out of the newer deployment, or
-  take it from the source tree, and run it in the person's session. It opens
-  the key from the seal (or from the wrap with the password) and re-keys the
-  login keyring to the login password.
+  `/usr/share/luma-keyring/`, which a rollback takes away, so luma-keyring
+  also keeps a copy at `~/.local/state/luma-keyring/luma-keyring-recover`
+  (written at enrolment, refreshed at session start). It is kept in the
+  source tree at `src/luma-keyring/tools/`. It needs only
+  python3-cryptography, python3-gobject and systemd-creds; run it in the
+  person's session. It tries every seal (`login.cred`, `login.cred.new`),
+  and a seal that opens but holds a key the keyring refuses counts as not
+  opening. It then asks for the password and tries every wrap
+  (`login.wrap`, `login.wrap.new`, `login.wrap.prev`, versions 2 and 3).
+  The first key the keyring takes re-keys it to the login password.
 - **Without the script.** `systemd-creds --user --name=luma-login-keyring
-  decrypt ~/.local/state/luma-keyring/login.cred -` prints the key. Paste it
+  decrypt - - < ~/.local/state/luma-keyring/login.cred` prints the key. Paste it
   as the "Older password" in the older window, which re-keys the keyring to
   the login password.
 
@@ -263,8 +320,16 @@ appears. Two ways out:
   https://specifications.freedesktop.org/basedir-spec/latest/
 - freedesktop Common Extended Attributes (`user.xdg.robots.backup`):
   https://www.freedesktop.org/wiki/CommonExtendedAttributes/
-- pam_exec(8) (`expose_authtok`):
-  https://man7.org/linux/man-pages/man8/pam_exec.8.html
+- The Linux-PAM Module Writers' Guide (`pam_sm_chauthtok`,
+  `PAM_UPDATE_AUTHTOK`, `pam_get_item`):
+  https://www.linux-pam.org/Linux-PAM-html/Linux-PAM_MWG.html
+- crypt(3) and `crypt_rn`, libxcrypt:
+  https://man7.org/linux/man-pages/man3/crypt.3.html
+- JSON User Records, the privileged section (`hashedPassword`), and
+  userdbctl(1): https://systemd.io/USER_RECORD/,
+  https://www.freedesktop.org/software/systemd/man/latest/userdbctl.html
+- Deja Dup, folders holding `.deja-dup-ignore` are left out:
+  https://gitlab.gnome.org/World/deja-dup/-/issues/112
 - systemd.exec(5) (`LimitCORE=`), prctl(2) (`PR_SET_DUMPABLE`):
   https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html,
   https://man7.org/linux/man-pages/man2/prctl.2.html

@@ -8,8 +8,11 @@ License:        MPL-2.0
 URL:            https://projectluma.org/saved-passwords
 Source0:        luma-keyring.tar.gz
 
-BuildArch:      noarch
+BuildRequires:  binutils
 BuildRequires:  desktop-file-utils
+BuildRequires:  gcc
+BuildRequires:  pkgconfig(pam)
+BuildRequires:  pkgconfig(libxcrypt)
 BuildRequires:  glib2
 BuildRequires:  meson >= 1.3
 BuildRequires:  ninja-build
@@ -29,8 +32,12 @@ Requires:       systemd >= 256
 Requires:       python3-cryptography >= 44
 # pwscore, to say when the password guarding the recovery copy is weak.
 Requires:       libpwquality
-# pam_exec, for the password-change hook in the passwd stack.
-Requires:       pam
+# systemd also carries userdbctl and systemd-userdbd: the session compares
+# the account's own password hash with the one the recovery copy was made for.
+# /etc/pam.d/passwd, where %%post adds the password-change hook. The file
+# belongs to passwd (shadow-utils provides passwd from Fedora 42); both are
+# triggers below, so an update that replaces it gets the hook back.
+Requires(post): passwd
 Requires(post): coreutils gawk grep
 Requires(preun): coreutils grep
 
@@ -50,11 +57,12 @@ behaviour.
 An account that signs in automatically types no password, so nothing could
 unlock its login keyring. Its keyring is locked with a random keyring key in
 two slots: sealed with systemd-creds for the user and the machine (TPM2 and
-host key where there is a TPM2, PCR 7 with full-disk encryption; host key
+host key where there is a TPM2, PCR 7 with an encrypted root; host key
 otherwise), and wrapped with Argon2id and AES-256-GCM under the account
 password for recovery. The password itself is never stored. The installer
-enrols the account when automatic sign-in is chosen; a hook in the passwd PAM
-stack re-wraps the key when the password changes; devices set up earlier are
+enrols the account when automatic sign-in is chosen; pam_luma_keyring.so in
+the passwd stack re-wraps the key when the password change really happened
+(the new password verifies against /etc/shadow); devices set up earlier are
 asked for the password once.
 
 luma-keyring --check prints the state for the capability and first-boot
@@ -74,8 +82,6 @@ state worth reporting.
 install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
 ln -s ../luma-keyring.service \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-keyring.service
-%{_userunitdir}/luma-keyring-autologin.service
-%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
 install -d %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants
 ln -s ../luma-keyring-autologin.service \
   %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
@@ -92,13 +98,16 @@ grep -Fq "auth       include      system-auth" %{buildroot}%{_sysconfdir}/pam.d/
 # No password may be written anywhere: they are arguments to a D-Bus call.
 ! grep -rn "log\.\(info\|warning\|error\)(.*password[^s]" %{buildroot}%{python3_sitelib}/luma_keyring/
 PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_keyring.state, luma_keyring.repair, luma_keyring.secrets, luma_keyring.autounlock"
+# The PAM module exports pam_sm_chauthtok and nothing else.
+test "$(nm -D --defined-only %{buildroot}%{_libdir}/security/pam_luma_keyring.so | awk '{print $3}')" = pam_sm_chauthtok
+grep -Fq %{_libexecdir}/luma-keyring %{buildroot}%{_libdir}/security/pam_luma_keyring.so
 cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 
 %post
 %{_libexecdir}/luma-keyring-pam-setup add || :
 
-%triggerin -- shadow-utils
-# The passwd PAM file is shadow-utils' own; an update may replace it.
+%triggerin -- passwd, shadow-utils
+# Whichever owns /etc/pam.d/passwd may replace it on update.
 %{_libexecdir}/luma-keyring-pam-setup add || :
 
 %preun
@@ -110,6 +119,7 @@ fi
 %license LICENSES/MPL-2.0.txt
 %{_libexecdir}/luma-keyring
 %{_libexecdir}/luma-keyring-pam-setup
+%{_libdir}/security/pam_luma_keyring.so
 %{_datadir}/luma-keyring/
 %{python3_sitelib}/luma_keyring/
 %{_userunitdir}/luma-keyring.service
@@ -126,8 +136,11 @@ fi
   the device and wrapped with the account password for recovery
 - Crash-safe key changes; fail closed when nothing can be sealed
 - luma-keyring --enrol for the installer; ask once on devices set up earlier
-- Re-wrap at password changes from the passwd PAM stack
-- Standalone recovery script for older systems
+- Re-wrap at password changes with pam_luma_keyring.so, only once the new
+  password verifies against /etc/shadow; keep the previous wrap until the
+  session confirms the change
+- Standalone recovery script for older systems, kept next to the slots
+- PCR 7 only when the root file system itself is encrypted
 
 * Sun Sep 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - Say once, in plain words, when the login keyring cannot be unlocked at login

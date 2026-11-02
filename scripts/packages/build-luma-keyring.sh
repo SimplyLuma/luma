@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # Build luma-keyring (the session service that repairs a login keyring whose
-# password is no longer the account password) as a noarch RPM.
+# password is no longer the account password, and its PAM module) as an RPM
+# for the target architecture.
 
 set -euo pipefail
 
@@ -18,7 +19,7 @@ for tool in mktemp podman sha256sum tar; do
 done
 
 [ "$(uname -s)" = Linux ] || {
-  printf 'error: build the architecture-independent keyring RPM on a Fedora Linux builder\n' >&2
+  printf 'error: build the keyring RPM on a Fedora Linux builder\n' >&2
   exit 1
 }
 
@@ -48,14 +49,14 @@ install -m 0644 "$repo_root/packaging/rpm/luma-keyring.spec" "$rpmbuild_dir/SPEC
   "$rpmbuild_dir" "$builder_container" "
     set -euo pipefail
     dnf5 -q -y install --allowerasing \
-      desktop-file-utils glib2 meson ninja-build python3-cryptography python3-devel python3-gobject-base \
-      rpm-build systemd-rpm-macros
+      binutils desktop-file-utils gcc glib2 libxcrypt-devel meson ninja-build pam-devel \
+      python3-cryptography python3-devel python3-gobject-base rpm-build systemd-rpm-macros
     rpmbuild -ba --define \"_topdir \$PWD\" SPECS/luma-keyring.spec
   "
 
 rm -rf "$output_dir"
-install -d -m 0755 "$output_dir/RPMS/noarch" "$output_dir/SRPMS"
-install -m 0644 "$rpmbuild_dir"/RPMS/noarch/*.rpm "$output_dir/RPMS/noarch/"
+install -d -m 0755 "$output_dir/RPMS/$architecture" "$output_dir/SRPMS"
+install -m 0644 "$rpmbuild_dir"/RPMS/"$architecture"/*.rpm "$output_dir/RPMS/$architecture/"
 install -m 0644 "$rpmbuild_dir"/SRPMS/*.rpm "$output_dir/SRPMS/"
 (
   cd "$output_dir"

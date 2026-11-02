@@ -46,7 +46,7 @@ luma-boot-theme-0.1.0-1.luma.21.creator20261006.2.fc44.noarch
 fwupd-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
-luma-keyring-0.2.0-1.luma.1.fc44.noarch
+luma-keyring-0.2.0-1.luma.1.fc44.x86_64
 luma-logos-0.1.0-1.luma.2.fc44.noarch
 luma-logos-httpd-0.1.0-1.luma.2.fc44.noarch
 luma-release-1-1.luma.2.fc44.noarch

@@ -175,8 +175,7 @@ def _enrol(password: str, keyring: Keyring, rekey, seal=None) -> Outcome:
         return Outcome(False, _CANNOT_SEAL)
 
     credential, wrap = autounlock.credential_path(), autounlock.wrap_path()
-    autounlock.write_private(autounlock.pending(wrap), autounlock.wrap_key(
-        key, password, changed=autounlock.password_changed()))
+    autounlock.write_private(autounlock.pending(wrap), autounlock.make_wrap(key, password))
     autounlock.write_private(autounlock.pending(credential), sealed)
     try:
         rekey(key)
@@ -184,6 +183,7 @@ def _enrol(password: str, keyring: Keyring, rekey, seal=None) -> Outcome:
         autounlock.discard_pending(credential, wrap)
         raise
     autounlock.promote(wrap, credential)
+    autounlock.install_recovery_tool()
     try:
         keyring.unlock_with(key)
     except KeyringError as error:
@@ -240,10 +240,14 @@ def recover(password: str, keyring: Keyring | None = None, seal=None, verify=Non
     keyring = keyring or Keyring()
     credential, wrap = autounlock.credential_path(), autounlock.wrap_path()
     wrong_password = False
-    for candidate in (wrap, autounlock.pending(wrap)):
+    # The previous wrap still opens with the password before an unconfirmed change.
+    for candidate in (wrap, autounlock.pending(wrap), autounlock.previous(wrap)):
         try:
-            wrapped = candidate.read_bytes()
-        except OSError:
+            wrapped = autounlock.read_slot(candidate)
+        except KeyringError as error:
+            log.warning("%s: %s", candidate.name, error)
+            continue
+        if wrapped is None:
             continue
         try:
             key = autounlock.unwrap_key(wrapped, password)
@@ -262,7 +266,7 @@ def recover(password: str, keyring: Keyring | None = None, seal=None, verify=Non
         except KeyringError as error:
             return Outcome(True, "Your saved passwords are unlocked, but this device "
                                  f"could not keep their key ({error}), so it will ask again.")
-        if candidate != wrap:
+        if candidate == autounlock.pending(wrap):
             autounlock.promote(wrap)
         autounlock.write_private(credential, sealed)
         autounlock.discard_pending(credential)
@@ -302,8 +306,8 @@ def rewrap(old_password: str, new_password: str) -> Outcome:
         return Outcome(True, "The recovery copy already uses the new password.")
     except KeyringError as error:
         return Outcome(False, str(error))
-    autounlock.write_private(path, autounlock.wrap_key(
-        key, new_password, changed=autounlock.password_changed()))
+    autounlock.write_private(path, autounlock.make_wrap(key, new_password))
+    autounlock.previous(path).unlink(missing_ok=True)
     return Outcome(True, "The recovery copy now uses the new password.")
 
 
@@ -316,8 +320,8 @@ def rewrap_current(password: str, unseal=None, verify=None) -> Outcome:
         key = (unseal or autounlock.unseal_key)(autounlock.credential_path())
     except KeyringError as error:
         return Outcome(False, f"This device could not open its key: {error}")
-    autounlock.write_private(autounlock.wrap_path(), autounlock.wrap_key(
-        key, password, changed=autounlock.password_changed()))
+    autounlock.write_private(autounlock.wrap_path(), autounlock.make_wrap(key, password))
+    autounlock.previous(autounlock.wrap_path()).unlink(missing_ok=True)
     return Outcome(True, "Your password can recover your saved passwords again." +
                    password_quality_note(password))
 
@@ -363,7 +367,7 @@ def use_login_password(login_password: str, keyring: Keyring | None = None,
             keyring.change_password(login_password, login_password)
         except KeyringError:
             return Outcome(False, f"The keyring could not be changed: {error}")
-    for path in (credential, wrap):
+    for path in (credential, wrap, autounlock.previous(wrap)):
         path.unlink(missing_ok=True)
     autounlock.discard_pending(credential, wrap)
     return Outcome(True, "Your saved passwords now unlock with your login "

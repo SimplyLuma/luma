@@ -182,34 +182,11 @@ class KeyringService(Adw.Application):
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="luma-keyring: %(message)s")
     argv = list(argv if argv is not None else sys.argv)
-    if "--check" in argv:
-        from .cli import check
+    from .cli import dispatch
 
-        return check()
-    if "--autologin" in argv:
-        from .cli import autologin
-
-        return autologin()
-    if "--enable-auto-unlock" in argv:
-        from .cli import enable_auto_unlock
-
-        return enable_auto_unlock(argv)
-    if "--recover" in argv:
-        from .cli import recover
-
-        return recover()
-    if "--pam-rewrap" in argv:
-        from .cli import pam_rewrap
-
-        return pam_rewrap()
-    if "--rewrap" in argv:
-        from .cli import rewrap
-
-        return rewrap()
-    if "--enrol" in argv:
-        from .cli import enrol
-
-        return enrol(argv[argv.index("--enrol") + 1:])
+    code = dispatch(argv)
+    if code is not None:
+        return code
     # The window takes passwords: no core dumps, no tracing.
     from .autounlock import no_core_dumps
 

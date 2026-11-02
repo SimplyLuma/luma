@@ -19,8 +19,9 @@ NUL; two are each NUL-terminated. They switch core dumps off first.
 * `--recover` (in the person's session): unwrap the keyring key with the
   account password where the seal no longer opens, and seal it again.
 * `--rewrap` (old and new password, NUL-terminated).
-* `--pam-rewrap` (the new password, from pam_exec expose_authtok in the
-  password stack; PAM_USER names the account).
+* `--pam-rewrap` (the new password, from pam_luma_keyring.so in the passwd
+  stack once it verified against /etc/shadow; PAM_USER names the account).
+  Exit 0 when re-wrapped or nothing to do, 1 when no seal opened.
 * `--enrol USER` (root): the installer's step.
 """
 
@@ -30,7 +31,8 @@ import sys
 
 from .state import read
 
-__all__ = ("check", "autologin", "enable_auto_unlock", "recover", "rewrap", "pam_rewrap", "enrol")
+__all__ = ("check", "autologin", "enable_auto_unlock", "recover", "rewrap", "pam_rewrap", "enrol",
+           "dispatch")
 
 
 def check() -> int:
@@ -90,7 +92,7 @@ def rewrap() -> int:
 
 
 def pam_rewrap() -> int:
-    """Never fails the password change: pam_exec is optional in the stack."""
+    """The PAM module ignores the result; it only logs a failure."""
     import os
 
     from .autounlock import pam_rewrap as rewrap_for
@@ -99,16 +101,17 @@ def pam_rewrap() -> int:
     user = os.environ.get("PAM_USER", "")
     if os.environ.get("PAM_TYPE") != "password" or not user:
         return 0
-    if os.geteuid() == 0 and os.getuid() != 0:
-        os.setresuid(0, 0, 0)  # passwd is setuid root; act as root throughout
     (password,) = _secrets()
+    if not password:
+        return 0
     try:
-        if not rewrap_for(user, password):
-            print("luma-keyring: the keyring key could not be unsealed; the "
-                  "recovery copy keeps the old password", file=sys.stderr)
+        if rewrap_for(user, password):
+            return 0
+        print("luma-keyring: the keyring key could not be unsealed; the "
+              "recovery copy keeps the old password", file=sys.stderr)
     except (KeyError, OSError, KeyringError) as error:
         print(f"luma-keyring: recovery copy not re-wrapped: {error}", file=sys.stderr)
-    return 0
+    return 1
 
 
 def enrol(args: list[str]) -> int:
@@ -129,3 +132,22 @@ def enrol(args: list[str]) -> int:
         return 1
     print(f"luma-keyring: enrolled {args[0]} ({path})")
     return 0
+
+
+def dispatch(argv: list[str]) -> int | None:
+    """The command-line steps, without loading GTK; None for the service."""
+    if "--check" in argv:
+        return check()
+    if "--autologin" in argv:
+        return autologin()
+    if "--enable-auto-unlock" in argv:
+        return enable_auto_unlock(argv)
+    if "--recover" in argv:
+        return recover()
+    if "--pam-rewrap" in argv:
+        return pam_rewrap()
+    if "--rewrap" in argv:
+        return rewrap()
+    if "--enrol" in argv:
+        return enrol(argv[argv.index("--enrol") + 1:])
+    return None
