@@ -26,7 +26,8 @@
 				interrupt-names = "dma6", "dma7", "dma8",
 						  "dma9", "dma10", "dma11";
 				#dma-cells = <1>;
-				brcm,dma-channel-mask = <0x0fc0>;
+				/* Channel 11 belongs to the VPU firmware (VCHIQ). */
+				brcm,dma-channel-mask = <0x07c0>;
 			};
 		};
 	};

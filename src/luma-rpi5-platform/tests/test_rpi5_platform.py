@@ -100,7 +100,7 @@ class Card(unittest.TestCase):
         self.assertIn('target-path = "/soc@107c000000";', dts)
         self.assertIn('compatible = "brcm,bcm2712-dma";', dts)
         self.assertIn("reg = <0x00010600 0x600>;", dts)
-        self.assertIn("brcm,dma-channel-mask = <0x0fc0>;", dts)
+        self.assertIn("brcm,dma-channel-mask = <0x07c0>;", dts)
         # DREQ | burst (bit 30) | wide source (bit 24) | QoS 10 | panic QoS 15
         flags = (1 << 30) | (1 << 24) | (10 << 16) | (15 << 20)
         for target, dreq in (("hdmi0", 10), ("hdmi1", 17)):
