@@ -72,7 +72,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
  export const KEYBOARD_ANIMATION_TIME = 150;
  const KEYBOARD_REST_TIME = KEYBOARD_ANIMATION_TIME * 2;
-@@ -1428,11 +1430,84 @@ class WordSuggestions {
+@@ -1428,11 +1430,86 @@ class WordSuggestions {
      }
  }
  
@@ -82,6 +82,8 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +// docs/developer-platform/tv-mode.md ("Typing").
 +const TV_KEYBOARD_BUS_NAME = 'org.projectluma.Shell.Keyboard';
 +const TV_KEYBOARD_PATH = '/org/projectluma/Shell/Keyboard';
++// How long after a Shell surface lets go the field's focus counts as coming back to it.
++const TV_RESUME_US = 1500 * 1000;
 +const TV_KEYBOARD_IFACE = `<node>
 +  <interface name="org.projectluma.Shell.Keyboard1">
 +    <method name="SetActionLabel">
@@ -157,7 +159,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._a11yApplicationsSettings = new Gio.Settings({schema_id: A11Y_APPLICATIONS_SCHEMA});
          this._a11yApplicationsSettings.connect('changed', this._syncEnabled.bind(this));
  
-@@ -1456,7 +1531,7 @@ export class KeyboardManager extends Signals.EventEmitter {
+@@ -1456,7 +1533,7 @@ export class KeyboardManager extends Signals.EventEmitter {
              side: St.Side.BOTTOM,
          });
          bottomDragGesture.connect('may-recognize', () => {
@@ -166,7 +168,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          });
          bottomDragGesture.connect('progress', (_action, progress) => {
              this._keyboard?.gestureProgress(progress);
-@@ -1490,7 +1565,9 @@ export class KeyboardManager extends Signals.EventEmitter {
+@@ -1490,7 +1567,9 @@ export class KeyboardManager extends Signals.EventEmitter {
              !!device.get_device_node());
          const autoEnabled = !physicalKeyboard && this._seat.get_touch_mode() &&
              this._lastDeviceIsTouchscreen();
@@ -177,7 +179,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          if (!enabled && !this._keyboard)
              return;
-@@ -1500,8 +1577,11 @@ export class KeyboardManager extends Signals.EventEmitter {
+@@ -1500,8 +1579,11 @@ export class KeyboardManager extends Signals.EventEmitter {
              this._keyboard.connect('visibility-changed', () => {
                  this.emit('visibility-changed');
                  this._bottomDragGesture.enabled = !this._keyboard.visible;
@@ -189,7 +191,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              this._keyboard.setCursorLocation(null);
              this._keyboard.destroy();
              this._keyboard = null;
-@@ -1513,6 +1593,40 @@ export class KeyboardManager extends Signals.EventEmitter {
+@@ -1513,6 +1595,52 @@ export class KeyboardManager extends Signals.EventEmitter {
          return this._keyboard;
      }
  
@@ -211,6 +213,18 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        return this._tv;
 +    }
 +
++    // A Shell surface over a window (the quick panel, the app switcher)
++    // takes the keys for a while: tvSuspend() puts the keyboard out of its
++    // way and returns how it was; tvResume(state) gives the window back its
++    // keyboard as it was (open, or put away for OK to open again).
++    tvSuspend() {
++        return this._tv ? this._keyboard?.tvSuspend() ?? null : null;
++    }
++
++    tvResume(state) {
++        this._keyboard?.tvResume(state);
++    }
++
 +    // The action key's label for one of the Shell's own entries (the TV
 +    // home's Search field); applications ask through LumaUI instead.
 +    setFieldAction(text, label) {
@@ -230,7 +244,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      get visible() {
          return this._keyboard && this._keyboard.visible;
      }
-@@ -1642,6 +1756,12 @@ export const Keyboard = GObject.registerClass({
+@@ -1642,6 +1770,12 @@ export const Keyboard = GObject.registerClass({
          this._deleteSelected = 0;
          this._clipboardGeneration = 0;
          this._wasSensitive = false;
@@ -243,7 +257,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._initPointers();
          this._setupKeyboard();
  
-@@ -1680,6 +1800,12 @@ export const Keyboard = GObject.registerClass({
+@@ -1680,6 +1814,12 @@ export const Keyboard = GObject.registerClass({
          this._reserve = null;
          this._pressLayer?.destroy();
          this._pressLayer = this._pressCover = this._pressClone = this._tint = null;
@@ -256,7 +270,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (this._hapticPaintId)
              global.stage.disconnect(this._hapticPaintId);
          if (this._warmTimeoutId)
-@@ -2089,6 +2215,11 @@ export const Keyboard = GObject.registerClass({
+@@ -2089,6 +2229,11 @@ export const Keyboard = GObject.registerClass({
          this._keyboardController.onText = (count, text) => this._mirror.apply(count, text);
          Main.inputMethod.connectObject('surrounding-text-set',
              this._onSurroundingText.bind(this), this);
@@ -268,7 +282,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
          this._currentPage = null;
  
-@@ -2124,6 +2255,10 @@ export const Keyboard = GObject.registerClass({
+@@ -2124,6 +2269,10 @@ export const Keyboard = GObject.registerClass({
              'group-changed', this._onGroupChanged.bind(this),
              'panel-state', this._onKeyboardStateChanged.bind(this),
              'purpose-changed', () => {
@@ -279,7 +293,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                  this._updateKeys();
                  this._syncPrivacy();
              },
-@@ -2146,8 +2281,9 @@ export const Keyboard = GObject.registerClass({
+@@ -2146,8 +2295,9 @@ export const Keyboard = GObject.registerClass({
      // keyboard's colours with Keycap's structure. Theme reloads keep the
      // sheet (custom sheets carry over).
      _syncKeycapTheme() {
@@ -290,7 +304,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
          if (!theme.get_custom_stylesheets().some(file => file.get_uri() === KEYCAP_STYLESHEET))
              theme.load_stylesheet(Gio.File.new_for_uri(KEYCAP_STYLESHEET));
-@@ -2169,7 +2305,8 @@ export const Keyboard = GObject.registerClass({
+@@ -2169,7 +2319,8 @@ export const Keyboard = GObject.registerClass({
      }
  
      _completionAllowed() {
@@ -300,7 +314,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      // Sensitive fields get no suggestions, clipboard history, automatic case
-@@ -2293,9 +2430,17 @@ export const Keyboard = GObject.registerClass({
+@@ -2293,9 +2444,17 @@ export const Keyboard = GObject.registerClass({
          this._resetWord?.();
          this._cancelPointers?.();
          this._forgetText?.();
@@ -318,7 +332,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              this.close(this._lockedWithoutEntry());
              return;
          }
-@@ -2385,12 +2530,27 @@ export const Keyboard = GObject.registerClass({
+@@ -2385,12 +2544,27 @@ export const Keyboard = GObject.registerClass({
                  return;
          }
  
@@ -350,7 +364,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              const levelLayout = new KeyContainer();
              levelLayout.shiftKeys = [];
              levelLayout.mode = currentLevel.mode;
-@@ -2417,6 +2577,8 @@ export const Keyboard = GObject.registerClass({
+@@ -2417,6 +2591,8 @@ export const Keyboard = GObject.registerClass({
          });
  
          this._aspectContainer.add_child(layout);
@@ -359,7 +373,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this._stopLayerWarm();
          this._currentLayout?.destroy();
          this._currentLayout = layout;
-@@ -2431,6 +2593,8 @@ export const Keyboard = GObject.registerClass({
+@@ -2431,6 +2607,8 @@ export const Keyboard = GObject.registerClass({
          const inputSourceManager = InputSourceManager.getInputSourceManager();
          const sources = Object.keys(inputSourceManager.inputSources).length;
          let keys = row.map(key => ({...key, strings: key.strings ? [...key.strings] : key.strings}));
@@ -368,7 +382,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          const space = keys.find(key => key.strings?.[0] === ' ');
          if (space) {
              let freed = 0;
-@@ -2491,6 +2655,13 @@ export const Keyboard = GObject.registerClass({
+@@ -2491,6 +2669,13 @@ export const Keyboard = GObject.registerClass({
                  if (purpose === Clutter.InputContentPurpose.URL)
                      button.setDisplayIcon('luma-keycap-arrow-right-symbolic');
              }
@@ -382,7 +396,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
  
              if (commitString === ' ')
                  this._setupSpaceKey(button);
-@@ -2537,6 +2708,11 @@ export const Keyboard = GObject.registerClass({
+@@ -2537,6 +2722,11 @@ export const Keyboard = GObject.registerClass({
                  });
              } else if (key.keyval) {
                  button.connect('keyval', (_actor, keyval) => {
@@ -394,7 +408,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
                      this._resetWord();
                      this._lastLearned = null;
                      // Enter starts a new line or submits; arrows move the
-@@ -2893,7 +3069,7 @@ export const Keyboard = GObject.registerClass({
+@@ -2893,7 +3083,7 @@ export const Keyboard = GObject.registerClass({
      // the Keycap travel), and the pressed tint lies on it. Only this group is
      // moved and shown; it is laid out again only when the cap size changes.
      _showPressedCap(cell, cap) {
@@ -403,7 +417,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              return;
          this._ensurePressLayer();
          const {travel, edge} = Keycap.keycap.geometry;
-@@ -2962,7 +3138,7 @@ export const Keyboard = GObject.registerClass({
+@@ -2962,7 +3152,7 @@ export const Keyboard = GObject.registerClass({
      }
  
      _showPreview(cap, text) {
@@ -412,7 +426,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              return;
          const label = this._previewLabel(text);
          const uiGroup = Main.layoutManager.uiGroup;
-@@ -3059,6 +3235,11 @@ export const Keyboard = GObject.registerClass({
+@@ -3059,6 +3249,11 @@ export const Keyboard = GObject.registerClass({
      _syncTools() {
          if (!this._tools)
              return;
@@ -424,7 +438,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          const numeric = this._keycapPolicy.isNumeric(this._keyboardController.purpose);
          this._toolButtons.forEach((button, i) => (button.visible = i === 4 || !numeric));
          this._stripEnter.visible = numeric;
-@@ -3294,6 +3475,8 @@ export const Keyboard = GObject.registerClass({
+@@ -3294,6 +3489,8 @@ export const Keyboard = GObject.registerClass({
          }
          this._latched = latched;
          this._setCurrentLevelLatched(this._currentPage, this._latched);
@@ -433,7 +447,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      // A layer change asked for while a key is down waits until no key is
-@@ -3390,6 +3573,10 @@ export const Keyboard = GObject.registerClass({
+@@ -3390,6 +3587,10 @@ export const Keyboard = GObject.registerClass({
          // inset (the home gesture) below; computed in logical pixels.
          const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
          const [columns, rows] = this._currentPage?.getRatio() ?? [10, 4];
@@ -444,7 +458,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          const inset = Main.presentation?.keyboardInset?.() ?? 0;
          const height = Keycap.keyboardHeight({width: monitor.width / scale, height: monitor.height / scale},
              rows || 4, columns || 10, inset) * scale;
-@@ -3435,6 +3622,16 @@ export const Keyboard = GObject.registerClass({
+@@ -3435,6 +3636,18 @@ export const Keyboard = GObject.registerClass({
      }
  
      _onKeyboardStateChanged(controller, state) {
@@ -452,6 +466,8 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        // field takes it (_tvFieldFocus) and closes when the field loses it;
 +        // panel requests while a field has the focus do not close it.
 +        if (this._tv) {
++            if (this._tvSuspended)
++                return;
 +            if (state === Clutter.InputPanelState.ON)
 +                this.open(Main.layoutManager.focusIndex);
 +            else if (!Main.inputMethod.currentFocus)
@@ -461,7 +477,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          let enabled;
          if (state === Clutter.InputPanelState.OFF)
              enabled = false;
-@@ -3492,9 +3689,12 @@ export const Keyboard = GObject.registerClass({
+@@ -3492,9 +3705,12 @@ export const Keyboard = GObject.registerClass({
              this._gridRatioLayout !== this._currentLayout) {
              this._gridRatio = [columns, rows];
              this._gridRatioLayout = this._currentLayout;
@@ -475,7 +491,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
      }
  
      _clearKeyboardRestTimer() {
-@@ -3586,7 +3786,9 @@ export const Keyboard = GObject.registerClass({
+@@ -3586,7 +3802,9 @@ export const Keyboard = GObject.registerClass({
      // application's own bottom bar lands right above the keys. Desktop, and
      // the Shell's own entries, keep sliding the focused window instead.
      _resizesWindows() {
@@ -486,7 +502,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              !(global.stage.key_focus instanceof Clutter.Text) &&
              !!Main.presentation?.keyboardResizesWindows?.();
      }
-@@ -3657,10 +3859,12 @@ export const Keyboard = GObject.registerClass({
+@@ -3657,10 +3875,12 @@ export const Keyboard = GObject.registerClass({
          }
  
          Main.layoutManager.keyboardBox.show();
@@ -500,7 +516,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              mode: Clutter.AnimationMode.EASE_OUT_QUAD,
              onComplete: () => {
                  this._animateShowComplete();
-@@ -3673,9 +3877,14 @@ export const Keyboard = GObject.registerClass({
+@@ -3673,9 +3893,14 @@ export const Keyboard = GObject.registerClass({
          // stop it, and then its onComplete never runs).
          if (this._warmTimeoutId)
              GLib.source_remove(this._warmTimeoutId);
@@ -516,7 +532,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
              return GLib.SOURCE_REMOVE;
          });
      }
-@@ -3820,6 +4029,9 @@ export const Keyboard = GObject.registerClass({
+@@ -3820,6 +4045,9 @@ export const Keyboard = GObject.registerClass({
  
      _animateShowComplete() {
          this._warmLayers();
@@ -526,7 +542,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (this._windowsResized)
              this._showReserve(false);
          const keyboardBox = Main.layoutManager.keyboardBox;
-@@ -3830,6 +4042,7 @@ export const Keyboard = GObject.registerClass({
+@@ -3830,6 +4058,7 @@ export const Keyboard = GObject.registerClass({
  
      _animateHide() {
          this._cancelPointers();
@@ -534,7 +550,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          if (this._windowsResized) {
              this._windowsResized = false;
              this._showReserve(true);
-@@ -3960,6 +4173,10 @@ export const Keyboard = GObject.registerClass({
+@@ -3960,6 +4189,10 @@ export const Keyboard = GObject.registerClass({
              this._focusWindowStartY = null;
          }
  
@@ -545,7 +561,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this.close(true);
      }
  
-@@ -3980,9 +4197,415 @@ export const Keyboard = GObject.registerClass({
+@@ -3980,9 +4213,460 @@ export const Keyboard = GObject.registerClass({
          this._focusWindow = window;
      }
  
@@ -735,10 +751,55 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +            this._tvReleaseKeys();
 +    }
 +
++    // A Shell surface takes the keys from the window (KeyboardManager.tvSuspend):
++    // the keyboard closes and lets go of every key, OK included, until tvResume.
++    tvSuspend() {
++        const state = {open: this._keyboardVisible || Boolean(this._showIdleId),
++            armed: this._tvReopenArmed, window: global.display.focus_window};
++        if (this._showIdleId)
++            GLib.source_remove(this._showIdleId);
++        this._showIdleId = 0;
++        this._tvSuspended = true;
++        this._tvResumeState = null;
++        this._tvReopenArmed = false;
++        this.close(true);
++        this._tvReleaseKeys();
++        return state;
++    }
++
++    tvResume(state) {
++        this._tvSuspended = false;
++        if (!state)
++            return;
++        this._tvResumeState = {...state, until: GLib.get_monotonic_time() + TV_RESUME_US};
++        // The field may have kept the input focus all along: no focus change will come.
++        if (Main.inputMethod.currentFocus)
++            this._tvFieldFocus();
++    }
++
++    // The window's field taking the focus back right after a Shell surface
++    // let go is no request to type: the keyboard comes back as it was. True
++    // when it stays put away (OK opens it again, as before).
++    _tvResumed() {
++        const state = this._tvResumeState;
++        this._tvResumeState = null;
++        if (!state || GLib.get_monotonic_time() > state.until || global.display.focus_window !== state.window)
++            return false;
++        if (state.open)
++            return false;
++        if (state.armed)
++            this._tvArmReopen();
++        return true;
++    }
++
 +    // A field took the input focus. On a TV the remote moving onto a field
 +    // is the request to type there (GTK asks for the on-screen keyboard only
 +    // after a click or touch), so the keyboard opens for it.
 +    _tvFieldFocus() {
++        if (this._tvSuspended)
++            return;
++        if (Main.inputMethod.currentFocus && this._tvResumed())
++            return;
 +        this._tvDisarmReopen();
 +        // Open even while a close is pending (the window taking the focus
 +        // can momentarily take it from the field): opening cancels it.

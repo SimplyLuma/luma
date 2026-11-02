@@ -224,4 +224,8 @@ assert(/action === 'home'\) \{[\s\S]*?this\._homeSources\.has\(source\)\) this\.
 assert(/pressed && pad\.buttons\.has\(BUTTON\.SELECT\) && pad\.buttons\.has\(BUTTON\.START\)\) \{\s*this\._press\('home'\)/.test(input),
     'Select+Start still goes home at once');
 
+assert(/this\._keyboardState = Main\.keyboard\?\.tvSuspend\?\.\(\) \?\? null;\s*this\._grab = Main\.pushModal/.test(panel) &&
+    /Main\.popModal\(this\._grab\);\s*this\._grab = null;\s*Main\.keyboard\?\.tvResume\?\.\(this\._keyboardState\);/.test(panel),
+    'over an app the TV keyboard steps away and comes back as it was');
+
 print('tv-quick-panel-policy: ok');

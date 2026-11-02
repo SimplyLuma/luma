@@ -107,6 +107,9 @@ export class TvQuickPanel {
         this._row = Math.max(0, firstStop(this._rows));
         this._chip = this._rows[this._row]?.kind === 'chips' ? firstChip(this._rows[this._row].chips) : 0;
         this._draw();
+        // Over an app, the TV keyboard steps out of the way (its keys too) and
+        // comes back as it was when the panel closes.
+        this._keyboardState = Main.keyboard?.tvSuspend?.() ?? null;
         this._grab = Main.pushModal(this._actor, {actionMode: Shell.ActionMode.POPUP});
         this._actor.grab_key_focus();
         // The sheet slides in from the screen edge under the cluster, which never moves.
@@ -132,6 +135,8 @@ export class TvQuickPanel {
         this._unwatch();
         if (this._grab) Main.popModal(this._grab);
         this._grab = null;
+        Main.keyboard?.tvResume?.(this._keyboardState);
+        this._keyboardState = null;
         const actor = this._actor, island = this._island, scrim = this._scrim;
         this._actor = null;
         const done = () => {
