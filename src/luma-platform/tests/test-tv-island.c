@@ -8,6 +8,7 @@
  *   test-tv-island --show   the app itself, for a look on a TV (LUMA_POSTURE=tv) */
 #include <luma-ui.h>
 #include <adwaita.h>
+#include <math.h>
 #include "luma-tv-frame-private.h"
 
 static gboolean show_only;
@@ -217,6 +218,18 @@ static void check_tv(GtkApplication *app) {
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Left));
   spin(50);
   CHECK(gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), sidebar));
+
+  /* The toast: the shared TV toast, shown and resting on the 56 line. */
+  LumaToast *toast = luma_toast_show(page, "Type the password", "error");
+  spin(400);
+  CHECK(toast != NULL && gtk_widget_get_mapped(GTK_WIDGET(toast)));
+  if (toast != NULL) {
+    graphene_rect_t box;
+    double u = luma_ui_tv_unit(gtk_widget_get_width(window), gtk_widget_get_height(window));
+    CHECK(gtk_widget_compute_bounds(GTK_WIDGET(toast), window, &box));
+    CHECK(box.size.height > 0 && box.origin.y + box.size.height <= gtk_widget_get_height(window));
+    CHECK(fabs(gtk_widget_get_height(window) - (box.origin.y + box.size.height) - 56 * u) < 2);
+  }
 
   /* Leaving TV posture restores the desktop window exactly. */
   luma_tv_frame_set_active(GTK_WINDOW(window), FALSE);

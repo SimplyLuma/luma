@@ -226,3 +226,9 @@ installed. Appearance names its accents and wallpapers as LumaUI chips (`chips`,
 name, volume) like every TV hero, with the outputs (when there is more than one) and Volume as
 rows. Requires LumaUI API level 8 (page parts `chips`, `chip`, `swatch`).
 
+`0094-lumaui-tv-about-board-facts.patch`: About on boards that hostnamed names no vendor for
+(a Raspberry Pi, most Arm boards) shows the device tree's model line as Model, and an Arm
+processor without a model name in /proc/cpuinfo is named from its core part number and count
+("Cortex-A76 × 4"), so the page has the desktop's rows in the desktop's order. x86 and
+anything that already reports both are unchanged.
+

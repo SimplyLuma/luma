@@ -1,0 +1,68 @@
+diff --git a/shell/cc-luma-live-system.c b/shell/cc-luma-live-system.c
+index 9450678..b70c2e7 100644
+--- a/shell/cc-luma-live-system.c
++++ b/shell/cc-luma-live-system.c
+@@ -6,6 +6,7 @@
+  * through cc-systemd-service.c behind the Secure Shell page's polkit
+  * permission. The device name is written by cc-hostname.c, as the about
+  * page's name row does. Slow readers run on a worker thread. */
++#include <string.h>
+ #include "cc-luma-live.h"
+ #include "cc-luma-live-admin.h"
+ #include "panels/common/cc-hostname.h"
+@@ -66,6 +67,11 @@ publish_host (About *a)
+   cc_luma_fixture_publish_string (a->model, "sys.user", g_get_user_name ());
+   /* get_hardware_model_string: vendor and model, both or nothing. */
+   g_autofree char *hw = *vendor && *model ? g_strdup_printf ("%s %s", vendor, model) : g_strdup ("");
++  /* A board that hostnamed names no vendor for (a Raspberry Pi, most Arm boards): the device
++   * tree's own model line, as the desktop shows a computer's. */
++  g_autofree char *tree = NULL;
++  if (!*hw && g_file_get_contents ("/sys/firmware/devicetree/base/model", &tree, NULL, NULL))
++    g_set_str (&hw, g_strstrip (tree));
+   cc_luma_fixture_publish_string (a->model, "sys.model", hw);
+   cc_luma_fixture_publish_string (a->model, "sys.fw", fw);
+   g_autofree char *kernel = *kname && *krel ? g_strdup_printf ("%s %s", kname, krel) : g_strdup ("");
+@@ -140,6 +146,35 @@ graphics_ready (GObject *source, GAsyncResult *result, gpointer data, GDBusProxy
+ static void session_ready (GObject *s, GAsyncResult *r, gpointer d) { graphics_ready (s, r, d, &((About *) d)->session); }
+ static void switcheroo_ready (GObject *s, GAsyncResult *r, gpointer d) { graphics_ready (s, r, d, &((About *) d)->switcheroo); }
+ 
++/* Arm reports no model name in /proc/cpuinfo: the core's part number, named, and the count
++ * ("Cortex-A76 × 4"), as the desktop shows "Intel Core Ultra 7 155U × 14". */
++static char *
++arm_cpu_name (void)
++{
++  static const struct { guint part; const char *name; } parts[] = {
++    { 0xd03, "Cortex-A53" }, { 0xd04, "Cortex-A35" }, { 0xd05, "Cortex-A55" }, { 0xd07, "Cortex-A57" },
++    { 0xd08, "Cortex-A72" }, { 0xd09, "Cortex-A73" }, { 0xd0a, "Cortex-A75" }, { 0xd0b, "Cortex-A76" },
++    { 0xd0d, "Cortex-A77" }, { 0xd41, "Cortex-A78" }, { 0xd44, "Cortex-X1" }, { 0xd46, "Cortex-A510" },
++    { 0xd47, "Cortex-A710" }, { 0xd48, "Cortex-X2" }, { 0xd4d, "Cortex-A715" }, { 0xd4e, "Cortex-X3" },
++    { 0xd80, "Cortex-A520" }, { 0xd81, "Cortex-A720" }, { 0xd82, "Cortex-X4" },
++  };
++  g_autofree char *info = NULL;
++  if (!g_file_get_contents ("/proc/cpuinfo", &info, NULL, NULL)) return g_strdup ("");
++  guint part = 0, count = 0;
++  g_auto (GStrv) lines = g_strsplit (info, "\n", -1);
++  for (guint i = 0; lines[i]; i++)
++    if (g_str_has_prefix (lines[i], "CPU part"))
++      {
++        const char *colon = strchr (lines[i], ':');
++        if (colon) part = (guint) g_ascii_strtoull (colon + 1, NULL, 0);
++        count++;
++      }
++  for (guint i = 0; part && i < G_N_ELEMENTS (parts); i++)
++    if (parts[i].part == part)
++      return count > 1 ? g_strdup_printf ("%s × %u", parts[i].name, count) : g_strdup (parts[i].name);
++  return g_strdup ("");
++}
++
+ static void
+ facts_free (Facts *f)
+ {
+@@ -155,6 +190,7 @@ facts_thread (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
+ {
+   Facts *f = g_new0 (Facts, 1);
+   f->cpu = get_cpu_info ();
++  if (!f->cpu || !*f->cpu) { g_free (f->cpu); f->cpu = arm_cpu_name (); }
+   f->os = get_os_name ();
+   f->ram = get_ram_size_dmi ();
+   if (!f->ram) f->ram = get_ram_size_libgtop ();

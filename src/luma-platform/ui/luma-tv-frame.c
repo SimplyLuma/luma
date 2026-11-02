@@ -325,7 +325,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead { background-color: alpha(black, 0.08); color: @key_ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row image { -gtk-icon-size: 26tv; color: inherit; }\n"
 /* controls at TV size, inside rows */
-".lumaui-tv-frame .lumaui-part-row button, .lumaui-tv-frame .lumaui-part-row button:hover, .lumaui-tv-frame .lumaui-part-row button:focus-visible {\n"
+".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip),\n"
+".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):hover,\n"
+".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):focus-visible {\n"
 "  background: none; box-shadow: none; border: none; outline: none; min-height: 0; padding: 0; color: inherit; }\n"
 ".lumaui-tv-frame > .luma-island switch { min-width: 30tv; min-height: 34tv; padding: 4tv; border-radius: 21tv; border: none;\n"
 "  background-color: @well@; background-image: none; color: transparent;\n"
@@ -344,6 +346,8 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row scale marks, .lumaui-tv-frame .lumaui-part-row scale value { font-size: 22tv; font-weight: 650; color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row entry, .lumaui-tv-frame .lumaui-part-row text { background: none; box-shadow: none; border: none; outline: none;\n"
 "  min-height: 0; padding: 0; font-size: 23tv; font-weight: 600; color: inherit; caret-color: @accent@; }\n"
+/* a value field in a row (a computer's name) has room for its value at TV size */
+".lumaui-tv-frame .lumaui-part-row entry { min-width: 420tv; }\n"
 /* what a row grows in place (a network's join form): a recessed field and TV buttons, 66 tall */
 ".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) { margin-top: 14tv; border-spacing: 14tv; }\n"
 ".lumaui-tv-frame .lumaui-part-row.vertical > :not(:first-child) button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv;\n"
@@ -363,7 +367,7 @@ static const char *const tv_sheet =
 /* everything focusable that is not in a row: the key when it holds the focus */
 ".lumaui-tv-frame > .luma-island button:focus-visible { border-radius: 22tv; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
-".lumaui-tv-frame > .luma-island .lumaui-part-row button:focus-visible { background: none; box-shadow: none; color: inherit; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):focus-visible { background: none; box-shadow: none; color: inherit; }\n"
 /* chip rows (lumaui-tv.css .chips): Left/Right between chips; the row holding them never lights as
  * the key, the focused chip lifts with a white ring; the chosen one keeps a quiet ring */
 ".lumaui-tv-frame .lumaui-part-row.lumaui-tv-holder:focus-within { background-image: none; background-color: transparent;\n"
@@ -372,12 +376,13 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-chip { border-radius: 16tv; padding: 0; margin: 0; outline: none;\n"
 "  box-shadow: 0 8tv 20tv alpha(black, 0.4); transition: transform 150ms ease-out; }\n"
 ".lumaui-tv-frame .lumaui-part-chip.on, .lumaui-tv-frame .lumaui-part-chip:checked { box-shadow: 0 0 0 3tv alpha(white, 0.6), 0 8tv 20tv alpha(black, 0.4); }\n"
-".lumaui-tv-frame .lumaui-part-chip:focus-visible { transform: scale(1.06); box-shadow: 0 0 0 5tv white, 0 14tv 30tv alpha(black, 0.5); }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-chip:focus-visible { transform: scale(1.06); background-image: none;\n"
+"  box-shadow: 0 0 0 5tv white, 0 14tv 30tv alpha(black, 0.5); }\n"
 ".lumaui-tv-frame .lumaui-part-swatch { min-width: 52tv; min-height: 52tv; padding: 0; margin: 0; border-radius: 9999px; outline: none;\n"
 "  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2); transition: transform 150ms ease-out; }\n"
 ".lumaui-tv-frame .lumaui-part-swatch.on, .lumaui-tv-frame .lumaui-part-swatch:checked {\n"
 "  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2), 0 0 0 4tv alpha(white, 0.5); }\n"
-".lumaui-tv-frame .lumaui-part-swatch:focus-visible { transform: scale(1.15); box-shadow: 0 0 0 4tv white; }\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-swatch:focus-visible { transform: scale(1.15); background-image: none; box-shadow: 0 0 0 4tv white; }\n"
 /* a switch outside any row (a page's on/off beside its title) holding the focus: the key's ring */
 ".lumaui-tv-frame > .luma-island button:focus-visible switch, .lumaui-tv-frame > .luma-island switch:focus-visible {\n"
 "  box-shadow: 0 0 0 4tv white, 0 3tv 10tv @key_drop@; }\n"
@@ -1229,7 +1234,9 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
     g_printerr("tv key %s\n", gdk_keyval_name(key));
   /* OK right after the focus moved by itself (the page redrew under the remote) acts on nothing:
    * the remote never acts on a control it did not choose (a power switch beside a list). */
-  if (is_ok(key) && g_get_monotonic_time() - f->moved_at < 600 * 1000 && f->moved_at > f->key_at) {
+  /* A field is exempt: a redraw that hands the caret back to the same field (a password being
+   * typed) is no surprise, and OK there opens the keyboard or submits what was typed. */
+  if (is_ok(key) && !editable(focus_of(f)) && g_get_monotonic_time() - f->moved_at < 600 * 1000 && f->moved_at > f->key_at) {
     f->key_at = g_get_monotonic_time();
     return GDK_EVENT_STOP;
   }
@@ -1327,8 +1334,10 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
     return GDK_EVENT_PROPAGATE;
   }
   if (text && (dir == GTK_DIR_LEFT || dir == GTK_DIR_RIGHT) && GTK_IS_EDITABLE(focus)) {
+    /* the caret moves within the text; past either end the remote moves on (a field's buttons) */
     int position = gtk_editable_get_position(GTK_EDITABLE(focus));
-    if (dir == GTK_DIR_RIGHT || position > 0)
+    int length = (int)g_utf8_strlen(gtk_editable_get_text(GTK_EDITABLE(focus)), -1);
+    if ((dir == GTK_DIR_RIGHT && position < length) || (dir == GTK_DIR_LEFT && position > 0))
       return GDK_EVENT_PROPAGATE;
   }
   if (text && GTK_IS_TEXT_VIEW(focus))
