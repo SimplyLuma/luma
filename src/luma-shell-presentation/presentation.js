@@ -20,6 +20,7 @@ import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
 import {bottomInset} from './keycap.js';
 import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
+import {CallTakeover} from './incomingCall.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
@@ -64,6 +65,7 @@ export class Presentation {
         this._settings = settings ?? new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
         this._watchHomePreferences();
         this._powerButton = new HandheldPowerButton();
+        this._callTakeover = new CallTakeover(this);
         this._motion = new HandheldMotion(this);
         this._page = 0;
         this._displayProfiles = null;
@@ -1192,6 +1194,7 @@ export class Presentation {
         this._backNavigation.destroy();
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
+        this._callTakeover.destroy();
         this._motion.destroy();
         this._cancellable.cancel();
         this.mode = 'desktop';

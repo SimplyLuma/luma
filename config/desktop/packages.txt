@@ -15,8 +15,8 @@
 # Shell, window manager and settings (replace Fedora base packages)
 gnome-control-center-50.4-1.luma.60.home20261031.1.fc44.x86_64
 gnome-control-center-filesystem-50.4-1.luma.60.home20261031.1.fc44.noarch
-gnome-shell-50.3-1.luma.150.fc44.x86_64
-gnome-shell-common-50.3-1.luma.150.fc44.noarch
+gnome-shell-50.3-1.luma.152.fc44.x86_64
+gnome-shell-common-50.3-1.luma.152.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.3.fc44.x86_64
 gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.15.fc44.noarch
 gnome-shell-extension-tiling-shell-17.3-1.luma.28.fc44.noarch
@@ -86,7 +86,7 @@ luma-home-widgets-0.1.0-1.luma.3.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.39.fc44.noarch
 luma-os-remote-1.0.0-1.luma.26.fc44.noarch
 luma-update-1.0.0-1.luma.26.fc44.noarch
-prairie-core-apps-0.1.0-1.luma.127.fc44.noarch
+prairie-core-apps-0.1.0-1.luma.128.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.44.nightly20261030.2.fc44.noarch
 

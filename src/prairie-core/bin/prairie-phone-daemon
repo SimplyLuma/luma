@@ -17,6 +17,7 @@ argument, and never written to disk by this process.
 from __future__ import annotations
 
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -460,6 +461,10 @@ class PhoneDaemon:
 
     def _owner_changed(self, _owner):
         self._transport = None
+        # A restarted IMS service forgets its calls without ending them: end
+        # them here so every one still reaches the call log.
+        for call_id in list(self._calls):
+            self._on_ended(call_id)
         self._calls.clear()
         self._ringer.stop()
         self._incoming_indicator.withdraw()
@@ -487,14 +492,27 @@ class PhoneDaemon:
 
     # -- signal handlers -------------------------------------------------
     def _on_added(self, call_id: str, direction: str, number: str) -> None:
+        started = int(time.time())
+        # Modem call ids restart with the modem service; the log key must not.
+        uid = f"{call_id}@{started}"
         self._calls[call_id] = {
             "direction": direction,
             "number": number,
-            "started": int(time.time()),
+            "started": started,
             "connected": 0,
             "reason": "",
             "declined": False,
+            "uid": uid,
         }
+        # Logged when it begins, so a call outlives anything that ends this
+        # process or the modem stack before the call ends.
+        if number:
+            try:
+                self._store.add(number, direction=direction, started=started,
+                                outcome="missed" if direction == "incoming" else "cancelled",
+                                uid=uid)
+            except (OSError, ValueError, sqlite3.Error):
+                pass
 
     def _on_incoming(self, call_id: str, number: str) -> None:
         if self._call_id is not None:
@@ -549,6 +567,10 @@ class PhoneDaemon:
             if info is not None:
                 if not info["connected"]:
                     info["connected"] = connected
+                    try:
+                        self._store.finish(str(info.get("uid", "")), duration=0, outcome="completed")
+                    except (OSError, ValueError, sqlite3.Error):
+                        pass
                 connected = info["connected"]
             self._indicator_call_id = call_id
             number = str(info.get("number", "")) if info else ""
@@ -583,16 +605,19 @@ class PhoneDaemon:
                 reason=str(info.get("reason", "")),
                 declined=bool(info.get("declined")),
             )
+            duration = max(0, int(time.time()) - connected) if connected else 0
+            uid = str(info.get("uid") or f"{call_id}@{int(info.get('started', 0))}")
             try:
-                self._store.add(
-                    str(info["number"]),
-                    direction=direction,
-                    started=int(info.get("started", 0)) or None,
-                    duration=max(0, int(time.time()) - connected) if connected else 0,
-                    outcome=outcome,
-                    uid=call_id,
-                )
-            except (OSError, ValueError):
+                if not self._store.finish(uid, duration=duration, outcome=outcome):
+                    self._store.add(
+                        str(info["number"]),
+                        direction=direction,
+                        started=int(info.get("started", 0)) or None,
+                        duration=duration,
+                        outcome=outcome,
+                        uid=uid,
+                    )
+            except (OSError, ValueError, sqlite3.Error):
                 pass
             if outcome == "missed":
                 self._publish_missed_call(str(info["number"]))
