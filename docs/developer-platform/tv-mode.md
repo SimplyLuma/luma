@@ -264,7 +264,7 @@ its download on, with no change in Depot.
 
 Catalogue schema 4, optional and additive (malformed values are ignored):
 
-```json
+```text
 "tv": {"runs": true, "input": "remote"},     // remote | controller | keyboard
 "keywords": ["iTunes"]                         // names people search for it by
 ```
