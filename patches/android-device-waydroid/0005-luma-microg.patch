@@ -17,15 +17,15 @@ index 7d225c4..4297e8d 100644
      $(LOCAL_PATH)/configs/luma-forced-density.sh:$(TARGET_COPY_OUT_SYSTEM)/bin/luma-forced-density \
 diff --git a/microg/Android.bp b/microg/Android.bp
 new file mode 100644
-index 0000000..df7b076
+index 0000000..b60cbd2
 --- /dev/null
 +++ b/microg/Android.bp
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,34 @@
 +// microG: Google service APIs (account sign-in, push) without Google's
 +// proprietary apps. Official signed releases from microG's own repository,
-+// fetched and verified at build time (config/android/microg.env in Luma).
-+// LineageOS' framework lets only these two packages, signed with microG's
-+// certificate, present Google's signature.
++// fetched and verified at build time (config/android/microg.env in Luma) and
++// installed by Android.mk. LineageOS' framework lets only GmsCore and
++// FakeStore, signed with microG's certificate, present Google's signature.
 +
 +package {
 +    default_applicable_licenses: ["luma_microg_license"],
@@ -36,41 +36,6 @@ index 0000000..df7b076
 +    visibility: [":__subpackages__"],
 +    license_kinds: ["SPDX-license-identifier-Apache-2.0"],
 +    license_text: ["LICENSE"],
-+}
-+
-+android_app_import {
-+    name: "LumaMicrogServices",
-+    apk: "GmsCore.apk",
-+    presigned: true,
-+    privileged: true,
-+    dex_preopt: {
-+        enabled: false,
-+    },
-+    required: [
-+        "privapp-permissions-luma-microg.xml",
-+        "default-permissions-luma-microg.xml",
-+        "sysconfig-luma-microg.xml",
-+    ],
-+}
-+
-+android_app_import {
-+    name: "LumaMicrogServicesFramework",
-+    apk: "GsfProxy.apk",
-+    presigned: true,
-+    privileged: true,
-+    dex_preopt: {
-+        enabled: false,
-+    },
-+}
-+
-+android_app_import {
-+    name: "LumaMicrogCompanion",
-+    apk: "FakeStore.apk",
-+    presigned: true,
-+    privileged: true,
-+    dex_preopt: {
-+        enabled: false,
-+    },
 +}
 +
 +prebuilt_etc {
@@ -90,6 +55,39 @@ index 0000000..df7b076
 +    src: "sysconfig-luma-microg.xml",
 +    sub_dir: "sysconfig",
 +}
+diff --git a/microg/Android.mk b/microg/Android.mk
+new file mode 100644
+index 0000000..b99a95f
+--- /dev/null
++++ b/microg/Android.mk
+@@ -0,0 +1,27 @@
++# microG's signed release APKs, installed byte for byte: Soong's app import
++# uncompresses dex and native libraries in privileged apps, which strips the
++# v2 signature and with it microG's certificate.
++LOCAL_PATH := $(call my-dir)
++
++define luma-microg-app
++include $(CLEAR_VARS)
++LOCAL_MODULE := $(1)
++LOCAL_MODULE_CLASS := APPS
++LOCAL_MODULE_SUFFIX := $(COMMON_ANDROID_PACKAGE_SUFFIX)
++LOCAL_SRC_FILES := $(2)
++LOCAL_REPLACE_PREBUILT_APK_INSTALLED := $(LOCAL_PATH)/$(2)
++LOCAL_CERTIFICATE := PRESIGNED
++LOCAL_PRIVILEGED_MODULE := true
++LOCAL_DEX_PREOPT := false
++# Not dexpreopted, so the uses-library check (for class loader context) has no use.
++LOCAL_ENFORCE_USES_LIBRARIES := false
++LOCAL_REQUIRED_MODULES := $(3)
++LOCAL_LICENSE_KINDS := SPDX-license-identifier-Apache-2.0
++LOCAL_LICENSE_CONDITIONS := notice
++LOCAL_NOTICE_FILE := $(LOCAL_PATH)/LICENSE
++include $(BUILD_PREBUILT)
++endef
++
++$(eval $(call luma-microg-app,LumaMicrogServices,GmsCore.apk,privapp-permissions-luma-microg.xml default-permissions-luma-microg.xml sysconfig-luma-microg.xml))
++$(eval $(call luma-microg-app,LumaMicrogServicesFramework,GsfProxy.apk,))
++$(eval $(call luma-microg-app,LumaMicrogCompanion,FakeStore.apk,))
 diff --git a/microg/LICENSE b/microg/LICENSE
 new file mode 100644
 index 0000000..d645695
