@@ -587,6 +587,7 @@ class WeatherTV(TvStage):
         self._tabs: list[TvTab] = []
         self._cards: list[_DayCard] = []
         self.connect("notify::unit", lambda *_a: self._on_unit())
+        self.connect("notify::docked", lambda *_a: self._on_docked())
         self._unit_source = 0
 
     # ── data ──────────────────────────────────────────────────────────
@@ -894,7 +895,7 @@ class WeatherTV(TvStage):
 
     def _open_add(self) -> None:
         panel = self._panel("Add a place", TV["sheet"]["width"])
-        field = TvField(placeholder="Search for a city or ZIP")
+        field = TvField(placeholder="Search for a city or ZIP", action="Search")
         field.set_value("")
         panel.append(field)
         self._list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -944,10 +945,14 @@ class WeatherTV(TvStage):
             saved = {(round(p.latitude, 4), round(p.longitude, 4)) for p in self.window.places}
             fresh = [r for r in results if not hasattr(r, "latitude")
                      or (round(r.latitude, 4), round(r.longitude, 4)) not in saved]
-            self._fill_results(tuple(fresh[:5]))
+            self._fill_results(tuple(fresh))
         return False
 
     def _fill_results(self, results) -> None:
+        # The sheet sits above the system keyboard while it is up (the mockup's 560-unit
+        # panel): three rows then, five once the keyboard is away.
+        self._all_results = tuple(results)
+        results = self._all_results[:3 if self.docked == "keyboard" else 5]
         while child := self._list.get_first_child():
             self._list.remove(child)
         for row in getattr(self, "_row_widgets", []):
@@ -974,6 +979,14 @@ class WeatherTV(TvStage):
             self._list.append(row)
             self._row_widgets.append(row)
         self.focus.set_scope_items([self._field.text, *self._row_widgets])
+
+    def _on_docked(self) -> None:
+        if self._sheet is not None and hasattr(self, "_all_results"):
+            focused = self.focus.focused
+            index = self._row_widgets.index(focused) if focused in getattr(self, "_row_widgets", []) else -1
+            self._fill_results(self._all_results)
+            if index >= 0 and self._row_widgets:
+                self.focus.focus(self._row_widgets[min(index, len(self._row_widgets) - 1)])
 
     @staticmethod
     def _result_text(result) -> tuple[str, str]:
