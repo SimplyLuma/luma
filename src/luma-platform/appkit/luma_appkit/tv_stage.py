@@ -109,6 +109,8 @@ def _sheet(opaque: bool) -> str:
   font-size: {btn['size']}tv; font-weight: {btn['weight']}; }}
 .tv-btn > box {{ border-spacing: 12tv; }}
 .tv-btn image {{ -gtk-icon-size: {btn['icon']}tv; }}
+.tv-btn.tv-accent {{ background-image: linear-gradient(180deg, {m('accent')}, {m('accent_low')}); color: {m('accent_ink')}; }}
+.tv-btn.tv-accent.tv-key {{ background-image: linear-gradient(180deg, {m('accent_focus')}, {m('accent_focus_low')}); color: {m('accent_ink')}; }}
 .tv-btn.tv-danger {{ color: {m('danger')}; }}
 .tv-btn.tv-danger.tv-key {{ color: {m('danger_on_key')}; }}
 

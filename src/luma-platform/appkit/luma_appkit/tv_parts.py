@@ -4,8 +4,9 @@
 `TvTopBar` is the bar every TV screen shares with the shell's TV home, so its
 tabs and clock sit at exactly the same place everywhere: pin it at
 `TvTopBar.PIN` (96 in from the sides, 56 down, 74 tall). The left is a
-recessed track of tabs; the open tab is the bright key, and it steps back to
-a chip only while the remote is on another bar item, so one thing is bright.
+recessed track of tabs; the focused tab is the bright key and the open tab is
+a chip whenever the focus is elsewhere (another tab or the page), so exactly one
+thing is bright.
 The right holds the clock (28/700, tabular figures).
 
 `TvButton` is the 66-tall button (chip at rest, key when focused).
@@ -37,7 +38,7 @@ class TvTab(Gtk.Box):
                  accessible: str | None = None) -> None:
         super().__init__(valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.TAB)
         self.add_css_class("tv-tab")
-        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, hexpand=True)
+        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         self.append(inner)
         self.lead = lead if lead is not None else (icons.image(icon) if icon else None)
         if self.lead is not None:
@@ -107,13 +108,10 @@ class TvTopBar(Gtk.Box):
         self.repaint()
 
     def repaint(self) -> None:
-        """The materials rule: focus is the key; the open tab is the key unless another tab has the focus."""
-        other = any(t.focused for i, t in enumerate(self.tabs) if i != self.open)
+        """One bright thing: the focused tab is the key; the open tab is a chip whenever it lacks the focus."""
         for index, tab in enumerate(self.tabs):
-            key = tab.focused or (index == self.open and not other)
-            chip = index == self.open and not key
-            _set(tab, "tv-key", key)
-            _set(tab, "tv-chip", chip)
+            _set(tab, "tv-key", tab.focused)
+            _set(tab, "tv-chip", index == self.open and not tab.focused)
             tab.update_state([Gtk.AccessibleState.SELECTED], [int(index == self.open)])
 
     # the clock follows the desktop's 12/24-hour choice
@@ -165,11 +163,13 @@ class TvButton(Gtk.Box):
     __gtype_name__ = "LumaUITvButton"
 
     def __init__(self, label: str, *, icon: str | None = None, danger: bool = False,
-                 hexpand: bool = False) -> None:
+                 accent: bool = False, hexpand: bool = False) -> None:
         super().__init__(hexpand=hexpand, accessible_role=Gtk.AccessibleRole.BUTTON)
-        for name in ("tv-btn", "tv-chip") + (("tv-danger",) if danger else ()):
+        self.set_hexpand_set(True)
+        self.accent = accent
+        for name in ("tv-btn",) + (("tv-accent",) if accent else ("tv-chip",)) + (("tv-danger",) if danger else ()):
             self.add_css_class(name)
-        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, hexpand=True, spacing=0)
+        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, spacing=0)
         if icon:
             inner.append(icons.image(icon))
         self.label = Gtk.Label(label=label)
@@ -179,7 +179,7 @@ class TvButton(Gtk.Box):
 
     def set_tv_focus(self, on: bool) -> None:
         _set(self, "tv-key", on)
-        _set(self, "tv-chip", not on)
+        _set(self, "tv-chip", not on and not self.accent)
 
 
 class TvField(Gtk.Box):

@@ -42,8 +42,10 @@ class TvIdle:
         self._holds = 0
         self._source = 0
         focus.add_filter(self._key)
+        # A TV has no pointer UI: only real movement wakes it (relayout sends motion at the same spot).
         motion = Gtk.EventControllerMotion()
-        motion.connect("motion", lambda *_a: self.poke())
+        motion.connect("motion", self._moved)
+        self._pointer: tuple[float, float] | None = None
         self._motion = motion
         self._attached = None
         focus.root.connect("map", lambda *_a: self._attach())
@@ -57,6 +59,13 @@ class TvIdle:
             window.add_controller(self._motion)
             self._attached = window
         self.poke()
+
+    POINTER_SLOP = 24.0
+
+    def _moved(self, _controller, x: float, y: float) -> None:
+        last, self._pointer = self._pointer, (x, y)
+        if last is not None and abs(x - last[0]) + abs(y - last[1]) > self.POINTER_SLOP:
+            self.poke()
 
     def hold(self) -> Callable[[], None]:
         """Keep the app awake until the returned function is called."""

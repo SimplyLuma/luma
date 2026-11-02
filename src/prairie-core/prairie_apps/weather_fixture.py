@@ -69,6 +69,27 @@ def sky_at(place: dict, minute: int) -> str:
     return "day"
 
 
+# The ten days (v71 wxBody `week()`): a condition and a temperature shift per day.
+WEEK_SHIFT = (0, 3, -2, -4, 1, 5, 6, 2, -1, 0)
+
+
+def week_conditions(place: dict) -> list[str]:
+    return {
+        "oak": ["rain", "part", "clear", "clear", "cloud", "clear", "clear", "part", "rain", "clear"],
+        "tok": ["rain", "rain", "part", "cloud", "clear", "clear", "part", "rain", "cloud", "clear"],
+    }.get(place["id"], ["clear", "clear", "part", "clear", "clear", "clear", "part", "clear", "clear", "cloud"])
+
+
+def day_condition_at(place: dict, minute: int, day: int) -> str:
+    """Today's hours are the sample's; a later rainy day rains through the afternoon (TV mockup `condAt`)."""
+    if day == 0:
+        return condition_at(place, minute)
+    kind = week_conditions(place)[day]
+    if kind == "rain":
+        return "rain" if 13 <= minute / 60 % 24 < 19 else "cloud"
+    return kind
+
+
 @dataclass(frozen=True)
 class SearchPlace:
     name: str
@@ -135,12 +156,9 @@ class FixtureSource:
             hours.append(Hour("Now" if not i else hm(m, minutes=False).replace(" ", ""),
                               deg(temperature_at(p, m)), condition_at(p, m), night_at(p, m), f"{r}%" if r else "",
                               CONDITION_TEXT[condition_at(p, m)], "Now" if not i else hm(m, minutes=False)))
-        conditions = {
-            "oak": ["rain", "part", "clear", "clear", "cloud", "clear", "clear", "part", "rain", "clear"],
-            "tok": ["rain", "rain", "part", "cloud", "clear", "clear", "part", "rain", "cloud", "clear"],
-        }.get(p["id"], ["clear", "clear", "part", "clear", "clear", "clear", "part", "clear", "clear", "cloud"])
+        conditions = week_conditions(p)
         days = []
-        for k, shift in enumerate((0, 3, -2, -4, 1, 5, 6, 2, -1, 0)):
+        for k, shift in enumerate(WEEK_SHIFT):
             lo, hi = p["base"] - p["amp"] + shift - 1, p["base"] + p["amp"] + shift
             r = (40, 70, 55)[k % 3] if conditions[k] == "rain" else 0
             days.append(Day("Today" if not k else (self.today + timedelta(days=k)).strftime("%a"),
@@ -200,6 +218,54 @@ class FixtureSource:
                         glyph, sky_at(p, now), deg(high), deg(low), sentence, tuple(hours), tuple(days), metrics,
                         bool(p.get("me")), temperature_at(p, now), alerts=alerts, changes=changes,
                         tiles=tiles, plans=plans, clock=hm(now))
+
+
+    def tv(self, place: Place):
+        """The TV presentation's ten days of 24 hours, from the same sample formulas."""
+        from datetime import datetime, time as clock
+        from .weather_tv_model import (CONDITION_TEXT, WET, TvDay, TvForecast, TvHour, day_sentence,
+                                       hour_tiles, light_at, next_sun)
+        p = self.samples[place.uid]
+        now = (self.minute + p["off"] * 60 + 1440) % 1440
+        midnight = datetime.combine(self.today, clock(0))
+        moment = midnight + timedelta(minutes=now)
+        f = self.unit == "F"
+        deg = lambda value: f"{js_round(value if f else (value - 32) * 5 / 9)}°"  # noqa: E731
+        directions = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+        sun = tuple((midnight + timedelta(days=k, minutes=p[key]), kind)
+                    for k in range(11) for key, kind in (("rise", "rise"), ("set", "set")))
+        days = []
+        for k, shift in enumerate(WEEK_SHIFT):
+            begin = (midnight + timedelta(minutes=now // 60 * 60)) if k == 0 else midnight + timedelta(days=k)
+            hours = []
+            for i in range(24):
+                at = begin + timedelta(hours=i)
+                m = at.hour * 60
+                dk = min(9, (at.date() - self.today).days)
+                c = day_condition_at(p, m, dk)
+                night = night_at(p, m)
+                temp = temperature_at(p, m) + WEEK_SHIFT[dk]
+                r = rain_at(p, m) if dk == 0 else (60 if c == "rain" else 0)
+                wind = p["wind"][0] + js_round(4 * math.sin(m / 200))
+                uv = 0 if night else p["uv"]
+                hours.append(TvHour(at, deg(temp), c, CONDITION_TEXT[c], night,
+                                    light_at(at + timedelta(minutes=30), c, night, sun), c in WET,
+                                    f"{r}%", deg(temp - (3 if p["wind"][0] > 9 else 1)), str(wind),
+                                    f"mph {directions[js_round(p['wind'][1] / 45) % 8]}",
+                                    f"{p['hum'] + (22 if c == 'rain' else 0)}%", str(uv),
+                                    "None" if not uv else "High" if uv > 5 else "Moderate"))
+            lo, hi = p["base"] - p["amp"] + shift - 1, p["base"] + p["amp"] + shift
+            label = "Today" if not k else (self.today + timedelta(days=k)).strftime("%a")
+            name = (self.today + timedelta(days=k)).strftime("%A")
+            end = begin + timedelta(hours=36)
+            events = tuple(e for e in sun if begin <= e[0] < end)
+            day = TvDay(label, name, deg(hi), deg(lo), week_conditions(p)[k], "", tuple(hours), events)
+            sentence = self.snapshot(place).sentence if not k else day_sentence(day.hours, day.high)
+            days.append(TvDay(label, name, day.high, day.low, day.condition, sentence, day.hours, events))
+        air = (str(p["aq"]), "Good" if p["aq"] < 50 else "Moderate")
+        first = days[0].hours[0]
+        now_tiles = hour_tiles(first, air, next_sun(days, 0, first))
+        return TvForecast(place.name, bool(p.get("me")), moment, tuple(days), now_tiles, air, hm(now))
 
 
 def fixture_from_environment() -> FixtureSource | None:
