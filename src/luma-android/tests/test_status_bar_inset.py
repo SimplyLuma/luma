@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import call, patch
 
 from luma_android.engine import (
     HOST_GESTURE_STRIP_LOGICAL_PX,
     CommandResult,
     WaydroidEngine,
+    host_bar_logical_px,
     host_status_bar_px,
 )
 
@@ -29,8 +33,31 @@ class StatusBarInsetHeight(unittest.TestCase):
             self.assertEqual(host_status_bar_px("handheld", scale), 34)
 
 
+class ShellPublishedBarHeights(unittest.TestCase):
+    def read(self, text):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "bars.json"
+            if text is not None:
+                path.write_text(text, encoding="utf-8")
+            return host_bar_logical_px(path)
+
+    def test_published_heights_are_used(self):
+        self.assertEqual(self.read(json.dumps({"schema": 1, "mode": "mobile", "top": 44, "bottom": 28})), (44, 28))
+
+    def test_desktop_publishes_no_chrome_over_apps(self):
+        self.assertEqual(self.read(json.dumps({"schema": 1, "mode": "desktop", "top": 0, "bottom": 0})), (0, 0))
+
+    def test_missing_or_invalid_files_fall_back(self):
+        for text in (None, "", "{bad", "[]", json.dumps({"schema": 2, "top": 44, "bottom": 28}),
+                     json.dumps({"schema": 1, "top": "44", "bottom": 28}),
+                     json.dumps({"schema": 1, "top": True, "bottom": 28}),
+                     json.dumps({"schema": 1, "top": -1, "bottom": 28}),
+                     json.dumps({"schema": 1, "top": 44})):
+            self.assertEqual(self.read(text), (34, 28), text)
+
+
 class StatusBarInsetProperty(unittest.TestCase):
-    def run_sync(self, device_class, scale, status, nav):
+    def run_sync(self, device_class, scale, status, nav, published=(34, 28)):
         engine = WaydroidEngine("waydroid")
         replies = {
             "waydroid.display_scale": scale,
@@ -43,7 +70,8 @@ class StatusBarInsetProperty(unittest.TestCase):
                 return CommandResult(replies[arguments[2]] + "\n", "", 0)
             return CommandResult("", "", 0)
 
-        with patch.object(engine, "_run", side_effect=fake_run) as run:
+        with patch.object(engine, "_run", side_effect=fake_run) as run, \
+                patch("luma_android.engine.host_bar_logical_px", return_value=published):
             engine.sync_host_bar_insets(device_class)
         return [c for c in run.call_args_list if c.args[:2] == ("prop", "set")]
 
@@ -61,6 +89,11 @@ class StatusBarInsetProperty(unittest.TestCase):
 
     def test_unchanged_heights_are_not_rewritten(self):
         self.assertEqual(self.run_sync("handheld", "3.000000", "102", "84"), [])
+
+    def test_the_shells_published_heights_reach_android(self):
+        self.assertEqual(self.run_sync("handheld", "3.000000", "102", "84", published=(44, 28)), [
+            call("prop", "set", "persist.luma.status_bar_px", "132", timeout=30),
+        ])
 
     def test_only_the_changed_height_is_written(self):
         self.assertEqual(self.run_sync("tablet", "2", "68", ""), [
