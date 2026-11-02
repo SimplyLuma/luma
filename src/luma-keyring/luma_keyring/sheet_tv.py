@@ -41,6 +41,7 @@ def _style(opaque: bool) -> str:
 .kr-tv-sheet {{ border-spacing: {SHEET['gap']}tv; }}
 .kr-tv-sheet .tv-sheet-title {{ margin-bottom: -8tv; }}
 .kr-tv-actions {{ border-spacing: 16tv; margin-top: 6tv; }}
+.kr-tv-sheet label.tv-body {{ color: {tv_material('ink_2', opaque=opaque)}; }}
 .kr-tv-message {{ font-size: 24tv; font-weight: 600; color: {tv_material('ink_2', opaque=opaque)}; }}
 .kr-tv-message.error {{ color: rgba(255, 190, 92, 1); }}
 """

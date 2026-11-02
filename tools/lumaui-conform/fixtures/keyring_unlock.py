@@ -60,6 +60,7 @@ def build(app: Adw.Application) -> None:
         from luma_appkit import tv_keyboard
 
         shell = tv_keyboard._get()
+        shell._read = lambda: None  # no Shell here: what it would report stays
         shell.visible, shell.height = True, float(tokens_keyboard_height())
         for watcher in list(shell._watchers):
             watcher(shell.visible, shell.height)
