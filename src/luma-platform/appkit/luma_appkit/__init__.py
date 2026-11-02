@@ -93,6 +93,13 @@ __all__ = [
     "tv_posture",
     "watch_posture",
     "tv_unit",
+    "device_noun",
+    "set_part",
+    "open_link",
+    "set_ways",
+    "set_link",
+    "set_code_field",
+    "set_busy",
     # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
     "TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade",
     "TvFocus", "tv_nearest",
@@ -264,6 +271,7 @@ __all__ = [
     "APP_ICON_SIZES",
     "AppIcon",
     "NoteCard",
+    "app_icon_paintable",
     # v71 (K-ROWS): swipe rows, the A-Z index, message runs
     "SWIPE_COLORS",
     "SwipeAction",
@@ -384,9 +392,19 @@ def __getattr__(name: str):
         return claim_gamepads
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
-                "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit"}:
+                "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit",
+                "device_noun"}:
         from . import lumaui
         return getattr(lumaui, name)
+    if name == "set_part":
+        from .tv_frame import set_part
+        return set_part
+    if name in {"set_ways", "set_link", "set_code_field", "set_busy"}:
+        from . import tv_forms
+        return getattr(tv_forms, name)
+    if name == "open_link":
+        from .tv_link import open_link
+        return open_link
     if name in {"lumaui_icon"}:
         from . import icons
         return getattr(icons, name)
@@ -536,6 +554,9 @@ def __getattr__(name: str):
     if name in {"MenuSection", "RichMenuItem"}:
         from . import rows_menu
         return getattr(rows_menu, name)
+    if name == "app_icon_paintable":
+        from .svg_icons import app_icon_paintable
+        return app_icon_paintable
     if name in {"APP_ICON_SIZES", "AppIcon", "NoteCard"}:
         from . import rows_identity
         return getattr(rows_identity, name)

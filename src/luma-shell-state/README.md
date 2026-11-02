@@ -71,6 +71,16 @@ Ways in and out: `luma-shell-statectl set posture tv|auto` (or
 TV choice in the shell's Experience options. The switch is live: the shell
 and LumaUI follow the property change without a log-out.
 
+`tv-idle-delay` (seconds, default `-1`) is the person's choice of when a TV
+app shows its idle view (Settings › Idle & Sleep). `-1` leaves it to each app
+(LumaUI `TvIdle`'s own delay), `0` never shows it; any other value overrides
+every app's delay and is followed live.
+
+`tv-screen-edges` (0–10, default 0) is the share of the screen given back at
+each edge in TV posture, for a TV that overscans (Settings › Display › Fit ›
+Screen edges). The shell's TV presentation scales its UI group, which holds
+the TV home and every window, about the centre, live.
+
 ## HDMI-CEC
 
 `luma-tv-cec` (`/usr/libexec`, started by `70-luma-tv-cec.rules` as

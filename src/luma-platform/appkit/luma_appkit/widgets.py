@@ -360,12 +360,19 @@ class Island(Gtk.Box):
         self.set_overflow(Gtk.Overflow.HIDDEN)
         from .lumaui import YieldingLayout
         self.set_layout_manager(YieldingLayout(orientation=orientation))
+        # TV posture: a window's island is its page in the TV frame (tv_frame).
+        from . import tv_frame
+        self.connect("map", tv_frame.schedule)
+        self.connect("unmap", tv_frame.schedule)
 
     def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
         Gtk.Box.do_snapshot(self, snapshot)
         root = self.get_root()
         if isinstance(root, Gtk.Widget) and root.has_css_class("lumaui-phone-device"):
             return  # the phone screen has no desktop island rim, including below its status padding
+        if isinstance(root, Gtk.Widget) and root.has_css_class("lumaui-tv") and self.has_css_class("luma-island") and \
+                self.get_parent() is not None and self.get_parent().has_css_class("lumaui-tv-frame"):
+            return  # on a TV the page has no island rim
         width, height = self.get_width(), self.get_height()
         if width <= 0 or height <= 0 or self.has_css_class("compact") or self.has_css_class("drawer"):
             return
@@ -785,6 +792,7 @@ class NavigationRow(Gtk.ListBoxRow):
             icon_widget.add_css_class("luma-navigation-icon")
             icon_widget.set_valign(Gtk.Align.CENTER)
             line.append(icon_widget)
+            self._lead_icon = None
         elif icon_name:
             icon = Gtk.Image(icon_name=icon_name, pixel_size=14)
             icon.add_css_class("luma-navigation-icon")
@@ -793,6 +801,7 @@ class NavigationRow(Gtk.ListBoxRow):
             face.add_css_class("luma-navigation-face")
             face.set_center_widget(icon)
             line.append(face)
+            self._lead_icon = icon
         labels = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=1,
@@ -803,6 +812,8 @@ class NavigationRow(Gtk.ListBoxRow):
         title_label.set_ellipsize(Pango.EllipsizeMode.END)
         title_label.add_css_class("luma-navigation-title")
         labels.append(title_label)
+        self._labels = labels
+        self._line = line
         if subtitle:
             subtitle_label = Gtk.Label(label=subtitle, xalign=0)
             subtitle_label.set_ellipsize(Pango.EllipsizeMode.END)
@@ -837,10 +848,36 @@ class NavigationRow(Gtk.ListBoxRow):
         self._accessible_title = title
         self._accessible_subtitle = subtitle
 
+    def set_tv_island(self, tv: bool, rail: bool = False) -> None:
+        """In the TV island (tv_frame): the lead and title alone; folded to the rail, the lead alone."""
+        if not hasattr(self, "_tv_shown"):
+            self._tv_shown = None
+        if tv and self._tv_shown is None:
+            extras = [c for c in self._labels.observe_children() if c is not self._title_label]
+            extras += [c for c in self._line.observe_children() if c is not self._labels and
+                       not c.has_css_class("luma-navigation-icon") and not c.has_css_class("luma-navigation-face")]
+            self._tv_shown = {c: c.get_visible() for c in extras}
+            icon = getattr(self, "_lead_icon", None)
+            self._tv_pixel_size = icon.get_pixel_size() if icon is not None else None
+        if self._tv_shown is None:
+            return
+        for widget, shown in self._tv_shown.items():
+            widget.set_visible(False if tv else shown)
+        self._labels.set_visible(not rail)
+        self._line.set_halign(Gtk.Align.CENTER if rail else Gtk.Align.FILL)
+        icon = getattr(self, "_lead_icon", None)
+        if icon is not None:
+            icon.set_pixel_size(-1 if tv else self._tv_pixel_size)  # the island sizes it (30)
+        if not tv:
+            self._tv_shown = None
+
     def set_trailing(self, trailing: str) -> None:
         """Say what the row currently counts, or nothing at all."""
         self._trailing_label.set_label(trailing)
         self._trailing_label.set_visible(bool(trailing))
+        if getattr(self, "_tv_shown", None) is not None:  # in the TV island: shown again when it ends
+            self._tv_shown[self._trailing_label] = bool(trailing)
+            self._trailing_label.set_visible(False)
         spoken = self._accessible_title
         if self._accessible_subtitle:
             spoken += f", {self._accessible_subtitle}"
@@ -981,6 +1018,11 @@ class NavigationSidebar(Gtk.Box):
         self.set_margin_end(SIDEBAR["gutter"])
         self.connect("map", lambda _w: self._mark_body(True))
         self.connect("unmap", lambda _w: self._mark_body(False))
+        # TV posture: the window lifts this sidebar into the floating island (tv_frame).
+        from . import tv_frame
+        self.connect("map", tv_frame.schedule)
+        self.connect("unmap", tv_frame.schedule)
+        self.connect("notify::css-classes", lambda *_a: tv_frame.sidebar_classes_changed(self))
         if variant is not None or width is not None:
             from .rows_navigation import apply_sidebar_variant
             apply_sidebar_variant(self, variant or "people", width=width)
@@ -1120,6 +1162,9 @@ class NavigationSidebar(Gtk.Box):
 
     def append_row(self, row: NavigationRow) -> None:
         self.list.append(row)
+        tv, rail = getattr(self, "_tv_state", (False, False))
+        if tv and hasattr(row, "set_tv_island"):
+            row.set_tv_island(True, rail)
 
 
 class StatusBar(Gtk.Box):
@@ -1856,6 +1901,9 @@ class AppWindow(Adw.ApplicationWindow):
         tv_back.set_propagation_phase(Gtk.PropagationPhase.BUBBLE)
         tv_back.connect("key-pressed", self._tv_back_pressed)
         self.add_controller(tv_back)
+        # TV posture: a sidebar app's frame becomes the floating island (tv_frame).
+        from . import tv_frame
+        self.connect("notify::tv-posture", lambda *_a: tv_frame.schedule(self))
         # Everything the window listens to up to here is the toolkit's and the
         # kit's. Controllers added after this line are the application's, and
         # a sheet parks them while it is open so its keys reach nothing else.

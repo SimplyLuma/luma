@@ -26,6 +26,11 @@ def name(parts):
     return "LUMA_UI_" + "_".join(str(p).upper().replace("-", "_") for p in parts)
 
 
+def c_string(value):
+    """A C string literal: quotes and backslashes escaped."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def emit(parts, value, out):
     if isinstance(value, dict):
         for key, inner in value.items():
@@ -35,10 +40,10 @@ def emit(parts, value, out):
     elif isinstance(value, (int, float)):
         out.append(f"#define {name(parts)} {value!r}")
     elif isinstance(value, str):
-        out.append(f'#define {name(parts)} "{value}"')
+        out.append(f"#define {name(parts)} {c_string(value)}")
     elif isinstance(value, (list, tuple)):
         if all(isinstance(v, str) for v in value):
-            out.append(f"#define {name(parts)} {{ " + ", ".join(f'"{v}"' for v in value) + " }")
+            out.append(f"#define {name(parts)} {{ " + ", ".join(c_string(v) for v in value) + " }")
         else:
             for index, inner in enumerate(value):
                 emit(parts + [index], inner, out)

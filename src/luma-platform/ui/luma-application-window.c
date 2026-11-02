@@ -6,6 +6,7 @@
 #include "luma-island.h"
 #include "luma-navigation-sidebar.h"
 #include "luma-ui-private.h"
+#include "luma-tv-frame-private.h"
 
 #ifdef LUMA_HAVE_DESKTOP_APP_INFO
 #include <gio/gdesktopappinfo.h>
@@ -49,6 +50,8 @@ G_DEFINE_FINAL_TYPE(LumaApplicationWindow, luma_application_window,
                     ADW_TYPE_APPLICATION_WINDOW)
 
 static void add_identity(LumaApplicationWindow *self);
+static gboolean tv_back(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state,
+                        LumaApplicationWindow *self);
 
 enum { PROP_0, PROP_CONTEXT, N_PROPERTIES };
 static GParamSpec *properties[N_PROPERTIES];
@@ -58,8 +61,13 @@ static void apply_window_context(GtkWindow *window, GtkWidget *titlebar,
   if (context == NULL)
     return;
   /* Windowed keeps the frame. Handheld fullscreen has none to keep: the shell
-   * owns that surface's chrome, and the title row would be a second one. */
-  const gboolean decorated = luma_context_get_decorated(context);
+   * owns that surface's chrome, and the title row would be a second one. In TV
+   * posture the shell runs the window full screen and the TV bar's place
+   * carries the app's name: no title row, no window controls. */
+  const gboolean tv = luma_context_get_tv(context);
+  const gboolean decorated = luma_context_get_decorated(context) && !tv;
+  luma_ui_set_css_class(GTK_WIDGET(window), "lumaui-tv", tv);
+  luma_tv_frame_set_active(window, tv);
   luma_ui_set_css_class(GTK_WIDGET(window), "lumaui-tablet-mode",
       g_str_equal(luma_context_get_experience(context), "tablet"));
   if (decorated)
@@ -558,6 +566,9 @@ static void luma_application_window_init(LumaApplicationWindow *self) {
   adw_header_bar_set_show_end_title_buttons(ADW_HEADER_BAR(self->titlebar), FALSE);
   adw_header_bar_pack_end(ADW_HEADER_BAR(self->titlebar), window_controls_new(GTK_WIDGET(self)));
   g_signal_connect(self, "map", G_CALLBACK(window_mapped), NULL);
+  GtkEventController *back = gtk_event_controller_key_new();
+  g_signal_connect(back, "key-pressed", G_CALLBACK(tv_back), self);
+  gtk_widget_add_controller(GTK_WIDGET(self), back);
 
   self->body_bin = adw_bin_new();
   gtk_widget_add_css_class(self->body_bin, "luma-native-work-surface");
@@ -627,6 +638,9 @@ void luma_application_window_set_body(LumaApplicationWindow *self,
                                       GtkWidget *body) {
   g_return_if_fail(LUMA_IS_APPLICATION_WINDOW(self));
   g_return_if_fail(body == NULL || GTK_IS_WIDGET(body));
+  if (luma_tv_frame_is_active(GTK_WINDOW(self)))
+    luma_tv_frame_set_active(GTK_WINDOW(self), FALSE);
+  luma_tv_frame_attach(GTK_WINDOW(self), NULL, NULL, NULL, NULL); /* a new body: no frame until set_frame */
   self->body = body;
   adw_bin_set_child(ADW_BIN(self->body_pad), body);
 }
@@ -634,6 +648,16 @@ void luma_application_window_set_body(LumaApplicationWindow *self,
 GtkWidget *luma_application_window_get_body(LumaApplicationWindow *self) {
   g_return_val_if_fail(LUMA_IS_APPLICATION_WINDOW(self), NULL);
   return self->body;
+}
+
+/* Back that nothing in the window took, in TV posture: minimise, which returns to the TV home. */
+static gboolean tv_back(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state,
+                        LumaApplicationWindow *self) {
+  (void)controller; (void)code; (void)state;
+  if (self->context == NULL || !luma_context_get_tv(self->context) || (key != GDK_KEY_Escape && key != GDK_KEY_Back))
+    return GDK_EVENT_PROPAGATE;
+  gtk_window_minimize(GTK_WINDOW(self));
+  return GDK_EVENT_STOP;
 }
 
 void luma_application_window_set_frame(LumaApplicationWindow *self, GtkWidget *sidebar, GtkWidget *island) {
@@ -646,6 +670,10 @@ void luma_application_window_set_frame(LumaApplicationWindow *self, GtkWidget *s
   if (sidebar != NULL) gtk_box_append(GTK_BOX(frame), sidebar);
   gtk_box_append(GTK_BOX(frame), island);
   luma_application_window_set_body(self, frame);
+  /* On a TV the frame is the floating island (luma-tv-frame.c); elsewhere nothing changes. */
+  luma_tv_frame_attach(GTK_WINDOW(self), self->toolbar_view, frame, sidebar, island);
+  if (self->context != NULL && luma_context_get_tv(self->context))
+    luma_tv_frame_set_active(GTK_WINDOW(self), TRUE);
 }
 
 static void repack_start_slots(LumaApplicationWindow *self) {

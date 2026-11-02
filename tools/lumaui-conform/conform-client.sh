@@ -17,12 +17,16 @@
 # Sends git-tracked plus untracked, non-ignored files (for a ProjectLuma tree,
 # only the platform and kit, Prairie, tools/lumaui-conform, tests/fixtures and the
 # scenario's paths). Exit: 0 PASS, 1 FAIL, 2+ could not run.
-# Environment: LUMAUI_CONFORM_SERVER (user@build-host.example), LUMAUI_CONFORM_PORT (6767).
+# Environment: LUMAUI_CONFORM_SERVER (user@build-host.example), LUMAUI_CONFORM_PORT (6767),
+# LUMAUI_CONFORM_KEY (default ~/.ssh/lumaui_conform_ed25519).
 set -euo pipefail
 self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
 server=${LUMAUI_CONFORM_SERVER:?Set LUMAUI_CONFORM_SERVER to your build host}
 port=${LUMAUI_CONFORM_PORT:-6767}
-key=$HOME/.ssh/lumaui_conform_ed25519
+# The service key: the ThinkPad's and capsules' lumaui_conform_ed25519 (authorized for
+# conform-serve.sh only), or LUMAUI_CONFORM_KEY for a host whose key reaches the build host's
+# root account (the Mac's lab key): the same command runs, without the forced-command wrapper.
+key=${LUMAUI_CONFORM_KEY:-$HOME/.ssh/lumaui_conform_ed25519}
 luma_dev=${LUMA_DEV:-$HOME/Documents/.luma-dev}
 
 args=() worktree= kit= out= pixel= overlay=

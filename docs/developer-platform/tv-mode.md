@@ -54,6 +54,47 @@ posture is never TV.
   home by minimising; the TV home shows whenever no app window does.
 - No hover-only affordances: TV is driven by a remote or a gamepad (arrows,
   OK, Back); see "Remotes and gamepads".
+- A sidebar app gets the floating island with no TV code: its sidebar lifts
+  off the window edge beside the page (Up/Down in the island opens each page,
+  Right steps into the page and folds the island to a rail, Back returns).
+  A window showing one island and no sidebar (a welcome, an error) is drawn
+  centred in the safe area. `LumaApplicationWindow` (C) and `AppWindow`
+  (luma_appkit: `IslandSplitView` or a box with a `NavigationSidebar` beside an
+  `Island`) do this themselves; other toolkits call
+  `luma_window_set_tv_frame()` and `luma_window_set_tv_active()` (API level 9).
+  A window showing its own TV presentation (`TvStage`) is left alone.
+
+## Desktop sidebar apps: the floating island
+
+A `LumaApplicationWindow` whose body is a `LumaNavigationSidebar` beside a
+`LumaIsland` page needs no TV code (C kit, `luma-tv-frame.c`; Settings is the
+first user, the `test-tv-island` "Pantry" fixture the second):
+
+- The sidebar lifts into a floating island (bar material, radius 36, rows 68
+  at 24/600, icons 30); a sidebar section becomes a hairline. Up/Down in the
+  island opens each page at once; Right enters the page at its first row (the
+  hero or first group, never a switch beside the title); the island folds to a
+  100-wide rail; Left off the page's edge or Back returns to it; Back in the
+  island minimises the window.
+- The page keeps the desktop's order and draws its parts at TV size. Name them
+  with `luma_ui_set_part`: `header`, `back`, `hero`, `group`, `card`, `row`,
+  and for rows of choices drawn as themselves `chips` (the row's container),
+  `chip` (a picture: a wallpaper) and `swatch` (a colour). libadwaita's
+  preference groups, boxed lists and rows are named automatically. A lead that
+  is a symbolic icon stands on the lead tile; a full-colour picture (a logo, an
+  app icon) stands alone.
+- The focused row is the key; dividers are straight hairlines that never touch
+  it. A chip row never lights itself: the focused chip lifts with a ring.
+- A page redrawn under the remote (a network list refreshing) keeps the row the
+  remote was on, found by its title, and the place inside a grown row; a field
+  the app focuses is left focused. OK right after the focus moved by itself
+  acts on nothing.
+- Back inside what a row grew (a network's actions or password) returns to the
+  row first. Questions over the page are TV sheets driven by the remote, Cancel
+  focused, over a dimmed page. A focused field's row lifts above the TV
+  keyboard once the page has shrunk.
+- The page fades out at an edge only while content continues past it (48
+  units at the top, 128 at the bottom, eased).
 
 ## The TV scale
 
@@ -410,7 +451,8 @@ and a row whose backend is missing is not drawn.
 - **Opening it.** On the TV home, Right past Search reaches the weather |
   time cluster at the bar's far right (later the user's picture); OK opens
   the panel. From anywhere, hold Home (a remote's Home or CEC Root Menu, a
-  pad's Guide) for 500 ms; a short press still goes home on release.
+  pad's Guide) for 500 ms; a short press still goes home (once no second
+  press has come: "Closing apps").
 - **Where.** A full-height sheet slides out from the right screen edge
   (`tv.quick_panel.sheet_width`; its 620 column ends on the side safe line),
   over a scrim, as the phone's Quick Options pull down under its status bar:
@@ -432,6 +474,39 @@ and a row whose backend is missing is not drawn.
 - **Leaving.** Back (first folding a dropped row) or Left off the island's
   edge closes it; opened from the cluster, the focus returns there. Home
   closes it and goes home.
+
+## Closing apps
+
+Apps on a TV are not minimised forever: the app switcher is the TV posture
+of the Shell's running apps and the desktop's Quit
+(`lumaPresentation/tvAppSwitcher.js`, rules in `tvAppSwitcherModel.js`, sizes
+`tv.app_switcher`), as tvOS's app switcher and Google TV's recents are. There
+is no second app model: the apps are `Shell.AppSystem`'s (with
+`sessionApplications.js`'s D-Bus apps), newest first in Alt+Tab's order.
+
+- **Opening it.** Press Home twice within `double_ms` (350 ms; a remote's
+  Home or CEC Root Menu, a pad's Guide). A single press goes home once that
+  window has passed; a held Home still opens the quick panel.
+- **Where.** Over the TV home's room under a scrim, the shared bar staying
+  where it always is: one row of 16:9 cards from the side safe line, each the
+  app's latest window picture (a clone, as the window switcher draws it), or
+  its TV tile when it has no window, with its icon and name above. The row
+  scrolls only as far as the focused card and a peek of the next need.
+- **The remote.** Left/Right move; OK (on release) switches to the app; Back
+  returns to the app it was opened over (or stays home); Home goes home.
+- **Closing.** Up on a card, a held OK (`tv.focus.hold_ms`) or Menu drops the
+  card's menu above it: Close asks the app to quit exactly as the desktop's
+  Quit does (`requestQuit`: the app's quit action or a close request for each
+  window; an app may still ask to save). The card waits, dimmed, "Closing…";
+  when the app is gone its card leaves, and the last one closes the switcher.
+  An app still running after `force_after_ms` (3 s) says "Not responding" and
+  its menu offers Force Close (each window's `kill()`, the desktop's Force
+  Quit) and Wait.
+- **The TV home's tiles.** A running app's tile carries a small dot before its
+  name (the dock's running dot). A held OK or Menu on it drops Open and Close
+  under it; on an app that is not running a held OK is an ordinary OK.
+- A held OK opens a menu once; the menu acts only on a new press, and a key's
+  repeat never activates anything.
 
 ## Appearing on the TV home
 

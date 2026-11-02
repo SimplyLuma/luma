@@ -19,6 +19,7 @@ preview in a headless compositor, and:
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -58,12 +59,42 @@ def _pin_settings() -> None:
     schema = source and source.lookup("org.gnome.desktop.interface", True)
     if schema is not None and schema.has_key("enable-animations"):
         Gio.Settings.new("org.gnome.desktop.interface").set_boolean("enable-animations", False)
+    # A scenario's own values (LUMAUI_CONFORM_GSETTINGS: [[schema, key, GVariant text], ...]), such as the
+    # wallpaper a TV room is drawn from.
+    from gi.repository import GLib
+    for schema_id, key, text in json.loads(os.environ.get("LUMAUI_CONFORM_GSETTINGS", "[]") or "[]"):
+        schema = source and source.lookup(schema_id, True)
+        if schema is not None and schema.has_key(key):
+            Gio.Settings.new(schema_id).set_value(key, GLib.Variant.parse(None, text, None, None))
+        else:
+            print(f"lumaui-conform: no GSettings key {schema_id} {key}", file=sys.stderr)
+
+
+def _pin_gtk_settings() -> None:
+    """GTK 4.22 on Wayland reads its settings from the desktop portal only, never GSettings, and a
+    capture's private bus has no portal: the pinned font, icon theme and animations go to GtkSettings
+    directly, on every display the app opens."""
+    from gi.repository import Gdk, Gtk
+
+    def opened(_manager, display) -> None:
+        settings = Gtk.Settings.get_for_display(display)
+        settings.props.gtk_font_name = FONT
+        settings.props.gtk_icon_theme_name = os.environ.get("LUMAUI_CONFORM_ICON_THEME", "Prairie")
+        settings.props.gtk_enable_animations = False
+
+    manager = Gdk.DisplayManager.get()
+    manager.connect("display-opened", opened)
+    if manager.get_default_display() is not None:
+        opened(manager, manager.get_default_display())
 
 
 def install() -> None:
     if not OUT:
         return
     os.makedirs(OUT, exist_ok=True)
+    # A crash in the app (C or Python) leaves its stack in the run's log.
+    import faulthandler
+    faulthandler.enable(all_threads=True)
     try:
         _pin_settings()
     except Exception:  # noqa: BLE001 - a missing schema is not fatal
@@ -72,8 +103,10 @@ def install() -> None:
 
     gi.require_version("Gtk", "4.0")
     gi.require_version("Gsk", "4.0")
+    gi.require_version("Gdk", "4.0")
     from gi.repository import GLib
 
+    _pin_gtk_settings()
     _add_icon_dirs()
     _record_accessible_labels()
     Capture(GLib).start()
@@ -185,6 +218,100 @@ def _rgba(c) -> list[float] | None:
     return [round(c.red * 255, 1), round(c.green * 255, 1), round(c.blue * 255, 1), round(c.alpha, 3)]
 
 
+# GSK keeps a colour in the colour state it was written in: a CSS oklch() colour
+# reaches a render node as OKLCH, and GI's get_color() hands back those raw
+# components as if they were sRGB (oklch(0.48 0.12 250) reads as #7a1fff). The
+# node's serialization names the colour state, so colours are read from there.
+_COLOR_FN = re.compile(r"color\(\s*([a-z0-9-]+)\s+([^)]*)\)")
+
+
+def _srgb_encode(v: float) -> float:
+    v = min(1.0, max(0.0, v))
+    return v * 12.92 if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+
+
+def _oklab_to_linear(L: float, a: float, b: float) -> tuple[float, float, float]:
+    l_ = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m_ = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    return (4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+            -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+            -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_)
+
+
+def _color_fn_rgba(text: str) -> list[float] | None:
+    """A GSK ``color(<state> c1 c2 c3 [/ alpha])`` in sRGB, as ``_rgba`` gives it."""
+    match = _COLOR_FN.fullmatch(text.strip())
+    if match is None:
+        return None
+    space, body = match.group(1), match.group(2)
+    parts, _, alpha = body.partition("/")
+    try:
+        c = [float(x) for x in parts.split()]
+        a = float(alpha) if alpha.strip() else 1.0
+    except ValueError:
+        return None
+    if len(c) != 3:
+        return None
+    if space == "srgb":
+        rgb = c
+    elif space == "srgb-linear":
+        rgb = [_srgb_encode(x) for x in c]
+    elif space in ("oklab", "oklch"):
+        L, x, y = c
+        if space == "oklch":
+            x, y = x * math.cos(math.radians(y)), x * math.sin(math.radians(y))
+        rgb = [_srgb_encode(v) for v in _oklab_to_linear(L, x, y)]
+    elif space == "display-p3":
+        lin = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        r = 1.2249401763 * lin[0] - 0.2249401763 * lin[1]
+        g = -0.0420569547 * lin[0] + 1.0420569547 * lin[1]
+        b = -0.0196375546 * lin[0] - 0.0786360456 * lin[1] + 1.0982736002 * lin[2]
+        rgb = [_srgb_encode(v) for v in (r, g, b)]
+    else:
+        return None
+    rgb = [min(1.0, max(0.0, v)) for v in rgb]
+    return [round(rgb[0] * 255, 1), round(rgb[1] * 255, 1), round(rgb[2] * 255, 1), round(min(1.0, max(0.0, a)), 3)]
+
+
+def _serialized_colors(node) -> list[list[float] | None]:
+    """Every ``color(...)`` in the node's own serialization, in order (None for rgb())."""
+    try:
+        data = node.serialize().get_data().decode("utf-8")
+    except Exception:  # noqa: BLE001 - a node GSK cannot serialize
+        return []
+    return [_color_fn_rgba(m.group(0)) for m in _COLOR_FN.finditer(data)]
+
+
+def _node_rgba(node, value):
+    """``_rgba(value)``, unless the node holds the colour in a non-sRGB colour state."""
+    if value is not None and getattr(node, "serialize", None) is not None:
+        found = [c for c in _serialized_colors(node) if c is not None]
+        if found:
+            return found[0]
+    return _rgba(value)
+
+
+def _border_colors(node) -> list:
+    raw = [_rgba(c) for c in node.get_colors()]
+    serialized = _serialized_colors(node)
+    if any(c is not None for c in serialized):
+        # GSK writes one colour per side only while the sides differ; one colour means all four.
+        if len(serialized) == 1:
+            serialized = serialized * 4
+        if len(serialized) == len(raw):
+            return [s if s is not None else r for s, r in zip(serialized, raw)]
+    return raw
+
+
+def _gradient_stops(node) -> list:
+    stops = list(node.get_color_stops())
+    serialized = _serialized_colors(node)
+    if len(serialized) == len(stops) and any(c is not None for c in serialized):
+        return [[round(s.offset, 3), c if c is not None else _rgba(s.color)] for s, c in zip(stops, serialized)]
+    return [[round(s.offset, 3), _rgba(s.color)] for s in stops]
+
+
 def _repeating_gradient(node):
     """Read stops from GSK's own serialization when GI omits the repeat-node getter.
 
@@ -206,10 +333,11 @@ def _repeating_gradient(node):
         stop = stop_pattern.match(value, position)
         if stop is None:
             raise ValueError(f"unrecognized repeating gradient stop: {value[position:]!r}")
+        converted = _color_fn_rgba(stop.group(2))
         color = Gdk.RGBA()
-        if not color.parse(stop.group(2)):
+        if converted is None and not color.parse(stop.group(2)):
             raise ValueError(f"unrecognized repeating gradient colour: {stop.group(2)!r}")
-        stops.append([round(float(stop.group(1)), 3), _rgba(color)])
+        stops.append([round(float(stop.group(1)), 3), converted or _rgba(color)])
         position = stop.end()
     if not stops:
         raise ValueError("repeating gradient serialization has empty stops")
@@ -296,8 +424,9 @@ class Capture:
             if time.monotonic() - self.sized_at < SETTLE_MS / 1000:
                 return True
             if self.acted_at is None:
-                self.act()
-                self.acted_at = time.monotonic()
+                if not getattr(self, "acting", False):
+                    self.acting = True
+                    self.act()
                 return True
             if ACTIONS and time.monotonic() - self.acted_at < 1.2:
                 return True
@@ -328,48 +457,116 @@ class Capture:
     STATE_FLAGS = {"prelight": "PRELIGHT", "active": "ACTIVE", "focus-visible": "FOCUS_VISIBLE", "checked": "CHECKED"}
 
     def act(self) -> None:
+        # Actions run in order; a TV key ("key": "Right") is followed by a pause of its own
+        # ("wait", default 350 ms) so focus moves, folds and drops settle before the next one.
+        self.queue = list(ACTIONS)
+        self.step()
+
+    def step(self) -> bool:
+        while self.queue:
+            action = self.queue.pop(0)
+            if "key" in action:
+                self.press(action["key"])
+                self.GLib.timeout_add(int(action.get("wait", 350)), self.step)
+                return False
+            self.act_one(action)
+        self.acted_at = time.monotonic()
+        return False
+
+    def press(self, name: str) -> None:
+        """A remote's key, as the window's key controllers receive it (TV frames read keys
+        in the capture phase on the window); the focused widget's own controllers next."""
+        from gi.repository import Gdk, Gtk
+
+        keyval = Gdk.keyval_from_name(name)
+        if not keyval or keyval == Gdk.KEY_VoidSymbol:
+            self.notes.append(f"no key named {name}")
+            return
+        targets = [self.window]
+        focus = self.window.get_focus()
+        while focus is not None and focus is not self.window:
+            targets.append(focus)
+            focus = focus.get_parent()
+        for widget in targets:
+            controllers = widget.observe_controllers()
+            for index in range(controllers.get_n_items()):
+                controller = controllers.get_item(index)
+                if not isinstance(controller, Gtk.EventControllerKey):
+                    continue
+                if controller.emit("key-pressed", keyval, 0, Gdk.ModifierType(0)):
+                    controller.emit("key-released", keyval, 0, Gdk.ModifierType(0))
+                    return
+        # Nothing stopped it: GTK's own activation shortcut (Return, Enter, space on the focused
+        # widget, a GtkShortcutController this emulation does not reach) acts, as on a real press.
+        if focus is not None or self.window.get_focus() is not None:
+            target = self.window.get_focus()
+            if name in ("Return", "KP_Enter", "ISO_Enter", "space") and target is not None and target.activate():
+                for widget in targets:
+                    controllers = widget.observe_controllers()
+                    for index in range(controllers.get_n_items()):
+                        controller = controllers.get_item(index)
+                        if isinstance(controller, Gtk.EventControllerKey):
+                            controller.emit("key-released", keyval, 0, Gdk.ModifierType(0))
+                return
+        self.notes.append(f"no key controller took {name}")
+
+    def act_one(self, action) -> None:
         from gi.repository import Gtk
 
-        for action in ACTIONS:
-            # Pointer and focus states the headless compositor has no pointer for: the
-            # state flags GTK itself would set (hover = PRELIGHT, pressed = ACTIVE).
-            if "flags" in action:
-                target = self.find(self.window, action.get("widget", ""))
-                if target is None:
-                    self.notes.append(f"no widget named {action.get('widget')}")
-                    continue
-                flags = Gtk.StateFlags(0)
-                for flag in action["flags"].split("|"):
-                    flags |= getattr(Gtk.StateFlags, self.STATE_FLAGS[flag])
-                target.set_state_flags(flags, False)
-                continue
-            if action.get("backdrop"):
-                # An inactive window: GTK sets BACKDROP on the toplevel and it propagates.
-                self.window.set_state_flags(Gtk.StateFlags.BACKDROP, False)
-                continue
-            if "focus" in action:
-                target = self.find(self.window, action["focus"])
-                if target is None:
-                    self.notes.append(f"no widget named {action['focus']}")
-                    continue
-                self.window.set_focus_visible(True)
-                target.grab_focus()
-                continue
-            if action.get("maximize"):
-                if not self.window.is_maximized():
-                    self.notes.append("the window did not maximize")
-                continue
-            if "activate" in action:
-                target = self.find(self.window, action["activate"])
-                if target is None:
-                    self.notes.append(f"no widget named {action['activate']}")
-                    continue
-                from gi.repository import Gtk
+        if "wait" in action:
+            # Let timed work run (a panel that grows on a timer) before the next action.
+            from gi.repository import GLib
+            context, end = GLib.MainContext.default(), time.monotonic() + action["wait"] / 1000
+            while time.monotonic() < end:
+                if not context.iteration(False):
+                    time.sleep(0.01)
+            return
+        # Pointer and focus states the headless compositor has no pointer for: the
+        # state flags GTK itself would set (hover = PRELIGHT, pressed = ACTIVE).
+        if "flags" in action:
+            target = self.find(self.window, action.get("widget", ""))
+            if target is None:
+                self.notes.append(f"no widget named {action.get('widget')}")
+                return
+            flags = Gtk.StateFlags(0)
+            for flag in action["flags"].split("|"):
+                flags |= getattr(Gtk.StateFlags, self.STATE_FLAGS[flag])
+            target.set_state_flags(flags, False)
+            return
+        if action.get("backdrop"):
+            # An inactive window: GTK sets BACKDROP on the toplevel and it propagates.
+            self.window.set_state_flags(Gtk.StateFlags.BACKDROP, False)
+            return
+        if "focus" in action:
+            target = self.find(self.window, action["focus"])
+            if target is None:
+                self.notes.append(f"no widget named {action['focus']}")
+                return
+            self.window.set_focus_visible(True)
+            target.grab_focus()
+            return
+        if action.get("maximize"):
+            if not self.window.is_maximized():
+                self.notes.append("the window did not maximize")
+            return
+        if "activate" in action:
+            target = self.find(self.window, action["activate"])
+            if target is None:
+                self.notes.append(f"no widget named {action['activate']}")
+                return
+            from gi.repository import Gtk
 
-                if isinstance(target, Gtk.Button):
-                    target.emit("clicked")
-                elif not target.activate():
-                    self.notes.append(f"{action['activate']} did not activate")
+            if isinstance(target, Gtk.Button):
+                target.emit("clicked")
+            elif not target.activate():
+                self.notes.append(f"{action['activate']} did not activate")
+            # What the activation set up on idle (a grown panel, a popover's rows) exists before the next action.
+            from gi.repository import GLib
+            context = GLib.MainContext.default()
+            for _ in range(200):
+                if not context.pending():
+                    break
+                context.iteration(False)
 
     # ── the dump ───────────────────────────────────────────────────────
     def finish(self) -> None:
@@ -505,9 +702,13 @@ class Capture:
         if isinstance(widget, Gtk.Label):
             layout = widget.get_layout()
             ink, logical = layout.get_pixel_extents()
+            # A label drawn under a transform (a focused button lifted by scale) shows its words at that scale.
+            allocated = widget.get_width()
+            scale = rec["box"][2] / allocated if allocated > 0 and rec["box"][2] > 0 else 1.0
+            scale = scale if abs(scale - 1.0) > 0.005 else 1.0
             rec.update(text=widget.get_text(), xalign=widget.get_xalign(), wrap=widget.get_wrap(),
                        ellipsize=widget.get_ellipsize().value_nick, lines=layout.get_line_count(),
-                       layout=[logical.x, logical.y, logical.width, logical.height],
+                       layout=[logical.x * scale, logical.y * scale, logical.width * scale, logical.height * scale],
                        ellipsized=layout.is_ellipsized())
             spacing = self.letter_spacing(widget)
             if spacing is not None:
@@ -536,7 +737,8 @@ class Capture:
                 rec["paintable"] = "LumaApplicationIcon"
                 rec.setdefault("icon", "application-icon")
         # A kit part that draws an app's icon itself (ID1 AppIcon) names it by app_id.
-        if "icon" not in rec and isinstance(getattr(widget, "app_id", None), str) and widget.get_css_name() != "window":
+        # (an image of a paintable has no icon name: its app_id names it too)
+        if not rec.get("icon") and isinstance(getattr(widget, "app_id", None), str) and widget.get_css_name() != "window":
             rec["icon"] = widget.app_id
         if isinstance(widget, Gtk.ListBoxRow):
             rec["activatable"] = widget.get_activatable()
@@ -601,6 +803,9 @@ class Capture:
 
         kind = node.get_node_type().value_nick.replace("-node", "")
         box = lambda r: _box(mapper(r))  # noqa: E731
+        # Radii are the node's own; under a transform (a focused chip lifted 1.15) they scale with it.
+        unit = mapper(Graphene.Rect().init(0, 0, 100, 100)).get_width() / 100 if mapper else 1.0
+        sr = lambda corners: [round(c.width * unit, 2) for c in corners]  # noqa: E731
 
         def child(n, m=mapper, o=opacity, rc=rclip, c=clip):
             if n is not None:
@@ -622,7 +827,7 @@ class Capture:
             child(node.get_child(), o=opacity * node.get_opacity())
         elif kind == "rounded-clip":
             rr = node.get_clip()
-            radius = [round(c.width, 2) for c in rr.corner]
+            radius = sr(rr.corner)
             ops.append({"k": "rclip", "box": box(rr.bounds), "radius": radius})
             cb = box(rr.bounds)
             child(node.get_child(), rc={"box": cb, "radius": radius}, c=self.narrow(cb, clip_now))
@@ -630,13 +835,13 @@ class Capture:
             cb = box(node.get_clip())
             child(node.get_child(), rc=None, c=self.narrow(cb, clip_now))
         elif kind == "color":
-            ops.append({"k": "fill", "box": box(node.get_bounds()), "color": _rgba(node.get_color()), "op": round(opacity, 3),
+            ops.append({"k": "fill", "box": box(node.get_bounds()), "color": _node_rgba(node, node.get_color()), "op": round(opacity, 3),
                         "radius": self.radius_for(box(node.get_bounds()), rclip)})
         elif kind in ("linear-gradient", "repeating-linear-gradient", "radial-gradient", "repeating-radial-gradient", "conic-gradient"):
             if kind.startswith("repeating-"):
                 stops, period = _repeating_gradient(node)
             else:
-                stops = [[round(s.offset, 3), _rgba(s.color)] for s in node.get_color_stops()]
+                stops = _gradient_stops(node)
                 period = None
             op = {"k": "gradient", "type": kind, "box": box(node.get_bounds()), "stops": stops, "op": round(opacity, 3),
                   "radius": self.radius_for(box(node.get_bounds()), rclip)}
@@ -646,13 +851,13 @@ class Capture:
         elif kind == "border":
             outline = node.get_outline()
             ops.append({"k": "border", "box": box(outline.bounds), "widths": [round(v, 2) for v in node.get_widths()],
-                        "colors": [_rgba(c) for c in node.get_colors()], "radius": [round(c.width, 2) for c in outline.corner],
+                        "colors": _border_colors(node), "radius": sr(outline.corner),
                         "op": round(opacity, 3)})
         elif kind in ("outset-shadow", "inset-shadow"):
             outline = node.get_outline()
-            ops.append({"k": "shadow", "inset": kind == "inset-shadow", "box": box(outline.bounds), "color": _rgba(node.get_color()),
+            ops.append({"k": "shadow", "inset": kind == "inset-shadow", "box": box(outline.bounds), "color": _node_rgba(node, node.get_color()),
                         "dx": node.get_dx(), "dy": node.get_dy(), "blur": node.get_blur_radius(), "spread": node.get_spread(),
-                        "radius": [round(c.width, 2) for c in outline.corner], "op": round(opacity, 3)})
+                        "radius": sr(outline.corner), "op": round(opacity, 3)})
         elif kind == "text":
             font = node.get_font()
             desc = font.describe()
@@ -661,14 +866,14 @@ class Capture:
             origin = mapper(Graphene.Rect().init(off.x, off.y, 0, 0))
             ops.append({"k": "text", "box": box(node.get_bounds()), "x": round(origin.origin.x, 2), "baseline": round(origin.origin.y, 2),
                         "ascent": round(metrics.get_ascent() / 1024, 2), "descent": round(metrics.get_descent() / 1024, 2),
-                        "font": _font(desc), "color": _rgba(node.get_color()), "glyphs": node.get_num_glyphs(), "op": round(opacity, 3)})
+                        "font": _font(desc), "color": _node_rgba(node, node.get_color()), "glyphs": node.get_num_glyphs(), "op": round(opacity, 3)})
         elif kind in ("texture", "texture-scale"):
             ops.append({"k": "texture", "box": box(node.get_bounds()), "op": round(opacity, 3)})
         elif kind == "fill" or kind == "stroke":
             color = None
             inner = node.get_child()
             if inner is not None and inner.get_node_type().value_nick == "color-node":
-                color = _rgba(inner.get_color())
+                color = _node_rgba(inner, inner.get_color())
             rec = {"k": "glyph", "box": box(node.get_bounds()), "color": color, "op": round(opacity, 3)}
             # A stroke node's bounds are conservative (a full line width on each side); the
             # spec's ink is the path geometry (getBBox), so record that too.
@@ -709,9 +914,22 @@ class Capture:
                 child(node.get_mask())
                 for op in ops[first:]:
                     if op["k"] == "glyph":
-                        op["color"] = _rgba(source.get_color())
+                        op["color"] = _node_rgba(source, source.get_color())
             else:
+                first = len(ops)
                 child(source)
+                mask = node.get_mask()
+                # A gradient clipped to glyphs (CSS background-clip: text): the gradient is the
+                # surface, the glyphs are the mask's text.
+                if source is not None and source.get_node_type().value_nick.endswith("gradient-node"):
+                    child(mask)
+                elif mask is not None and mask.get_node_type().value_nick == "linear-gradient-node":
+                    # A content mask (the scroll fade, v70 .is-scrolled): what shows of each part is
+                    # its opacity times the mask's alpha at its centre.
+                    # LUMAUI_CONFORM_IGNORE_FADE=1: a mockup whose page fade is a CSS mask (which the
+                    # spec's sampled colours never see) is compared without it on this side too.
+                    if os.environ.get("LUMAUI_CONFORM_IGNORE_FADE") != "1":
+                        self._apply_fade(ops[first:], mask, mapper)
         elif kind == "shadow":
             child(node.get_child())
         elif kind == "cross-fade":
@@ -729,6 +947,32 @@ class Capture:
                 except TypeError:
                     pass
         self.mark(ops, start, clip)
+
+    @staticmethod
+    def _apply_fade(recorded, mask, mapper) -> None:
+        from gi.repository import Graphene
+
+        def point(p):
+            return mapper(Graphene.Rect().init(p.x, p.y, 0, 0)).origin
+
+        a, b = point(mask.get_start()), point(mask.get_end())
+        dx, dy = b.x - a.x, b.y - a.y
+        length = dx * dx + dy * dy
+        stops = [(offset, color[3] if color else 1.0) for offset, color in _gradient_stops(mask)]
+        if length <= 0 or not stops:
+            return
+
+        def alpha(x, y):
+            t = max(0.0, min(1.0, ((x - a.x) * dx + (y - a.y) * dy) / length))
+            for (o1, a1), (o2, a2) in zip(stops, stops[1:]):
+                if t <= o2:
+                    return a1 if o2 <= o1 else a1 + (a2 - a1) * (t - o1) / (o2 - o1)
+            return stops[-1][1]
+
+        for op in recorded:
+            box = op.get("box")
+            if "op" in op and box:
+                op["op"] = round(op["op"] * alpha(box[0] + box[2] / 2, box[1] + box[3] / 2), 3)
 
     @staticmethod
     def narrow(cb, clip):
@@ -778,6 +1022,9 @@ class Capture:
                 text = w.get("text") or ""
                 return (0 if glyphs is not None and len(text) == glyphs else 1,
                         1 if glyphs is not None and text and len(text) < glyphs * 0.9 else 0,
+                        # the holder set in the run's size (a row's figure under a search placeholder
+                        # of the same length)
+                        0 if abs(((w.get("font") or {}).get("size") or 0) - ((op.get("font") or {}).get("size") or 0)) < 0.6 else 1,
                         # the one drawn last (later in the walk: a child, or a sheet over the page), then
                         # the smaller box
                         0 if text else 1, -order[w["id"]], w["box"][2] * w["box"][3])

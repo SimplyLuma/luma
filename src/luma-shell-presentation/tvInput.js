@@ -20,6 +20,7 @@ import {tvEntry} from './tvModel.js';
 import {AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, buttonAction, confirmButton, hatDirection, padIdentity,
     repeatDelay, stickDirection, translates} from './tvInputModel.js';
 import {homePress} from './tvQuickPanelModel.js';
+import {homeSecondPress} from './tvAppSwitcherModel.js';
 
 const BUS_NAME = 'org.projectluma.Shell.Remote';
 const OBJECT_PATH = '/org/projectluma/Shell/Remote';
@@ -44,10 +45,13 @@ const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) 
 
 export class TvInput {
     // `home` opens the TV home; `quickPanel` (a long press of Home) the quick
-    // panel.
-    constructor({home, quickPanel = null}) {
+    // panel; `switcher` (Home pressed twice) the app switcher.
+    constructor({home, quickPanel = null, switcher = null}) {
         this._home = home;
         this._quickPanel = quickPanel;
+        this._switcher = switcher;
+        this._homeTap = 0;              // a short Home waiting for a second press
+        this._homeTapAt = null;
         this._homeSources = new Map();  // what holds Home down -> when it went down
         this._homeTimer = 0;
         this._input = TOKENS.input;
@@ -83,6 +87,8 @@ export class TvInput {
         this._released.clear();
         if (this._homeTimer) GLib.source_remove(this._homeTimer);
         this._homeTimer = 0;
+        if (this._homeTap) GLib.source_remove(this._homeTap);
+        this._homeTap = 0;
         this._homeSources.clear();
         if (this._confirmId) this._settings.disconnect(this._confirmId);
         for (const action of [...this._sources.values()]) this._release(action);
@@ -162,6 +168,15 @@ export class TvInput {
             this._act('home');
             return;
         }
+        // The second press of a double press: the switcher at once; its release does nothing.
+        if (this._homeTap && homeSecondPress(this._homeTapAt, now(), TOKENS.app_switcher.double_ms)) {
+            GLib.source_remove(this._homeTap);
+            this._homeTap = 0;
+            this._homeTapAt = null;
+            for (const held of this._homeSources.keys()) this._homeSources.set(held, -1);
+            this._switcher();
+            return;
+        }
         if (this._homeTimer) return;
         this._homeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.quick_panel.home_hold_ms, () => {
             this._homeTimer = 0;
@@ -185,8 +200,19 @@ export class TvInput {
         if (this._homeTimer) GLib.source_remove(this._homeTimer);
         this._homeTimer = 0;
         const held = (GLib.get_monotonic_time() - down) / 1000;
-        if (homePress(held, TOKENS.quick_panel.home_hold_ms) === 'home') this._act('home');
-        else this._quickPanel();
+        if (homePress(held, TOKENS.quick_panel.home_hold_ms) !== 'home') this._quickPanel();
+        else if (!this._switcher) this._act('home');
+        else {
+            // A short press goes home once a second press has not come.
+            if (this._homeTap) GLib.source_remove(this._homeTap);
+            this._homeTapAt = now();
+            this._homeTap = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.app_switcher.double_ms, () => {
+                this._homeTap = 0;
+                this._homeTapAt = null;
+                this._act('home');
+                return GLib.SOURCE_REMOVE;
+            });
+        }
     }
 
     // ── remotes: keys that are not TV keys become TV keys ─────────────────

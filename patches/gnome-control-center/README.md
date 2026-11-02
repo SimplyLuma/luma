@@ -174,3 +174,84 @@ hid this bar immediately because its display exemption covered only fixtures.
 The live display adapter still owns temporary preview, persistent Keep, and
 safe rollback. Regression tracking is in
 `docs/operations/user-reported-regressions.md`.
+
+`0090-lumaui-tv-opt-in-and-panel-set.patch` (TV Mode, docs/developer-platform/tv-mode.md):
+Settings opts in to the TV home (`X-Luma-TV`, `X-Luma-TV-Tile=org.gnome.Settings-tv`,
+`X-Luma-TV-Presentation=tv`; the wide tile is `tools/wide-tile.py` of the v4 Settings icon,
+installed as `hicolor/scalable/apps/org.gnome.Settings-tv.svg`). In TV posture
+(`luma_ui_tv_posture()`, followed live) the sidebar lists the TV set in the TV mockup's
+order: Wi‑Fi, Bluetooth, Display, Sound, Appearance, Idle & Sleep, Apps, Remotes, a
+separator, Accessibility, Account, About. Every other page stays and still opens by deep
+link or search; nothing is removed outside TV posture. The drawn page names its parts for
+LumaUI (`luma_ui_set_part`: header, back, hero, group, card, row), which only TV posture
+draws differently (LumaUI's floating island); the page wash is not drawn on a TV. Joining
+a secured network: the password field gets the TV keyboard's "Join" action
+(`luma_ui_set_keyboard_action`) and Enter joins; a scan's redraw waits while the password
+is being typed; the network owner reports the outcome (`joinDone`/`joinFailed`) and, in TV
+posture only, a refused password stops the attempt (no shell prompt over the TV), reopens
+the field with the password selected and says so in a toast, and a join says "Connected
+to <name>". In TV posture a join saves the password in the NetworkManager connection
+(psk-flags 0; system-wide where the session may modify system connections), never in a
+user secret agent (the login keyring is locked under automatic sign-in and its prompt would
+cover the TV); re-joining a saved network with a new password updates that profile
+(autoconnect on) instead of adding another. OK on a saved secured network opens it in place
+(Join with the saved password or a new one, Forget). Updates has no Settings page (About links to Depot), so the island leaves it out.
+Requires luma-developer-platform with LumaUI API level 6.
+
+`0091-lumaui-tv-pages.patch`: the TV-only pages and rows, each bound to the owner that
+already keeps the value. Idle & Sleep (`tv-idle`): "Show the idle view after"
+(Automatic / 5 / 10 / 20 minutes / Never) is shell-state `tv-idle-delay`, followed live by
+LumaUI's `TvIdle`; "Turn the TV off after" (1 / 4 / 8 hours / Never) is
+`org.gnome.desktop.session idle-delay`. Remotes (`tv-remotes`): the connected input device
+from BlueZ as the hero (name, battery), "Pointer speed" (the mouse speed Mouse & Touchpad
+shows, read 0–10) and "Pair a remote" into Bluetooth. Display gains Fit › Screen edges
+(0–10 %, shell-state `tv-screen-edges`, applied live by gnome-shell 0312) in TV posture
+only. Rows without an owner are hidden: Idle view (only Glance exists), Wake with the
+remote, HDMI-CEC, Match the video's frame rate, HDR, Hold OK for options, Sound's Night
+mode. Deep links `gnome-control-center tv-idle|tv-remotes` open the pages in any posture.
+
+`0092-lumaui-tv-saved-network-actions.patch`: in TV posture, OK on a saved secured network
+grows its row with its actions: Connect (with the saved password), Change password (the row
+shows a password field, focused with the TV keyboard's Join; empty is refused) and Forget
+(the destructive question, a TV sheet on Cancel). Outside TV posture nothing changes.
+
+`0093-lumaui-tv-account-appearance-sound.patch`: TV posture only. Account opens `tv-account`,
+the Luma account as Luma Connect keeps it (`org.projectluma.Connect1` GetState, followed by
+StateChanged; adapter `tv-account`): signed in, the hero is the account's name and email with
+Syncing and devices and Sign out opening Luma Connect; signed out or locked, Sign in opens Luma
+Connect (`account_qr_hook` is where QR sign-in goes); no daemon, the hero says Connect is not
+installed. Appearance names its accents and wallpapers as LumaUI chips (`chips`, `swatch`,
+`chip`), lays the wallpapers out as 200-unit 16:9 chips 16 apart, and leaves out Light and Dark
+(the TV is always dark; the mockup's page has none). Sound's hero is the output itself (icon,
+name, volume) like every TV hero, with the outputs (when there is more than one) and Volume as
+rows. Requires LumaUI API level 8 (page parts `chips`, `chip`, `swatch`).
+
+`0094-lumaui-tv-about-board-facts.patch`: About on boards that hostnamed names no vendor for
+(a Raspberry Pi, most Arm boards) shows the device tree's model line as Model, and an Arm
+processor without a model name in /proc/cpuinfo is named from its core part number and count
+("Cortex-A76 × 4"), so the page has the desktop's rows in the desktop's order. x86 and
+anything that already reports both are unchanged.
+
+`0095-lumaui-tv-wifi-nearby-in-place.patch`: a performance fix for every posture. Each Wi-Fi
+scan report rebuilt the whole Wi-Fi page: every widget was destroyed and drawn again, the page
+re-laid out, and the focused row (and, on a TV, the remote's place) lost, several times a
+minute. The page now keeps a signature of everything it drew apart from the Nearby list; while
+that holds, a report updates the list in place, keyed by network name: rows that show the same
+thing are kept, changed rows are redrawn where they stand, new ones added, gone ones removed,
+the order follows the scan and the header's count is updated. Anything else (Wi-Fi on/off, the
+joined network, a join in progress or its outcome, a notice) still draws the page afresh, so
+what is shown is unchanged. Test: `/settings/view/nearby-in-place` (kept rows are the same
+widgets; the page reads exactly as one drawn afresh).
+
+
+`0096-lumaui-tv-page-words-and-one-display-fixture.patch`: in TV posture, the pages the island
+lists (Wi-Fi, Bluetooth, Display, Sound, Appearance, Apps, Accessibility, About) take the TV
+mockup's title and one-line description in their header ("Display", "The picture on this TV.");
+the page's live summary no longer replaces that line on a TV. Subpages and every other posture
+keep their own words. Display: a fixture may describe its displays as the live reader does
+(each with its logical rectangle), so a fixture can be one TV on HDMI; such a fixture is checked
+and drawn by the live rules (any number of displays) instead of v70's built-in-plus-external pair.
+The fixture About page reads its machine (`sys.model`, `sys.mem`, `sys.cpu`, `sys.gpu`, `sys.disk`)
+from the fixture when it has them, else v70's ThinkPad. In TV posture a header without a top control
+stacks its title and line as one with does (a wrapping line measured unconstrained made the head
+taller than its words).

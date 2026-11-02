@@ -23,9 +23,9 @@ const fs = require("fs"), [scn, out, theme] = process.argv.slice(1), s = JSON.pa
 const want = new Set(m.states.map(x => x.name)), win = m.states[0].window;
 const appId = s.gtk.app_id || (/^[a-z_]+$/.test(s.gtk.module || "") && s.gtk.module !== "gallery" ? "org.projectluma." + s.gtk.module[0].toUpperCase() + s.gtk.module.slice(1) : "");
 fs.writeFileSync(out + "/gtk-plan.json", JSON.stringify({ module: s.gtk.module || "", binary: s.gtk.binary || "", args: s.gtk.args || [], app_id: appId, pythonpath: s.gtk.pythonpath || [], theme, phone: m.phone === true, size: `${Math.round(win.w)}x${Math.round(win.h)}`, env: s.gtk.env || {},
-  font: s.gtk.font || "Figtree 11", renderer: process.env.LUMAUI_CONFORM_RENDERER || "cairo", monitor: "1920x1200",
+  font: s.gtk.font || "Figtree 11", renderer: process.env.LUMAUI_CONFORM_RENDERER || "cairo", monitor: s.gtk.monitor || "1920x1200",
   states: s.states.filter(x => want.has(x.name)).map(x => { const w = (m.states.find(y => y.name === x.name) || {}).window || win;
-    return { name: x.name, size: `${Math.round(w.w)}x${Math.round(w.h)}`, actions: x.gtk || [] }; }) }, null, 1));' "$scenario" "$out" "$theme"
+    return { name: x.name, size: `${Math.round(w.w)}x${Math.round(w.h)}`, actions: (m.phone === true && x.gtk_phone) || x.gtk || [] }; }) }, null, 1));' "$scenario" "$out" "$theme"
 
 # Stage the run directory: preview (kit + harness), fixtures, the scenario's pythonpath trees.
 stage=$(mktemp -d "${TMPDIR:-/tmp}/lumaui-conform.XXXXXX")
@@ -44,6 +44,12 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
 # The kit comes from LUMAUI_CONFORM_KIT (a foundation tree sent with --kit) when the app's repo has none.
+# In the container the preview runs on the image's own platform build.
+if [ "$route" = local ]; then
+  : "${LUMAUI_PLATFORM_NVR:=$(rpm -q --qf '%{VERSION}-%{RELEASE}' luma-developer-platform)}"
+  : "${LUMAUI_APPS_NVR:=$(rpm -q --qf '%{VERSION}-%{RELEASE}' prairie-core-apps)}"
+  export LUMAUI_PLATFORM_NVR LUMAUI_APPS_NVR
+fi
 sh "$here/stage_preview.sh" "${LUMAUI_CONFORM_KIT:-$worktree}" "$stage/preview"
 cp "$here/harness/sitecustomize.py" "$here/harness/lumaui_conform_harness.py" "$stage/preview/python/"
 cp "$here/harness/remote_capture.py" "$out/gtk-plan.json" "$stage/"
