@@ -240,6 +240,9 @@ with tempfile.TemporaryDirectory(prefix="luma-connect-sync-test-") as directory:
                   transport=issue, out=report)
     assert enrolments[0][0] == "https://hub.example/api/hub/connect/devices"
     assert enrolments[0][1]["code"] == "ABCD2345" and enrolments[0][1]["name"] == "thinkpad"
+    enrol(code="abcd-0185", hub="https://hub.example/", name="thinkpad", transport=issue,
+          out=io.StringIO(), force=True)
+    assert enrolments[1][1]["code"] == "ABCDOIB5", enrolments[1][1]["code"]
     assert enrolments[0][2] == "", "enrolment is unauthenticated"
     assert fresh.token == "fresh-token" and load_identity().token == "fresh-token"
     assert device_file().stat().st_mode & 0o777 == 0o600
