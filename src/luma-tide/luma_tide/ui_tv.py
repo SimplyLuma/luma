@@ -279,8 +279,16 @@ class TideTV:
         self._idle_release = None
         # idle: after 15 s on Now playing while music plays, the record alone (LumaUI's idle hook)
         self.idle_hook = TvIdle(self.focus, seconds=IDLE_SECONDS, on_idle=self._enter_idle, on_wake=self._leave_idle)
+        # Out of sight (another app in front), keep only a quarter of the decoded covers.
+        self.stage.connect("unmap", lambda *_a: self._release_pictures())
         self.render()
         self.focus.focus(self.tabs[0])
+
+    @staticmethod
+    def _release_pictures() -> None:
+        from luma_appkit.media_style import TextureLoader
+        if TextureLoader._shared is not None:
+            TextureLoader._shared.trim(0.25)
 
     # ── state ────────────────────────────────────────────────────────────────
 
