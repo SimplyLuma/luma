@@ -70,3 +70,14 @@ Ways in and out: `luma-shell-statectl set posture tv|auto` (or
 `luma-shell-statectl posture tv|automatic`), the `SetPosture` method, and the
 TV choice in the shell's Experience options. The switch is live: the shell
 and LumaUI follow the property change without a log-out.
+
+## HDMI-CEC
+
+`luma-tv-cec` (`/usr/libexec`, started by `70-luma-tv-cec.rules` as
+`luma-tv-cec@cecN.service` for every CEC adapter) puts the adapter on the CEC
+bus as a playback device named Luma with remote-control passthrough, so the
+kernel turns the TV remote's buttons into key events on its `rc-cec` input
+device; the Shell maps them in TV posture
+(docs/developer-platform/tv-mode.md, "Remotes and gamepads"). An adapter that
+another CEC client already configured is left alone. `luma-tv-cec --status`
+prints every adapter's physical and logical addresses.
