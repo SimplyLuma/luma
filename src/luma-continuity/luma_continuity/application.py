@@ -32,6 +32,11 @@ try:
 except ImportError:  # an older kit: no TV posture, and copy reads "this computer"
     device_noun=None
     def tv_posture():return False
+try:
+    from luma_appkit import open_link,set_part
+except ImportError:  # an older kit: links open in the browser, and parts are not named
+    open_link=None
+    def set_part(_widget,_part):pass
 from .phone_contract import BUS,PATH
 from .cloud_sync import CloudSync,DEFAULT_HUB,HUB_CONNECT_PAGE,device_name
 from .companion_contract import DEFAULT_DESKTOP_TO_PHONE,DEFAULT_PHONE_TO_DESKTOP
@@ -95,7 +100,8 @@ def tile(icon_name):
     return holder
 
 def _launch(uri,window):
-    Gtk.UriLauncher.new(uri).launch(window,None,None,None)
+    if open_link is not None:open_link(window,uri)  # on a TV: a code for your phone first
+    else:Gtk.UriLauncher.new(uri).launch(window,None,None,None)
 
 
 class Page(Gtk.ScrolledWindow):
@@ -108,10 +114,10 @@ class Page(Gtk.ScrolledWindow):
         clamp=Adw.Clamp(maximum_size=640,tightening_threshold=520,child=self.box)
         self.set_child(clamp)
         if title:
-            head=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+            head=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4);set_part(head,'header')
             line=Gtk.Box(spacing=10)
-            if back is not None:line.append(back)
-            heading=Gtk.Label(label=title,xalign=0,hexpand=True,wrap=True)
+            if back is not None:line.append(back);set_part(back,'back')
+            heading=Gtk.Label(label=title,xalign=0,hexpand=True,wrap=True);set_part(heading,'title')
             heading.add_css_class('title-2');heading.add_css_class('luma-connect-page-title')
             heading.update_property([Gtk.AccessibleProperty.LABEL],[title])
             line.append(heading)
@@ -120,7 +126,7 @@ class Page(Gtk.ScrolledWindow):
             head.append(line)
             if lede:
                 text=Gtk.Label(label=lede,xalign=0,wrap=True,wrap_mode=Pango.WrapMode.WORD_CHAR)
-                text.add_css_class('dim-label');text.add_css_class('luma-connect-lede')
+                text.add_css_class('dim-label');text.add_css_class('luma-connect-lede');set_part(text,'lede')
                 head.append(text)
             self.box.append(head)
 
@@ -707,7 +713,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             valign=Gtk.Align.CENTER,halign=Gtk.Align.CENTER,vexpand=True,
             margin_start=28,margin_end=28)
         message=Gtk.Label(label='Luma Connect is temporarily unavailable.',wrap=True,
-            justify=Gtk.Justification.CENTER)
+            justify=Gtk.Justification.CENTER);set_part(message,'title')
         center.append(message)
         retry=Gtk.Button(label='Try Again');retry.add_css_class('suggested-action')
         retry.connect('clicked',lambda *_:self._refresh_cloud());center.append(retry)
@@ -719,10 +725,12 @@ class ConnectWindow(PhonesMixin,AppWindow):
         island=Island()
         center=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=10,valign=Gtk.Align.CENTER,vexpand=True,margin_start=28,margin_end=28,margin_top=24,margin_bottom=24)
         mark=Gtk.Image(icon_name=APP_ID,pixel_size=96,margin_bottom=12);center.append(mark)
+        set_part(mark,'emblem');mark.add_css_class('lumaui-light-orange')
         title=Gtk.Label(label='Luma Account',justify=Gtk.Justification.CENTER);title.add_css_class('luma-connect-welcome-title');center.append(title)
+        set_part(title,'title')
         lede=Gtk.Label(label='Your photos, contacts, calendar and notes, kept in step on every Luma device.',wrap=True,justify=Gtk.Justification.CENTER)
-        lede.add_css_class('luma-connect-welcome-lede');lede.add_css_class('dim-label');center.append(lede)
-        buttons=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,halign=Gtk.Align.CENTER,margin_top=18)
+        lede.add_css_class('luma-connect-welcome-lede');lede.add_css_class('dim-label');center.append(lede);set_part(lede,'lede')
+        buttons=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=8,halign=Gtk.Align.CENTER,margin_top=18);set_part(buttons,'buttons')
         sign_in=Gtk.Button(label='Sign In…');sign_in.add_css_class('suggested-action');sign_in.add_css_class('pill')
         sign_in.set_size_request(220,-1);sign_in.connect('clicked',lambda *_:self._sign_in_dialog());buttons.append(sign_in)
         phones=Gtk.Button(label='Use a Phone Without an Account');phones.add_css_class('flat')
@@ -732,7 +740,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
             note=Gtk.Label(label=tv_words('Luma Connect sync isn’t installed on this computer.'),wrap=True,justify=Gtk.Justification.CENTER)
             note.add_css_class('dim-label');note.add_css_class('caption');center.append(note);sign_in.set_sensitive(False)
         optional=Gtk.Label(label=tv_words(OPTIONAL),wrap=True,justify=Gtk.Justification.CENTER,margin_top=26)
-        optional.add_css_class('dim-label');optional.add_css_class('caption');center.append(optional)
+        optional.add_css_class('dim-label');optional.add_css_class('caption');center.append(optional);set_part(optional,'footnote')
         clamp=Adw.Clamp(maximum_size=420,tightening_threshold=320,child=center,vexpand=True)
         island.append(Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,child=clamp,vexpand=True))
         self.toasts.set_child(island)
@@ -907,6 +915,7 @@ class ConnectWindow(PhonesMixin,AppWindow):
         page=Page('',back=None)
         name=self._account_name()
         hero=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=6,halign=Gtk.Align.CENTER,margin_top=8)
+        set_part(hero,'hero')
         if self.compact:
             back=self._back()
             if back:back.set_halign(Gtk.Align.START);page.add(back)
