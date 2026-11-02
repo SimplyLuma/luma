@@ -40,6 +40,7 @@ def _sheet(opaque: bool) -> str:
 .tv-menu-row > box {{ border-spacing: {t['icon_gap']}tv; }}
 .tv-menu-row image {{ -gtk-icon-size: {t['icon']}tv; }}
 .tv-menu-row.tv-danger {{ color: {m('danger')}; }}
+.tv-menu-row.tv-key {{ color: {m('key_ink')}; }}
 .tv-menu-row.tv-key.tv-danger {{ color: {m('danger_on_key')}; }}
 .tv-menu-title {{ padding: 10tv {t['row_padding_x']}tv 12tv; font-size: 22tv; font-weight: 600; color: {m('ink_2')}; }}
 """

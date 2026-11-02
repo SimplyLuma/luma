@@ -530,6 +530,15 @@ class TvPage(TvSlide):
     def reveal(self, widget: Gtk.Widget, *, animate: bool = True) -> None:
         if self.child is None or (widget is not self.child and not widget.is_ancestor(self.child)):
             return
+        if self.get_width() <= 0 or self.get_height() <= 0:
+            # not laid out yet (a page just built): reveal once it is, without animating
+            def later(*_args) -> bool:
+                if self.get_width() > 0 and self.get_height() > 0:
+                    self.reveal(widget, animate=False)
+                    return GLib.SOURCE_REMOVE
+                return GLib.SOURCE_CONTINUE
+            self.add_tick_callback(lambda _w, _c: later())
+            return
         section = next((s for s in self.sections if widget is s or widget.is_ancestor(s)), None)
         if section is None:
             super().reveal(widget, animate=animate)
@@ -543,7 +552,7 @@ class TvPage(TvSlide):
         content = self._content(self.get_width(), view)
         first = self.sections and section is self.sections[0]
         target = 0.0 if first else bounds.get_y() - self.lead * u
-        target = max(0.0, min(target, max(0.0, content - view + 40 * u)))
+        target = max(0.0, min(target, max(0.0, content - view)))
         self.slide_to(target, animate=animate)
         self._target = target
         self._fade(target)
@@ -551,9 +560,11 @@ class TvPage(TvSlide):
     def _fade(self, offset: float | None = None) -> None:
         offset = self.offset if offset is None else offset
         u = self._unit()
+        if self.get_height() <= 0:
+            return
         for section in self.sections:
             ok, bounds = section.compute_bounds(self.child)
-            if not ok:
+            if not ok or bounds.get_height() <= 0:
                 continue
             gone = bounds.get_y() + bounds.get_height() - offset < self.lead * u * 0.5
             if gone != (section in self._faded):

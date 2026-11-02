@@ -343,8 +343,11 @@ class DepotTV:
         self._results: Gtk.Box | None = None
         self._screens: list[str] = []
         self._closed = False
+        self._change_source = 0
+        self._signature: tuple = ()
         window.install_listeners.append(self)
         self._apply_count()
+        self._signature = self._state()
         self.render()
         self.focus.focus(self.tabs[0])
 
@@ -352,15 +355,47 @@ class DepotTV:
 
     def close(self) -> None:
         self._closed = True
+        if self._change_source:
+            GLib.source_remove(self._change_source)
+            self._change_source = 0
         if self in self.window.install_listeners:
             self.window.install_listeners.remove(self)
 
     def changed(self) -> None:
-        """The window's data changed (catalogue, installed apps, jobs, updates): redraw in place."""
-        if self._closed:
-            return
-        self._apply_count()
+        """The window's data changed (catalogue, installed apps, jobs, updates, media): redraw in
+        place, once for a burst of changes, and only when what this TV shows changed."""
+        if not self._closed and not self._change_source:
+            self._change_source = GLib.timeout_add(120, self._apply_change)
+
+    def _apply_change(self) -> bool:
+        self._change_source = 0
+        state = self._state()
+        if state == self._signature:
+            return GLib.SOURCE_REMOVE
+        if state[:2] != self._signature[:2]:
+            self._apply_count()
+        else:
+            self._apply_count(items=False)
+        self._signature = self._state()
         self.render(keep_focus=True)
+        return GLib.SOURCE_REMOVE
+
+    def _state(self) -> tuple:
+        """What the TV draws from the window: apps, installed state, jobs, updates, loading, media."""
+        window = self.window
+        installed = tuple(sorted((key, r.version, r.update_version, r.update_commit, r.managed)
+                                 for key, r in window.installed.items()))
+        jobs = tuple(sorted((key, job.kind, bool(job.failed)) for key, job in window.jobs.items()))
+        system = repr(window.system.state) if window.system is not None else ""
+        media = ()
+        if self.view == "app" and window.catalogue is not None:
+            app = window.catalogue.find(self.app_id)
+            media = tuple(self._shot_paths(app)) if app is not None else ()
+        elif self.view == "discover" and window.catalogue is not None:
+            chosen = featured_app(window.catalogue)
+            media = tuple(self._shot_paths(chosen, limit=1)) if chosen is not None else ()
+        return (id(window.catalogue), installed, jobs, system, window.loading, window.catalogue_error,
+                window.settings.app_updates, media)
 
     def progress(self, progress) -> None:
         update = self._progress.get(progress.app_id)
@@ -435,8 +470,9 @@ class DepotTV:
         state = self.window.system.state if self.window.system is not None else None
         return bool(state and (state.available or state.staged or state.restart_required))
 
-    def _apply_count(self) -> None:
-        self.items = self._listed()
+    def _apply_count(self, *, items: bool = True) -> None:
+        if items:
+            self.items = self._listed()
         count = len(self._updates()) + (1 if self._system_waiting() else 0)
         self.count.set_label(str(count))
         self.count.set_visible(count > 0)

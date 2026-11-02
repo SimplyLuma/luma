@@ -544,7 +544,10 @@
       "summary": "A secure and free password manager for all of your devices.",
       "support_url": "https://bitwarden.com/help/",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "1Password"
+      ]
     },
     {
       "age_rating": "oars-1.1:none",
@@ -1041,7 +1044,10 @@
       },
       "summary": "Read and send mail without the nonsense.",
       "tier": "luma",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Outlook"
+      ]
     },
     {
       "architectures": [
@@ -1649,7 +1655,10 @@
       },
       "summary": "Develop and edit images non-destructively.",
       "tier": "luma",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Photoshop"
+      ]
     },
     {
       "age_rating": "age:15",
@@ -2323,7 +2332,10 @@
       "summary": "High-end image creation and manipulation.",
       "support_url": "https://www.gimp.org/docs/",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Photoshop"
+      ]
     },
     {
       "age_rating": "oars-1.1:none",
@@ -3041,7 +3053,10 @@
       "summary": "The LibreOffice productivity suite.",
       "support_url": "https://bugs.documentfoundation.org/",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Microsoft Office"
+      ]
     },
     {
       "architectures": [
@@ -3166,7 +3181,10 @@
       },
       "summary": "Send and receive messages.",
       "tier": "luma",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "WhatsApp"
+      ]
     },
     {
       "app_id": "org.projectluma.Mods",
@@ -3571,7 +3589,10 @@
       },
       "summary": "Write notes and edit text files.",
       "tier": "luma",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Notion"
+      ]
     },
     {
       "age_rating": "oars-1.1:none",
@@ -3796,7 +3817,10 @@
       "summary": "Markdown-based knowledge base.",
       "support_url": "https://help.obsidian.md/Home",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Notion"
+      ]
     },
     {
       "age_rating": "oars-1.1:none",
@@ -4770,7 +4794,10 @@
       "summary": "Private messenger.",
       "support_url": "https://support.signal.org/",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "WhatsApp"
+      ]
     },
     {
       "age_rating": "age:15",
@@ -4999,7 +5026,10 @@
       "summary": "Online music streaming service.",
       "support_url": "https://community.spotify.com/t5/Desktop-Linux/bd-p/desktop_linux",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "iTunes"
+      ]
     },
     {
       "age_rating": "age:15",
@@ -5567,7 +5597,10 @@
       "summary": "New era of messaging.",
       "support_url": "https://github.com/telegramdesktop/tdesktop/issues",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "WhatsApp"
+      ]
     },
     {
       "architectures": [
@@ -5790,7 +5823,10 @@
       "summary": "Thunderbird is a free and open source email, newsfeed, chat, and calendaring client.",
       "support_url": "https://support.mozilla.org/products/thunderbird/",
       "tier": "listed",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Outlook"
+      ]
     },
     {
       "app_id": "org.projectluma.Tide",
@@ -5869,7 +5905,10 @@
       },
       "summary": "Play music from every place it lives.",
       "tier": "luma",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "iTunes"
+      ]
     },
     {
       "age_rating": "oars-1.1:none",
@@ -6902,7 +6941,10 @@
       "summary": "A clear place for letters, reports and ideas.",
       "support_url": "https://github.com/SimplyLuma/Write/issues",
       "tier": "luma",
-      "visibility": "public"
+      "visibility": "public",
+      "keywords": [
+        "Microsoft Office"
+      ]
     },
     {
       "age_rating": "oars-1.1:none",

@@ -12,10 +12,10 @@ app or the catalogue publishes, never from a list in code:
      runs on a TV; with its own TV presentation (``X-Luma-TV-Presentation=tv``) it is driven
      with the remote, as every TV presentation is;
    - its AppStream ``<supports>``/``<recommends>``/``<requires>`` ``<control>`` and
-     ``<display_length>``: ``tv-remote`` means the remote works; ``gamepad`` recommended or
-     required means it needs a controller; ``keyboard`` or ``pointing`` required (with no
-     remote) means it is best with a keyboard; a display length that excludes a TV-sized
-     screen means it does not run on one.
+     ``<display_length>``: ``gamepad`` required means it needs a controller; otherwise
+     ``tv-remote`` anywhere means the remote works, and ``gamepad`` alone means a controller;
+     a display length that excludes a TV-sized screen means it does not run on one.
+     Keyboard or pointing controls alone are not TV facts.
 
 An app with none of these facts is not listed on a TV. The architecture rule is the
 catalogue's: an app is listed only when it is installed here or has a build for this
@@ -159,8 +159,7 @@ def from_appstream(meta: AppStreamFacts) -> TvFacts | None:
     if meta.display_max and meta.display_max < _TV_SHORT_EDGE:
         return TvFacts(False, "", "app")
     every = set().union(*meta.controls.values()) if meta.controls else set()
-    wanted = meta.controls.get("requires", frozenset()) | meta.controls.get("recommends", frozenset())
-    if "gamepad" in wanted:
+    if "gamepad" in meta.controls.get("requires", frozenset()):
         return TvFacts(True, CONTROLLER, "app")
     if "tv-remote" in every:
         return TvFacts(True, REMOTE, "app")
