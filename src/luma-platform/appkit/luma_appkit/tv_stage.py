@@ -135,7 +135,7 @@ def _sheet(opaque: bool) -> str:
   font-size: {sheet['row_size']}tv; }}
 .tv-switch-row {{ border-spacing: 20tv; }}
 .tv-row-title {{ font-size: {sheet['row_size']}tv; font-weight: 600; color: inherit; }}
-.tv-switch {{ min-width: 72tv; min-height: 42tv; padding: 4tv; border-radius: 21tv; background-color: {m('well')};
+.tv-switch {{ min-width: 64tv; min-height: 34tv; padding: 4tv; border-radius: 21tv; background-color: {m('well')};
   box-shadow: inset 0 0 0 1.5tv {m('well_rim')}, inset 0 2tv 4tv {m('well_shade')}, 0 1.5tv 0 {m('well_glint')};
   transition: background-color 200ms; }}
 .tv-switch-knob {{ min-width: 34tv; min-height: 34tv; border-radius: 17tv; background-image: linear-gradient(#fff, #e6e7ea);
