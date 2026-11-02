@@ -9,8 +9,10 @@ ostree --repo=$REPO cat $BASE /usr/share/rpm/rpmdb.sqlite > $O/usr/share/rpm/rpm
 rpm --root=$O --dbpath=/usr/share/rpm --ignorearch --nodeps --noscripts --notriggers \
 	--oldpackage --replacefiles --replacepkgs -Uh /var/tmp/rpms147/*.rpm 2>&1 | grep -v "remove failed" || true
 rpm --root=$O --dbpath=/usr/share/rpm -q gnome-shell mutter prairie-core-apps luma-developer-platform luma-android-runtime waydroid gnome-control-center
-# Scriptlets are skipped: enable the new user units the way their presets would.
-systemctl --root=$O --global preset luma-app-host.service luma-native-app-prewarm.timer || true
+# Scriptlets are skipped: enable user units the way their presets would. Every
+# shipped preset, enable-only, so new units (luma-android-prewarm.timer was
+# missed by a fixed list) come up and units enabled in /etc stay enabled.
+systemctl --root=$O --global --preset-mode=enable-only preset-all || true
 # As main's image (android_apps): binderfs before the container, delegated cgroups.
 mkdir -p $O/etc/systemd/system/waydroid-container.service.d
 cat > $O/etc/systemd/system/waydroid-container.service.d/10-luma-ordering.conf <<'CONF'
