@@ -158,7 +158,10 @@
     "0090-lumaui-tv-opt-in-and-panel-set.patch",
     "0091-lumaui-tv-pages.patch",
     "0092-lumaui-tv-saved-network-actions.patch",
-    "0093-lumaui-tv-account-appearance-sound.patch"
+    "0093-lumaui-tv-account-appearance-sound.patch",
+    "0094-lumaui-tv-about-board-facts.patch",
+    "0095-lumaui-tv-wifi-nearby-in-place.patch",
+    "0096-lumaui-tv-page-words-and-one-display-fixture.patch"
    ],
    "meson_options": [
     "-Dtests=false",
