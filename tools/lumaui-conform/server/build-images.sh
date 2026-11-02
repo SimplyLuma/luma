@@ -56,7 +56,7 @@ fetch() {  # fetch <dest dir> <names...>: each package's shipped RPM from the po
   local more
   while :; do
     more=$(for f in "$dest"/*.rpm; do rpm -qp --nosignature --requires "$f" 2>/dev/null; done | awk '{print $1}' | sort -u |
-      while read -r n; do v=$(nevra "$n"); [ -n "$v" ] && [ -f "$pool/$v.rpm" ] && [ ! -f "$dest/$v.rpm" ] && echo "$v"; done)
+      while read -r n; do v=$(nevra "$n"); if [ -n "$v" ] && [ -f "$pool/$v.rpm" ] && [ ! -f "$dest/$v.rpm" ]; then echo "$v"; fi; done)
     [ -n "$more" ] || break
     for v in $more; do echo "  + $v (required)"; cp -p "$pool/$v.rpm" "$dest/"; done
   done
