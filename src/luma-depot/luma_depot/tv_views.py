@@ -21,6 +21,9 @@ opens or acts; Back steps out (the app page, then the bar), then to the TV home.
 """
 from __future__ import annotations
 
+import math
+import re
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -37,7 +40,7 @@ from luma_appkit.tv_menu import TvMenu  # noqa: E402
 from luma_appkit.tv_parts import TvButton, TvField, TvTab, TvTopBar  # noqa: E402
 from luma_appkit.tv_stage import TvStage, add_tv_style, tv_material  # noqa: E402
 from luma_appkit.tv_tiles import (  # noqa: E402
-    CATEGORY_HUES, TvEmptyState, TvPage, TvProgressButton, TvScreenshotViewer, TvShelf, TvTileGrid, TvWideTile,
+    CATEGORY_HUES, TvEmptyState, TvPage, TvProgressButton, TvScreenshotViewer, TvShot, TvShelf, TvTileGrid, TvWideTile,
 )
 from luma_appkit.tv_toast import TvToast  # noqa: E402
 
@@ -51,46 +54,88 @@ INPUT_ICON = {tv_facts.REMOTE: "tv-minimal", tv_facts.CONTROLLER: "gamepad-2", t
 PAGE_TOP = 150
 
 
+def _line(size: float) -> int:
+    """Figtree's own line box at `size` (ascent .95, descent .25, each to a whole pixel), as the mockups set it."""
+    return int(math.floor(0.95 * size + 0.5) + math.floor(0.25 * size + 0.5))
+
+
+def _lines(css: str) -> str:
+    """Every rule that sets a font size and no line height gets Figtree's whole-pixel line box."""
+    def fix(match: re.Match) -> str:
+        body = match.group(0)
+        size = re.search(r"font-size: ([0-9.]+)tv;", body)
+        if size is None or "line-height" in body:
+            return body
+        return body[:-1].rstrip() + f" line-height: {_line(float(size.group(1)))}tv; }}"
+
+    def labels(match: re.Match) -> str:
+        selectors, body = match.group(1), match.group(2)
+        size = re.search(r"font-size: ([0-9.]+)tv;", body)
+        if size is None or "line-height" in body or re.search(r"(^|[ ,])label", selectors):
+            return match.group(0)
+        inner = ", ".join(f"{part.strip()} label" for part in selectors.split(","))
+        return match.group(0) + f"\n{inner} {{ line-height: {_line(float(size.group(1)))}tv; }}"
+    css = re.sub(r"([^{}\n][^{}]*?)\s*(\{[^{}]*\})", labels, css)
+    return re.sub(r"\{[^{}]*\}", fix, css)
+
+
 def _sheet(opaque: bool) -> str:
+    return _lines(_rules(opaque))
+
+
+def _rules(opaque: bool) -> str:
     m = lambda name: tv_material(name, opaque=opaque)  # noqa: E731
     return f"""
 .depot-tv-pad {{ padding: 26tv 96tv 140tv; }}
+.depot-tv-pad.depot-tv-list-pad {{ padding: 28tv 102tv 160tv; }}
 .depot-tv-sec {{ margin-bottom: 54tv; }}
 .depot-tv-sec-head {{ border-spacing: 16tv; margin-bottom: 22tv; }}
-.depot-tv-small {{ font-size: 20tv; font-weight: 600; color: {m('ink_3')}; }}
-.lumaui-tv-stage label.depot-tv-count {{ min-width: 28tv; min-height: 28tv; padding: 0 8tv; margin-left: 10tv;
+.depot-tv-sec-head.depot-tv-list-head {{ margin-bottom: 54tv; }}
+.lumaui-tv-stage .depot-tv-pad label.tv-h1 {{ line-height: 55tv; }}
+.lumaui-tv-stage .depot-tv-pad label.tv-h2 {{ line-height: 37tv; }}
+.lumaui-tv-stage .depot-tv-pad label.tv-body {{ line-height: 36tv; }}
+.lumaui-tv-stage label.depot-tv-small {{ font-size: 20tv; font-weight: 600; letter-spacing: -0.3tv; color: {m('ink_3')}; }}
+.lumaui-tv-stage label.depot-tv-count {{ min-width: 12tv; min-height: 28tv; padding: 0 8tv;
   border-radius: 14tv; font-size: 17tv; font-weight: 650; color: white; background-color: #e5484d; }}
 .depot-tv-feature {{ min-height: 430tv; margin-bottom: 54tv; }}
-.depot-tv-feature-text {{ margin-left: 56tv; border-spacing: 14tv; }}
-.depot-tv-kicker {{ font-size: 20tv; font-weight: 700; letter-spacing: 1.2tv; color: #e8c15a; }}
-.depot-tv-feature-title {{ font-size: 56tv; font-weight: 750; letter-spacing: -1.6tv; }}
+.depot-tv-feature-text {{ border-spacing: 14tv; }}
+.lumaui-tv-stage label.depot-tv-kicker {{ font-size: 20tv; font-weight: 700; letter-spacing: 1.2tv; color: #e8c15a; }}
+.depot-tv-feature-title {{ font-size: 56tv; font-weight: 750; letter-spacing: -1.6tv; line-height: 57tv; }}
 .depot-tv-top {{ border-spacing: 60tv; }}
 .depot-tv-dev {{ font-size: 24tv; font-weight: 600; color: {m('ink_2')}; margin-top: 10tv; border-spacing: 10tv; }}
-.depot-tv-dev image {{ -gtk-icon-size: 24tv; color: #6fa8ff; }}
+.depot-tv-dev image {{ -gtk-icon-size: 24tv; color: #63b3ff; }}
 .depot-tv-summary {{ margin-top: 14tv; }}
 .depot-tv-facts {{ margin-top: 22tv; border-spacing: 34tv; font-size: 22tv; font-weight: 600; color: {m('ink_3')}; }}
-.depot-tv-stars {{ color: #f2c94c; letter-spacing: 1tv; }}
+.lumaui-tv-stage label.depot-tv-stars {{ color: #fec84b; letter-spacing: 1tv; }}
+.lumaui-tv-stage .depot-tv-facts label.depot-tv-fact {{ color: {m('ink')}; font-weight: 650; }}
 .depot-tv-input {{ min-height: 52tv; padding: 0 18tv; border-radius: 16tv; border-spacing: 10tv; margin-top: 26tv;
   font-size: 21tv; font-weight: 650; color: {m('ink_2')}; }}
 .depot-tv-input image {{ -gtk-icon-size: 24tv; }}
 .depot-tv-input.depot-tv-need {{ color: #f0c05a; }}
 .depot-tv-acts {{ margin-top: 32tv; border-spacing: 14tv; }}
-.depot-tv-two {{ border-spacing: 48tv; }}
 .depot-tv-about {{ border-spacing: 16tv; }}
-.depot-tv-note {{ font-size: 24tv; color: {m('ink_3')}; }}
+.lumaui-tv-stage label.depot-tv-note {{ font-size: 24tv; color: {m('ink_3')}; }}
 .depot-tv-news {{ padding: 28tv; border-radius: 30tv; border-spacing: 14tv; margin-bottom: 34tv; }}
+.depot-tv-news-items {{ border-spacing: 8tv; margin-bottom: 8tv; }}
+.depot-tv-news-item {{ border-spacing: 0; }}
+.depot-tv-dot {{ min-width: 6tv; min-height: 6tv; border-radius: 3tv; margin: 15tv 10tv 0 10tv; background-color: {m('ink_2')}; }}
+.lumaui-tv-stage .depot-tv-pad label.tv-body {{ color: {m('ink_2')}; }}
+.lumaui-tv-stage .depot-tv-feature-text label.tv-body {{ margin: 26tv 0; }}
+.lumaui-tv-stage .depot-tv-facts label {{ font-size: 22tv; line-height: 27tv; }}
 .depot-tv-shots {{ border-spacing: 28tv; }}
-.depot-tv-head {{ border-spacing: 8tv; margin-bottom: 8tv; }}
+.depot-tv-sec.depot-tv-shots-sec {{ margin-top: 60tv; }}
+.depot-tv-head {{ border-spacing: 8tv; }}
 .depot-tv-group {{ margin-top: 34tv; }}
-.depot-tv-group-title {{ margin: 0 0 12tv 26tv; font-size: 20tv; font-weight: 650; letter-spacing: 1tv; color: {m('ink_3')}; }}
+.lumaui-tv-stage label.depot-tv-group-title {{ margin: 0 0 12tv 26tv; font-size: 20tv; font-weight: 650; letter-spacing: 1tv; color: {m('ink_3')}; }}
 .depot-tv-card {{ padding: 8tv; border-radius: 30tv; }}
-.depot-tv-row {{ min-height: 84tv; padding: 12tv 22tv; border-radius: 22tv; border-spacing: 20tv; }}
+.depot-tv-row {{ min-height: 60tv; padding: 12tv 22tv; border-radius: 22tv; border-spacing: 20tv; }}
 .depot-tv-row .depot-tv-lead {{ min-width: 48tv; min-height: 48tv; border-radius: 14tv; background-color: alpha(white, .08); color: {m('ink_2')}; }}
 .depot-tv-row .depot-tv-lead image {{ -gtk-icon-size: 26tv; }}
 .depot-tv-row .depot-tv-lead.depot-tv-app image {{ -gtk-icon-size: 48tv; }}
 .depot-tv-row .depot-tv-lead.depot-tv-app {{ background: none; }}
+.depot-tv-row .depot-tv-lead.depot-tv-mark image {{ -gtk-icon-size: 29tv; }}
 .depot-tv-row-title {{ font-size: 25tv; font-weight: 600; }}
-.depot-tv-row-sub {{ font-size: 19tv; font-weight: 500; color: {m('ink_3')}; margin-top: 3tv; }}
+.lumaui-tv-stage label.depot-tv-row-sub {{ font-size: 19tv; font-weight: 500; color: {m('ink_3')}; margin-top: 3tv; }}
 .depot-tv-row-value {{ font-size: 23tv; font-weight: 600; color: {m('ink_2')}; border-spacing: 8tv; }}
 .depot-tv-row-value image {{ -gtk-icon-size: 24tv; color: {m('ink_3')}; }}
 .depot-tv-row.tv-key {{ color: {m('key_ink')}; }}
@@ -102,8 +147,9 @@ def _sheet(opaque: bool) -> str:
 .depot-tv-search {{ border-spacing: 40tv; }}
 .depot-tv-search .tv-field {{ min-width: 836tv; min-height: 88tv; border-radius: 28tv; padding: 0 32tv; font-size: 32tv; }}
 .depot-tv-search .tv-field text {{ font-size: 32tv; }}
-.depot-tv-search .tv-field image {{ -gtk-icon-size: 34tv; margin-right: 18tv; }}
-.depot-tv-hint {{ font-size: 24tv; color: {m('ink_3')}; }}
+.depot-tv-search .tv-field {{ border-spacing: 18tv; }}
+.depot-tv-search .tv-field image {{ -gtk-icon-size: 28tv; margin-right: 0; color: {m('ink_3')}; }}
+.lumaui-tv-stage label.depot-tv-hint {{ font-size: 24tv; color: {m('ink_3')}; margin: 24tv 0; }}
 """
 
 
@@ -115,6 +161,7 @@ def _box(vertical: bool = False, *css: str, **props) -> Gtk.Box:
 
 
 def _label(text: str, *css: str, wrap: bool = False, lines: int = 0, **props) -> Gtk.Label:
+    ellipsize = props.pop("ellipsize", Pango.EllipsizeMode.END)
     label = Gtk.Label(label=text, xalign=props.pop("xalign", 0), **props)
     for name in css:
         label.add_css_class(name)
@@ -125,9 +172,20 @@ def _label(text: str, *css: str, wrap: bool = False, lines: int = 0, **props) ->
             label.set_lines(lines)
             label.set_ellipsize(Pango.EllipsizeMode.END)
     else:
-        label.set_ellipsize(Pango.EllipsizeMode.END)
+        label.set_ellipsize(ellipsize)
         label.set_single_line_mode(True)
     return label
+
+
+def _fact(value: str, after: str = "", *, before: str = "", style: str = "depot-tv-fact") -> Gtk.Widget:
+    """One of an app page's facts: its value in ink between quieter words ("Version 1.0.4")."""
+    line = Gtk.Box()
+    if before:
+        line.append(_label(before, ellipsize=Pango.EllipsizeMode.NONE))
+    line.append(_label(value, style, ellipsize=Pango.EllipsizeMode.NONE))
+    if after:
+        line.append(_label(after, ellipsize=Pango.EllipsizeMode.NONE))
+    return line
 
 
 def _megabytes(value: int) -> str:
@@ -195,10 +253,34 @@ def _card(rows: list[_Row]) -> Gtk.Box:
     return card
 
 
+_brands: dict[str, str] = {}
+_brand_css = Gtk.CssProvider()
+
+
+def _brand_class(colour: str) -> str | None:
+    """A style class painting a lead in an app's brand colour (a CSS colour from its AppStream)."""
+    rgba = Gdk.RGBA()
+    if not colour or not rgba.parse(colour):
+        return None
+    if colour not in _brands:
+        _brands[colour] = f"depot-tv-brand-{len(_brands)}"
+        _brand_css.load_from_string("".join(f".depot-tv-lead.{name} {{ background-color: {value}; }}\n"
+                                            for value, name in _brands.items()))
+        display = Gdk.Display.get_default()
+        if display is not None and len(_brands) == 1:
+            Gtk.StyleContext.add_provider_for_display(display, _brand_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2)
+    return _brands[colour]
+
+
 def _app_lead(item: tv_facts.TvApp) -> Gtk.Widget:
     lead = Gtk.CenterBox()
     lead.add_css_class("depot-tv-lead")
-    if item.icon is not None:
+    brand = _brand_class(item.brand) if item.icon is not None else None
+    if brand is not None:  # its mark on its brand colour, as its tile
+        lead.add_css_class(brand)
+        lead.add_css_class("depot-tv-mark")
+        lead.set_center_widget(Gtk.Image.new_from_gicon(item.icon))
+    elif item.icon is not None:
         lead.add_css_class("depot-tv-app")
         lead.set_center_widget(Gtk.Image.new_from_gicon(item.icon))
     else:
@@ -211,6 +293,51 @@ def _glyph_lead(name: str) -> Gtk.Widget:
     lead.add_css_class("depot-tv-lead")
     lead.set_center_widget(icons.image(name))
     return lead
+
+
+class _Split(Gtk.Widget):
+    """The app page's lower half: About and the side column, 1.2 : 1 with 48 between."""
+
+    __gtype_name__ = "DepotTvSplit"
+    GAP, SHARE = 48, 1.2 / 2.2
+
+    def __init__(self, first: Gtk.Widget, second: Gtk.Widget) -> None:
+        super().__init__(hexpand=True)
+        self.first, self.second = first, second
+        first.set_parent(self)
+        second.set_parent(self)
+
+    def _unit(self) -> float:
+        node = self.get_parent()
+        while node is not None and node.find_property("unit") is None:
+            node = node.get_parent()
+        return float(node.get_property("unit")) if node is not None else 1.0
+
+    def _widths(self, width: int) -> tuple[int, int, int]:
+        gap = round(self.GAP * self._unit())
+        first = round((width - gap) * self.SHARE)
+        return first, gap, max(0, width - gap - first)
+
+    def do_get_request_mode(self) -> Gtk.SizeRequestMode:
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_measure(self, orientation, for_size):
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            mins = [c.measure(orientation, -1)[0] for c in (self.first, self.second)]
+            return sum(mins), sum(mins), -1, -1
+        a, _gap, b = self._widths(for_size) if for_size > 0 else (-1, 0, -1)
+        heights = [self.first.measure(orientation, a)[1], self.second.measure(orientation, b)[1]]
+        return max(heights), max(heights), -1, -1
+
+    def do_size_allocate(self, width, height, _baseline):
+        a, gap, b = self._widths(width)
+        self.first.allocate(a, height, -1, None)
+        self.second.allocate(b, height, -1, Gsk.Transform.new().translate(Graphene.Point().init(a + gap, 0)))
+
+    def do_dispose(self) -> None:
+        for child in (self.first, self.second):
+            if child.get_parent() is self:
+                child.unparent()
 
 
 class _Feature(Gtk.Widget):
@@ -324,7 +451,7 @@ class DepotTV:
         self.stage.place(self.room, fill=True)
         self.bar = TvTopBar()
         self.tabs = [TvTab(title, icon=icon) for _key, title, icon in TABS]
-        self.count = _label("", "depot-tv-count", xalign=0.5, visible=False)
+        self.count = _label("", "depot-tv-count", xalign=0.5, visible=False, valign=Gtk.Align.CENTER)
         self.tabs[3].get_first_child().append(self.count)
         self.bar.set_tabs(self.tabs)
         self.stage.place(self.bar, **TvTopBar.PIN)
@@ -632,10 +759,11 @@ class DepotTV:
             meta, ok = "Update ready", True
         else:
             meta, ok = "Installed", True
+        mark = "check" if record is not None and not record.has_update else None
         component = tv_facts.component_id(app) or (item.info.get_id().removesuffix(".desktop") if item.info else "")
         tile = TvWideTile(app.name, app_id=component or None, icon=item.icon, brand=item.brand or None,
                           category=_category(item), width=width, caption=caption, meta=meta if caption else "",
-                          meta_ok=ok, lift=lift)
+                          meta_ok=ok, meta_icon=mark if caption else None, lift=lift)
         tile.tv_tile = tile
         tile.tv_item = item
         return tile
@@ -692,7 +820,7 @@ class DepotTV:
         by_slug = {catalogue_slug(item.app): item for item in self.items}
         for key, _eyebrow, title, summary, app_ids in STORIES:
             story = [by_slug[slug] for slug in app_ids if slug in by_slug]
-            if story:
+            if len(story) > 1:  # a story left with one app on this TV is no story
                 self._section(page, column, title, summary, self._shelf(story, f"story-{key}"))
         media = [item for item in self.items if "Media" in (getattr(item.app, "categories", ()) or ())]
         if media:
@@ -728,11 +856,11 @@ class DepotTV:
         if not items:
             column.append(self._empty(*empty, icon="package"))
             return page
-        head = _box(False, "depot-tv-sec-head")
+        head = _box(False, "depot-tv-sec-head", "depot-tv-list-head")
         head.append(_label(title, "tv-h2", valign=Gtk.Align.BASELINE))
         head.append(_label(small, "depot-tv-small", valign=Gtk.Align.BASELINE))
         column.append(head)
-        column.append(TvTileGrid([self._app_tile(item, f"grid:{item.app.app_id}") for item in items]))
+        column.append(TvTileGrid([self._app_tile(item, f"grid:{item.app.app_id}") for item in items], captioned=True))
         return page
 
     def _apps(self) -> Gtk.Widget:
@@ -793,18 +921,20 @@ class DepotTV:
         if catalogued and app.rating_count > 0 and app.rating > 0:
             stars = round(app.rating)
             line = _box(False, spacing=0)
-            line.append(_label("★" * stars + "☆" * (5 - stars) + " ", "depot-tv-stars"))
-            line.append(_label(f"{app.rating:g} · {app.rating_count:,} ratings"))
+            line.append(_fact("★" * stars + "☆" * (5 - stars) + " ", "", style="depot-tv-stars"))
+            line.append(_fact(f"{app.rating:g}", f" · {app.rating_count:,} ratings"))
             facts.append(line)
         size = record.installed_bytes if record is not None else app.installed_bytes
         if size:
-            facts.append(_label(_megabytes(size)))
+            facts.append(_fact(_megabytes(size)))
         version = (record.version if record is not None else "") or app.version
         if version:
-            facts.append(_label(f"Version {version}"))
-        source = getattr(app, "source_label", "") or (app.source_title and f"From {app.source_title}") or ""
+            facts.append(_fact(version, before="Version "))
+        source = getattr(app, "source_label", "")
         if catalogued and source:
-            facts.append(_label(source))
+            facts.append(_fact(source, before=""))
+        elif catalogued and app.source_title:
+            facts.append(_fact(app.source_title, before="From "))
         if facts.get_first_child() is not None:
             info.append(facts)
         how = _box(False, "depot-tv-input", "tv-well", halign=Gtk.Align.START)
@@ -826,15 +956,13 @@ class DepotTV:
         if shots:
             row = []
             for index, path in enumerate(shots):
-                cover = TvCover(shape="landscape", width=512, artwork=path, radius=22,
-                                accessible=f"Screenshot {index + 1} of {len(shots)}")
+                cover = TvShot(path, accessible=f"Screenshot {index + 1} of {len(shots)}")
                 row.append(self._add(cover, f"shot:{index}", lambda i=index, p=shots: self._open_shot(p, i)))
             shelf = TvShelf(row)
             shelf.row.remove_css_class("tv-shelf-row")
             shelf.row.add_css_class("depot-tv-shots")
             section = self._section(page, column, "Screenshots", "", shelf)
-            section.set_margin_top(0)
-        two = _box(False, "depot-tv-two", homogeneous=False)
+            section.add_css_class("depot-tv-shots-sec")
         about = _box(True, "depot-tv-about", hexpand=True)
         about.append(_label("About", "tv-h2"))
         description = app.description if catalogued else ""
@@ -844,13 +972,24 @@ class DepotTV:
         else:
             about.append(_label(f"{developer or 'The developer'} hasn’t written a description yet.",
                                 "depot-tv-note", wrap=True))
-        two.append(about)
         side = _box(True, hexpand=True)
         notes = app.releases[0].description.strip() if catalogued and app.releases and app.releases[0].description else ""
         if notes and app.version:
             news = _box(True, "depot-tv-news", "tv-bar")
             news.append(_label(f"What’s new in {app.version}", "tv-h2", wrap=True))
-            news.append(_label(notes, "tv-body", wrap=True))
+            lines = [line.strip().lstrip("•*-– ").strip() for line in notes.splitlines() if line.strip()]
+            if len(lines) > 1:  # a list of changes, one to a line
+                items = _box(True, "depot-tv-news-items")
+                for line in lines:
+                    item = _box(False, "depot-tv-news-item")
+                    dot = Gtk.Box(valign=Gtk.Align.START)
+                    dot.add_css_class("depot-tv-dot")
+                    item.append(dot)
+                    item.append(_label(line, "tv-body", wrap=True, hexpand=True))
+                    items.append(item)
+                news.append(items)
+            else:
+                news.append(_label(notes, "tv-body", wrap=True))
             side.append(news)
         reach = (record.permissions if record is not None and record.permissions else ()) or app.permissions
         if reach:
@@ -859,7 +998,7 @@ class DepotTV:
             for index, row in enumerate(rows):
                 self._add(row, f"reach:{index}")
             side.append(_card(rows))
-        two.append(side)
+        two = _Split(about, side)
         about.set_size_request(-1, -1)
         column.append(page.add_section(two))
         return page
@@ -927,7 +1066,7 @@ class DepotTV:
     # Updates
     def _updates_page(self) -> Gtk.Widget:
         window = self.window
-        column = _box(True, "depot-tv-pad")
+        column = _box(True, "depot-tv-pad", "depot-tv-list-pad")  # a list page: 166 down, room for the focus
         page = TvPage(column)
         head = _box(True, "depot-tv-head")
         head.append(_label("Updates", "tv-h1"))
@@ -954,7 +1093,7 @@ class DepotTV:
                 continue
             change = " → ".join(part for part in (entry.from_version, entry.to_version) if part)
             verb = "Went back" if entry.kind == "revert" else ("Updated automatically" if entry.automatic else "Updated")
-            row = _Row(item.app.name, " · ".join(p for p in (verb, change, _when(entry.at)) if p), lead=_app_lead(item))
+            row = _Row(item.app.name, " · ".join(p for p in (verb, change) if p), _when(entry.at), lead=_app_lead(item))
             self._add(row, f"recent:{entry.app_id}:{entry.at}", lambda i=item: self.open_app(i, f"recent:{i.app.app_id}"))
             recent.append(row)
             if len(recent) == 8:
@@ -1074,4 +1213,4 @@ class DepotTV:
             if alias:
                 self._results.append(_label(f"On Luma, instead of {alias}:", "depot-tv-hint", xalign=0.5))
         tiles = [self._app_tile(item, f"result:{item.app.app_id}") for item in hits[:10]]
-        self._results.append(TvTileGrid(tiles))
+        self._results.append(TvTileGrid(tiles, captioned=True))
