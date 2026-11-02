@@ -173,6 +173,9 @@ typedef struct {
   GArray *path;          /* where the focus was in the page, child by child from the island */
   gint64 ok_at;          /* when OK last acted in the page */
   gboolean keyed;        /* the remote has been used in this window */
+  GtkWidget *ok_widget;  /* what OK was pressed on (weak) */
+  GtkWidget *held;       /* the page widget the remote was on (weak): gone means the page redrew */
+  gint64 key_at;         /* the last key the frame saw */
   gpointer keyboard;     /* the TV keyboard's height, followed */
   int island_bottom;     /* the island's own bottom margin, while the keyboard lifts it */
   gboolean page_zone;    /* the remote is in the page */
@@ -686,6 +689,8 @@ static GtkWidget *hold_modal(TvFrame *f);
 /* A page that redraws under the remote (a network list refreshing) must not lose its place: the
  * focus is remembered as a path of child positions and found again in the redrawn page. */
 static void remember(TvFrame *f, GtkWidget *focus) {
+  g_clear_weak_pointer(&f->held);
+  g_set_weak_pointer(&f->held, focus);
   g_array_set_size(f->path, 0);
   for (GtkWidget *w = focus; w != NULL && w != f->island; w = gtk_widget_get_parent(w)) {
     int index = 0;
@@ -710,8 +715,39 @@ static gboolean focus_lost(TvFrame *f) {
   return focus == NULL || (in_page(f, focus) && (!gtk_widget_get_focusable(focus) || !gtk_widget_is_drawable(focus)));
 }
 
+static GtkWidget *path_widget(TvFrame *f) {
+  GtkWidget *w = f->island;
+  for (guint i = 0; i < f->path->len; i++) {
+    GtkWidget *c = gtk_widget_get_first_child(w);
+    for (int n = g_array_index(f->path, int, i); c != NULL && n > 0; n--) c = gtk_widget_get_next_sibling(c);
+    if (c == NULL) break;
+    w = c;
+  }
+  return w;
+}
+
+/* OK grew the row in place with a field (a network's password): the field takes the focus, and
+ * with it the TV keyboard, wherever GTK put the focus while the page was redrawn. */
+static gboolean grown_field(TvFrame *f) {
+  if (f->ok_at == 0 || g_get_monotonic_time() - f->ok_at > 2 * G_USEC_PER_SEC || f->path->len == 0)
+    return FALSE;
+  GtkWidget *row = path_widget(f);
+  while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
+  GtkWidget *field = row != NULL && row != f->island ? first_field(row) : NULL;
+  if (field == NULL)
+    return FALSE;
+  f->ok_at = 0;
+  GtkWidget *focus = focus_of(f);
+  if (focus != field && !gtk_widget_is_ancestor(focus, field))
+    gtk_widget_grab_focus(field);
+  return TRUE;
+}
+
 static gboolean refind(TvFrame *f) {
-  if (!f->page_zone || f->path->len == 0 || !focus_lost(f))
+  /* Lost: no focus, or GTK's fallback put it elsewhere (the first control on the page) because the
+   * widget the remote was on was redrawn away, with no key moving it. */
+  gboolean redrawn = f->held == NULL && g_get_monotonic_time() - f->key_at > 400 * 1000;
+  if (!f->page_zone || f->path->len == 0 || (!focus_lost(f) && !redrawn))
     return FALSE;
   GtkWidget *w = f->island;
   for (guint i = 0; i < f->path->len; i++) {
@@ -745,7 +781,8 @@ static gboolean relax(gpointer data) {
   if (f->active) {
     release_page(f, f->island);
     if (hold_modal(f) != NULL) return G_SOURCE_REMOVE;
-    refind(f);
+    if (!grown_field(f))
+      refind(f);
     /* Until the remote is used, the focus is the open page's destination (a deep link opened it). */
     GtkWidget *focus = focus_of(f);
     GtkListBoxRow *selected = gtk_list_box_get_selected_row(sidebar_list(f));
@@ -812,14 +849,15 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
     g_printerr("tv focus: %s %s.%s page=%d\n", focus ? G_OBJECT_TYPE_NAME(focus) : "(none)",
                focus ? gtk_widget_get_css_name(focus) : "", joined ? joined : "", focus ? in_page(f, focus) : 0);
   }
-  if (focus_lost(f)) {
+  if (focus_lost(f) || (f->page_zone && f->held == NULL && g_get_monotonic_time() - f->key_at > 400 * 1000)) {
     queue_relax(f);  /* a page redrawn under the focus: it is found again there */
     queue_settle(f); /* or, failing that, the island takes it back */
     return;
   }
   if (in_page(f, focus) && gtk_widget_get_focusable(focus)) {
     f->page_zone = TRUE;
-    remember(f, focus);
+    if (f->ok_at == 0 || g_get_monotonic_time() - f->ok_at > 2 * G_USEC_PER_SEC)
+      remember(f, focus);
   } else if (gtk_widget_is_ancestor(focus, f->sidebar)) {
     f->page_zone = FALSE;
   }
@@ -973,6 +1011,11 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
   (void)controller; (void)code;
   if (!f->active || (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK)) != 0)
     return GDK_EVENT_PROPAGATE;
+  f->key_at = g_get_monotonic_time();
+  if (is_ok(key)) {
+    g_clear_weak_pointer(&f->ok_widget);
+    g_set_weak_pointer(&f->ok_widget, focus_of(f));
+  }
   GtkWidget *modal = hold_modal(f);
   if (modal != NULL) {
     f->keyed = TRUE;
@@ -1061,6 +1104,18 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
   return GDK_EVENT_STOP;
 }
 
+/* OK released on something other than what it was pressed on (the page redrew under it and the
+ * focus moved): the release does nothing, so one OK never acts twice (a switch beside a row). */
+static gboolean key_released(GtkEventControllerKey *controller, guint key, guint code, GdkModifierType state, TvFrame *f) {
+  (void)controller; (void)code; (void)state;
+  if (!f->active || !is_ok(key))
+    return GDK_EVENT_PROPAGATE;
+  GtkWidget *focus = focus_of(f);
+  gboolean moved = f->ok_widget == NULL || focus != f->ok_widget;
+  g_clear_weak_pointer(&f->ok_widget);
+  return moved ? GDK_EVENT_STOP : GDK_EVENT_PROPAGATE;
+}
+
 /* ── on and off ───────────────────────────────────────────────────────────────────────────── */
 
 /* The TV keyboard covers the bottom of the screen: the page ends above it, so the focused field
@@ -1122,6 +1177,7 @@ static void enter(TvFrame *f) {
   f->keys = gtk_event_controller_key_new();
   gtk_event_controller_set_propagation_phase(f->keys, GTK_PHASE_CAPTURE);
   g_signal_connect(f->keys, "key-pressed", G_CALLBACK(key_pressed), f);
+  g_signal_connect(f->keys, "key-released", G_CALLBACK(key_released), f);
   gtk_widget_add_controller(GTK_WIDGET(f->window), f->keys);
   f->focus_id = g_signal_connect(f->window, "notify::focus-widget", G_CALLBACK(focus_changed), f);
   f->island_bottom = gtk_widget_get_margin_bottom(f->island);
@@ -1183,6 +1239,8 @@ static void frame_free(TvFrame *f) {
   g_clear_object(&f->state);
   g_clear_object(&f->a11y);
   g_array_unref(f->path);
+  g_clear_weak_pointer(&f->ok_widget);
+  g_clear_weak_pointer(&f->held);
   g_free(f);
 }
 
