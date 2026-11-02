@@ -111,4 +111,8 @@ assert(/made\.dot\.visible = this\._running\(made\.app\)/.test(home), 'only runn
 assert(/tileMenu\(this\._running\(made\.app\)\)/.test(home) && /key === 'close' && shellApp\) requestQuit\(shellApp\)/.test(home),
     "a tile's Close is the same Quit");
 
+assert(/this\._keyboardState = Main\.keyboard\?\.tvSuspend\?\.\(\) \?\? null;\s*this\._grab = Main\.pushModal/.test(switcher) &&
+    /Main\.popModal\(this\._grab\);\s*this\._grab = null;\s*Main\.keyboard\?\.tvResume\?\.\(this\._keyboardState\);/.test(switcher),
+    'the TV keyboard steps away and comes back as it was');
+
 print('tv-app-switcher-policy: ok');

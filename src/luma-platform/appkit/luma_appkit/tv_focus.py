@@ -25,6 +25,11 @@ the TV home at the app's top level.
 Keys: arrows, OK (Return, KP_Enter, Select), Back (Escape, Back, BackSpace
 outside text), Menu. Holding OK on an item with a menu (or Menu) opens the
 item's menu (`menu=`, tv_menu). No pointer is needed and nothing depends on hover.
+
+The cluster of every `TvTopBar` inside the root (the clock) is adopted as an
+item of its own: Up reaches the bar, Right past the tabs the cluster, and OK
+opens the shell's quick panel over the app (`tv_input.show_quick_panel`).
+Apps register nothing for it.
 """
 from __future__ import annotations
 
@@ -375,7 +380,13 @@ class TvFocus:
         if origin is None:
             return False
         rects = [(w, r) for w in candidates if w is not current and (r := self._rect(w)) is not None]
-        target = nearest(origin, rects, direction)
+        # The TV bar is one row: Left/Right along it stay on it (tabs, then the cluster) while
+        # anything of it lies that way, as on the TV home.
+        bar = self._bar_of(current) if direction in (LEFT, RIGHT) else None
+        on_bar = [(w, r) for w, r in rects if bar is not None and w.is_ancestor(bar)]
+        target = nearest(origin, on_bar, direction) if on_bar else None
+        if target is None:
+            target = nearest(origin, rects, direction)
         if target is None:
             return False
         group = self.group_of(target)
@@ -387,7 +398,26 @@ class TvFocus:
         self._set(target)
         return True
 
+    @staticmethod
+    def _bar_of(widget: Gtk.Widget) -> Gtk.Widget | None:
+        from .tv_parts import TvTopBar
+        parent = widget.get_parent()
+        while parent is not None and not isinstance(parent, TvTopBar):
+            parent = parent.get_parent()
+        return parent
+
+    def _adopt_clusters(self) -> None:
+        """Every TV bar's cluster inside the root becomes an item: OK opens the quick panel."""
+        from .tv_parts import top_bars
+        for bar in top_bars():
+            cluster = getattr(bar, "cluster", None)
+            if cluster is None or cluster in self._items or not bar.is_ancestor(self.root):
+                continue
+            self.add(cluster, group="tv-cluster", on_activate=_show_quick_panel)
+
     def _candidates(self) -> list[Gtk.Widget]:
+        if not self._scopes:
+            self._adopt_clusters()
         pool = self._scopes[-1].items if self._scopes else list(self._items)
         return [w for w in pool if w in self._items and w.get_mapped() and w.get_sensitive()
                 and w.get_opacity() > 0.01]
@@ -418,6 +448,11 @@ class TvFocus:
                 item.on_focus()
         if notify and self.on_change is not None:
             self.on_change(widget)
+
+
+def _show_quick_panel() -> None:
+    from . import tv_input
+    tv_input.show_quick_panel()
 
 
 def _mark(widget: Gtk.Widget, on: bool) -> None:

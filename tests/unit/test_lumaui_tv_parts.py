@@ -317,5 +317,71 @@ class Widgets(unittest.TestCase):
         self.assertEqual(stage._pins[second].bottom, 172)
 
 
+
+@unittest.skipUnless(HAS_DISPLAY, "needs a display")
+class BarCluster(unittest.TestCase):
+    """Start's pause menu, from inside an app: the bar's clock is reachable and opens the quick panel."""
+
+    def test_up_reaches_the_bar_right_the_cluster_ok_the_quick_panel(self):
+        from unittest import mock
+        from luma_appkit import tv_input
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_parts import TvTab, TvTopBar
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        window = Gtk.Window(child=stage, default_width=960, default_height=540)
+        bar = TvTopBar()
+        stage.place(bar, **TvTopBar.PIN)
+        tabs = [TvTab("Home"), TvTab("Library")]
+        bar.set_tabs(tabs)
+        cards = [Gtk.Box(width_request=100, height_request=60) for _ in range(2)]
+        for index, card in enumerate(cards):
+            stage.place(card, left=96 + index * 300, top=300)
+        focus = TvFocus(stage)
+        for tab in tabs:
+            focus.add(tab, group="tabs")
+        for card in cards:
+            focus.add(card, group="cards")        # the app registers nothing for the cluster
+        window.present()
+        context = GLib.MainContext.default()
+        for _ in range(50):
+            context.iteration(False)
+        focus.focus(cards[1])
+        focus.handle(Gdk.KEY_Up)
+        self.assertIn(focus.focused, tabs)         # Up from the top row reaches the bar
+        focus.focus(tabs[1])
+        focus.handle(Gdk.KEY_Right)
+        self.assertIs(focus.focused, bar.cluster)  # Right past the tabs: the cluster
+        self.assertTrue(bar.cluster.has_css_class("tv-focus"))
+        with mock.patch.object(tv_input, "show_quick_panel") as show:
+            focus.handle(Gdk.KEY_Return)
+        show.assert_called_once()                  # OK: the shell's quick panel over the app
+        focus.handle(Gdk.KEY_Down)
+        self.assertIn(focus.focused, cards)        # and back into the page
+        self.assertFalse(bar.cluster.has_css_class("tv-focus"))
+        window.destroy()
+
+    def test_the_clock_stays_on_the_safe_line(self):
+        from luma_appkit.tv_parts import TvTopBar
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        window = Gtk.Window(child=stage, default_width=960, default_height=540)
+        bar = TvTopBar()
+        stage.place(bar, **TvTopBar.PIN)
+        window.present()
+        context = GLib.MainContext.default()
+        for _ in range(50):
+            context.iteration(False)
+        u = stage.unit
+        ok, clock = bar.clock.compute_bounds(stage)
+        ok2, cluster = bar.cluster.compute_bounds(stage)
+        self.assertTrue(ok and ok2)
+        right = stage.get_width() - 96 * u
+        pad = lumaui_tokens.TV["quick_panel"]["cluster_padding_x"] * u
+        self.assertAlmostEqual(clock.get_x() + clock.get_width(), right, delta=1.0)
+        self.assertAlmostEqual(cluster.get_x() + cluster.get_width(), right + pad, delta=1.0)
+        window.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()

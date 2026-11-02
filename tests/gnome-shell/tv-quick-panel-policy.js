@@ -194,7 +194,9 @@ assert(/SystemActions\.getDefault\(\)/.test(panel) && /activateRestart\(\)/.test
 assert(/this\.close\(\(\) => this\._actions\.activateRestart\(\)\)/.test(panel), 'the panel lets go before a dialog');
 assert(/Main\.pushModal\(this\._actor/.test(panel) && /Main\.popModal\(this\._grab\)/.test(panel), 'it holds the remote while open');
 assert(/if \(Main\.modalCount > 0\) return;/.test(panel), 'never over a dialog that holds the grab');
-assert(/this\._okGate = okGate\(origin === 'bar' \?/.test(panel) && /'key-release-event'[\s\S]*?okRelease\(this\._okGate\)/.test(panel) &&
+assert(M.originHeldOk('bar') && M.originHeldOk('app') && !M.originHeldOk('remote') && !M.originHeldOk('start'),
+    "the OK that opened it (the home's cluster, an app's bar clock) is still down");
+assert(/this\._okGate = okGate\(originHeldOk\(origin\) \?/.test(panel) && /'key-release-event'[\s\S]*?okRelease\(this\._okGate\)/.test(panel) &&
     /!okPress\(this\._okGate, /.test(panel), 'one action per OK press, from open to close');
 assert(/slider\.value = value;/.test(panel), "volume through the slider's own handler");
 assert(/fade_edges: false/.test(panel), 'fades only where the rows continue');
@@ -211,7 +213,7 @@ assert(/showHome\(page = 'home'\) \{[\s\S]*?this\._quick\?\.close\(\)/.test(home
 assert(/quickPanel: \(\) => this\._quick\?\.toggle\('remote'\)/.test(home), 'the remote shortcut');
 
 // Home is held: short goes home on release, long opens the panel at once.
-assert(/_homeDown\(source\) \{[\s\S]*?timeout_add\([\s\S]*?home_hold_ms[\s\S]*?this\._quickPanel\(\)/.test(input),
+assert(/_homeDown\(source, holdOnly = false\) \{[\s\S]*?timeout_add\([\s\S]*?home_hold_ms[\s\S]*?this\._quickPanel\(\)/.test(input),
     'a long press opens the panel without waiting for the release');
 assert(/_homeUp\(source\) \{[\s\S]*?homePress\(held, TOKENS\.quick_panel\.home_hold_ms\) !== 'home'\) this\._quickPanel\(\)[\s\S]*?this\._act\('home'\)/.test(input),
     'a short press goes home (once no second press comes: tv-app-switcher-policy.js)');
@@ -221,5 +223,9 @@ assert(/action === 'home'\) \{[\s\S]*?this\._homeSources\.has\(source\)\) this\.
     "a pad's Guide, and a release without its press is ignored");
 assert(/pressed && pad\.buttons\.has\(BUTTON\.SELECT\) && pad\.buttons\.has\(BUTTON\.START\)\) \{\s*this\._press\('home'\)/.test(input),
     'Select+Start still goes home at once');
+
+assert(/this\._keyboardState = Main\.keyboard\?\.tvSuspend\?\.\(\) \?\? null;\s*this\._grab = Main\.pushModal/.test(panel) &&
+    /Main\.popModal\(this\._grab\);\s*this\._grab = null;\s*Main\.keyboard\?\.tvResume\?\.\(this\._keyboardState\);/.test(panel),
+    'over an app the TV keyboard steps away and comes back as it was');
 
 print('tv-quick-panel-policy: ok');

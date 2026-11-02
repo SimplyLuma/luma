@@ -182,6 +182,12 @@ export function mixRgba(from, to, amount) {
 // own, a virtual key held down) without the repeat flag: while one press is held, further
 // presses do nothing until it is let go or the presses stop for `quietMs`. A panel opened
 // by OK starts with that press held.
+// Opened by an OK press that is still down: OK on the TV home's cluster ('bar') or on an
+// app's bar clock ('app'). Its release and repeats must not act in the panel.
+export function originHeldOk(origin) {
+    return origin === 'bar' || origin === 'app';
+}
+
 export function okGate(heldAt = null) {
     return {held: heldAt !== null, last: heldAt ?? 0};
 }
