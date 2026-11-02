@@ -52,10 +52,12 @@ fetch() {  # fetch <dest dir> <names...>: each package's shipped RPM from the po
     cp -p "$f" "$dest/"
   done
 }
+# label=disable: the data disk's files carry its own SELinux type, not container_file_t; the
+# capture containers run the same way (conform-serve.sh).
 build() {  # build <dir> <tag>
   local dir=$1 tag=$2 old new
   old=$(podman image inspect -f '{{.Id}}' "$tag" 2>/dev/null || true)
-  if ! "${heavy[@]}" podman --root "$store" --runroot /run/lumaui-conform/containers build --pull=missing --layers=false \
+  if ! "${heavy[@]}" podman --root "$store" --runroot /run/lumaui-conform/containers build --pull=missing --layers=false --security-opt label=disable \
       -t "$tag" "$dir" > "$dir/build.log" 2>&1; then
     tail -40 "$dir/build.log" >&2; exit 4
   fi
