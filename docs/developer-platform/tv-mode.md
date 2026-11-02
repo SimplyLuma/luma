@@ -347,6 +347,50 @@ focus.add(tab, on_activate=open_place, menu=lambda: commands_for(place))   # TV
 The hold needs a real key release: a keyboard, a remote, or a gamepad whose
 OK button is sent as a press on button-down and a release on button-up.
 
+## System dialogs
+
+The Shell's own dialogs — Wi-Fi and VPN passwords, keyring prompts, the
+administrator prompt, end session, mounts, the run dialog, portal access
+prompts, anything built on `ModalDialog` — work on a TV with no TV copy of any
+of them. In TV posture one adapter (`src/luma-shell-presentation/tvDialogs.js`,
+rules in `tvDialogsModel.js`) takes each one as it opens and gives it back as
+it closes; outside TV posture dialogs are exactly as on the desktop.
+
+- **The look.** The card becomes the TV sheet (`tv.sheet`): 860 wide inside
+  the safe area, padding 40, radius 44, the sheet material with no live blur.
+  The title is 44/750, a list's heading (the sessions end session
+  names) 30/700, text 26/500, small print 20/600, warnings in the danger
+  colour. Rows a dialog adds after it opens are styled as they arrive. Entries are recessed fields 76 tall; buttons are TV actions 76 tall
+  in a row, chips at rest. The focus is the one bright thing: the focused
+  button is the key, a focused field takes the white ring.
+- **The remote.** Arrows move the focus between fields and buttons by where
+  they are on screen; in a field Up and Down leave it and Left and Right move
+  the cursor. OK presses the focused button, and on a field opens the TV
+  keyboard again. Back cancels: the
+  dialog's Escape button (Cancel, Deny, Close), or its only button. With the
+  TV keyboard open, Back first puts the keyboard away.
+- **A stray OK never confirms.** A dialog with nothing to type (end
+  session, power off, restart, log out, a question, an access prompt) opens
+  with the focus on Cancel, never on its action, even when the dialog itself
+  puts its default button first. A dialog with a field opens on the field,
+  where OK only opens the keyboard.
+- **The focus stays in the dialog.** While a dialog holds the Shell's grab
+  the focus cannot be left outside it — if anything takes it (the TV home, a
+  window mapping underneath, a second prompt closing) it comes back to where
+  it was — and Back acts even before it does. A pad or remote always reaches
+  the dialog: under a Shell grab its keys go to the Shell whatever window has
+  the focus.
+- **Typing.** The first field has the focus as the dialog opens, so the TV
+  keyboard opens with it; its action key is named after the dialog's default
+  button (Connect, Unlock, Continue, Allow). The card rises so the keyboard
+  never covers it, stopping at the top safe line.
+- **Dialogs that draw their own card** (the administrator prompt) mark it
+  with the dialog accessibility role; the adapter styles that card and leaves
+  Escape to the dialog's own handler.
+
+Nothing here is per dialog: a new `ModalDialog` with buttons gets all of it.
+A dialog without buttons (Luma Search) keeps its own presentation.
+
 ## Appearing on the TV home
 
 Only applications that opt in appear on the TV home. Declare TV support in

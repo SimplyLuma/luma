@@ -18,6 +18,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {tv as TOKENS} from './tvTokens.js';
+import {TvDialogs} from './tvDialogs.js';
 import {TvInput} from './tvInput.js';
 import {TvScreenEdges} from './tvScreenEdges.js';
 import {greetingPart, nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
@@ -121,6 +122,8 @@ export class TvPresentation {
         this._input = new TvInput({home: () => this.showHome('home')});
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);
+        // System dialogs take the TV sheet and the remote (tvDialogs.js).
+        this._dialogs = new TvDialogs({unit: () => this._unit(), opaque: () => this._opaque()});
         // Screen edges: the whole picture, drawn smaller for a TV that overscans.
         this._edges = new TvScreenEdges(this._settings, Main.uiGroup);
         this._edges.enable();
@@ -131,6 +134,8 @@ export class TvPresentation {
         this._activeSignals = [];
         this._input?.destroy();
         this._input = null;
+        this._dialogs?.destroy();
+        this._dialogs = null;
         Main.keyboard?.setTvPosture?.(false);
         this._edges?.destroy();
         this._edges = null;
@@ -192,7 +197,9 @@ export class TvPresentation {
         this._focus = {kind: 'tab', index: PAGES.indexOf(page)};
         this._home.show();
         Main.uiGroup.set_child_above_sibling(this._home, global.window_group);
-        this._home.grab_key_focus();
+        // Never from under a system dialog or menu that holds the grab: its
+        // keys would go nowhere. The focus comes here as the grab ends.
+        if (!Main.modalCount) this._home.grab_key_focus();
         this._draw();
     }
 
@@ -672,10 +679,10 @@ export class TvPresentation {
                 : `box-shadow: inset 0 ${this._px(2)} ${this._px(4)} ${m('well_shade')};`);
         if (fieldFocused && this._page === 'search') {
             this._entry.clutter_text.set_editable(true);
-            this._entry.grab_key_focus();
+            if (!Main.modalCount) this._entry.grab_key_focus();
         } else if (this._home.visible) {
             this._entry.clutter_text.set_editable(false);
-            this._home.grab_key_focus();
+            if (!Main.modalCount) this._home.grab_key_focus();
         }
     }
 
