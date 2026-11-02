@@ -16,6 +16,8 @@ void luma_tv_room_load(GtkWidget *room);
 gboolean luma_tv_frame_key(GtkWindow *window, guint keyval);
 /* A press without its release: pressed again, it is the key repeating (tests). */
 gboolean luma_tv_frame_key_held(GtkWindow *window, guint keyval);
+/* The key let go (tests). */
+gboolean luma_tv_frame_key_release(GtkWindow *window, guint keyval);
 /* The TV keyboard's height in TV units (0 hidden), followed (luma-tv-keyboard.c). */
 typedef void (*LumaTvKeyboardFunc)(guint height, gpointer data);
 gpointer luma_tv_keyboard_watch(LumaTvKeyboardFunc func, gpointer data);

@@ -21,6 +21,20 @@ static int pages_opened;
 
 static void check_chip_parts(void);
 
+/* An item with a desktop context menu (GTK's "menu.popup"): holding OK opens it, a tap is OK. */
+static int menus_opened, items_clicked;
+static GtkWidget *menu_item_widget;
+#define PANTRY_TYPE_CARD (pantry_card_get_type())
+G_DECLARE_FINAL_TYPE(PantryCard, pantry_card, PANTRY, CARD, GtkButton)
+struct _PantryCard { GtkButton parent_instance; };
+G_DEFINE_FINAL_TYPE(PantryCard, pantry_card, GTK_TYPE_BUTTON)
+static void card_menu(GtkWidget *w, const char *name, GVariant *p) { (void)w; (void)name; (void)p; menus_opened++; }
+static void pantry_card_class_init(PantryCardClass *klass) {
+  gtk_widget_class_install_action(GTK_WIDGET_CLASS(klass), "menu.popup", NULL, card_menu);
+}
+static void pantry_card_init(PantryCard *self) { (void)self; }
+static void card_clicked(GtkButton *b, gpointer d) { (void)b; (void)d; items_clicked++; }
+
 static void spin(int ms) {
   gint64 until = g_get_monotonic_time() + ms * 1000;
   while (g_get_monotonic_time() < until) {
@@ -70,6 +84,9 @@ static GtkWidget *page_new(const char *title) {
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(info), "Items");
   adw_action_row_add_suffix(ADW_ACTION_ROW(info), gtk_label_new("128"));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(more), info);
+  menu_item_widget = g_object_new(PANTRY_TYPE_CARD, "label", "Sourdough starter", NULL);
+  g_signal_connect(menu_item_widget, "clicked", G_CALLBACK(card_clicked), NULL);
+  gtk_box_append(GTK_BOX(body), menu_item_widget);
   GtkWidget *button = adw_button_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(button), "Clear the shopping list");
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(more), button);
@@ -240,6 +257,26 @@ static void check_tv(GtkApplication *app) {
   CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));
   CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Down));     /* moves repeat */
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));        /* back to the island */
+  spin(50);
+
+  /* Hold OK on an item with a menu: the menu after 500 ms, once; a tap is the OK, on release. */
+  gtk_widget_grab_focus(menu_item_widget);
+  spin(700); /* focus put there by the app: OK right after such a move acts on nothing (the frame's guard) */
+  CHECK(gtk_root_get_focus(GTK_ROOT(window)) == menu_item_widget);
+  menus_opened = items_clicked = 0;
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));    /* nothing yet */
+  spin(100);
+  CHECK(luma_tv_frame_key_release(GTK_WINDOW(window), GDK_KEY_Return)); /* a tap */
+  spin(400);                                                             /* a button clicks after its press animation */
+  CHECK(items_clicked == 1 && menus_opened == 0);
+  CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return));
+  for (int i = 0; i < 40; i++) { spin(30); CHECK(luma_tv_frame_key_held(GTK_WINDOW(window), GDK_KEY_Return)); }
+  CHECK(menus_opened == 1);                                              /* once, however long */
+  CHECK(luma_tv_frame_key_release(GTK_WINDOW(window), GDK_KEY_Return));
+  spin(400);
+  CHECK(items_clicked == 1);                                             /* the release does nothing */
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Menu) && menus_opened == 2);
+  CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Escape));
   spin(50);
 
   /* The toast: the shared TV toast, shown and resting on the 56 line. */

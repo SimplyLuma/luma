@@ -1278,6 +1278,84 @@ static gboolean modal_key(TvFrame *f, GtkWidget *modal, guint key) {
   return GDK_EVENT_STOP;
 }
 
+/* Hold OK for the item's menu (the Python TvFocus rule: tv.focus.hold_ms, opens once, a release
+ * before then is the OK). An item has a menu when it offers GTK's own "menu.popup" action: its
+ * desktop context menu, the same commands, drawn as the TV's list (window.lumaui-tv popover).
+ * The hold's state lives on the window: no frame fields, so other branches' frame changes merge. */
+#define TV_HOLD_MS 500
+
+typedef struct {
+  GtkWidget *item;   /* weak: OK is down on it */
+  guint source;      /* the hold timer */
+  gboolean opened;   /* the menu opened: the release does nothing */
+} TvHold;
+
+static gboolean offers_menu(GtkWidget *w) {
+  GtkWidgetClass *klass = GTK_WIDGET_GET_CLASS(w);
+  GType owner;
+  const char *name = NULL, *property = NULL;
+  const GVariantType *parameter = NULL;
+  for (guint i = 0; gtk_widget_class_query_action(klass, i, &owner, &name, &parameter, &property); i++)
+    if (g_strcmp0(name, "menu.popup") == 0)
+      return gtk_widget_is_sensitive(w);
+  return FALSE;
+}
+
+static GtkWidget *menu_item(GtkWidget *focus, GtkWidget *stop) {
+  for (GtkWidget *w = focus; w != NULL && w != stop; w = gtk_widget_get_parent(w))
+    if (offers_menu(w)) return w;
+  return NULL;
+}
+
+static TvHold *tv_hold(TvFrame *f) {
+  TvHold *hold = g_object_get_data(G_OBJECT(f->window), "luma-tv-hold");
+  if (hold == NULL) {
+    hold = g_new0(TvHold, 1);
+    g_object_set_data_full(G_OBJECT(f->window), "luma-tv-hold", hold, g_free);
+  }
+  return hold;
+}
+
+static gboolean hold_elapsed(gpointer data) {
+  TvFrame *f = data;
+  TvHold *hold = tv_hold(f);
+  hold->source = 0;
+  if (hold->item != NULL && f->active) {
+    hold->opened = TRUE;
+    gtk_widget_activate_action(hold->item, "menu.popup", NULL);
+  }
+  return G_SOURCE_REMOVE;
+}
+
+/* OK pressed on an item with a menu: nothing yet; the release is the OK, the hold the menu. */
+static gboolean hold_begin(TvFrame *f, GtkWidget *focus) {
+  GtkWidget *item = menu_item(focus, gtk_widget_get_parent(f->island));
+  if (item == NULL || editable(focus))
+    return FALSE;
+  TvHold *hold = tv_hold(f);
+  g_clear_handle_id(&hold->source, g_source_remove);
+  g_clear_weak_pointer(&hold->item);
+  g_set_weak_pointer(&hold->item, focus);
+  hold->opened = FALSE;
+  hold->source = g_timeout_add(TV_HOLD_MS, hold_elapsed, f);
+  return TRUE;
+}
+
+/* OK let go: before the hold, the press acts now (as OK on any item); after it, nothing. */
+static gboolean hold_end(TvFrame *f) {
+  TvHold *hold = g_object_get_data(G_OBJECT(f->window), "luma-tv-hold");
+  if (hold == NULL || (hold->item == NULL && !hold->opened))
+    return FALSE;
+  gboolean pending = hold->source != 0;
+  g_clear_handle_id(&hold->source, g_source_remove);
+  GtkWidget *item = hold->item;
+  g_clear_weak_pointer(&hold->item);
+  if (pending && item != NULL && item == focus_of(f))
+    gtk_widget_activate(item);
+  hold->opened = FALSE;
+  return TRUE;
+}
+
 static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint code,
                             GdkModifierType state, TvFrame *f) {
   (void)controller; (void)code;
@@ -1341,6 +1419,13 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
   gboolean text = editable(focus);
   if (is_ok(key) && !text)
     f->ok_at = g_get_monotonic_time();
+  if (is_ok(key) && key != GDK_KEY_space && hold_begin(f, focus))
+    return GDK_EVENT_STOP;
+  if (key == GDK_KEY_Menu && !text) {
+    GtkWidget *item = menu_item(focus, gtk_widget_get_parent(f->island));
+    if (item != NULL) gtk_widget_activate_action(item, "menu.popup", NULL);
+    return GDK_EVENT_STOP;
+  }
   if (is_back(key)) {
     if (text && key == GDK_KEY_BackSpace)
       return GDK_EVENT_PROPAGATE;
@@ -1480,6 +1565,8 @@ static gboolean key_released(GtkEventControllerKey *controller, guint key, guint
   (void)controller; (void)code; (void)state;
   if (f->active)
     g_hash_table_remove(held_keys(f), GUINT_TO_POINTER(key)); /* the next press is a new one */
+  if (f->active && is_ok(key) && hold_end(f))
+    return GDK_EVENT_STOP;
   if (!f->active || !is_ok(key))
     return GDK_EVENT_PROPAGATE;
   GtkWidget *focus = focus_of(f);
@@ -1718,6 +1805,11 @@ gboolean luma_tv_frame_key(GtkWindow *window, guint keyval) {
   if (f != NULL && f->active) /* one whole press: the key is let go again */
     g_hash_table_remove(held_keys(f), GUINT_TO_POINTER(keyval));
   return handled;
+}
+
+gboolean luma_tv_frame_key_release(GtkWindow *window, guint keyval) {
+  TvFrame *f = g_object_get_data(G_OBJECT(window), "luma-tv-frame");
+  return f != NULL && key_released(NULL, keyval, 0, 0, f) == GDK_EVENT_STOP;
 }
 
 gboolean luma_tv_frame_key_held(GtkWindow *window, guint keyval) {
