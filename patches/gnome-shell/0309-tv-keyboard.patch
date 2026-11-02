@@ -545,7 +545,7 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
          this.close(true);
      }
  
-@@ -3980,9 +4197,402 @@ export const Keyboard = GObject.registerClass({
+@@ -3980,9 +4197,415 @@ export const Keyboard = GObject.registerClass({
          this._focusWindow = window;
      }
  
@@ -870,8 +870,21 @@ diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
 +        if (this._tvFocus < 0 && cells.length)
 +            this._tvFocus = TvKeyboard.tvStart(cells);
 +        const cell = cells[Math.min(this._tvFocus, cells.length - 1)];
-+        if (!cell || !this._keyboardVisible) {
++        const ready = cell && cell.x2 > cell.x1;
++        if (!ready || !this._keyboardVisible) {
 +            this._tvFocusActor?.hide();
++            // A layout just rebuilt (another field's purpose) has no cells
++            // until it is laid out: draw again once it is.
++            const page = this._currentPage;
++            if (this._keyboardVisible && page && !page._tvAwaitLayout) {
++                page._tvAwaitLayout = page.connect('notify::allocation', () => {
++                    page.disconnect(page._tvAwaitLayout);
++                    page._tvAwaitLayout = 0;
++                    page._cells = null;
++                    if (page === this._currentPage)
++                        this._tvDrawFocus(false);
++                });
++            }
 +            return;
 +        }
 +        const k = TV_TOKENS.keyboard;
