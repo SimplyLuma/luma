@@ -113,8 +113,55 @@ TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
   and does nothing else; Shift+I forces it, `LUMA_TV_IDLE_MS` sets the delay;
   `hold()` keeps the app awake.
 
+### Media parts
+
+Apps that show records, films, games or pictures use the media parts
+(`luma_appkit.tv_media`), so a cover, a play button or the backdrop is the same
+in every app. They follow the unit of the `TvStage` they sit on and register
+with `TvFocus` like any other part.
+
+```python
+from luma_appkit import TvCover, TvTransportButton, TvNowPlayingPill, TvProgress, TvRoom, TvSlide
+
+room = stage.place(TvRoom(), fill=True)             # first: the item's own art, blurred, as the room
+room.set_artwork(path)                              # cross-fades over 1.1 s; hues=(h1, h2, h3) without art
+cover = TvCover(shape="square", artwork=path, title="Album", subtitle="Artist")
+focus.add(cover, on_activate=open_album)            # lifts 1.08, white ring on the art only
+play = TvTransportButton("play", main=True, label="Play")   # round: 108 main, 84 otherwise
+pill = TvNowPlayingPill()                           # what's playing, in the shared top bar
+bar.end.prepend(pill)
+pill.show_track("Song", "Artist", artwork, playing=True)    # None hides it
+shelf = TvSlide(row, orientation=Gtk.Orientation.HORIZONTAL, clip=False)
+```
+
+- **TvCover**: square 260 (music), portrait 230 wide at 3:4 (games, film),
+  landscape 400 wide at 16:9 (screenshots, episodes); `width=` for a hero or a
+  page's large sleeve, `radius=` for the corner (20 by default). With the focus
+  it lifts 1.08 and a 5-unit white ring hugs the art, concentric with its
+  corner; the caption (`title`, `subtitle`) never carries the ring. Without
+  art it draws a generated sleeve from three `hues` (`hues_for(name)` gives
+  stable ones) and `name` on it. Artwork loads off the main loop.
+- **TvTransportButton**: round, chip at rest and key with the focus, a filled
+  Lucide transport glyph (`play`, `pause`, `skip-back`, `skip-forward`);
+  `set_icon()` swaps it. Space it with the `tv.media.transport.gap` (22).
+- **TvNowPlayingPill**: the sleeve, song and artist and a three-bar
+  equaliser (still while paused), bar material at rest and key with the focus,
+  at most 520 wide. It rides before the clock in the shared top bar on every
+  page while something plays; OK on it opens the app's Now playing.
+- **TvProgress**: a recessed well with a key fill (Now playing), or
+  `hairline=True` for an idle view.
+- **TvRoom**: the backdrop. The art is decoded small, blurred and graded once
+  off the main loop and cached, then drawn as one texture; a change
+  cross-fades two textures. There is no live blur, so a 4K TV on a small GPU
+  stays smooth. A shade keeps the bar and text legible.
+- **TvSlide**: a row or page that slides to keep the focus in view (call
+  `reveal(widget)` from `TvFocus`'s change callback), only as far as needed,
+  with `peek` of the next item; no scrollbars.
+- `.tv-playing` colours the playing song (its title, number, equaliser).
+
 Values come from the `tv` block of `config/shared/design-tokens.json`
-(`focus`, `sheet`, `toast`, `keyboard` layout, `idle`, `motion`).
+(`focus`, `sheet`, `toast`, `keyboard` layout, `idle`, `motion`, `cover`,
+`button`) and its `media` fragment, `config/shared/design-tokens.d/tv-media.json`.
 
 ## Typing
 

@@ -18,6 +18,8 @@ class AlbumRecency:
         self._times = {}
         self._ordered_input = None
         self._ordered = ()
+        self._played_for = None
+        self._played = ()
 
     def _read(self):
         try:
@@ -46,6 +48,14 @@ class AlbumRecency:
                 # on subsequent position updates from the player.
                 self._ordered_input = self._ordered if self._ordered != albums else albums
             return self._ordered
+
+    def played(self):
+        """Album identifiers with local playback history, most recent first."""
+        with self._lock:
+            if self._played_for is not self._times:
+                self._played = tuple(sorted(self._times, key=lambda k: -self._times[k]))
+                self._played_for = self._times
+            return self._played
 
     def record(self, identifier, timestamp=None):
         """Worker-only RMW, with a permanent first-edit backup and atomic replace."""
