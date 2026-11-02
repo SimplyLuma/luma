@@ -42,6 +42,9 @@ const a = {id: 'a'}, b = {id: 'b'}, c = {id: 'c'};
 const order = M.switcherApps([{app: b}, {app: null}, {app: a}, {app: b}], [a, c], app => app.id);
 assert(order.map(app => app.id).join() === 'b,a,c', 'Alt+Tab order, each app once, windowless apps after');
 assert(!M.switcherApps([], []).length, 'nothing running, nothing listed');
+const info = show => ({should_show: () => show});
+assert(M.shownApp(info(true)) && M.shownApp(null) && !M.shownApp(info(false)),
+    "a NoDisplay app (a system prompt) is never a card; a window without a desktop file is");
 
 // The row scrolls only as far as the focused card and a peek need.
 assert(M.rowScroll(0, tokens, 1920) === 0 && M.rowScroll(1, tokens, 1920) === 0, 'the first cards need no scroll');
@@ -82,6 +85,11 @@ for (const [name, source] of [['the switcher', switcher], ['the TV home', home]]
     assert(/okPress\(this\._(itemM|m)enu\.gate/.test(source) && /okRelease\(this\._(itemM|m)enu\.gate\)/.test(source),
         `${name}: one menu action per OK press`);
 }
+assert(/\.filter\(normalWindow\)[\s\S]*?\.filter\(entry => switcherApp\(entry\.app\)\)/.test(switcher) &&
+    /appRunning\(app\) && switcherApp\(app\)/.test(switcher), 'system prompts are never cards');
+assert(/is_skip_taskbar\(\)/.test(switcher) && /WindowType\.NORMAL/.test(switcher) && /get_transient_for\(\)/.test(switcher),
+    'cards are taskbar windows: no dialogs, skip-taskbar or transient windows');
+assert(/return switcherApp\(shellApp\) && appRunning\(shellApp\)/.test(home), 'no running dot for a system prompt');
 assert(/action === 'up'\) \{\s*this\._openMenu\(null\)/.test(switcher), 'Up on a card drops its menu');
 assert(/action === 'back'\) \{\s*this\.close\('back'\)/.test(switcher), 'Back closes it');
 assert(/_keyUp\(event\) \{[\s\S]*?this\._switch\(\)/.test(switcher), 'OK switches when let go');

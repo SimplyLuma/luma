@@ -26,6 +26,15 @@ export function switcherApps(windows, running, id = app => app) {
     return apps;
 }
 
+// Whether an app may be a card or carry a running dot: the shell's own
+// classification, as its app grid has it (`appInfo.should_show()`: NoDisplay,
+// Hidden, OnlyShowIn). System prompters (the keyring's Access Prompt and the
+// like) are NoDisplay; a window no desktop file claims (`appInfo` null) is an
+// ordinary app's.
+export function shownApp(appInfo) {
+    return !appInfo || appInfo.should_show?.() !== false;
+}
+
 // The row's scroll (TV units): the first card on the side safe line; the row
 // moves only as far as the focused card and `peek` past it need, never
 // before the first card.

@@ -19,7 +19,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {okPress, okRelease} from './tvQuickPanelModel.js';
-import {TvAppSwitcher, TvItemMenu, appRunning, requestQuit} from './tvAppSwitcher.js';
+import {TvAppSwitcher, TvItemMenu, appRunning, requestQuit, switcherApp} from './tvAppSwitcher.js';
 import {TvDialogs} from './tvDialogs.js';
 import {TvInput} from './tvInput.js';
 import {TvQuickPanel} from './tvQuickPanel.js';
@@ -484,7 +484,8 @@ export class TvPresentation {
     }
 
     _running(app) {
-        return appRunning(this._appSystem.lookup_app(app.id));
+        const shellApp = this._appSystem.lookup_app(app.id);
+        return switcherApp(shellApp) && appRunning(shellApp);
     }
 
     _syncRunning() {
