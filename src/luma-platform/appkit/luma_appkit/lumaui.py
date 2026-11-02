@@ -48,7 +48,9 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #    luma_ui_tv_unit, luma_ui_set_part, luma_ui_set_keyboard_action).
 # 9: device_noun (this TV / this computer / this tablet / this phone, by posture); the floating
 #    island for every AppWindow (tv_frame; C luma_window_set_tv_frame, luma_window_set_tv_active).
-LUMAUI_API_LEVEL = 9
+# 10: wide tiles and app surfaces on TV (TvWideTile, TvShelf, TvTileGrid, TvPage, TvProgressButton,
+#     TvScreenshotViewer, TvEmptyState, compose_wide_tile, wide_tile_art); TvMenu.open(title=, first=).
+LUMAUI_API_LEVEL = 10
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()

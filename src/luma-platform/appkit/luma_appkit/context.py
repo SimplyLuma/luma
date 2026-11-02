@@ -118,7 +118,9 @@ def context_from_session(base: AppContext, mode: str,
     known = mode in {"desktop", "tablet", "mobile"}
     presentation = (PresentationMode.WINDOWED if mode == "desktop" else PresentationMode.FULLSCREEN) if known else base.presentation
     device = ("handheld" if mode == "mobile" else mode) if known else base.device_class
-    resolved = base.posture if posture is None else (TV_POSTURE if posture == TV_POSTURE else "")
+    # LUMA_POSTURE forces the posture (tests, reviews, capture harnesses), over the service too.
+    forced = os.environ.get("LUMA_POSTURE", "").strip()
+    resolved = base.posture if posture is None or forced else (TV_POSTURE if posture == TV_POSTURE else "")
     return AppContext(presentation, input_mode, device, resolved)
 
 

@@ -108,6 +108,9 @@ __all__ = [
     "TvIdle",
     "TvMenu",
     "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
+    # wide tiles and app surfaces (API level 10)
+    "TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvScreenshotViewer", "TvEmptyState",
+    "compose_wide_tile", "wide_tile_art",
     # the system's TV keyboard: action label, height
     "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
     # remotes and gamepads: an app that reads the pad itself claims it
@@ -383,6 +386,10 @@ def __getattr__(name: str):
     if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide"}:
         from . import tv_media
         return getattr(tv_media, name)
+    if name in {"TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvScreenshotViewer",
+                "TvEmptyState", "compose_wide_tile", "wide_tile_art"}:
+        from . import tv_tiles
+        return getattr(tv_tiles, name)
     if name in {"set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state"}:
         from . import tv_keyboard
         return getattr(tv_keyboard, name)

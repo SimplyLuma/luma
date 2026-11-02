@@ -41,6 +41,7 @@ def _sheet(opaque: bool) -> str:
 .tv-menu-row image {{ -gtk-icon-size: {t['icon']}tv; }}
 .tv-menu-row.tv-danger {{ color: {m('danger')}; }}
 .tv-menu-row.tv-key.tv-danger {{ color: {m('danger_on_key')}; }}
+.tv-menu-title {{ padding: 10tv {t['row_padding_x']}tv 12tv; font-size: 22tv; font-weight: 600; color: {m('ink_2')}; }}
 """
 
 
@@ -62,11 +63,17 @@ class TvMenu(Gtk.Box):
 
     __gtype_name__ = "LumaUITvMenu"
 
-    def __init__(self, registry: CommandRegistry) -> None:
+    def __init__(self, registry: CommandRegistry, title: str = "") -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, accessible_role=Gtk.AccessibleRole.MENU)
         add_tv_style(_sheet)
         self.add_css_class("tv-menu")
         self.add_css_class("tv-bar")
+        if title:
+            # the question a dropped list answers ("Uninstall Kodi?"), on top
+            heading = Gtk.Label(label=title, xalign=0, wrap=True, max_width_chars=36)
+            heading.add_css_class("tv-menu-title")
+            self.append(heading)
+            self.update_property([Gtk.AccessibleProperty.LABEL], [title])
         self.rows: list[Gtk.Widget] = []
         self.commands = menu_commands(registry)
         for command in self.commands:
@@ -89,10 +96,14 @@ class TvMenu(Gtk.Box):
 
     @classmethod
     def open(cls, focus, item: Gtk.Widget, registry: CommandRegistry,
-             on_closed: Callable[[], None] | None = None) -> "TvMenu | None":
-        """Open the menu for `item` on `focus`'s stage; None when it has no command to show."""
+             on_closed: Callable[[], None] | None = None, *, title: str = "",
+             first: int | None = None) -> "TvMenu | None":
+        """Open the menu for `item` on `focus`'s stage; None when it has no command to show.
+
+        `title` puts the question the list answers on top; `first` is the index of the command
+        the focus starts on (a question's Cancel, so OK never assumes an answer)."""
         stage = focus.root
-        menu = cls(registry)
+        menu = cls(registry, title)
         if not menu.rows or not isinstance(stage, TvStage):
             return None
         unit = stage.unit or 1.0
@@ -116,7 +127,8 @@ class TvMenu(Gtk.Box):
         for row, command in zip(menu.rows, menu.commands):
             focus.add(row, group="tv-menu", on_activate=lambda c=command: menu._run(c),
                       on_key=lambda direction, r=row: menu._step(r, direction, live))
-        focus.push_scope(live, on_back=menu._back)
+        start = menu.rows[first] if first is not None and 0 <= first < len(menu.rows) else None
+        focus.push_scope(live, on_back=menu._back, first=start if start in live else None)
         return menu
 
     def _step(self, row: Gtk.Widget, direction: str, live: list) -> bool:
