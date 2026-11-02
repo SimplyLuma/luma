@@ -64,7 +64,7 @@ function dump({ winSel, groups, exclude, pairSels }) {
     if (cs.backgroundImage && cs.backgroundImage !== 'none') p.backgroundImage = cs.backgroundImage.slice(0, 400);
     const bw = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map(px), bs = [cs.borderTopStyle, cs.borderRightStyle, cs.borderBottomStyle, cs.borderLeftStyle];
     if (bw.some((w, i) => w > 0 && bs[i] !== 'none')) p.border = { widths: bw, colors: [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor] };
-    const rad = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(px); if (rad.some(r => r > 0)) p.radius = rad;
+    const rad = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(v => /%/.test(v) ? parseFloat(v) / 100 * px(cs.width) : px(v));   /* a share of the box (a wide tile's 11.875%): its horizontal radius in px */ if (rad.some(r => r > 0)) p.radius = rad;
     if (cs.boxShadow && cs.boxShadow !== 'none') p.boxShadow = cs.boxShadow;
     if (cs.outlineStyle !== 'none' && px(cs.outlineWidth) > 0) p.outline = `${cs.outlineWidth} ${cs.outlineStyle} ${cs.outlineColor}`;
     if (cs.backdropFilter && cs.backdropFilter !== 'none') p.backdropFilter = cs.backdropFilter;
