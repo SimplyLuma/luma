@@ -358,8 +358,9 @@ it closes; outside TV posture dialogs are exactly as on the desktop.
 
 - **The look.** The card becomes the TV sheet (`tv.sheet`): 860 wide inside
   the safe area, padding 40, radius 44, the sheet material with no live blur.
-  The title is 44/750, text 26/500, small print 20/600, warnings in the danger
-  colour. Entries are recessed fields 76 tall; buttons are TV actions 76 tall
+  The title is 44/750, a list's heading (the sessions end session
+  names) 30/700, text 26/500, small print 20/600, warnings in the danger
+  colour. Rows a dialog adds after it opens are styled as they arrive. Entries are recessed fields 76 tall; buttons are TV actions 76 tall
   in a row, chips at rest. The focus is the one bright thing: the focused
   button is the key, a focused field takes the white ring.
 - **The remote.** Arrows move the focus between fields and buttons by where

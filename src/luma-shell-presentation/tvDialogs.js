@@ -139,7 +139,6 @@ export class TvDialogs {
         const record = {
             dialog, surface, mover, saved: new Map(), blurs: [], fields: [], focusables: [], containers: new Set(),
             standard: surface === dialog.dialogLayout._dialog, lastFocus: null, spacing: null,
-            fixed: mover.fixed_position_set ? {x: mover.x, y: mover.y, width: mover.natural_width_set ? mover.width : -1} : null,
         };
         this._dialogs.set(dialog, record);
         // No live blur on a TV: the sheet is its own material.
@@ -215,16 +214,14 @@ export class TvDialogs {
         if (record.spacing !== null && record.dialog.buttonLayout?.layout_manager)
             record.dialog.buttonLayout.layout_manager.spacing = record.spacing;
         record.mover.translation_y = 0;
-        if (record.fixed) {
-            record.mover.set_position(record.fixed.x, record.fixed.y);
-            record.mover.width = record.fixed.width;
-        }
     }
 
     // Set a property, remembering what it was for when the dialog lets go.
     _set(record, actor, key, value) {
         let saved = record.saved.get(actor);
         if (!saved) record.saved.set(actor, saved = {});
+        // A width the actor never fixed goes back to its natural width.
+        if (key === 'width' && !(key in saved) && !actor.natural_width_set) saved.width = -1;
         if (!(key in saved)) saved[key] = actor[key];
         if (actor[key] !== value) actor[key] = value;
     }
@@ -285,17 +282,15 @@ export class TvDialogs {
         record.fields = [];
         record.focusables = [];
         record.fieldText = new Map();
-        const w = this._px(width / this._u);
+        // St lengths are the content box: the padding and rim go around it.
+        const w = this._px(width / this._u - 2 * sheet.padding - 3);
         this._set(record, surface, 'style', `width: ${w}; min-width: ${w}; max-width: ${w}; padding: ${this._px(sheet.padding)};
             spacing: ${this._px(sheet.gap)}; border-radius: ${this._px(sheet.radius)};
             background-gradient-direction: none; background-color: ${this._m('sheet')};
             border: ${this._px(1.5)} solid ${this._m('bar_rim')};
             box-shadow: 0 ${this._px(18)} ${this._px(44)} ${this._px(-10)} ${this._m('bar_drop')};
             color: ${this._m('ink')};`);
-        if (record.fixed) {
-            this._set(record, record.mover, 'width', width);
-            this._set(record, record.mover, 'x', monitor.x + Math.round((monitor.width - width) / 2));
-        }
+        this._placeMover(record, monitor, width);
         if (record.standard) {
             const layout = dialog.buttonLayout.layout_manager;
             if (record.spacing === null) record.spacing = layout.spacing;
@@ -475,13 +470,27 @@ export class TvDialogs {
         });
     }
 
+    // A card its dialog places itself (the administrator prompt sizes and
+    // positions its holder as it opens, after the dialog says it is opening)
+    // takes the sheet's width, centred. Checked on every placement, so the
+    // dialog's own placement never wins. True when the card is placed so.
+    _placeMover(record, monitor, width) {
+        const {mover} = record;
+        if (!mover.fixed_position_set) return false;
+        // Its own placement balanced the labels for its desktop width.
+        if (mover.width !== width) this._queueRestyle(record);
+        this._set(record, mover, 'width', width);
+        this._set(record, mover, 'x', monitor.x + Math.round((monitor.width - width) / 2));
+        return true;
+    }
+
     _place(record) {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor) return;
         const u = this._unitFor();
         const {surface, mover} = record;
         const height = surface.height;
-        if (record.fixed)
+        if (this._placeMover(record, monitor, panelWidth(monitor.width, u, TOKENS)))
             this._set(record, mover, 'y', monitor.y + Math.round(Math.max(0, (monitor.height - height) / 2)));
         const [, y] = surface.get_transformed_position();
         const top = y - mover.translation_y;

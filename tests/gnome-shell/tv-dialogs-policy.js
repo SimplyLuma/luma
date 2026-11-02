@@ -82,6 +82,12 @@ assert(/_safeFocus\(record\) \{[\s\S]*?if \(record\.fields\.some\([\s\S]*?_cance
     'a dialog with nothing to type opens on Cancel');
 assert(/_adopt\(dialog\) \{[\s\S]*?this\._safeFocus\(record\);[\s\S]*?idle_add[\s\S]*?this\._safeFocus\(record\)/.test(dialogs),
     'also after the dialog places its own focus');
+assert(/const w = this\._px\(width \/ this\._u - 2 \* sheet\.padding - 3\)/.test(dialogs),
+    'the card width: TV units scaled once, padding and rim inside the sheet width');
+assert(/_placeMover\(record, monitor, width\) \{[\s\S]*?fixed_position_set[\s\S]*?'width', width/.test(dialogs) &&
+    /if \(this\._placeMover\(record, monitor,/.test(dialogs), 'a card its dialog places itself takes the sheet width');
+assert(/record\.containers\.add\(actor\);\s*actor\.connectObject\('child-added'/.test(dialogs) &&
+    /for \(const actor of record\.containers\) actor\.disconnectObject\(this\)/.test(dialogs), 'rows added later are styled');
 assert(/effect instanceof Shell\.BlurEffect[\s\S]*?effect\.enabled = false/.test(dialogs), 'no live blur');
 assert(/setFieldAction\?\.\(entry\.clutter_text/.test(dialogs), "the keyboard's action key is the dialog's");
 assert(/for \(const effect of record\.blurs\) effect\.enabled = true/.test(dialogs) &&
