@@ -117,7 +117,7 @@ static void room_load(LumaTvRoom *self) {
   g_autoptr(GdkPixbuf) pixbuf = gdk_pixbuf_add_alpha(loaded, FALSE, 0, 0, 0);
   box_blur(gdk_pixbuf_get_pixels(pixbuf), gdk_pixbuf_get_width(pixbuf), gdk_pixbuf_get_height(pixbuf),
            gdk_pixbuf_get_rowstride(pixbuf), 6);
-  /* The dimming (brightness .45) and the shade (darker behind the island, 0.35 to 0.1 black at 60%)
+  /* The saturation (1.2), the dimming (brightness .45) and the shade (darker behind the island, 0.35 to 0.1 black at 60%)
    * are baked into the picture once: drawn live they were three more full-screen layers a frame. */
   int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
   guchar *px = gdk_pixbuf_get_pixels(pixbuf);
@@ -127,7 +127,13 @@ static void room_load(LumaTvRoom *self) {
     double keep = 0.45 * (1 - shade);
     for (int y = 0; y < h; y++) {
       guchar *p = px + y * stride + x * 4;
-      p[0] = (guchar)(p[0] * keep + 0.5); p[1] = (guchar)(p[1] * keep + 0.5); p[2] = (guchar)(p[2] * keep + 0.5);
+      /* the mockup's saturate(1.2) (the CSS filter matrix), then the dimming */
+      double r = p[0], g = p[1], b = p[2], s = 1.2;
+      double r2 = (0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b;
+      double g2 = (0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b;
+      double b2 = (0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b;
+      p[0] = (guchar)CLAMP(r2 * keep + 0.5, 0, 255); p[1] = (guchar)CLAMP(g2 * keep + 0.5, 0, 255);
+      p[2] = (guchar)CLAMP(b2 * keep + 0.5, 0, 255);
       p[3] = 255;
     }
   }
