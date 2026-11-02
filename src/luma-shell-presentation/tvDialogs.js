@@ -24,6 +24,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {State} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {backButton, dialogKey, keyboardHeight, labelRole, panelShift, panelWidth} from './tvDialogsModel.js';
+import {repeatAllowed} from './tvModel.js';
 
 const DIRECTIONS = {
     up: St.DirectionType.UP, down: St.DirectionType.DOWN,
@@ -588,6 +589,8 @@ export class TvDialogs {
         if (event.type() !== Clutter.EventType.KEY_PRESS) return Clutter.EVENT_PROPAGATE;
         const action = dialogKey(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_PROPAGATE;
+        // A held OK or Back repeats: the repeat never presses a button or cancels again.
+        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
         const {dialog, surface} = record;
         const focus = global.stage.key_focus;
         const focused = inside(surface, focus);

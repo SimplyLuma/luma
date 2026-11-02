@@ -21,7 +21,7 @@ import {tv as TOKENS} from './tvTokens.js';
 import {TvDialogs} from './tvDialogs.js';
 import {TvInput} from './tvInput.js';
 import {TvQuickPanel} from './tvQuickPanel.js';
-import {greetingPart, nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
+import {greetingPart, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
 import {gettext as _} from 'gettext';
 
@@ -631,8 +631,9 @@ export class TvPresentation {
     _key(event) {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_PROPAGATE;
-        // OK is held down for a long press: its key repeat is not more OKs.
+        // OK is held down for a long press: its key repeat is not more OKs (nor Back more Backs).
         if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
+        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
         if (action === 'ok') this._ok();
         else if (action === 'back') this._back();
         else this._move(action);

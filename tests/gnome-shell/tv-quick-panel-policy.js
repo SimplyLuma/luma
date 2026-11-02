@@ -124,6 +124,14 @@ const methods = [...panel.matchAll(/^    (_?[a-zA-Z]+)\([^)]*\) \{$/gm)].map(m =
 const twice = methods.filter((m, i) => methods.indexOf(m) !== i);
 assert(!twice.length, `methods defined twice: ${twice.join(', ')}`);
 
+// Shared TV rule: a held key's repeat only moves the focus or steps a slider (tvModel.repeatAllowed).
+const model = read(args[2].replace(/tvQuickPanel\.js$/, 'tvModel.js'));
+assert(/export function repeatAllowed\(action\) \{\s*return action === 'up' \|\| action === 'down' \|\| action === 'left' \|\| action === 'right';/.test(model),
+    'only directions repeat');
+for (const [name, source] of [['the TV home', home], ['the quick panel', panel], ['system dialogs', read(args[2].replace(/tvQuickPanel\.js$/, 'tvDialogs.js'))]])
+    assert(/!repeatAllowed\(action\) && \(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\)\) return Clutter\.EVENT_STOP/.test(source),
+        `${name}: a repeat never activates`);
+
 // The panel drives the desktop's objects; it creates none of its own.
 assert(/_network\?\._wirelessToggle/.test(panel) && /_bluetooth\?\.quickSettingsItems/.test(panel) &&
     /_doNotDisturb\?\.quickSettingsItems/.test(panel) && /_volumeOutput\?\.quickSettingsItems/.test(panel),

@@ -22,7 +22,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 import {tv as TOKENS} from './tvTokens.js';
-import {remoteAction} from './tvModel.js';
+import {remoteAction, repeatAllowed} from './tvModel.js';
 import {chipState, firstChip, firstStop, keepRow, levelPercent, mixRgba, noteAge, noteRecords, panelRows,
     scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
 import {gettext as _} from 'gettext';
@@ -638,6 +638,7 @@ export class TvQuickPanel {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_STOP;
         if (action === 'ok' && ((event.get_flags() & Clutter.EventFlags.REPEATED) || !this._armed)) return Clutter.EVENT_STOP;
+        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
         const row = this._rows[this._row];
         if (action === 'back') {
             if (this._open.outputs || this._open.power) {
