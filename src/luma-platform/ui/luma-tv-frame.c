@@ -925,6 +925,16 @@ static void lay_out_part(GtkWidget *w) {
 
 static void release_page(TvFrame *f, GtkWidget *widget) {
   lay_out_part(widget);
+  /* A centred window's own action (Try Again under a sentence) keeps the buttons row's natural width,
+   * centred, instead of stretching to the column. */
+  if (f->sidebar == NULL && GTK_IS_BUTTON(widget) && gtk_widget_get_halign(widget) == GTK_ALIGN_FILL &&
+      g_object_get_data(G_OBJECT(widget), "luma-tv-layout") == NULL) {
+    GtkWidget *parent = gtk_widget_get_parent(widget);
+    if (parent != NULL && GTK_IS_BOX(parent) && gtk_orientable_get_orientation(GTK_ORIENTABLE(parent)) == GTK_ORIENTATION_VERTICAL) {
+      hold_layout(widget);
+      gtk_widget_set_halign(widget, GTK_ALIGN_CENTER);
+    }
+  }
   if ((gtk_widget_has_css_class(widget, "lumaui-part-mark") || gtk_widget_has_css_class(widget, "lumaui-part-lead")) &&
       within_row(widget))
     place_lead(f, widget);
