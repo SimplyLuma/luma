@@ -259,26 +259,21 @@ class UnlockSheet(Adw.ApplicationWindow):
         self.set_default_widget(self.view.primary)
 
     def _build_phone(self) -> None:
-        # The window is the phone's screen; the sheet is a drawer from its bottom edge.
-        # The phone's sheet is LumaUI's drawer dialog (the destructive dialog's phone form:
-        # the handle, 20 a side, the content 30 from the top), holding this sheet's parts.
-        self.set_content(Gtk.Box(hexpand=True, vexpand=True))
-        self._card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, accessible_role=Gtk.AccessibleRole.DIALOG)
-        self._card.add_css_class("lumaui-dialog")
-        handle = Gtk.Box(halign=Gtk.Align.CENTER)
-        handle.add_css_class("lumaui-drawer-handle")
-        self._card.append(handle)
-        self._card.append(self.view.body)
-        self._card.update_property([Gtk.AccessibleProperty.LABEL], [self.get_title()])
+        # The phone's sheet is LumaUI's: it rises from the bar's place (BarFrame, kind "sheet":
+        # 16 a side, 34 up, 26 round, the title on the frame), over a scrim that cancels it.
+        self._screen = Gtk.Box(hexpand=True, vexpand=True)
+        self.set_content(self._screen)
+        self.view.title_label.set_visible(False)
+        self.view.body.set_margin_start(10)
+        self.view.body.set_margin_end(10)
         self.connect("map", lambda *_a: GLib.idle_add(self._present_drawer))
 
     def _present_drawer(self) -> bool:
-        from luma_appkit.structure_layers import LayerHost
+        from luma_appkit.bar_frame import BarFrame
 
         if self._modal is None and not self._finished:
-            self._modal = LayerHost.window_host(self).present_modal(
-                self._card, on_cancel=self._on_cancel, initial_focus=self.view.field.entry,
-                drawer=True)
+            self._modal = BarFrame.present(self._screen, self.view.body, kind="sheet", title=self.get_title(),
+                                           on_cancel=self._on_cancel, initial_focus=self.view.field.entry)
         return GLib.SOURCE_REMOVE
 
     # -- what tests and the service read -----------------------------------
