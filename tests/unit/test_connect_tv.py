@@ -77,6 +77,61 @@ class TvActions(unittest.TestCase):
         self.assertNotIn("hotspot.request", offered_out)
 
 
+def _walk(widget):
+    yield widget
+    child = widget.get_first_child()
+    while child is not None:
+        yield from _walk(child)
+        child = child.get_next_sibling()
+
+
+@unittest.skipIf(application is None, "needs GTK 4, libadwaita and LumaUI")
+class WelcomeFocusOnATv(unittest.TestCase):
+    """The posture arrives after the window is built and the welcome is redrawn: the remote's first
+    OK still presses Sign In (it once pressed the second button)."""
+
+    def test_first_ok_presses_sign_in(self):
+        import os
+        import time
+        from gi.repository import Adw, Gio, GLib, Gtk, LumaUI
+        if not Gtk.init_check() or not hasattr(LumaUI, "window_set_tv_frame"):
+            self.skipTest("needs a display and LumaUI API level 9")
+        os.environ["LUMA_POSTURE"] = "desktop"
+        with mock.patch.object(Gio.DBusProxy, "new_for_bus", lambda *a, **k: None), \
+                mock.patch.object(application.CloudSync, "status", lambda self, done: None), \
+                mock.patch.object(application.CloudSync, "available", True, create=True):
+            app = Adw.Application(application_id="org.projectluma.tests.ConnectTv",
+                                  flags=Gio.ApplicationFlags.NON_UNIQUE)
+            app.register(None)
+            window = application.ConnectWindow(app)
+            window.set_default_size(1920, 1080)
+            window.present()
+
+            def spin(seconds):
+                end = time.monotonic() + seconds
+                while time.monotonic() < end:
+                    GLib.MainContext.default().iteration(False)
+                    time.sleep(0.005)
+            spin(0.1)
+            window.tv_posture = True        # the posture arrives first: the loading island is framed
+            spin(0.6)                       # the spinner island replaces it
+            window.state = {"account_status": "signed_out", "enabled": True, "companion_devices": []}
+            window.cloud = {"signed_in": False, "services": [], "devices": []}
+            window._update()                # then the account: the welcome replaces the spinner
+            spin(0.3)
+            window.tv_posture = False       # and the posture is said again (a session-context refresh)
+            window.tv_posture = True
+            spin(0.8)
+            focus = window.get_focus()
+            self.assertIsInstance(focus, Gtk.Button)
+            self.assertEqual(focus.get_label(), "Sign In…")
+            focus.activate()                # the remote's OK on what has the focus
+            spin(0.4)
+            self.assertTrue(any(w.has_css_class("lumaui-modal") for w in _walk(window)))
+            window.destroy()
+            spin(0.2)
+
+
 class TvHome(unittest.TestCase):
     def test_connect_desktop_entry_opts_in(self):
         data = REPO_ROOT / "src/luma-continuity/data"

@@ -205,6 +205,7 @@ typedef struct {
   GtkAlign sidebar_valign;
   GtkWidget *page_modal; /* a modal card drawn as a page in the frame (weak) */
   GtkWidget *app_focus;  /* what the app had focused when the frame took the window (weak) */
+  guint restore_id;
 } TvFrame;
 
 static const char *const tv_sheet =
@@ -1272,11 +1273,49 @@ static void focus_visible_changed(GtkWindow *window, GParamSpec *pspec, TvFrame 
     gtk_window_set_focus_visible(window, TRUE); /* a TV has no pointer: the focus always shows */
 }
 
+/* Before the first key, a centred window's focus is the app's choice. GTK moves it on by itself when the
+ * page under it is redrawn (a focus traversal from the window, run from an idle, lands on the control
+ * after the one the app chose: a welcome's second button, so the first OK pressed the wrong thing). */
+static gboolean restore_app_focus(gpointer data) {
+  TvFrame *f = data;
+  f->restore_id = 0;
+  if (f->active && f->app_focus != NULL && !f->keyed && gtk_widget_get_visible(f->app_focus) &&
+      gtk_widget_is_sensitive(f->app_focus) && in_page(f, f->app_focus)) {
+    f->self_moving++;
+    gtk_widget_grab_focus(f->app_focus);
+    f->self_moving--;
+  }
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean moved_on_from(GtkWidget *from, GtkWidget *to) {
+  if (from == NULL || to == NULL || gtk_widget_get_parent(from) == NULL || gtk_widget_get_parent(from) != gtk_widget_get_parent(to))
+    return FALSE;
+  for (GtkWidget *w = gtk_widget_get_next_sibling(from); w != NULL; w = gtk_widget_get_next_sibling(w))
+    if (gtk_widget_get_visible(w) && gtk_widget_get_focusable(w))
+      return w == to;
+  return FALSE;
+}
+
+static void track_app_focus(TvFrame *f, GtkWidget *focus) {
+  if (f->sidebar != NULL || f->keyed || f->keying != 0 || f->self_moving != 0 || focus == NULL || !in_page(f, focus))
+    return;
+  if (f->app_focus != NULL && focus != f->app_focus && moved_on_from(f->app_focus, focus) &&
+      gtk_widget_get_visible(f->app_focus) && gtk_widget_is_sensitive(f->app_focus)) {
+    if (f->restore_id == 0)
+      f->restore_id = g_idle_add_full(G_PRIORITY_HIGH_IDLE, restore_app_focus, f, NULL);
+    return;
+  }
+  g_clear_weak_pointer(&f->app_focus);
+  g_set_weak_pointer(&f->app_focus, focus);
+}
+
 static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   (void)window; (void)pspec;
   if (!f->active)
     return;
   GtkWidget *focus = focus_of(f);
+  track_app_focus(f, focus);
   if (f->keying == 0 && f->self_moving == 0)
     f->moved_at = g_get_monotonic_time();
   if (g_getenv("LUMA_TV_DEBUG") != NULL) {
@@ -1809,6 +1848,7 @@ static void leave(TvFrame *f) {
   g_clear_handle_id(&f->relax_id, g_source_remove);
   g_clear_handle_id(&f->restyle_id, g_source_remove);
   g_clear_handle_id(&f->reveal_id, g_source_remove);
+  g_clear_handle_id(&f->restore_id, g_source_remove);
   g_clear_signal_handler(&f->focus_id, f->window);
   luma_tv_keyboard_unwatch(f->keyboard);
   f->keyboard = NULL;
@@ -1848,6 +1888,7 @@ static void leave(TvFrame *f) {
 }
 
 static void frame_free(TvFrame *f) {
+  g_clear_handle_id(&f->restore_id, g_source_remove);
   if (f->active && f->window != NULL) {
     g_clear_handle_id(&f->clock_id, g_source_remove);
     g_clear_handle_id(&f->settle_id, g_source_remove);
