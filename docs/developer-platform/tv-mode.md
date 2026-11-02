@@ -55,6 +55,38 @@ posture is never TV.
 - No hover-only affordances: TV is driven by a remote or a gamepad (arrows,
   OK, Back); see "Remotes and gamepads".
 
+## Desktop sidebar apps: the floating island
+
+A `LumaApplicationWindow` whose body is a `LumaNavigationSidebar` beside a
+`LumaIsland` page needs no TV code (C kit, `luma-tv-frame.c`; Settings is the
+first user, the `test-tv-island` "Pantry" fixture the second):
+
+- The sidebar lifts into a floating island (bar material, radius 36, rows 68
+  at 24/600, icons 30); a sidebar section becomes a hairline. Up/Down in the
+  island opens each page at once; Right enters the page at its first row (the
+  hero or first group, never a switch beside the title); the island folds to a
+  100-wide rail; Left off the page's edge or Back returns to it; Back in the
+  island minimises the window.
+- The page keeps the desktop's order and draws its parts at TV size. Name them
+  with `luma_ui_set_part`: `header`, `back`, `hero`, `group`, `card`, `row`,
+  and for rows of choices drawn as themselves `chips` (the row's container),
+  `chip` (a picture: a wallpaper) and `swatch` (a colour). libadwaita's
+  preference groups, boxed lists and rows are named automatically. A lead that
+  is a symbolic icon stands on the lead tile; a full-colour picture (a logo, an
+  app icon) stands alone.
+- The focused row is the key; dividers are straight hairlines that never touch
+  it. A chip row never lights itself: the focused chip lifts with a ring.
+- A page redrawn under the remote (a network list refreshing) keeps the row the
+  remote was on, found by its title, and the place inside a grown row; a field
+  the app focuses is left focused. OK right after the focus moved by itself
+  acts on nothing.
+- Back inside what a row grew (a network's actions or password) returns to the
+  row first. Questions over the page are TV sheets driven by the remote, Cancel
+  focused, over a dimmed page. A focused field's row lifts above the TV
+  keyboard once the page has shrunk.
+- The page fades out at an edge only while content continues past it (48
+  units at the top, 128 at the bottom, eased).
+
 ## The TV scale
 
 One unit for every TV length: one pixel of a 1920x1080 layout,
