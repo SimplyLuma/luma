@@ -63,6 +63,16 @@ export CFLAGS="-I/opt/conform/lumaui/include" CXXFLAGS="-I/opt/conform/lumaui/in
 field() { python3 -c 'import json, sys; b = json.load(open(sys.argv[1]))["gtk"].get("build", {}); v = b.get(sys.argv[2], "")
 print("\n".join(v) if isinstance(v, list) else v)' "$scn" "$1"; }
 t0=$(date +%s)
+# Test programs an app's meson files look for even with its tests off (Settings 0080 finds
+# xvfb-run): the conform build runs no tests, so a stand-in that refuses to run is enough.
+for tool in xvfb-run; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    mkdir -p /tmp/conform-stub-bin
+    printf '#!/bin/sh\necho "%s: not in the conform build image (no tests run here)" >&2\nexit 77\n' "$tool" > "/tmp/conform-stub-bin/$tool"
+    chmod 755 "/tmp/conform-stub-bin/$tool"
+    export PATH="$PATH:/tmp/conform-stub-bin"
+  fi
+done
 
 setup() {  # setup <builddir> <srcdir> <prefix> [meson options...]
   local b=$1 s=$2 p=$3 log=/tmp/c-build.log; shift 3
