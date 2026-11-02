@@ -7,7 +7,9 @@ PartOf=graphical-session.target
 # its first unlock, this process takes the keyring prompter's name first, so
 # every keyring prompt is answered by Luma's sheet (the Shell queues for the
 # name and has it back afterwards). The sheet itself waits for the display.
-After=dbus.socket gnome-keyring-daemon.socket luma-keyring-autologin.service
+# Not after luma-keyring-autologin.service: both start at once, so the name is
+# held from the session's first moments, not after that step's few seconds.
+After=dbus.socket gnome-keyring-daemon.socket
 Before=graphical-session-pre.target
 ConditionUser=!@system
 
