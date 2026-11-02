@@ -1,0 +1,166 @@
+{
+ "app": "tv-depot",
+ "title": "Depot on TV",
+ "about": "Depot (src/luma-depot) in TV posture through LumaUI's TV parts, against the Design Center's TV mockup at 1920x1080. The fixture (tools/lumaui-conform/fixtures/depot_tv.py) mirrors the mockup's TV catalogue with every app installed (Depot on a TV lists installed apps for now). Dark only.",
+ "spec": {
+  "root": "design-center",
+  "url": "mockups/luma-tv-depot.html",
+  "window": "#stage",
+  "ready": "#nav",
+  "viewport": {
+   "width": 1920,
+   "height": 1080
+  },
+  "clock": "2026-11-01T21:12:00",
+  "exclude": [
+   ".room",
+   ".dim",
+   "#clock",
+   ".tv-toast"
+  ]
+ },
+ "gtk": {
+  "module": "depot_tv",
+  "pythonpath": [
+   "src/luma-depot",
+   "src/luma-installer",
+   "tools/lumaui-conform/fixtures"
+  ],
+  "app_id": "org.projectluma.Depot",
+  "build": {},
+  "env": {
+   "LUMA_POSTURE": "tv",
+   "LUMA_DEPOT_PREVIEW": "1",
+   "GSETTINGS_BACKEND": "memory",
+   "LUMAUI_CONFORM_IGNORE_FADE": "1"
+  },
+  "monitor": "1920x1080",
+  "fixtures": [],
+  "exclude": [
+   ".tv-clock"
+  ]
+ },
+ "pairs": [],
+ "states": [
+  {
+   "name": "discover",
+   "about": "Discover: the pick, From Luma, the stories, Watch and listen",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.tab=S.view='discover';S.app=null;S.focus='tab:discover';show()",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_DEPOT_STATE": "discover"
+     }
+    }
+   ]
+  },
+  {
+   "name": "apps",
+   "about": "Apps: the tile grid",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.tab=S.view='apps';S.app=null;S.focus='tab:apps';show()",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_DEPOT_STATE": "apps"
+     }
+    }
+   ]
+  },
+  {
+   "name": "games",
+   "about": "Games: the tile grid, most need a controller",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.tab=S.view='games';S.app=null;S.focus='tab:games';show()",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_DEPOT_STATE": "games"
+     }
+    }
+   ]
+  },
+  {
+   "name": "updates",
+   "about": "Updates: Luma first, then apps",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.tab=S.view='updates';S.app=null;S.focus='tab:updates';show()",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_DEPOT_STATE": "updates"
+     }
+    }
+   ]
+  },
+  {
+   "name": "search",
+   "about": "Search: an alias hit (iTunes)",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.tab=S.view='search';S.app=null;S.q='itunes';S.focus='field';show()",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_DEPOT_STATE": "search"
+     }
+    }
+   ]
+  },
+  {
+   "name": "app",
+   "about": "An app page (Tide), the remote on Open",
+   "themes": [
+    "dark"
+   ],
+   "spec": [
+    {
+     "eval": "S.back={view:'discover',focus:'tab:discover'};S.view='app';S.app='tide';S.focus=null;show()",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_DEPOT_STATE": "app"
+     }
+    }
+   ]
+  }
+ ]
+}

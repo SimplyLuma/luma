@@ -379,7 +379,7 @@ class _TileArt(_UnitFollower, Gtk.Widget):
         elif self.kind == "name":
             layout = self.create_pango_layout(self.name)
             font = Pango.FontDescription.from_string("Figtree")
-            font.set_weight(750)
+            font.set_weight(Pango.Weight.BOLD)
             font.set_absolute_size(40 * u * Pango.SCALE)
             layout.set_font_description(font)
             layout.set_width(int(w * 0.8 * Pango.SCALE))
