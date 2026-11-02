@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # Build luma-keyring (the session service that repairs a login keyring whose
-# password is no longer the account password) as a noarch RPM.
+# password is no longer the account password, and its PAM module) as an RPM
+# for the target architecture.
 
 set -euo pipefail
 
@@ -18,7 +19,7 @@ for tool in mktemp podman sha256sum tar; do
 done
 
 [ "$(uname -s)" = Linux ] || {
-  printf 'error: build the architecture-independent keyring RPM on a Fedora Linux builder\n' >&2
+  printf 'error: build the keyring RPM on a Fedora Linux builder\n' >&2
   exit 1
 }
 
@@ -39,7 +40,8 @@ source_dir="$work_dir/luma-keyring"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$source_dir"
 cp -R "$repo_root/src/luma-keyring/." "$source_dir/"
 find "$source_dir" -type d -name __pycache__ -prune -exec rm -rf {} +
-source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
+# CI checkouts belong to another uid than the job container user.
+source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -c safe.directory="$repo_root" -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work_dir" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
   --numeric-owner -cf - luma-keyring | gzip -n >"$rpmbuild_dir/SOURCES/luma-keyring.tar.gz"
 install -m 0644 "$repo_root/packaging/rpm/luma-keyring.spec" "$rpmbuild_dir/SPECS/"
@@ -48,14 +50,14 @@ install -m 0644 "$repo_root/packaging/rpm/luma-keyring.spec" "$rpmbuild_dir/SPEC
   "$rpmbuild_dir" "$builder_container" "
     set -euo pipefail
     dnf5 -q -y install --allowerasing \
-      desktop-file-utils glib2 meson ninja-build python3-devel python3-gobject-base \
-      rpm-build systemd-rpm-macros
+      binutils desktop-file-utils gcc glib2 libxcrypt-devel meson ninja-build pam-devel \
+      python3-cryptography python3-devel python3-gobject-base rpm-build systemd-rpm-macros
     rpmbuild -ba --define \"_topdir \$PWD\" SPECS/luma-keyring.spec
   "
 
 rm -rf "$output_dir"
-install -d -m 0755 "$output_dir/RPMS/noarch" "$output_dir/SRPMS"
-install -m 0644 "$rpmbuild_dir"/RPMS/noarch/*.rpm "$output_dir/RPMS/noarch/"
+install -d -m 0755 "$output_dir/RPMS/$architecture" "$output_dir/SRPMS"
+install -m 0644 "$rpmbuild_dir"/RPMS/"$architecture"/*.rpm "$output_dir/RPMS/$architecture/"
 install -m 0644 "$rpmbuild_dir"/SRPMS/*.rpm "$output_dir/SRPMS/"
 (
   cd "$output_dir"

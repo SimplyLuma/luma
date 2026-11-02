@@ -82,6 +82,17 @@ class Keyring:
             Gio.DBusCallFlags.NONE, 5000, None)
         return bool(answer.unpack()[0])
 
+    def activate(self) -> None:
+        """Ask the bus to start the keyring daemon, if it can be started."""
+        try:
+            self._bus.call_sync(
+                "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "StartServiceByName",
+                GLib.Variant("(su)", (BUS_NAME, 0)), GLib.VariantType.new("(u)"),
+                Gio.DBusCallFlags.NONE, CALL_TIMEOUT_MS, None)
+        except GLib.Error as error:
+            log.info("the keyring daemon could not be started: %s", error)
+
     def supports_repair(self) -> bool:
         """Whether this keyring daemon can change a keyring's password."""
         try:
