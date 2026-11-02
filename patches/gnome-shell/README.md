@@ -396,7 +396,7 @@ exports `org.projectluma.Shell.Keyboard1` (`SetActionLabel`, `Visible`,
 `Height` in TV units); docs/developer-platform/tv-mode.md "Typing". Test:
 `tv-keyboard-policy.js` in %check. Outside TV posture nothing changes.
 
-`0310-tv-screen-edges.patch`: registers `lumaPresentation/tvScreenEdges.js`.
+`0312-tv-screen-edges.patch`: registers `lumaPresentation/tvScreenEdges.js`.
 In TV posture `TvPresentation` scales `Main.uiGroup` (the TV home and every
 window) about the centre by `1 - tv-screen-edges/100` (shell-state key,
 0–10 %), live, for a TV that overscans; leaving TV posture restores scale 1.

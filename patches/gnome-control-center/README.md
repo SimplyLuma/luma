@@ -205,7 +205,7 @@ LumaUI's `TvIdle`; "Turn the TV off after" (1 / 4 / 8 hours / Never) is
 `org.gnome.desktop.session idle-delay`. Remotes (`tv-remotes`): the connected input device
 from BlueZ as the hero (name, battery), "Pointer speed" (the mouse speed Mouse & Touchpad
 shows, read 0–10) and "Pair a remote" into Bluetooth. Display gains Fit › Screen edges
-(0–10 %, shell-state `tv-screen-edges`, applied live by gnome-shell 0310) in TV posture
+(0–10 %, shell-state `tv-screen-edges`, applied live by gnome-shell 0312) in TV posture
 only. Rows without an owner are hidden: Idle view (only Glance exists), Wake with the
 remote, HDMI-CEC, Match the video's frame rate, HDR, Hold OK for options, Sound's Night
 mode. Deep links `gnome-control-center tv-idle|tv-remotes` open the pages in any posture.

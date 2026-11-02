@@ -19,7 +19,7 @@ EDGES = REPO_ROOT / "src/luma-shell-presentation/tvScreenEdges.js"
 TV = REPO_ROOT / "src/luma-shell-presentation/tv.js"
 SPEC = (REPO_ROOT / "patches/gnome-shell/0000-luma-fedora-spec.patch").read_text()
 BUILD = (REPO_ROOT / "scripts/packages/build-gnome-shell.sh").read_text()
-PATCH = (REPO_ROOT / "patches/gnome-shell/0310-tv-screen-edges.patch").read_text()
+PATCH = (REPO_ROOT / "patches/gnome-shell/0312-tv-screen-edges.patch").read_text()
 
 
 def key(name):
@@ -53,10 +53,10 @@ class SchemaKeys(unittest.TestCase):
 class ScreenEdges(unittest.TestCase):
     def test_shell_piece_is_registered(self):
         self.assertIn("<file>ui/lumaPresentation/tvScreenEdges.js</file>", PATCH)
-        self.assertIn("0310-tv-screen-edges.patch", SPEC)
+        self.assertIn("0312-tv-screen-edges.patch", SPEC)
         self.assertIn("cp %{SOURCE9041} js/ui/lumaPresentation/tvScreenEdges.js", SPEC)
         self.assertIn("tvScreenEdges.js", BUILD)
-        self.assertIn("0310-tv-screen-edges.patch", BUILD)
+        self.assertIn("0312-tv-screen-edges.patch", BUILD)
 
     def test_tv_presentation_owns_it_for_the_posture_only(self):
         text = TV.read_text()

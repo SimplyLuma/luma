@@ -176,6 +176,8 @@ typedef struct {
   GtkWidget *ok_widget;  /* what OK was pressed on (weak) */
   GtkWidget *held;       /* the page widget the remote was on (weak): gone means the page redrew */
   gint64 key_at;         /* the last key the frame saw */
+  gint64 moved_at;       /* when the focus last moved without a key (a redraw, GTK's fallback) */
+  gulong active_id;
   gpointer keyboard;     /* the TV keyboard's height, followed */
   int island_bottom;     /* the island's own bottom margin, while the keyboard lifts it */
   gboolean page_zone;    /* the remote is in the page */
@@ -843,6 +845,8 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   if (!f->active)
     return;
   GtkWidget *focus = focus_of(f);
+  if (g_get_monotonic_time() - f->key_at > 300 * 1000)
+    f->moved_at = g_get_monotonic_time();
   if (g_getenv("LUMA_TV_DEBUG") != NULL) {
     g_auto(GStrv) classes = focus ? gtk_widget_get_css_classes(focus) : NULL;
     g_autofree char *joined = classes ? g_strjoinv(".", classes) : NULL;
@@ -1011,6 +1015,12 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
   (void)controller; (void)code;
   if (!f->active || (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK)) != 0)
     return GDK_EVENT_PROPAGATE;
+  /* OK right after the focus moved by itself (the page redrew under the remote) acts on nothing:
+   * the remote never acts on a control it did not choose (a power switch beside a list). */
+  if (is_ok(key) && g_get_monotonic_time() - f->moved_at < 600 * 1000 && f->moved_at > f->key_at) {
+    f->key_at = g_get_monotonic_time();
+    return GDK_EVENT_STOP;
+  }
   f->key_at = g_get_monotonic_time();
   if (is_ok(key)) {
     g_clear_weak_pointer(&f->ok_widget);
@@ -1126,6 +1136,11 @@ static void keyboard_height(guint height, gpointer data) {
   gtk_widget_set_margin_bottom(f->island, height > 0 ? (int)round(height * f->unit) : f->island_bottom);
 }
 
+static void active_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
+  (void)pspec; (void)f;
+  g_printerr("tv window active=%d\n", gtk_window_is_active(window));
+}
+
 static void enter(TvFrame *f) {
   f->active = TRUE;
   f->rail = FALSE;
@@ -1183,6 +1198,8 @@ static void enter(TvFrame *f) {
   f->island_bottom = gtk_widget_get_margin_bottom(f->island);
   f->keyboard = luma_tv_keyboard_watch(keyboard_height, f);
   f->visible_id = g_signal_connect(f->window, "notify::focus-visible", G_CALLBACK(focus_visible_changed), f);
+  if (g_getenv("LUMA_TV_DEBUG") != NULL)
+    f->active_id = g_signal_connect(f->window, "notify::is-active", G_CALLBACK(active_changed), f);
   clock_tick(f);
   gtk_window_set_focus_visible(f->window, TRUE);
   queue_settle(f);
@@ -1199,6 +1216,7 @@ static void leave(TvFrame *f) {
   f->keyboard = NULL;
   gtk_widget_set_margin_bottom(f->island, f->island_bottom);
   g_clear_signal_handler(&f->visible_id, f->window);
+  g_clear_signal_handler(&f->active_id, f->window);
   if (f->keys != NULL) {
     gtk_widget_remove_controller(GTK_WIDGET(f->window), f->keys);
     f->keys = NULL;
