@@ -30,3 +30,19 @@ BCM2712 DMA engine", Andrea della Porta, Feb 2024; Dave Stevenson's rework)
 is not in mainline or linux-next. Drop 0001-0007 and the kmod's DMA module
 once the kernel ships a `brcm,bcm2712-dma` driver, and 0008 once vc4 passes
 physical addresses upstream; then the overlay's binding must match upstream's.
+
+## Follow-ups (not built yet)
+
+- **Bluetooth**: the mainline Pi 5 tree already has the BT UART
+  (`uarta: serial@7d50c000`, `brcm,bcm7271-uart`, child `brcm,bcm43438-bt`).
+  Fedora 7.2.11 lacks `CONFIG_SERIAL_8250_BCM7271`. Add
+  `drivers/tty/serial/8250/8250_bcm7271.c` (plus the local `8250.h`) from the
+  same SRPM to `sources.list` as `8250_bcm7271.ko`, unpatched, and ask Fedora
+  to enable the option. Firmware: `brcm/BCM4345C0.hcd`
+  (`brcm/BCM4345C0.raspberrypi,5-model-b.hcd` alias, as for Wi-Fi NVRAM).
+- **HEVC decoder**: raspberrypi/linux rpi-7.2.y
+  `drivers/media/platform/raspberrypi/hevc_dec/` from `28500249aef3`
+  "media: platform: Add Raspberry Pi HEVC decoder driver" with fixes
+  `0b61af7c7183`, `24700c738013`, `481316136b96`, the `hevc-decoder` node
+  from `bcm2712.dtsi`, and the downstream column (SAND) pixel formats it
+  outputs; posted upstream by John Cox / Dave Stevenson, not merged.
