@@ -2104,6 +2104,19 @@
 #define LUMA_UI_TV_FOCUS_CROSS_WEIGHT 2.0
 #define LUMA_UI_TV_FOCUS_RING 4
 #define LUMA_UI_TV_FOCUS_RING_OFFSET 6
+#define LUMA_UI_TV_FOCUS_HOLD_MS 500
+#define LUMA_UI_TV_MENU__DOC "An item's menu on TV (TvFocus menu=, opened by holding OK or the Menu key): the item's own command model as a floating panel anchored under it (above when there is no room), focusable rows, Back closes."
+#define LUMA_UI_TV_MENU_GAP 12
+#define LUMA_UI_TV_MENU_MIN_WIDTH 360
+#define LUMA_UI_TV_MENU_RADIUS 30
+#define LUMA_UI_TV_MENU_PADDING 10
+#define LUMA_UI_TV_MENU_ROW_HEIGHT 68
+#define LUMA_UI_TV_MENU_ROW_RADIUS 22
+#define LUMA_UI_TV_MENU_ROW_PADDING_X 22
+#define LUMA_UI_TV_MENU_ROW_SIZE 24
+#define LUMA_UI_TV_MENU_ROW_WEIGHT 600
+#define LUMA_UI_TV_MENU_ICON 28
+#define LUMA_UI_TV_MENU_ICON_GAP 16
 #define LUMA_UI_TV_SHEET_RADIUS 44
 #define LUMA_UI_TV_SHEET_PADDING 40
 #define LUMA_UI_TV_SHEET_GAP 22
@@ -2142,21 +2155,19 @@
 #define LUMA_UI_TV_TOAST_SUB_SIZE 19
 #define LUMA_UI_TV_TOAST_SUB_WEIGHT 600
 #define LUMA_UI_TV_TOAST_RISE 200
-#define LUMA_UI_TV_KEYBOARD_PADDING_TOP 26
+#define LUMA_UI_TV_KEYBOARD_PADDING_TOP 24
 #define LUMA_UI_TV_KEYBOARD_PADDING_X 96
-#define LUMA_UI_TV_KEYBOARD_PADDING_BOTTOM 48
-#define LUMA_UI_TV_KEYBOARD_ROW_GAP 14
+#define LUMA_UI_TV_KEYBOARD_PADDING_BOTTOM 36
+#define LUMA_UI_TV_KEYBOARD_ROW_GAP 12
 #define LUMA_UI_TV_KEYBOARD_KEY_GAP 12
-#define LUMA_UI_TV_KEYBOARD_KEY_HEIGHT 78
+#define LUMA_UI_TV_KEYBOARD_KEY_HEIGHT 64
 #define LUMA_UI_TV_KEYBOARD_KEY_WIDTH 96
 #define LUMA_UI_TV_KEYBOARD_KEY_PADDING_X 20
 #define LUMA_UI_TV_KEYBOARD_KEY_RADIUS 16
-#define LUMA_UI_TV_KEYBOARD_KEY_SIZE 34
+#define LUMA_UI_TV_KEYBOARD_KEY_SIZE 30
 #define LUMA_UI_TV_KEYBOARD_KEY_WEIGHT 600
 #define LUMA_UI_TV_KEYBOARD_FUNCTION_SIZE 26
 #define LUMA_UI_TV_KEYBOARD_ICON 36
-#define LUMA_UI_TV_KEYBOARD_SPACE_WIDTH 560
-#define LUMA_UI_TV_KEYBOARD_ACTION_WIDTH 200
 #define LUMA_UI_TV_KEYBOARD_TRAVEL 5
 #define LUMA_UI_TV_KEYBOARD_FOCUS_SCALE 1.06
 #define LUMA_UI_TV_KEYBOARD_FOCUS_LIFT 3
@@ -2183,6 +2194,11 @@
 #define LUMA_UI_TV_IDLE__DOC "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay."
 #define LUMA_UI_TV_IDLE_WEATHER_SECONDS 20
 #define LUMA_UI_TV_IDLE_MEDIA_SECONDS 15
+#define LUMA_UI_TV_INPUT__DOC "Gamepads in TV posture (the Shell's tvInput.js): the left stick takes a direction past stick_press on its dominant axis and lets go inside stick_release; a held direction steps once, again after repeat_delay_ms, then every repeat_interval_ms."
+#define LUMA_UI_TV_INPUT_STICK_PRESS 0.5
+#define LUMA_UI_TV_INPUT_STICK_RELEASE 0.35
+#define LUMA_UI_TV_INPUT_REPEAT_DELAY_MS 400
+#define LUMA_UI_TV_INPUT_REPEAT_INTERVAL_MS 120
 #define LUMA_UI_TV_MEDIA_COVER_PORTRAIT_ASPECT 1.3333
 #define LUMA_UI_TV_MEDIA_COVER_LANDSCAPE_ASPECT 0.5625
 #define LUMA_UI_TV_MEDIA_COVER_CAPTION_GAP 16

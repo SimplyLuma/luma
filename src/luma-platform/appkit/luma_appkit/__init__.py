@@ -94,14 +94,17 @@ __all__ = [
     "watch_posture",
     "tv_unit",
     # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
-    "TvStage", "TvLift", "add_tv_style", "tv_css", "tv_material", "tv_fade",
+    "TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade",
     "TvFocus", "tv_nearest",
     "TvTopBar", "TvTab", "TvButton", "TvField",
     "TvToast",
     "TvIdle",
+    "TvMenu",
     "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
     # the system's TV keyboard: action label, height
     "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
+    # remotes and gamepads: an app that reads the pad itself claims it
+    "claim_gamepads",
     # LumaUI window: the frame LumaUI draws itself (F0, ADR-052)
     "WindowIdentity",
     "WindowControls",
@@ -349,7 +352,7 @@ def __getattr__(name: str):
 
         return getattr(menus, name)
     # ── LumaUI TV parts
-    if name in {"TvStage", "TvLift", "add_tv_style", "tv_css", "tv_material", "tv_fade"}:
+    if name in {"TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade"}:
         from . import tv_stage
         return getattr(tv_stage, name)
     if name == "TvFocus":
@@ -364,6 +367,9 @@ def __getattr__(name: str):
     if name == "TvToast":
         from .tv_toast import TvToast
         return TvToast
+    if name == "TvMenu":
+        from .tv_menu import TvMenu
+        return TvMenu
     if name == "TvIdle":
         from .tv_idle import TvIdle
         return TvIdle
@@ -373,6 +379,9 @@ def __getattr__(name: str):
     if name in {"set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state"}:
         from . import tv_keyboard
         return getattr(tv_keyboard, name)
+    if name == "claim_gamepads":
+        from .tv_input import claim_gamepads
+        return claim_gamepads
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
                 "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit"}:

@@ -80,3 +80,14 @@ every app's delay and is followed live.
 each edge in TV posture, for a TV that overscans (Settings › Display › Fit ›
 Screen edges). The shell's TV presentation scales its UI group, which holds
 the TV home and every window, about the centre, live.
+
+## HDMI-CEC
+
+`luma-tv-cec` (`/usr/libexec`, started by `70-luma-tv-cec.rules` as
+`luma-tv-cec@cecN.service` for every CEC adapter) puts the adapter on the CEC
+bus as a playback device named Luma with remote-control passthrough, so the
+kernel turns the TV remote's buttons into key events on its `rc-cec` input
+device; the Shell maps them in TV posture
+(docs/developer-platform/tv-mode.md, "Remotes and gamepads"). An adapter that
+another CEC client already configured is left alone. `luma-tv-cec --status`
+prints every adapter's physical and logical addresses.

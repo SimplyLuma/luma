@@ -845,7 +845,22 @@
       "_doc": "Spatial focus (luma_appkit.tv_focus): the nearest focusable in the pressed direction, scored as the distance along the direction plus cross_weight times the distance across it. One visible focus; covers lift and ring only the art.",
       "cross_weight": 2.0,
       "ring": 4,
-      "ring_offset": 6
+      "ring_offset": 6,
+      "hold_ms": 500
+    },
+    "menu": {
+      "_doc": "An item's menu on TV (TvFocus menu=, opened by holding OK or the Menu key): the item's own command model as a floating panel anchored under it (above when there is no room), focusable rows, Back closes.",
+      "gap": 12,
+      "min_width": 360,
+      "radius": 30,
+      "padding": 10,
+      "row_height": 68,
+      "row_radius": 22,
+      "row_padding_x": 22,
+      "row_size": 24,
+      "row_weight": 600,
+      "icon": 28,
+      "icon_gap": 16
     },
     "sheet": {
       "radius": 44,
@@ -890,22 +905,20 @@
       "rise": 200
     },
     "keyboard": {
-      "_doc": "The TV posture of the Keycap keyboard, the one on-screen keyboard (Design Center mockups/tv/keyboard.js, 1 Nov 2026): docked to the bottom, the person's language layout as QWERTY rows, then 123, space and the blue action key; shift and delete flank the last letter row. Lengths in TV units; a key cell is a cap plus half the gaps around it, so the keyboard is padding_top + 4 x key_height + 3 x row_gap + padding_bottom (428) tall. above: where what rises over the keyboard (an action bar) sits, from the bottom. Colours: OKLCH [L, C, h, alpha] or hex; the focus uses the key material.",
-      "padding_top": 26,
+      "_doc": "The TV posture of the Keycap keyboard, the one on-screen keyboard: an aligned grid as Android TV's keyboard (Leanback) and the tvOS grid keyboard, every key one cell on the same 11 columns: digits and delete, three letter rows of the person's language filled with @ _ & , . - ?, then 123, shift, space (7 cells) and the blue action key (2 cells). Lengths in TV units; a key cell is a cap plus half the gaps around it, so the keyboard is padding_top + 5 x key_height + 4 x row_gap + padding_bottom (428) tall. above: where what rises over the keyboard (an action bar) sits, from the bottom. Colours: OKLCH [L, C, h, alpha] or hex; the focus uses the key material.",
+      "padding_top": 24,
       "padding_x": 96,
-      "padding_bottom": 48,
-      "row_gap": 14,
+      "padding_bottom": 36,
+      "row_gap": 12,
       "key_gap": 12,
-      "key_height": 78,
+      "key_height": 64,
       "key_width": 96,
       "key_padding_x": 20,
       "key_radius": 16,
-      "key_size": 34,
+      "key_size": 30,
       "key_weight": 600,
       "function_size": 26,
       "icon": 36,
-      "space_width": 560,
-      "action_width": 200,
       "travel": 5,
       "focus_scale": 1.06,
       "focus_lift": 3,
@@ -936,6 +949,13 @@
       "_doc": "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay.",
       "weather_seconds": 20,
       "media_seconds": 15
+    },
+    "input": {
+      "_doc": "Gamepads in TV posture (the Shell's tvInput.js): the left stick takes a direction past stick_press on its dominant axis and lets go inside stick_release; a held direction steps once, again after repeat_delay_ms, then every repeat_interval_ms.",
+      "stick_press": 0.5,
+      "stick_release": 0.35,
+      "repeat_delay_ms": 400,
+      "repeat_interval_ms": 120
     }
   },
   "lumaui": {

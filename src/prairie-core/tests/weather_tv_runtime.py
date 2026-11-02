@@ -23,8 +23,30 @@ def settle(seconds=.5):
         time.sleep(.005)
 
 
+def until(check, seconds=5.0):
+    end = time.monotonic() + seconds
+    while not check() and time.monotonic() < end:
+        settle(.05)
+    return check()
+
+
+def hold(w, keyval, ms=600):
+    """A real hold: one press, the client's repeats from 500 ms, the release at `ms`."""
+    focus = w.tv_view.focus
+    focus._key_pressed(None, keyval, 0, Gdk.ModifierType(0))
+    start = time.monotonic()
+    while (time.monotonic() - start) * 1000 < ms:
+        settle(.033)
+        if (time.monotonic() - start) * 1000 >= 500:
+            focus._key_pressed(None, keyval, 0, Gdk.ModifierType(0))   # auto-repeat
+    focus._key_released(None, keyval, 0, Gdk.ModifierType(0))
+    settle(.3)
+
+
 def key(w, keyval, state=0):
+    """A remote key: pressed, then released (OK acts on release where an item has a menu)."""
     w.tv_view.focus._key_pressed(None, keyval, 0, Gdk.ModifierType(state))
+    w.tv_view.focus._key_released(None, keyval, 0, Gdk.ModifierType(state))
     settle(.15)
 
 
@@ -77,16 +99,28 @@ assert tv._tabs[tv._open_index()].has_css_class('tv-chip'), 'the open place step
 key(w, Gdk.KEY_Return)
 assert tv._sheet is not None and w.get_focus() is tv._field.text, 'Add opens straight into typing'
 tv._field.text.set_text('new')
-settle(1.0)
-assert len(tv._row_widgets) == 1, 'the list filters as you type'
+assert until(lambda: len(tv._row_widgets) == 1 and tv._row_widgets[0].get_height() > 0), 'the list filters as you type'
+settle(.3)
 key(w, Gdk.KEY_Down)
 assert tv.focus.focused is tv._row_widgets[0]
+assert w.get_focus() is tv._row_widgets[0], 'leaving the field takes GTK focus (the keyboard closes)'
 count = len(w.places)
 key(w, Gdk.KEY_Return)
 settle(1.0)
 assert len(w.places) == count + 1 and w.places[-1].name == 'New York' and w.selected == w.places[-1].uid
 assert tv._sheet is None and getattr(tv, '_tv_toast', None) is not None, 'OK adds the place with a toast'
 print('PASS add a place', flush=True)
+
+tv.focus.focus(tv._tabs[-1])
+key(w, Gdk.KEY_Return)
+tv._field.text.set_text('chi')
+assert until(lambda: tv._row_widgets and tv._row_widgets[0].get_height() > 0)
+settle(.3)
+key(w, Gdk.KEY_Down)
+key(w, Gdk.KEY_Escape)
+assert tv._sheet is None and not isinstance(w.get_focus(), Gtk.Text), 'Back from a result closes the sheet, no keyboard'
+assert tv.focus.focused is tv._tabs[-1]
+print('PASS Back from a result', flush=True)
 
 for _ in range(3):
     if tv.focus.group_of(tv.focus.focused) != 'places':
@@ -100,12 +134,47 @@ settle(.5)
 assert len(w.places) == count and w.selected == w.places[-1].uid
 print('PASS remove a place', flush=True)
 
+tv.focus.focus(tv._tabs[1])
+second = w.places[1]
+key(w, Gdk.KEY_Menu)
+labels = [r.get_first_child().get_last_child().get_label() for r in tv.focus._scopes[-1].items]
+assert labels == ['Set as default', 'Remove city'], labels   # the desktop row's menu, one model
+key(w, Gdk.KEY_Return)
+settle(.5)
+assert w.places[0].uid == second.uid and w.selected == second.uid, 'Set as default moves the place to the front'
+assert tv.focus.focused is tv._tabs[0] and not tv.focus.in_scope
+key(w, Gdk.KEY_Menu)
+assert not tv.focus.in_scope, 'your location offers neither Set as default nor Remove on TV'
+assert tv._tv_toast is not None and 'No options' in tv._tv_toast.content.get_last_child().get_first_child().get_label()
+print('PASS place menu (Menu key, Set as default)', flush=True)
+
+tv.focus.focus(tv._tabs[2])
+settle(.3)
+target, count = w.places[2], len(w.places)
+hold(w, Gdk.KEY_Return)
+assert tv.focus.in_scope and w.places[0].uid != target.uid and len(w.places) == count, \
+    'holding OK opens the menu; neither its release nor the repeats pick an item'
+key(w, Gdk.KEY_Down)
+assert tv.focus.focused is tv.focus._scopes[-1].items[1], 'arrows move in the menu'
+key(w, Gdk.KEY_Return)
+settle(.5)
+assert not tv.focus.in_scope and len(w.places) == count - 1 and all(p.uid != target.uid for p in w.places), \
+    'a new press picks Remove'
+hold(w, Gdk.KEY_Menu, ms=700)
+assert tv.focus.in_scope or tv.focus.group_of(tv.focus.focused) == 'places'
+if tv.focus.in_scope:
+    key(w, Gdk.KEY_Escape)
+assert not tv.focus.in_scope and tv.focus.group_of(tv.focus.focused) == 'places', 'Back returns to the place'
+print('PASS hold OK with real timing: menu, arrows, a new press picks', flush=True)
+
+tv.focus.focus(tv._tabs[1])
+settle(.3)
 key(w, Gdk.KEY_I, Gdk.ModifierType.SHIFT_MASK)
 settle(1.5)
 assert tv.idle.idle and tv.glance.get_opacity() > .9 and tv.hero.get_opacity() < .1
 assert tv.bar.clock.get_mapped() and tv.bar.track.get_opacity() < .1, 'Glance keeps the clock'
 labels = [c.get_label() for c in [tv.glance.get_first_child()] if isinstance(c, Gtk.Label)]
-assert labels and labels[0] == w.places[-1].name, 'Glance names a place that is not home'
+assert labels and labels[0] == w.places[1].name, 'Glance names a place that is not home'
 key(w, Gdk.KEY_Down)
 settle(1.2)
 assert not tv.idle.idle and tv.hero.get_opacity() > .9 and tv.focus.focused is tv.band, 'any key comes back'

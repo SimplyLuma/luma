@@ -39,7 +39,7 @@ from luma_appkit.lumaui import oklch_rgba, reduced_motion  # noqa: E402
 from luma_appkit.tv_focus import LEFT, RIGHT, TvFocus  # noqa: E402
 from luma_appkit.tv_idle import TvIdle  # noqa: E402
 from luma_appkit.tv_parts import TvButton, TvField, TvTab, TvTopBar  # noqa: E402
-from luma_appkit.tv_stage import TvLift, TvStage, add_tv_style, tv_fade, tv_material  # noqa: E402
+from luma_appkit.tv_stage import TvLift, TvRaster, TvStage, add_tv_style, tv_fade, tv_material  # noqa: E402
 from luma_appkit.tv_toast import TvToast  # noqa: E402
 
 from .weather_tv_model import (  # noqa: E402
@@ -56,6 +56,7 @@ STYLE = """
 .wx-tv-cond { font-size: 38tv; font-weight: 700; letter-spacing: -0.76tv; margin-top: 10tv; }
 .wx-tv-say { font-size: 28tv; font-weight: 500; line-height: 1.3; color: %(ink2)s; margin-top: 10tv; }
 .wx-tv-tile { min-height: 100tv; padding: 16tv 20tv; border-radius: 24tv; }
+.wx-tv-tile.tv-bar, .wx-tv-day.tv-bar { box-shadow: inset 0 1.5tv 0 %(barglint)s, 0 0 0 1.5tv %(barrim)s; }
 .wx-tv-tile-title { font-size: 17tv; font-weight: 650; letter-spacing: 0.68tv; color: %(ink3)s; }
 .wx-tv-tile-title image { -gtk-icon-size: 17tv; color: %(ink3)s; }
 .wx-tv-tile-title > box { border-spacing: 8tv; }
@@ -90,7 +91,7 @@ def _style(opaque: bool) -> str:
     m = lambda name: tv_material(name, opaque=opaque)  # noqa: E731
     return STYLE % {"ink2": m("ink_2"), "ink3": m("ink_3"), "keyink": m("key_ink"), "keytop": m("key_top"),
                     "keybottom": m("key_bottom"), "keyglint": m("key_glint"), "keyrim": m("key_rim"),
-                    "keydrop": m("key_drop")}
+                    "keydrop": m("key_drop"), "barglint": m("bar_glint"), "barrim": m("bar_rim")}
 
 
 def _rgba(value: str, alpha: float | None = None) -> Gdk.RGBA:
@@ -144,8 +145,9 @@ class TvSky(Gtk.Widget):
     """The selected hour's sky: its light, the sun or the stars, drifting clouds or rain.
 
     Colours and layers cross-fade over 1.2 s when the hour changes. Clouds
-    drift and rain falls unless motion is reduced. Drawn with GSK gradients:
-    no blur, so it costs little on a television's GPU.
+    drift and rain falls unless motion is reduced. The gradients are rendered
+    once into textures (`TvRaster`): a full-screen gradient costs a 4K V3D
+    (Raspberry Pi 5) tens of milliseconds every frame, a texture a few.
     """
 
     __gtype_name__ = "PrairieWeatherTvSky"
@@ -165,6 +167,8 @@ class TvSky(Gtk.Widget):
         self._animation = None
         self._tick = 0
         self._start = time.monotonic()
+        self._raster = TvRaster()
+        self._raster_clouds = TvRaster(size=8)
         stage.connect("notify::unit", lambda *_a: self.queue_draw())
 
     def set_hour(self, light: str, condition: str, *, animate: bool = True) -> None:
@@ -214,16 +218,31 @@ class TvSky(Gtk.Widget):
         if self._tick:
             self.remove_tick_callback(self._tick)
             self._tick = 0
+        self._raster.clear()
         Gtk.Widget.do_unroot(self)
 
-    def do_snapshot(self, snapshot) -> None:
-        w, h = self.get_width(), self.get_height()
-        if w <= 0 or h <= 0:
-            return
+    # The light (gradient, glow, sun, shade) is rendered once per hour at a
+    # quarter of the size and drawn as a texture; an hour change cross-fades
+    # two of them. Stars, clouds and rain go on top, darkened by the shade
+    # where they sit, so the result matches the shade drawn over them.
+    SHADE = ((0, .22), (.25, 0), (.45, 0), (1, .45))
+
+    @classmethod
+    def _shade(cls, y: float) -> float:
+        """The shade's opacity at y (0-1 down the sky)."""
+        for (a, sa), (b, sb) in zip(cls.SHADE, cls.SHADE[1:]):
+            if y <= b:
+                return sa + (sb - sa) * (min(max(y, a), b) - a) / (b - a)
+        return cls.SHADE[-1][1]
+
+    @staticmethod
+    def _dim(colour: Gdk.RGBA, k: float) -> Gdk.RGBA:
+        out = colour.copy()
+        out.red, out.green, out.blue = colour.red * k, colour.green * k, colour.blue * k
+        return out
+
+    def _paint_light(self, snapshot, w, h, top, floor, sun_opacity) -> None:
         u = self.stage.unit
-        top, floor = self._current()
-        layers = self._layer_now()
-        now = 0.0 if reduced_motion() else time.monotonic() - self._start
         whole = Graphene.Rect().init(0, 0, w, h)
         snapshot.append_linear_gradient(whole, Graphene.Point().init(0, 0), Graphene.Point().init(0, h),
                                         _stops(((0, top), (1, floor))))
@@ -232,20 +251,7 @@ class TvSky(Gtk.Widget):
         clear.alpha = 0
         snapshot.append_radial_gradient(whole, Graphene.Point().init(w * .78, h * .08), w * 1.2, h * .9, 0, 1,
                                         _stops(((0, glow), (.6, clear))))
-        if layers["stars"] > 0.01:
-            twinkle = 1 - .45 * (0.5 - 0.5 * math.cos(now / 6 * math.pi))
-            snapshot.push_opacity(layers["stars"] * twinkle)
-            star = _rgba("#ffffff")
-            for x, y, r in self.STARS:
-                radius = r * u
-                rect = Graphene.Rect().init(x * w - radius, y * h - radius, radius * 2, radius * 2)
-                clip = Gsk.RoundedRect()
-                clip.init_from_rect(rect, radius)
-                snapshot.push_rounded_clip(clip)
-                snapshot.append_color(star, rect)
-                snapshot.pop()
-            snapshot.pop()
-        if layers["sun"] > 0.01:
+        if sun_opacity > 0.01:
             size = 520 * u
             cx, cy = w - 260 * u - size / 2, 120 * u + size / 2
             reach = size / 2 * math.sqrt(2)
@@ -253,56 +259,138 @@ class TvSky(Gtk.Widget):
             rim = _rgba(oklch_rgba(0.9, 0.12, 80, .12))
             gone = rim.copy()
             gone.alpha = 0
-            snapshot.push_opacity(layers["sun"])
+            snapshot.push_opacity(sun_opacity)
             snapshot.append_radial_gradient(Graphene.Rect().init(cx - size / 2, cy - size / 2, size, size),
                                             Graphene.Point().init(cx, cy), reach, reach, 0, 1,
                                             _stops(((0, sun), (.45, rim), (.7, gone))))
             snapshot.pop()
+        snapshot.append_linear_gradient(whole, Graphene.Point().init(0, 0), Graphene.Point().init(0, h),
+                                        _stops([(at, _rgba(f"rgba(0,0,0,{a})")) for at, a in self.SHADE]))
+
+    def _light(self, snapshot, w, h, colours, sun_opacity, opacity) -> None:
+        top, floor = colours
+        sun_opacity = round(sun_opacity, 3)
+        key = ("light", w, h, self.stage.unit, sun_opacity,
+               tuple(round(v, 4) for c in colours for v in (c.red, c.green, c.blue, c.alpha)))
+        texture = self._raster.get(self, key, w, h, lambda s: self._paint_light(s, w, h, top, floor, sun_opacity),
+                                   scale=.125, opaque=True)
+        if opacity < 1:
+            snapshot.push_opacity(opacity)
+        if texture is None:
+            self._paint_light(snapshot, w, h, top, floor, sun_opacity)
+        else:
+            snapshot.append_texture(texture, Graphene.Rect().init(0, 0, w, h))
+        if opacity < 1:
+            snapshot.pop()
+
+    def _cloud(self, w, h, cw, ch, y, puff):
+        """One cloud's puff, shaded for its height, as a texture (None before realize)."""
+        key = ("cloud", w, h, cw, ch, y, tuple(round(v, 4) for v in (puff.red, puff.green, puff.blue, puff.alpha)))
+
+        def paint(s) -> None:
+            rect = Graphene.Rect().init(0, 0, cw, ch)
+            solid, gone = _rgba("#000000"), _rgba("rgba(0,0,0,0)")
+            s.push_mask(Gsk.MaskMode.ALPHA)
+            s.append_radial_gradient(rect, Graphene.Point().init(cw / 2, ch / 2), cw / 2, ch / 2, 0, 1,
+                                     _stops(((0, solid), (.55, solid), (1, gone))))
+            s.pop()
+            s.append_linear_gradient(rect, Graphene.Point().init(0, -y), Graphene.Point().init(0, h - y),
+                                     _stops([(at, self._dim(puff, 1 - a)) for at, a in self.SHADE]))
+            s.pop()
+        return self._raster_clouds.get(self, key, cw, ch, paint, scale=.25)
+
+    def do_snapshot(self, snapshot) -> None:
+        w, h = self.get_width(), self.get_height()
+        if w <= 0 or h <= 0:
+            return
+        u = self.stage.unit
+        layers = self._layer_now()
+        now = 0.0 if reduced_motion() else time.monotonic() - self._start
+        if self._t >= 1 - 1e-3:
+            self._light(snapshot, w, h, self._to, self._layers_to["sun"], 1)
+        else:
+            self._light(snapshot, w, h, self._from, self._layers_from["sun"], 1)
+            self._light(snapshot, w, h, self._to, self._layers_to["sun"], self._t)
+        if layers["stars"] > 0.01:
+            # each star alone, so a twinkle repaints only the stars
+            twinkle = 1 - .45 * (0.5 - 0.5 * math.cos(now / 6 * math.pi))
+            alpha = layers["stars"] * twinkle
+            for x, y, r in self.STARS:
+                radius = r * u
+                rect = Graphene.Rect().init(x * w - radius, y * h - radius, radius * 2, radius * 2)
+                clip = Gsk.RoundedRect()
+                clip.init_from_rect(rect, radius)
+                star = self._dim(_rgba("#ffffff"), 1 - self._shade(y))
+                star.alpha = alpha
+                snapshot.push_rounded_clip(clip)
+                snapshot.append_color(star, rect)
+                snapshot.pop()
         if layers["clouds"] > 0.01:
-            snapshot.push_opacity(layers["clouds"])
             white = _rgba("rgba(255,255,255,.2)")
             grey = _rgba(oklch_rgba(0.85, 0.01, 250, .3))
-            puff = _mix(white, grey, layers["grey"])
+            g = layers["grey"]
+            g = 0.0 if g < .01 else 1.0 if g > .99 else g
             for cw, ch, top_u, left, period, delay in self.CLOUDS:
                 cw, ch = (cw + 120) * u, (ch + 120) * u      # the mockup's 60-unit blur, as a soft edge
                 progress = ((now - delay) % period) / period if period else 0
                 x = left * w + progress * 2.6 * w - 60 * u
                 y = top_u * u - 60 * u
-                gone = puff.copy()
-                gone.alpha = 0
-                snapshot.append_radial_gradient(Graphene.Rect().init(x, y, cw, ch),
-                                                Graphene.Point().init(x + cw / 2, y + ch / 2), cw / 2, ch / 2, 0, 1,
-                                                _stops(((0, puff), (.55, puff), (1, gone))))
-            snapshot.pop()
+                rect = Graphene.Rect().init(x, y, cw, ch)
+                for puff, share in ((white, 1 - g), (grey, g)):
+                    if share <= 0:
+                        continue
+                    opacity = layers["clouds"] * share
+                    texture = self._cloud(w, h, cw, ch, y, puff)
+                    if opacity < 1:
+                        snapshot.push_opacity(opacity)
+                    if texture is None:
+                        gone = puff.copy()
+                        gone.alpha = 0
+                        snapshot.append_radial_gradient(rect, Graphene.Point().init(x + cw / 2, y + ch / 2),
+                                                        cw / 2, ch / 2, 0, 1, _stops(((0, puff), (.55, puff), (1, gone))))
+                    else:
+                        snapshot.append_texture(texture, rect)
+                    if opacity < 1:
+                        snapshot.pop()
         if layers["rain"] > 0.01:
             self._rain(snapshot, w, h, u, now, layers["rain"])
-        shade = _stops(((0, _rgba("rgba(0,0,0,.22)")), (.25, _rgba("rgba(0,0,0,0)")),
-                        (.45, _rgba("rgba(0,0,0,0)")), (1, _rgba("rgba(0,0,0,.45)"))))
-        snapshot.append_linear_gradient(whole, Graphene.Point().init(0, 0), Graphene.Point().init(0, h), shade)
 
-    @staticmethod
-    def _rain(snapshot, w, h, u, now, opacity) -> None:
-        """Streaks at 104°: a 58-unit repeat in 180-unit tiles, falling every half second."""
+    def _rain(self, snapshot, w, h, u, now, opacity) -> None:
+        """Streaks at 104°: a 58-unit repeat in 180-unit tiles, falling every half second.
+
+        One tile, rendered once, repeats over the sky; the sky is drawn in
+        bands, each at the shade's strength there.
+        """
         tile, period = 180 * u, 58 * u
         phase = (now % .5) / .5
         dx, dy = -40 * u * phase, tile * phase
         angle = math.radians(104)
         direction = (math.sin(angle), -math.cos(angle))
+        across = period / direction[0]             # the streaks repeat across every `across`
         streak = _rgba("rgba(255,255,255,.13)")
         none = _rgba("rgba(255,255,255,0)")
         stops = _stops(((0, none), (22 / 58, none), (22 / 58, streak), (24 / 58, streak), (24 / 58, none), (1, none)))
-        snapshot.push_opacity(opacity)
-        y = -h * .1 - tile + dy
-        while y < h:
-            row = Graphene.Rect().init(0, y, w, tile)
-            snapshot.push_clip(row)
-            ox, oy = dx, y
-            snapshot.append_repeating_linear_gradient(
-                row, Graphene.Point().init(ox, oy),
-                Graphene.Point().init(ox + direction[0] * period, oy + direction[1] * period), stops)
+
+        def paint(s) -> None:
+            cell = Graphene.Rect().init(0, 0, across, tile)
+            s.append_repeating_linear_gradient(cell, Graphene.Point().init(0, 0),
+                                               Graphene.Point().init(direction[0] * period, direction[1] * period),
+                                               stops)
+        texture = self._raster.get(self, ("rain", u), across, tile, paint)
+        origin = Graphene.Rect().init(dx, -h * .1 - tile + dy, across, tile)
+        bands = 12
+        for i in range(bands):
+            band = Graphene.Rect().init(0, h * i / bands, w, h / bands)
+            snapshot.push_opacity(opacity * (1 - self._shade((i + .5) / bands)))
+            snapshot.push_repeat(band, origin)
+            if texture is None:
+                snapshot.append_repeating_linear_gradient(
+                    origin, Graphene.Point().init(dx, origin.get_y()),
+                    Graphene.Point().init(dx + direction[0] * period, origin.get_y() + direction[1] * period), stops)
+            else:
+                snapshot.append_texture(texture, origin)
             snapshot.pop()
-            y += tile
-        snapshot.pop()
+            snapshot.pop()
 
 
 # ── the band ──────────────────────────────────────────────────────────────
@@ -329,6 +417,7 @@ class TvBand(Gtk.Widget):
         self.focused = False
         self._cursor = 0.0
         self._animation = None
+        self._raster = TvRaster(size=2)
         stage.connect("notify::unit", lambda *_a: self.queue_draw())
 
     def set_day(self, hours, sun, today: bool) -> None:
@@ -356,6 +445,10 @@ class TvBand(Gtk.Widget):
     def set_tv_focus(self, on: bool) -> None:
         self.focused = on
         self.queue_draw()
+
+    def do_unroot(self) -> None:
+        self._raster.clear()
+        Gtk.Widget.do_unroot(self)
 
     def do_measure(self, orientation, for_size):
         size = round(self.HEIGHT * self.stage.unit) if orientation == Gtk.Orientation.VERTICAL else 0
@@ -396,21 +489,17 @@ class TvBand(Gtk.Widget):
         radius = 18 * u
         rounded = Gsk.RoundedRect()
         rounded.init_from_rect(strip, radius)
-        # the day's light
-        snapshot.push_rounded_clip(rounded)
-        if hours:
-            pairs = [(i / n, _rgba(hours[min(i, len(hours) - 1)].sky[0])) for i in range(n + 1)]
-            snapshot.append_linear_gradient(strip, Graphene.Point().init(0, top), Graphene.Point().init(w, top),
-                                            _stops(pairs))
+        # the well (the day's light, the rain's hatch, rim and shade), rendered once per day
+        key = ("well", w, u, tuple((h.sky[0], h.wet) for h in hours))
+
+        def paint(s) -> None:
+            s.translate(Graphene.Point().init(0, -top))
+            self._paint_well(s, strip, rounded, hours, u)
+        texture = self._raster.get(self, key, w, sh, paint)
+        if texture is None:
+            self._paint_well(snapshot, strip, rounded, hours, u)
         else:
-            snapshot.append_color(_rgba(TV["materials"]["well"]), strip)
-        self._hatch(snapshot, strip, hours, u)
-        # the well: rim, inner shade and the recess's lower glint
-        shadow = _rgba("rgba(0,0,0,.28)")
-        snapshot.append_inset_shadow(rounded, shadow, 0, 6 * u, 0, 14 * u)
-        snapshot.append_inset_shadow(rounded, _rgba(TV["materials"]["well_shade"]), 0, 2 * u, 0, 4 * u)
-        snapshot.append_border(rounded, [1.5 * u] * 4, [_rgba(TV["materials"]["well_rim"])] * 4)
-        snapshot.pop()
+            snapshot.append_texture(texture, strip)
         if self.focused:
             ring = Gsk.RoundedRect()
             ring.init_from_rect(Graphene.Rect().init(-10 * u, top - 10 * u, w + 20 * u, sh + 20 * u), radius + 10 * u)
@@ -449,6 +538,22 @@ class TvBand(Gtk.Widget):
                 offset = (at - begin).total_seconds() / 3600
                 if 0 <= offset < n:
                     self._text(snapshot, short_time(at), offset / n * w, 0, 16, 650, ink3, "centre")
+
+    def _paint_well(self, snapshot, strip, rounded, hours, u) -> None:
+        n = 24
+        top = strip.get_y()
+        snapshot.push_rounded_clip(rounded)
+        if hours:
+            pairs = [(i / n, _rgba(hours[min(i, len(hours) - 1)].sky[0])) for i in range(n + 1)]
+            snapshot.append_linear_gradient(strip, Graphene.Point().init(0, top), Graphene.Point().init(strip.get_width(), top),
+                                            _stops(pairs))
+        else:
+            snapshot.append_color(_rgba(TV["materials"]["well"]), strip)
+        self._hatch(snapshot, strip, hours, u)
+        snapshot.append_inset_shadow(rounded, _rgba("rgba(0,0,0,.28)"), 0, 6 * u, 0, 14 * u)
+        snapshot.append_inset_shadow(rounded, _rgba(TV["materials"]["well_shade"]), 0, 2 * u, 0, 4 * u)
+        snapshot.append_border(rounded, [1.5 * u] * 4, [_rgba(TV["materials"]["well_rim"])] * 4)
+        snapshot.pop()
 
     @staticmethod
     def _hatch(snapshot, strip, hours, u) -> None:
@@ -511,8 +616,60 @@ class _Dot(Gtk.Widget):
         snapshot.append_border(rect, [1.5 * self.stage.unit] * 4, [rim] * 4)
 
 
-class _DayCard(TvLift):
+class _Card(TvLift):
+    """A tile or day card in the bar material, its drop shadow drawn from a texture.
+
+    The bar's drop (0 18 44 -10) is a 44-unit blur that GSK computes per pixel
+    on every frame, about 2.7 ms a card at 4K on the Raspberry Pi 5's V3D. The
+    cards' CSS keeps the rim and glint; the drop is rendered once per size.
+    """
+
+    RADIUS = 24
+    #: Shared by every card: the tiles are rebuilt on each hour, the drops stay.
+    DROPS = TvRaster(size=4)
+
+    def _drop(self, snapshot, child) -> None:
+        if not child.has_css_class("tv-bar"):
+            return
+        stage = self.get_ancestor(TvStage)
+        u = stage.unit if stage is not None else 1.0
+        w, h = self.get_width(), self.get_height()      # the child's border box (its get_width() excludes padding)
+        colour = tv_material("bar_drop")
+        rounded = Gsk.RoundedRect()
+        rounded.init_from_rect(Graphene.Rect().init(0, 0, w, h), self.RADIUS * u)
+        node = Gsk.OutsetShadowNode.new(rounded, _rgba(colour), 0, 18 * u, -10 * u, 44 * u)
+        bounds = node.get_bounds()
+
+        def paint(s) -> None:
+            s.translate(Graphene.Point().init(-bounds.get_x(), -bounds.get_y()))
+            s.append_node(node)
+        texture = self.DROPS.get(self, (w, h, u, self.RADIUS, colour), bounds.get_width(), bounds.get_height(), paint)
+        if texture is None:
+            snapshot.append_node(node)
+        else:
+            snapshot.append_texture(texture, bounds)
+
+    def do_snapshot(self, snapshot) -> None:
+        child = self.child
+        if child is None:
+            return
+        scale = self._scale
+        if abs(scale - 1.0) >= 1e-3:
+            w, h = self.get_width() / 2, self.get_height() / 2
+            snapshot.save()
+            snapshot.translate(Graphene.Point().init(w, h))
+            snapshot.scale(scale, scale)
+            snapshot.translate(Graphene.Point().init(-w, -h))
+        self._drop(snapshot, child)
+        self.snapshot_child(child, snapshot)
+        if abs(scale - 1.0) >= 1e-3:
+            snapshot.restore()
+
+
+class _DayCard(_Card):
     """A day card: bar material, the chosen day a chip, the focused one the key, lifted 1.06."""
+
+    RADIUS = 22
 
     def __init__(self, child: Gtk.Widget) -> None:
         super().__init__(child, scale=TV["tile"]["focus_scale"])
@@ -645,6 +802,7 @@ class WeatherTV(TvStage):
         focused = self.focus.focused
         refocus = self.focus.group_of(focused) == "places"
         focused_index = self._tabs.index(focused) if refocus and focused in self._tabs else -1
+        focused_uid = getattr(focused, "place_uid", None) if refocus else None
         self.focus.clear("places")
         tabs = []
         for index, place in enumerate(self.window.places):
@@ -652,8 +810,12 @@ class WeatherTV(TvStage):
                 tab = TvTab(place.name, icon="navigation", accessible=f"{place.name}, your location")
             else:
                 tab = TvTab(place.name, lead=_Dot(self, self._dot_colour(place)))
+            tab.place_uid = place.uid
+            # Hold OK or Menu: the place's own menu, the desktop row's context menu (one model).
             self.focus.add(tab, group="places", on_focus=lambda i=index: self._go_place(i),
-                           on_activate=lambda i=index: self._place_ok(i))
+                           on_activate=lambda i=index: self._place_ok(i),
+                           menu=lambda p=place: self.window.place_commands(p),
+                           menu_empty="No options for your location" if index == 0 else "")
             tabs.append(tab)
         add = TvTab("Add a place" if len(self.window.places) <= 1 else "", icon="plus", accessible="Add a place")
         self.focus.add(add, group="places", on_activate=self._open_add)
@@ -662,7 +824,9 @@ class WeatherTV(TvStage):
         self.bar.set_tabs(tabs)
         self.bar.set_open(self._open_index())
         if refocus:
-            self.focus.focus(tabs[min(max(focused_index, 0), len(tabs) - 1)])
+            # The same place keeps the focus wherever it moved (Set as default, a removal).
+            same = next((t for t in tabs if focused_uid and getattr(t, "place_uid", None) == focused_uid), None)
+            self.focus.focus(same or tabs[min(max(focused_index, 0), len(tabs) - 1)])
 
     def _dot_colour(self, place) -> str:
         """A place's sky right now, as the dot beside its name."""
@@ -775,7 +939,7 @@ class WeatherTV(TvStage):
                 value.append(unit)
             inner.append(value)
             box.append(inner)
-            self.tiles.attach(box, index % 2, index // 2, 1, 1)
+            self.tiles.attach(_Card(box), index % 2, index // 2, 1, 1)
 
     # ── the remote ────────────────────────────────────────────────────
 
@@ -953,6 +1117,8 @@ class WeatherTV(TvStage):
         # panel): three rows then, five once the keyboard is away.
         self._all_results = tuple(results)
         results = self._all_results[:3 if self.docked == "keyboard" else 5]
+        rows = getattr(self, "_row_widgets", [])
+        held = rows.index(self.focus.focused) if self.focus.focused in rows else -1
         while child := self._list.get_first_child():
             self._list.remove(child)
         for row in getattr(self, "_row_widgets", []):
@@ -963,6 +1129,8 @@ class WeatherTV(TvStage):
             if query:
                 self._list.append(_label(f"No places match “{query}”", "wx-tv-none"))
             self.focus.set_scope_items([self._field.text])
+            if held >= 0:
+                self.focus.focus(self._field.text)
             return
         for result in results:
             name, sub = self._result_text(result)
@@ -979,14 +1147,13 @@ class WeatherTV(TvStage):
             self._list.append(row)
             self._row_widgets.append(row)
         self.focus.set_scope_items([self._field.text, *self._row_widgets])
+        if held >= 0:
+            # Results that arrive while a row has the focus keep it on the same line.
+            self.focus.focus(self._row_widgets[min(held, len(self._row_widgets) - 1)])
 
     def _on_docked(self) -> None:
         if self._sheet is not None and hasattr(self, "_all_results"):
-            focused = self.focus.focused
-            index = self._row_widgets.index(focused) if focused in getattr(self, "_row_widgets", []) else -1
             self._fill_results(self._all_results)
-            if index >= 0 and self._row_widgets:
-                self.focus.focus(self._row_widgets[min(index, len(self._row_widgets) - 1)])
 
     @staticmethod
     def _result_text(result) -> tuple[str, str]:

@@ -105,18 +105,18 @@ export function weatherGlyph(condition, hour) {
     return {icon: day ? 'lumaui-sun-symbolic' : 'lumaui-moon-symbolic', tint: day ? 'sun' : 'moon'};
 }
 
-// Remote keys, by keysym name, onto the TV's four actions. Covers keyboards,
-// USB/Bluetooth remotes and HDMI-CEC keys exposed as input.
+// The TV's keys, by keysym name, onto its actions. Remotes and gamepads
+// arrive as these keys (tvInput.js turns XF86Back, XF86OK, CEC keys and pad
+// buttons into them, and opens the TV home for Home), so a keyboard's are
+// the only names here.
 export function remoteAction(name) {
     switch (name) {
     case 'Up': case 'Down': case 'Left': case 'Right':
         return name.toLowerCase();
-    case 'Return': case 'KP_Enter': case 'ISO_Enter': case 'Select': case 'space':
+    case 'Return': case 'KP_Enter': case 'ISO_Enter': case 'space':
         return 'ok';
-    case 'Escape': case 'Back': case 'BackSpace':
+    case 'Escape': case 'BackSpace':
         return 'back';
-    case 'HomePage':
-        return 'home';
     default:
         return null;
     }

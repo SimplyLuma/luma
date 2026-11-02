@@ -42,7 +42,11 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #    TvTopBar, TvTab, TvButton, TvField, TvToast, TvIdle; media parts TvCover, TvTransportButton,
 #    TvNowPlayingPill, TvEqualizer, TvProgress, TvRoom, TvSlide).
 # 5: the system TV keyboard (set_keyboard_action, watch_tv_keyboard, tv_keyboard_state; TvField(action=)).
-LUMAUI_API_LEVEL = 6
+# 6: TV menus and long press (TvMenu; TvFocus.add(menu=), TvFocus.open_menu, TvFocus.release).
+# 7: remotes and gamepads (claim_gamepads).
+# 8: TvIdle follows the person's tv-idle-delay; the C kit's TV island (luma_ui_tv_posture,
+#    luma_ui_tv_unit, luma_ui_set_part, luma_ui_set_keyboard_action).
+LUMAUI_API_LEVEL = 8
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()

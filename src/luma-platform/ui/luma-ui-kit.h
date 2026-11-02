@@ -18,7 +18,7 @@ G_BEGIN_DECLS
  * `luma_appkit.LUMAUI_API_LEVEL`. It rises by one whenever a public name, an
  * argument or a toast kind is added; within a level nothing is removed.
  */
-#define LUMA_UI_API_LEVEL 6
+#define LUMA_UI_API_LEVEL 8
 
 /**
  * luma_ui_get_api_level:
@@ -107,7 +107,7 @@ gboolean luma_ui_mobile_form_factor(void);
  * then the shell-state `posture` key, then a device that declares itself a
  * television (/etc/luma-device-class) while that key is automatic. Never
  * inferred from a screen's size. A window follows the live value through its
- * #LumaContext (`tv`); see docs/developer-platform/tv-mode.md. Since API level 6.
+ * #LumaContext (`tv`); see docs/developer-platform/tv-mode.md. Since API level 8.
  *
  * Returns: %TRUE in TV posture
  */
@@ -118,7 +118,7 @@ gboolean luma_ui_tv_posture(void);
  * @width: the screen or window width
  * @height: its height
  *
- * One TV layout pixel at this size: min(width/1920, height/1080). Since API level 6.
+ * One TV layout pixel at this size: min(width/1920, height/1080). Since API level 8.
  *
  * Returns: the unit, 0 for an empty size
  */
@@ -137,7 +137,7 @@ double luma_ui_tv_unit(int width, int height);
  * phone; in TV posture LumaUI draws the parts at TV size (the floating
  * island's page) and Back activates the page's back part, so an app needs no
  * TV-specific code. An unknown part is
- * refused with a critical. Since API level 6.
+ * refused with a critical. Since API level 8.
  */
 void luma_ui_set_part(GtkWidget *widget, const char *part);
 
@@ -148,7 +148,7 @@ void luma_ui_set_part(GtkWidget *widget, const char *part);
  *
  * Label the system TV keyboard's action key while @widget has the focus
  * (docs/developer-platform/tv-mode.md "Typing"); %NULL or "" returns to the
- * field's own label. Outside TV posture nothing visible changes. Since API level 6.
+ * field's own label. Outside TV posture nothing visible changes. Since API level 8.
  */
 void luma_ui_set_keyboard_action(GtkWidget *widget, const char *label);
 

@@ -628,11 +628,42 @@ class WeatherWindow(AppWindow):
         self._rendering = False
 
     def _install_city_menu(self, row, place):
-        registry = CommandRegistry((CommandGroup('', (
+        attach_context_menu(row, WeatherWindow.place_commands(self, place), variant='desktop')
+
+    def place_commands(self, place):
+        """A place's menu: the desktop row's context menu and the TV place's hold-OK menu.
+
+        Set as default moves the place to the front, the place Weather opens on.
+        On TV the first place is your location and stays (it is not removable there).
+        """
+        def first():
+            return bool(self.places) and self.places[0].uid == place.uid
+        return CommandRegistry((CommandGroup('', (
+            Command('city.default', 'Set as default', lambda: self._set_default(place), 'star',
+                    visible=lambda: not first()),
             Command('city.remove', 'Remove city', lambda: self._remove(place),
-                    'trash-2', destructive=True),
+                    'trash-2', destructive=True, visible=lambda: not (first() and _tv_view(self) is not None)),
         )),))
-        attach_context_menu(row, registry, variant='desktop')
+
+    def _set_default(self, place):
+        """Move a place to the front of your places."""
+        if self.fixture:
+            samples = self.fixture.samples
+            if place.uid not in samples:
+                return
+            self.fixture.samples = {place.uid: samples[place.uid],
+                                    **{k: v for k, v in samples.items() if k != place.uid}}
+        else:
+            try:
+                with self.store_lock:
+                    index = self.store.index_of(place.uid)
+                    if index <= 0 or not self.store.move(place.uid, -index):
+                        return
+            except (OSError, ValueError):
+                self._toast('The city was not moved.', kind='error')
+                return
+        self.selected = place.uid
+        self._rebuild_rows_keeping_selection()
 
     def _select_place(self, _list, row):
         if self._rendering or row is None:

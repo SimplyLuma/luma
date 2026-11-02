@@ -383,12 +383,15 @@ applications run full screen, and minimising the last one returns to Apps.
 gets the keyboard (a remote is a keyboard without letters), opening when a
 field takes the input focus and closing when it leaves; window moves, panel
 toggles and the window-slide/adjustResize paths are skipped. Layout: the
-language model rearranged by `tvKeyboard.js` (QWERTY rows, one shift and
-delete, then 123 / space / an action key), number pads kept; look from the
+language model laid out by `tvKeyboard.js` as an aligned 11-column grid
+(Android TV's Leanback keyboard: digits and delete, three letter rows filled
+with @ _ & , . - ?, then 123, shift, space and the action key; Left/Right
+wrap, Up/Down keep their column), number pads kept; look from the
 `tv.keyboard` tokens as inline styles in TV units, dark, no tool strip,
 suggestions or previews. The remote's focus is a key-material actor in the
 layers' parent (the cached layers are never redrawn); arrows, OK, Escape and
-XF86Back are Mutter accelerators only while the keyboard is open, OK on an
+Escape are Mutter accelerators only while the keyboard is open (a remote's
+Back arrives as Escape, see 0310), OK on an
 Enter key acts on release, Back or Up from the top row closes and arms OK to
 reopen. `InputMethod` reports printable keys from real devices
 (`reportPhysicalKeys`, TV only), which close the keyboard. The keyboard
@@ -396,9 +399,25 @@ exports `org.projectluma.Shell.Keyboard1` (`SetActionLabel`, `Visible`,
 `Height` in TV units); docs/developer-platform/tv-mode.md "Typing". Test:
 `tv-keyboard-policy.js` in %check. Outside TV posture nothing changes.
 
+`0310-tv-input.patch`: registers `lumaPresentation/tvInput.js` and its pure
+rules `tvInputModel.js` in the JS resource. `TvPresentation` runs `TvInput`
+only while it holds TV posture: gamepads read through libmanette
+(`gi://Manette?version=0.2`, optional; Recommends libmanette) become TV keys
+from a Clutter virtual keyboard (D-pad and left stick = arrows at the
+`tv.input` repeat pace, South = Return, East and Select = Escape, Start =
+Menu, Guide or Select+Start = the TV home), and remote keys that are not TV
+keys (XF86Back, XF86Close, XF86OK, XF86Select, XF86HomePage, XF86RootMenu,
+XF86MenuKB, XF86ContextMenu; CEC keys through rc-cec) are Mutter accelerators
+re-sent as TV keys. A pad reaches only the Shell, the TV keyboard and
+`X-Luma-TV-Presentation=tv` apps, never a window whose process claimed the
+pads (`org.projectluma.Shell.Remote1.ClaimGamepads`); other applications read
+the pad untouched. The pad is never grabbed. docs/developer-platform/tv-mode.md
+"Remotes and gamepads". Test: `tv-input-policy.js` in %check. Numbered after
+0309; reconcile with `0308-backdrop-blur-capability` (PR #138) on merge.
+
 `0312-tv-screen-edges.patch`: registers `lumaPresentation/tvScreenEdges.js`.
 In TV posture `TvPresentation` scales `Main.uiGroup` (the TV home and every
 window) about the centre by `1 - tv-screen-edges/100` (shell-state key,
 0–10 %), live, for a TV that overscans; leaving TV posture restores scale 1.
 Settings › Display › Fit › Screen edges writes the key. Without the key (an
-older shell-state) nothing changes.
+older shell-state) nothing changes. Applies after 0310.

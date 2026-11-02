@@ -15,15 +15,16 @@ focus and what happens there; LumaUI owns the choice and the look:
     focus.focus(band)
 
 The focused widget carries the `tv-focus` style class (and `TvLift` children
-lift), and holds GTK focus where it is focusable, so accessibility follows the
-remote. A scope (`push_scope`) confines the focus to a sheet until it closes,
+lift), and holds GTK focus, so accessibility follows the remote and leaving a
+text field takes GTK focus (and the system TV keyboard) with it. A scope (`push_scope`) confines the focus to a sheet until it closes,
 then returns it where it came from. A grab (`grab`, the TV keyboard) takes
 every key while it is up. Filters (`add_filter`, the idle hook) see each key
 first. Back that nothing takes falls through to the window, which returns to
 the TV home at the app's top level.
 
 Keys: arrows, OK (Return, KP_Enter, Select), Back (Escape, Back, BackSpace
-outside text). No pointer is needed and nothing depends on hover.
+outside text), Menu. Holding OK on an item with a menu (or Menu) opens the
+item's menu (`menu=`, tv_menu). No pointer is needed and nothing depends on hover.
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from . import lumaui_tokens as tokens  # noqa: E402
 
@@ -45,6 +46,8 @@ _ARROWS = {Gdk.KEY_Left: LEFT, Gdk.KEY_Right: RIGHT, Gdk.KEY_Up: UP, Gdk.KEY_Dow
            Gdk.KEY_KP_Left: LEFT, Gdk.KEY_KP_Right: RIGHT, Gdk.KEY_KP_Up: UP, Gdk.KEY_KP_Down: DOWN}
 OK_KEYS = frozenset({Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter, Gdk.KEY_Select, Gdk.KEY_space})
 BACK_KEYS = frozenset({Gdk.KEY_Escape, Gdk.KEY_Back, Gdk.KEY_BackSpace})
+MENU_KEYS = frozenset({Gdk.KEY_Menu, Gdk.KEY_MenuKB})
+REPEAT_GUARDED = (OK_KEYS - {Gdk.KEY_space}) | MENU_KEYS
 
 Rect = tuple[float, float, float, float]   # x, y, width, height
 
@@ -99,6 +102,8 @@ class _Item:
     on_blur: Callable[[], None] | None = None
     on_key: Callable[[str], bool] | None = None
     editable: bool = False
+    menu: object = None          # a CommandRegistry, or a callable returning one
+    menu_empty: str = ""         # the toast when the menu has nothing to offer
 
 
 @dataclass
@@ -126,6 +131,11 @@ class TvFocus:
         self._controller = Gtk.EventControllerKey()
         self._controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         self._controller.connect("key-pressed", self._key_pressed)
+        self._controller.connect("key-released", self._key_released)
+        self._ok_down: _Item | None = None     # OK is down on an item with a menu
+        self._hold_source = 0
+        self._swallow_release = False          # the release of the press that opened a menu
+        self._down: dict[int, int] = {}        # OK/Menu keys held: keyval -> last event (µs)
         self._attached = None
         root.connect("map", lambda *_a: self._attach())
         if root.get_mapped():
@@ -134,7 +144,8 @@ class TvFocus:
     # ── registration ────────────────────────────────────────────────────
 
     def add(self, widget: Gtk.Widget, *, group: str = "", on_activate=None, on_focus=None,
-            on_blur=None, on_key=None, editable: bool = False) -> Gtk.Widget:
+            on_blur=None, on_key=None, editable: bool = False, menu=None,
+            menu_empty: str = "") -> Gtk.Widget:
         """Make `widget` focusable by the remote.
 
         `on_key(direction)` returning True keeps an arrow. `editable=True` marks a
@@ -142,10 +153,20 @@ class TvFocus:
         focus and receives typing, Left/Right, Backspace and Space itself, so a
         real keyboard and the system's on-screen keyboard type straight in; Up
         and Down still move, OK calls `on_activate`, Back steps out.
+
+        `menu` is the item's command model (the `CommandRegistry` its desktop
+        context menu uses, or a callable returning one). Holding OK for
+        `tv.focus.hold_ms`, or pressing Menu, opens it as a `TvMenu`; on such an
+        item a short press runs `on_activate` when OK is released. When the
+        menu has nothing to offer, a TV toast says so (`menu_empty`, or "No
+        options here").
         """
-        self._items[widget] = _Item(widget, group, on_activate, on_focus, on_blur, on_key, editable)
-        if editable:
-            widget.set_focusable(True)
+        self._items[widget] = _Item(widget, group, on_activate, on_focus, on_blur, on_key, editable, menu,
+                                    menu_empty)
+        # GTK focus follows the remote onto every item. That is what moves it off a
+        # text field when the remote leaves one, so the system keyboard closes and
+        # OK reaches the item instead of reopening the keyboard on the field.
+        widget.set_focusable(True)
         return widget
 
     def remove(self, widget: Gtk.Widget) -> None:
@@ -228,9 +249,24 @@ class TvFocus:
         window.add_controller(self._controller)
         self._attached = window
 
+    def _key_released(self, controller, keyval: int, _keycode: int, state: Gdk.ModifierType) -> None:
+        self._down.pop(keyval, None)
+        if self.root.get_mapped() and self._grab is None:
+            self.release(keyval)
+
     def _key_pressed(self, controller, keyval: int, _keycode: int, state: Gdk.ModifierType) -> bool:
         if not self.root.get_mapped():
             return False
+        # A held OK or Menu repeats (Wayland clients repeat held keys themselves). A
+        # repeat belongs to the press that started it: it must not activate what that
+        # press opened, so only a new press acts. A press long after the last event
+        # of a key whose release was lost counts as new.
+        if keyval in REPEAT_GUARDED:
+            now = GLib.get_monotonic_time()
+            last = self._down.get(keyval)
+            self._down[keyval] = now
+            if last is not None and now - last < 800_000:
+                return True
         for handler in list(self._filters):
             if handler(keyval, state):
                 return True
@@ -257,9 +293,17 @@ class TvFocus:
                 return True
             self.move(direction)
             return True
+        if keyval in MENU_KEYS:
+            return self.open_menu(feedback=True)
         if keyval in OK_KEYS:
             if keyval == Gdk.KEY_space and item is None:
                 return False
+            if item is not None and item.menu is not None and keyval != Gdk.KEY_space:
+                # Hold for the menu, release for OK; a repeat while held changes nothing.
+                if self._ok_down is None and not self._swallow_release:
+                    self._ok_down = item
+                    self._hold_source = GLib.timeout_add(tokens.TV["focus"]["hold_ms"], self._held)
+                return True
             if item is not None and item.on_activate is not None:
                 item.on_activate()
                 return True
@@ -273,6 +317,50 @@ class TvFocus:
                 return True
             return bool(self.on_back and self.on_back())
         return False
+
+    def release(self, keyval: int) -> bool:
+        """A key came up (tests and scripted reviews call this as `handle` for presses)."""
+        if keyval not in OK_KEYS or keyval == Gdk.KEY_space:
+            return False
+        if self._swallow_release:
+            self._swallow_release = False
+            return True
+        item, self._ok_down = self._ok_down, None
+        if item is None:
+            return False
+        if self._hold_source:
+            GLib.source_remove(self._hold_source)
+            self._hold_source = 0
+        if item.widget is self._focused and item.on_activate is not None:
+            item.on_activate()
+        return True
+
+    def _held(self) -> bool:
+        self._hold_source = 0
+        item, self._ok_down = self._ok_down, None
+        if item is not None and item.widget is self._focused:
+            self._swallow_release = True
+            self.open_menu(feedback=True)
+        return False
+
+    def open_menu(self, *, feedback: bool = False) -> bool:
+        """Open the focused item's menu (`TvMenu`); False when it has none.
+
+        With `feedback`, an item whose menu has nothing to offer says so in a TV toast.
+        """
+        item = self._items.get(self._focused) if self._focused is not None else None
+        if item is None or item.menu is None:
+            return False
+        registry = item.menu() if callable(item.menu) else item.menu
+        from .tv_menu import TvMenu
+        if registry is not None and TvMenu.open(self, item.widget, registry) is not None:
+            return True
+        if feedback:
+            from .tv_stage import TvStage
+            if isinstance(self.root, TvStage):
+                from .tv_toast import TvToast
+                TvToast.show(self.root, item.menu_empty or "No options here")
+        return True
 
     def move(self, direction: str) -> bool:
         """Move the focus one step spatially; returns whether it moved."""
@@ -324,8 +412,7 @@ class TvFocus:
                 item.on_blur()
         if widget is not None:
             _mark(widget, True)
-            if widget.get_focusable():
-                widget.grab_focus()
+            widget.grab_focus()
             item = self._items.get(widget)
             if item is not None and item.on_focus is not None and notify:
                 item.on_focus()

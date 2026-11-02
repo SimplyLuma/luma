@@ -53,6 +53,12 @@
       <summary>TV screen edges</summary>
       <description>Percent of the screen given back at the edges in TV posture, for a TV that cuts off the picture (overscan): the shell draws everything that much smaller about the centre. Settings › Display › Fit › Screen edges.</description>
     </key>
+    <key name="tv-confirm-button" type="s">
+      <choices><choice value="automatic"/><choice value="south"/><choice value="east"/></choices>
+      <default>'automatic'</default>
+      <summary>Gamepad OK button in TV posture</summary>
+      <description>Which face button is OK; the other of the two is Back. South is the bottom button (A on Xbox-style pads, Cross on PlayStation), East the right one (A on Nintendo-style pads). Automatic picks East for controllers that identify as Nintendo layout and South for the rest; a pad that misreports its layout needs the explicit choice.</description>
+    </key>
     <key name="surface-treatment" type="s">
       <choices><choice value="light"/><choice value="dark"/><choice value="frost"/><choice value="glass"/></choices>
       <default>'light'</default>

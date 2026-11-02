@@ -54,7 +54,7 @@ class ScreenEdges(unittest.TestCase):
     def test_shell_piece_is_registered(self):
         self.assertIn("<file>ui/lumaPresentation/tvScreenEdges.js</file>", PATCH)
         self.assertIn("0312-tv-screen-edges.patch", SPEC)
-        self.assertIn("cp %{SOURCE9041} js/ui/lumaPresentation/tvScreenEdges.js", SPEC)
+        self.assertIn("cp %{SOURCE9044} js/ui/lumaPresentation/tvScreenEdges.js", SPEC)
         self.assertIn("tvScreenEdges.js", BUILD)
         self.assertIn("0312-tv-screen-edges.patch", BUILD)
 

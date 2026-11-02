@@ -9,6 +9,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GnomeDesktop from 'gi://GnomeDesktop';
+import Graphene from 'gi://Graphene';
 import Meta from 'gi://Meta';
 import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
@@ -17,6 +18,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {tv as TOKENS} from './tvTokens.js';
+import {TvInput} from './tvInput.js';
 import {TvScreenEdges} from './tvScreenEdges.js';
 import {greetingPart, nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
@@ -115,6 +117,8 @@ export class TvPresentation {
         if (model) watch(model, 'changed', () => this._tick());
         this._loadApps();
         this.showHome('home');
+        // Every remote and gamepad becomes the TV's keys (tvInput.js).
+        this._input = new TvInput({home: () => this.showHome('home')});
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);
         // Screen edges: the whole picture, drawn smaller for a TV that overscans.
@@ -125,6 +129,8 @@ export class TvPresentation {
     _leave() {
         for (const [object, id] of this._activeSignals) object.disconnect(id);
         this._activeSignals = [];
+        this._input?.destroy();
+        this._input = null;
         Main.keyboard?.setTvPosture?.(false);
         this._edges?.destroy();
         this._edges = null;
@@ -396,7 +402,7 @@ export class TvPresentation {
         const width = tile.width * u, height = width * tile.aspect_height / tile.aspect_width;
         const cell = new St.Widget({layout_manager: new Clutter.FixedLayout(), reactive: true});
         const plate = new St.Widget({layout_manager: new Clutter.BinLayout(), width, height,
-            pivot_point: new Clutter.Point({x: 0.5, y: 0.5})});
+            pivot_point: new Graphene.Point({x: 0.5, y: 0.5})});
         const file = this._tileFile(app);
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
         if (file) {
@@ -600,9 +606,10 @@ export class TvPresentation {
     _key(event) {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_PROPAGATE;
+        // OK is held down for a long press: its key repeat is not more OKs.
+        if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
         if (action === 'ok') this._ok();
         else if (action === 'back') this._back();
-        else if (action === 'home') this.showHome('home');
         else this._move(action);
         this._draw();
         return Clutter.EVENT_STOP;
@@ -614,7 +621,7 @@ export class TvPresentation {
         const name = Clutter.keyval_name(event.get_key_symbol()) ?? '';
         if (name === 'Up') this._focus = {kind: 'tab', index: PAGES.indexOf('search')};
         else if (name === 'Down' && this._resultTiles?.length) this._focus = {kind: 'result', index: 0};
-        else if (name === 'Escape' || name === 'Back') this._focus = {kind: 'tab', index: PAGES.indexOf('search')};
+        else if (name === 'Escape') this._focus = {kind: 'tab', index: PAGES.indexOf('search')};
         else if (name === 'Return' || name === 'KP_Enter') {
             if (this._resultTiles?.length) this._launch(this._resultTiles[0].app);
         } else return Clutter.EVENT_PROPAGATE;
