@@ -257,6 +257,10 @@ static const char *const tv_sheet =
 "  text-transform: uppercase; color: @ink_3@; margin: 0 0 12tv 26tv; }\n"
 ".lumaui-tv-frame list.lumaui-part-card { background-color: @bar@; }\n"
 ".lumaui-tv-frame list.lumaui-part-card > row { border: none; }\n"
+/* the hero's lead: the thing's own tile, 92 in the accent (the mockup's .hero .big) */
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead { min-width: 92tv; min-height: 92tv; border-radius: 26tv; padding: 0; margin: 0 10tv 0 0;\n"
+"  background-color: @accent@; background-image: none; color: white; box-shadow: none; }\n"
+".lumaui-tv-frame .lumaui-part-hero .lumaui-part-lead image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; color: white; }\n"
 /* dividers: a straight hairline at the top of each row after the first, inset to the text (past a
  * lead when both rows have one), drawn inside the row so it never follows a rounded corner */
 ".lumaui-tv-frame .lumaui-part-row:not(:focus-within) + .lumaui-part-row:not(:focus-within) { background-image: linear-gradient(@divider@, @divider@);\n"

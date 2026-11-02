@@ -343,7 +343,7 @@ void luma_ui_set_part(GtkWidget *widget, const char *part) {
   GtkWidget *first = line != NULL && GTK_IS_BOX(line) &&
                      gtk_orientable_get_orientation(GTK_ORIENTABLE(line)) == GTK_ORIENTATION_HORIZONTAL
                      ? gtk_widget_get_first_child(line) : NULL;
-  gboolean leads = g_strcmp0(part, "row") == 0 && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
+  gboolean leads = (g_strcmp0(part, "row") == 0 || g_strcmp0(part, "hero") == 0) && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
                    !gtk_widget_get_hexpand(first) && !GTK_IS_LABEL(first);
   luma_ui_set_css_class(widget, "lumaui-part-leads", leads);
   /* An icon lead (an image, or a box holding one) sits on the TV's lead tile; other leads
