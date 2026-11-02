@@ -146,10 +146,28 @@ class SecretServiceStoreTests(unittest.TestCase):
         self.assertIsNone(store.lookup(reference))
         # The final lookup misses under the current schema and then falls
         # back to (and also misses under) the legacy one — see
-        # LegacySchemaMigrationTests for that fallback's own coverage.
+        # LegacySchemaMigrationTests for that fallback's own coverage. Then a
+        # search (attributes only, no prompt) tells a missing sign-in from a locked one.
         self.assertEqual(
-            [call[0] for call in self.secret.calls], ["store", "clear", "lookup", "lookup"]
+            [call[0] for call in self.secret.calls],
+            ["store", "clear", "lookup", "lookup", "search", "search"],
         )
+
+    def test_a_locked_sign_in_is_unavailable_not_missing(self) -> None:
+        store = SecretServiceStore()
+        reference = new_reference()
+        store.store(reference, "label", "s3cret")
+        self.secret.locked = True
+        real = self.secret.password_lookup_sync
+        # A dismissed unlock prompt: libsecret returns nothing for a locked item.
+        self.secret.password_lookup_sync = lambda *args: None
+        try:
+            with self.assertRaises(CredentialUnavailable):
+                store.lookup(reference)
+            with self.assertRaises(CredentialUnavailable):
+                store.lookup_background(reference)
+        finally:
+            self.secret.password_lookup_sync = real
 
     def test_store_failure_raises_a_safe_to_show_error_and_keeps_nothing(self) -> None:
         store = SecretServiceStore()
@@ -211,7 +229,7 @@ class LegacySchemaMigrationTests(unittest.TestCase):
 
         # Both schemas were consulted (the miss under the current one, then
         # the fallback), but nothing was ever written or cleared.
-        self.assertEqual([call[0] for call in self.secret.calls], ["lookup", "lookup"])
+        self.assertEqual([call[0] for call in self.secret.calls], ["lookup", "lookup", "search", "search"])
         self.assertEqual(self.secret._vault, {})
 
     def test_a_reference_already_under_the_new_schema_never_touches_the_old_one(self) -> None:

@@ -199,6 +199,9 @@ class RemoteSources:
         self.artwork_root = artwork_root or cache_home / "luma-tide/remote-artwork"
         self._client_factory = client_factory
         self._clients: dict[str, SubsonicClient] = {}
+        # Sources whose sign-in is in a locked keyring: not signed out, just waiting.
+        self._keyring_locked: set[str] = set()
+        self._unlocking: set[str] = set()
         self._artist_indexes: dict[str, dict[str, str]] = {}
         self._downloading: dict[str, tuple[str, threading.Event]] = {}
         self._sync_cancel: dict[str, threading.Event] = {}
@@ -245,6 +248,11 @@ class RemoteSources:
     def connected(self, source_id: str) -> bool:
         with self._lock:
             return source_id in self._clients
+
+    def keyring_locked(self, source_id: str) -> bool:
+        """The source's sign-in is saved but the keyring is locked (or unreadable)."""
+        with self._lock:
+            return source_id in self._keyring_locked
 
     def artist_artwork(self, names: list[str], changed=None) -> concurrent.futures.Future:
         """Read portraits through the configured server; never follow external image URLs."""
@@ -375,22 +383,31 @@ class RemoteSources:
 
     def connect(self, source_id: str) -> concurrent.futures.Future[SourceState]:
         """Read the password and check the server; records the outcome as the
-        source's state and raises the reason when it is not online."""
+        source's state and raises the reason when it is not online. Reading the
+        password may ask to unlock the keyring."""
         return self._accounts.submit(self._connect_state, source_id)
 
     def _connect_state(self, source_id: str) -> SourceState:
-        self._connect(source_id)
+        self._connect(source_id, interactive=True)
         return SourceState.ONLINE
 
-    def _connect(self, source_id: str) -> SubsonicClient:
+    def _read_secret(self, source: Source, interactive: bool) -> str | None:
+        credentials = self.credentials()
+        background = getattr(credentials, "lookup_background", None)
+        if interactive or background is None:
+            return credentials.lookup(source.auth_ref)
+        return background(source.auth_ref)
+
+    def _connect(self, source_id: str, *, interactive: bool = False) -> SubsonicClient:
+        """A client for the source. Without `interactive` the keyring is read
+        without an unlock prompt (background sync); a locked keyring then
+        leaves the source waiting, never signed out."""
         source = self.store.source(source_id)
         with self._lock:
             client = self._clients.get(source_id)
         try:
             if client is None:
-                secret = (
-                    self.credentials().lookup(source.auth_ref) if source.auth_ref else None
-                )
+                secret = self._read_secret(source, interactive) if source.auth_ref else None
                 if not secret:
                     _log.info("No saved sign-in for remote source %s; it needs signing in again", source_id)
                     raise AuthenticationFailed(f"Tide has no saved password for {source.name}.")
@@ -404,8 +421,18 @@ class RemoteSources:
                 if account != source.account or password != secret:
                     self._normalize_saved_sign_in(source, account, password)
             client.ping()
-        except (AuthenticationFailed, CredentialUnavailable) as error:
+        except CredentialUnavailable:
+            # The sign-in is saved; only the keyring is locked. Songs stay; the
+            # next sync, play or Try Again reads it again.
+            _log.info("Remote source %s waits for the keyring to unlock", source_id)
+            with self._lock:
+                self._keyring_locked.add(source_id)
+            self._forget_client(source_id, SourceState.OFFLINE)
+            raise
+        except AuthenticationFailed as error:
             _log.info("Remote source %s needs signing in: %s", source_id, type(error).__name__)
+            with self._lock:
+                self._keyring_locked.discard(source_id)
             self._forget_client(source_id, SourceState.AUTH_REQUIRED)
             raise
         except Unreachable as error:
@@ -419,6 +446,7 @@ class RemoteSources:
             raise
         with self._lock:
             self._clients[source_id] = client
+            self._keyring_locked.discard(source_id)
         self.store.set_source_state(source_id, SourceState.ONLINE)
         return client
 
@@ -545,26 +573,30 @@ class RemoteSources:
 
     # -- sync -----------------------------------------------------------------
 
-    def sync(self, source_id: str, progress: Progress | None = None) -> concurrent.futures.Future[SyncResult]:
-        return self._submit(self._sync, source_id, progress)
+    def sync(self, source_id: str, progress: Progress | None = None, *,
+             interactive: bool = False) -> concurrent.futures.Future[SyncResult]:
+        """Bring the source's songs up to date; `interactive` (a sync the person asked
+        for) may ask to unlock the keyring, a background one never does."""
+        return self._submit(self._sync, source_id, progress, interactive)
 
-    def _sync(self, source_id: str, progress: Progress | None) -> SyncResult:
+    def _sync(self, source_id: str, progress: Progress | None, interactive: bool = False) -> SyncResult:
         cancel = threading.Event()
         with self._lock:
             self._sync_cancel[source_id] = cancel
             if self._closing.is_set():
                 cancel.set()
         try:
-            return self._sync_songs(source_id, progress, cancel)
+            return self._sync_songs(source_id, progress, cancel, interactive)
         finally:
             with self._lock:
                 if self._sync_cancel.get(source_id) is cancel:
                     del self._sync_cancel[source_id]
 
     def _sync_songs(
-        self, source_id: str, progress: Progress | None, cancel: threading.Event
+        self, source_id: str, progress: Progress | None, cancel: threading.Event,
+        interactive: bool = False,
     ) -> SyncResult:
-        client = self._connect(source_id)
+        client = self._connect(source_id, interactive=interactive)
         source = self.store.source(source_id)
         seen: set[str] = set()
         # One cover per album: a server may give every song its own cover ID
@@ -759,6 +791,10 @@ class RemoteSources:
             client = self._clients.get(copy.source_id)
         if client is None:
             source = self.store.source(copy.source_id)
+            if self.keyring_locked(source.id):
+                # Ask now, when the song is wanted: the keyring's unlock prompt.
+                self.unlock(source.id)
+                raise PlaybackUnavailable(f"Unlock your keyring to reach {source.name}.")
             if source.state is SourceState.AUTH_REQUIRED:
                 raise PlaybackUnavailable(f"Sign in to {source.name} again to play this song.")
             if source.state is SourceState.OFFLINE:
@@ -768,6 +804,20 @@ class RemoteSources:
             return client.stream_url(song_id_from_uri(copy.uri))
         except (SubsonicError, ValueError) as error:
             raise PlaybackUnavailable(str(error)) from None
+
+    def unlock(self, source_id: str) -> None:
+        """Read the sign-in once with the keyring's unlock prompt (when a song or
+        cover is wanted from a source waiting on the keyring); connects on success."""
+        with self._lock:
+            if source_id in self._unlocking or self._closing.is_set():
+                return
+            self._unlocking.add(source_id)
+        future = self.connect(source_id)
+
+        def done(_future) -> None:
+            with self._lock:
+                self._unlocking.discard(source_id)
+        future.add_done_callback(done)
 
     # -- offline ----------------------------------------------------------------
 

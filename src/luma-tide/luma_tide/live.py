@@ -93,7 +93,10 @@ class LiveLibrary:
             count = counts[source.id]
             remote = source.kind == 'subsonic'
             state = 'ok' if source.state == SourceState.ONLINE else 'busy' if source.state == SourceState.SYNCING else 'bad'
+            remote_sources = getattr(self.app, 'remote', None)
+            locked = remote and remote_sources is not None and remote_sources.keyring_locked(source.id)
             subtitle = ('Signed out' if source.state == SourceState.AUTH_REQUIRED else
+                        f'Keyring locked · {count:,} songs' if locked else
                         f'Syncing · {count:,} songs' if source.state == SourceState.SYNCING else
                         f'Up to date · {count:,} songs' if source.state == SourceState.ONLINE else
                         f'Out of reach · {count:,} songs')

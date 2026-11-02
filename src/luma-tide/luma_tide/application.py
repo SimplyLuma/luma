@@ -509,7 +509,7 @@ class TideApplication(Adw.Application):
         def progress(phase: str, done: int, total: int) -> None:
             GLib.idle_add(self._sync_progress, source.name, phase, done, total)
 
-        _on_main(self.remote.sync(source.id, progress),
+        _on_main(self.remote.sync(source.id, progress, interactive=not quiet),
                  lambda future: self._sync_finished(source, future, quiet))
 
     def _sync_progress(self, name: str, phase: str, done: int, total: int) -> bool:
@@ -539,10 +539,15 @@ class TideApplication(Adw.Application):
             problem = f"Can’t reach {source.name}."
             if not quiet:
                 self.notify_error(f"{source.name} is out of reach. {error}")
-        except (AuthenticationFailed, CredentialUnavailable) as error:
+        except CredentialUnavailable:
+            # Saved, but the keyring is locked: the songs stay, nothing is signed out.
+            problem = f"Unlock your keyring to reach {source.name}."
+            if not quiet or not self.window:
+                self.notify_error(problem)
+        except AuthenticationFailed as error:
             problem = f"Sign in to {source.name} again."
-            # The library shows a Sign In banner; a notification is only for
-            # something the person just asked for.
+            # The library says so where the hidden songs would be (with Sign In…);
+            # a notification is only for something the person just asked for.
             if not quiet or not self.window:
                 self.notify_error(f"Sign in to {source.name} again. {error}")
         except SubsonicError as error:
@@ -587,6 +592,16 @@ class TideApplication(Adw.Application):
         # A stream that fails may mean its server went away: check, so the
         # library shows the truth instead of offering songs that cannot play.
         copy = snapshot.copy
+        if snapshot.state is PlaybackState.ERROR and copy is None and snapshot.track is not None:
+            # A song from a server waiting on a locked keyring: ask for the keyring now.
+            for item in self.store.copies_for_track(snapshot.track.id):
+                if self.remote.keyring_locked(item.source_id):
+                    self.remote.unlock(item.source_id)
+                    if self.window:
+                        line = f"Unlock your keyring to reach {item.source_name}."
+                        self.window.set_status(line)  # the one toast, ended as the problem line
+                        self.window.finish_status(line, kind="error")
+                    break
         if (snapshot.state is PlaybackState.ERROR and copy is not None and not copy.here
                 and copy.source_id not in self._checking and self.remote.connected(copy.source_id)):
             self._checking.add(copy.source_id)

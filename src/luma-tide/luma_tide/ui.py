@@ -15,6 +15,7 @@ from luma_appkit import (
     LayerHost, Menu, ModeSwitch, NavigationTrailBar, PageHeader, PersonAvatar, ScrollView, StackedButton,
     StackedButtons, TableHeader, TextButton, TextField, Toast, ToastHost, FileRequest, ShareSheet,
     ShareSubject, ShareTarget, ShareResult, installed_targets, ask_for_file, apply_type, icons,
+    EmptyState,
 )
 from luma_appkit.navigation import NavigationTrail, Place, bind_navigation_input
 from luma_appkit.action_bubble import FloatingMenu
@@ -826,6 +827,8 @@ class TideWindow(AppWindow):
         pad = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_start=margin, margin_end=margin)
         self._library_pad = pad
         self.page.append(pad)
+        if self._sign_in_note(pad):
+            return
         features = Gtk.Box(orientation=Gtk.Orientation.VERTICAL if self.phone else Gtk.Orientation.HORIZONTAL,
                            spacing=14, homogeneous=not self.phone)
         features.set_name('td-features')
@@ -846,6 +849,24 @@ class TideWindow(AppWindow):
         recent.append(text('Recently played', 'hero_title', margin_bottom=12))
         recent.append(self._album_strip(self.library.albums[:8], name='td-recent'))
         pad.append(recent)
+
+    def _sign_in_note(self, pad):
+        """When a signed-out server is what leaves the library empty, say so where its music
+        would be, with the way back in (never a blank page). True when shown."""
+        if self.library.albums or self.query:
+            return False
+        source = next((s for s in self.library.sources if s.remote and s.signed_out), None)
+        if source is None:
+            return False
+        songs = dict(source.facts).get('Songs', '')
+        note = EmptyState(f'Sign in to {source.name}',
+                          f'{songs} songs wait in your library until you sign in again.' if songs not in ('', '0')
+                          else 'Its songs come back when you sign in again.',
+                          'lumaui-key-round-symbolic', primary=('Sign In…', lambda: self._open_source(source.id, True)))
+        note.set_name('td-sign-in')
+        note.set_margin_top(48)
+        pad.append(note)
+        return True
 
     def _album_artwork_light(self, album, texture):
         if self.view == 'album' and self.album_id == album.id and not self.now_tab:
@@ -1161,6 +1182,8 @@ class TideWindow(AppWindow):
         pad = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_start=margin, margin_end=margin)
         self._library_pad = pad
         self.page.append(pad)
+        if self._sign_in_note(pad):
+            return
         if self.view == 'albums':
             grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                                min_children_per_line=1, max_children_per_line=16,
@@ -1225,6 +1248,8 @@ class TideWindow(AppWindow):
         pad = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_start=16, margin_end=16)
         self._library_pad = pad
         self.page.append(pad)
+        if self._sign_in_note(pad):
+            return
         if self.view == 'albums':
             pad.append(self._phone_grid('td-album-grid', self.library.albums,
                                         lambda album: AlbumTile(album, self.open_album, year=True, size=178,
