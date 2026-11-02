@@ -9,6 +9,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GnomeDesktop from 'gi://GnomeDesktop';
+import Graphene from 'gi://Graphene';
 import Meta from 'gi://Meta';
 import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
@@ -390,7 +391,7 @@ export class TvPresentation {
         const width = tile.width * u, height = width * tile.aspect_height / tile.aspect_width;
         const cell = new St.Widget({layout_manager: new Clutter.FixedLayout(), reactive: true});
         const plate = new St.Widget({layout_manager: new Clutter.BinLayout(), width, height,
-            pivot_point: new Clutter.Point({x: 0.5, y: 0.5})});
+            pivot_point: new Graphene.Point({x: 0.5, y: 0.5})});
         const file = this._tileFile(app);
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
         if (file) {
