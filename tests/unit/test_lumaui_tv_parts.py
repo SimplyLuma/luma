@@ -1,0 +1,174 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""LumaUI's TV parts: units, materials, spatial focus, the bar's one bright thing, toast and idle."""
+
+from __future__ import annotations
+
+import os
+import sys
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src/luma-platform/appkit"))
+
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+from luma_appkit import lumaui_tokens  # noqa: E402
+from luma_appkit.tv_focus import DOWN, LEFT, RIGHT, UP, nearest  # noqa: E402
+from luma_appkit.tv_stage import tv_css, tv_material  # noqa: E402
+
+HAS_DISPLAY = Gtk.init_check() if hasattr(Gtk, "init_check") else Gdk.Display.get_default() is not None
+
+
+class Units(unittest.TestCase):
+    def test_tv_lengths_become_pixels(self):
+        self.assertEqual(tv_css("font-size: 26tv; margin: -1.5tv 0;", 2.0), "font-size: 52.00px; margin: -3.00px 0;")
+
+    def test_other_tokens_are_left_alone(self):
+        text = "color: #10tv0; .tvx { } box-shadow: 0 0 0 4tv white; tv-focus"
+        self.assertEqual(tv_css(text, 1.0), "color: #10tv0; .tvx { } box-shadow: 0 0 0 4.00px white; tv-focus")
+
+
+class Materials(unittest.TestCase):
+    def test_surfaces_turn_opaque_and_ink_does_not(self):
+        self.assertTrue(tv_material("well").endswith("0.45)"))
+        self.assertTrue(tv_material("well", opaque=True).endswith(" 1)"))
+        self.assertEqual(tv_material("ink_2", opaque=True), tv_material("ink_2"))
+
+    def test_shared_scale_is_the_mockups(self):
+        tv = lumaui_tokens.TV
+        self.assertEqual((tv["bar"]["top"], tv["bar"]["height"], tv["layout"]["safe_x"]), (56, 74, 96))
+        self.assertEqual((tv["button"]["height"], tv["button"]["radius"]), (66, 22))
+        self.assertEqual((tv["toast"]["bottom"], tv["toast"]["above_action_bar"], tv["toast"]["above_keyboard"]),
+                         (56, 172, 586))
+
+
+class Spatial(unittest.TestCase):
+    #   a b c        (a row of tabs)
+    #     d          (a band under b and c)
+    #   e f g        (cards)
+    RECTS = {"a": (0, 0, 100, 50), "b": (120, 0, 100, 50), "c": (240, 0, 100, 50),
+             "d": (0, 100, 340, 40), "e": (0, 200, 100, 80), "f": (120, 200, 100, 80), "g": (240, 200, 100, 80)}
+
+    def go(self, origin, direction):
+        return nearest(self.RECTS[origin], [(k, r) for k, r in self.RECTS.items() if k != origin], direction)
+
+    def test_straight_ahead(self):
+        self.assertEqual(self.go("a", RIGHT), "b")
+        self.assertEqual(self.go("c", LEFT), "b")
+        self.assertEqual(self.go("f", UP), "d")
+        self.assertEqual(self.go("d", DOWN), "f")   # the card under the band's centre
+        self.assertEqual(self.go("d", UP), "b")
+
+    def test_nothing_beyond_an_edge(self):
+        self.assertIsNone(self.go("c", RIGHT))
+        self.assertIsNone(self.go("a", UP))
+
+    def test_ahead_beats_a_closer_diagonal(self):
+        rects = [("diagonal", (160, 60, 40, 40)), ("ahead", (0, 130, 100, 40))]
+        self.assertEqual(nearest((0, 0, 100, 50), rects, DOWN), "ahead")
+
+
+@unittest.skipUnless(HAS_DISPLAY, "needs a display")
+class Widgets(unittest.TestCase):
+    def test_open_tab_is_the_key_until_another_tab_has_the_focus(self):
+        from luma_appkit.tv_parts import TvTab, TvTopBar
+        bar = TvTopBar(clock=False)
+        tabs = [TvTab("Oakland", icon="navigation"), TvTab("Lisbon"), TvTab("", icon="plus", accessible="Add a place")]
+        bar.set_tabs(tabs)
+        bar.set_open(0)
+        self.assertTrue(tabs[0].has_css_class("tv-key"))
+        tabs[2].set_tv_focus(True)
+        self.assertTrue(tabs[0].has_css_class("tv-chip"))
+        self.assertTrue(tabs[2].has_css_class("tv-key"))
+        tabs[2].set_tv_focus(False)
+        tabs[0].set_tv_focus(True)
+        self.assertTrue(tabs[0].has_css_class("tv-key"))
+        self.assertFalse(tabs[0].has_css_class("tv-chip"))
+
+    def test_focus_moves_in_a_window(self):
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        window = Gtk.Window(child=stage, default_width=960, default_height=540)
+        boxes = [Gtk.Box(width_request=100, height_request=60) for _ in range(3)]
+        for index, box in enumerate(boxes):
+            stage.place(box, left=96 + index * 240, top=200)
+        focused = []
+        focus = TvFocus(stage, on_change=focused.append)
+        for box in boxes:
+            focus.add(box)
+        window.present()
+        context = GLib.MainContext.default()
+        for _ in range(50):
+            context.iteration(False)
+        from luma_appkit.lumaui import tv_unit
+        self.assertAlmostEqual(stage.unit, tv_unit(stage.get_width(), stage.get_height()), places=4)
+        focus.focus(boxes[0])
+        self.assertTrue(boxes[0].has_css_class("tv-focus"))
+        self.assertTrue(focus.handle(Gdk.KEY_Right))
+        self.assertIs(focus.focused, boxes[1])
+        self.assertFalse(boxes[0].has_css_class("tv-focus"))
+        focus.push_scope([boxes[2]], on_back=lambda: True)
+        self.assertIs(focus.focused, boxes[2])
+        focus.handle(Gdk.KEY_Left)                       # confined to the scope
+        self.assertIs(focus.focused, boxes[2])
+        focus.handle(Gdk.KEY_Escape)                     # Back closes it and returns
+        self.assertIs(focus.focused, boxes[1])
+        window.destroy()
+
+    def test_editable_field_keeps_typing_keys(self):
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_parts import TvField
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        field = TvField(placeholder="Search")
+        stage.place(field, left=96, top=200, width=600)
+        focus = TvFocus(stage)
+        activated = []
+        focus.add(field.text, editable=True, on_activate=lambda: activated.append(True))
+        focus.focus(field.text)
+        self.assertFalse(focus.handle(Gdk.KEY_a))
+        self.assertFalse(focus.handle(Gdk.KEY_BackSpace))
+        self.assertFalse(focus.handle(Gdk.KEY_Left))
+        self.assertTrue(focus.handle(Gdk.KEY_Return))
+        self.assertEqual(activated, [True])
+
+    def test_idle_waits_then_any_key_wakes_and_is_swallowed(self):
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_idle import TvIdle
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        focus = TvFocus(stage)
+        seen = []
+        idle = TvIdle(focus, seconds=20, on_idle=lambda: seen.append("idle"), on_wake=lambda: seen.append("wake"))
+        self.assertTrue(idle._key(Gdk.KEY_I, Gdk.ModifierType.SHIFT_MASK))   # Shift+I: review shortcut
+        self.assertEqual(seen, ["idle"])
+        self.assertTrue(idle._key(Gdk.KEY_Down, 0))                          # waking key does nothing else
+        self.assertEqual(seen, ["idle", "wake"])
+        self.assertFalse(idle._key(Gdk.KEY_Down, 0))
+        release = idle.hold()
+        self.assertEqual(idle._source, 0)
+        release()
+
+    def test_toast_replaces_and_rises_over_the_dock(self):
+        from luma_appkit.tv_stage import TvStage
+        from luma_appkit.tv_toast import TvToast
+        stage = TvStage()
+        first = TvToast.show(stage, "Added Lisbon", lead="map-pin")
+        second = TvToast.show(stage, "Removed Lisbon", kicker="PLACES", value="3")
+        self.assertIs(first, second)
+        self.assertEqual(stage._pins[second].bottom, 56)
+        stage.docked = "keyboard"
+        self.assertEqual(stage._pins[second].bottom, 586)
+        stage.docked = "action-bar"
+        self.assertEqual(stage._pins[second].bottom, 172)
+
+
+if __name__ == "__main__":
+    unittest.main()

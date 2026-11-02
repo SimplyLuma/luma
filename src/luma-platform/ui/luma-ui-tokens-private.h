@@ -2076,8 +2076,94 @@
 #define LUMA_UI_TV_MATERIALS_GREETING_ACCENT "#fe6819"
 #define LUMA_UI_TV_MATERIALS_SHADE_TOP "rgba(0, 0, 0, 0.18)"
 #define LUMA_UI_TV_MATERIALS_SHADE_BOTTOM "rgba(0, 0, 0, 0.35)"
+#define LUMA_UI_TV_MATERIALS_WELL_GLINT "rgba(255, 255, 255, 0.07)"
+#define LUMA_UI_TV_MATERIALS_CHIP_GLINT "rgba(255, 255, 255, 0.16)"
+#define LUMA_UI_TV_MATERIALS_KEY_GLINT "rgba(255, 255, 255, 0.85)"
+#define LUMA_UI_TV_MATERIALS_BAR_GLINT "rgba(255, 255, 255, 0.14)"
+#define LUMA_UI_TV_MATERIALS_SCRIM "rgba(0, 0, 0, 0.45)"
+#define LUMA_UI_TV_MATERIALS_SHEET "rgba(36, 38, 42, 0.82)"
+#define LUMA_UI_TV_MATERIALS_TOAST "rgba(29, 31, 35, 0.9)"
+#define LUMA_UI_TV_MATERIALS_ACCENT "rgba(70, 151, 228, 1)"
+#define LUMA_UI_TV_MATERIALS_DANGER "rgba(255, 142, 134, 1)"
+#define LUMA_UI_TV_MATERIALS_DANGER_ON_KEY "rgba(204, 39, 46, 1)"
 #define LUMA_UI_TV_MOTION_PAGE_MS 250
 #define LUMA_UI_TV_MOTION_FOCUS_MS 150
+#define LUMA_UI_TV_MOTION_LIFT_MS 200
+#define LUMA_UI_TV_MOTION_SHEET_MS 200
+#define LUMA_UI_TV_MOTION_KEYBOARD_MS 280
+#define LUMA_UI_TV_MOTION_TOAST_IN_MS 450
+#define LUMA_UI_TV_MOTION_TOAST_MS 2600
+#define LUMA_UI_TV_MOTION_TOAST_LONG_MS 5200
+#define LUMA_UI_TV_MOTION_IDLE_FADE_MS 900
+#define LUMA_UI_TV_MOTION_IDLE_IN_MS 1200
+#define LUMA_UI_TV_FOCUS__DOC "Spatial focus (luma_appkit.tv_focus): the nearest focusable in the pressed direction, scored as the distance along the direction plus cross_weight times the distance across it. One visible focus; covers lift and ring only the art."
+#define LUMA_UI_TV_FOCUS_CROSS_WEIGHT 2.0
+#define LUMA_UI_TV_FOCUS_RING 4
+#define LUMA_UI_TV_FOCUS_RING_OFFSET 6
+#define LUMA_UI_TV_SHEET_RADIUS 44
+#define LUMA_UI_TV_SHEET_PADDING 40
+#define LUMA_UI_TV_SHEET_GAP 22
+#define LUMA_UI_TV_SHEET_WIDTH 860
+#define LUMA_UI_TV_SHEET_SMALL_WIDTH 620
+#define LUMA_UI_TV_SHEET_TITLE_SIZE 44
+#define LUMA_UI_TV_SHEET_TITLE_WEIGHT 750
+#define LUMA_UI_TV_SHEET_FIELD_HEIGHT 76
+#define LUMA_UI_TV_SHEET_FIELD_RADIUS 24
+#define LUMA_UI_TV_SHEET_FIELD_SIZE 28
+#define LUMA_UI_TV_SHEET_ROW_HEIGHT 84
+#define LUMA_UI_TV_SHEET_ROW_RADIUS 24
+#define LUMA_UI_TV_SHEET_ROW_SIZE 30
+#define LUMA_UI_TV_SHEET_ACTION_HEIGHT 76
+#define LUMA_UI_TV_SHEET_ACTION_RADIUS 24
+#define LUMA_UI_TV_SHEET_ACTION_SIZE 28
+#define LUMA_UI_TV_TOAST__DOC "One toast for every TV app (luma_appkit.tv_toast): bottom centre on the safe line, toast material, rising above the action bar or the keyboard while either is up. Parts lead, kicker, title, value, sub, tint; it says one thing."
+#define LUMA_UI_TV_TOAST_BOTTOM 56
+#define LUMA_UI_TV_TOAST_ABOVE_ACTION_BAR 172
+#define LUMA_UI_TV_TOAST_ABOVE_KEYBOARD 586
+#define LUMA_UI_TV_TOAST_MIN_HEIGHT 76
+#define LUMA_UI_TV_TOAST_RADIUS 28
+#define LUMA_UI_TV_TOAST_PADDING_Y 12
+#define LUMA_UI_TV_TOAST_PADDING_START 16
+#define LUMA_UI_TV_TOAST_PADDING_END 30
+#define LUMA_UI_TV_TOAST_GAP 18
+#define LUMA_UI_TV_TOAST_LEAD 52
+#define LUMA_UI_TV_TOAST_LEAD_RADIUS 16
+#define LUMA_UI_TV_TOAST_LEAD_ICON 28
+#define LUMA_UI_TV_TOAST_KICKER_SIZE 17
+#define LUMA_UI_TV_TOAST_KICKER_WEIGHT 750
+#define LUMA_UI_TV_TOAST_TITLE_SIZE 25
+#define LUMA_UI_TV_TOAST_TITLE_WEIGHT 650
+#define LUMA_UI_TV_TOAST_VALUE_SIZE 40
+#define LUMA_UI_TV_TOAST_VALUE_WEIGHT 750
+#define LUMA_UI_TV_TOAST_SUB_SIZE 19
+#define LUMA_UI_TV_TOAST_SUB_WEIGHT 600
+#define LUMA_UI_TV_TOAST_RISE 200
+#define LUMA_UI_TV_KEYBOARD__DOC "The TV keyboard: the Keycap look (keycap.dark) docked to the bottom, driven by the remote. The same layout is the TV posture of the Luma keyboard (src/luma-keyboard): QWERTY in three rows, then 123, space and the blue action key; 123 swaps in digits and symbols. Rows are strings; shift and delete flank the third row."
+#define LUMA_UI_TV_KEYBOARD_LETTERS { "qwertyuiop", "asdfghjkl", "zxcvbnm" }
+#define LUMA_UI_TV_KEYBOARD_LETTERS_LEN 3
+#define LUMA_UI_TV_KEYBOARD_SYMBOLS { "1234567890", "@#&-+()/", ".,?!'":" }
+#define LUMA_UI_TV_KEYBOARD_SYMBOLS_LEN 3
+#define LUMA_UI_TV_KEYBOARD_PADDING_TOP 26
+#define LUMA_UI_TV_KEYBOARD_PADDING_X 96
+#define LUMA_UI_TV_KEYBOARD_PADDING_BOTTOM 48
+#define LUMA_UI_TV_KEYBOARD_ROW_GAP 14
+#define LUMA_UI_TV_KEYBOARD_KEY_GAP 12
+#define LUMA_UI_TV_KEYBOARD_KEY_HEIGHT 78
+#define LUMA_UI_TV_KEYBOARD_KEY_WIDTH 96
+#define LUMA_UI_TV_KEYBOARD_KEY_PADDING_X 20
+#define LUMA_UI_TV_KEYBOARD_KEY_RADIUS 16
+#define LUMA_UI_TV_KEYBOARD_KEY_SIZE 34
+#define LUMA_UI_TV_KEYBOARD_KEY_WEIGHT 600
+#define LUMA_UI_TV_KEYBOARD_FUNCTION_SIZE 26
+#define LUMA_UI_TV_KEYBOARD_ICON 36
+#define LUMA_UI_TV_KEYBOARD_SPACE_WIDTH 560
+#define LUMA_UI_TV_KEYBOARD_ACTION_WIDTH 200
+#define LUMA_UI_TV_KEYBOARD_TRAVEL 5
+#define LUMA_UI_TV_KEYBOARD_FOCUS_SCALE 1.06
+#define LUMA_UI_TV_KEYBOARD_HEIGHT 470
+#define LUMA_UI_TV_IDLE__DOC "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay."
+#define LUMA_UI_TV_IDLE_WEATHER_SECONDS 20
+#define LUMA_UI_TV_IDLE_MEDIA_SECONDS 15
 #define LUMA_UI_TYPE_SCALE_DISPLAY_SIZE 72
 #define LUMA_UI_TYPE_SCALE_DISPLAY_WEIGHT 600
 #define LUMA_UI_TYPE_SCALE_DISPLAY_LINE_HEIGHT 1.1

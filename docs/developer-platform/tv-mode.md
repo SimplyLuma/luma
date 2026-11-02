@@ -65,6 +65,56 @@ covers, buttons, wide tiles and the well/chip/key/bar materials) live in the
 `luma_appkit.lumaui_tokens.TV`; the shell as `tvTokens.js`. Use the tokens;
 do not copy numbers into an application.
 
+## TV parts
+
+LumaUI gives every TV presentation the same parts (`luma_appkit`, API level 4),
+so apps differ in what they show, not in how big a button is or how focus
+moves. Build the TV presentation as a view inside the app and show it while
+`tv_posture()` is true.
+
+```python
+from luma_appkit import TvStage, TvTopBar, TvTab, TvFocus, TvToast, TvIdle, add_tv_style
+
+stage = TvStage()                                   # the unit, the materials, pinned children
+bar = stage.place(TvTopBar(), **TvTopBar.PIN)       # the shared bar: same place as the TV home
+add_tv_style(".my-hero { font-size: 200tv; }")      # sheets in TV units (`tv` suffix)
+focus = TvFocus(stage, on_back=leave_level)         # spatial focus, OK, Back
+focus.add(widget, group="days", on_activate=pick, on_focus=preview, on_key=scrub)
+TvToast.show(stage, "Added Lisbon", lead="map-pin")
+TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
+```
+
+- **TvStage**: `place(child, left=, top=, right=, bottom=, width=, height=,
+  center_x=, fill=)` in TV units. `unit` follows the window; `docked` names
+  what sits at the bottom edge (`"keyboard"`, `"action-bar"`) so the toast
+  rises above it.
+- **Sheets in TV units**: `add_tv_style(css)` takes CSS whose lengths end in
+  `tv` and keeps it in pixels for the current unit. The kit's sheet defines
+  type (`.tv-h1`, `.tv-h2`, `.tv-body`, `.tv-meta`, `.tv-caption`,
+  `.tv-caption-meta`), materials (`.tv-well` recessed, `.tv-chip` chosen,
+  `.tv-key` the focus, `.tv-bar` floating; opaque under Reduce Transparency or
+  High Contrast), `.tv-btn`, `.tv-sheet`, `.tv-scrim`, `.tv-field`, `.tv-row`,
+  `.tv-action` and `.tv-ring` (a ring around a recessed thing).
+- **TvFocus**: one visible focus, moved to the nearest focusable in the
+  pressed direction (`tv_nearest()`). The focused widget gets `tv-focus` and
+  GTK focus where focusable; `TvLift` children lift. `set_group_entry()` makes
+  a row land on its chosen item; `push_scope()` confines focus to a sheet and
+  returns it on Back. `editable=True` items (a `TvField`'s `text`) keep typing,
+  Left/Right and Backspace, so a real keyboard and the system's TV keyboard
+  type straight in. Back nothing takes falls through to the window (the TV
+  home at the app's top level).
+- **TvTopBar / TvTab**: the track of tabs and the clock; the open tab is the
+  key unless another tab holds the focus.
+- **TvButton**: 66 tall, chip at rest, key with the focus; `danger=True`.
+- **TvField**: a recessed field around a real `Gtk.Text`.
+- **TvToast**: lead, kicker, title, value, sub, tint, ms; one at a time.
+- **TvIdle**: an app's idle layer after a delay without input; any key wakes
+  and does nothing else; Shift+I forces it, `LUMA_TV_IDLE_MS` sets the delay;
+  `hold()` keeps the app awake.
+
+Values come from the `tv` block of `config/shared/design-tokens.json`
+(`focus`, `sheet`, `toast`, `keyboard` layout, `idle`, `motion`).
+
 ## Appearing on the TV home
 
 Only applications that opt in appear on the TV home. Declare TV support in

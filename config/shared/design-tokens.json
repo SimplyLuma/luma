@@ -743,11 +743,155 @@
         0,
         0,
         0.35
+      ],
+      "well_glint": [
+        1,
+        0,
+        0,
+        0.07
+      ],
+      "chip_glint": [
+        1,
+        0,
+        0,
+        0.16
+      ],
+      "key_glint": [
+        1,
+        0,
+        0,
+        0.85
+      ],
+      "bar_glint": [
+        1,
+        0,
+        0,
+        0.14
+      ],
+      "scrim": [
+        0,
+        0,
+        0,
+        0.45
+      ],
+      "sheet": [
+        0.27,
+        0.008,
+        265,
+        0.82
+      ],
+      "toast": [
+        0.24,
+        0.008,
+        265,
+        0.9
+      ],
+      "accent": [
+        0.66,
+        0.14,
+        250,
+        1
+      ],
+      "danger": [
+        0.78,
+        0.15,
+        25,
+        1
+      ],
+      "danger_on_key": [
+        0.55,
+        0.2,
+        25,
+        1
       ]
     },
     "motion": {
       "page_ms": 250,
-      "focus_ms": 150
+      "focus_ms": 150,
+      "lift_ms": 200,
+      "sheet_ms": 200,
+      "keyboard_ms": 280,
+      "toast_in_ms": 450,
+      "toast_ms": 2600,
+      "toast_long_ms": 5200,
+      "idle_fade_ms": 900,
+      "idle_in_ms": 1200
+    },
+    "focus": {
+      "_doc": "Spatial focus (luma_appkit.tv_focus): the nearest focusable in the pressed direction, scored as the distance along the direction plus cross_weight times the distance across it. One visible focus; covers lift and ring only the art.",
+      "cross_weight": 2.0,
+      "ring": 4,
+      "ring_offset": 6
+    },
+    "sheet": {
+      "radius": 44,
+      "padding": 40,
+      "gap": 22,
+      "width": 860,
+      "small_width": 620,
+      "title_size": 44,
+      "title_weight": 750,
+      "field_height": 76,
+      "field_radius": 24,
+      "field_size": 28,
+      "row_height": 84,
+      "row_radius": 24,
+      "row_size": 30,
+      "action_height": 76,
+      "action_radius": 24,
+      "action_size": 28
+    },
+    "toast": {
+      "_doc": "One toast for every TV app (luma_appkit.tv_toast): bottom centre on the safe line, toast material, rising above the action bar or the keyboard while either is up. Parts lead, kicker, title, value, sub, tint; it says one thing.",
+      "bottom": 56,
+      "above_action_bar": 172,
+      "above_keyboard": 586,
+      "min_height": 76,
+      "radius": 28,
+      "padding_y": 12,
+      "padding_start": 16,
+      "padding_end": 30,
+      "gap": 18,
+      "lead": 52,
+      "lead_radius": 16,
+      "lead_icon": 28,
+      "kicker_size": 17,
+      "kicker_weight": 750,
+      "title_size": 25,
+      "title_weight": 650,
+      "value_size": 40,
+      "value_weight": 750,
+      "sub_size": 19,
+      "sub_weight": 600,
+      "rise": 200
+    },
+    "keyboard": {
+      "_doc": "The TV keyboard: the Keycap look (keycap.dark) docked to the bottom, driven by the remote. The same layout is the TV posture of the Luma keyboard (src/luma-keyboard): QWERTY in three rows, then 123, space and the blue action key; 123 swaps in digits and symbols. Rows are strings; shift and delete flank the third row.",
+      "letters": ["qwertyuiop", "asdfghjkl", "zxcvbnm"],
+      "symbols": ["1234567890", "@#&-+()/", ".,?!'\":"],
+      "padding_top": 26,
+      "padding_x": 96,
+      "padding_bottom": 48,
+      "row_gap": 14,
+      "key_gap": 12,
+      "key_height": 78,
+      "key_width": 96,
+      "key_padding_x": 20,
+      "key_radius": 16,
+      "key_size": 34,
+      "key_weight": 600,
+      "function_size": 26,
+      "icon": 36,
+      "space_width": 560,
+      "action_width": 200,
+      "travel": 5,
+      "focus_scale": 1.06,
+      "height": 470
+    },
+    "idle": {
+      "_doc": "An app's idle presentation (luma_appkit.tv_idle) cross-fades in after a delay without input; any key brings the app back. Shift+I forces it for review; LUMA_TV_IDLE_MS overrides the delay.",
+      "weather_seconds": 20,
+      "media_seconds": 15
     }
   },
   "lumaui": {

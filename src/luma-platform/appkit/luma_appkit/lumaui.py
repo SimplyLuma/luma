@@ -38,7 +38,9 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #: The public LumaUI API level. See the module docstring for the policy.
 # 2: the F2, F3 and F0 parts; hues (hue_class, person_hue); Card(recessed=); PersonAvatar(hue=).
 # 3: TV posture (tv_posture, watch_posture, tv_unit, AppContext.posture, AppWindow tv-posture).
-LUMAUI_API_LEVEL = 3
+# 4: TV parts (TvStage, TvLift, add_tv_style, tv_css, tv_material, tv_fade, TvFocus, tv_nearest,
+#    TvTopBar, TvTab, TvButton, TvField, TvToast, TvIdle).
+LUMAUI_API_LEVEL = 4
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()
