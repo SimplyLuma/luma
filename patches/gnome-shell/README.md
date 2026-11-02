@@ -414,3 +414,19 @@ pads (`org.projectluma.Shell.Remote1.ClaimGamepads`); other applications read
 the pad untouched. The pad is never grabbed. docs/developer-platform/tv-mode.md
 "Remotes and gamepads". Test: `tv-input-policy.js` in %check. Numbered after
 0309; reconcile with `0308-backdrop-blur-capability` (PR #138) on merge.
+
+`0311-tv-dialogs.patch`: registers `lumaPresentation/tvDialogs.js` and its
+pure rules `tvDialogsModel.js` in the JS resource. While `TvPresentation`
+holds TV posture, `TvDialogs` adapts every `ModalDialog` as it opens (Wi-Fi,
+VPN and keyring secrets, the administrator prompt, end session, mounts, run,
+access): the card takes the `tv.sheet` scale, type and material with its live
+blur off, entries become recessed fields with the TV keyboard's action key
+named after the default button, buttons become TV actions with the focus as
+the one key, and the card rises above the keyboard. The focus is kept inside
+the dialog that holds the grab (the TV home no longer takes it from under a
+grab), and Back acts in the capture phase on the Escape button or a lone
+button even if the focus was lost. Dialogs without buttons (Luma Search) and
+every dialog outside TV posture are unchanged; `polkitAgent.js`,
+`dialog.js` and `modalDialog.js` are not patched. docs/developer-platform/
+tv-mode.md "System dialogs". Test: `tv-dialogs-policy.js` in %check.
+Numbered after 0310; reconcile with `0308-backdrop-blur-capability` on merge.
