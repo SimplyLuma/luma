@@ -287,7 +287,7 @@ static const char *const tv_sheet =
 /* the mockup's .tv-h1 (line-height 1.05) and .tv-body under it (8 over, line-height 1.4): ratios of Figtree's own line */
 ".lumaui-tv-frame .lumaui-part-header .lumaui-t-meta { font-size: 26tv; font-weight: 500; color: @ink_2@; margin-top: 8tv; line-height: 1.14; }\n"
 ".lumaui-tv-frame .lumaui-part-header { margin: 0; padding: 0; min-height: 0; }\n"
-".lumaui-tv-frame .lumaui-part-hero { margin-top: 28tv; padding: 28tv 30tv; border-radius: 30tv; border: none;\n"
+".lumaui-tv-frame .lumaui-part-hero { margin-top: 22tv; padding: 28tv 30tv; border-radius: 30tv; border: none;\n"
 "  background-color: @bar@; background-image: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
 ".lumaui-tv-frame .lumaui-part-group { margin-top: 34tv; }\n"
@@ -364,16 +364,17 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row:focus-within label.dim-label { color: alpha(@key_ink@, 0.62); }\n"
 ".lumaui-tv-frame .lumaui-part-row label { font-size: 23tv; font-weight: 600; }\n"
 /* a row's value (what is chosen, a fact) in ink 2, a slider's figure at 22/650 (the mockup's .val and .tv-slider b) */
-".lumaui-tv-frame .lumaui-part-row label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { color: @ink_2@; }\n"
-".lumaui-tv-frame .lumaui-part-row scale ~ label { font-size: 22tv; font-weight: 650; color: @ink@; }\n"
+".lumaui-tv-frame .lumaui-part-row label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { font-size: 23tv; font-weight: 600; color: @ink_2@; }\n"
+".lumaui-tv-frame .lumaui-part-row scale ~ label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { font-size: 22tv; font-weight: 650; color: @ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { color: alpha(@key_ink@, 0.62); }\n"
-".lumaui-tv-frame .lumaui-part-row:focus-within scale ~ label { color: @key_ink@; }\n"
+".lumaui-tv-frame .lumaui-part-row:focus-within scale ~ label:not(.lumaui-t-row-title):not(.lumaui-t-row-subtitle):not(.title):not(.subtitle) { color: @key_ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-part-lead { min-width: 48tv; min-height: 48tv; border-radius: 14tv; padding: 0; margin: 0;\n"
 "  background-color: alpha(white, 0.08); color: @ink_2@; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead { background-color: alpha(black, 0.08); color: @key_ink@; }\n"
 ".lumaui-tv-frame .lumaui-part-row image { -gtk-icon-size: 26tv; color: inherit; }\n"
 /* a row's trailing glyph (a chevron, a lock) in ink 3 (the mockup's .val svg); a lead keeps its tile's ink */
-".lumaui-tv-frame .lumaui-part-row image:not(.lumaui-part-lead) { color: @ink_3@; }\n"
+".lumaui-tv-frame .lumaui-part-row image:not(.lumaui-part-lead) { -gtk-icon-size: 24tv; color: @ink_3@; }\n"
+".lumaui-tv-frame .lumaui-part-row .lumaui-part-lead image { -gtk-icon-size: 26tv; }\n"
 ".lumaui-tv-frame .lumaui-part-row .lumaui-part-lead image { color: inherit; }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within image:not(.lumaui-part-lead) { color: alpha(@key_ink@, 0.62); }\n"
 ".lumaui-tv-frame .lumaui-part-row:focus-within .lumaui-part-lead image { color: inherit; }\n"
@@ -381,7 +382,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip),\n"
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):hover,\n"
 ".lumaui-tv-frame .lumaui-part-row button:not(.lumaui-part-swatch):not(.lumaui-part-chip):focus-visible {\n"
-"  background: none; box-shadow: none; border: none; outline: none; min-height: 0; padding: 0; color: inherit; }\n"
+"  background: none; box-shadow: none; border: none; outline: none; min-height: 0; padding: 0; color: inherit; }\n"/* ...but the button a row is drawn as (a box holding it, the row's whole content) keeps the row's 60 */
+".lumaui-tv-frame .lumaui-part-row.vertical > button:not(.lumaui-part-swatch):not(.lumaui-part-chip) { min-height: 60tv; }\n"
+
 ".lumaui-tv-frame > .luma-island switch { min-width: 30tv; min-height: 34tv; padding: 4tv; border-radius: 21tv; border: none;\n"
 "  background-color: @well@; background-image: none; color: transparent;\n"
 "  box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@, 0 1.5tv 0 @well_glint@; }\n"
