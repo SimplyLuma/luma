@@ -845,7 +845,22 @@
       "_doc": "Spatial focus (luma_appkit.tv_focus): the nearest focusable in the pressed direction, scored as the distance along the direction plus cross_weight times the distance across it. One visible focus; covers lift and ring only the art.",
       "cross_weight": 2.0,
       "ring": 4,
-      "ring_offset": 6
+      "ring_offset": 6,
+      "hold_ms": 500
+    },
+    "menu": {
+      "_doc": "An item's menu on TV (TvFocus menu=, opened by holding OK or the Menu key): the item's own command model as a floating panel anchored under it (above when there is no room), focusable rows, Back closes.",
+      "gap": 12,
+      "min_width": 360,
+      "radius": 30,
+      "padding": 10,
+      "row_height": 68,
+      "row_radius": 22,
+      "row_padding_x": 22,
+      "row_size": 24,
+      "row_weight": 600,
+      "icon": 28,
+      "icon_gap": 16
     },
     "sheet": {
       "radius": 44,
