@@ -52,7 +52,9 @@ struct _LumaTvRoom {
   GtkWidget parent_instance;
   GdkPixbuf *base;     /* the wallpaper, small, blurred, saturated and dimmed: scaled up it is the blur */
   GdkTexture *texture; /* the base with the shade baked in for the size it was drawn at */
+  GdkTexture *glass;   /* the same, as seen through a floating panel (the mockup's backdrop saturate(1.3)) */
   int baked_width, baked_height;
+  gboolean (*panel)(gpointer data, graphene_rect_t *rect, float *radius); /* the frame: the island's glass */
   void (*resized)(gpointer data); /* the frame: the unit follows the window */
   gpointer data;
 };
@@ -107,8 +109,22 @@ static char *wallpaper_path(void) {
   return uri != NULL && *uri != '\0' ? g_filename_from_uri(uri, NULL, NULL) : NULL;
 }
 
+static void saturate(GdkPixbuf *pixbuf, double k) {
+  int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
+  guchar *px = gdk_pixbuf_get_pixels(pixbuf);
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++) {
+      guchar *p = px + y * stride + x * 4;
+      double r = p[0], g = p[1], b = p[2];
+      p[0] = (guchar)CLAMP((0.213 + 0.787 * k) * r + (0.715 - 0.715 * k) * g + (0.072 - 0.072 * k) * b + 0.5, 0, 255);
+      p[1] = (guchar)CLAMP((0.213 - 0.213 * k) * r + (0.715 + 0.285 * k) * g + (0.072 - 0.072 * k) * b + 0.5, 0, 255);
+      p[2] = (guchar)CLAMP((0.213 - 0.213 * k) * r + (0.715 - 0.715 * k) * g + (0.072 + 0.928 * k) * b + 0.5, 0, 255);
+    }
+}
+
 static void room_load(LumaTvRoom *self) {
   g_clear_object(&self->texture);
+  g_clear_object(&self->glass);
   g_clear_object(&self->base);
   g_autofree char *path = wallpaper_path();
   if (path == NULL)
@@ -153,6 +169,7 @@ static graphene_rect_t room_cover(LumaTvRoom *self, float width, float height) {
  * picture for this size, by where each column lands on the screen: one opaque layer a frame. */
 static void room_bake(LumaTvRoom *self, int width, int height) {
   g_clear_object(&self->texture);
+  g_clear_object(&self->glass);
   graphene_rect_t cover = room_cover(self, width, height);
   g_autoptr(GdkPixbuf) pixbuf = gdk_pixbuf_copy(self->base);
   int w = gdk_pixbuf_get_width(pixbuf), h = gdk_pixbuf_get_height(pixbuf), stride = gdk_pixbuf_get_rowstride(pixbuf);
@@ -166,8 +183,11 @@ static void room_bake(LumaTvRoom *self, int width, int height) {
       p[0] = (guchar)(p[0] * keep + 0.5); p[1] = (guchar)(p[1] * keep + 0.5); p[2] = (guchar)(p[2] * keep + 0.5);
     }
   }
+  g_autoptr(GdkPixbuf) seen = gdk_pixbuf_copy(pixbuf);
+  saturate(seen, 1.3);
   G_GNUC_BEGIN_IGNORE_DEPRECATIONS
   self->texture = gdk_texture_new_for_pixbuf(pixbuf);
+  self->glass = gdk_texture_new_for_pixbuf(seen);
   G_GNUC_END_IGNORE_DEPRECATIONS
   self->baked_width = width;
   self->baked_height = height;
@@ -186,6 +206,16 @@ static void room_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   graphene_rect_t cover = room_cover(self, width, height);
   gtk_snapshot_push_clip(snapshot, &all);
   gtk_snapshot_append_scaled_texture(snapshot, self->texture, GSK_SCALING_FILTER_LINEAR, &cover);
+  /* the island is glass: the room behind it a little more saturated (the mockup's backdrop-filter) */
+  graphene_rect_t panel;
+  float radius = 0;
+  if (self->panel != NULL && self->glass != NULL && self->panel(self->data, &panel, &radius)) {
+    GskRoundedRect clip;
+    gsk_rounded_rect_init_from_rect(&clip, &panel, radius);
+    gtk_snapshot_push_rounded_clip(snapshot, &clip);
+    gtk_snapshot_append_scaled_texture(snapshot, self->glass, GSK_SCALING_FILTER_LINEAR, &cover);
+    gtk_snapshot_pop(snapshot);
+  }
   gtk_snapshot_pop(snapshot);
 }
 
@@ -198,6 +228,7 @@ static void room_size_allocate(GtkWidget *widget, int width, int height, int bas
 
 static void room_dispose(GObject *object) {
   g_clear_object(&LUMA_TV_ROOM(object)->texture);
+  g_clear_object(&LUMA_TV_ROOM(object)->glass);
   g_clear_object(&LUMA_TV_ROOM(object)->base);
   G_OBJECT_CLASS(luma_tv_room_parent_class)->dispose(object);
 }
@@ -662,6 +693,17 @@ static double screen_unit(TvFrame *f) {
   return luma_ui_tv_unit(w > 0 ? w : 1920, h > 0 ? h : 1080);
 }
 
+/* The island's glass, for the room to draw under it: its box on the room, its corner. */
+static gboolean room_panel(gpointer data, graphene_rect_t *rect, float *radius) {
+  TvFrame *f = data;
+  if (!f->active || f->sidebar == NULL || !gtk_widget_get_mapped(f->sidebar) || f->room == NULL)
+    return FALSE;
+  if (!gtk_widget_compute_bounds(f->sidebar, f->room, rect))
+    return FALSE;
+  *radius = (float)(36 * f->unit);
+  return TRUE;
+}
+
 static void room_resized(gpointer data) {
   TvFrame *f = data;
   double unit = screen_unit(f);
@@ -731,6 +773,8 @@ static void set_rail(TvFrame *f, gboolean rail) {
   if (f->rail == rail)
     return;
   f->rail = rail;
+  if (f->room != NULL)
+    gtk_widget_queue_draw(f->room); /* the island's glass follows its new width */
   luma_ui_set_css_class(f->sidebar, "lumaui-tv-rail", rail);
   luma_navigation_sidebar_set_tv(LUMA_NAVIGATION_SIDEBAR(f->sidebar), TRUE, rail);
 }
@@ -1780,6 +1824,7 @@ static void enter(TvFrame *f) {
     gtk_box_append(GTK_BOX(f->bar), f->clock);
     LUMA_TV_ROOM(f->room)->resized = room_resized;
     LUMA_TV_ROOM(f->room)->data = f;
+    LUMA_TV_ROOM(f->room)->panel = room_panel;
   }
   luma_tv_room_load(f->room);
   const char *name = gtk_window_get_title(f->window);
