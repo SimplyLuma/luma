@@ -205,6 +205,73 @@ Values come from the `tv` block of `config/shared/design-tokens.json`
 (`focus`, `sheet`, `toast`, `keyboard` layout, `idle`, `motion`, `cover`,
 `button`) and its `media` fragment, `config/shared/design-tokens.d/tv-media.json`.
 
+### App surfaces: wide tiles, shelves, grids, pages
+
+Apps that list other apps (Depot, the TV home) or show app-shaped things use
+`luma_appkit.tv_tiles` (API level 10):
+
+```python
+from luma_appkit import TvWideTile, TvShelf, TvTileGrid, TvPage, TvProgressButton, TvScreenshotViewer, TvEmptyState
+
+tile = TvWideTile("Tide", app_id="org.projectluma.Tide", icon=gicon, meta="Installed")
+shelf = TvShelf([tile, ...])                 # a row of 400-wide tiles
+grid = TvTileGrid([tile, ...])               # five columns edge to edge, 52 between rows
+page = TvPage(column); page.add_section(s)   # focus_changed: page.reveal(widget)
+get = TvProgressButton("Get", icon="download"); get.set_progress(0.4, "Installing 40%")
+TvScreenshotViewer.open(focus, paths, index)
+TvEmptyState("No results", "Try a different word, or browse a category.", icon="search")
+```
+
+- **TvWideTile**: an app's 16:9 tile, from the first of: its own wide tile
+  (the `<app-id>-tv` icon); a tile composed at runtime from its v4 icon with
+  `tools/wide-tile.py`'s geometry (`compose_wide_tile`, cached under
+  `~/.cache/luma/tv-tiles`); its icon on its brand colour; its name on a plate
+  in its category's hue. The corner is a share of the tile (11.875% /
+  21.111%), so art and frame agree at every size. The art lifts 1.06 with the
+  white ring; the caption (name, a quiet line) never does. `tile.room` gives
+  what `TvRoom` should show for it.
+- **TvShelf**: slides only as far as needed to bring the focused tile in, with
+  a peek of the next. **TvTileGrid**: Up and Down move by row; Up from the
+  first row reaches the tabs.
+- **TvPage**: the section holding the focus comes to the top (the first never
+  moves), the page stops short at its end, and a section fades only once it
+  has left the view. It reveals after its first layout.
+- **TvProgressButton**: one suggested button for the whole install: Get, a
+  fill with progress, then Open. **TvScreenshotViewer**: full screen; Left and
+  Right move; Back closes and returns the focus. **TvEmptyState**: a bar card
+  with the 112 tile, a 34/700 title and one sentence; optional TV buttons.
+- `TvMenu.open(..., title=, first=)` drops a question as a list (the question
+  on top, the focus on Cancel), as Depot's Remove asks about the app's data.
+
+### Depot on a TV
+
+Depot lists only apps that run on a TV (`luma_depot.tv_facts`). Two facts per
+app, from data, never from a list in code:
+
+1. the Luma catalogue's optional `tv` field (schema 4, below);
+2. the app's own TV opt-in (`X-Luma-TV`; a `tv` presentation is driven with
+   the remote) and its AppStream `<control>` (`gamepad` required: needs a
+   controller; `tv-remote` anywhere: works with the remote; `gamepad` alone:
+   needs a controller) and `<display_length>` (a limit below a TV's 1080
+   keeps it off).
+
+An app with no TV facts is not listed. An installed app is listed in its
+installed state (Open, Remove). An app that is not installed is offered on a
+TV only when the catalogue carries `tv` for it and it has a build for this
+machine; no entry does yet, so today Depot on a TV lists the installed apps,
+their real updates and the system update. Publishing `tv` for an entry turns
+its download on, with no change in Depot.
+
+Catalogue schema 4, optional and additive (malformed values are ignored):
+
+```json
+"tv": {"runs": true, "input": "remote"},     // remote | controller | keyboard
+"keywords": ["iTunes"]                         // names people search for it by
+```
+
+The seed's keywords come from `src/luma-installer/data/depot-switching.json`
+(the names people arrive with), written by `tools/generate-depot-seed.py`.
+
 ## Remotes and gamepads
 
 Every controller drives TV Mode through the same keys, so an application
