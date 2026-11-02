@@ -798,6 +798,9 @@ class Capture:
 
         kind = node.get_node_type().value_nick.replace("-node", "")
         box = lambda r: _box(mapper(r))  # noqa: E731
+        # Radii are the node's own; under a transform (a focused chip lifted 1.15) they scale with it.
+        unit = mapper(Graphene.Rect().init(0, 0, 100, 100)).get_width() / 100 if mapper else 1.0
+        sr = lambda corners: [round(c.width * unit, 2) for c in corners]  # noqa: E731
 
         def child(n, m=mapper, o=opacity, rc=rclip, c=clip):
             if n is not None:
@@ -819,7 +822,7 @@ class Capture:
             child(node.get_child(), o=opacity * node.get_opacity())
         elif kind == "rounded-clip":
             rr = node.get_clip()
-            radius = [round(c.width, 2) for c in rr.corner]
+            radius = sr(rr.corner)
             ops.append({"k": "rclip", "box": box(rr.bounds), "radius": radius})
             cb = box(rr.bounds)
             child(node.get_child(), rc={"box": cb, "radius": radius}, c=self.narrow(cb, clip_now))
@@ -843,13 +846,13 @@ class Capture:
         elif kind == "border":
             outline = node.get_outline()
             ops.append({"k": "border", "box": box(outline.bounds), "widths": [round(v, 2) for v in node.get_widths()],
-                        "colors": _border_colors(node), "radius": [round(c.width, 2) for c in outline.corner],
+                        "colors": _border_colors(node), "radius": sr(outline.corner),
                         "op": round(opacity, 3)})
         elif kind in ("outset-shadow", "inset-shadow"):
             outline = node.get_outline()
             ops.append({"k": "shadow", "inset": kind == "inset-shadow", "box": box(outline.bounds), "color": _node_rgba(node, node.get_color()),
                         "dx": node.get_dx(), "dy": node.get_dy(), "blur": node.get_blur_radius(), "spread": node.get_spread(),
-                        "radius": [round(c.width, 2) for c in outline.corner], "op": round(opacity, 3)})
+                        "radius": sr(outline.corner), "op": round(opacity, 3)})
         elif kind == "text":
             font = node.get_font()
             desc = font.describe()
