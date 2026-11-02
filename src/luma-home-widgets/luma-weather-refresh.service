@@ -1,5 +1,7 @@
 [Unit]
 Description=Refresh Weather data for Home widgets
+# The login screen and first-boot setup have no saved city.
+ConditionUser=!@system
 
 [Service]
 Type=oneshot

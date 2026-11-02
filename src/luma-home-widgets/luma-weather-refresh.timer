@@ -1,5 +1,7 @@
 [Unit]
 Description=Keep Home weather current without opening Weather
+# The login screen and first-boot setup have no saved city.
+ConditionUser=!@system
 
 [Timer]
 OnStartupSec=5s
