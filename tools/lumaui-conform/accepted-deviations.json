@@ -352,6 +352,15 @@
       "reason": "A short run that opens on a symbol the mono face lacks (Terminal's \u2303C key) is drawn by Pango from the fallback face, which it reports for the run, at that face's nearest weight; the spec reports the CSS family and weight.",
       "subject": "^text \"[\u2190-\u23ff\u2700-\u27bf].{0,3}\"$",
       "prop": "^font (family|weight)$"
+    },
+    {
+      "id": "rating-stars-fallback",
+      "doc": "lumaui-deviations.md: rating-stars-fallback",
+      "reason": "Figtree has no \u2605/\u2606: both sides draw a rating's five stars from a fallback face; the spec reports the CSS family, GTK the face that drew them, whose advances are a few px wider.",
+      "apps": ["tv-depot"],
+      "subject": "^text \"[\u2605\u2606]{5}\"$",
+      "prop": "^(font family|font weight|width)$",
+      "max_delta": 8
     }
   ]
 }

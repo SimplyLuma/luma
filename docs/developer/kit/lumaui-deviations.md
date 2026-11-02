@@ -62,6 +62,10 @@ The same texts as system-mono-face: IBM Plex Mono's advance differs from the fac
 
 A character Figtree lacks (U+23CE ⏎) falls back on both sides; the spec reports the CSS family, GTK the face that drew it.
 
+## rating-stars-fallback
+
+Figtree has no stars (U+2605 ★, U+2606 ☆). Depot's TV app page draws a rating as five of them; both sides draw them from a fallback face, the spec reports Figtree, GTK the face that drew them, and that face's advances make the run a few px wider. Only that run, on tv-depot.
+
 ## nb-hyphen-fallback
 
 Figtree has no non-breaking hyphen (U+2011, v70's "Wi‑Fi"); Pango draws it from the next face in the stack and Chromium from its own fallback, whose advances differ by a few px. The rest of the string is Figtree on both sides.

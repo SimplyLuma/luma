@@ -32,10 +32,13 @@
    "LUMA_POSTURE": "tv",
    "LUMA_DEPOT_PREVIEW": "1",
    "GSETTINGS_BACKEND": "memory",
-   "LUMAUI_CONFORM_IGNORE_FADE": "1"
+   "LUMAUI_CONFORM_IGNORE_FADE": "1",
+   "LUMA_CONFORM_DEPOT_DATA": "{run}/fixtures/depot"
   },
   "monitor": "1920x1080",
-  "fixtures": [],
+  "fixtures": [
+   "tests/fixtures/tv/depot"
+  ],
   "exclude": [
    ".tv-clock"
   ]
