@@ -13,6 +13,10 @@ layer, never the app with its chrome hidden); `on_wake()` fades back. While a
 text field has the focus, or the app holds `idle.hold()` (a sheet open, a
 video playing full screen), the timer waits.
 
+The person's choice wins over the app's delay: Settings › Idle & Sleep ›
+"Show the idle view after" is the shell-state key `tv-idle-delay` (seconds;
+-1 leaves it to the app, 0 is never) and is followed live.
+
 Review: Shift+I forces idle; LUMA_TV_IDLE_MS sets the delay in milliseconds.
 """
 from __future__ import annotations
@@ -23,7 +27,7 @@ from typing import Callable
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .tv_focus import TvFocus  # noqa: E402
 
@@ -35,7 +39,11 @@ class TvIdle:
                  on_wake: Callable[[], None]) -> None:
         self.focus = focus
         override = os.environ.get("LUMA_TV_IDLE_MS", "").strip()
-        self.delay_ms = int(override) if override.isdigit() else int(seconds * 1000)
+        self.app_delay_ms = int(override) if override.isdigit() else int(seconds * 1000)
+        self._overridden = override.isdigit()
+        self._state = _shell_state() if not self._overridden else None
+        if self._state is not None:
+            self._state.connect("changed::tv-idle-delay", lambda *_a: None if self.idle else self.poke())
         self.on_idle = on_idle
         self.on_wake = on_wake
         self.idle = False
@@ -59,6 +67,15 @@ class TvIdle:
             window.add_controller(self._motion)
             self._attached = window
         self.poke()
+
+    @property
+    def delay_ms(self) -> int:
+        """The delay in force: the person's choice, else the app's; 0 means never."""
+        if self._state is not None:
+            chosen = self._state.get_int("tv-idle-delay")
+            if chosen >= 0:
+                return chosen * 1000
+        return self.app_delay_ms
 
     POINTER_SLOP = 24.0
 
@@ -87,9 +104,10 @@ class TvIdle:
             self.wake()
             return
         self._stop()
-        if self._holds or not self.focus.root.get_mapped():
+        delay = self.delay_ms
+        if self._holds or delay <= 0 or not self.focus.root.get_mapped():
             return
-        self._source = GLib.timeout_add(self.delay_ms, self._fire)
+        self._source = GLib.timeout_add(delay, self._fire)
 
     def go_idle(self) -> None:
         self._stop()
@@ -133,3 +151,12 @@ class TvIdle:
             return True
         self.poke()
         return False
+
+
+def _shell_state():
+    """The shell-state settings when installed with the idle key, else None."""
+    source = Gio.SettingsSchemaSource.get_default()
+    schema = source.lookup("org.project_luma.shell-state", True) if source else None
+    if schema is None or not schema.has_key("tv-idle-delay"):
+        return None
+    return Gio.Settings.new("org.project_luma.shell-state")

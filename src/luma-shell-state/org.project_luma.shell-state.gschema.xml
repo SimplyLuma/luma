@@ -41,6 +41,12 @@
       <summary>Shell posture</summary>
       <description>TV runs the shell's TV home, driven by a remote, with apps full screen. Automatic follows the presentation, or TV when the device declares itself a television. The presentation choice is kept underneath and returns unchanged when TV is turned off.</description>
     </key>
+    <key name="tv-idle-delay" type="i">
+      <range min="-1" max="86400"/>
+      <default>-1</default>
+      <summary>TV idle view delay</summary>
+      <description>Seconds without input before a TV app shows its idle view, in TV posture. -1 leaves the delay to each app (Weather 20 s, Tide 15 s while playing); 0 never shows it. Settings › Idle &amp; Sleep › Show the idle view after.</description>
+    </key>
     <key name="surface-treatment" type="s">
       <choices><choice value="light"/><choice value="dark"/><choice value="frost"/><choice value="glass"/></choices>
       <default>'light'</default>
