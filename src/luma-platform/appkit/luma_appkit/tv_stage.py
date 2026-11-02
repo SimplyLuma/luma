@@ -27,7 +27,9 @@ the `tv` block of config/shared/design-tokens.json (`lumaui_tokens.TV`).
 """
 from __future__ import annotations
 
+import math
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Callable
 
@@ -40,7 +42,7 @@ from gi.repository import Adw, Gdk, Gio, GObject, Graphene, Gsk, Gtk  # noqa: E4
 
 from . import lumaui_tokens as tokens  # noqa: E402
 
-__all__ = ["TvStage", "TvLift", "add_tv_style", "tv_css", "tv_material", "tv_fade", "TV"]
+__all__ = ["TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade", "TV"]
 
 TV = tokens.TV
 _LENGTH = re.compile(r"(?<![\w.#-])(-?\d+(?:\.\d+)?)tv\b")
@@ -404,3 +406,67 @@ class TvLift(Gtk.Widget):
         snapshot.translate(Graphene.Point().init(-w, -h))
         self.snapshot_child(self._child, snapshot)
         snapshot.restore()
+
+
+class TvRaster:
+    """Renders snapshot content once into a texture and reuses it while its key holds.
+
+    GSK fills gradients and blurred shadows per pixel on every frame. On a
+    tile-based GPU at 4K (the Raspberry Pi 5's V3D) one full-screen gradient
+    costs tens of milliseconds, a full-screen texture a few. Content that
+    changes rarely, a sky's light or a band's well, is rendered once,
+    optionally at a reduced scale (smooth gradients lose nothing), and drawn
+    as a texture:
+
+        tex = raster.get(widget, key, w, h, lambda s: paint(s, w, h), scale=.25)
+        if tex is None:
+            paint(snapshot, w, h)       # not realized yet: draw directly
+        else:
+            snapshot.append_texture(tex, rect)
+
+    Draw it with `append_texture` (linear when scaled up), not
+    `append_scaled_texture`: GSK takes an opacity over a texture-scale node
+    through an offscreen (with Vulkan a new full-size image every frame),
+    over a texture node it does not. Pass `opaque=True` for content that
+    covers its rectangle, so GSK skips what lies beneath. Keep `key` to the
+    inputs of the drawing. Holds the `size` most recent
+    textures; `clear()` them when the widget leaves its window.
+    """
+
+    def __init__(self, size: int = 4) -> None:
+        self._size = size
+        self._textures: OrderedDict = OrderedDict()
+
+    def get(self, widget: Gtk.Widget, key, width: float, height: float,
+            draw: Callable[[Gtk.Snapshot], None], *, scale: float = 1.0,
+            opaque: bool = False) -> Gdk.Texture | None:
+        texture = self._textures.get(key)
+        if texture is not None:
+            self._textures.move_to_end(key)
+            return texture
+        native = widget.get_native()
+        renderer = native.get_renderer() if native is not None else None
+        if renderer is None or width <= 0 or height <= 0:
+            return None
+        tw, th = max(1, math.ceil(width * scale)), max(1, math.ceil(height * scale))
+        snapshot = Gtk.Snapshot()
+        snapshot.scale(tw / width, th / height)
+        draw(snapshot)
+        node = snapshot.to_node()
+        if node is None:
+            return None
+        texture = renderer.render_texture(node, Graphene.Rect().init(0, 0, tw, th))
+        if opaque:
+            # An opaque format lets GSK skip whatever lies under the texture
+            # (a window's background gradient: ~100 ms a 4K frame on the Pi 5).
+            downloader = Gdk.TextureDownloader.new(texture)
+            downloader.set_format(Gdk.MemoryFormat.R8G8B8X8)
+            data, stride = downloader.download_bytes()
+            texture = Gdk.MemoryTexture.new(tw, th, Gdk.MemoryFormat.R8G8B8X8, data, stride)
+        self._textures[key] = texture
+        while len(self._textures) > self._size:
+            self._textures.popitem(last=False)
+        return texture
+
+    def clear(self) -> None:
+        self._textures.clear()
