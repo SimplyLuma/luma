@@ -737,7 +737,8 @@ class Capture:
                 rec["paintable"] = "LumaApplicationIcon"
                 rec.setdefault("icon", "application-icon")
         # A kit part that draws an app's icon itself (ID1 AppIcon) names it by app_id.
-        if "icon" not in rec and isinstance(getattr(widget, "app_id", None), str) and widget.get_css_name() != "window":
+        # (an image of a paintable has no icon name: its app_id names it too)
+        if not rec.get("icon") and isinstance(getattr(widget, "app_id", None), str) and widget.get_css_name() != "window":
             rec["icon"] = widget.app_id
         if isinstance(widget, Gtk.ListBoxRow):
             rec["activatable"] = widget.get_activatable()
