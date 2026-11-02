@@ -23,18 +23,25 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {remoteAction, repeatAllowed} from './tvModel.js';
-import {chipState, firstChip, firstStop, keepRow, levelPercent, mixRgba, noteAge, noteRecords, panelRows,
-    scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
+import {chipState, firstChip, firstStop, keepRow, levelPercent, mixRgba, noteAge, noteRecords, okGate, okPress,
+    okRelease, panelRows, scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
 import {gettext as _} from 'gettext';
 
 const SETTINGS_APP = 'org.gnome.Settings.desktop';
+// Presses closer than this to the last one belong to the same held OK.
+const OK_QUIET_MS = 300;
 const ACCOUNTS_APP = 'gnome-user-accounts-panel.desktop';
 // userWidget.js's poster-avatar palettes: the same person, the same colour.
 const AVATAR_PALETTES = [['#8fa5d7', '#596dab'], ['#a998d0', '#7563a5'], ['#81baa6', '#4e887b'],
     ['#d5a379', '#a57453'], ['#b894b6', '#896a8c'], ['#8db6cf', '#597f9f']];
 const TOGGLES = [
+    // The desktop's Wi-Fi toggle is checked while a network is connected; on a TV the chip
+    // shows the radio itself (NetworkManager's wireless-enabled), which is what it switches.
     {key: 'wifi', icon: 'lumaui-wifi-symbolic', title: () => _('Wi-Fi'),
-        find: qs => qs._network?._wirelessToggle},
+        find: qs => qs._network?._wirelessToggle,
+        state: toggle => toggle._client ? {checked: toggle._client.wireless_enabled,
+            subtitle: toggle.checked ? toggle.subtitle : ''} : null,
+        source: toggle => toggle._client ?? null, signal: 'notify::wireless-enabled'},
     {key: 'bluetooth', icon: 'lumaui-bluetooth-symbolic', title: () => _('Bluetooth'),
         find: qs => qs._bluetooth?.quickSettingsItems?.[0]},
     {key: 'dnd', icon: 'lumaui-moon-symbolic', title: () => _('Do Not Disturb'), stateOnly: true,
@@ -49,9 +56,10 @@ function closedStates() {
 export class TvQuickPanel {
     // `unit` and `opaque` are the TV presentation's; `closed(origin)` runs
     // after the panel shuts, so the bar can take its focus back.
-    constructor({unit, opaque, closed}) {
+    constructor({unit, opaque, opened = null, closed}) {
         this._unit = unit;
         this._opaque = opaque;
+        this._opened = opened;
         this._closed = closed;
         this.isOpen = false;
         this.origin = null;
@@ -88,14 +96,8 @@ export class TvQuickPanel {
         }
         this.isOpen = true;
         this.origin = origin;
-        // The OK that opened the panel from the bar is still down (and may repeat): no row acts
-        // on OK until it is let go, or a moment has passed.
-        this._armed = origin !== 'bar';
-        this._armId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
-            this._armId = 0;
-            this._armed = true;
-            return GLib.SOURCE_REMOVE;
-        });
+        // One action per OK press; the OK that opened the panel from the bar is still down.
+        this._okGate = okGate(origin === 'bar' ? GLib.get_monotonic_time() / 1000 : null);
         this._watch();
         this._rebuild();
         this._row = Math.max(0, firstStop(this._rows));
@@ -108,6 +110,7 @@ export class TvQuickPanel {
         this._island.opacity = 0;
         this._island.ease({translation_x: 0, opacity: 255, duration: TOKENS.motion.sheet_ms,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        this._opened?.(origin);
     }
 
     // Shuts the panel; `then` runs once its grab is gone (an app, a dialog or
@@ -118,8 +121,6 @@ export class TvQuickPanel {
             return;
         }
         this.isOpen = false;
-        if (this._armId) GLib.source_remove(this._armId);
-        this._armId = 0;
         this._unwatch();
         if (this._grab) Main.popModal(this._grab);
         this._grab = null;
@@ -149,9 +150,11 @@ export class TvQuickPanel {
         return TOGGLES.map(spec => {
             const toggle = spec.find(qs);
             if (!toggle) return null;
+            const state = spec.state?.(toggle) ?? {checked: toggle.checked, subtitle: toggle.subtitle};
             return {key: spec.key, toggle, icon: spec.icon, title: spec.title(), visible: toggle.visible,
-                reactive: toggle.reactive, checked: toggle.checked, subtitle: toggle.subtitle,
-                toggleMode: toggle.toggle_mode, stateOnly: Boolean(spec.stateOnly)};
+                reactive: toggle.reactive, checked: state.checked, subtitle: state.subtitle,
+                toggleMode: toggle.toggle_mode, stateOnly: Boolean(spec.stateOnly),
+                source: spec.source?.(toggle) ?? null, signal: spec.signal ?? null};
         }).filter(Boolean);
     }
 
@@ -216,9 +219,10 @@ export class TvQuickPanel {
     // Anything the panel shows may change under it: redraw on the next idle.
     _watch() {
         const later = () => this._queueRebuild();
-        for (const {toggle} of this._toggles()) {
+        for (const {toggle, source, signal} of this._toggles()) {
             toggle.connectObject('notify::checked', later, 'notify::subtitle', later, 'notify::visible', later,
                 'notify::reactive', later, this);
+            source?.connectObject(signal, later, this);
         }
         const item = this._volume();
         if (item) {
@@ -243,7 +247,10 @@ export class TvQuickPanel {
     _unwatch() {
         if (this._rebuildId) GLib.source_remove(this._rebuildId);
         this._rebuildId = 0;
-        for (const {toggle} of this._toggles()) toggle.disconnectObject(this);
+        for (const {toggle, source} of this._toggles()) {
+            toggle.disconnectObject(this);
+            source?.disconnectObject(this);
+        }
         const item = this._watched?.item;
         item?.disconnectObject(this);
         item?.slider?.disconnectObject(this);
@@ -310,7 +317,7 @@ export class TvQuickPanel {
         this._actor.set_size(monitor.width, monitor.height);
         this._actor.connect('key-press-event', (_actor, event) => this._key(event));
         this._actor.connect('key-release-event', (_actor, event) => {
-            if (remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '') === 'ok') this._armed = true;
+            if (remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '') === 'ok') okRelease(this._okGate);
             return Clutter.EVENT_STOP;
         });
         // A click outside the island closes it.
@@ -323,10 +330,17 @@ export class TvQuickPanel {
 
         const {quick_panel: q, layout} = TOKENS;
         const u = this._u;
+        // The page under the panel steps back: darkened toward the panel's edge, as in the
+        // mockup, so nothing under it reads as part of the panel or as live.
+        this._scrim = new St.Widget({width: monitor.width, height: monitor.height});
+        this._scrim.style = `background-gradient-direction: horizontal;
+            background-gradient-start: ${this._m('scrim').replace(/[\d.]+\)$/, '0.12)')};
+            background-gradient-end: ${this._m('scrim')};`;
+        this._actor.add_child(this._scrim);
         this._island = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, width: q.width * u});
         this._island.set_position(monitor.width - (layout.safe_x + q.width) * u, q.top * u);
         this._island.style = `padding: ${this._px(q.padding)}; border-radius: ${this._px(q.radius)};
-            background-color: ${this._m('bar')}; border: ${this._px(1.5)} solid ${this._m('bar_rim')};
+            background-color: ${this._m('sheet')}; border: ${this._px(1.5)} solid ${this._m('bar_rim')};
             box-shadow: 0 ${this._px(18)} ${this._px(44)} ${this._m('bar_drop')};`;
         this._list = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         this._list.style = `spacing: ${this._px(q.gap)};`;
@@ -373,7 +387,9 @@ export class TvQuickPanel {
             top += height + q.gap * this._u;
             return span;
         });
-        this._contentHeight = Math.max(0, top - q.gap * this._u);
+        // The list's own natural height (spacing and margins as its layout counts them), so the
+        // island holds every row and fades only when it really scrolls.
+        this._contentHeight = Math.max(top - q.gap * this._u, this._list.get_preferred_height(width)[1]);
         this._scroll.height = Math.min(this._contentHeight, this._maxHeight);
     }
 
@@ -642,7 +658,8 @@ export class TvQuickPanel {
     _key(event) {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_STOP;
-        if (action === 'ok' && ((event.get_flags() & Clutter.EventFlags.REPEATED) || !this._armed)) return Clutter.EVENT_STOP;
+        if (action === 'ok' && ((event.get_flags() & Clutter.EventFlags.REPEATED) ||
+            !okPress(this._okGate, GLib.get_monotonic_time() / 1000, OK_QUIET_MS))) return Clutter.EVENT_STOP;
         if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
         const row = this._rows[this._row];
         if (action === 'back') {

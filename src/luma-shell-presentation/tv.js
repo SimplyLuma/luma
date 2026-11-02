@@ -121,7 +121,7 @@ export class TvPresentation {
         // The quick panel: the TV posture of Quick Options and notifications
         // (tvQuickPanel.js), from the bar's cluster or a long press of Home.
         this._quick = new TvQuickPanel({unit: () => this._unit(), opaque: () => this._opaque(),
-            closed: origin => this._quickClosed(origin)});
+            opened: () => this._draw(), closed: origin => this._quickClosed(origin)});
         // Every remote and gamepad becomes the TV's keys (tvInput.js).
         this._input = new TvInput({home: () => this.showHome('home'),
             quickPanel: () => this._quick?.toggle('remote')});
@@ -713,7 +713,8 @@ export class TvPresentation {
         const {bar, quick_panel: q} = TOKENS;
         const m = name => this._material(name);
         const focused = this._focus.kind === 'cluster' && !this._quick?.isOpen;
-        const owner = this._quick?.isOpen && this._quick.origin === 'bar';
+        // The cluster owns the panel however it was opened (the cluster or a long press of Home).
+        const owner = Boolean(this._quick?.isOpen);
         this._now.style = `spacing: ${this._px(bar.now_gap)}; min-height: ${this._px(q.cluster_height)};
             padding: 0 ${this._px(q.cluster_padding_x)}; border-radius: ${this._px(q.cluster_radius)};` + (focused
             ? `background-gradient-direction: vertical; background-gradient-start: ${m('key_top')};

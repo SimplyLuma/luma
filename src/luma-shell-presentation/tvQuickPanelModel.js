@@ -175,3 +175,25 @@ export function mixRgba(from, to, amount) {
     const mix = (x, y) => Math.round(x + (y - x) * amount);
     return `rgba(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)}, ${a1})`;
 }
+
+// OK acts once per press. A held OK can arrive as more presses (a remote that repeats on its
+// own, a virtual key held down) without the repeat flag: while one press is held, further
+// presses do nothing until it is let go or the presses stop for `quietMs`. A panel opened
+// by OK starts with that press held.
+export function okGate(heldAt = null) {
+    return {held: heldAt !== null, last: heldAt ?? 0};
+}
+
+export function okPress(gate, now, quietMs) {
+    if (gate.held && now - gate.last < quietMs) {
+        gate.last = now;
+        return false;
+    }
+    gate.held = true;
+    gate.last = now;
+    return true;
+}
+
+export function okRelease(gate) {
+    gate.held = false;
+}

@@ -109,6 +109,25 @@ assert(M.noteRecords(sources, closed, 2).length === 2, 'capped');
 assert(M.noteAge(10).unit === 'now' && M.noteAge(240).value === 4 && M.noteAge(7300).unit === 'h' &&
     M.noteAge(200000).unit === 'd', 'how long ago');
 
+// One action per OK press (Pi, 1 Nov: one press of a held OK switched Wi-Fi off, then 24 more
+// presses without the repeat flag switched it on 24 times).
+{
+    const quiet = 300;
+    const gate = M.okGate();
+    assert(M.okPress(gate, 0, quiet), 'the first press acts');
+    let acts = 0;
+    for (let t = 40; t < 1000; t += 40) if (M.okPress(gate, t, quiet)) acts++;
+    assert(acts === 0, 'presses of a held OK, flagged as repeats or not, act no more');
+    M.okRelease(gate);
+    assert(M.okPress(gate, 1010, quiet), 'after the release the next press acts');
+    assert(M.okPress(gate, 2000, quiet), 'a release that never came: a later press, after a quiet spell, acts');
+    const opened = M.okGate(5000);
+    assert(!M.okPress(opened, 5040, quiet), 'the press that opened the panel from the bar does not act in it');
+    M.okRelease(opened);
+    assert(M.okPress(opened, 5100, quiet), 'the next press does');
+    assert(M.okPress(M.okGate(), 0, quiet), 'opened by a long press of Home: OK acts at once');
+}
+
 // Sleep, Home, scrolling, light.
 assert(M.sleepAction(true) === 'suspend' && M.sleepAction(false) === 'screen-off', 'sleep');
 assert(M.homePress(120, 500) === 'home' && M.homePress(500, 500) === 'quick-panel', 'a long press of Home');
@@ -136,6 +155,17 @@ for (const [name, source] of [['the TV home', home], ['the quick panel', panel],
 for (const [name, source] of [['the quick panel', panel], ['system dialogs', read(args[2].replace(/tvQuickPanel\.js$/, 'tvDialogs.js'))]])
     assert(!/background-gradient-start:[^`]*background-color:/.test(source), `${name}: nothing overrides the key's gradient start`);
 
+// A property must not share a method's name (this._ok = ... once shadowed _ok(row)).
+const props = new Set([...panel.matchAll(/this\.(_?[a-zA-Z]+) = /g)].map(m => m[1]));
+const clash = methods.filter(m => props.has(m));
+assert(!clash.length, `properties shadowing methods: ${clash.join(', ')}`);
+// The Wi-Fi chip shows and switches the radio (NetworkManager's wireless-enabled), not "connected".
+assert(/key: 'wifi'[\s\S]*?state: toggle => toggle\._client \? \{checked: toggle\._client\.wireless_enabled/.test(panel) &&
+    /signal: 'notify::wireless-enabled'/.test(panel), 'the Wi-Fi chip follows the radio');
+assert(/this\._scrim = new St\.Widget/.test(panel) && /this\._m\('sheet'\)/.test(panel), 'the page steps back under an opaque-enough island');
+assert(/const owner = Boolean\(this\._quick\?\.isOpen\)/.test(home) && /opened: \(\) => this\._draw\(\)/.test(home),
+    'the cluster is a chip whenever the panel is open');
+
 // The panel drives the desktop's objects; it creates none of its own.
 assert(/_network\?\._wirelessToggle/.test(panel) && /_bluetooth\?\.quickSettingsItems/.test(panel) &&
     /_doNotDisturb\?\.quickSettingsItems/.test(panel) && /_volumeOutput\?\.quickSettingsItems/.test(panel),
@@ -149,9 +179,8 @@ assert(/SystemActions\.getDefault\(\)/.test(panel) && /activateRestart\(\)/.test
 assert(/this\.close\(\(\) => this\._actions\.activateRestart\(\)\)/.test(panel), 'the panel lets go before a dialog');
 assert(/Main\.pushModal\(this\._actor/.test(panel) && /Main\.popModal\(this\._grab\)/.test(panel), 'it holds the remote while open');
 assert(/if \(Main\.modalCount > 0\) return;/.test(panel), 'never over a dialog that holds the grab');
-assert(/this\._armed = origin !== 'bar'/.test(panel) && /'key-release-event'[\s\S]*?this\._armed = true/.test(panel) &&
-    /action === 'ok' && \(\(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\) \|\| !this\._armed\)/.test(panel),
-    'the OK that opened the panel from the bar never also acts on a row');
+assert(/this\._okGate = okGate\(origin === 'bar' \?/.test(panel) && /'key-release-event'[\s\S]*?okRelease\(this\._okGate\)/.test(panel) &&
+    /!okPress\(this\._okGate, /.test(panel), 'one action per OK press, from open to close');
 assert(/slider\.value = value;/.test(panel), "volume through the slider's own handler");
 assert(/fade_edges: false/.test(panel), 'fades only where the rows continue');
 
