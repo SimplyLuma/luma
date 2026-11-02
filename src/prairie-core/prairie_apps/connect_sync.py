@@ -475,8 +475,12 @@ def enrol(*, code: str, hub: str, name: str = "", environment: dict[str, str] | 
         print("Nothing was sent. Pass --force to replace the registration.", file=stream)
         return existing
     device_id = str(uuid.uuid4())
-    reply = transport(f"{address}/api/hub/connect/devices",
-                      {"code": code, "name": name or socket.gethostname(), "device_id": device_id})
+    try:
+        reply = transport(f"{address}/api/hub/connect/devices",
+                          {"code": code, "name": name or socket.gethostname(), "device_id": device_id})
+    except HubResponseError as error:
+        # The hub's own words ("This enrolment code has expired or was already used...").
+        raise ConnectError(error.detail or str(error)) from None
     token = str(reply.get("token", ""))
     if not token:
         raise ConnectError("The hub accepted enrolment but returned no device token. Try again.")

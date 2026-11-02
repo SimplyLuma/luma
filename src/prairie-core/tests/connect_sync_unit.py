@@ -251,6 +251,15 @@ with tempfile.TemporaryDirectory(prefix="luma-connect-sync-test-") as directory:
     else:
         raise AssertionError("an empty enrolment code was accepted")
 
+    def expired(_url, _payload, _token=""):
+        raise HubResponseError(400, "Bad Request", "This enrolment code has expired or was already used.")
+    try:
+        enrol(code="ABCD2345", hub="https://hub.example", transport=expired, out=io.StringIO(), force=True)
+    except ConnectError as error:
+        assert str(error) == "This enrolment code has expired or was already used.", str(error)
+    else:
+        raise AssertionError("a refused enrolment code was accepted")
+
 # An unreachable address book and an empty one both come back as (). Only the
 # second may be pushed: a full snapshot of nothing deletes everything the hub
 # holds for this device.
