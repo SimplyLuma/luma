@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0
+# bcm2835-dma.c built for BCM2712 only, beside the in-tree bcm2835-dma whose
+# BCM2835/BCM2711 clients still pass VideoCore bus addresses.
+obj-m := bcm2712-dma.o
+bcm2712-dma-y := bcm2835-dma.o
+ccflags-y := -DBCM2835_DMA_BCM2712_ONLY -I$(src)/../../include

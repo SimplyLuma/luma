@@ -1,0 +1,7 @@
+# Files copied from the patched kernel tree into the kmod source, relative to
+# the kernel source root. A directory copies everything in it.
+drivers/dma/bcm2835-dma.c
+drivers/dma/dmaengine.h
+drivers/dma/virt-dma.h
+drivers/gpu/drm/vc4/
+include/linux/platform_data/dma-bcm2708.h

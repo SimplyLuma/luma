@@ -23,7 +23,8 @@ config = "boot.toml"
 
 [userspace]
 # Wi-Fi NVRAM alias, Shell defaults, V3D runtime PM; gated to Pi 5 hardware.
-rpm_requires = ["luma-rpi5-platform"]
+# luma-rpi5-kmod: HDMI audio modules, built per kernel (config/kernel/rpi5-kmod.env).
+rpm_requires = ["luma-rpi5-platform", "luma-rpi5-kmod"]
 
 [firmware]
 # Distribution firmware (brcmfmac-firmware); the manifest records the alias

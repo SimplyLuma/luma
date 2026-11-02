@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Mon, 2 Nov 2026 12:32:24 -0600
+Subject: [PATCH 7/8] dmaengine: bcm2835: allow a BCM2712-only build
+
+With BCM2835_DMA_BCM2712_ONLY defined the driver matches only
+brcm,bcm2712-dma and registers as bcm2712-dma, so it can be built as a
+separate module next to the in-tree bcm2835-dma, whose BCM2835/BCM2711
+clients still pass VideoCore bus addresses.
+---
+ drivers/dma/bcm2835-dma.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/dma/bcm2835-dma.c b/drivers/dma/bcm2835-dma.c
+index 4fa92d12c..2486d6901 100644
+--- a/drivers/dma/bcm2835-dma.c
++++ b/drivers/dma/bcm2835-dma.c
+@@ -1227,8 +1227,10 @@ static void bcm2835_dma_free(struct bcm2835_dmadev *od)
+ }
+ 
+ static const struct of_device_id bcm2835_dma_of_match[] = {
++#ifndef BCM2835_DMA_BCM2712_ONLY
+ 	{ .compatible = "brcm,bcm2835-dma", .data = &bcm2835_dma_cfg },
+ 	{ .compatible = "brcm,bcm2711-dma", .data = &bcm2711_dma_cfg },
++#endif
+ 	{ .compatible = "brcm,bcm2712-dma", .data = &bcm2712_dma_cfg },
+ 	{},
+ };
+@@ -1499,7 +1501,11 @@ static struct platform_driver bcm2835_dma_driver = {
+ 	.probe	= bcm2835_dma_probe,
+ 	.remove = bcm2835_dma_remove,
+ 	.driver = {
++#ifdef BCM2835_DMA_BCM2712_ONLY
++		.name = "bcm2712-dma",
++#else
+ 		.name = "bcm2835-dma",
++#endif
+ 		.of_match_table = of_match_ptr(bcm2835_dma_of_match),
+ 		.pm = pm_ptr(&bcm2835_dma_pm_ops),
+ 	},
