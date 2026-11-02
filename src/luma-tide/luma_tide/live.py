@@ -60,31 +60,35 @@ class LiveLibrary:
     def load(self):
         sources = self.store.sources()
         signed_out = {s.id for s in sources if s.state == SourceState.AUTH_REQUIRED}
-        tracks = self.store.tracks()
+        rows, pairs = self.store.library_listing()
+        names = {source.id: source.name for source in sources}
+        counts = defaultdict(int)
+        track_sources = defaultdict(list)
+        for track_id, source_id in pairs:
+            counts[source_id] += 1
+            name = names.get(source_id)
+            if name is not None and name not in track_sources[track_id]:
+                track_sources[track_id].append(name)
         if signed_out:
-            tracks = [track for track in tracks if any(
+            rows = [row for row in rows if any(
                 copy.source_id not in signed_out or copy.offline_ready
-                for copy in self.store.copies_for_track(track.id))]
+                for copy in self.store.copies_for_track(row['id']))]
         groups = defaultdict(list)
-        for track in tracks:
-            groups[track.album, track.album_artist].append(track)
+        for row in rows:
+            groups[row['album'], row['album_artist']].append(row)
         artwork = {(title, artist): uri for title, artist, _year, _count, uri in self.store.albums()}
         albums = []
         for (title, artist), items in groups.items():
             identifier = album_id(title, artist)
-            songs = tuple(Song(track.id, track.title, identifier, track.duration_ns // 1_000_000_000,
-                               track.track_number or index + 1, track.favorite)
-                          for index, track in enumerate(items))
-            albums.append(Album(identifier, title, artist, max(t.year for t in items), songs,
+            songs = tuple(Song(row['id'], row['title'], identifier, row['duration_ns'] // 1_000_000_000,
+                               row['track_number'] or index + 1, bool(row['favorite']),
+                               tuple(track_sources.get(row['id'], ())))
+                          for index, row in enumerate(items))
+            albums.append(Album(identifier, title, artist, max(row['year'] for row in items), songs,
                                 artwork.get((title, artist))))
         rows = []
-        track_sources = defaultdict(list)
         for source in sources:
-            source_tracks = self.store.tracks(source_id=source.id, shown_only=False)
-            count = len(source_tracks)
-            for track in source_tracks:
-                if source.name not in track_sources[track.id]:
-                    track_sources[track.id].append(source.name)
+            count = counts[source.id]
             remote = source.kind == 'subsonic'
             state = 'ok' if source.state == SourceState.ONLINE else 'busy' if source.state == SourceState.SYNCING else 'bad'
             subtitle = ('Signed out' if source.state == SourceState.AUTH_REQUIRED else
@@ -103,9 +107,6 @@ class LiveLibrary:
                 facts = [('Folder', source.uri), ('Songs', f'{count:,}'), ('Last sync', 'Watching for changes')]
             rows.append(MusicSource(source.id, source.name, 'server' if remote else 'monitor', state,
                                     subtitle, tuple(facts), remote))
-        albums = [replace(album, songs=tuple(
-            replace(song, library_sources=tuple(track_sources[song.id]))
-            for song in album.songs)) for album in albums]
         offline = self.store.offline_summary()
         if offline.complete or offline.pending or offline.failed:
             subtitle = f'Downloading {offline.pending} songs' if offline.pending else f'Kept offline · {offline.complete} songs'

@@ -55,7 +55,7 @@ from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E40
 from . import lumaui_tokens as tokens  # noqa: E402
 
 __all__ = [
-    "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
+    "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide", "TvGrid",
     "cover_size", "room_pixels", "box_blur", "grade", "hue_sleeve_pixels", "hues_for",
 ]
 
@@ -1052,7 +1052,19 @@ class TvSlide(Gtk.Widget):
         self._length = 0.0  # the content's length along the slide, as last allocated
         self._fades = (fade_top, fade_bottom) if orientation == Gtk.Orientation.VERTICAL else (False, False)
         self._animation: Adw.Animation | None = None
+        self.target = 0.0  # where the slide is heading (its offset once a slide ends)
+        self._watchers: list[Callable[[], None]] = []
         child.set_parent(self)
+
+    def watch(self, callback: Callable[[], None]) -> Callable[[], None]:
+        """Call `callback` whenever the offset, the target or the size changes (a virtualized
+        child materializes what is about to show). Returns the function that stops it."""
+        self._watchers.append(callback)
+        return lambda: callback in self._watchers and self._watchers.remove(callback)
+
+    def _moved(self) -> None:
+        for callback in tuple(self._watchers):
+            callback()
 
     def do_dispose(self) -> None:
         if self.child is not None and self.child.get_parent() is self:
@@ -1080,10 +1092,13 @@ class TvSlide(Gtk.Widget):
         self._length = content
         view = width if self.orientation == Gtk.Orientation.HORIZONTAL else height
         self.offset = max(0.0, min(self.offset, max(0.0, content - view)))
+        if self._animation is None or self._animation.get_state() != Adw.AnimationState.PLAYING:
+            self.target = self.offset
         if self.orientation == Gtk.Orientation.HORIZONTAL:
             self.child.allocate(int(content), height, -1, _at(-self.offset, 0))
         else:
             self.child.allocate(width, int(content), -1, _at(0, -self.offset))
+        self._moved()
 
     def _unit(self) -> float:
         from .lumaui import tv_unit
@@ -1122,6 +1137,8 @@ class TvSlide(Gtk.Widget):
     def slide_to(self, target: float, *, animate: bool = True) -> None:
         if abs(target - self.offset) < 0.5:
             return
+        self.target = target
+        self._moved()  # what will show at the target is made before the slide starts
 
         def step(value: float) -> None:
             self.offset = value
@@ -1173,6 +1190,218 @@ class TvSlide(Gtk.Widget):
             snapshot.append_node(node)
             snapshot.pop()
             snapshot.pop()
+
+class TvGrid(_UnitFollower, Gtk.Widget):
+    """A grid of equal cells that makes only the cells near the screen (virtualized).
+
+    For a long collection on a vertical `TvSlide` page (Albums: thousands of
+    covers). Cells in the visible rows and one screen beyond either edge exist;
+    the rest are made as the page slides towards them and released as it leaves
+    them, so layout, styling, focus and artwork cost what three screens do, never
+    what the library does. A cell keeps its widget while its item stays near
+    the screen (stable identity by key), whatever `set_items` reorders.
+
+        grid = TvGrid(columns=6, cell=258, gap=36, make=make_cover, release=forget)
+        grid.set_items(albums, key=lambda album: album.id)
+        page = TvSlide(grid)                  # or with the grid inside a box on the slide
+
+    `make(index, item)` returns a cell's widget (register it with the focus
+    there); `release(widget)` runs as one leaves (unregister it); `update(widget,
+    item)` when an item kept its key but changed. `widget_at(index)` makes a cell
+    on demand, to land the focus on it. Sizes are TV units; every cell is
+    `cell` wide and as tall as the first one measures.
+    """
+
+    __gtype_name__ = "LumaUITvGrid"
+
+    def __init__(self, *, columns: int, cell: float, gap: float, row_gap: float | None = None,
+                 make: Callable[[int, object], Gtk.Widget], release: Callable[[Gtk.Widget], None] | None = None,
+                 update: Callable[[Gtk.Widget, object], None] | None = None, initial_rows: int = 4) -> None:
+        super().__init__(overflow=Gtk.Overflow.VISIBLE, hexpand=False, halign=Gtk.Align.START)
+        self.columns = max(1, columns)
+        self.cell, self.gap = cell, gap
+        self.row_gap = gap if row_gap is None else row_gap
+        self._make, self._release, self._update = make, release, update
+        self._initial = initial_rows
+        self._items: list = []
+        self._keys: list = []
+        self._index: dict = {}
+        self._cells: dict = {}        # key -> widget
+        self._cell_h = 0              # pixels, from the first cell measured
+        self._slide: TvSlide | None = None
+        self._unwatch: Callable[[], None] | None = None
+
+    # public
+    @property
+    def items(self) -> list:
+        return self._items
+
+    def set_items(self, items: Sequence, *, key: Callable[[object], object] = id) -> None:
+        """Show `items`; cells whose key stays keep their widgets (updated if the item changed)."""
+        items = list(items)
+        keys = [key(item) for item in items]
+        index = {k: i for i, k in enumerate(keys)}
+        for k in [k for k in self._cells if k not in index]:
+            self._drop(k)
+        old = {k: self._items[i] for k, i in self._index.items()} if self._update is not None else {}
+        self._items, self._keys, self._index = items, keys, index
+        for k, widget in self._cells.items():
+            item = items[index[k]]
+            if self._update is not None and old.get(k) is not item:
+                self._update(widget, item)
+        if not self._cells:
+            for i in range(min(len(items), self._initial * self.columns)):
+                self._create(i)
+        self.queue_resize()
+        self._sync()
+
+    def widget_at(self, index: int) -> Gtk.Widget | None:
+        """The cell at `index`, made now if it is not (its row and the rows around it come as it shows)."""
+        if not 0 <= index < len(self._items):
+            return None
+        widget = self._cells.get(self._keys[index])
+        if widget is None:
+            row = index // self.columns
+            for i in range(row * self.columns, min(len(self._items), (row + 1) * self.columns)):
+                self._create(i)
+            widget = self._cells.get(self._keys[index])
+            self.queue_allocate()
+        return widget
+
+    def widget_for(self, key) -> Gtk.Widget | None:
+        return self._cells.get(key)
+
+    def index_of(self, widget: Gtk.Widget) -> int:
+        return self._index.get(getattr(widget, "_tv_grid_key", None), -1)
+
+    def cells(self) -> list[Gtk.Widget]:
+        """The cells that exist now, in item order."""
+        return [self._cells[k] for k in sorted(self._cells, key=self._index.__getitem__)]
+
+    # making and releasing
+    def _create(self, index: int) -> Gtk.Widget:
+        k = self._keys[index]
+        widget = self._cells.get(k)
+        if widget is None:
+            widget = self._make(index, self._items[index])
+            widget._tv_grid_key = k
+            self._cells[k] = widget
+            widget.set_parent(self)
+        return widget
+
+    def _drop(self, k) -> None:
+        widget = self._cells.pop(k, None)
+        if widget is None:
+            return
+        if self._release is not None:
+            self._release(widget)
+        widget.unparent()
+
+    def _metrics(self) -> tuple[float, float, float, float]:
+        u = self._unit()
+        cell_w = round(self.cell * u)
+        cell_h = self._cell_h
+        if not cell_h and self._cells:
+            first = next(iter(self._cells.values()))
+            cell_h = first.measure(Gtk.Orientation.VERTICAL, cell_w)[1]
+            if self.get_root() is not None:
+                self._cell_h = cell_h  # styled and on its stage: every cell measures the same
+        return cell_w, round(self.gap * u), cell_h, round(self.row_gap * u)
+
+    def _rows(self) -> int:
+        return (len(self._items) + self.columns - 1) // self.columns
+
+    def _wanted(self) -> tuple[int, int] | None:
+        """Rows [first, last) to have made: on screen, at the slide's target and a screen either side."""
+        slide = self._slide
+        cell_w, _gap, cell_h, row_gap = self._metrics()
+        if slide is None or slide.child is None or not cell_h:
+            return None
+        ok, point = self.compute_point(slide.child, Graphene.Point().init(0, 0))
+        if not ok:
+            return None
+        view = slide.get_height()
+        pitch = cell_h + row_gap
+        top = min(slide.offset, slide.target) - point.y - view
+        bottom = max(slide.offset, slide.target) - point.y + 2 * view
+        first = max(0, int(top // pitch))
+        last = min(self._rows(), int(bottom // pitch) + 1)
+        return first, max(first, last)
+
+    def _sync(self) -> None:
+        wanted = self._wanted()
+        if wanted is None:
+            return
+        first, last = wanted
+        changed = False
+        # released a row beyond the band, so a remote moving one row back and forth never churns
+        for k in list(self._cells):
+            row = self._index[k] // self.columns
+            if (row < first - 1 or row > last) and not self._cells[k].has_css_class("tv-focus"):
+                self._drop(k)
+                changed = True
+        for i in range(first * self.columns, min(len(self._items), last * self.columns)):
+            if self._keys[i] not in self._cells:
+                self._create(i)
+                changed = True
+        if changed:
+            self.queue_allocate()
+
+    # GTK
+    def do_root(self) -> None:
+        Gtk.Widget.do_root(self)
+        self._follow_stage()
+        node = self.get_parent()
+        while node is not None and not (isinstance(node, TvSlide) and node.orientation == Gtk.Orientation.VERTICAL):
+            node = node.get_parent()
+        self._slide = node
+        if node is not None:
+            self._unwatch = node.watch(self._sync)
+
+    def do_unroot(self) -> None:
+        if self._unwatch is not None:
+            self._unwatch()
+        self._unwatch, self._slide = None, None
+        self._leave_stage()
+        Gtk.Widget.do_unroot(self)
+
+    def do_dispose(self) -> None:
+        for k in list(self._cells):
+            self._drop(k)
+
+    def _unit_changed(self) -> None:
+        self._cell_h = 0
+        self.queue_resize()
+
+    def do_get_request_mode(self) -> Gtk.SizeRequestMode:
+        return Gtk.SizeRequestMode.CONSTANT_SIZE
+
+    def do_measure(self, orientation: Gtk.Orientation, _for_size: int) -> tuple[int, int, int, int]:
+        cell_w, gap, cell_h, row_gap = self._metrics()
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            width = self.columns * cell_w + (self.columns - 1) * gap
+            return width, width, -1, -1
+        rows = self._rows()
+        height = rows * cell_h + max(0, rows - 1) * row_gap
+        return height, height, -1, -1
+
+    def do_size_allocate(self, width: int, height: int, _baseline: int) -> None:
+        self._sync()
+        cell_w, gap, cell_h, row_gap = self._metrics()
+        for k, widget in self._cells.items():
+            i = self._index[k]
+            widget.allocate(cell_w, cell_h, -1, _at((i % self.columns) * (cell_w + gap),
+                                                     (i // self.columns) * (cell_h + row_gap)))
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        lifted = None
+        for widget in self._cells.values():
+            if widget.has_css_class("tv-focus"):
+                lifted = widget  # drawn last, over its neighbours
+            else:
+                self.snapshot_child(widget, snapshot)
+        if lifted is not None:
+            self.snapshot_child(lifted, snapshot)
 
 
 def _fade_stops(strength: float, count: int) -> list[Gsk.ColorStop]:
