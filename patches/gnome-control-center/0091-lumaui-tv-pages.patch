@@ -1,0 +1,278 @@
+diff --git a/shell/cc-luma-live-tv.c b/shell/cc-luma-live-tv.c
+new file mode 100644
+index 0000000..d6c324d
+--- /dev/null
++++ b/shell/cc-luma-live-tv.c
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* TV posture's pages (cc-luma-view-tv.c). Their rows belong to owners other adapters already run
++ * (the session's idle delay, the mouse speed, BlueZ) except the idle view's delay, which is the
++ * shell state's tv-idle-delay. Without that key the row stays unowned and the page leaves it out. */
++#include "cc-luma-live-gsettings.h"
++
++#define SCHEMA "org.project_luma.shell-state"
++
++static const CcLumaGsRow tv_rows[] = {
++  { "tvIdleAfter", SCHEMA, "tv-idle-delay", CC_LUMA_GS_CHOICE,
++    (const char * const[]) { "auto", "-1", "300", "300", "600", "600", "1200", "1200", "0", "0", NULL } },
++  /* Display › Fit › Screen edges: 0–10 %, applied live by the shell's TV presentation */
++  { "tvEdges", SCHEMA, "tv-screen-edges", CC_LUMA_GS_LINEAR, NULL, 1, 0, 0, 10 },
++};
++
++static gpointer tv_start (CcLumaFixture *model)
++{
++  CcLumaGsTable *table = cc_luma_gs_table_new (model, tv_rows, G_N_ELEMENTS (tv_rows));
++  cc_luma_fixture_publish_boolean (model, "tvIdleOwned", cc_luma_gs_table_covers (table, "tvIdleAfter"));
++  cc_luma_fixture_publish_boolean (model, "tvEdgesOwned", cc_luma_gs_table_covers (table, "tvEdges"));
++  cc_luma_gs_table_verify (table, (const char * const[]) { "tvIdleAfter", "tvEdges", NULL });
++  cc_luma_live_ready (model, "tv");
++  return table;
++}
++
++static gboolean tv_write (gpointer state, const char *key, JsonNode *value, GError **error)
++{
++  return cc_luma_gs_table_write (state, key, value, error);
++}
++
++const CcLumaAdapter cc_luma_adapter_tv = {
++  "tv", (const char * const[]) { "tv-idle", "tv-remotes", NULL }, tv_start, tv_write, (GDestroyNotify) cc_luma_gs_table_free
++};
+diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
+index 3fc29a0..0d0aaf1 100644
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -14,7 +14,7 @@ extern const CcLumaAdapter cc_luma_adapter_network, cc_luma_adapter_airplane,
+ extern const CcLumaAdapter cc_luma_adapter_users, cc_luma_adapter_about, cc_luma_adapter_ssh, cc_luma_adapter_datetime,
+   cc_luma_adapter_sharing, cc_luma_adapter_region, cc_luma_adapter_privacy, cc_luma_adapter_accounts,
+   cc_luma_adapter_wellbeing, cc_luma_adapter_security;
+-extern const CcLumaAdapter cc_luma_adapter_apps, cc_luma_adapter_appoptions;
++extern const CcLumaAdapter cc_luma_adapter_apps, cc_luma_adapter_appoptions, cc_luma_adapter_tv;
+ static const CcLumaAdapter *adapters[] = {
+   &cc_luma_adapter_network, &cc_luma_adapter_airplane, &cc_luma_adapter_proxy,
+   /* Bluetooth reads BlueZ over D-Bus: no second BluetoothClient beside the panel's. */
+@@ -34,6 +34,7 @@ static const CcLumaAdapter *adapters[] = {
+   &cc_luma_adapter_home, &cc_luma_adapter_shelf, &cc_luma_adapter_windows, &cc_luma_adapter_notifications, &cc_luma_adapter_search,
+   &cc_luma_adapter_printers,
+   &cc_luma_adapter_apps, &cc_luma_adapter_appoptions,
++  &cc_luma_adapter_tv,
+   NULL
+ };
+ 
+diff --git a/shell/cc-luma-shell.c b/shell/cc-luma-shell.c
+index f8b5646..0144897 100644
+--- a/shell/cc-luma-shell.c
++++ b/shell/cc-luma-shell.c
+@@ -49,6 +49,8 @@ static const struct { const char *page; const char *panel; } routes[] = {
+   { "a-zoom", "universal-access" }, { "sharing", "sharing" },
+   { "region", "system" }, { "datetime", "system" }, { "users", "system" }, { "user-priya", "system" },
+   { "remote", "system" }, { "ssh", "system" }, { "about", "system" }, { "about-sys", "system" }, { "me", "system" },
++  /* TV posture's pages; their nearest GNOME panels, should the LumaUI page be unavailable. */
++  { "tv-idle", "power" }, { "tv-remotes", "bluetooth" },
+ };
+ /* System's subpages are opened with a parameter naming them. */
+ static const struct { const char *page; const char *sub; } system_pages[] = {
+diff --git a/shell/cc-luma-view-displays.c b/shell/cc-luma-view-displays.c
+index 90b742d..aca6cfb 100644
+--- a/shell/cc-luma-view-displays.c
++++ b/shell/cc-luma-view-displays.c
+@@ -401,6 +401,7 @@ void cc_luma_view_displays_render (View *v)
+   proven (v, cc_luma_dev_pk (v, card, profile_key, "Color profile", NULL, g_str_equal (id, "ext") ? external_profiles : internal_profiles), profile_key);
+   card = cf_group (v, NULL, NULL);
+   cf_nv (v, card, "nightlight", "Night Light", "Warmer colors at night, easier on the eyes", cc_luma_view_flag (v, "night") ? "On" : "Off", cf_lead_icon ("moon"));
++  cc_luma_view_tv_display_rows (v);
+   cc_luma_dev_prune (v);
+   if (live) {
+     if (cc_luma_view_flag (v, "display.preview")) gtk_widget_set_sensitive (GTK_WIDGET (v->body), FALSE);
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 3b3085e..b624acb 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -166,3 +169,8 @@ void cc_luma_view_choose (View *v, const char *key, const char *value);
+ gboolean cc_luma_view_delegated (View *v);
+ 
+ void cc_luma_view_home_render (View *v);
++/* TV posture's own pages: Idle & Sleep (tv-idle) and Remotes (tv-remotes). */
++gboolean cc_luma_view_tv_page (const char *page);
++void cc_luma_view_tv_render (View *v);
++/* Display's TV-only rows (Fit › Screen edges), drawn only in TV posture. */
++void cc_luma_view_tv_display_rows (View *v);
+diff --git a/shell/cc-luma-view-tv.c b/shell/cc-luma-view-tv.c
+new file mode 100644
+index 0000000..fd8f39e
+--- /dev/null
++++ b/shell/cc-luma-view-tv.c
+@@ -0,0 +1,117 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* The pages only a TV needs: Idle & Sleep and Remotes. The island lists them in TV posture only
++ * (cc-luma-window.c); a deep link opens them anywhere. Every row is bound to the owner that
++ * already keeps the value: the shell state's tv-idle-delay, the session's idle delay (the screen
++ * turning off), the mouse pointer speed and BlueZ's devices. Rows with no owner yet are not shown. */
++#include "cc-luma-rows.h"
++#include <math.h>
++#include <string.h>
++
++gboolean cc_luma_view_tv_page (const char *page)
++{
++  return g_strcmp0 (page, "tv-idle") == 0 || g_strcmp0 (page, "tv-remotes") == 0;
++}
++
++/* The hero: the thing itself, an icon tile beside its name and state. */
++static GtkWidget *hero_line (const char *icon, const char *title, const char *subtitle)
++{
++  GtkWidget *line = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 18);
++  GtkWidget *words = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
++  GtkWidget *name = cf_text (title, "cf-now-title");
++  GtkWidget *state = cf_text (subtitle, NULL);
++  gtk_box_append (GTK_BOX (line), cf_lead_icon (icon));
++  luma_ui_apply_type (name, "hero-title");
++  luma_ui_apply_type_full (state, "meta", TRUE);
++  gtk_widget_set_hexpand (words, TRUE);
++  gtk_widget_set_valign (words, GTK_ALIGN_CENTER);
++  gtk_box_append (GTK_BOX (words), name);
++  gtk_box_append (GTK_BOX (words), state);
++  gtk_box_append (GTK_BOX (line), words);
++  return line;
++}
++
++/* ── Idle & Sleep ──────────────────────────────────────────────────────── */
++
++static void idle_sleep (View *v)
++{
++  cc_luma_view_header (v, "Idle & Sleep", "What the TV shows when no one is using it.", NULL);
++  /* shell state tv-idle-delay, read live by every TV app's idle hook (LumaUI TvIdle); an older
++   * shell state without the key: the row is left out rather than shown doing nothing */
++  if (!cc_luma_fixture_is_live (v->model) || cc_luma_view_flag (v, "tvIdleOwned"))
++    {
++  GtkBox *idle = cf_group (v, NULL, NULL);
++  cf_pk (v, idle, "tvIdleAfter", "Show the idle view after", NULL,
++    (const char * const[]) { "auto", "Automatic", "300", "5 minutes", "600", "10 minutes", "1200", "20 minutes", "0", "Never", NULL });
++    }
++  GtkBox *sleep = cf_group (v, "Sleep", NULL);
++  /* org.gnome.desktop.session idle-delay: the screen turns off, and the TV with it */
++  cf_pk (v, sleep, "blank", "Turn the TV off after", NULL,
++    (const char * const[]) { "60", "1 hour", "240", "4 hours", "480", "8 hours", "0", "Never", NULL });
++}
++
++/* ── Remotes ───────────────────────────────────────────────────────────── */
++
++/* The connected remote: a connected input device among the paired ones, one named a remote first. */
++static JsonObject *connected_remote (View *v)
++{
++  static const char * const kinds[] = { "Keyboard", "Game controller", "Mouse", "Tablet", "Device", NULL };
++  JsonObject *data = v->model ? cc_luma_fixture_get_data (v->model) : NULL;
++  JsonArray *saved = data && json_object_has_member (data, "CFBT") ? json_object_get_array_member (data, "CFBT") : NULL;
++  JsonObject *found = NULL;
++  for (guint i = 0; saved && i < json_array_get_length (saved); i++)
++    {
++      JsonObject *d = json_array_get_object_element (saved, i);
++      if (!json_object_get_boolean_member_with_default (d, "on", FALSE)) continue;
++      if (!g_strv_contains (kinds, json_object_get_string_member_with_default (d, "kind", ""))) continue;
++      g_autofree char *name = g_utf8_strdown (json_object_get_string_member_with_default (d, "n", ""), -1);
++      if (strstr (name, "remote")) return d;
++      if (!found) found = d;
++    }
++  return found;
++}
++
++static char *speed_format (double value)
++{
++  return g_strdup_printf ("%d", (int) round ((value + 100) / 20));
++}
++
++static void remotes (View *v)
++{
++  cc_luma_view_header (v, "Remotes", "The remote and how it moves.", NULL);
++  JsonObject *remote = connected_remote (v);
++  if (remote)
++    {
++      g_autofree char *state = json_object_has_member (remote, "bat")
++        ? g_strdup_printf ("Connected · %" G_GINT64_FORMAT "%% battery", json_object_get_int_member (remote, "bat"))
++        : g_strdup ("Connected");
++      cf_hero (v, hero_line ("smartphone", json_object_get_string_member (remote, "n"), state), "cf-tv-remote");
++    }
++  else
++    cf_hero (v, hero_line ("smartphone", "No remote connected", "Pair one in Bluetooth"), "cf-tv-remote");
++  GtkBox *rows = cf_group (v, NULL, NULL);
++  /* org.gnome.desktop.peripherals.mouse speed (-1…1), as Mouse & Touchpad shows it, read 0–10 */
++  cf_rg (v, rows, "mSpeed", "Pointer speed", NULL, -100, 100, 20, NULL, NULL, speed_format);
++  GtkBox *pair = cf_group (v, NULL, NULL);
++  cf_nv (v, pair, "bluetooth", "Pair a remote", "In Bluetooth", NULL, cf_lead_icon ("bluetooth"));
++}
++
++/* ── Display, in TV posture ────────────────────────────────────────────── */
++
++static char *percent_format (double value)
++{
++  return g_strdup_printf ("%d%%", (int) round (value));
++}
++
++void cc_luma_view_tv_display_rows (View *v)
++{
++  if (!luma_ui_tv_posture ()) return; /* TV-only rows: never on a desktop, tablet or phone */
++  if (cc_luma_fixture_is_live (v->model) && !cc_luma_view_flag (v, "tvEdgesOwned")) return;
++  GtkBox *fit = cf_group (v, "Fit", NULL);
++  cf_rg (v, fit, "tvEdges", "Screen edges", "Shrink the picture if the TV cuts off its edges", 0, 10, 1, NULL, NULL, percent_format);
++}
++
++void cc_luma_view_tv_render (View *v)
++{
++  if (g_str_equal (v->page, "tv-idle")) idle_sleep (v);
++  else if (g_str_equal (v->page, "tv-remotes")) remotes (v);
++}
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 46fd1ea..cfa70b2 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -84,6 +94,7 @@ static gboolean page_supported (const char *page)
+   if (cc_luma_privacy_page (page)) return TRUE;
+   if (page && g_str_has_prefix (page, "app:")) return TRUE;
+   if (cc_luma_view_hardware_page (page) || cc_luma_view_people_page (page) || cc_luma_view_system_page (page)) return TRUE;
++  if (cc_luma_view_tv_page (page)) return TRUE;
+   const char *pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network",
+     "bluetooth", "windows", "shelf", "appearance", "home-screen", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps", "a11y", "a-see", "a-hear", "a-type", "a-point", "a-zoom" };
+   for (guint i = 0; i < G_N_ELEMENTS (pages); i++)
+@@ -1156,6 +1201,7 @@ static void render_page (View *v)
+   else if (cc_luma_view_hardware_page (v->page)) cc_luma_view_hardware_render (v);
+   else if (cc_luma_view_people_page (v->page)) cc_luma_view_people_render (v);
+   else if (cc_luma_view_system_page (v->page)) cc_luma_view_system_render (v);
++  else if (cc_luma_view_tv_page (v->page)) cc_luma_view_tv_render (v);
+ }
+ static void search_render (View *v);
+ static gboolean restore_scroll (gpointer data);
+@@ -1338,6 +1398,7 @@ static gboolean valid_wifi_model (CcLumaFixture *model)
+ static gboolean page_valid (CcLumaFixture *model, const char *page)
+ {
+   if (cc_luma_view_hardware_page (page) || cc_luma_view_people_page (page) || cc_luma_view_system_page (page)) return TRUE;
++  if (cc_luma_view_tv_page (page)) return TRUE;
+   if (g_str_equal (page, "apps")) return cc_luma_fixture_apps_validate (model);
+   if (g_str_has_prefix (page, "app:")) return cc_luma_fixture_prepare_app (model, page + 4, NULL);
+   if (g_str_equal (page, "power")) return cc_luma_power_fixture_validate (model);
+diff --git a/shell/meson.build b/shell/meson.build
+index b3847ed..1d0679a 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -106,6 +106,7 @@ common_sources = files(
+   'cc-luma-live-security.c',
+   'cc-luma-live-apps.c',
+   'cc-luma-live-shelf.c',
++  'cc-luma-live-tv.c',
+   'cc-luma-live-windows.c',
+   'cc-luma-live-notifications.c',
+   'cc-luma-live-search.c',
+@@ -120,6 +121,7 @@ common_sources = files(
+   'cc-luma-view-bluetooth.c',
+   'cc-luma-view-windows.c',
+   'cc-luma-view-shelf.c',
++  'cc-luma-view-tv.c',
+   'cc-luma-view-appearance.c',
+   'cc-luma-view-discovery.c',
+   'cc-luma-view-displays.c',
+@@ -367,7 +369,7 @@ applications_test = executable('test-luma-applications',
+   ['test-luma-applications.c', 'cc-luma-applications.c'], dependencies: [gio_dep])
+ test('luma-settings-applications', applications_test, env: ['G_DEBUG=fatal-warnings'])
+ 
+-fixture_view_sources = ['cc-luma-view.c', 'cc-luma-rows.c', 'cc-luma-view-hardware.c', 'cc-luma-view-people.c', 'cc-luma-view-system.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-view-displays.c', 'cc-luma-view-sound.c', 'cc-luma-view-nightlight.c', 'cc-luma-view-devices.c', 'cc-luma-view-privacy.c', 'cc-luma-view-keyboard.c', 'cc-luma-view-application-options.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-privacy.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c']
++fixture_view_sources = ['cc-luma-view.c', 'cc-luma-rows.c', 'cc-luma-view-hardware.c', 'cc-luma-view-people.c', 'cc-luma-view-system.c', 'cc-luma-view-image.c', 'cc-luma-view-bluetooth.c', 'cc-luma-view-windows.c', 'cc-luma-view-shelf.c', 'cc-luma-view-tv.c', 'cc-luma-view-appearance.c', 'cc-luma-view-discovery.c', 'cc-luma-view-displays.c', 'cc-luma-view-sound.c', 'cc-luma-view-nightlight.c', 'cc-luma-view-devices.c', 'cc-luma-view-privacy.c', 'cc-luma-view-keyboard.c', 'cc-luma-view-application-options.c', 'cc-luma-fixture.c', 'cc-luma-bluetooth.c', 'cc-luma-desktop.c', 'cc-luma-discovery.c', 'cc-luma-displays.c', 'cc-luma-sound.c', 'cc-luma-device-options.c', 'cc-luma-privacy.c', 'cc-luma-keyboard.c', 'cc-luma-application-options.c', 'cc-luma-search-locations.c', 'cc-luma-backup.c']
+ fixture_view_sources += ['cc-luma-view-live-lock.c', 'cc-luma-preferences.c']
+ fixture_view_sources += ['cc-luma-view-live-permission.c', 'cc-luma-permissions.c', 'cc-luma-applications.c']
+ fixture_view_sources += ['../panels/privacy/screen/cc-screen-page.c']
