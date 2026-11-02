@@ -361,6 +361,20 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island button:focus-visible { border-radius: 22tv; background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; outline: none; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-row button:focus-visible { background: none; box-shadow: none; color: inherit; }\n"
+/* chip rows (lumaui-tv.css .chips): Left/Right between chips; the row holding them never lights as
+ * the key, the focused chip lifts with a white ring; the chosen one keeps a quiet ring */
+".lumaui-tv-frame .lumaui-part-row.lumaui-tv-holder:focus-within { background-image: none; background-color: transparent;\n"
+"  box-shadow: none; color: @ink@; }\n"
+".lumaui-tv-frame .lumaui-part-chips { padding: 8tv 0; }\n"
+".lumaui-tv-frame .lumaui-part-chip { border-radius: 16tv; padding: 0; margin: 0; outline: none;\n"
+"  box-shadow: 0 8tv 20tv alpha(black, 0.4); transition: transform 150ms ease-out; }\n"
+".lumaui-tv-frame .lumaui-part-chip.on, .lumaui-tv-frame .lumaui-part-chip:checked { box-shadow: 0 0 0 3tv alpha(white, 0.6), 0 8tv 20tv alpha(black, 0.4); }\n"
+".lumaui-tv-frame .lumaui-part-chip:focus-visible { transform: scale(1.06); box-shadow: 0 0 0 5tv white, 0 14tv 30tv alpha(black, 0.5); }\n"
+".lumaui-tv-frame .lumaui-part-swatch { min-width: 52tv; min-height: 52tv; padding: 0; margin: 0; border-radius: 9999px; outline: none;\n"
+"  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2); transition: transform 150ms ease-out; }\n"
+".lumaui-tv-frame .lumaui-part-swatch.on, .lumaui-tv-frame .lumaui-part-swatch:checked {\n"
+"  box-shadow: inset 0 0 0 1.5tv alpha(white, 0.2), 0 0 0 4tv alpha(white, 0.5); }\n"
+".lumaui-tv-frame .lumaui-part-swatch:focus-visible { transform: scale(1.15); box-shadow: 0 0 0 4tv white; }\n"
 /* a switch outside any row (a page's on/off beside its title) holding the focus: the key's ring */
 ".lumaui-tv-frame > .luma-island button:focus-visible switch, .lumaui-tv-frame > .luma-island switch:focus-visible {\n"
 "  box-shadow: 0 0 0 4tv white, 0 3tv 10tv @key_drop@; }\n"
@@ -660,10 +674,32 @@ static void unplace_lead(GtkWidget *lead) {
   g_object_set_data(G_OBJECT(lead), "luma-tv-lead", NULL);
 }
 
+static GtkWidget *part_row_of(TvFrame *f, GtkWidget *w);
 static void release_page(TvFrame *f, GtkWidget *widget) {
   if ((gtk_widget_has_css_class(widget, "lumaui-part-mark") || gtk_widget_has_css_class(widget, "lumaui-part-lead")) &&
       within_row(widget))
     place_lead(f, widget);
+  if (gtk_widget_has_css_class(widget, "lumaui-part-chips")) {
+    /* chips 16 apart (lumaui-tv.css .chips gap), and the row that holds them is no key itself */
+    GtkWidget *row = part_row_of(f, widget);
+    if (row != NULL) gtk_widget_add_css_class(row, "lumaui-tv-holder");
+    if (g_object_get_data(G_OBJECT(widget), "luma-tv-chips") == NULL) {
+      int *saved = g_new(int, 2);
+      if (ADW_IS_WRAP_BOX(widget)) {
+        saved[0] = adw_wrap_box_get_child_spacing(ADW_WRAP_BOX(widget));
+        saved[1] = adw_wrap_box_get_line_spacing(ADW_WRAP_BOX(widget));
+        adw_wrap_box_set_child_spacing(ADW_WRAP_BOX(widget), (int)round(16 * f->unit));
+        adw_wrap_box_set_line_spacing(ADW_WRAP_BOX(widget), (int)round(16 * f->unit));
+      } else if (GTK_IS_BOX(widget)) {
+        saved[0] = gtk_box_get_spacing(GTK_BOX(widget));
+        saved[1] = -1;
+        gtk_box_set_spacing(GTK_BOX(widget), (int)round(16 * f->unit));
+      } else {
+        saved[0] = saved[1] = -1;
+      }
+      g_object_set_data_full(G_OBJECT(widget), "luma-tv-chips", saved, g_free);
+    }
+  }
   const char *part = adw_part(widget);
   if (part != NULL && !has_part(widget)) {
     gtk_widget_add_css_class(widget, part);
@@ -696,6 +732,17 @@ static void release_page(TvFrame *f, GtkWidget *widget) {
 
 static void restore_page(GtkWidget *widget) {
   unplace_lead(widget);
+  gtk_widget_remove_css_class(widget, "lumaui-tv-holder");
+  int *chips = g_object_get_data(G_OBJECT(widget), "luma-tv-chips");
+  if (chips != NULL) {
+    if (ADW_IS_WRAP_BOX(widget)) {
+      adw_wrap_box_set_child_spacing(ADW_WRAP_BOX(widget), chips[0]);
+      adw_wrap_box_set_line_spacing(ADW_WRAP_BOX(widget), chips[1]);
+    } else if (GTK_IS_BOX(widget) && chips[0] >= 0) {
+      gtk_box_set_spacing(GTK_BOX(widget), chips[0]);
+    }
+    g_object_set_data(G_OBJECT(widget), "luma-tv-chips", NULL);
+  }
   if (gtk_widget_has_css_class(widget, "lumaui-tv-named")) {
     gtk_widget_remove_css_class(widget, "lumaui-tv-named");
     gtk_widget_remove_css_class(widget, adw_part(widget));
@@ -1431,7 +1478,7 @@ static void enter(TvFrame *f) {
 
   f->provider = gtk_css_provider_new();
   gtk_style_context_add_provider_for_display(gtk_widget_get_display(GTK_WIDGET(f->window)),
-      GTK_STYLE_PROVIDER(f->provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 20U);
+      GTK_STYLE_PROVIDER(f->provider), GTK_STYLE_PROVIDER_PRIORITY_USER + 10U); /* over an app's own user-level rules */
   f->opaque = setting_true(f->state, "reduce-transparency") || setting_true(f->a11y, "high-contrast");
   f->unit = screen_unit(f);
   tv_css(f);

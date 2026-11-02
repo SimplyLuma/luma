@@ -18,6 +18,8 @@ static int pages_opened;
 
 #define CHECK(cond) do { if (!(cond)) { g_printerr("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); failures++; } } while (0)
 
+static void check_chip_parts(void);
+
 static void spin(int ms) {
   gint64 until = g_get_monotonic_time() + ms * 1000;
   while (g_get_monotonic_time() < until) {
@@ -239,8 +241,23 @@ static void activate(GtkApplication *app, gpointer data) {
   g_application_hold(G_APPLICATION(app));
   check_desktop(app);
   check_tv(app);
+  check_chip_parts();
   g_application_release(G_APPLICATION(app));
   g_application_quit(G_APPLICATION(app));
+}
+
+/* Chip rows (wallpapers, accents) are page parts too: named, they carry their class, nothing else. */
+static void check_chip_parts(void) {
+  const char *parts[] = {"chips", "chip", "swatch"};
+  for (guint i = 0; i < G_N_ELEMENTS(parts); i++) {
+    GtkWidget *w = g_object_ref_sink(gtk_button_new());
+    g_autofree char *cls = g_strconcat("lumaui-part-", parts[i], NULL);
+    luma_ui_set_part(w, parts[i]);
+    CHECK(gtk_widget_has_css_class(w, cls));
+    luma_ui_set_part(w, NULL);
+    CHECK(!gtk_widget_has_css_class(w, cls));
+    g_object_unref(w);
+  }
 }
 
 int main(int argc, char **argv) {

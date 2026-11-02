@@ -1,0 +1,386 @@
+diff --git a/shell/cc-luma-live-tv.c b/shell/cc-luma-live-tv.c
+index d6c324d..ee1dabc 100644
+--- a/shell/cc-luma-live-tv.c
++++ b/shell/cc-luma-live-tv.c
+@@ -31,3 +31,87 @@ static gboolean tv_write (gpointer state, const char *key, JsonNode *value, GErr
+ const CcLumaAdapter cc_luma_adapter_tv = {
+   "tv", (const char * const[]) { "tv-idle", "tv-remotes", NULL }, tv_start, tv_write, (GDestroyNotify) cc_luma_gs_table_free
+ };
++
++/* ── Account, in TV posture: the Luma account, as Luma Connect keeps it ─────────────────────
++ * Read from the Connect daemon (org.projectluma.Connect1 GetState, followed by StateChanged):
++ * whether this TV is signed in, and the account's name and email. Signing in and out stay in
++ * Luma Connect; Settings opens it. No daemon: the page says Connect is not installed. */
++
++#define CONNECT_BUS "org.projectluma.Connect1"
++#define CONNECT_PATH "/org/projectluma/Connect"
++
++typedef struct {
++  CcLumaFixture *model;
++  GDBusConnection *bus;
++  GCancellable *cancel;
++  guint changed_id;
++  gboolean ready;
++} Account;
++
++static void account_publish (Account *a, const char *status, const char *name, const char *email)
++{
++  cc_luma_fixture_publish_string (a->model, "lumaAccount", status);
++  cc_luma_fixture_publish_string (a->model, "lumaAccountName", name);
++  cc_luma_fixture_publish_string (a->model, "lumaAccountEmail", email);
++  if (!a->ready) { a->ready = TRUE; cc_luma_live_ready (a->model, "tv-account"); }
++}
++
++static void account_state (GObject *source, GAsyncResult *result, gpointer data)
++{
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
++  Account *a = data;
++  if (!reply) { account_publish (a, "unavailable", "", ""); return; }
++  const char *text = NULL;
++  g_variant_get (reply, "(&s)", &text);
++  g_autoptr (JsonParser) parser = json_parser_new ();
++  JsonNode *root = json_parser_load_from_data (parser, text, -1, NULL) ? json_parser_get_root (parser) : NULL;
++  JsonObject *state = root && JSON_NODE_HOLDS_OBJECT (root) ? json_node_get_object (root) : NULL;
++  if (!state) { account_publish (a, "unavailable", "", ""); return; }
++  const char *account = json_object_get_string_member_with_default (state, "account_status", "signed_out");
++  JsonObject *profile = json_object_has_member (state, "profile") && JSON_NODE_HOLDS_OBJECT (json_object_get_member (state, "profile"))
++    ? json_object_get_object_member (state, "profile") : NULL;
++  account_publish (a, g_str_equal (account, "signed_in") ? "signed_in" : g_str_equal (account, "locked") ? "locked" : "signed_out",
++                   profile ? json_object_get_string_member_with_default (profile, "name", "") : "",
++                   profile ? json_object_get_string_member_with_default (profile, "email", "") : "");
++}
++
++static void account_fetch (Account *a)
++{
++  g_dbus_connection_call (a->bus, CONNECT_BUS, CONNECT_PATH, CONNECT_BUS, "GetState", NULL, G_VARIANT_TYPE ("(s)"),
++                          G_DBUS_CALL_FLAGS_NONE, 5000, a->cancel, account_state, a);
++}
++
++static void account_changed (GDBusConnection *bus, const char *sender, const char *path, const char *iface,
++                             const char *signal, GVariant *parameters, gpointer data)
++{
++  account_fetch (data);
++}
++
++static gpointer account_start (CcLumaFixture *model)
++{
++  Account *a = g_new0 (Account, 1);
++  a->model = model;
++  a->cancel = g_cancellable_new ();
++  a->bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
++  if (!a->bus) { account_publish (a, "unavailable", "", ""); return a; }
++  a->changed_id = g_dbus_connection_signal_subscribe (a->bus, CONNECT_BUS, CONNECT_BUS, "StateChanged", CONNECT_PATH, NULL,
++                                                      G_DBUS_SIGNAL_FLAGS_NONE, account_changed, a, NULL);
++  account_fetch (a);
++  return a;
++}
++
++static void account_stop (gpointer data)
++{
++  Account *a = data;
++  g_cancellable_cancel (a->cancel);
++  if (a->bus && a->changed_id) g_dbus_connection_signal_unsubscribe (a->bus, a->changed_id);
++  g_clear_object (&a->bus);
++  g_clear_object (&a->cancel);
++  g_free (a);
++}
++
++const CcLumaAdapter cc_luma_adapter_tv_account = {
++  "tv-account", (const char * const[]) { "tv-account", NULL }, account_start, NULL, account_stop
++};
+diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
+index 0d0aaf1..b9980bb 100644
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -14,7 +14,7 @@ extern const CcLumaAdapter cc_luma_adapter_network, cc_luma_adapter_airplane,
+ extern const CcLumaAdapter cc_luma_adapter_users, cc_luma_adapter_about, cc_luma_adapter_ssh, cc_luma_adapter_datetime,
+   cc_luma_adapter_sharing, cc_luma_adapter_region, cc_luma_adapter_privacy, cc_luma_adapter_accounts,
+   cc_luma_adapter_wellbeing, cc_luma_adapter_security;
+-extern const CcLumaAdapter cc_luma_adapter_apps, cc_luma_adapter_appoptions, cc_luma_adapter_tv;
++extern const CcLumaAdapter cc_luma_adapter_apps, cc_luma_adapter_appoptions, cc_luma_adapter_tv, cc_luma_adapter_tv_account;
+ static const CcLumaAdapter *adapters[] = {
+   &cc_luma_adapter_network, &cc_luma_adapter_airplane, &cc_luma_adapter_proxy,
+   /* Bluetooth reads BlueZ over D-Bus: no second BluetoothClient beside the panel's. */
+@@ -34,7 +34,7 @@ static const CcLumaAdapter *adapters[] = {
+   &cc_luma_adapter_home, &cc_luma_adapter_shelf, &cc_luma_adapter_windows, &cc_luma_adapter_notifications, &cc_luma_adapter_search,
+   &cc_luma_adapter_printers,
+   &cc_luma_adapter_apps, &cc_luma_adapter_appoptions,
+-  &cc_luma_adapter_tv,
++  &cc_luma_adapter_tv, &cc_luma_adapter_tv_account,
+   NULL
+ };
+ 
+diff --git a/shell/cc-luma-rows.c b/shell/cc-luma-rows.c
+index fb844f9..181e015 100644
+--- a/shell/cc-luma-rows.c
++++ b/shell/cc-luma-rows.c
+@@ -457,6 +457,7 @@ static void parts_walk (GtkWidget *w)
+   static const struct { const char *cls, *part; } map[] = {
+     { "cf-head", "header" }, { "cf-back", "back" }, { "cf-hero", "hero" },
+     { "cf-group", "group" }, { "cf-card", "card" }, { "cf-row", "row" },
++    { "cf-accs", "chips" }, { "cf-acc", "swatch" }, { "cf-walls", "chips" }, { "cf-wall", "chip" },
+   };
+   for (guint i = 0; i < G_N_ELEMENTS (map); i++)
+     if (gtk_widget_has_css_class (w, map[i].cls))
+diff --git a/shell/cc-luma-shell.c b/shell/cc-luma-shell.c
+index 0144897..9c0e10c 100644
+--- a/shell/cc-luma-shell.c
++++ b/shell/cc-luma-shell.c
+@@ -50,7 +50,7 @@ static const struct { const char *page; const char *panel; } routes[] = {
+   { "region", "system" }, { "datetime", "system" }, { "users", "system" }, { "user-priya", "system" },
+   { "remote", "system" }, { "ssh", "system" }, { "about", "system" }, { "about-sys", "system" }, { "me", "system" },
+   /* TV posture's pages; their nearest GNOME panels, should the LumaUI page be unavailable. */
+-  { "tv-idle", "power" }, { "tv-remotes", "bluetooth" },
++  { "tv-idle", "power" }, { "tv-remotes", "bluetooth" }, { "tv-account", "users" },
+ };
+ /* System's subpages are opened with a parameter naming them. */
+ static const struct { const char *page; const char *sub; } system_pages[] = {
+diff --git a/shell/cc-luma-view-appearance.c b/shell/cc-luma-view-appearance.c
+index ba938e9..3fccd18 100644
+--- a/shell/cc-luma-view-appearance.c
++++ b/shell/cc-luma-view-appearance.c
+@@ -282,12 +282,31 @@ static GtkWidget *tile (GtkWidget *child, const char *name, const char *caption)
+   gtk_accessible_update_property (GTK_ACCESSIBLE (button), GTK_ACCESSIBLE_PROPERTY_LABEL, caption, -1);
+   return button;
+ }
+-/* v70 .cfwalls: a six-column grid, 10 px gaps, 16:10 tiles. */
++/* v70 .cfwalls: a six-column grid, 10 px gaps, 16:10 tiles. In TV posture the wallpapers are a row of
++ * chips (lumaui-tv.css .wall): 200 units wide, 16:9, 16 apart, as many to a line as fit. */
++static gboolean walls_tv (GtkWidget *widget, double *unit)
++{
++  GtkRoot *root = gtk_widget_get_root (widget);
++  if (!root || !gtk_widget_has_css_class (GTK_WIDGET (root), "lumaui-tv")) return FALSE;
++  *unit = luma_ui_tv_unit (gtk_widget_get_width (GTK_WIDGET (root)), gtk_widget_get_height (GTK_WIDGET (root)));
++  return *unit > 0;
++}
+ static void walls_measure (GtkWidget *widget, GtkOrientation orientation, int for_size,
+                            int *minimum, int *natural, int *minimum_baseline, int *natural_baseline)
+ {
+   int n = 0;
+   for (GtkWidget *c = gtk_widget_get_first_child (widget); c; c = gtk_widget_get_next_sibling (c)) n++;
++  double u = 0;
++  if (walls_tv (widget, &u))
++    {
++      double tile = 200 * u, gap = 16 * u;
++      if (orientation == GTK_ORIENTATION_HORIZONTAL) { *minimum = (int) tile; *natural = (int) (n * tile + (n - 1) * gap); return; }
++      int width = for_size > 0 ? for_size : GPOINTER_TO_INT (g_object_get_data (G_OBJECT (widget), "cf-width"));
++      int per = MAX (1, width > 0 ? (int) ((width + gap) / (tile + gap)) : n);
++      int lines = (n + per - 1) / per;
++      *minimum = *natural = (int) (lines * tile * 9 / 16 + (lines - 1) * gap + .5);
++      return;
++    }
+   int rows = (n + 5) / 6;
+   if (orientation == GTK_ORIENTATION_HORIZONTAL) { *minimum = 6 * 16 + 50; *natural = 6 * 89 + 50; return; }
+   /* The row asks without a width here, so the allocated width decides
+@@ -311,6 +330,18 @@ static void walls_allocate (GtkWidget *widget, int width, int height, int baseli
+       g_object_set_data (G_OBJECT (widget), "cf-width", GINT_TO_POINTER (width));
+       g_idle_add_full (G_PRIORITY_HIGH_IDLE, walls_resize, g_object_ref (widget), g_object_unref);
+     }
++  double u = 0;
++  if (walls_tv (widget, &u))
++    {
++      double tile = 200 * u, gap = 16 * u, high = tile * 9 / 16;
++      int per = MAX (1, (int) ((width + gap) / (tile + gap)));
++      for (GtkWidget *c = gtk_widget_get_first_child (widget); c; c = gtk_widget_get_next_sibling (c), i++)
++        {
++          int x0 = (int) ((i % per) * (tile + gap) + .5), y0 = (int) ((i / per) * (high + gap) + .5);
++          gtk_widget_allocate (c, (int) (tile + .5), (int) (high + .5), -1, gsk_transform_translate (NULL, &GRAPHENE_POINT_INIT (x0, y0)));
++        }
++      return;
++    }
+   for (GtkWidget *c = gtk_widget_get_first_child (widget); c; c = gtk_widget_get_next_sibling (c), i++)
+     {
+       double x = (i % 6) * (column + 10), y = (i / 6) * (row + 10);
+@@ -357,9 +388,13 @@ void cc_luma_view_appearance_render (View *v)
+     { JsonArray *p = json_array_get_array_element (list, i); if (json_array_get_int_element (p, 0) == json_node_get_int (cc_luma_fixture_get (v->model, "acc"))) accent = json_array_get_string_element (p, 1); }
+   for (guint i = 0; i < json_array_get_length (walls); i++)
+     { JsonArray *p = json_array_get_array_element (walls, i); if (g_str_equal (json_array_get_string_element (p, 0), cc_luma_view_text (v, "wall"))) wall = json_array_get_string_element (p, 1); }
+-  g_autofree char *meta = g_strdup_printf ("%s · %s accent · %s", adw_style_manager_get_dark (adw_style_manager_get_default ()) ? "Dark" : "Light", accent, wall);
++  g_autofree char *meta = luma_ui_tv_posture () ? g_strdup_printf ("%s accent · %s", accent, wall) :
++    g_strdup_printf ("%s · %s accent · %s", adw_style_manager_get_dark (adw_style_manager_get_default ()) ? "Dark" : "Light", accent, wall);
+   cf_header (v, "Appearance", meta, NULL);
+-  cf_hero (v, styles_fluid (v) ? modes (v) : cf_fit_new (modes (v)), "cf-appearance-styles");
++  /* In TV posture the picture is always dark (the TV's own materials): Light and Dark would change
++   * nothing on the screen, so the choice is the desktop's alone (the mockup's page has none). */
++  if (!luma_ui_tv_posture ())
++    cf_hero (v, styles_fluid (v) ? modes (v) : cf_fit_new (modes (v)), "cf-appearance-styles");
+   custom_row (cf_group (v, "Accent", NULL), accents (v), "Accent color");
+   custom_row (cf_group (v, "Background", NULL), wallpapers (v), "Background wallpaper");
+   if (!cc_luma_fixture_get (v->model, "tint")) return; /* live, no owner */
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index a162b30..a293f27 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -173,5 +173,7 @@ void cc_luma_view_home_render (View *v);
+ /* TV posture's own pages: Idle & Sleep (tv-idle) and Remotes (tv-remotes). */
+ gboolean cc_luma_view_tv_page (const char *page);
+ void cc_luma_view_tv_render (View *v);
++/* TV posture's hero line: the thing's icon tile beside its name and state (cc-luma-view-tv.c). */
++GtkWidget *cc_luma_view_tv_hero_line (const char *icon, const char *title, const char *subtitle);
+ /* Display's TV-only rows (Fit › Screen edges), drawn only in TV posture. */
+ void cc_luma_view_tv_display_rows (View *v);
+diff --git a/shell/cc-luma-view-sound.c b/shell/cc-luma-view-sound.c
+index ea0df62..ce289cf 100644
+--- a/shell/cc-luma-view-sound.c
++++ b/shell/cc-luma-view-sound.c
+@@ -125,6 +125,33 @@ void cc_luma_view_sound_render (View *v)
+   cf_header (v, "Sound", "", NULL);
+   update_meta (v);
+ 
++  gboolean live = cc_luma_fixture_is_live (v->model);
++  GtkBox *card;
++  if (luma_ui_tv_posture ())
++    {
++      /* TV posture: the hero is the output itself, as every TV page's hero (icon tile, name,
++       * state); choosing another output and the volume are rows (the mockup's Sound page). */
++      JsonObject *current = NULL;
++      for (guint i = 0; i < json_array_get_length (outputs); i++)
++        if (g_str_equal (json_object_get_string_member (json_array_get_object_element (outputs, i), "id"), selected))
++          current = json_array_get_object_element (outputs, i);
++      if (!cc_luma_dev_owned (v, "vol") || !current)
++        cf_hero (v, cc_luma_view_tv_hero_line ("volume-x", "No output", "Connect speakers or a TV over HDMI"), "cf-sound");
++      else
++        {
++          g_autofree char *level = g_strdup_printf ("Volume %" G_GINT64_FORMAT "%%", json_node_get_int (cc_luma_fixture_get (v->model, "vol")));
++          cf_hero (v, cc_luma_view_tv_hero_line (json_object_get_string_member (current, "i"), json_object_get_string_member (current, "n"), level), "cf-sound");
++          card = cf_group (v, NULL, NULL);
++          for (guint i = 0; json_array_get_length (outputs) > 1 && i < json_array_get_length (outputs); i++)
++            {
++              JsonObject *item = json_array_get_object_element (outputs, i);
++              cc_luma_dev_rd (v, card, "out", json_object_get_string_member (item, "id"), json_object_get_string_member (item, "n"),
++                              json_object_get_string_member (item, "s"), sound_set);
++            }
++          cc_luma_dev_rg (v, card, "vol", "Volume", NULL, 0, cc_luma_view_flag (v, "overamp") ? 150 : 100, 1, NULL, NULL, percent, sound_set);
++        }
++      goto rows;
++    }
+   GtkWidget *hero = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+   GtkWidget *outs = cc_luma_dev_card_grid (v);
+   gtk_widget_add_css_class (outs, "cf-outs");
+@@ -141,8 +168,6 @@ void cc_luma_view_sound_render (View *v)
+       cc_luma_dev_card_grid_add (outs, button);
+     }
+   gtk_box_append (GTK_BOX (hero), outs);
+-  gboolean live = cc_luma_fixture_is_live (v->model);
+-  GtkBox *card;
+   if (!cc_luma_dev_owned (v, "vol"))
+     /* Live with no output: no volume, output rows or meter. */
+     cf_hero (v, hero, "cf-sound");
+@@ -167,6 +192,10 @@ void cc_luma_view_sound_render (View *v)
+   gtk_box_append (GTK_BOX (hero), volume);
+   gtk_box_append (GTK_BOX (hero), meter (32, FALSE));
+   cf_hero (v, hero, "cf-sound");
++  }
++rows:
++  if (cc_luma_dev_owned (v, "vol"))
++  {
+ 
+   card = cf_group (v, "Output", NULL);
+   const char * const configs[] = { "Stereo", "Stereo", "Mono", "Mono", NULL };
+diff --git a/shell/cc-luma-view-tv.c b/shell/cc-luma-view-tv.c
+index fd8f39e..2d04550 100644
+--- a/shell/cc-luma-view-tv.c
++++ b/shell/cc-luma-view-tv.c
+@@ -4,16 +4,17 @@
+  * already keeps the value: the shell state's tv-idle-delay, the session's idle delay (the screen
+  * turning off), the mouse pointer speed and BlueZ's devices. Rows with no owner yet are not shown. */
+ #include "cc-luma-rows.h"
++#include <gio/gdesktopappinfo.h>
+ #include <math.h>
+ #include <string.h>
+ 
+ gboolean cc_luma_view_tv_page (const char *page)
+ {
+-  return g_strcmp0 (page, "tv-idle") == 0 || g_strcmp0 (page, "tv-remotes") == 0;
++  return g_strcmp0 (page, "tv-idle") == 0 || g_strcmp0 (page, "tv-remotes") == 0 || g_strcmp0 (page, "tv-account") == 0;
+ }
+ 
+ /* The hero: the thing itself, an icon tile beside its name and state. */
+-static GtkWidget *hero_line (const char *icon, const char *title, const char *subtitle)
++GtkWidget *cc_luma_view_tv_hero_line (const char *icon, const char *title, const char *subtitle)
+ {
+   GtkWidget *line = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 18);
+   GtkWidget *words = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+@@ -84,10 +85,10 @@ static void remotes (View *v)
+       g_autofree char *state = json_object_has_member (remote, "bat")
+         ? g_strdup_printf ("Connected · %" G_GINT64_FORMAT "%% battery", json_object_get_int_member (remote, "bat"))
+         : g_strdup ("Connected");
+-      cf_hero (v, hero_line ("smartphone", json_object_get_string_member (remote, "n"), state), "cf-tv-remote");
++      cf_hero (v, cc_luma_view_tv_hero_line ("smartphone", json_object_get_string_member (remote, "n"), state), "cf-tv-remote");
+     }
+   else
+-    cf_hero (v, hero_line ("smartphone", "No remote connected", "Pair one in Bluetooth"), "cf-tv-remote");
++    cf_hero (v, cc_luma_view_tv_hero_line ("smartphone", "No remote connected", "Pair one in Bluetooth"), "cf-tv-remote");
+   GtkBox *rows = cf_group (v, NULL, NULL);
+   /* org.gnome.desktop.peripherals.mouse speed (-1…1), as Mouse & Touchpad shows it, read 0–10 */
+   cf_rg (v, rows, "mSpeed", "Pointer speed", NULL, -100, 100, 20, NULL, NULL, speed_format);
+@@ -110,8 +111,54 @@ void cc_luma_view_tv_display_rows (View *v)
+   cf_rg (v, fit, "tvEdges", "Screen edges", "Shrink the picture if the TV cuts off its edges", 0, 10, 1, NULL, NULL, percent_format);
+ }
+ 
++/* ── Account ───────────────────────────────────────────────────────────── */
++
++/* Luma Connect owns the account: signing in (a code, or later a QR code), syncing, signing out. */
++static void open_connect (GtkButton *button, View *v)
++{
++  g_autoptr (GDesktopAppInfo) app = g_desktop_app_info_new ("org.projectluma.Connect.desktop");
++  g_autoptr (GError) error = NULL;
++  if (!app || !g_app_info_launch (G_APP_INFO (app), NULL, NULL, &error))
++    luma_toast_show (v->root, "Luma Connect isn’t installed", "error");
++}
++
++/* Signing in from the TV itself, later: a QR code here that a phone (or another Luma device)
++ * scans to approve this TV, beside the code Luma Connect asks for today. Until that flow
++ * exists the page offers Luma Connect's own sign-in and adds nothing here. */
++static void account_qr_hook (View *v, GtkBox *rows)
++{
++  (void) v; (void) rows;
++}
++
++static void account (View *v)
++{
++  const char *status = cc_luma_view_text (v, "lumaAccount");
++  const char *name = cc_luma_view_text (v, "lumaAccountName"), *email = cc_luma_view_text (v, "lumaAccountEmail");
++  cc_luma_view_header (v, "Account", "Your Luma account on this TV.", NULL);
++  if (g_str_equal (status, "signed_in"))
++    {
++      g_autofree char *detail = *email ? g_strdup_printf ("%s · Signed in", email) : g_strdup ("Signed in");
++      cf_hero (v, cc_luma_view_tv_hero_line ("user", *name ? name : "Luma Account", detail), "cf-tv-account");
++      GtkBox *rows = cf_group (v, NULL, NULL);
++      cf_bt (v, rows, "Syncing and devices", "In Luma Connect", "Open", FALSE, G_CALLBACK (open_connect));
++      cf_bt (v, rows, "Sign out", "In Luma Connect", "Open", FALSE, G_CALLBACK (open_connect));
++    }
++  else if (g_str_equal (status, "unavailable"))
++    cf_hero (v, cc_luma_view_tv_hero_line ("user", "Luma Connect isn’t installed", "Install it from Depot to sign in"), "cf-tv-account");
++  else
++    {
++      gboolean locked = g_str_equal (status, "locked");
++      cf_hero (v, cc_luma_view_tv_hero_line ("user", locked ? "Account locked" : "Not signed in",
++                             locked ? "Unlock it in Luma Connect" : "Keep photos, contacts, calendar and notes in step"), "cf-tv-account");
++      GtkBox *rows = cf_group (v, NULL, NULL);
++      account_qr_hook (v, rows);
++      cf_bt (v, rows, locked ? "Unlock" : "Sign in", "With Luma Connect", locked ? "Open" : "Sign In…", FALSE, G_CALLBACK (open_connect));
++    }
++}
++
+ void cc_luma_view_tv_render (View *v)
+ {
+   if (g_str_equal (v->page, "tv-idle")) idle_sleep (v);
+   else if (g_str_equal (v->page, "tv-remotes")) remotes (v);
++  else if (g_str_equal (v->page, "tv-account")) account (v);
+ }
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index 3c54bc0..74c8346 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -60,7 +60,7 @@ static const Destination tv_destinations[] = {
+   { "tv-remotes", "Remotes", "smartphone" },
+   { NULL, "System", NULL },
+   { "a11y", "Accessibility", "accessibility" },
+-  { "me", "Account", "user" },
++  { "tv-account", "Account", "user" },
+   { "about", "About", "info" },
+ };
+ 

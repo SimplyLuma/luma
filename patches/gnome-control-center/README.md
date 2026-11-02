@@ -215,3 +215,14 @@ grows its row with its actions: Connect (with the saved password), Change passwo
 shows a password field, focused with the TV keyboard's Join; empty is refused) and Forget
 (the destructive question, a TV sheet on Cancel). Outside TV posture nothing changes.
 
+`0093-lumaui-tv-account-appearance-sound.patch`: TV posture only. Account opens `tv-account`,
+the Luma account as Luma Connect keeps it (`org.projectluma.Connect1` GetState, followed by
+StateChanged; adapter `tv-account`): signed in, the hero is the account's name and email with
+Syncing and devices and Sign out opening Luma Connect; signed out or locked, Sign in opens Luma
+Connect (`account_qr_hook` is where QR sign-in goes); no daemon, the hero says Connect is not
+installed. Appearance names its accents and wallpapers as LumaUI chips (`chips`, `swatch`,
+`chip`), lays the wallpapers out as 200-unit 16:9 chips 16 apart, and leaves out Light and Dark
+(the TV is always dark; the mockup's page has none). Sound's hero is the output itself (icon,
+name, volume) like every TV hero, with the outputs (when there is more than one) and Volume as
+rows. Requires LumaUI API level 8 (page parts `chips`, `chip`, `swatch`).
+
