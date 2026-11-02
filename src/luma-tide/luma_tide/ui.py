@@ -31,6 +31,10 @@ from .ui_parts import AlbumCover, AlbumTile, CoverSlot, Deck, FeatureCard, Queue
 from .ui_phone import SECTIONS, NowPlayingPhone, PhoneBar
 
 
+# While a sync streams songs in, the library is read again at most this often (seconds).
+REFRESH_SPACING = 4.0
+
+
 class TideWindow(AppWindow):
     def __init__(self, application, source=None):
         if source is None:
@@ -65,6 +69,11 @@ class TideWindow(AppWindow):
         self._status_toast = None
         self._loader = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='tide-view-read')
         self._load_future = None
+        self._load_again = False      # a change arrived while a read ran: read once more after it
+        self._refresh_timer = 0
+        self._last_load = 0.0
+        # True once the library has been read: until then views show nothing, never an empty state
+        self.library_loaded = bool(getattr(source, 'fixture', False))
         self._removals = DeferredRemovals(GLib.timeout_add, GLib.source_remove, self.source.remove_source)
         commands = CommandRegistry((CommandGroup('', (
             Command('tide.add-folder', 'Add music folder…', self._add_folder, 'folder-plus', shortcut=('Ctrl', 'O')),
@@ -251,16 +260,29 @@ class TideWindow(AppWindow):
                 cover.queue_resize()
         return not self._closed
 
-    def refresh_library(self):
+    def refresh_library(self, throttle=False):
+        """Read the library again in the worker. One read at a time: a change
+        during a read schedules exactly one more after it. `throttle` (a sync's
+        progress) spaces reads at least REFRESH_SPACING apart, so a long sync
+        never keeps the worker, and the interpreter, busy reading."""
         if self._closed:
             return
+        import time
+        running = self._load_future is not None and not self._load_future.done()
+        if running:
+            # an asked-for change reads straight after; a sync's progress keeps its spacing
+            self._load_again = 'now' if not throttle or self._load_again == 'now' else 'soon'
+            return
+        wait = self._last_load + REFRESH_SPACING - time.monotonic() if throttle else 0
+        if wait > 0:
+            if not self._refresh_timer:
+                self._refresh_timer = GLib.timeout_add(int(wait * 1000) + 1, self._refresh_due)
+            return
+        if self._refresh_timer:
+            GLib.source_remove(self._refresh_timer)
+            self._refresh_timer = 0
         self._generation += 1
         generation = self._generation
-        # A sync can publish many batches while one read is running. Retain
-        # that read and only the latest pending one, rather than queueing a
-        # full-library query for every obsolete batch.
-        if self._load_future is not None:
-            self._load_future.cancel()
         future = self._loader.submit(self.source.load)
         self._load_future = future
         def finished(done):
@@ -271,9 +293,20 @@ class TideWindow(AppWindow):
             GLib.idle_add(self._loaded, generation, library, error)
         future.add_done_callback(finished)
 
+    def _refresh_due(self):
+        self._refresh_timer = 0
+        self.refresh_library()
+        return False
+
     def _loaded(self, generation, library, error):
+        import time
+        self._last_load = time.monotonic()
+        if self._load_again and not self._closed:
+            again, self._load_again = self._load_again, False
+            self.refresh_library(throttle=again == 'soon')
         if self._closed or generation != self._generation:
             return False
+        self.library_loaded = True
         if error:
             clear(self.page)
             self.page.append(text(error, 'body', wrap=True, margin_start=30, margin_top=72))
@@ -306,8 +339,8 @@ class TideWindow(AppWindow):
         self._fill_pane()
         return False
 
-    def library_changed(self, **_kwargs):
-        self.refresh_library()
+    def library_changed(self, throttle=False, **_kwargs):
+        self.refresh_library(throttle=throttle)
 
     def _populate_sources(self):
         self.refresh_library()

@@ -514,11 +514,11 @@ class TideApplication(Adw.Application):
             return GLib.SOURCE_REMOVE
         if phase == "songs":
             self.window.set_status(f"Syncing {name} · {done:,} of {total:,}")
-            self.window.library_changed()
+            self.window.library_changed(throttle=True)
         else:
             if done == 0:
                 # Songs are in; let them appear while artwork arrives.
-                self.window.library_changed()
+                self.window.library_changed(throttle=True)
             self.window.set_status(None if total and done >= total else
                                    f"Fetching artwork from {name} · {done:,} of {total:,}")
         return GLib.SOURCE_REMOVE

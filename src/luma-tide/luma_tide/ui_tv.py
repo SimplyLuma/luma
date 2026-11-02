@@ -26,7 +26,7 @@ from luma_appkit import lumaui_tokens as tokens  # noqa: E402
 from luma_appkit.tv_focus import TvFocus  # noqa: E402
 from luma_appkit.tv_idle import TvIdle  # noqa: E402
 from luma_appkit.tv_media import (  # noqa: E402
-    TvCover, TvEqualizer, TvNowPlayingPill, TvProgress, TvRoom, TvSlide, TvTransportButton, hues_for,
+    TvCover, TvEqualizer, TvGrid, TvNowPlayingPill, TvProgress, TvRoom, TvSlide, TvTransportButton, hues_for,
 )
 from luma_appkit.tv_parts import TvButton, TvField, TvTab, TvTopBar  # noqa: E402
 from luma_appkit.tv_stage import TvStage, add_tv_style, tv_fade  # noqa: E402
@@ -40,7 +40,7 @@ PLACES = (("listen", "Listen now", None), ("albums", "Albums", None), ("playlist
 GRID_COLUMNS = 6
 # six covers and five 36-unit gaps fill the 1728-unit safe width
 GRID_COVER = (1920 - 2 * 96 - 5 * 36) / 6
-GRID_BATCH_ROWS = 4
+GRID_GAP, GRID_ROW_GAP = 36, 44
 SHELF_LIMIT = 12
 SEARCH_LIMIT = 8
 PLAY_KEYS = frozenset({Gdk.KEY_space, Gdk.KEY_AudioPlay, Gdk.KEY_AudioPause})
@@ -111,6 +111,10 @@ def _label(text: str, *css: str, wrap: bool = False, lines: int = 0, **props) ->
         label.set_ellipsize(Pango.EllipsizeMode.END)
         label.set_single_line_mode(True)
     return label
+
+
+def _album_key(album: Album) -> str:
+    return album.id
 
 
 def _art(album: Album | None) -> str | None:
@@ -197,7 +201,9 @@ class TideTV:
         self._rows: list[SongRow] = []
         self._results: list[Gtk.Widget] = []
         self._page_items: list[Gtk.Widget] = []
-        self._grid_state = None
+        self._grid: TvGrid | None = None
+        self._slide: TvSlide | None = None
+        self._shown = None  # what the page was drawn from (`_signature`)
         self._field = None
         self._idle_release = None
         # idle: after 15 s on Now playing while music plays, the record alone (LumaUI's idle hook)
@@ -223,7 +229,43 @@ class TideTV:
 
     # ── data changes from the window ─────────────────────────────────────────
 
+    @property
+    def loaded(self) -> bool:
+        """The library has been read at least once (until then a page shows nothing, not "empty")."""
+        return bool(getattr(self.window, "library_loaded", True))
+
+    def _settling(self) -> bool:
+        """No albums yet, but a source is still bringing its first songs in."""
+        return not self.library.albums and any(s.state == "busy" for s in self.library.sources)
+
+    def _signature(self):
+        """What the current page is drawn from; a library change that leaves it alone redraws nothing."""
+        library = self.library
+        return (self.loaded, self._settling(),
+                tuple((a.id, a.title, a.artist, a.year, a.artwork, len(a.songs)) for a in library.albums),
+                library.played, tuple((p.id, p.name, p.song_ids) for p in library.playlists))
+
     def library_changed(self) -> None:
+        signature = self._signature()
+        if signature == self._shown:
+            return
+        grid = self._grid
+        if (self.view["kind"] == "albums" and grid is not None and grid.items and self.library.albums
+                and signature[:2] == self._shown[:2]):
+            # in place: the same covers keep their widgets, the page keeps its place and the focus
+            focused = self.focus.focused
+            index = grid.index_of(focused) if focused is not None else -1
+            grid.set_items(self.library.albums, key=_album_key)
+            self._shown = signature
+            if index >= 0 and self.focus.focused is None:
+                target = grid.widget_at(min(index, len(self.library.albums) - 1))
+                if target is not None:
+                    self.focus.focus(target)
+            elif focused is not None and grid.index_of(focused) >= 0:
+                # a reorder may have moved it: keep it on screen once it is laid out again
+                GLib.idle_add(lambda: self._slide is not None and focused.get_parent() is grid
+                              and self._slide.reveal(focused, animate=False) and False)
+            return
         self.render(keep_focus=True)
 
     def player_changed(self, player, previous) -> None:
@@ -292,7 +334,8 @@ class TideTV:
     # ── navigation ───────────────────────────────────────────────────────────
 
     def push(self, view: dict) -> None:
-        self.stack.append({"view": self.view, "focus": self._focus_key()})
+        self.stack.append({"view": self.view, "focus": self._focus_key(),
+                           "offset": self._slide.offset if self._slide is not None else 0.0})
         self.view = view
         self.render()
         first = self._first_page_item(view)
@@ -304,7 +347,7 @@ class TideTV:
         if self.stack:
             entry = self.stack.pop()
             self.view = entry["view"]
-            self.render()
+            self.render(offset=entry.get("offset", 0.0))
             target = self._find_focus_key(entry["focus"]) or self._first_page_item()
             if target is not None:
                 self.focus.focus(target)
@@ -336,6 +379,9 @@ class TideTV:
     def _find_focus_key(self, key):
         if key is None or self.page is None:
             return None
+        if self._grid is not None and isinstance(key, str) and key.startswith("al:"):
+            index = next((i for i, a in enumerate(self._grid.items) if a.id == key[3:]), -1)
+            return self._grid.widget_at(index) if index >= 0 else None
         found = []
 
         def walk(widget):
@@ -356,7 +402,10 @@ class TideTV:
             return preferred
         if kind == "search" and self._field is not None:
             return self._field.text
-        return getattr(self, "_first", None)
+        first = getattr(self, "_first", None)
+        if first is None and self._grid is not None:
+            first = self._grid.widget_at(0)
+        return first
 
     # ── focus and the room ───────────────────────────────────────────────────
 
@@ -462,11 +511,14 @@ class TideTV:
 
     # ── drawing ──────────────────────────────────────────────────────────────
 
-    def render(self, keep_focus: bool = False) -> None:
+    def render(self, keep_focus: bool = False, offset: float | None = None) -> None:
         key = self._focus_key() if keep_focus else None
         was_bar = self.focus.group_of(self.focus.focused) in ("places", "deck")
+        if keep_focus and offset is None and self._slide is not None:
+            offset = self._slide.offset  # a redraw of the same page stays where it was
         self.focus.clear("page")
-        self._rows, self._first, self._preferred, self._grid_state = [], None, None, None
+        self._rows, self._first, self._preferred, self._grid, self._slide = [], None, None, None, None
+        self._shown = self._signature()
         self._field, self._results, self._page_items = None, [], []
         self._np = {}
         if self.page is not None:
@@ -477,6 +529,8 @@ class TideTV:
                    "search": self._search, "album": self._collection, "playlist": self._collection,
                    "artist": self._collection, "now": self._now}[kind]
         page, pin = builder()
+        if offset and self._slide is not None:
+            self._slide.offset = self._slide.target = offset
         self.page = page
         self.stage.place(page, **pin)
         self.stage.raise_child(self.bar)
@@ -517,6 +571,7 @@ class TideTV:
 
     def _page_scroll(self, content: Gtk.Widget):
         slide = TvSlide(content, orientation=Gtk.Orientation.VERTICAL, lead=40)
+        self._slide = slide
         return slide, {"left": 0, "right": 0, "top": 150, "bottom": 0}
 
     def _shelf(self, title: str, widgets) -> Gtk.Widget:
@@ -533,8 +588,9 @@ class TideTV:
         pad = _box(True, "tide-tv-pad")
         albums = self.library.albums
         if not albums:
-            pad.append(_label("Your music will be here. Add music to Tide on a computer, or connect a server.",
-                              "tide-tv-empty", wrap=True))
+            if self.loaded and not self._settling():
+                pad.append(_label("Your music will be here. Add music to Tide on a computer, or connect a server.",
+                                  "tide-tv-empty", wrap=True))
             return self._page_scroll(pad)
         subject = self.playing_album()
         played = [self._album(i) for i in self.library.played]
@@ -581,42 +637,39 @@ class TideTV:
 
     # Albums and Playlists
     def _albums(self):
-        grid = Gtk.Grid()
-        grid.add_css_class("tide-tv-grid")
         pad = _box(True, "tide-tv-pad")
-        pad.append(grid)
         albums = self.library.albums
-        if not albums:
+        grid = TvGrid(columns=GRID_COLUMNS, cell=GRID_COVER, gap=GRID_GAP, row_gap=GRID_ROW_GAP,
+                      make=self._grid_cell, release=self._forget, update=self._grid_update)
+        self._grid = grid
+        pad.append(grid)
+        if not albums and self.loaded and not self._settling():
             pad.append(_label("No albums yet.", "tide-tv-empty"))
-        self._grid_state = {"grid": grid, "items": albums, "next": 0}
-        self._grid_more(GRID_BATCH_ROWS * 2)
+        grid.set_items(albums, key=_album_key)
         return self._page_scroll(pad)
 
-    def _grid_more(self, rows: int) -> None:
-        state = self._grid_state
-        if state is None:
-            return
-        start = state["next"]
-        end = min(len(state["items"]), start + rows * GRID_COLUMNS)
-        for index in range(start, end):
-            album = state["items"][index]
-            cover = self._cover(album, f"al:{album.id}", width=GRID_COVER)
-            self.focus.remove(cover)
-            self.focus.add(cover, group="page", on_activate=lambda a=album: self.open_album(a),
-                           on_focus=lambda i=index: self._grid_focused(i))
-            state["grid"].attach(cover, index % GRID_COLUMNS, index // GRID_COLUMNS, 1, 1)
-        state["next"] = end
+    def _grid_cell(self, _index: int, album: Album) -> Gtk.Widget:
+        return self._cover(album, f"al:{album.id}", width=GRID_COVER)
 
-    def _grid_focused(self, index: int) -> None:
-        state = self._grid_state
-        if state is not None and index >= state["next"] - GRID_COLUMNS * 2:
-            self._grid_more(GRID_BATCH_ROWS)
+    def _grid_update(self, cover: TvCover, album: Album) -> None:
+        cover.tide_album = album
+        cover.set_artwork(_art(album), _hues(album))
+        cover.set_caption(album.title, album.artist)
+
+    def _forget(self, widget: Gtk.Widget) -> None:
+        """A grid cell left the screen: the remote forgets it (it is made again on the way back)."""
+        self.focus.remove(widget)
+        if widget in self._page_items:
+            self._page_items.remove(widget)
+        if self._first is widget:
+            self._first = None
 
     def _playlists(self):
         pad = _box(True, "tide-tv-pad")
         if not self.library.playlists:
-            pad.append(_label("No playlists yet. Playlists you make in Tide on a computer show here.",
-                              "tide-tv-empty", wrap=True))
+            if self.loaded:
+                pad.append(_label("No playlists yet. Playlists you make in Tide on a computer show here.",
+                                  "tide-tv-empty", wrap=True))
             return self._page_scroll(pad)
         grid = Gtk.Grid()
         grid.add_css_class("tide-tv-grid")
