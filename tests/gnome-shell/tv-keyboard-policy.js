@@ -38,55 +38,64 @@ const us = [
             {action: 'levelSwitch', level: 'opt+shift', label: '=/<'}], tail('ABC')]},
 ];
 const original = JSON.stringify(us);
-const [letters, symbols] = Tv.tvLevels(us);
+const [letters, capitals, symbols] = Tv.tvLevels(us);
 const label = key => key.keyval ?? key.strings?.[0] ?? key.label ?? key.action;
-const widths = row => row.reduce((sum, key) => sum + key.width + key.leftOffset, 0);
+const widths = row => row.reduce((sum, key) => sum + key.width + (key.leftOffset ?? 0), 0);
+const text = row => row.map(label).join(' ');
 
 assert(JSON.stringify(us) === original, 'the language model is not changed');
-assert(letters.rows.length === 4, 'three letter rows and the bottom row');
-assert(letters.rows[0].map(label).join('') === 'qwertyuiop', 'top row: ten letters, no delete');
-assert(letters.rows[1].map(label).join('') === 'asdfghjkl', 'middle row: no Enter');
-assert(letters.rows[1][0].leftOffset === 0.5, 'middle row centred by half a key');
-assert(letters.rows[2].map(label).join(' ') === 'levelSwitch z x c v b n m delete',
-    'last letter row: one shift, the letters, delete (punctuation is on 123)');
-assert(letters.rows[2][0].leftOffset === 0.5, 'last letter row centred');
-const bottom = letters.rows[3];
-assert(bottom.map(label).join('|') === '123| |0xff0d', 'bottom row: 123, space, the action key');
-assert(bottom[2].tvAction && bottom[2].label === 'Done', 'the action key is Enter, labelled Done by default');
-assert(bottom.every(key => !['emoji', 'languageMenu', 'hide'].includes(key.action)), 'no emoji, language or hide');
-assert(widths(bottom) === 10 && widths(letters.rows[0]) === 10, 'rows span the same ten keys');
-assert(symbols.rows[0].map(label).join('') === '1234567890', '123: digits on top');
-assert(symbols.rows[2][0].label === '=/<' && symbols.rows[2].filter(k => k.action === 'levelSwitch').length === 1,
-    '123: one switch to the second symbol level');
-assert(symbols.rows[2].map(label).includes('!'), '123 keeps its punctuation');
-assert(symbols.rows[3][0].label === 'ABC', '123: ABC returns to letters');
-const email = Tv.tvLevels([{level: 'default', rows: [[...chars('qwertyuiop')], [shift('shift'), ...chars('zxc')],
-    [{action: 'levelSwitch', level: 'opt', label: '?123'}, {strings: ['@']}, {strings: [' ']}, {strings: ['.com']}]]}],
+assert(letters.rows.length === 5, 'digits, three letter rows and the bottom row');
+assert(text(letters.rows[0]) === '1 2 3 4 5 6 7 8 9 0 delete', 'digits and delete on top (Leanback)');
+assert(text(letters.rows[1]) === 'q w e r t y u i o p @', 'q-p then @');
+assert(text(letters.rows[2]) === 'a s d f g h j k l _ &', 'a-l then _ &');
+assert(text(letters.rows[3]) === 'z x c v b n m , . - ?', 'z-m then , . - ?');
+assert(text(letters.rows[4]) === '123 levelSwitch   0xff0d', 'bottom row: 123, shift, space, the action key');
+assert(letters.rows.every(row => widths(row) === 11), 'every row spans the same eleven columns');
+assert(letters.rows.slice(0, 4).every(row => row.every(key => key.width === 1 && !key.leftOffset)),
+    'every key in the grid rows is one cell: no stagger');
+assert(letters.rows[4][2].width === 7 && letters.rows[4][3].width === 2, 'space takes seven cells, the action key two');
+assert(letters.rows[4][3].tvAction && letters.rows[4][3].label === 'Done', 'the action key is Enter, labelled Done by default');
+assert(text(capitals.rows[1]).startsWith('Q W E'), 'the shift level has the capitals');
+assert(text(symbols.rows[0]) === text(letters.rows[0]), '123 keeps digits and delete on top');
+assert(symbols.rows[1].map(label).includes('#') && symbols.rows[4][0].label === 'ABC', '123: symbols, ABC returns');
+assert(symbols.rows.every(row => widths(row) <= 11), '123 stays on the grid');
+const email = Tv.tvLevels([{level: 'default', rows: [[...chars('qwertyuiop')], [...chars('asdfghjkl')], [...chars('zxcvbnm')],
+    [{action: 'levelSwitch', level: 'opt', label: '?123'}, {strings: ['.com']}, {strings: [' ']}]]}],
 {keepExtras: true})[0];
-assert(email.rows[2].map(label).join('|') === '123|@|.com| |0xff0d', 'e-mail and URL layouts keep @ and .com');
+assert(email.rows[1].map(label).includes('.com'), 'e-mail and URL layouts keep their .com');
 
-// The remote: cells as the Shell measures them (row, x1, x2).
+// The remote: cells as the Shell measures them (row, x1, x2), 108 a cell.
 const cells = [];
-[letters.rows[0], letters.rows[1], letters.rows[2], letters.rows[3]].forEach((row, r) => {
+letters.rows.forEach((row, r) => {
     let x = 0;
     for (const key of row) {
-        x += key.leftOffset;
+        x += key.leftOffset ?? 0;
         cells.push({row: r, x1: x * 108, x2: (x + key.width) * 108, key: label(key)});
         x += key.width;
     }
 });
 const at = name => cells.findIndex(cell => cell.key === name);
-const move = (from, direction) => cells[Tv.tvMove(cells, at(from), direction)]?.key;
-assert(Tv.tvMove(cells, at('q'), 'up') === -1, 'Up from the top row puts the keyboard away');
-assert(move('q', 'left') === 'q' && move('p', 'right') === 'p', 'Left and Right stop at the row ends');
-assert(move('q', 'right') === 'w', 'Right moves along the row');
-assert(move('q', 'down') === 'a' && move('p', 'down') === 'l', 'Down keeps under the same spot');
-assert(move('a', 'down') === 'levelSwitch' && move('l', 'down') === 'delete', 'down to shift and delete');
-assert(move('g', 'down') === 'v' && move('v', 'down') === ' ', 'down to the middle, then space');
-assert(move('delete', 'down') === '0xff0d', 'delete is above the action key');
-assert(move(' ', 'down') === ' ', 'Down from the bottom row stays');
-assert(['c', 'v'].includes(move(' ', 'up')), 'Up from space returns to the middle');
-assert(Tv.tvMove([], 0, 'left') === -1 && Tv.tvMove(cells, 999, 'left') === 0, 'no cells, stale index');
+let anchor = null;
+const go = (from, ...steps) => {
+    let index = at(from);
+    anchor = null;
+    for (const step of steps) {
+        ({index, anchor} = Tv.tvMove(cells, index, step, anchor));
+        if (index < 0)
+            return null;
+    }
+    return cells[index].key;
+};
+assert(cells[Tv.tvStart(cells)].key === 'q', 'the focus starts on q');
+assert(go('1', 'up') === null, 'Up from the top row puts the keyboard away');
+assert(go('q', 'left') === '@' && go('@', 'right') === 'q', 'Left and Right wrap in the row');
+assert(go('q', 'down') === 'a' && go('p', 'down') === '_' && go('@', 'down') === '&', 'Down keeps the column');
+assert(go('d', 'down') === 'c' && go('c', 'down') === ' ', 'straight down to space');
+assert(go('e', 'down', 'down', 'down', 'up', 'up', 'up') === 'e', 'through space and back to the same column');
+assert(go('p', 'down', 'down', 'down') === '0xff0d', 'the action key under the right-hand columns');
+assert(go('0xff0d', 'up') === '?', 'up from the action key to the column under its centre');
+assert(go(' ', 'down') === ' ', 'Down from the bottom row stays');
+assert(Tv.tvMove([], 0, 'left').index === -1 && Tv.tvMove(cells, 999, 'left').index === 0, 'no cells, stale index');
 
 assert(Tv.tvRemoteKey('Return') === 'ok' && Tv.tvRemoteKey('KP_Enter') === 'ok', 'OK types the focused key');
 assert(Tv.tvRemoteKey('Escape') === 'back' && Tv.tvRemoteKey('Back') === 'back', 'Back puts it away');
@@ -104,8 +113,8 @@ assert(Tv.tvActionLabel('', purposes.URL, purposes) === 'Go', 'an address goes')
 assert(Tv.tvActionLabel(null, purposes.NORMAL, purposes) === 'Done', 'anything else is done');
 assert(Tv.tvActionLabel('x'.repeat(80), 0, purposes).length === 24, 'a label stays one short word');
 
-assert(Tv.tvKeyboardHeight(tokens) === 428, 'the mockup keyboard: 26 + 4 x 78 + 3 x 14 + 48');
-assert(Tv.tvCell(tokens).width === 108 && Tv.tvCell(tokens).height === 92, 'a cell is a cap and half its gaps');
+assert(Tv.tvKeyboardHeight(tokens) === 428, 'five rows in the mockup\'s height: 24 + 5 x 64 + 4 x 12 + 36');
+assert(Tv.tvCell(tokens).width === 108 && Tv.tvCell(tokens).height === 76, 'a cell is a cap and half its gaps');
 assert(tokens.keyboard.colours.action_top.startsWith('rgba('), 'OKLCH colours are generated as rgba()');
 
 // Wiring: TV posture only, the remote's keys only while open.

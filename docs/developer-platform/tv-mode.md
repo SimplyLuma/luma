@@ -252,8 +252,20 @@ posture.
 There is one on-screen keyboard. In TV posture the shell's Keycap keyboard
 (the one phones and tablets use) takes its TV form for every text field, the
 shell's and every application's: docked to the bottom, the person's language
-layout as QWERTY rows, then 123 / ABC, space and a blue action key, with
-shift and delete beside the last letter row. Applications use ordinary text
+layout in an aligned grid, as Android TV and tvOS do: every key the same
+size on the same 11 columns, so the remote and a gamepad's D-pad move in
+straight lines (Left and Right wrap in a row, Up and Down keep their column):
+
+```
+1 2 3 4 5 6 7 8 9 0 ⌫
+q w e r t y u i o p @
+a s d f g h j k l _ &
+z x c v b n m , . - ?
+123  ⇧  [    space    ] [ Search ]
+```
+
+123 swaps the letter rows for symbols (one page, as Leanback); the
+focus starts on q. Applications use ordinary text
 widgets (a `TvField`'s `Gtk.Text`, a `Gtk.Entry`); there is no keyboard
 widget to embed and nothing to draw.
 

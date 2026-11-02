@@ -383,8 +383,10 @@ applications run full screen, and minimising the last one returns to Apps.
 gets the keyboard (a remote is a keyboard without letters), opening when a
 field takes the input focus and closing when it leaves; window moves, panel
 toggles and the window-slide/adjustResize paths are skipped. Layout: the
-language model rearranged by `tvKeyboard.js` (QWERTY rows, one shift and
-delete, then 123 / space / an action key), number pads kept; look from the
+language model laid out by `tvKeyboard.js` as an aligned 11-column grid
+(Android TV's Leanback keyboard: digits and delete, three letter rows filled
+with @ _ & , . - ?, then 123, shift, space and the action key; Left/Right
+wrap, Up/Down keep their column), number pads kept; look from the
 `tv.keyboard` tokens as inline styles in TV units, dark, no tool strip,
 suggestions or previews. The remote's focus is a key-material actor in the
 layers' parent (the cached layers are never redrawn); arrows, OK, Escape and
