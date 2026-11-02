@@ -143,6 +143,9 @@ export class TvPresentation {
         // Every remote and gamepad becomes the TV's keys (tvInput.js).
         this._input = new TvInput({home: () => this.showHome('home'),
             quickPanel: () => this._quick?.toggle('remote'),
+            // Start is the system's pause menu: the quick panel over whatever is showing.
+            pause: () => this._quick?.toggle('start'),
+            showQuickPanel: () => this._quick?.open('app'),
             switcher: () => this.toggleSwitcher()});
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);

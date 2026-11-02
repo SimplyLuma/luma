@@ -43,7 +43,7 @@ assert(M.buttonAction(B.SOUTH) === 'ok', 'South is OK by default');
 assert(M.buttonAction(B.EAST) === 'back' && M.buttonAction(B.SELECT) === 'back', 'East and Select are Back');
 assert(M.buttonAction(B.EAST, 'east') === 'ok' && M.buttonAction(B.SOUTH, 'east') === 'back',
     'Nintendo layout: East is OK, South is Back');
-assert(M.buttonAction(B.SELECT, 'east') === 'back' && M.buttonAction(B.START, 'east') === 'menu', 'the rest stays');
+assert(M.buttonAction(B.SELECT, 'east') === 'back' && M.buttonAction(B.START, 'east') === 'pause', 'the rest stays');
 
 // Which face button is OK: the setting wins; automatic follows the layout.
 const xbox = M.padIdentity('030000005e0400008e02000014010000');
@@ -57,7 +57,7 @@ assert(M.confirmButton('automatic', {vendor: 0x0810, product: 0xe501}, 'usb game
 assert(M.confirmButton('automatic', null, '8BitDo SN30 Pro (Switch)') === 'east', 'by name');
 assert(M.confirmButton('east', xbox, 'Microsoft X-Box 360 pad') === 'east', 'the setting wins over a misreported pad');
 assert(M.confirmButton('south', pro, 'Pro Controller') === 'south', 'and over a Nintendo pad');
-assert(M.buttonAction(B.START) === 'menu', 'Start is Menu');
+assert(M.buttonAction(B.START) === 'pause', "Start is the system's pause menu (the quick panel)");
 assert(M.buttonAction(B.MODE) === 'home', 'Guide is Home');
 assert(M.buttonAction(B.DPAD_UP) === 'up' && M.buttonAction(B.DPAD_RIGHT) === 'right', 'D-pad buttons move');
 for (const code of [B.NORTH, B.WEST, B.TL, B.TR, B.THUMBL, B.THUMBR])
@@ -93,6 +93,23 @@ assert(!M.translates('up', ctx(game)) && !M.translates('ok', ctx(game)), 'any ot
 assert(M.translates('home', ctx(game)), 'Home leaves a game');
 assert(!M.translates('up', ctx(claimed)) && !M.translates('home', ctx(claimed)), 'a claim keeps the whole pad');
 assert(M.translates('up', ctx(claimed, {keyboardVisible: true})), 'the TV keyboard always takes the pad');
+// Start is the pause menu in every app (a desktop app, a TV app, the TV home); a game keeps it,
+// and there only a held Guide opens the quick panel.
+assert(M.translates('pause', ctx(game)) && M.translates('pause', ctx(tvApp)) && M.translates('pause', ctx(null)),
+    'Start opens the quick panel over any app or the TV home');
+assert(!M.translates('pause', ctx(claimed)), 'a game that claimed the pads keeps Start');
+assert(M.holdsHome(ctx(claimed)) && !M.holdsHome(ctx(game)) && !M.holdsHome(ctx(tvApp)),
+    'in a game only a held Guide is the Shell\'s');
+assert(/else if \(holdsHome\(context\)\) this\._homeDown\(source, true\)/.test(service) &&
+    /const holdOnly = this\._holdOnly\.delete\(source\);[\s\S]*?if \(holdOnly\) return;/.test(service),
+    "a game's short Guide press stays the game's; its long press opens the quick panel");
+assert(/if \(action === 'home'\) this\._home\(\);\s*else if \(action === 'pause'\) this\._pause\?\.\(\);/.test(service),
+    'Start toggles the quick panel');
+assert(/pause: \(\) => this\._quick\?\.toggle\('start'\)/.test(home) &&
+    /showQuickPanel: \(\) => this\._quick\?\.open\('app'\)/.test(home), 'the TV home wires both');
+assert(/<method name="ShowQuickPanel"\/>/.test(service) && /ShowQuickPanel\(\) \{\s*this\._showQuickPanel\?\.\(\);/.test(service),
+    "an app's bar clock opens the quick panel over the app (D-Bus)");
+
 
 // The service: only in TV posture, every remote key taken, keys from a
 // virtual keyboard, libmanette optional.
