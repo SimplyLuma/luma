@@ -365,6 +365,9 @@
         "height": 256
       },
       "id": "audacity",
+      "keywords": [
+        "GarageBand"
+      ],
       "license": "GPL-3.0-only",
       "name": "Audacity",
       "permissions": [
@@ -453,7 +456,8 @@
       },
       "id": "bitwarden",
       "keywords": [
-        "1Password"
+        "1Password",
+        "LastPass"
       ],
       "license": "GPL-3.0",
       "name": "Bitwarden",
@@ -579,6 +583,11 @@
         "height": 256
       },
       "id": "blender",
+      "keywords": [
+        "3ds Max",
+        "Cinema 4D",
+        "Maya"
+      ],
       "license": "GPL-3.0",
       "name": "Blender",
       "permissions": [
@@ -828,6 +837,10 @@
         "height": 512
       },
       "id": "calendar",
+      "keywords": [
+        "Google Calendar",
+        "Outlook"
+      ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Calendar",
       "preinstalled_on_luma": true,
@@ -1004,6 +1017,8 @@
       },
       "id": "charlie",
       "keywords": [
+        "Apple Mail",
+        "Gmail",
         "Outlook"
       ],
       "license": "Apache-2.0",
@@ -1610,6 +1625,7 @@
       },
       "id": "darkroom",
       "keywords": [
+        "Lightroom",
         "Photoshop"
       ],
       "license": "Apache-2.0",
@@ -2049,6 +2065,10 @@
         "height": 512
       },
       "id": "filer",
+      "keywords": [
+        "File Explorer",
+        "Finder"
+      ],
       "license": "GPL-3.0-or-later AND CC0-1.0",
       "name": "Filer",
       "preinstalled_on_luma": true,
@@ -2106,6 +2126,10 @@
         "height": 256
       },
       "id": "firefox",
+      "keywords": [
+        "Chrome",
+        "Edge"
+      ],
       "license": "MPL-2.0",
       "name": "Firefox",
       "permissions": [
@@ -2963,7 +2987,10 @@
       },
       "id": "libreoffice",
       "keywords": [
-        "Microsoft Office"
+        "Excel",
+        "Microsoft Office",
+        "PowerPoint",
+        "Word"
       ],
       "license": "MPL-2.0",
       "name": "LibreOffice",
@@ -3163,7 +3190,9 @@
       },
       "id": "messages",
       "keywords": [
-        "WhatsApp"
+        "Telegram",
+        "WhatsApp",
+        "iMessage"
       ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Messages",
@@ -3269,6 +3298,10 @@
         "height": 512
       },
       "id": "monitor",
+      "keywords": [
+        "Activity Monitor",
+        "Task Manager"
+      ],
       "license": "Apache-2.0",
       "name": "Monitor",
       "permissions": [
@@ -3544,7 +3577,10 @@
       },
       "id": "notes",
       "keywords": [
-        "Notion"
+        "Apple Notes",
+        "Google Keep",
+        "Notion",
+        "OneNote"
       ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Notes",
@@ -3727,7 +3763,9 @@
       },
       "id": "obsidian",
       "keywords": [
-        "Notion"
+        "Evernote",
+        "Notion",
+        "OneNote"
       ],
       "license": "LicenseRef-proprietary=https://obsidian.md/eula",
       "name": "Obsidian",
@@ -4153,6 +4191,10 @@
         "height": 512
       },
       "id": "photos",
+      "keywords": [
+        "Apple Photos",
+        "Google Photos"
+      ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Photos",
       "permissions": [
@@ -4722,7 +4764,8 @@
       },
       "id": "signal",
       "keywords": [
-        "WhatsApp"
+        "WhatsApp",
+        "iMessage"
       ],
       "license": "AGPL-3.0-only",
       "name": "Signal",
@@ -4947,6 +4990,7 @@
       },
       "id": "spotify",
       "keywords": [
+        "Apple Music",
         "iTunes"
       ],
       "license": "LicenseRef-proprietary=https://www.spotify.com/us/legal/end-user-agreement/",
@@ -5860,6 +5904,8 @@
       },
       "id": "tide",
       "keywords": [
+        "Apple Music",
+        "Winamp",
         "iTunes"
       ],
       "license": "Apache-2.0",
@@ -6314,13 +6360,16 @@
       },
       "id": "viola",
       "keywords": [
+        "Chrome",
+        "Edge",
+        "Safari",
         "browser",
-        "web browser",
+        "chromium",
         "default browser",
         "internet",
-        "web",
-        "chromium",
         "tabs",
+        "web",
+        "web browser",
         "workspaces"
       ],
       "license": "GPL-3.0-only AND BSD-3-Clause",
@@ -6905,7 +6954,10 @@
       },
       "id": "write",
       "keywords": [
-        "Microsoft Office"
+        "Google Docs",
+        "Microsoft Office",
+        "Microsoft Word",
+        "Pages"
       ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Write",
