@@ -203,6 +203,7 @@ typedef struct {
   gboolean generic;      /* the sidebar is not a LumaNavigationSidebar: it is told by classes */
   GtkWidget *scroll;     /* a generic sidebar's scrolled list */
   GtkAlign sidebar_valign;
+  GtkWidget *page_modal; /* a modal card drawn as a page in the frame (weak) */
 } TvFrame;
 
 static const char *const tv_sheet =
@@ -480,6 +481,36 @@ static const char *const tv_parts_sheet =
 ".lumaui-tv-frame .luma-empty-state .luma-empty-actions { margin-top: 32tv; }\n"
 /* a modal card over the page (luma_appkit LayerHost): a TV sheet */
 "window.lumaui-tv .lumaui-scrim { background-color: rgba(3, 4, 8, 0.78); background-image: none; }\n"
+/* a modal card as a page in the frame (sign-in): no sheet, the page's type; ways as equal cards */
+"window.lumaui-tv .lumaui-scrim.lumaui-tv-page-scrim { background-color: transparent; }\n"
+"window.lumaui-tv .lumaui-modal.lumaui-tv-page-modal { min-width: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; }\n"
+"window.lumaui-tv .lumaui-tv-page-modal label.lumaui-t-title-1, window.lumaui-tv .lumaui-tv-page-modal label.lumaui-part-title {\n"
+"  font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; color: @ink@; }\n"
+"window.lumaui-tv .lumaui-tv-page-modal > * { border-spacing: 0; }\n"
+"window.lumaui-tv .lumaui-tv-page-modal box.vertical { border-spacing: 18tv; }\n"
+"window.lumaui-tv .lumaui-tv-page-modal label { font-size: 26tv; color: @ink_2@; }\n"
+".lumaui-part-ways { border-spacing: 24tv; margin-top: 10tv; }\n"
+"window.lumaui-tv .lumaui-part-way { padding: 36tv; border-radius: 30tv; background-color: @bar@; background-image: none; border: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv .lumaui-part-way label { font-size: 24tv; line-height: 1.42; color: @ink_2@; }\n"
+"window.lumaui-tv .lumaui-part-way .lumaui-qr { min-width: 232tv; min-height: 232tv; padding: 16tv; border-radius: 22tv; background-color: white; margin-top: 18tv; }\n"
+"window.lumaui-tv .lumaui-part-way label.lumaui-link-place { font-size: 21tv; font-weight: 650; color: @ink_3@; margin-top: 4tv; }\n"
+/* a one-time code as boxes (luma_appkit set_code_field): wells 4 + gap + 4, the current one ringed with a caret */
+"window.lumaui-tv .lumaui-code { padding: 32tv 36tv 36tv 36tv; border-radius: 30tv; background-color: @bar@; background-image: none; border-spacing: 16tv;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv .lumaui-code.lumaui-code-focus { box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 0 0 5tv white; }\n"
+"window.lumaui-tv .lumaui-code label.lumaui-code-label { font-size: 20tv; font-weight: 650; letter-spacing: 1tv; color: @ink_3@; }\n"
+"window.lumaui-tv .lumaui-code .lumaui-code-boxes { border-spacing: 14tv; }\n"
+"window.lumaui-tv .lumaui-code .lumaui-code-gap { min-width: 26tv; }\n"
+"window.lumaui-tv .lumaui-code label.lumaui-code-box { min-width: 84tv; min-height: 104tv; border-radius: 20tv; font-size: 52tv; font-weight: 700;\n"
+"  color: @ink@; background-color: @well@; box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 2tv 4tv @well_shade@; font-feature-settings: \"tnum\"; }\n"
+"window.lumaui-tv .lumaui-code label.lumaui-code-box.now { box-shadow: inset 0 0 0 1.5tv @well_rim@, inset 0 0 0 3tv @accent@; }\n"
+"window.lumaui-tv box.lumaui-code-source > label, window.lumaui-tv .lumaui-modal box.lumaui-code-source > entry, window.lumaui-tv box.lumaui-code-source > entry,\n"
+"window.lumaui-tv .lumaui-modal box.lumaui-code-source > entry > text {\n"
+"  min-height: 0; min-width: 0; padding: 0; margin: 0; border: none; box-shadow: none; background: none; font-size: 1px; opacity: 0; }\n"
+"window.lumaui-tv .lumaui-code-source { border-spacing: 0; margin: 0; padding: 0; min-height: 0; }\n"
+"window.lumaui-tv .lumaui-code label.lumaui-code-status { font-size: 22tv; font-weight: 600; color: @ink_3@; }\n"
+"window.lumaui-tv .lumaui-code label.lumaui-code-status.lumaui-code-problem { color: #f2b45a; }\n"
 /* a libadwaita dialog with pages (pairing): a TV sheet at TV size, its rows as the page's */
 "window.lumaui-tv dialog.floating sheet { min-width: 1040tv; min-height: 780tv; border-radius: 36tv; border: none;\n"
 "  background-color: @sheet@; background-image: none; color: @ink@;\n"
@@ -513,7 +544,7 @@ static const char *const tv_parts_sheet =
 "  font-size: 25tv; font-weight: 650; color: @ink@; background-color: @chip@; background-image: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
 "window.lumaui-tv .lumaui-modal button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
-"window.lumaui-tv .lumaui-modal button.suggested-action { background-color: @accent@; color: white; }\n"
+"window.lumaui-tv .lumaui-modal button.suggested-action, window.lumaui-tv .lumaui-modal button.lumaui-text-button.key { background-color: @accent@; color: white; }\n"
 "window.lumaui-tv .lumaui-modal button:focus-visible { background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
 "window.lumaui-tv .lumaui-modal button:disabled { opacity: 0.38; }\n"
@@ -812,7 +843,7 @@ static void unplace_lead(GtkWidget *lead) {
 /* Parts laid out differently on a TV: a row of buttons runs across; a centred column with a
  * footnote centres its content in the safe area and puts the footnote on the bottom line; an
  * emblem takes the TV's size. What is changed is kept on the widget and put back on leaving. */
-typedef struct { int orientation, valign, vexpand, halign, pixel_size; } TvSaved;
+typedef struct { int orientation, valign, vexpand, halign, pixel_size, homogeneous; } TvSaved;
 
 static void hold_layout(GtkWidget *w) {
   if (g_object_get_data(G_OBJECT(w), "luma-tv-layout") != NULL) return;
@@ -822,6 +853,7 @@ static void hold_layout(GtkWidget *w) {
   saved->halign = gtk_widget_get_halign(w);
   saved->vexpand = gtk_widget_get_vexpand_set(w) ? gtk_widget_get_vexpand(w) : -1;
   saved->pixel_size = GTK_IS_IMAGE(w) ? gtk_image_get_pixel_size(GTK_IMAGE(w)) : 0;
+  saved->homogeneous = GTK_IS_STACK(w) ? gtk_stack_get_vhomogeneous(GTK_STACK(w)) : -1;
   g_object_set_data_full(G_OBJECT(w), "luma-tv-layout", saved, g_free);
 }
 
@@ -829,19 +861,26 @@ static void let_layout(GtkWidget *w) {
   TvSaved *saved = g_object_get_data(G_OBJECT(w), "luma-tv-layout");
   if (saved == NULL) return;
   if (saved->orientation >= 0) gtk_orientable_set_orientation(GTK_ORIENTABLE(w), saved->orientation);
+  if (gtk_widget_has_css_class(w, "lumaui-part-ways") && GTK_IS_BOX(w)) gtk_box_set_homogeneous(GTK_BOX(w), FALSE);
+  if (gtk_widget_has_css_class(w, "lumaui-part-way")) gtk_widget_set_hexpand_set(w, FALSE);
   gtk_widget_set_valign(w, saved->valign);
   gtk_widget_set_halign(w, saved->halign);
   if (saved->vexpand < 0) gtk_widget_set_vexpand_set(w, FALSE);
   else gtk_widget_set_vexpand(w, saved->vexpand);
   if (GTK_IS_IMAGE(w)) gtk_image_set_pixel_size(GTK_IMAGE(w), saved->pixel_size);
+  if (GTK_IS_STACK(w) && saved->homogeneous >= 0) gtk_stack_set_vhomogeneous(GTK_STACK(w), saved->homogeneous);
   g_object_set_data(G_OBJECT(w), "luma-tv-layout", NULL);
 }
 
 static void lay_out_part(GtkWidget *w) {
   if (g_object_get_data(G_OBJECT(w), "luma-tv-layout") != NULL) return;
-  if (gtk_widget_has_css_class(w, "lumaui-part-buttons") && GTK_IS_BOX(w)) {
+  if ((gtk_widget_has_css_class(w, "lumaui-part-buttons") || gtk_widget_has_css_class(w, "lumaui-part-ways")) && GTK_IS_BOX(w)) {
     hold_layout(w);
     gtk_orientable_set_orientation(GTK_ORIENTABLE(w), GTK_ORIENTATION_HORIZONTAL);
+    if (gtk_widget_has_css_class(w, "lumaui-part-ways")) gtk_box_set_homogeneous(GTK_BOX(w), TRUE);
+  } else if (gtk_widget_has_css_class(w, "lumaui-part-way")) {
+    hold_layout(w);
+    gtk_widget_set_hexpand(w, TRUE);
   } else if (GTK_IS_IMAGE(w) && gtk_image_get_pixel_size(GTK_IMAGE(w)) > 0) {
     hold_layout(w);
     gtk_image_set_pixel_size(GTK_IMAGE(w), -1); /* an icon the app sized: the TV sheet sizes it */
@@ -1344,6 +1383,10 @@ static GtkWidget *find_class(GtkWidget *w, const char *cls) {
 /* Bring the remote into an open question: its Cancel first (the safe answer), else its first control. */
 static void release_modal(TvFrame *f, GtkWidget *w) {
   lay_out_part(w);
+  if (GTK_IS_STACK(w) && f->page_modal != NULL && g_object_get_data(G_OBJECT(w), "luma-tv-layout") == NULL) {
+    hold_layout(w); /* a page's steps are each as tall as they are */
+    gtk_stack_set_vhomogeneous(GTK_STACK(w), FALSE);
+  }
   if (ADW_IS_CLAMP(w) && g_object_get_data(G_OBJECT(w), "luma-tv-clamp") == NULL) {
     int *saved = g_new0(int, 6);
     GtkWidget *child = adw_clamp_get_child(ADW_CLAMP(w));
@@ -1354,17 +1397,63 @@ static void release_modal(TvFrame *f, GtkWidget *w) {
       saved[4] = gtk_widget_get_margin_top(child); saved[5] = gtk_widget_get_margin_bottom(child);
     }
     g_object_set_data_full(G_OBJECT(w), "luma-tv-clamp", saved, g_free);
-    adw_clamp_set_maximum_size(ADW_CLAMP(w), (int)round(900 * f->unit));
-    adw_clamp_set_tightening_threshold(ADW_CLAMP(w), (int)round(900 * f->unit));
+    int width = f->page_modal != NULL ? G_MAXINT / 4 : (int)round(900 * f->unit);
+    adw_clamp_set_maximum_size(ADW_CLAMP(w), width);
+    adw_clamp_set_tightening_threshold(ADW_CLAMP(w), width);
   }
   for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c))
     release_modal(f, c);
 }
 
+/* A modal card (luma_appkit LayerHost) is a page in the frame on a TV: it takes the page's place
+ * in the safe area under the bar, the window's own page and island step aside until it closes. */
+static void page_modal_end(TvFrame *f) {
+  if (f->page_modal == NULL) return;
+  GtkWidget *modal = f->page_modal;
+  g_clear_weak_pointer(&f->page_modal);
+  if (f->frame != NULL) gtk_widget_set_opacity(f->frame, 1.0);
+  int *margins = g_object_get_data(G_OBJECT(modal), "luma-tv-margins");
+  if (margins != NULL) {
+    gtk_widget_set_margin_top(modal, margins[0]); gtk_widget_set_margin_bottom(modal, margins[1]);
+    gtk_widget_set_margin_start(modal, margins[2]); gtk_widget_set_margin_end(modal, margins[3]);
+    g_object_set_data(G_OBJECT(modal), "luma-tv-margins", NULL);
+  }
+  let_layout(modal);
+  gtk_widget_remove_css_class(modal, "lumaui-tv-page-modal");
+  GtkWidget *scrim = gtk_widget_get_prev_sibling(modal);
+  if (scrim != NULL) gtk_widget_remove_css_class(scrim, "lumaui-tv-page-scrim");
+  restore_page(modal);
+}
+
+static void page_modal_begin(TvFrame *f, GtkWidget *modal) {
+  if (f->page_modal == modal) return;
+  page_modal_end(f);
+  g_set_weak_pointer(&f->page_modal, modal);
+  int *margins = g_new(int, 4);
+  margins[0] = gtk_widget_get_margin_top(modal); margins[1] = gtk_widget_get_margin_bottom(modal);
+  margins[2] = gtk_widget_get_margin_start(modal); margins[3] = gtk_widget_get_margin_end(modal);
+  g_object_set_data_full(G_OBJECT(modal), "luma-tv-margins", margins, g_free);
+  hold_layout(modal);
+  gtk_widget_set_halign(modal, GTK_ALIGN_FILL);
+  gtk_widget_set_valign(modal, GTK_ALIGN_FILL);
+  gtk_widget_set_margin_top(modal, (int)round(166 * f->unit));
+  gtk_widget_set_margin_bottom(modal, (int)round(56 * f->unit));
+  gtk_widget_set_margin_start(modal, (int)round(96 * f->unit));
+  gtk_widget_set_margin_end(modal, (int)round(96 * f->unit));
+  gtk_widget_add_css_class(modal, "lumaui-tv-page-modal");
+  GtkWidget *scrim = gtk_widget_get_prev_sibling(modal);
+  if (scrim != NULL && gtk_widget_has_css_class(scrim, "lumaui-scrim")) gtk_widget_add_css_class(scrim, "lumaui-tv-page-scrim");
+  if (f->frame != NULL) gtk_widget_set_opacity(f->frame, 0.0);
+}
+
 static GtkWidget *hold_modal(TvFrame *f) {
   GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
-  if (modal == NULL)
+  if (modal == NULL) {
+    page_modal_end(f);
     return NULL;
+  }
+  if (gtk_widget_has_css_class(modal, "lumaui-modal") && !gtk_widget_has_css_class(modal, "lumaui-dialog"))
+    page_modal_begin(f, modal);
   if (gtk_widget_has_css_class(modal, "lumaui-modal") || (ADW_IS_DIALOG(modal) && !ADW_IS_ALERT_DIALOG(modal)))
     release_modal(f, modal);
   GtkWidget *focus = focus_of(f);
@@ -1385,8 +1474,10 @@ static gboolean modal_key(TvFrame *f, GtkWidget *modal, guint key) {
   case GDK_KEY_Right: case GDK_KEY_KP_Right: dir = GTK_DIR_RIGHT; break;
   default:
     if (key == GDK_KEY_Escape || key == GDK_KEY_Back) {
+      GtkWidget *back = back_part(modal);
       GtkWidget *cancel = find_class(modal, "lumaui-dialog-cancel");
-      if (cancel != NULL) gtk_widget_activate(cancel);
+      if (back != NULL) gtk_widget_activate(back); /* a step of the page: back to the step before */
+      else if (cancel != NULL) gtk_widget_activate(cancel);
       else if (ADW_IS_DIALOG(modal)) adw_dialog_close(ADW_DIALOG(modal));
       else return GDK_EVENT_PROPAGATE; /* a modal card: its layer's own Back (luma_appkit LayerHost) */
       return GDK_EVENT_STOP;
@@ -1689,6 +1780,7 @@ static void leave(TvFrame *f) {
   g_object_unref(f->content);
 
   restore_page(f->island);
+  page_modal_end(f);
   GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
   if (modal != NULL && (gtk_widget_has_css_class(modal, "lumaui-modal") || ADW_IS_DIALOG(modal)))
     restore_page(modal);
@@ -1720,6 +1812,7 @@ static void frame_free(TvFrame *f) {
   g_array_unref(f->path);
   g_clear_weak_pointer(&f->ok_widget);
   g_clear_weak_pointer(&f->held);
+  g_clear_weak_pointer(&f->page_modal);
   g_free(f->held_title);
   g_free(f->held_page);
   g_free(f);

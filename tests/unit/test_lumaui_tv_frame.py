@@ -149,6 +149,37 @@ class TvFrame(unittest.TestCase):
         self.assertFalse(island.get_parent().has_css_class("lumaui-tv-frame"))
         window.destroy()
 
+    def test_code_field_on_a_tv(self):
+        from luma_appkit import TextField, set_code_field
+        window = AppWindow(application=self.app, app_id="org.projectluma.tests.PyPantry", title="Pantry",
+                           icon_name="org.projectluma.Connect", commands=luma_appkit.CommandRegistry(()),
+                           default_width=1280, default_height=720)
+        island = Island()
+        form = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        field, go = TextField("Code"), Gtk.Button(label="Sign In")
+        form.append(field)
+        form.append(go)
+        island.append(form)
+        set_code_field(field, length=8, group=4, next=go)
+        window.set_body(island)
+        window.present()
+        spin(200)
+        field.entry.set_text("ab-12 c")
+        self.assertEqual(field.entry.get_text(), "ab-12 c")     # a desktop field takes what is typed
+        window.tv_posture = True
+        spin(300)
+        boxes = field.get_next_sibling()
+        self.assertTrue(boxes.has_css_class("lumaui-code") and boxes.get_visible())
+        self.assertEqual(field.entry.get_text(), "AB12C")       # A-Z and 0-9, uppercased
+        field.entry.set_text("k7q2xm4pzz")
+        self.assertEqual(field.entry.get_text(), "K7Q2XM4P")    # at most eight
+        self.assertEqual([b.get_label() for b in boxes.boxes], list("K7Q2XM4P"))
+        window.tv_posture = False
+        spin(300)
+        self.assertFalse(boxes.get_visible())
+        self.assertFalse(field.has_css_class("lumaui-code-source"))
+        window.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()
