@@ -31,6 +31,17 @@
 #include <adwaita.h>
 #include <math.h>
 #include <string.h>
+static gboolean tv_debug_grab(GtkWidget *w, const char *where) {
+  if (g_getenv("LUMA_TV_DEBUG") != NULL) g_printerr("tv grab by %s -> %s\n", where, G_OBJECT_TYPE_NAME(w));
+  return gtk_widget_grab_focus(w);
+}
+#define gtk_widget_grab_focus(w) tv_debug_grab((w), G_STRFUNC)
+static gboolean tv_debug_child(GtkWidget *w, GtkDirectionType d, const char *where) {
+  gboolean r = gtk_widget_child_focus(w, d);
+  if (g_getenv("LUMA_TV_DEBUG") != NULL) g_printerr("tv child_focus by %s on %s dir %d -> %d\n", where, G_OBJECT_TYPE_NAME(w), d, r);
+  return r;
+}
+#define gtk_widget_child_focus(w, d) tv_debug_child((w), (d), G_STRFUNC)
 
 /* ── the room ─────────────────────────────────────────────────────────────────────────────── */
 
@@ -177,6 +188,10 @@ typedef struct {
   GtkWidget *held;       /* the page widget the remote was on (weak): gone means the page redrew */
   gint64 key_at;         /* the last key the frame saw */
   gint64 moved_at;       /* when the focus last moved without a key (a redraw, GTK's fallback) */
+  gboolean held_field;   /* the remote was in a text field */
+  guint reveal_id;
+  int self_moving;       /* the frame itself is moving the focus */
+  char *held_title;      /* the title of the row the remote was on: rows are found by it, not by place */
   gulong active_id;
   gpointer keyboard;     /* the TV keyboard's height, followed */
   int island_bottom;     /* the island's own bottom margin, while the keyboard lifts it */
@@ -690,7 +705,40 @@ static GtkWidget *hold_modal(TvFrame *f);
 
 /* A page that redraws under the remote (a network list refreshing) must not lose its place: the
  * focus is remembered as a path of child positions and found again in the redrawn page. */
+static gboolean editable(GtkWidget *focus);
+
+static GtkWidget *part_row_of(TvFrame *f, GtkWidget *w) {
+  while (w != NULL && w != f->island && !gtk_widget_has_css_class(w, "lumaui-part-row")) w = gtk_widget_get_parent(w);
+  return w != NULL && w != f->island ? w : NULL;
+}
+
+static const char *first_text(GtkWidget *w) {
+  if (GTK_IS_LABEL(w) && gtk_widget_get_visible(w) && *gtk_label_get_text(GTK_LABEL(w)) != '\0')
+    return gtk_label_get_text(GTK_LABEL(w));
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    const char *t = first_text(c);
+    if (t != NULL) return t;
+  }
+  return NULL;
+}
+
+static GtkWidget *row_titled(TvFrame *f, GtkWidget *w, const char *title) {
+  if (gtk_widget_has_css_class(w, "lumaui-part-row")) {
+    const char *t = first_text(w);
+    return g_strcmp0(t, title) == 0 ? w : NULL;
+  }
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    GtkWidget *found = row_titled(f, c, title);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
 static void remember(TvFrame *f, GtkWidget *focus) {
+  f->held_field = editable(focus);
+  GtkWidget *row = part_row_of(f, focus);
+  g_free(f->held_title);
+  f->held_title = row != NULL ? g_strdup(first_text(row)) : NULL;
   g_clear_weak_pointer(&f->held);
   g_set_weak_pointer(&f->held, focus);
   g_array_set_size(f->path, 0);
@@ -718,6 +766,14 @@ static gboolean focus_lost(TvFrame *f) {
 }
 
 static GtkWidget *path_widget(TvFrame *f) {
+  /* the same row by its title (a list that reordered), its first control; else the same place */
+  GtkWidget *row = f->held_title != NULL ? row_titled(f, f->island, f->held_title) : NULL;
+  if (row != NULL) {
+    GtkWidget *first = gtk_widget_get_focusable(row) ? row : NULL;
+    for (GtkWidget *c = row; first == NULL && c != NULL; c = gtk_widget_get_first_child(c))
+      if (gtk_widget_get_focusable(c) && !GTK_IS_LABEL(c)) first = c;
+    return first != NULL ? first : row;
+  }
   GtkWidget *w = f->island;
   for (guint i = 0; i < f->path->len; i++) {
     GtkWidget *c = gtk_widget_get_first_child(w);
@@ -736,6 +792,8 @@ static gboolean grown_field(TvFrame *f) {
   GtkWidget *row = path_widget(f);
   while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
   GtkWidget *field = row != NULL && row != f->island ? first_field(row) : NULL;
+  if (g_getenv("LUMA_TV_DEBUG") != NULL)
+    g_printerr("tv grown: title=%s row=%s field=%p\n", f->held_title ? f->held_title : "-", row && row != f->island ? first_text(row) : "-", (void *)field);
   if (field == NULL) {
     /* grown with actions only (Connect, Forget …): the first of them takes the focus */
     GtkWidget *grown = row != NULL && row != f->island && GTK_IS_BOX(row) ? gtk_widget_get_first_child(row) : NULL;
@@ -743,12 +801,17 @@ static gboolean grown_field(TvFrame *f) {
     if (grown == NULL || !gtk_widget_is_drawable(grown))
       return FALSE;
     f->ok_at = 0;
-    return gtk_widget_child_focus(grown, GTK_DIR_TAB_FORWARD);
+    f->self_moving++;
+    gboolean moved = gtk_widget_child_focus(grown, GTK_DIR_TAB_FORWARD);
+    f->self_moving--;
+    return moved;
   }
   f->ok_at = 0;
   GtkWidget *focus = focus_of(f);
+  f->self_moving++;
   if (focus != field && !gtk_widget_is_ancestor(focus, field))
     gtk_widget_grab_focus(field);
+  f->self_moving--;
   return TRUE;
 }
 
@@ -758,28 +821,25 @@ static gboolean refind(TvFrame *f) {
   gboolean redrawn = f->held == NULL && g_get_monotonic_time() - f->key_at > 400 * 1000;
   if (!f->page_zone || f->path->len == 0 || (!focus_lost(f) && !redrawn))
     return FALSE;
-  GtkWidget *w = f->island;
-  for (guint i = 0; i < f->path->len; i++) {
-    GtkWidget *c = gtk_widget_get_first_child(w);
-    for (int n = g_array_index(f->path, int, i); c != NULL && n > 0; n--) c = gtk_widget_get_next_sibling(c);
-    if (c == NULL) break;
-    w = c;
-  }
-  /* OK grew the row in place with a field (a network's password): the field takes the focus,
-   * and with it the TV keyboard. */
-  if (g_get_monotonic_time() - f->ok_at < 2 * G_USEC_PER_SEC) {
+  GtkWidget *w = path_widget(f);
+  /* The remote was typing in that row, or OK just grew it with a field: the field again. */
+  if (f->held_field || g_get_monotonic_time() - f->ok_at < 2 * G_USEC_PER_SEC) {
     GtkWidget *row = w;
     while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
     GtkWidget *field = row != NULL && row != f->island ? first_field(row) : NULL;
     if (field != NULL && gtk_widget_grab_focus(field)) {
       f->ok_at = 0;
+      remember(f, focus_of(f));
       return TRUE;
     }
   }
   for (; w != NULL && w != gtk_widget_get_parent(f->island); w = gtk_widget_get_parent(w)) {
     if (!gtk_widget_is_drawable(w)) continue;
-    if ((gtk_widget_get_focusable(w) && gtk_widget_grab_focus(w)) || gtk_widget_child_focus(w, GTK_DIR_TAB_FORWARD))
+    if ((gtk_widget_get_focusable(w) && gtk_widget_grab_focus(w)) || gtk_widget_child_focus(w, GTK_DIR_TAB_FORWARD)) {
+      /* found again: this is now where the remote is (never search again until the next redraw) */
+      if (focus_of(f) != NULL) remember(f, focus_of(f));
       return TRUE;
+    }
   }
   return FALSE;
 }
@@ -860,7 +920,8 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
     g_printerr("tv focus: %s %s.%s page=%d\n", focus ? G_OBJECT_TYPE_NAME(focus) : "(none)",
                focus ? gtk_widget_get_css_name(focus) : "", joined ? joined : "", focus ? in_page(f, focus) : 0);
   }
-  if (focus_lost(f) || (f->page_zone && f->held == NULL && g_get_monotonic_time() - f->key_at > 400 * 1000)) {
+  if (f->self_moving == 0 &&
+      (focus_lost(f) || (f->page_zone && f->held == NULL && g_get_monotonic_time() - f->key_at > 400 * 1000))) {
     queue_relax(f);  /* a page redrawn under the focus: it is found again there */
     queue_settle(f); /* or, failing that, the island takes it back */
     return;
@@ -873,6 +934,7 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
       /* waiting for a row to grow: keep the row's path, but the focus is held where it now is */
       g_clear_weak_pointer(&f->held);
       g_set_weak_pointer(&f->held, focus);
+      f->held_field = editable(focus);
     }
   } else if (gtk_widget_is_ancestor(focus, f->sidebar)) {
     f->page_zone = FALSE;
@@ -1027,6 +1089,8 @@ static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint 
   (void)controller; (void)code;
   if (!f->active || (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK)) != 0)
     return GDK_EVENT_PROPAGATE;
+  if (g_getenv("LUMA_TV_DEBUG") != NULL)
+    g_printerr("tv key %s\n", gdk_keyval_name(key));
   /* OK right after the focus moved by itself (the page redrew under the remote) acts on nothing:
    * the remote never acts on a control it did not choose (a power switch beside a list). */
   if (is_ok(key) && g_get_monotonic_time() - f->moved_at < 600 * 1000 && f->moved_at > f->key_at) {
@@ -1142,10 +1206,28 @@ static gboolean key_released(GtkEventControllerKey *controller, guint key, guint
 
 /* The TV keyboard covers the bottom of the screen: the page ends above it, so the focused field
  * (and its row) scrolls into view over the keyboard. */
+/* The row the remote is on, brought into view (above the keyboard once the page has shrunk). */
+static gboolean reveal_focus(gpointer data) {
+  TvFrame *f = data;
+  f->reveal_id = 0;
+  GtkWidget *focus = f->active ? focus_of(f) : NULL;
+  if (focus == NULL || !in_page(f, focus))
+    return G_SOURCE_REMOVE;
+  GtkWidget *row = focus;
+  while (row != NULL && row != f->island && !gtk_widget_has_css_class(row, "lumaui-part-row")) row = gtk_widget_get_parent(row);
+  GtkWidget *target = row != NULL && row != f->island ? row : focus;
+  GtkWidget *viewport = gtk_widget_get_ancestor(target, GTK_TYPE_VIEWPORT);
+  if (viewport != NULL)
+    gtk_viewport_scroll_to(GTK_VIEWPORT(viewport), target, NULL);
+  return G_SOURCE_REMOVE;
+}
+
 static void keyboard_height(guint height, gpointer data) {
   TvFrame *f = data;
   if (!f->active) return;
   gtk_widget_set_margin_bottom(f->island, height > 0 ? (int)round(height * f->unit) : f->island_bottom);
+  if (height > 0 && f->reveal_id == 0)
+    f->reveal_id = g_timeout_add(120, reveal_focus, f); /* once the page has its new height */
 }
 
 static void active_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
@@ -1223,6 +1305,7 @@ static void leave(TvFrame *f) {
   g_clear_handle_id(&f->settle_id, g_source_remove);
   g_clear_handle_id(&f->relax_id, g_source_remove);
   g_clear_handle_id(&f->restyle_id, g_source_remove);
+  g_clear_handle_id(&f->reveal_id, g_source_remove);
   g_clear_signal_handler(&f->focus_id, f->window);
   luma_tv_keyboard_unwatch(f->keyboard);
   f->keyboard = NULL;
@@ -1271,6 +1354,7 @@ static void frame_free(TvFrame *f) {
   g_array_unref(f->path);
   g_clear_weak_pointer(&f->ok_widget);
   g_clear_weak_pointer(&f->held);
+  g_free(f->held_title);
   g_free(f);
 }
 
