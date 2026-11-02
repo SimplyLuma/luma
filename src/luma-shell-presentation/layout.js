@@ -139,19 +139,19 @@ const STATUS_GLYPHS = [
     [/^network-wireless-(signal-excellent|connected)/, 'lumaui-wifi-symbolic'],
     [/^network-wireless-signal-good/, 'lumaui-wifi-high-symbolic'],
     [/^network-wireless-(signal-ok|acquiring)/, 'lumaui-wifi-low-symbolic'],
-    [/^network-wireless-signal-(weak|none)/, 'lumaui-wifi-zero-symbolic'],
+    [/^network-wireless-signal-(weak|none)/, 'luma-status-wifi-zero-symbolic'],
     [/^network-wireless-(disabled|offline|no-route)/, 'luma-wifi-off-symbolic'],
     [/^network-wireless-hotspot/, 'lumaui-wifi-symbolic'],
-    [/^network-cellular-signal-excellent/, 'lumaui-signal-symbolic'],
-    [/^network-cellular-signal-good/, 'lumaui-signal-high-symbolic'],
-    [/^network-cellular-signal-ok/, 'lumaui-signal-medium-symbolic'],
-    [/^network-cellular-signal-weak/, 'lumaui-signal-low-symbolic'],
-    [/^network-cellular-/, 'lumaui-signal-zero-symbolic'],
+    [/^network-cellular-signal-excellent/, 'luma-status-signal-symbolic'],
+    [/^network-cellular-signal-good/, 'luma-status-signal-high-symbolic'],
+    [/^network-cellular-signal-ok/, 'luma-status-signal-medium-symbolic'],
+    [/^network-cellular-signal-weak/, 'luma-status-signal-low-symbolic'],
+    [/^network-cellular-/, 'luma-status-signal-zero-symbolic'],
     [/^network-wired/, 'lumaui-ethernet-port-symbolic'],
     [/^network-vpn/, 'lumaui-shield-symbolic'],
     [/^airplane-mode/, 'lumaui-plane-symbolic'],
     [/^audio-volume-muted/, 'lumaui-volume-x-symbolic'],
-    [/^audio-volume-low/, 'lumaui-volume-symbolic'],
+    [/^audio-volume-low/, 'luma-status-volume-symbolic'],
     [/^audio-volume-medium/, 'lumaui-volume-1-symbolic'],
     [/^audio-volume-(high|overamplified)/, 'lumaui-volume-2-symbolic'],
     [/^microphone-sensitivity-muted/, 'lumaui-mic-off-symbolic'],
@@ -173,14 +173,14 @@ export function statusGlyph(name) {
     const battery = /^battery-level-(\d+)(-charging|-charged)?/.exec(name);
     if (battery) {
         if (battery[2] === '-charging')
-            return 'lumaui-battery-charging-symbolic';
+            return 'luma-status-battery-charging-symbolic';
         const level = Number(battery[1]);
         if (battery[2] === '-charged' || level >= 80)
-            return 'lumaui-battery-full-symbolic';
+            return 'luma-status-battery-full-symbolic';
         return level >= 40 ? 'lumaui-battery-medium-symbolic'
-            : level >= 20 ? 'lumaui-battery-low-symbolic' : 'lumaui-battery-warning-symbolic';
+            : level >= 20 ? 'luma-status-battery-low-symbolic' : 'luma-status-battery-warning-symbolic';
     }
     if (/^battery-(missing|empty|caution)/.test(name))
-        return 'lumaui-battery-warning-symbolic';
+        return 'luma-status-battery-warning-symbolic';
     return STATUS_GLYPHS.find(([pattern]) => pattern.test(name))?.[1] ?? null;
 }
