@@ -11,6 +11,14 @@ What they are told depends on the account (see autounlock): one that signs
 in automatically and is not enrolled yet, or whose sealed key stopped
 opening, is asked for its password once; one that stopped signing in
 automatically is offered its login password back.
+
+The one case nothing else opens -- automatic sign-in, no device seal, the
+keyring locked -- does not wait: the unit is ordered before the graphical
+session is reached, decides before GTK is even loaded, and shows Luma's own
+sheet (see first_unlock and sheet) while it holds the system prompter (see
+prompt_gate), so no app can raise a second password prompt meanwhile. It
+tells systemd it is ready once the sheet is up, or straight away when there
+is nothing to ask, and never later than READY_BOUND_SECONDS.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib  # noqa: E402
 
 from . import autounlock  # noqa: E402
+from .ready import READY_BOUND_SECONDS, decide, notify_ready  # noqa: E402
 from .secrets import Keyring  # noqa: E402
 from .state import SETTLE_SECONDS, State, read  # noqa: E402
 
@@ -36,10 +45,12 @@ log = logging.getLogger("luma-keyring")
 APP_ID = "org.projectluma.Keyring"
 SCHEMA_ID = "org.projectluma.keyring"
 NOTIFICATION_ID = "login-keyring-locked"
-
+# How long the sheet waits for a prompter that cannot be replaced (a prompt
+# gcr-prompter is showing) before it shows anyway.
+GATE_WAIT_SECONDS = 5
 
 class KeyringService(Adw.Application):
-    def __init__(self) -> None:
+    def __init__(self, ask_first: bool = False) -> None:
         super().__init__(application_id=APP_ID,
                          flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self._keyring = Keyring()
@@ -47,6 +58,9 @@ class KeyringService(Adw.Application):
         self._window = None
         self._checked = False
         self._mode = None
+        self._ask_first = ask_first
+        self._gate = None
+        self._gate_tries = 0
 
         self.add_action_entries([
             ("open", lambda *_: self._open_window()),
@@ -61,11 +75,57 @@ class KeyringService(Adw.Application):
         except GLib.Error:
             log.info("no settings schema; asking once per session only")
         self.hold()
-        GLib.timeout_add_seconds(SETTLE_SECONDS, self._check)
+        GLib.timeout_add_seconds(READY_BOUND_SECONDS, notify_ready)
+        if self._ask_first:
+            self._checked = True
+            GLib.idle_add(self._first_unlock)
+        else:
+            notify_ready()
+            GLib.timeout_add_seconds(SETTLE_SECONDS, self._check)
 
     def do_activate(self) -> None:
         # Activated by hand (or from the notification): show the window.
         self._open_window()
+
+    # -- the first unlock ---------------------------------------------------
+    def _first_unlock(self) -> bool:
+        from .prompt_gate import PromptGate
+
+        if self._gate is None:
+            self._gate = PromptGate()
+        if not self._gate.take():
+            self._gate_tries += 1
+            if self._gate_tries <= GATE_WAIT_SECONDS:
+                GLib.timeout_add_seconds(1, self._first_unlock)
+                return GLib.SOURCE_REMOVE
+            log.info("showing the sheet without holding the prompter")
+        # Still locked? Something may have unlocked it while we waited.
+        from .first_unlock import should_ask
+        if not should_ask(self._keyring):
+            self._first_unlock_done(None)
+            return GLib.SOURCE_REMOVE
+        from .sheet import UnlockSheet, Use
+
+        self._window = UnlockSheet(self, Use.FIRST, self._keyring,
+                                   on_done=self._first_unlock_done)
+        self._window.connect("close-request", self._closed)
+        self._window.present()
+        GLib.idle_add(notify_ready)
+        return GLib.SOURCE_REMOVE
+
+    def _first_unlock_done(self, result) -> None:
+        from .first_unlock import Kind
+
+        if self._gate is not None:
+            self._gate.release()
+        log.info("first unlock: %s", result.kind.value if result else "cancelled")
+        if result is not None and result.kind is Kind.AUTOMATIC and result.message:
+            notification = Gio.Notification.new("Your saved passwords unlock by themselves now")
+            notification.set_body(result.message)
+            self.send_notification("login-keyring-weak-password", notification)
+        notify_ready()
+        if self._window is None:
+            self._done()
 
     # -- the check --------------------------------------------------------
     def _check(self) -> bool:
@@ -154,6 +214,14 @@ class KeyringService(Adw.Application):
         if self._window is not None:
             self._window.present()
             return
+        if self._mode is None:
+            # Opened by hand with nothing to put right: the keyring's own page.
+            from .sheet import UnlockSheet, Use
+
+            self._window = UnlockSheet(self, Use.MANAGE, self._keyring)
+            self._window.connect("close-request", self._closed)
+            self._window.present()
+            return
         from .window import KeyringWindow, Mode
 
         reading = read(self._keyring)
@@ -179,7 +247,7 @@ class KeyringService(Adw.Application):
         self._done()
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, ask_first: bool | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="luma-keyring: %(message)s")
     argv = list(argv if argv is not None else sys.argv)
     from .cli import dispatch
@@ -191,4 +259,6 @@ def main(argv: list[str] | None = None) -> int:
     from .autounlock import no_core_dumps
 
     no_core_dumps()
-    return KeyringService().run(argv)
+    if ask_first is None:
+        ask_first = decide(argv)
+    return KeyringService(ask_first=ask_first).run(argv)

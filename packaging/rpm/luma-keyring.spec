@@ -23,6 +23,8 @@ BuildRequires:  systemd-rpm-macros
 Requires:       python3 >= 3.11
 Requires:       python3-gobject
 Requires:       libadwaita
+# LumaUI parts (luma_appkit) for the first-unlock sheet.
+Requires:       luma-developer-platform
 # The keyring this looks after, and the PAM module that unlocks it at login.
 Requires:       gnome-keyring
 Requires:       pam
