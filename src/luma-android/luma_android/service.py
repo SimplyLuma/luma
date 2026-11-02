@@ -17,8 +17,8 @@ from gi.repository import Gio, GLib  # noqa: E402
 from .apk import local_android_package_from_uri, supports_content_type
 from .appearance import settings as appearance_settings
 from .appearance import accessibility_settings, surface_treatment, treatment_settings
-from .config import load_device_profile, load_runtime_config
-from .engine import WaydroidEngine
+from .config import device_class, load_device_profile, load_runtime_config
+from .engine import WaydroidEngine, host_bars_path
 from .activation import activate_for_caller
 from .errors import LumaAndroidError
 from .installer_activation import launch_installer
@@ -79,6 +79,10 @@ class Service:
         self.appearance_lock = threading.Lock()
         self.appearance_pending = None
         self.appearance_worker = None
+        self.bars_monitor: Gio.FileMonitor | None = None
+        self.bars_lock = threading.Lock()
+        self.bars_pending = False
+        self.bars_worker = None
         if self.appearance_settings is not None:
             self.appearance_settings.connect("changed::color-scheme", self.on_appearance_changed)
         if self.treatment_settings is not None:
@@ -88,6 +92,7 @@ class Service:
             self.accessibility_settings.connect("changed::high-contrast", self.on_appearance_changed)
         self.engine.synchronize_launchers()
         self.monitor_launchers()
+        self.monitor_host_bars()
         # Waydroid may restore its generated launchers after the graphical
         # session target starts us. The directory monitor handles ordinary
         # changes; this bounded post-start pass closes the boot-order window
@@ -123,6 +128,43 @@ class Service:
             try:
                 if self.engine.status().get("session") == "RUNNING":
                     self.engine.sync_host_appearance(appearance)
+            except (LumaAndroidError, OSError):
+                pass
+
+    def monitor_host_bars(self) -> None:
+        # The Shell rewrites its bar heights when they change (a mode switch,
+        # Desktop's zero); Android's insets follow while the session runs.
+        path = host_bars_path()
+        try:
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            self.bars_monitor = Gio.File.new_for_path(str(path)).monitor_file(
+                Gio.FileMonitorFlags.NONE, None)
+        except (OSError, GLib.Error):
+            # Session start still reads the file; only live updates are lost.
+            self.bars_monitor = None
+            return
+        self.bars_monitor.connect("changed", self.on_host_bars_changed)
+
+    def on_host_bars_changed(self, *_args) -> None:
+        with self.bars_lock:
+            self.bars_pending = True
+            if self.bars_worker is None:
+                self.bars_worker = threading.Thread(
+                    target=self.sync_host_bar_changes, daemon=True,
+                    name="android-host-bars")
+                self.bars_worker.start()
+
+    def sync_host_bar_changes(self) -> None:
+        # One worker coalesces the burst of events an atomic rewrite emits.
+        while True:
+            with self.bars_lock:
+                if not self.bars_pending:
+                    self.bars_worker = None
+                    return
+                self.bars_pending = False
+            try:
+                if self.engine.status().get("session") == "RUNNING":
+                    self.engine.sync_host_bar_insets(device_class())
             except (LumaAndroidError, OSError):
                 pass
 
