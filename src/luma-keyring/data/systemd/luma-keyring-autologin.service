@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma saved passwords (open the login keyring of an automatic sign-in)
+Documentation=https://projectluma.org/saved-passwords
+# Before anything in the session can ask for a secret; never holding it up.
+Before=graphical-session-pre.target
+After=dbus.socket gnome-keyring-daemon.socket
+ConditionUser=!@system
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-keyring --autologin
+TimeoutStartSec=30
+Slice=session.slice
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryHigh=64M
+
+[Install]
+WantedBy=graphical-session-pre.target

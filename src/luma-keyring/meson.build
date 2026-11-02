@@ -8,6 +8,7 @@ sysconfdir = get_option('sysconfdir')
 
 python.install_sources(
   'luma_keyring/__init__.py',
+  'luma_keyring/autounlock.py',
   'luma_keyring/cli.py',
   'luma_keyring/login.py',
   'luma_keyring/repair.py',
@@ -20,7 +21,8 @@ python.install_sources(
 
 install_data('bin/luma-keyring', install_dir: get_option('libexecdir'), install_mode: 'rwxr-xr-x')
 
-install_data('data/systemd/luma-keyring.service', install_dir: prefix / 'lib' / 'systemd' / 'user')
+install_data('data/systemd/luma-keyring.service', 'data/systemd/luma-keyring-autologin.service',
+             install_dir: prefix / 'lib' / 'systemd' / 'user')
 install_data('data/applications/org.projectluma.Keyring.desktop', install_dir: datadir / 'applications')
 install_data('data/glib-2.0/org.projectluma.keyring.gschema.xml',
              install_dir: datadir / 'glib-2.0' / 'schemas')

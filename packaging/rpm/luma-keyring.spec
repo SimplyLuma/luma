@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           luma-keyring
-Version:        0.1.0
+Version:        0.2.0
 Release:        1.luma.1%{?dist}
 Summary:        Saved passwords that unlock when you log in, or say why they cannot
 License:        MPL-2.0
@@ -22,6 +22,8 @@ Requires:       libadwaita
 # The keyring this looks after, and the PAM module that unlocks it at login.
 Requires:       gnome-keyring
 Requires:       pam
+# Seals the device key of an account that signs in automatically.
+Requires:       systemd >= 256
 
 %description
 A login keyring whose password is no longer the account password cannot be
@@ -35,6 +37,13 @@ it kept. If they do not know the older password, Luma says plainly that nobody
 can read the contents without it and offers to start a fresh keyring, keeping
 the old file in case they remember later. Doing nothing keeps the old
 behaviour.
+
+An account that signs in automatically types no password, so nothing could
+unlock its login keyring. Its keyring is keyed instead to a random key that
+systemd-creds seals to the user and the machine (the TPM2 and the host key
+where there is a TPM2, the host key otherwise), and opened with it before the
+session starts. An existing password-locked keyring is switched over only
+when the person types its password once.
 
 luma-keyring --check prints the state for the capability and first-boot
 checks: a login keyring that cannot be unlocked automatically is a broken
@@ -53,6 +62,11 @@ state worth reporting.
 install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
 ln -s ../luma-keyring.service \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-keyring.service
+%{_userunitdir}/luma-keyring-autologin.service
+%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
+install -d %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants
+ln -s ../luma-keyring-autologin.service \
+  %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Keyring.desktop
@@ -65,7 +79,7 @@ glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
 grep -Fq "auth       include      system-auth" %{buildroot}%{_sysconfdir}/pam.d/luma-keyring
 # No password may be written anywhere: they are arguments to a D-Bus call.
 ! grep -rn "log\.\(info\|warning\|error\)(.*password[^s]" %{buildroot}%{python3_sitelib}/luma_keyring/
-PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_keyring.state, luma_keyring.repair, luma_keyring.secrets"
+PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_keyring.state, luma_keyring.repair, luma_keyring.secrets, luma_keyring.autounlock"
 cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 
 %files
@@ -74,11 +88,18 @@ cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 %{python3_sitelib}/luma_keyring/
 %{_userunitdir}/luma-keyring.service
 %{_userunitdir}/graphical-session.target.wants/luma-keyring.service
+%{_userunitdir}/luma-keyring-autologin.service
+%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
 %{_datadir}/applications/org.projectluma.Keyring.desktop
 %{_datadir}/glib-2.0/schemas/org.projectluma.keyring.gschema.xml
 %config(noreplace) %{_sysconfdir}/pam.d/luma-keyring
 
 %changelog
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
+- Open the login keyring of an automatic sign-in with a sealed device key
+- Offer once to switch an existing password-locked keyring to the device key
+- Offer the login password back when automatic sign-in is turned off
+
 * Sun Sep 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - Say once, in plain words, when the login keyring cannot be unlocked at login
 - Re-key it to the current login password, keeping everything in it
