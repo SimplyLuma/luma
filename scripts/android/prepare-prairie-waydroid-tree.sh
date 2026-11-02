@@ -68,6 +68,7 @@ framework_status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
 device_input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
+device_forced_density_patch="$repo_root/patches/android-device-waydroid/0004-luma-forced-display-density.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 native_density_patch="$repo_root/patches/android-frameworks-native/0002-luma-read-display-density-when-queried.patch"
 
@@ -203,6 +204,7 @@ write_state() {
     printf 'DEVICE_PATCH_SHA=%s\n' "$(patch_sha "$device_patch")"
     printf 'DEVICE_CODEC_PATCH_SHA=%s\n' "$(patch_sha "$device_codec_patch")"
     printf 'DEVICE_INPUT_METHOD_PATCH_SHA=%s\n' "$(patch_sha "$device_input_method_patch")"
+    printf 'DEVICE_FORCED_DENSITY_PATCH_SHA=%s\n' "$(patch_sha "$device_forced_density_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
 }
@@ -337,6 +339,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
   git -C "$device_root" apply "$device_input_method_patch"
+  git -C "$device_root" apply "$device_forced_density_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   git -C "$jelly_root" apply "$jelly_patch"
   commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
@@ -594,12 +597,14 @@ if [ "$(patch_sha "$framework_patch")" != "${FRAMEWORK_PATCH_SHA:-}" ] || \
 fi
 if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$device_codec_patch")" != "${DEVICE_CODEC_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$device_input_method_patch")" != "${DEVICE_INPUT_METHOD_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$device_input_method_patch")" != "${DEVICE_INPUT_METHOD_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$device_forced_density_patch")" != "${DEVICE_FORCED_DENSITY_PATCH_SHA:-}" ]; then
   git -C "$device_root" reset --hard -q "$DEVICE_OFFICIAL_HEAD"
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
   git -C "$device_root" apply "$device_input_method_patch"
+  git -C "$device_root" apply "$device_forced_density_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   changed=1
 fi

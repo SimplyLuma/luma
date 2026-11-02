@@ -31,3 +31,12 @@ where it does not, such as a nested compositor without `zwp_text_input_v3`.
 1. `0001-prairie-host-window-product-property.patch`
 2. `0002-luma-codec-services-match-the-image.patch`
 3. `0003-luma-input-method.patch`
+
+`0004` applies the host's presentation as Android's forced display density.
+`ro.sf.lcd_density` is set once per boot, from the presentation Android boots
+into; when the host presentation changes afterwards (a Fold posture, phone to
+tablet, docking), luma-android publishes `persist.luma.forced_density` and an
+init trigger runs `luma-forced-density` as system, which sets or resets
+WindowManager's forced density. It replaces only an override it applied
+(`persist.luma.density_override`), so a display size chosen in Android's
+settings is kept.
