@@ -190,7 +190,12 @@ a secured network: the password field gets the TV keyboard's "Join" action
 is being typed; the network owner reports the outcome (`joinDone`/`joinFailed`) and, in TV
 posture only, a refused password stops the attempt (no shell prompt over the TV), reopens
 the field with the password selected and says so in a toast, and a join says "Connected
-to <name>". Updates has no Settings page (About links to Depot), so the island leaves it out.
+to <name>". In TV posture a join saves the password in the NetworkManager connection
+(psk-flags 0; system-wide where the session may modify system connections), never in a
+user secret agent (the login keyring is locked under automatic sign-in and its prompt would
+cover the TV); re-joining a saved network with a new password updates that profile
+(autoconnect on) instead of adding another. OK on a saved secured network opens it in place
+(Join with the saved password or a new one, Forget). Updates has no Settings page (About links to Depot), so the island leaves it out.
 Requires luma-developer-platform with LumaUI API level 6.
 
 `0091-lumaui-tv-pages.patch`: the TV-only pages and rows, each bound to the owner that

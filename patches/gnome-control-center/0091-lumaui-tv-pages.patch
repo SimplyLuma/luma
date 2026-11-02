@@ -220,7 +220,7 @@ index 0000000..fd8f39e
 +  else if (g_str_equal (v->page, "tv-remotes")) remotes (v);
 +}
 diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
-index 46fd1ea..cfa70b2 100644
+index 46fd1ea..b6435cc 100644
 --- a/shell/cc-luma-view.c
 +++ b/shell/cc-luma-view.c
 @@ -84,6 +94,7 @@ static gboolean page_supported (const char *page)
@@ -231,7 +231,7 @@ index 46fd1ea..cfa70b2 100644
    const char *pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network",
      "bluetooth", "windows", "shelf", "appearance", "home-screen", "notifications", "search", "search-places", "displays", "nightlight", "sound", "sound-levels", "sound-alert", "power", "mouse", "keyboard", "defaults", "media", "apps", "a11y", "a-see", "a-hear", "a-type", "a-point", "a-zoom" };
    for (guint i = 0; i < G_N_ELEMENTS (pages); i++)
-@@ -1156,6 +1201,7 @@ static void render_page (View *v)
+@@ -1156,6 +1210,7 @@ static void render_page (View *v)
    else if (cc_luma_view_hardware_page (v->page)) cc_luma_view_hardware_render (v);
    else if (cc_luma_view_people_page (v->page)) cc_luma_view_people_render (v);
    else if (cc_luma_view_system_page (v->page)) cc_luma_view_system_render (v);
@@ -239,7 +239,7 @@ index 46fd1ea..cfa70b2 100644
  }
  static void search_render (View *v);
  static gboolean restore_scroll (gpointer data);
-@@ -1338,6 +1398,7 @@ static gboolean valid_wifi_model (CcLumaFixture *model)
+@@ -1338,6 +1407,7 @@ static gboolean valid_wifi_model (CcLumaFixture *model)
  static gboolean page_valid (CcLumaFixture *model, const char *page)
  {
    if (cc_luma_view_hardware_page (page) || cc_luma_view_people_page (page) || cc_luma_view_system_page (page)) return TRUE;
