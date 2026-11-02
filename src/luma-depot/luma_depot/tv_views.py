@@ -95,7 +95,7 @@ def _rules(opaque: bool) -> str:
 .lumaui-tv-stage .depot-tv-pad label.tv-h2 {{ line-height: 37tv; }}
 .lumaui-tv-stage .depot-tv-pad label.tv-body {{ line-height: 36tv; }}
 .lumaui-tv-stage label.depot-tv-small {{ font-size: 20tv; font-weight: 600; letter-spacing: -0.3tv; color: {m('ink_3')}; }}
-.lumaui-tv-stage label.depot-tv-count {{ min-width: 12tv; min-height: 28tv; padding: 0 8tv;
+.lumaui-tv-stage .depot-tv-count {{ min-width: 12tv; min-height: 28tv; padding: 0 8tv;
   border-radius: 14tv; font-size: 17tv; font-weight: 650; color: white; background-color: #e5484d; }}
 .depot-tv-feature {{ min-height: 430tv; margin-bottom: 54tv; }}
 .depot-tv-feature-text {{ border-spacing: 14tv; }}
@@ -451,8 +451,12 @@ class DepotTV:
         self.stage.place(self.room, fill=True)
         self.bar = TvTopBar()
         self.tabs = [TvTab(title, icon=icon) for _key, title, icon in TABS]
-        self.count = _label("", "depot-tv-count", xalign=0.5, visible=False, valign=Gtk.Align.CENTER)
-        self.tabs[3].get_first_child().append(self.count)
+        # the count's pill: 28 round, growing with more digits; the label inside is only its digits
+        self.count_pill = Gtk.CenterBox(visible=False, valign=Gtk.Align.CENTER)
+        self.count_pill.add_css_class("depot-tv-count")
+        self.count = _label("", ellipsize=Pango.EllipsizeMode.NONE)
+        self.count_pill.set_center_widget(self.count)
+        self.tabs[3].get_first_child().append(self.count_pill)
         self.bar.set_tabs(self.tabs)
         self.stage.place(self.bar, **TvTopBar.PIN)
         self.focus = TvFocus(self.stage, on_back=self.back, on_change=self._focus_changed)
@@ -606,7 +610,7 @@ class DepotTV:
             self.items = self._listed()
         count = len(self._updates()) + (1 if self._system_waiting() else 0)
         self.count.set_label(str(count))
-        self.count.set_visible(count > 0)
+        self.count_pill.set_visible(count > 0)
         self.tabs[3].update_property([Gtk.AccessibleProperty.LABEL],
                                      [f"Updates, {count} waiting" if count else "Updates"])
 
