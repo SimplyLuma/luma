@@ -41,6 +41,7 @@ class TideWindow(AppWindow):
         if source is None:
             from .live import LiveLibrary
             source = LiveLibrary(application)
+            source.keep_snapshots = True
         self.app, self.source = application, source
         self.controller = getattr(application, 'controller', None)
         self.library = Library()
@@ -75,6 +76,10 @@ class TideWindow(AppWindow):
         self._last_load = 0.0
         # True once the library has been read: until then views show nothing, never an empty state
         self.library_loaded = bool(getattr(source, 'fixture', False))
+        # Start from the last run's view (instant); the read below replaces it in place.
+        start = source.snapshot() if hasattr(source, 'snapshot') else None
+        if start is not None and start.albums:
+            self.library, self.library_loaded = start, True
         self._removals = DeferredRemovals(GLib.timeout_add, GLib.source_remove, self.source.remove_source)
         commands = CommandRegistry((CommandGroup('', (
             Command('tide.add-folder', 'Add music folder…', self._add_folder, 'folder-plus', shortcut=('Ctrl', 'O')),
@@ -161,6 +166,8 @@ class TideWindow(AppWindow):
         self.tv = None
         self.connect('notify::tv-posture', lambda *_: self._apply_posture())
         self._apply_posture()
+        if self.library_loaded and self.tv is None and self.library.albums:
+            self._show_library()
         self._unsubscribe = self.source.subscribe(lambda player: GLib.idle_add(self._player_changed, player))
         self.refresh_library()
 
@@ -334,6 +341,10 @@ class TideWindow(AppWindow):
         if self.tv is not None:
             self.tv.library_changed()
             return False
+        self._show_library()
+        return False
+
+    def _show_library(self):
         self._render()
         self.deck.update(self.library, self.player)
         self.phone_bar.update()

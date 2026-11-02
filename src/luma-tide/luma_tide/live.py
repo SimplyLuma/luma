@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import pickle
 import threading
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -22,12 +25,23 @@ from .remote import accepts_plaintext
 from .recency import AlbumRecency
 
 
+# The last library view, kept so a start draws it at once (metadata only, never audio).
+SNAPSHOT_VERSION = 1
+SNAPSHOT_SPACING = 30.0
+
+
+def snapshot_path():
+    cache = os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache')
+    return os.path.join(cache, 'luma-tide', 'library-view.pickle')
+
+
 def album_id(title, artist):
     return 'live-' + hashlib.sha256((title + '\0' + artist).encode()).hexdigest()[:20]
 
 
 class LiveLibrary:
     fixture = False
+    keep_snapshots = False  # the window turns this on; tests and tools never write the cache
     view = 'albums'
     album_id = None
 
@@ -128,7 +142,34 @@ class LiveLibrary:
         known = {album.id for album in albums}
         self._library = Library(self._recency.order(albums), tuple(rows), playlists,
                                 tuple(identifier for identifier in self._recency.played() if identifier in known))
+        self._keep_snapshot(self._library)
         return self._library
+
+    def snapshot(self):
+        """The library view the last run read, for the first frame (about 0.1 s for 19k songs
+        on a Raspberry Pi 5), or None. The real read follows and replaces it in place."""
+        try:
+            with open(snapshot_path(), 'rb') as handle:
+                version, library = pickle.load(handle)  # Tide's own cache file, written below
+        except Exception:  # noqa: BLE001 - absent, old or damaged: read the library as usual
+            return None
+        return library if version == SNAPSHOT_VERSION and isinstance(library, Library) else None
+
+    def _keep_snapshot(self, library):
+        """Write the view at most every SNAPSHOT_SPACING seconds (a sync reads often), atomically."""
+        now = time.monotonic()
+        if not self.keep_snapshots or now - getattr(self, '_snapshot_at', -SNAPSHOT_SPACING) < SNAPSHOT_SPACING:
+            return
+        self._snapshot_at = now
+        path = snapshot_path()
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            partial = f'{path}.{os.getpid()}.part'
+            with open(partial, 'wb') as handle:
+                pickle.dump((SNAPSHOT_VERSION, library), handle, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(partial, path)
+        except OSError:
+            logging.getLogger(__name__).warning('Cannot keep Tide library snapshot', exc_info=True)
 
     def order_albums(self, library):
         albums = self._recency.order(library.albums)
