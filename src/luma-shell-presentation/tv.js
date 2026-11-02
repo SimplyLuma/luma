@@ -20,7 +20,8 @@ import {getNotificationTray} from 'resource:///org/gnome/shell/ui/lumaNotificati
 import {tv as TOKENS} from './tvTokens.js';
 import {TvDialogs} from './tvDialogs.js';
 import {TvInput} from './tvInput.js';
-import {greetingPart, nearest, remoteAction, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
+import {TvQuickPanel} from './tvQuickPanel.js';
+import {greetingPart, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
 import {gettext as _} from 'gettext';
 
@@ -117,8 +118,13 @@ export class TvPresentation {
         if (model) watch(model, 'changed', () => this._tick());
         this._loadApps();
         this.showHome('home');
+        // The quick panel: the TV posture of Quick Options and notifications
+        // (tvQuickPanel.js), from the bar's cluster or a long press of Home.
+        this._quick = new TvQuickPanel({unit: () => this._unit(), opaque: () => this._opaque(),
+            opened: () => this._draw(), closed: origin => this._quickClosed(origin)});
         // Every remote and gamepad becomes the TV's keys (tvInput.js).
-        this._input = new TvInput({home: () => this.showHome('home')});
+        this._input = new TvInput({home: () => this.showHome('home'),
+            quickPanel: () => this._quick?.toggle('remote')});
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);
         // System dialogs take the TV sheet and the remote (tvDialogs.js).
@@ -130,6 +136,8 @@ export class TvPresentation {
         this._activeSignals = [];
         this._input?.destroy();
         this._input = null;
+        this._quick?.destroy();
+        this._quick = null;
         this._dialogs?.destroy();
         this._dialogs = null;
         Main.keyboard?.setTvPosture?.(false);
@@ -186,6 +194,7 @@ export class TvPresentation {
 
     showHome(page = 'home') {
         if (!this.active || !this._home) return;
+        this._quick?.close();
         for (const window of visibleAppWindows()) window.minimize();
         this._open(page);
         this._focus = {kind: 'tab', index: PAGES.indexOf(page)};
@@ -525,7 +534,10 @@ export class TvPresentation {
         const {bar, layout} = TOKENS;
         const [, width] = this._now.get_preferred_width(-1);
         const [, height] = this._now.get_preferred_height(-1);
-        this._now.set_position(monitor.width - layout.safe_x * this._u - width,
+        // The cluster is a bar item with a key's padding; its text stays
+        // exactly where the clock is on every TV screen.
+        const pad = TOKENS.quick_panel.cluster_padding_x * this._u;
+        this._now.set_position(monitor.width - layout.safe_x * this._u - width + pad,
             (bar.top + bar.height / 2) * this._u - height / 2);
     }
 
@@ -564,7 +576,10 @@ export class TvPresentation {
     _move(direction) {
         const tab = PAGES.indexOf(this._page);
         if (this._focus.kind === 'tab') {
-            if (direction === 'left' || direction === 'right') {
+            if (direction === 'right' && this._focus.index === PAGES.length - 1) {
+                // Past the last tab: the cluster at the bar's far right.
+                this._focus = {kind: 'cluster'};
+            } else if (direction === 'left' || direction === 'right') {
                 // Moving along the bar opens the page; no OK needed.
                 const next = Math.max(0, Math.min(PAGES.length - 1, this._focus.index + (direction === 'right' ? 1 : -1)));
                 if (next !== this._focus.index) {
@@ -582,6 +597,13 @@ export class TvPresentation {
             }
             return;
         }
+        if (this._focus.kind === 'cluster') {
+            if (direction === 'left') {
+                this._open(PAGES[PAGES.length - 1]);
+                this._focus = {kind: 'tab', index: PAGES.length - 1};
+            }
+            return;
+        }
         const items = this._items();
         const current = this._focusedItem(items);
         const target = current ? nearest(items, current, direction) : null;
@@ -591,13 +613,15 @@ export class TvPresentation {
 
     _ok() {
         const {kind, index} = this._focus;
-        if (kind === 'tab' && this._page === 'search') this._focus = {kind: 'field'};
+        if (kind === 'cluster') this._quick?.open('bar');
+        else if (kind === 'tab' && this._page === 'search') this._focus = {kind: 'field'};
         else if (kind === 'tile') this._launch(this._tiles[index].app);
         else if (kind === 'result') this._launch(this._resultTiles[index].app);
     }
 
     _back() {
-        if (this._focus.kind !== 'tab') this._focus = {kind: 'tab', index: PAGES.indexOf(this._page)};
+        if (this._focus.kind === 'cluster') this._focus = {kind: 'tab', index: PAGES.indexOf(this._page)};
+        else if (this._focus.kind !== 'tab') this._focus = {kind: 'tab', index: PAGES.indexOf(this._page)};
         else if (this._page !== 'home') {
             this._open('home');
             this._focus = {kind: 'tab', index: 0};
@@ -607,8 +631,9 @@ export class TvPresentation {
     _key(event) {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_PROPAGATE;
-        // OK is held down for a long press: its key repeat is not more OKs.
-        if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
+        // OK is held down for a long press: its key repeat is not more OKs (nor Back more Backs).
+        if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.FLAG_REPEATED)) return Clutter.EVENT_STOP;
+        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.FLAG_REPEATED)) return Clutter.EVENT_STOP;
         if (action === 'ok') this._ok();
         else if (action === 'back') this._back();
         else this._move(action);
@@ -665,6 +690,7 @@ export class TvPresentation {
             made.label.style = `${this._tileStyle.label} color: ${focused ? m('ink') : m('ink_2')};`;
             if (focused) made.cell.get_parent()?.set_child_above_sibling(made.cell, null);
         });
+        this._drawCluster();
         paint(this._tiles, 'tile');
         paint(this._resultTiles, 'result');
         const fieldFocused = this._focus.kind === 'field';
@@ -678,6 +704,38 @@ export class TvPresentation {
             this._entry.clutter_text.set_editable(false);
             if (!Main.modalCount) this._home.grab_key_focus();
         }
+    }
+
+    // The cluster (weather | time; later the user's picture) is the quick
+    // panel's bar item: the key while the remote is on it, a chip while the
+    // panel it opened is up, plain otherwise.
+    _drawCluster() {
+        const {bar, quick_panel: q} = TOKENS;
+        const m = name => this._material(name);
+        const focused = this._focus.kind === 'cluster' && !this._quick?.isOpen;
+        // The cluster owns the panel however it was opened (the cluster or a long press of Home).
+        const owner = Boolean(this._quick?.isOpen);
+        this._now.style = `spacing: ${this._px(bar.now_gap)}; min-height: ${this._px(q.cluster_height)};
+            padding: 0 ${this._px(q.cluster_padding_x)}; border-radius: ${this._px(q.cluster_radius)};` + (focused
+            ? `background-gradient-direction: vertical; background-gradient-start: ${m('key_top')};
+               background-gradient-end: ${m('key_bottom')}; border: ${this._px(1.5)} solid ${m('key_rim')};
+               box-shadow: 0 ${this._px(3)} ${this._px(10)} ${m('key_drop')};`
+            : owner
+                ? `background-gradient-direction: none; background-color: ${m('chip')};
+                   border: ${this._px(1.5)} solid ${m('chip_rim')}; box-shadow: 0 ${this._px(2)} ${this._px(5)} ${m('chip_drop')};`
+                : `background-gradient-direction: none; border: ${this._px(1.5)} solid transparent; box-shadow: none;`);
+        const ink = focused ? m('key_ink') : m('ink');
+        for (const label of [this._weatherText, this._time])
+            label.style = label.style.replace(/color:[^;]*;/, `color: ${ink};`);
+        this._divider.style = this._divider.style.replace(/background-color:[^;]*;/,
+            `background-color: ${focused ? 'rgba(0, 0, 0, 0.25)' : m('divider')};`);
+    }
+
+    // The panel shut: opened from the cluster, the focus goes back to it.
+    _quickClosed(origin) {
+        if (!this.active || !this._home?.visible) return;
+        if (origin === 'bar') this._focus = {kind: 'cluster'};
+        this._draw();
     }
 
     _launch(app) {

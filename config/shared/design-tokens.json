@@ -862,6 +862,22 @@
       "icon": 28,
       "icon_gap": 16
     },
+    "quick_panel": {
+      "_doc": "The quick panel (tvQuickPanel.js): the TV posture of the shell's Quick Options and notification list, opened with OK on the bar's weather | time cluster or a long press of Home. Settings' floating island mirrored onto the right edge: bar material, radius 36, rows 68 at 24/600, icons 30; as tall as its rows, stopping at the bottom safe line, with long eased edge fades only where it scrolls. Design Center mockups/luma-tv-quick-panel.html.",
+      "top": 166, "width": 620, "radius": 36, "padding": 12, "gap": 2, "slide": 40,
+      "row_height": 68, "row_radius": 22, "row_padding_x": 19, "row_size": 24, "row_weight": 600, "icon": 30, "icon_gap": 18,
+      "end_size": 19, "end_icon": 24,
+      "me_height": 84, "avatar": 52, "name_size": 26, "name_weight": 700,
+      "chip_height": 100, "chip_gap": 8, "chip_radius": 24, "chip_padding": 14, "chip_title_size": 21, "chip_title_weight": 650, "chip_state_size": 17,
+      "level_height": 84, "level_track": 12, "level_value_size": 21, "level_value_width": 52, "level_step": 0.05,
+      "note_height": 78, "note_icon": 40, "note_title_size": 22, "note_body_size": 19, "notes_max": 20,
+      "sub_inset": 67, "sub_height": 60, "sub_size": 23,
+      "label_size": 19, "label_weight": 650, "label_padding_top": 10, "label_padding_bottom": 6,
+      "sep_margin": 8, "sep_inset": 18,
+      "fade_top": 48, "fade_bottom": 128, "scroll_margin": 80,
+      "cluster_padding_x": 22, "cluster_height": 56, "cluster_radius": 16,
+      "home_hold_ms": 500
+    },
     "sheet": {
       "radius": 44,
       "padding": 40,

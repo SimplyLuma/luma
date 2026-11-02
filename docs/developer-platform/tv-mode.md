@@ -181,6 +181,7 @@ more.
 | Back | Escape | Escape, Back, Exit (CEC Back) | the other face button (B), Select (View/Back) |
 | Menu (reserved for the action bar) | Menu | Menu, Context Menu, CEC Contents Menu | Start (Menu) |
 | Home | none: the Shell opens the TV home | Home, CEC Root Menu | Guide, or Select+Start |
+| Quick panel | none: the Shell opens it | hold Home or CEC Root Menu | hold Guide |
 
 - **Keys, not a protocol.** OK is Return, Back is Escape, Menu is the `Menu`
   keysym. Handle those and every controller works. Backspace still counts as
@@ -194,6 +195,13 @@ more.
   button (or the remote's OK, Select or CEC Select) and up with it, so a long
   press opens an item's menu (`TvFocus`); its key repeat is not more OKs.
   Back, Menu and the arrows are whole presses.
+- **One press per hold.** A pad button that is down stays one press: a repeated
+  down while it is down is dropped, and its release is held back 25 ms, so a
+  bouncing contact is neither a release nor a new press. Repeats of a held key
+  carry Clutter's repeat flag and only move the focus (`tvModel.repeatAllowed`);
+  the TV home, the quick panel and system dialogs never act on a repeated OK or
+  Back. `LUMA_TV_INPUT_DEBUG=1` in the Shell's environment logs every pad button
+  and every key sent, with times.
 - **A and B.** OK is the bottom face button (South: A on Xbox-style pads,
   Cross on PlayStation) or the right one (East: A on Nintendo-style pads),
   and Back is the other. The luma-shell-state key `tv-confirm-button`
@@ -390,6 +398,36 @@ it closes; outside TV posture dialogs are exactly as on the desktop.
 
 Nothing here is per dialog: a new `ModalDialog` with buttons gets all of it.
 A dialog without buttons (Luma Search) keeps its own presentation.
+
+## The quick panel
+
+The quick panel is the TV posture of the Shell's Quick Options and
+notification list (`lumaPresentation/tvQuickPanel.js`, rules in
+`tvQuickPanelModel.js`, sizes `tv.quick_panel`). It is not a second control
+centre: every row drives the object the desktop's Quick Options already own,
+and a row whose backend is missing is not drawn.
+
+- **Opening it.** On the TV home, Right past Search reaches the weather |
+  time cluster at the bar's far right (later the user's picture); OK opens
+  the panel. From anywhere, hold Home (a remote's Home or CEC Root Menu, a
+  pad's Guide) for 500 ms; a short press still goes home on release.
+- **Where.** Settings' floating island mirrored onto the right edge: bar
+  material, radius 36, rows 68 at 24/600, icons 30, as tall as its rows and
+  stopping at the bottom safe line, with edge fades only where it scrolls.
+  While it is open the cluster that opened it is a chip.
+- **Rows, top to bottom.** You (AccountsService picture and name; OK opens
+  Users when Settings has it). Wi-Fi, Bluetooth and Do Not Disturb as chips
+  (Left/Right between them, OK switches; on is a chip with an accent icon,
+  off is recessed). Sound: the output in use over the volume (Left/Right
+  steps it through the output slider; OK lists the outputs when there are
+  several). Notifications, newest first (OK runs the notification's default
+  action, as a click on its card does) and Clear all (never a critical one).
+  All Settings. Sleep (suspend where logind allows it, else the screensaver's
+  blank, as on a Raspberry Pi). Power drops Restart… and Power Off…, which ask
+  in the TV dialog.
+- **Leaving.** Back (first folding a dropped row) or Left off the island's
+  edge closes it; opened from the cluster, the focus returns there. Home
+  closes it and goes home.
 
 ## Appearing on the TV home
 
