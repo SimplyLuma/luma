@@ -115,7 +115,7 @@ assert(/_okDown\(source\) \{[\s\S]*?KeyState\.PRESSED[\s\S]*?_okUp\(source\) \{[
 assert(/destroy\(\) \{[\s\S]*?this\._okUp\(source\)/.test(service), 'never left down');
 assert(/_tap\(action\) \{[\s\S]*?PRESSED\);\s*this\._keys\.notify_keyval\(time, keyval, Clutter\.KeyState\.RELEASED/.test(service),
     'Back, Menu and the arrows stay whole presses');
-assert(/action === 'ok' && \(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\)/.test(home),
+assert(/action === 'ok' && \(event\.get_flags\(\) & Clutter\.EventFlags\.FLAG_REPEATED\)/.test(home),
     "the TV home takes a held OK once");
 assert(/create_virtual_device\(Clutter\.InputDeviceType\.KEYBOARD_DEVICE\)/.test(service), 'a virtual keyboard');
 assert(/await import\('gi:\/\/Manette\?version=0\.2'\)[\s\S]*?catch/.test(service), 'libmanette is optional');

@@ -590,7 +590,7 @@ export class TvDialogs {
         const action = dialogKey(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_PROPAGATE;
         // A held OK or Back repeats: the repeat never presses a button or cancels again.
-        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
+        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.FLAG_REPEATED)) return Clutter.EVENT_STOP;
         const {dialog, surface} = record;
         const focus = global.stage.key_focus;
         const focused = inside(surface, focus);

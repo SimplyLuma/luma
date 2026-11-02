@@ -148,7 +148,7 @@ const model = read(args[2].replace(/tvQuickPanel\.js$/, 'tvModel.js'));
 assert(/export function repeatAllowed\(action\) \{\s*return action === 'up' \|\| action === 'down' \|\| action === 'left' \|\| action === 'right';/.test(model),
     'only directions repeat');
 for (const [name, source] of [['the TV home', home], ['the quick panel', panel], ['system dialogs', read(args[2].replace(/tvQuickPanel\.js$/, 'tvDialogs.js'))]])
-    assert(/!repeatAllowed\(action\) && \(event\.get_flags\(\) & Clutter\.EventFlags\.REPEATED\)\) return Clutter\.EVENT_STOP/.test(source),
+    assert(/!repeatAllowed\(action\) && \(event\.get_flags\(\) & Clutter\.EventFlags\.FLAG_REPEATED\)\) return Clutter\.EVENT_STOP/.test(source),
         `${name}: a repeat never activates`);
 
 // St takes background-gradient-start as the background colour: a later background-color breaks the key.
@@ -165,6 +165,11 @@ assert(/key: 'wifi'[\s\S]*?state: toggle => toggle\._client \? \{checked: toggle
 assert(/this\._scrim = new St\.Widget/.test(panel) && /this\._m\('sheet'\)/.test(panel), 'the page steps back under an opaque-enough island');
 assert(/const owner = Boolean\(this\._quick\?\.isOpen\)/.test(home) && /opened: \(\) => this\._draw\(\)/.test(home),
     'the cluster is a chip whenever the panel is open');
+
+// Clutter's flag is EventFlags.FLAG_REPEATED: EventFlags.REPEATED is undefined in GJS, so a test
+// of it is always false (Pi, 2 Nov: every repeat of a held OK reached the panel as a press).
+for (const [name, source] of [['the TV home', home], ['the quick panel', panel], ['system dialogs', read(args[2].replace(/tvQuickPanel\.js$/, 'tvDialogs.js'))]])
+    assert(!/EventFlags\.REPEATED\b/.test(source) && /EventFlags\.FLAG_REPEATED/.test(source), `${name}: the real repeat flag`);
 
 // The panel drives the desktop's objects; it creates none of its own.
 assert(/_network\?\._wirelessToggle/.test(panel) && /_bluetooth\?\.quickSettingsItems/.test(panel) &&

@@ -660,13 +660,13 @@ export class TvQuickPanel {
     _key(event) {
         const action = remoteAction(Clutter.keyval_name(event.get_key_symbol()) ?? '');
         if (!action) return Clutter.EVENT_STOP;
-        if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
+        if (action === 'ok' && (event.get_flags() & Clutter.EventFlags.FLAG_REPEATED)) return Clutter.EVENT_STOP;
         if (action === 'ok' && !okPress(this._okGate, GLib.get_monotonic_time() / 1000, OK_QUIET_MS)) {
             // Presses of a held OK that arrive without the repeat flag: counted for the journal.
             this._heldBack = (this._heldBack ?? 0) + 1;
             return Clutter.EVENT_STOP;
         }
-        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.REPEATED)) return Clutter.EVENT_STOP;
+        if (!repeatAllowed(action) && (event.get_flags() & Clutter.EventFlags.FLAG_REPEATED)) return Clutter.EVENT_STOP;
         const row = this._rows[this._row];
         if (action === 'back') {
             if (this._open.outputs || this._open.power) {
