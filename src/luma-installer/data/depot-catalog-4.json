@@ -452,6 +452,9 @@
         "height": 512
       },
       "id": "bitwarden",
+      "keywords": [
+        "1Password"
+      ],
       "license": "GPL-3.0",
       "name": "Bitwarden",
       "permissions": [
@@ -544,10 +547,7 @@
       "summary": "A secure and free password manager for all of your devices.",
       "support_url": "https://bitwarden.com/help/",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "1Password"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "oars-1.1:none",
@@ -1003,6 +1003,9 @@
         "height": 256
       },
       "id": "charlie",
+      "keywords": [
+        "Outlook"
+      ],
       "license": "Apache-2.0",
       "name": "Charlie",
       "preinstalled_on_luma": true,
@@ -1044,10 +1047,7 @@
       },
       "summary": "Read and send mail without the nonsense.",
       "tier": "luma",
-      "visibility": "public",
-      "keywords": [
-        "Outlook"
-      ]
+      "visibility": "public"
     },
     {
       "architectures": [
@@ -1609,6 +1609,9 @@
         "height": 512
       },
       "id": "darkroom",
+      "keywords": [
+        "Photoshop"
+      ],
       "license": "Apache-2.0",
       "name": "Darkroom",
       "preinstalled_on_luma": false,
@@ -1655,10 +1658,7 @@
       },
       "summary": "Develop and edit images non-destructively.",
       "tier": "luma",
-      "visibility": "public",
-      "keywords": [
-        "Photoshop"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "age:15",
@@ -2241,6 +2241,9 @@
         "height": 256
       },
       "id": "gimp",
+      "keywords": [
+        "Photoshop"
+      ],
       "license": "GPL-3.0+ AND LGPL-3.0+",
       "name": "GIMP",
       "permissions": [
@@ -2332,10 +2335,7 @@
       "summary": "High-end image creation and manipulation.",
       "support_url": "https://www.gimp.org/docs/",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "Photoshop"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "oars-1.1:none",
@@ -2962,6 +2962,9 @@
         "height": 256
       },
       "id": "libreoffice",
+      "keywords": [
+        "Microsoft Office"
+      ],
       "license": "MPL-2.0",
       "name": "LibreOffice",
       "permissions": [
@@ -3053,10 +3056,7 @@
       "summary": "The LibreOffice productivity suite.",
       "support_url": "https://bugs.documentfoundation.org/",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "Microsoft Office"
-      ]
+      "visibility": "public"
     },
     {
       "architectures": [
@@ -3162,6 +3162,9 @@
         "height": 512
       },
       "id": "messages",
+      "keywords": [
+        "WhatsApp"
+      ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Messages",
       "preinstalled_on_luma": true,
@@ -3181,10 +3184,7 @@
       },
       "summary": "Send and receive messages.",
       "tier": "luma",
-      "visibility": "public",
-      "keywords": [
-        "WhatsApp"
-      ]
+      "visibility": "public"
     },
     {
       "app_id": "org.projectluma.Mods",
@@ -3543,6 +3543,9 @@
         "height": 512
       },
       "id": "notes",
+      "keywords": [
+        "Notion"
+      ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Notes",
       "preinstalled_on_luma": true,
@@ -3589,10 +3592,7 @@
       },
       "summary": "Write notes and edit text files.",
       "tier": "luma",
-      "visibility": "public",
-      "keywords": [
-        "Notion"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "oars-1.1:none",
@@ -3726,6 +3726,9 @@
         "height": 512
       },
       "id": "obsidian",
+      "keywords": [
+        "Notion"
+      ],
       "license": "LicenseRef-proprietary=https://obsidian.md/eula",
       "name": "Obsidian",
       "permissions": [
@@ -3817,10 +3820,7 @@
       "summary": "Markdown-based knowledge base.",
       "support_url": "https://help.obsidian.md/Home",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "Notion"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "oars-1.1:none",
@@ -4721,6 +4721,9 @@
         "height": 512
       },
       "id": "signal",
+      "keywords": [
+        "WhatsApp"
+      ],
       "license": "AGPL-3.0-only",
       "name": "Signal",
       "permissions": [
@@ -4794,10 +4797,7 @@
       "summary": "Private messenger.",
       "support_url": "https://support.signal.org/",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "WhatsApp"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "age:15",
@@ -4946,6 +4946,9 @@
         "height": 256
       },
       "id": "spotify",
+      "keywords": [
+        "iTunes"
+      ],
       "license": "LicenseRef-proprietary=https://www.spotify.com/us/legal/end-user-agreement/",
       "name": "Spotify",
       "permissions": [
@@ -5026,10 +5029,7 @@
       "summary": "Online music streaming service.",
       "support_url": "https://community.spotify.com/t5/Desktop-Linux/bd-p/desktop_linux",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "iTunes"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "age:15",
@@ -5497,6 +5497,9 @@
         "height": 256
       },
       "id": "telegram",
+      "keywords": [
+        "WhatsApp"
+      ],
       "license": "GPL-3.0",
       "name": "Telegram",
       "permissions": [
@@ -5597,10 +5600,7 @@
       "summary": "New era of messaging.",
       "support_url": "https://github.com/telegramdesktop/tdesktop/issues",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "WhatsApp"
-      ]
+      "visibility": "public"
     },
     {
       "architectures": [
@@ -5724,6 +5724,9 @@
         "height": 256
       },
       "id": "thunderbird",
+      "keywords": [
+        "Outlook"
+      ],
       "license": "MPL-2.0",
       "name": "Thunderbird",
       "permissions": [
@@ -5823,10 +5826,7 @@
       "summary": "Thunderbird is a free and open source email, newsfeed, chat, and calendaring client.",
       "support_url": "https://support.mozilla.org/products/thunderbird/",
       "tier": "listed",
-      "visibility": "public",
-      "keywords": [
-        "Outlook"
-      ]
+      "visibility": "public"
     },
     {
       "app_id": "org.projectluma.Tide",
@@ -5859,6 +5859,9 @@
         "height": 512
       },
       "id": "tide",
+      "keywords": [
+        "iTunes"
+      ],
       "license": "Apache-2.0",
       "name": "Tide",
       "preinstalled_on_luma": true,
@@ -5905,10 +5908,7 @@
       },
       "summary": "Play music from every place it lives.",
       "tier": "luma",
-      "visibility": "public",
-      "keywords": [
-        "iTunes"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "oars-1.1:none",
@@ -6904,6 +6904,9 @@
         "height": 512
       },
       "id": "write",
+      "keywords": [
+        "Microsoft Office"
+      ],
       "license": "Apache-2.0 AND CC-BY-SA-4.0",
       "name": "Write",
       "preinstalled_on_luma": false,
@@ -6941,10 +6944,7 @@
       "summary": "A clear place for letters, reports and ideas.",
       "support_url": "https://github.com/SimplyLuma/Write/issues",
       "tier": "luma",
-      "visibility": "public",
-      "keywords": [
-        "Microsoft Office"
-      ]
+      "visibility": "public"
     },
     {
       "age_rating": "oars-1.1:none",

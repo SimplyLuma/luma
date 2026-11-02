@@ -1,0 +1,13 @@
+{
+  "comment": "The names people arrive with, and the apps that do that job on Luma (the Design Center's switching list). generate-depot-seed.py writes each name into those apps' keywords, so search finds them by the name they know.",
+  "switching": {
+    "Photoshop": ["gimp", "krita", "darkroom"],
+    "Microsoft Office": ["libreoffice", "write", "grid", "stage"],
+    "iTunes": ["tide", "spotify"],
+    "WhatsApp": ["signal", "messages", "telegram"],
+    "Premiere": ["reel", "kdenlive"],
+    "Notion": ["obsidian", "notes"],
+    "Outlook": ["charlie", "thunderbird"],
+    "1Password": ["vault", "bitwarden"]
+  }
+}
