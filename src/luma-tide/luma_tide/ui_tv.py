@@ -528,10 +528,21 @@ class TideTV:
         if kind == "artist":
             albums = self._artist_albums(self.view["artist"])
             return (albums[0] if albums else None), None
+        if kind == "source":
+            source = next((s for s in self.library.sources if s.id == self.view["source"]), None)
+            if source is not None:
+                album = next((a for a in self.library.albums
+                              if any(source.name in song.library_sources for song in a.songs)), None)
+                return (album, None) if album is not None else (None, hues_for(source.name))
         subject = self.playing_album()
         if subject is not None:
             return subject[0], None
-        return (self.library.albums[0] if self.library.albums else None), None
+        if self.library.albums:
+            return self.library.albums[0], None
+        # Nothing to show yet (or a server waiting on a sign-in): the room keeps a colour of
+        # its own (the waiting server's, else Tide's), never a black screen.
+        waiting = next((s for s in self.library.sources if s.remote and s.signed_out), None)
+        return None, hues_for(waiting.name if waiting else "Tide")
 
     # ── keys: play/pause anywhere, and waking from idle ──────────────────────
 
@@ -730,11 +741,11 @@ class TideTV:
             pad.append(_label("No albums yet.", "tide-tv-empty"))
         return self._page_scroll(pad)
 
-    def _sign_in_notes(self, pad) -> bool:
+    def _sign_in_notes(self, pad, sources=None) -> bool:
         """A server that needs signing in says so where its music would be, with the way back in,
         so a library it fills never looks empty. True when one was shown."""
         shown = False
-        for source in self.library.sources:
+        for source in self.library.sources if sources is None else sources:
             if not (source.remote and source.signed_out):
                 continue
             songs = dict(source.facts).get("Songs", "")
@@ -828,8 +839,9 @@ class TideTV:
         head.append(_label(f"{len(albums):,} album{'s' if len(albums) != 1 else ''} · {songs:,} songs",
                            "tide-tv-meta", valign=Gtk.Align.BASELINE))
         pad.append(head)
+        waiting = self._sign_in_notes(pad, (source,))
         pad.append(self._album_grid(albums))
-        if not albums and self.loaded:
+        if not albums and self.loaded and not waiting:
             pad.append(_label("Nothing from here in your library yet.", "tide-tv-empty"))
         return self._page_scroll(pad)
 

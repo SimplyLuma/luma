@@ -427,7 +427,10 @@ class RemoteSources:
             _log.info("Remote source %s waits for the keyring to unlock", source_id)
             with self._lock:
                 self._keyring_locked.add(source_id)
-            self._forget_client(source_id, SourceState.OFFLINE)
+            # A source already signed out (Sign Out, or the server said no) stays so;
+            # anything else waits, songs kept.
+            self._forget_client(source_id, SourceState.AUTH_REQUIRED
+                                if source.state is SourceState.AUTH_REQUIRED else SourceState.OFFLINE)
             raise
         except AuthenticationFailed as error:
             _log.info("Remote source %s needs signing in: %s", source_id, type(error).__name__)

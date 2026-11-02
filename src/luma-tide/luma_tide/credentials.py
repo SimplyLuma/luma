@@ -114,10 +114,21 @@ class SecretServiceStore:
             if value is not None:
                 return value
             value = self._lookup_legacy_and_migrate(reference)
-            if value is None and self._locked_item(reference):
-                # The unlock prompt was dismissed: the sign-in is there, just locked.
+            if value is None and (self._locked_item(reference) or self._keyring_locked()):
+                # The unlock prompt was dismissed: the sign-in may well be there, just locked.
                 raise CredentialUnavailable("Unlock the keyring and try again.")
             return value
+
+    def _keyring_locked(self) -> bool:
+        """Whether the default keyring (where sign-ins are kept) is locked. A locked
+        keyring may not even list its items, so nothing found there proves nothing."""
+        try:
+            service = self.Secret.Service.get_sync(self.Secret.ServiceFlags.OPEN_SESSION, None)
+            collection = self.Secret.Collection.for_alias_sync(
+                service, "default", self.Secret.CollectionFlags.NONE, None)
+            return bool(collection is not None and collection.get_locked())
+        except Exception:  # noqa: BLE001 - no secret service, no alias: not "locked"
+            return False
 
     def _locked_item(self, reference: str) -> bool:
         """Whether a saved sign-in for `reference` exists but is locked (with `self._lock` held).
@@ -164,6 +175,8 @@ class SecretServiceStore:
                         # An existing current sign-in must be unlocked, rather
                         # than silently falling back to an older password.
                         raise CredentialUnavailable("Unlock the keyring and sync again.")
+                if self._keyring_locked():
+                    raise CredentialUnavailable("Unlock the keyring and sync again.")
                 return None
             except self.GLib.Error:
                 raise CredentialUnavailable("Tide couldn't read the saved sign-in. Unlock the keyring and sync again.") from None

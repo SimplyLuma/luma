@@ -226,6 +226,16 @@ class RemoteSourceTests(unittest.TestCase):
         self.assertFalse(self.remote.keyring_locked(source.id))
         self.assertTrue(self.remote.resolve(self.store.select_copy(self.store.tracks()[0].id)).startswith("http"))
 
+    def test_a_locked_keyring_keeps_a_signed_out_source_signed_out(self) -> None:
+        source = self.add()
+        self.remote.sign_out(source.id).result(10)
+        self._fresh_remote()
+        self.keyring.locked = True
+        self.keyring.secrets[source.auth_ref] = "a sign-in from another device"  # unknown while locked
+        with self.assertRaises(CredentialUnavailable):
+            self.remote.sync(source.id).result(10)
+        self.assertIs(self.store.source(source.id).state, SourceState.AUTH_REQUIRED)
+
     def test_a_missing_sign_in_is_signed_out(self) -> None:
         source = self.add()
         self.remote.sync(source.id).result(10)

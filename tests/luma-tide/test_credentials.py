@@ -153,6 +153,22 @@ class SecretServiceStoreTests(unittest.TestCase):
             ["store", "clear", "lookup", "lookup", "search", "search"],
         )
 
+    def test_a_locked_keyring_that_lists_nothing_is_unavailable_not_missing(self) -> None:
+        # gnome-keyring may not list a locked keyring's items at all.
+        store = SecretServiceStore()
+        reference = new_reference()
+        self.secret.Collection = types.SimpleNamespace(
+            for_alias_sync=lambda *_: types.SimpleNamespace(get_locked=lambda: True))
+        self.secret.CollectionFlags = types.SimpleNamespace(NONE=0)
+        with self.assertRaises(CredentialUnavailable):
+            store.lookup_background(reference)
+        with self.assertRaises(CredentialUnavailable):
+            store.lookup(reference)
+        self.secret.Collection = types.SimpleNamespace(
+            for_alias_sync=lambda *_: types.SimpleNamespace(get_locked=lambda: False))
+        self.assertIsNone(store.lookup_background(reference))
+        self.assertIsNone(store.lookup(reference))
+
     def test_a_locked_sign_in_is_unavailable_not_missing(self) -> None:
         store = SecretServiceStore()
         reference = new_reference()
