@@ -40,7 +40,8 @@ source_dir="$work_dir/luma-keyring"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$source_dir"
 cp -R "$repo_root/src/luma-keyring/." "$source_dir/"
 find "$source_dir" -type d -name __pycache__ -prune -exec rm -rf {} +
-source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
+# CI checkouts belong to another uid than the job container user.
+source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -c safe.directory="$repo_root" -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work_dir" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
   --numeric-owner -cf - luma-keyring | gzip -n >"$rpmbuild_dir/SOURCES/luma-keyring.tar.gz"
 install -m 0644 "$repo_root/packaging/rpm/luma-keyring.spec" "$rpmbuild_dir/SPECS/"
