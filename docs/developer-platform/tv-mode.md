@@ -52,7 +52,8 @@ posture is never TV.
   Apps page. A presentation with its own levels handles Back itself until it
   is at its top level. Any application, LumaUI or not, can return to the TV
   home by minimising; the TV home shows whenever no app window does.
-- No hover-only affordances: TV is driven by a remote (arrows, OK, Back).
+- No hover-only affordances: TV is driven by a remote or a gamepad (arrows,
+  OK, Back); see "Remotes and gamepads".
 
 ## The TV scale
 
@@ -163,6 +164,77 @@ Values come from the `tv` block of `config/shared/design-tokens.json`
 (`focus`, `sheet`, `toast`, `keyboard` layout, `idle`, `motion`, `cover`,
 `button`) and its `media` fragment, `config/shared/design-tokens.d/tv-media.json`.
 
+## Remotes and gamepads
+
+Every controller drives TV Mode through the same keys, so an application
+reads keys and never a gamepad or a remote. In TV posture one Shell service
+(`src/luma-shell-presentation/tvInput.js`, rules in `tvInputModel.js`) turns
+gamepads (USB, 2.4 GHz dongles, Bluetooth), TV remotes (Bluetooth and 2.4 GHz
+HID remotes) and the TV's own remote over HDMI-CEC into the TV's keys before
+they reach any window. `TvFocus`, the TV home and the TV keyboard need nothing
+more.
+
+| TV action | Key the app sees | Keyboard / remote | Gamepad |
+|---|---|---|---|
+| Move | Up, Down, Left, Right | arrows | D-pad, left stick |
+| OK | Return | Return, Enter, OK, Select | South (A) |
+| Back | Escape | Escape, Back, Exit (CEC Back) | East (B), Select (View/Back) |
+| Menu (reserved for the action bar) | Menu | Menu, Context Menu, CEC Contents Menu | Start (Menu) |
+| Home | none: the Shell opens the TV home | Home, CEC Root Menu | Guide, or Select+Start |
+
+- **Keys, not a protocol.** OK is Return, Back is Escape, Menu is the `Menu`
+  keysym. Handle those and every controller works. Backspace still counts as
+  Back where nothing is being typed (`TvFocus`). Home never reaches an app.
+- **Gamepads.** The Shell reads pads through libmanette, which maps every pad
+  it knows onto one layout. The D-pad and the left stick move; a held
+  direction steps once, again after 400 ms and then every 120 ms
+  (`tv.input` in `config/shared/design-tokens.json`, with the stick's
+  thresholds). North, West, the shoulders, the triggers, the stick clicks and
+  the right stick are not assigned yet. Each press is a whole key (pressed and
+  released), so a held A does not repeat Enter.
+- **Remotes.** Arrows and Enter are already TV keys. Keys that are not
+  (`XF86Back`, `XF86Close`, `XF86OK`, `XF86Select`, `XF86HomePage`,
+  `XF86RootMenu`, `XF86MenuKB`, `XF86ContextMenu`) are taken by the Shell and
+  sent on as the TV key, so an application never sees them in TV posture.
+- **HDMI-CEC.** `luma-tv-cec` (from `luma-shell-state`, started for every
+  `/dev/cec*` by udev) puts the adapter on the bus as a playback device named
+  Luma, with remote passthrough allowed. The kernel then answers the core CEC
+  messages itself and turns the TV remote's buttons into keys on the adapter's
+  `rc-cec` input device, and the mapping above applies. The TV's CEC setting
+  (Anynet+, SimpLink, Bravia Sync, ...) must be on, and the TV sends its
+  remote to the input it is showing.
+- **Outside TV posture** nothing is translated: pads and remotes behave as on
+  any desktop.
+
+### Games read the pad themselves
+
+A gamepad's keys go only to the Shell (the TV home, dialogs), the TV keyboard
+while it is up, and applications that declare `presentation = "tv"` (built
+for the remote). Every other application, a game or an emulator that
+declares no TV presentation among them, gets the pad untouched and no keys
+from it, as on a desktop; Home (Guide, or Select+Start) still returns to the
+TV home. The pad is never grabbed: an application can always read it.
+
+A TV application that reads the pad itself in some views (an emulator's game,
+a game with a TV library) claims the pads while it does. A claiming process's
+windows get no keys from a pad at all, Home included; the TV keyboard still
+takes the pad while it is up:
+
+```python
+from luma_appkit import claim_gamepads
+
+claim_gamepads(True)    # the game starts: read the pad yourself
+claim_gamepads(False)   # back to the library: TV keys again
+```
+
+Underneath, for other toolkits: the session-bus service
+`org.projectluma.Shell.Remote` at `/org/projectluma/Shell/Remote`, interface
+`org.projectluma.Shell.Remote1`, method `ClaimGamepads(b claimed)` (the claim
+covers the calling process's windows and ends with `false` or when the caller
+leaves the bus; say it again if the name's owner changes) and property
+`Gamepads` (as, the names of connected pads). The service exists only in TV
+posture.
+
 ## Typing
 
 There is one on-screen keyboard. In TV posture the shell's Keycap keyboard
@@ -178,7 +250,7 @@ widget to embed and nothing to draw.
   leaves the field. Back, or Up from the top row, puts it away and leaves the
   field focused; OK on the field opens it again.
 - **The remote.** While it is open the shell takes Up, Down, Left, Right, OK
-  (Return, KP_Enter) and Back (Escape, XF86Back) from every window, so a
+  (Return, KP_Enter) and Back (Escape) from every window, so a
   `TvFocus` sees none of them and needs no grab; when it closes they reach the
   app again. Backspace and letters always go to the field.
 - **A real keyboard types straight in.** The first letter typed on a real
