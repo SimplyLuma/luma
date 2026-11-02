@@ -103,7 +103,7 @@ __all__ = [
     # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
     "TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade",
     "TvFocus", "tv_nearest",
-    "TvTopBar", "TvTab", "TvButton", "TvField",
+    "TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow",
     "TvToast",
     "TvIdle",
     "TvMenu",
@@ -369,7 +369,7 @@ def __getattr__(name: str):
     if name == "tv_nearest":
         from .tv_focus import nearest
         return nearest
-    if name in {"TvTopBar", "TvTab", "TvButton", "TvField"}:
+    if name in {"TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow"}:
         from . import tv_parts
         return getattr(tv_parts, name)
     if name == "TvToast":

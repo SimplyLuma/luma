@@ -1,0 +1,115 @@
+{
+ "app": "tv-keyring-unlock",
+ "title": "Saved passwords, first unlock, on TV",
+ "about": "luma-keyring's first-unlock sheet in TV posture (LUMA_POSTURE=tv), built from LumaUI's TV layer (TvStage, TvRoom, TvField, TvSwitchRow, TvButton), against the Design Center's mockup at 1920x1080. Synthetic state (tools/lumaui-conform/fixtures/keyring_unlock.py); no keyring is touched. Dark only: a TV is always dark.",
+ "spec": {
+  "root": "design-center",
+  "url": "mockups/luma-keyring-unlock.html?posture=tv",
+  "window": "#stage",
+  "ready": "#sheet",
+  "viewport": {
+   "width": 1920,
+   "height": 1080
+  },
+  "exclude": [
+   ".bg",
+   ".shade",
+   ".tvkb"
+  ]
+ },
+ "pairs": [
+  {
+   "name": "sheet",
+   "spec": "#sheet",
+   "gtk": "kr-tv-sheet"
+  }
+ ],
+ "gtk": {
+  "module": "keyring_unlock",
+  "pythonpath": [
+   "src/luma-keyring",
+   "src/luma-platform/appkit",
+   "tools/lumaui-conform/fixtures"
+  ],
+  "app_id": "org.projectluma.Keyring",
+  "build": {},
+  "env": {
+   "LUMA_POSTURE": "tv",
+   "GSETTINGS_BACKEND": "memory",
+   "LUMAUI_CONFORM_GSETTINGS": "[[\"org.gnome.desktop.background\", \"picture-uri\", \"'file://{run}/fixtures/room-prism.png'\"], [\"org.gnome.desktop.background\", \"picture-uri-dark\", \"'file://{run}/fixtures/room-prism.png'\"]]",
+   "LUMAUI_CONFORM_IGNORE_FADE": "1"
+  },
+  "monitor": "1920x1080",
+  "fixtures": [
+   "assets/wallpapers/prism.png",
+   "tests/fixtures/tv/room-prism.png",
+   "assets/icon-theme/Prairie/symbolic/actions/lumaui-lock-symbolic.svg"
+  ]
+ },
+ "states": [
+  {
+   "name": "sheet",
+   "about": "The first unlock: the field focused, automatic unlock on",
+   "spec": [
+    {
+     "eval": "preview('tv', 'sheet')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "sheet"
+     }
+    }
+   ],
+   "themes": [
+    "dark"
+   ]
+  },
+  {
+   "name": "wrong",
+   "about": "After a wrong password: the error under the field, the field cleared",
+   "spec": [
+    {
+     "eval": "preview('tv', 'wrong')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "wrong"
+     }
+    }
+   ],
+   "themes": [
+    "dark"
+   ]
+  },
+  {
+   "name": "keyboard",
+   "about": "The field typing: the TV keyboard up (the Shell's, hidden on both sides), the sheet standing on it",
+   "spec": [
+    {
+     "eval": "preview('tv', 'keyboard')",
+     "wait": 400
+    },
+    {
+     "eval": "document.querySelectorAll('.tvkb').forEach(k => k.style.display = 'none')",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "keyboard"
+     }
+    }
+   ],
+   "themes": [
+    "dark"
+   ]
+  }
+ ]
+}

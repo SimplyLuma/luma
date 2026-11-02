@@ -11,6 +11,7 @@ The right holds the clock (28/700, tabular figures).
 
 `TvButton` is the 66-tall button (chip at rest, key when focused).
 `TvField` is the recessed text field (a real Gtk.Text: keyboards type into it).
+`TvSwitchRow` is a row with a title and a switch at its end; OK flips it.
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ from gi.repository import GLib, Gio, Gtk  # noqa: E402
 from . import icons  # noqa: E402
 from . import lumaui_tokens as tokens  # noqa: E402
 
-__all__ = ["TvTopBar", "TvTab", "TvButton", "TvField"]
+__all__ = ["TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow"]
 
 TV = tokens.TV
 
@@ -169,7 +170,8 @@ class TvButton(Gtk.Box):
         self.accent = accent
         for name in ("tv-btn",) + (("tv-accent",) if accent else ("tv-chip",)) + (("tv-danger",) if danger else ()):
             self.add_css_class(name)
-        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, spacing=0)
+        # Centred in the button however wide the button is drawn (hexpand, a homogeneous row).
+        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, spacing=0, hexpand=True)
         if icon:
             inner.append(icons.image(icon))
         self.label = Gtk.Label(label=label)
@@ -219,3 +221,49 @@ class TvField(Gtk.Box):
     def set_value(self, value: str) -> None:
         self.text.set_text(value)
         self.text.set_position(-1)
+
+
+class TvSwitchRow(Gtk.Box):
+    """A row (84 tall, radius 24, 30/600) with a switch at its end; the key with the focus.
+
+    Register it with `TvFocus.add(row, on_activate=row.toggle)`: OK flips it (a held,
+    repeating OK does not, TvFocus guards that). `on_toggle(active)` follows every flip.
+    The switch is the TV one: a 72 x 42 well, a 34 knob, the accent when on.
+    """
+
+    __gtype_name__ = "LumaUITvSwitchRow"
+
+    def __init__(self, title: str, *, active: bool = False, on_toggle=None) -> None:
+        super().__init__(accessible_role=Gtk.AccessibleRole.SWITCH)
+        self.add_css_class("tv-row")
+        self.add_css_class("tv-switch-row")
+        self.title = Gtk.Label(label=title, xalign=0, hexpand=True, wrap=True)
+        self.title.add_css_class("tv-row-title")
+        self.append(self.title)
+        self.switch = Gtk.Box(valign=Gtk.Align.CENTER, halign=Gtk.Align.END)
+        self.switch.add_css_class("tv-switch")
+        knob = Gtk.Box(valign=Gtk.Align.CENTER)
+        knob.add_css_class("tv-switch-knob")
+        self.switch.append(knob)
+        self.append(self.switch)
+        self._on_toggle = on_toggle
+        self._active = False
+        self.update_property([Gtk.AccessibleProperty.LABEL], [title])
+        self.set_active(active)
+
+    def get_active(self) -> bool:
+        return self._active
+
+    def set_active(self, active: bool) -> None:
+        self._active = bool(active)
+        _set(self.switch, "on", self._active)
+        self.update_state([Gtk.AccessibleState.CHECKED],
+                          [int(Gtk.AccessibleTristate.TRUE if self._active else Gtk.AccessibleTristate.FALSE)])
+
+    def toggle(self) -> None:
+        self.set_active(not self._active)
+        if self._on_toggle is not None:
+            self._on_toggle(self._active)
+
+    def set_tv_focus(self, on: bool) -> None:
+        _set(self, "tv-key", on)

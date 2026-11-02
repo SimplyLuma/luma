@@ -133,6 +133,16 @@ def _sheet(opaque: bool) -> str:
   0 0 0 {focus['ring']}tv {m('key_top')}; }}
 .tv-row {{ min-height: {sheet['row_height']}tv; padding: 0 22tv; border-radius: {sheet['row_radius']}tv;
   font-size: {sheet['row_size']}tv; }}
+.tv-switch-row {{ border-spacing: 20tv; }}
+.tv-row-title {{ font-size: {sheet['row_size']}tv; font-weight: 600; color: inherit; }}
+.tv-switch {{ min-width: 72tv; min-height: 42tv; padding: 4tv; border-radius: 21tv; background-color: {m('well')};
+  box-shadow: inset 0 0 0 1.5tv {m('well_rim')}, inset 0 2tv 4tv {m('well_shade')}, 0 1.5tv 0 {m('well_glint')};
+  transition: background-color 200ms; }}
+.tv-switch-knob {{ min-width: 34tv; min-height: 34tv; border-radius: 17tv; background-image: linear-gradient(#fff, #e6e7ea);
+  box-shadow: 0 2tv 5tv rgba(0, 0, 0, 0.35); transition: margin-left 220ms cubic-bezier(.3, 1.4, .5, 1); margin-left: 0; }}
+.tv-switch.on {{ background-color: {m('accent')}; box-shadow: inset 0 1.5tv 3tv rgba(0, 0, 0, 0.25); }}
+.tv-switch.on .tv-switch-knob {{ margin-left: 30tv; }}
+.tv-key .tv-switch:not(.on) {{ background-color: rgba(0, 0, 0, 0.14); }}
 .tv-action {{ min-height: {sheet['action_height']}tv; border-radius: {sheet['action_radius']}tv;
   font-size: {sheet['action_size']}tv; font-weight: 650; }}
 """
