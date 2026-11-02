@@ -24,6 +24,8 @@
 # (scripts/install/atlas-iso/prepare-lorax-boot.py --list-arm-modules) get an
 # updates.img with those modules from the ISO's own OS payload.
 set -euo pipefail
+# FAT stores local times; build in UTC so the image does not depend on the host.
+export TZ=UTC
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 card_src="$repo_root/src/luma-rpi5-platform/card"
