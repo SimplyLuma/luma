@@ -243,3 +243,11 @@ joined network, a join in progress or its outcome, a notice) still draws the pag
 what is shown is unchanged. Test: `/settings/view/nearby-in-place` (kept rows are the same
 widgets; the page reads exactly as one drawn afresh).
 
+
+`0096-lumaui-tv-page-words-and-one-display-fixture.patch`: in TV posture, the pages the island
+lists (Wi-Fi, Bluetooth, Display, Sound, Appearance, Apps, Accessibility, About) take the TV
+mockup's title and one-line description in their header ("Display", "The picture on this TV.");
+the page's live summary no longer replaces that line on a TV. Subpages and every other posture
+keep their own words. Display: a fixture may describe its displays as the live reader does
+(each with its logical rectangle), so a fixture can be one TV on HDMI; such a fixture is checked
+and drawn by the live rules (any number of displays) instead of v70's built-in-plus-external pair.

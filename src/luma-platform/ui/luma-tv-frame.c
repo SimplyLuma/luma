@@ -303,6 +303,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-island label { font-size: 23tv; }\n"
 ".lumaui-tv-frame > .luma-island image { -gtk-icon-size: 26tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero label { font-size: 26tv; font-weight: 600; }\n"
+/* the hero's own title over that: the mockup's .hero b, 34/700 */
+".lumaui-tv-frame > .luma-island .lumaui-part-hero label.lumaui-t-hero-title, .lumaui-tv-frame > .luma-island .lumaui-part-hero label.lumaui-t-hero,\n"
+".lumaui-tv-frame > .luma-island .lumaui-part-hero label.lumaui-t-title-1 { font-size: 34tv; font-weight: 700; letter-spacing: -0.68tv; }\n"
 ".lumaui-tv-frame > .luma-island .lumaui-part-hero image { -gtk-icon-size: 46tv; min-width: 46tv; min-height: 46tv; }\n"
 /* libadwaita's rows and groups, named by the frame */
 ".lumaui-tv-frame row.lumaui-part-row { min-height: 60tv; }\n"
