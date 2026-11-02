@@ -48,5 +48,12 @@ HDMI audio, Bluetooth, fan control, the RTC and the power button do not work on
 the mainline kernel yet; see `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
 needs a TV input in HDMI 2.0 (enhanced) mode.
 
-This profile is unqualified: an install, an update across a kernel change and a
-rollback on real hardware must be recorded before a tier change.
+## Hardware results
+
+- 2026-11-01, Pi 5 D0 16 GB, NVMe install: the card menu's `installed` entry
+  (one-shot via `next_entry`) ran the installed system's own GRUB menu and
+  booted its BLS entry; `next_entry` was cleared afterwards.
+
+This profile is unqualified: an install from a built card image, an update
+across a kernel change and a rollback on real hardware must be recorded before
+a tier change.
