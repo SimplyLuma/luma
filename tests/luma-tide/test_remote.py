@@ -301,6 +301,42 @@ class RemoteSourceTests(unittest.TestCase):
         self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
 
 
+class CoverRevalidationTests(unittest.TestCase):
+    def test_old_covers_are_asked_about_conditionally_and_changed_ones_replaced(self):
+        import json
+        import os
+        from luma_tide import remote
+
+        with tempfile.TemporaryDirectory() as folder:
+            sources = RemoteSources.__new__(RemoteSources)
+            sources.artwork_root = Path(folder)
+            covers = Path(folder) / "s1"
+            covers.mkdir()
+            old, new = covers / "old.image", covers / "new.image"
+            old.write_bytes(b"old"), new.write_bytes(b"new")
+            stale = time.time() - remote.REVALIDATE_SECONDS - 60
+            os.utime(old, (stale, stale))
+            asked = []
+
+            class Client:
+                def cover_art_if_changed(self, cover_id, destination, validators):
+                    asked.append((cover_id, dict(validators)))
+                    destination.write_bytes(b"changed")
+                    return {"etag": '"v2"'}
+
+            changed = sources._revalidate_artwork(Client(), "s1", {"old.image": "c-old", "new.image": "c-new"},
+                                                  threading.Event())
+            self.assertEqual(changed, 1)
+            self.assertEqual([cover for cover, _ in asked], ["c-old"])     # a recent cover is left alone
+            self.assertIn("last_modified", asked[0][1])                     # asked as of the copy here
+            self.assertEqual(old.read_bytes(), b"changed")
+            record = json.loads((covers / remote.VALIDATORS_FILE).read_text())["old.image"]
+            self.assertEqual(record["etag"], '"v2"')
+            asked.clear()
+            sources._revalidate_artwork(Client(), "s1", {"old.image": "c-old"}, threading.Event())
+            self.assertEqual(asked, [])                                     # checked now: not asked again
+
+
 class ResolverPlaybackTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()

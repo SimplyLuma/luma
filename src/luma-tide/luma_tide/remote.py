@@ -58,6 +58,12 @@ ARTWORK_WORKERS = 2
 ARTWORK_STRIKES = 2
 ARTWORK_BACKOFF_SECONDS = 15 * 60
 COVERS_FILE = "covers.json"
+# Covers on this device are asked about again (a conditional request: ETag or
+# Last-Modified) once they are this old, a batch per sync, so a changed cover
+# arrives without Tide ever fetching every cover again.
+VALIDATORS_FILE = "validators.json"
+REVALIDATE_SECONDS = 14 * 24 * 3600
+REVALIDATE_BATCH = 100
 
 Progress = Callable[[str, int, int], None]
 Changed = Callable[[], None]
@@ -643,8 +649,12 @@ class RemoteSources:
         folder = self.artwork_root / source_id
         wanted = [(cover_id, folder / name) for name, cover_id in covers.items()
                   if not (folder / name).is_file()]
-        if not wanted or time.monotonic() < self._artwork_resume_at.get(source_id, 0):
+        if time.monotonic() < self._artwork_resume_at.get(source_id, 0):
             return len(wanted)
+        if not wanted:
+            if not cancel.is_set():
+                self._revalidate_artwork(client, source_id, covers, cancel)
+            return 0
         if progress is not None:
             progress("artwork", 0, len(wanted))
         stop = threading.Event()
@@ -682,7 +692,61 @@ class RemoteSources:
                 pool.submit(fetch, cover_id, path)
         if stop.is_set():
             self._artwork_resume_at[source_id] = time.monotonic() + ARTWORK_BACKOFF_SECONDS
+        elif not cancel.is_set():
+            self._revalidate_artwork(client, source_id, covers, cancel)
         return len(wanted) - state["fetched"]
+
+    def _revalidate_artwork(self, client: SubsonicClient, source_id: str, covers: dict[str, str],
+                            cancel: threading.Event) -> int:
+        """Ask the server about the oldest covers here; replace those it changed. Returns how many changed."""
+        ask = getattr(client, "cover_art_if_changed", None)
+        if ask is None:
+            return 0
+        import email.utils
+        folder = self.artwork_root / source_id
+        record_path = folder / VALIDATORS_FILE
+        try:
+            records = json.loads(record_path.read_text())
+            records = records if isinstance(records, dict) else {}
+        except (OSError, ValueError):
+            records = {}
+        now = time.time()
+        due = []
+        for name, cover_id in covers.items():
+            path = folder / name
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            record = records.get(name) or {}
+            checked = float(record.get("checked") or mtime)
+            if now - checked >= REVALIDATE_SECONDS:
+                if not record.get("etag") and not record.get("last_modified"):
+                    record = {"last_modified": email.utils.formatdate(mtime, usegmt=True)}
+                due.append((checked, name, cover_id, record))
+        due.sort()
+        changed = 0
+        for _checked, name, cover_id, record in due[:REVALIDATE_BATCH]:
+            if cancel.is_set():
+                break
+            try:
+                fresh = ask(cover_id, folder / name, record)
+            except (Throttled, Unreachable):
+                break
+            except (SubsonicError, OSError):
+                fresh = record  # unusable answer: keep the cover and ask again next time
+            else:
+                if fresh is not None:
+                    changed += 1
+            records[name] = {**(fresh if fresh is not None else record), "checked": now}
+        if due:
+            try:
+                partial = folder / f".{VALIDATORS_FILE}.{os.getpid()}.part"
+                partial.write_text(json.dumps(records, sort_keys=True))
+                os.replace(partial, record_path)
+            except OSError:
+                pass
+        return changed
 
     # -- playback ---------------------------------------------------------------
 
