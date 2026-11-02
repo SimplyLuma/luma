@@ -341,6 +341,26 @@ static const char *const tv_sheet =
 "window.lumaui-tv .lumaui-toast .lumaui-toast-text, window.lumaui-tv .lumaui-toast label { font-family: Figtree, sans-serif; font-size: 25tv; font-weight: 650; color: @ink@; }\n"
 "window.lumaui-tv .lumaui-toast .lumaui-toast-icon { min-width: 52tv; min-height: 52tv; border-radius: 16tv; -gtk-icon-size: 28tv;\n"
 "  background-color: alpha(white, 0.08); color: @ink@; }\n"
+/* a question over the page (LumaUI's dialog, libadwaita's dialogs): a TV sheet, TV type and buttons */
+"window.lumaui-tv .lumaui-dialog, window.lumaui-tv dialog > .dialog-contents, window.lumaui-tv dialog.alert > widget {\n"
+"  min-width: 760tv; padding: 40tv; border-radius: 36tv; border: none; border-spacing: 18tv;\n"
+"  background-color: @sheet@; background-image: none; color: @ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv .lumaui-dialog label, window.lumaui-tv dialog label { font-family: Figtree, sans-serif; font-size: 26tv; font-weight: 500;\n"
+"  color: @ink_2@; line-height: 1.25; }\n"
+"window.lumaui-tv .lumaui-dialog label:first-child, window.lumaui-tv .lumaui-dialog .lumaui-t-title-2, window.lumaui-tv .lumaui-dialog .lumaui-t-title-1,\n"
+"window.lumaui-tv dialog label.title-2, window.lumaui-tv dialog label.heading { font-size: 34tv; font-weight: 700; color: @ink@; }\n"
+"window.lumaui-tv .lumaui-dialog image, window.lumaui-tv dialog image { -gtk-icon-size: 36tv; }\n"
+"window.lumaui-tv .lumaui-dialog-buttons { border-spacing: 16tv; margin-top: 12tv; }\n"
+"window.lumaui-tv .lumaui-dialog button, window.lumaui-tv dialog button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv; border: none;\n"
+"  font-size: 25tv; font-weight: 650; color: @ink@; background-color: @chip@; background-image: none; outline: none;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+"window.lumaui-tv .lumaui-dialog button label, window.lumaui-tv dialog button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
+"window.lumaui-tv .lumaui-dialog button.lumaui-dialog-action, window.lumaui-tv dialog button.destructive-action { background-color: #c8364a; color: white; }\n"
+"window.lumaui-tv .lumaui-dialog button:focus-visible, window.lumaui-tv dialog button:focus-visible {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+"window.lumaui-tv .lumaui-dialog button.lumaui-dialog-action:focus-visible { box-shadow: 0 0 0 4tv white; background-image: none; background-color: #e0485c; color: white; }\n"
 /* a choice's list: dropped from its value, at TV size */
 "window.lumaui-tv popover > contents { padding: 12tv; border-radius: 30tv; border: none; background-color: @sheet@; color: @ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
@@ -723,6 +743,7 @@ static gboolean relax(gpointer data) {
   f->relax_id = 0;
   if (f->active) {
     release_page(f, f->island);
+    if (hold_modal(f) != NULL) return G_SOURCE_REMOVE;
     refind(f);
     /* Until the remote is used, the focus is the open page's destination (a deep link opened it). */
     GtkWidget *focus = focus_of(f);
@@ -880,11 +901,83 @@ static gboolean editable(GtkWidget *focus) {
   return focus != NULL && (GTK_IS_EDITABLE(focus) || GTK_IS_TEXT_VIEW(focus));
 }
 
+/* A question over the page (LumaUI's dialog in the window's modal layer, a libadwaita dialog): on a
+ * TV it is driven like the page, the remote's focus held inside it, Back as its Cancel. */
+static gboolean is_modal(GtkWidget *w) {
+  return gtk_widget_has_css_class(w, "lumaui-dialog") || ADW_IS_DIALOG(w);
+}
+
+static GtkWidget *find_modal(GtkWidget *w) {
+  if (!gtk_widget_get_visible(w))
+    return NULL;
+  if (is_modal(w) && gtk_widget_get_mapped(w))
+    return w;
+  for (GtkWidget *c = gtk_widget_get_last_child(w); c != NULL; c = gtk_widget_get_prev_sibling(c)) {
+    GtkWidget *found = find_modal(c);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
+static GtkWidget *find_class(GtkWidget *w, const char *cls) {
+  if (gtk_widget_has_css_class(w, cls) && gtk_widget_is_drawable(w))
+    return w;
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    GtkWidget *found = find_class(c, cls);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
+/* Bring the remote into an open question: its Cancel first (the safe answer), else its first control. */
+static GtkWidget *hold_modal(TvFrame *f) {
+  GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
+  if (modal == NULL)
+    return NULL;
+  GtkWidget *focus = focus_of(f);
+  if (focus == NULL || (focus != modal && !gtk_widget_is_ancestor(focus, modal))) {
+    GtkWidget *cancel = find_class(modal, "lumaui-dialog-cancel");
+    if (cancel == NULL || !gtk_widget_grab_focus(cancel))
+      gtk_widget_child_focus(modal, GTK_DIR_TAB_FORWARD);
+  }
+  return modal;
+}
+
+static gboolean modal_key(TvFrame *f, GtkWidget *modal, guint key) {
+  GtkDirectionType dir;
+  switch (key) {
+  case GDK_KEY_Up: case GDK_KEY_KP_Up: dir = GTK_DIR_UP; break;
+  case GDK_KEY_Down: case GDK_KEY_KP_Down: dir = GTK_DIR_DOWN; break;
+  case GDK_KEY_Left: case GDK_KEY_KP_Left: dir = GTK_DIR_LEFT; break;
+  case GDK_KEY_Right: case GDK_KEY_KP_Right: dir = GTK_DIR_RIGHT; break;
+  default:
+    if (key == GDK_KEY_Escape || key == GDK_KEY_Back) {
+      GtkWidget *cancel = find_class(modal, "lumaui-dialog-cancel");
+      if (cancel != NULL) gtk_widget_activate(cancel);
+      else if (ADW_IS_DIALOG(modal)) adw_dialog_close(ADW_DIALOG(modal));
+      return GDK_EVENT_STOP;
+    }
+    return GDK_EVENT_PROPAGATE; /* OK presses the focused button; typing types */
+  }
+  GtkWidget *focus = focus_of(f);
+  if (focus != NULL && editable(focus) && (dir == GTK_DIR_LEFT || dir == GTK_DIR_RIGHT))
+    return GDK_EVENT_PROPAGATE;
+  if (!gtk_widget_child_focus(modal, dir))
+    gtk_widget_child_focus(modal, dir == GTK_DIR_UP || dir == GTK_DIR_LEFT ? GTK_DIR_TAB_BACKWARD : GTK_DIR_TAB_FORWARD);
+  return GDK_EVENT_STOP;
+}
+
 static gboolean key_pressed(GtkEventControllerKey *controller, guint key, guint code,
                             GdkModifierType state, TvFrame *f) {
   (void)controller; (void)code;
   if (!f->active || (state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK)) != 0)
     return GDK_EVENT_PROPAGATE;
+  GtkWidget *modal = hold_modal(f);
+  if (modal != NULL) {
+    f->keyed = TRUE;
+    gtk_window_set_focus_visible(f->window, TRUE);
+    return modal_key(f, modal, key);
+  }
   GtkWidget *focus = focus_of(f);
   gboolean page = in_page(f, focus);
   f->keyed = TRUE;
