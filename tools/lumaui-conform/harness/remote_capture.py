@@ -223,13 +223,17 @@ def main() -> int:
         mutter = subprocess.Popen(["mutter", "--headless", "--wayland", "--no-x11", f"--wayland-display={display}",
                                    "--virtual-monitor", monitor], env=base_env, stdout=log, stderr=log, start_new_session=True)
         sock = os.path.join(runtime, display)
-        for _ in range(100):
-            if os.path.exists(sock):
-                break
+        # The service runs niced with idle I/O from container storage on a data disk: a cold
+        # first start can take far longer than on a desktop. Wait for the socket, or for mutter to exit.
+        limit = float(os.environ.get("LUMAUI_CONFORM_MUTTER_WAIT", "90"))
+        started = time.monotonic()
+        while not os.path.exists(sock) and mutter.poll() is None and time.monotonic() - started < limit:
             time.sleep(0.1)
-        else:
-            print("lumaui-conform: headless mutter did not start (see remote.log)", file=sys.stderr)
+        if not os.path.exists(sock):
+            why = f"exited ({mutter.returncode})" if mutter.poll() is not None else f"no socket after {limit:.0f} s"
+            print(f"lumaui-conform: headless mutter did not start: {why} (see remote.log)", file=sys.stderr)
             return 4
+        print(f"mutter: up in {time.monotonic() - started:.1f} s", file=log, flush=True)
         command, launch_env = app_command(run_dir, plan, base_env)
         timeouts = 0
         for state in plan["states"]:
