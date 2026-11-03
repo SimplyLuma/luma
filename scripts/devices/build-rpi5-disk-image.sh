@@ -25,7 +25,24 @@
 # starts Luma's first-boot setup. A medium carrying a preview credential is
 # refused.
 #
-# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--uboot-rpm FILE] [--size GIB] [--no-xz] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
+# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--payload REPO REF] [--uboot-rpm FILE] [--size GIB] [--no-xz] [--first-boot-overlay DIR] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
+#
+# --payload deploys REF (the Raspberry Pi 5 hardware target's channel ref,
+# luma/<major>/aarch64/raspberrypi-rpi5/<channel>) from the signed OSTree
+# repository REPO (the nightly's candidate or published repository), verified
+# with the medium's release key; the commit must name hardware target
+# raspberrypi,rpi5 and the medium's channel. The ISO still supplies the
+# release key, the update URL and the GRUB font. Without --payload the card
+# deploys the medium's generic commit (Fedora's kernel, U-Boot device trees).
+#
+# First boot: the card has no account and root is locked. The builder marks
+# the deployment for first-boot setup with /etc/luma/first-boot/pending
+# (key=value: origin=card, device=raspberrypi,rpi5, created=<epoch>); the
+# image's own first-boot setup owns everything after that. --first-boot-overlay
+# copies a directory tree into the deployment's /etc as well (state or presets
+# the setup needs on a preinstalled card; paths relative to /etc). The
+# manifest records which setup the payload ships; a payload with GNOME
+# Initial Setup and no Luma first-boot setup is reported, not shippable.
 #
 # --test-payload deploys COMMIT from the local OSTree repository REPO instead of
 # the medium's signed commit (origin and update path stay the medium's), for
@@ -58,6 +75,7 @@ fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
 iso="" output="" uboot_rpm="" size_gib=12 compress=1 test_repo="" test_commit="" test_key=""
+payload_src="" payload_ref="" first_boot_overlay=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --iso) iso=${2:?}; shift 2 ;;
@@ -65,12 +83,16 @@ while [ "$#" -gt 0 ]; do
     --uboot-rpm) uboot_rpm=${2:?}; shift 2 ;;
     --size) size_gib=${2:?}; shift 2 ;;
     --no-xz) compress=0; shift ;;
+    --payload) payload_src=$(realpath -e "${2:?}"); payload_ref=${3:?}; shift 3 ;;
+    --first-boot-overlay) first_boot_overlay=$(realpath -e "${2:?}"); shift 2 ;;
     --test-payload) test_repo=$(realpath -e "${2:?}"); test_commit=${3:?}; shift 3 ;;
     --test-ssh-key) test_key=$(realpath -e "${2:?}"); shift 2 ;;
     *) usage ;;
   esac
 done
 [ -n "$iso" ] && [ -n "$output" ] || usage
+[ -z "$payload_src" ] || [ -z "$test_repo" ] || fail "--payload and --test-payload are exclusive"
+[ -z "$first_boot_overlay" ] || [ -d "$first_boot_overlay" ] || fail "--first-boot-overlay must be a directory"
 [[ "$size_gib" =~ ^[0-9]+$ ]] && [ "$size_gib" -ge 8 ] || fail "--size must be at least 8 (GiB)"
 [ "$(uname -s)" = Linux ] || fail "build the card image on Linux"
 [ "$(id -u)" = 0 ] || fail "run as root: the image is assembled on loop devices"
@@ -135,6 +157,18 @@ key="$work/stage2/$atlas/luma-release.gpg"
 medium="$work/iso/${media[medium_repo]}"
 commit=$(ostree --repo="$medium" rev-parse "$ref") || fail "the medium does not carry $ref"
 payload_repo=$medium
+if [ -n "$payload_src" ]; then
+  [[ "$payload_ref" =~ ^luma/[0-9]+/aarch64/raspberrypi-rpi5/$channel$ ]] ||
+    fail "--payload ref must be the Raspberry Pi 5 $channel ref, not $payload_ref"
+  ref=$payload_ref
+  payload_repo=$payload_src
+  commit=$(ostree --repo="$payload_repo" rev-parse "$ref") || fail "$payload_repo does not carry $ref"
+  for want in "org.projectluma.hardware-target=raspberrypi,rpi5" "org.projectluma.architecture=aarch64" \
+              "org.projectluma.channel=$channel"; do
+    got=$(ostree --repo="$payload_repo" show --print-metadata-key="${want%%=*}" "$commit" 2>/dev/null | tr -d "'")
+    [ "$got" = "${want#*=}" ] || fail "payload commit metadata ${want%%=*} is '${got}', not '${want#*=}'"
+  done
+fi
 if [ -n "$test_repo" ]; then
   commit=$(ostree --repo="$test_repo" rev-parse "$test_commit") || fail "the test repository has no $test_commit"
   payload_repo=$test_repo
@@ -142,6 +176,12 @@ if [ -n "$test_repo" ]; then
 fi
 version=$(ostree --repo="$payload_repo" show --print-metadata-key=version "$commit" | tr -d "'")
 echo "Payload: $remote:$ref $commit ($version)"
+if [ -n "$payload_src" ]; then
+  # The card is named after the Pi build, not the ISO that lent its key.
+  build_id=$(ostree --repo="$payload_repo" show --print-metadata-key=org.projectluma.build-id "$commit" | tr -d "'")
+  [[ "$build_id" =~ ^[0-9]{8}\.[0-9]+$ ]] || fail "payload build id is not a nightly id: $build_id"
+  image_name="luma-rpi5-$channel-$build_id-aarch64"
+fi
 
 # The deployed kernel and its device trees.
 release=$(ostree --repo="$payload_repo" ls "$commit" /usr/lib/modules | awk '$1 ~ /^d/ { sub(".*/", "", $5); print $5 }' | grep -v '^modules$')
@@ -245,7 +285,7 @@ ostree config --repo="$repo" set sysroot.bootloader none
 ostree config --repo="$repo" set sysroot.readonly true
 ostree admin os-init --sysroot="$sysroot" "$stateroot" >/dev/null
 ostree remote add --repo="$repo" --set=gpg-verify=true --set=gpg-verify-summary=false \
-  --set=gpgkeypath="$key" "$remote" "file://$medium"
+  --set=gpgkeypath="$key" "$remote" "file://${payload_src:-$medium}"
 if [ -n "$test_repo" ]; then
   ostree pull-local --repo="$repo" --untrusted "$test_repo" "$commit" >/dev/null
   ostree refs --repo="$repo" --create="$remote:$ref" "$commit"
@@ -302,6 +342,23 @@ install -m 0644 "$card_src/luma-rpi5-grow-root.service" "$deploy/etc/systemd/sys
 install -d "$deploy/etc/systemd/system/multi-user.target.wants"
 ln -sf /etc/systemd/system/luma-rpi5-grow-root.service \
   "$deploy/etc/systemd/system/multi-user.target.wants/luma-rpi5-grow-root.service"
+
+# First boot: hand the card to the image's first-boot setup (see the header).
+install -d -m 0755 "$deploy/etc/luma/first-boot"
+printf 'origin=card\ndevice=raspberrypi,rpi5\ncreated=%s\n' "$epoch" >"$deploy/etc/luma/first-boot/pending"
+if [ -n "$first_boot_overlay" ]; then
+  (cd "$first_boot_overlay" && find . -mindepth 1 | grep -q .) || fail "--first-boot-overlay is empty"
+  cp -a --no-preserve=ownership "$first_boot_overlay/." "$deploy/etc/"
+fi
+if [ -e "$deploy/usr/lib/luma/first-boot" ] || [ -e "$deploy/usr/libexec/luma-first-boot" ]; then
+  first_boot=luma
+elif [ -e "$deploy/usr/libexec/gnome-initial-setup" ]; then
+  first_boot="gnome-initial-setup (not shippable: Luma's first-boot setup is missing)"
+  echo "warning: the payload's first boot is GNOME Initial Setup; do not publish this image" >&2
+else
+  first_boot="none (no first-boot setup in the payload)"
+  echo "warning: the payload has no first-boot setup; the card cannot create an account" >&2
+fi
 
 # The system's GRUB configuration, as bootupd writes it with its static
 # configs: /boot/grub2/grub.cfg and the ESP stub that finds /boot by UUID.
@@ -433,6 +490,9 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "uboot $uboot_nevra $uboot_rpm_sha256"
   echo "grub $grub_sha256 ${grub_efi#"$deploy"}"
   echo "device_trees $dt_layout"
+  echo "first_boot $first_boot"
+  [ -z "$first_boot_overlay" ] || echo "first_boot_overlay $(cd "$first_boot_overlay" && find . -type f | LC_ALL=C sort | tr '\n' ' ')"
+  [ -z "$payload_src" ] || echo "payload_repo $payload_src"
   [ -z "$test_repo" ] || echo "test_payload $test_repo (not for publication)"
   [ -z "$test_key" ] || echo "test_ssh_key $(ssh-keygen -lf "$test_key" 2>/dev/null || basename "$test_key")"
   echo "partition1:"
