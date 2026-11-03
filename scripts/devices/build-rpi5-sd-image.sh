@@ -5,9 +5,8 @@
 #
 #   MBR, disk identifier 0x4c554d41
 #   p1  FAT32 "LUMA_PI5", 512 MiB at 1 MiB: config.txt, Fedora U-Boot, the
-#       installer kernel's upstream device trees (CMA 256 MiB; U-Boot's copies
-#       in dtb/broadcom carry HDMI audio when the payload has luma-rpi5-kmod),
-#       the ISO's GRUB
+#       installer kernel's upstream device trees (CMA 256 MiB) for the
+#       firmware and for U-Boot (dtb/broadcom), the ISO's GRUB
 #       as EFI/BOOT/BOOTAA64.EFI, the card menu (EFI/BOOT/grub.cfg, grubenv),
 #       the installer kernel and initramfs
 #   p2  the ISO, byte for byte
@@ -123,17 +122,6 @@ done
 repo="$work/iso/luma/repo"
 ref=$(ostree --repo="$repo" refs | grep -vx ostree-metadata || true)
 [ -n "$ref" ] && [ "$(printf '%s\n' "$ref" | wc -l)" = 1 ] || fail "ISO payload ref is ambiguous: $ref"
-# HDMI audio needs luma-rpi5-kmod (bcm2712-dma and the BCM2712 vc4) for this
-# exact kernel; see the device trees below. The installer gets the same
-# modules through updates.img.
-hdmi_audio=no
-kmod_modules=(updates/luma-rpi5/bcm2712-dma.ko updates/luma-rpi5/vc4.ko)
-if ostree --repo="$repo" ls "$ref" "/usr/lib/modules/$release/${kmod_modules[0]}.xz" >/dev/null 2>&1; then
-  hdmi_audio=yes
-  missing+=("${kmod_modules[@]}")
-else
-  echo "warning: the ISO payload has no luma-rpi5-kmod for $release; HDMI audio stays off" >&2
-fi
 compat_updates=no
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "Installer runtime lacks ${#missing[@]} Pi modules; adding updates.img from the ISO payload"
@@ -192,15 +180,15 @@ fi
 grub2-editenv "$fat/EFI/BOOT/grubenv" create
 install -m 0644 "$work/iso/images/pxeboot/vmlinuz" "$fat/images/pxeboot/vmlinuz"
 install -m 0644 "$work/iso/images/pxeboot/initrd.img" "$fat/images/pxeboot/initrd.img"
-install -m 0644 "$card_src/config.txt" "$fat/config.txt"
-# Linux gets U-Boot's tree: U-Boot loads dtb/<fdtfile> from the card and
-# applies its board fixups (MAC, serial). Without that file it falls back to
-# the firmware's tree, which the installed system does not boot with, so
-# firmware dtoverlay= lines never reach Linux. HDMI audio is merged into these
-# trees only when the payload carries luma-rpi5-kmod: without the DMA driver
-# vc4 HDMI waits for the controller and never binds.
-"$repo_root/scripts/devices/rpi5-board-dtbs.sh" --kernel-dtbs "$work/stage2/$dtbs" \
-  --hdmi-audio "$hdmi_audio" --output "$fat" >/dev/null
+install -m 0644 "$card_src/config-uboot.txt" "$fat/config.txt"
+# The installer runs Fedora's kernel, which needs U-Boot's tree: U-Boot loads
+# dtb/<fdtfile> from the card and applies its board fixups (MAC, serial).
+# Without that file it falls back to the firmware's tree, on which Fedora's
+# kernel hangs. A system installed with the Luma Raspberry Pi kernel needs the
+# firmware layout instead (build-rpi5-disk-image.sh); this card is for
+# Fedora-kernel payloads.
+"$repo_root/scripts/devices/rpi5-board-dtbs.sh" --layout uboot --kernel-dtbs "$work/stage2/$dtbs" \
+  --output "$fat" >/dev/null
 sed -e "s|@ISO_NAME@|$iso_name|g" "$card_src/README.txt.in" >"$fat/README.txt"
 find "$fat" -exec touch -h -d "@$epoch" {} +
 
@@ -268,7 +256,6 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "uboot $uboot_nevra $uboot_rpm_sha256"
   echo "compat_updates_img $compat_updates"
   echo "installer_args $installer_args"
-  echo "hdmi_audio $hdmi_audio"
   echo "partition1:"
   (cd "$fat" && find . -type f | LC_ALL=C sort | xargs sha256sum | sed 's/^/  /')
 } >"$output/$image_name.manifest.txt"

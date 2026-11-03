@@ -8,8 +8,10 @@
 #
 #   MBR, disk identifier 0x4c554d42
 #   p1  FAT32 "LUMA_PI5", 512 MiB at 1 MiB, mounted at /boot/efi: config.txt,
-#       Fedora U-Boot, the deployed kernel's device trees (CMA 256 MiB; HDMI
-#       audio merged when the payload has luma-rpi5-kmod), GRUB as
+#       Fedora U-Boot, the deployed kernel's device trees (kernel-luma-rpi:
+#       Raspberry Pi's trees and overlays for the board firmware, which builds
+#       Linux's tree; Fedora's kernel: upstream trees with 256 MiB CMA that
+#       U-Boot loads from dtb/broadcom), GRUB as
 #       EFI/BOOT/BOOTAA64.EFI with the card menu, EFI/fedora (the system's
 #       GRUB stub and bootuuid.cfg)
 #   p2  ext4 "boot", 1 GiB: /boot (BLS entries, kernels, grub2/)
@@ -23,7 +25,12 @@
 # starts Luma's first-boot setup. A medium carrying a preview credential is
 # refused.
 #
-# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--uboot-rpm FILE] [--size GIB] [--no-xz]
+# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--uboot-rpm FILE] [--size GIB] [--no-xz] [--test-payload REPO COMMIT]
+#
+# --test-payload deploys COMMIT from the local OSTree repository REPO instead of
+# the medium's signed commit (origin and update path stay the medium's), for
+# proving a payload on hardware before it is composed. The manifest says so;
+# never publish such an image.
 #
 # Runs as root on Linux (loop devices). Nothing from the payload is executed:
 # every step uses the build host's own tools, so an x86_64 host can build it.
@@ -49,7 +56,7 @@ disk_id=0x4c554d42
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-iso="" output="" uboot_rpm="" size_gib=12 compress=1
+iso="" output="" uboot_rpm="" size_gib=12 compress=1 test_repo="" test_commit=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --iso) iso=${2:?}; shift 2 ;;
@@ -57,6 +64,7 @@ while [ "$#" -gt 0 ]; do
     --uboot-rpm) uboot_rpm=${2:?}; shift 2 ;;
     --size) size_gib=${2:?}; shift 2 ;;
     --no-xz) compress=0; shift ;;
+    --test-payload) test_repo=$(realpath -e "${2:?}"); test_commit=${3:?}; shift 3 ;;
     *) usage ;;
   esac
 done
@@ -124,26 +132,35 @@ channel=${media[channel]} remote=${media[remote]} ref=${media[ref]} stateroot=${
 key="$work/stage2/$atlas/luma-release.gpg"
 medium="$work/iso/${media[medium_repo]}"
 commit=$(ostree --repo="$medium" rev-parse "$ref") || fail "the medium does not carry $ref"
-version=$(ostree --repo="$medium" show --print-metadata-key=version "$commit" | tr -d "'")
+payload_repo=$medium
+if [ -n "$test_repo" ]; then
+  commit=$(ostree --repo="$test_repo" rev-parse "$test_commit") || fail "the test repository has no $test_commit"
+  payload_repo=$test_repo
+  echo "warning: test payload $commit from $test_repo; do not publish this image" >&2
+fi
+version=$(ostree --repo="$payload_repo" show --print-metadata-key=version "$commit" | tr -d "'")
 echo "Payload: $remote:$ref $commit ($version)"
 
 # The deployed kernel and its device trees.
-release=$(ostree --repo="$medium" ls "$commit" /usr/lib/modules | awk '$1 ~ /^d/ { sub(".*/", "", $5); print $5 }' | grep -v '^modules$')
+release=$(ostree --repo="$payload_repo" ls "$commit" /usr/lib/modules | awk '$1 ~ /^d/ { sub(".*/", "", $5); print $5 }' | grep -v '^modules$')
 [ -n "$release" ] && [ "$(printf '%s\n' "$release" | wc -l)" = 1 ] || fail "payload kernel is ambiguous: $release"
 echo "Kernel: $release"
-ostree --repo="$medium" checkout -U --subpath="/usr/lib/modules/$release/dtb/broadcom" "$commit" "$work/dtbs"
-hdmi_audio=no
-if ostree --repo="$medium" ls "$commit" "/usr/lib/modules/$release/updates/luma-rpi5/bcm2712-dma.ko.xz" >/dev/null 2>&1; then
-  hdmi_audio=yes
+# kernel-luma-rpi ships Raspberry Pi's trees and overlays: the board firmware
+# builds Linux's tree. Fedora's kernel needs U-Boot to load its upstream tree.
+if ostree --repo="$payload_repo" ls "$commit" "/usr/lib/modules/$release/dtb/overlays/overlay_map.dtb" >/dev/null 2>&1; then
+  dt_layout=firmware
+  ostree --repo="$payload_repo" checkout -U --subpath="/usr/lib/modules/$release/dtb" "$commit" "$work/dtbs"
 else
-  echo "warning: the payload has no luma-rpi5-kmod for $release; HDMI audio stays off" >&2
+  dt_layout=uboot
+  ostree --repo="$payload_repo" checkout -U --subpath="/usr/lib/modules/$release/dtb/broadcom" "$commit" "$work/dtbs"
 fi
+echo "Device trees: $dt_layout layout"
 
 # Kernel arguments: root, the board's, and what the release declares in
 # /usr/lib/bootc/kargs.d (as the installer adds them).
 kargs_d=$(mktemp -d "$work/kargs.XXXXXX")
-if ostree --repo="$medium" ls "$commit" /usr/lib/bootc/kargs.d >/dev/null 2>&1; then
-  ostree --repo="$medium" checkout -U --subpath=/usr/lib/bootc/kargs.d "$commit" "$kargs_d/d"
+if ostree --repo="$payload_repo" ls "$commit" /usr/lib/bootc/kargs.d >/dev/null 2>&1; then
+  ostree --repo="$payload_repo" checkout -U --subpath=/usr/lib/bootc/kargs.d "$commit" "$kargs_d/d"
 fi
 release_kargs=$(python3 - "$kargs_d/d" <<'PY'
 import glob, os, sys, tomllib
@@ -225,7 +242,12 @@ ostree config --repo="$repo" set sysroot.readonly true
 ostree admin os-init --sysroot="$sysroot" "$stateroot" >/dev/null
 ostree remote add --repo="$repo" --set=gpg-verify=true --set=gpg-verify-summary=false \
   --set=gpgkeypath="$key" "$remote" "file://$medium"
-ostree pull --repo="$repo" "$remote" "$ref" >/dev/null
+if [ -n "$test_repo" ]; then
+  ostree pull-local --repo="$repo" --untrusted "$test_repo" "$commit" >/dev/null
+  ostree refs --repo="$repo" --create="$remote:$ref" "$commit"
+else
+  ostree pull --repo="$repo" "$remote" "$ref" >/dev/null
+fi
 [ "$(ostree --repo="$repo" rev-parse "$remote:$ref")" = "$commit" ] || fail "pulled commit differs from $commit"
 kargs=(root=UUID="$root_uuid" rootflags=subvol=root rw $board_args $release_kargs)
 for arg in "${kargs[@]}"; do
@@ -313,9 +335,13 @@ umount "$deploy/var/home" "$deploy/var"
 
 # The boot partition (also the ESP).
 fat="$work/fat"
-"$repo_root/scripts/devices/rpi5-board-dtbs.sh" --kernel-dtbs "$work/dtbs" \
-  --hdmi-audio "$hdmi_audio" --output "$fat" >/dev/null
-install -m 0644 "$card_src/config.txt" "$fat/config.txt"
+"$repo_root/scripts/devices/rpi5-board-dtbs.sh" --layout "$dt_layout" --kernel-dtbs "$work/dtbs" \
+  --output "$fat" >/dev/null
+if [ "$dt_layout" = firmware ]; then
+  install -m 0644 "$card_src/config.txt" "$fat/config.txt"
+else
+  install -m 0644 "$card_src/config-uboot.txt" "$fat/config.txt"
+fi
 install -m 0644 "$work/uboot/usr/share/uboot/rpi_arm64/u-boot.bin" "$fat/u-boot.bin"
 grub_efi=$(find "$deploy/usr/lib/efi/grub2" -path '*/EFI/fedora/grubaa64.efi' | sort | tail -n 1)
 [ -n "$grub_efi" ] || fail "the payload has no grubaa64.efi"
@@ -370,7 +396,8 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "kargs ${kargs[*]}"
   echo "uboot $uboot_nevra $uboot_rpm_sha256"
   echo "grub $(sha256sum "$grub_efi" | cut -d' ' -f1) ${grub_efi#"$deploy"}"
-  echo "hdmi_audio $hdmi_audio"
+  echo "device_trees $dt_layout"
+  [ -z "$test_repo" ] || echo "test_payload $test_repo (not for publication)"
   echo "partition1:"
   (cd "$fat" && find . -type f | LC_ALL=C sort | xargs sha256sum | sed 's/^/  /')
 } >"$output/$image_name.manifest.txt"

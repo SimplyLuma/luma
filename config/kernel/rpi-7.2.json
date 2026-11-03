@@ -5,6 +5,7 @@
   "architecture": "aarch64",
   "branch": "rpi-7.2.y",
   "pi_defconfig": "bcm2711_defconfig",
+  "device_tree": "broadcom/bcm2712-rpi-5-b.dtb",
   "sources": {
     "linux": {
       "name": "rpi-linux-dbb0de2b7b0496028bf81d9acdac93bf7ec036b1.tar.gz",
@@ -20,5 +21,6 @@
     "source_rpm_sha256": "c71821a704919ee93c2cb9dd21439a9973952fafc558f267c2b84fda13cf40ca",
     "member": "lib/modules/7.2.11-200.fc44.aarch64/config",
     "sha256": "a51ef35e4ec68f0d066eb90550d9dae3c9ea7b93c91709653d86ba0778a95de6"
-  }
+  },
+  "patches": []
 }

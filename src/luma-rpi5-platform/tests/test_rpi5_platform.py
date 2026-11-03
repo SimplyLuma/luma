@@ -88,47 +88,67 @@ class Card(unittest.TestCase):
         for line in ("kernel=u-boot.bin", "os_check=0", "arm_64bit=1"):
             self.assertIn(line, section)
 
-    def test_config_txt_has_no_firmware_overlays(self):
-        # Linux boots with the tree U-Boot loads from dtb/broadcom; firmware
-        # overlays never reach it.
-        active = [line for line in (HERE / "card" / "config.txt").read_text().splitlines()
-                  if not line.lstrip().startswith("#")]
-        self.assertFalse([line for line in active if line.startswith("dtoverlay")])
+    def test_firmware_layout_config_carries_kms_cma_and_pcie(self):
+        # kernel-luma-rpi runs on the firmware's tree: these reach Linux.
+        lines = (HERE / "card" / "config.txt").read_text().splitlines()
+        section = lines[lines.index("[pi5]"):lines.index("[all]")]
+        self.assertIn("dtoverlay=vc4-kms-v3d-pi5,cma-256", section)
+        self.assertIn("dtparam=pciex1", section)
+        self.assertEqual(lines[-1].lstrip("# ").split(":")[0], "for example")
 
-    def test_hdmi_audio_overlay_matches_the_bcm2712_dma_binding(self):
-        dts = (HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio.dtso").read_text()
-        self.assertIn('target-path = "/soc@107c000000";', dts)
-        self.assertIn('compatible = "brcm,bcm2712-dma";', dts)
-        self.assertIn("reg = <0x00010600 0x600>;", dts)
-        self.assertIn("brcm,dma-channel-mask = <0x07c0>;", dts)
-        # DREQ | burst (bit 30) | wide source (bit 24) | QoS 10 | panic QoS 15
-        flags = (1 << 30) | (1 << 24) | (10 << 16) | (15 << 20)
-        for target, dreq in (("hdmi0", 10), ("hdmi1", 17)):
-            fragment = dts[dts.index(f"target = <&{target}>;"):]
-            self.assertIn(f"dmas = <&dma40 {flags | dreq:#010x}>;", fragment.split("};")[0])
-            self.assertIn('dma-names = "audio-rx";', fragment.split("};")[0])
+    def test_uboot_layout_config_has_no_firmware_overlays(self):
+        # Fedora's kernel boots with the tree U-Boot loads from dtb/broadcom.
+        text = (HERE / "card" / "config-uboot.txt").read_text()
+        active = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+        self.assertIn("kernel=u-boot.bin", active)
+        self.assertFalse([line for line in active if line.startswith(("dtoverlay", "dtparam"))])
 
-    def test_hdmi_audio_d0_fragment_uses_the_d0_request_lines(self):
-        # Raspberry Pi's bcm2712d0-rpi-5-b.dts: HDMI0 DREQ 12, HDMI1 DREQ 13.
-        dts = (HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio-d0.dtso").read_text()
-        flags = (1 << 30) | (1 << 24) | (10 << 16) | (15 << 20)
-        for target, dreq in (("hdmi0", 12), ("hdmi1", 13)):
-            fragment = dts[dts.index(f"target = <&{target}>;"):]
-            self.assertIn(f"dmas = <&dma40 {flags | dreq:#010x}>;", fragment.split("};")[0])
+    def _sync(self, esp, dtb, config="kernel=u-boot.bin\n"):
+        if config is not None:
+            (esp / "config.txt").write_text(config)
+        env = {"LUMA_RPI5_ESP": str(esp), "LUMA_RPI5_DTB": str(dtb), "PATH": "/usr/bin:/bin"}
+        return subprocess.run([str(HERE / "luma-rpi5-firmware-sync")], env=env,
+                              capture_output=True, text=True, check=True).stdout
 
-    @unittest.skipUnless(shutil.which("dtc"), "dtc unavailable")
-    def test_hdmi_audio_overlay_compiles(self):
+    def _kernel_dtbs(self, root):
+        (root / "broadcom").mkdir(parents=True)
+        (root / "overlays").mkdir()
+        (root / "broadcom" / "bcm2712d0-rpi-5-b.dtb").write_bytes(b"d0")
+        (root / "broadcom" / "bcm2712-rpi-5-b.dtb").write_bytes(b"c1")
+        (root / "broadcom" / "other-vendor.dtb").write_bytes(b"x")
+        (root / "overlays" / "overlay_map.dtb").write_bytes(b"map")
+        (root / "overlays" / "vc4-kms-v3d-pi5.dtbo").write_bytes(b"kms")
+
+    def test_firmware_sync_copies_trees_and_overlays_only(self):
         with tempfile.TemporaryDirectory() as tmp:
-            result = subprocess.run(
-                ["dtc", "-q", "-@", "-I", "dts", "-O", "dtb", "-o", f"{tmp}/o.dtbo",
-                 str(HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio.dtso")],
-                capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            result = subprocess.run(
-                ["dtc", "-q", "-@", "-I", "dts", "-O", "dtb", "-o", f"{tmp}/d0.dtbo",
-                 str(HERE / "card" / "dtb" / "luma-rpi5-hdmi-audio-d0.dtso")],
-                capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
+            esp, dtb = Path(tmp, "esp"), Path(tmp, "dtb")
+            esp.mkdir(); self._kernel_dtbs(dtb)
+            self.assertIn("4 files updated", self._sync(esp, dtb))
+            self.assertEqual((esp / "bcm2712d0-rpi-5-b.dtb").read_bytes(), b"d0")
+            self.assertEqual((esp / "overlays" / "vc4-kms-v3d-pi5.dtbo").read_bytes(), b"kms")
+            self.assertFalse((esp / "other-vendor.dtb").exists())
+            self.assertEqual((esp / "config.txt").read_text(), "kernel=u-boot.bin\n")
+            self.assertIn("0 files updated", self._sync(esp, dtb, config=None))
+            self.assertFalse(list(esp.rglob("*.luma-new")))
+
+    def test_firmware_sync_leaves_uboot_layout_and_fedora_kernels_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            esp, dtb = Path(tmp, "esp"), Path(tmp, "dtb")
+            esp.mkdir(); self._kernel_dtbs(dtb)
+            (esp / "dtb").mkdir()
+            self.assertIn("not syncing", self._sync(esp, dtb))
+            self.assertFalse((esp / "bcm2712d0-rpi-5-b.dtb").exists())
+            (esp / "dtb").rmdir()
+            (dtb / "overlays" / "overlay_map.dtb").unlink()
+            self.assertIn("not a Raspberry Pi kernel", self._sync(esp, dtb))
+            (dtb / "overlays" / "overlay_map.dtb").write_bytes(b"map")
+            self.assertIn("not a Luma Pi boot partition", self._sync(esp, dtb, config=""))
+
+    def test_firmware_sync_unit_runs_after_a_good_boot_on_pi5_boards(self):
+        unit = (HERE / "luma-rpi5-firmware-sync.service").read_text()
+        self.assertIn("After=boot-complete.target", unit)
+        self.assertIn("RequiresMountsFor=/boot/efi", unit)
+        self.assertIn("ConditionFirmware=|device-tree-compatible(raspberrypi,5-model-b)", unit)
 
     def test_template_has_only_the_known_placeholders(self):
         self.assertEqual(set(re.findall(r"@[A-Z_]+@", self.grub)), {"@ISO_VOLID@", "@INSTALLER_ARGS@", "@ISO_NAME@"})

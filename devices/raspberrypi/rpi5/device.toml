@@ -10,28 +10,31 @@ tier = "experimental"
 maintainers = ["@nmcmil"]
 
 [kernel]
-# Fedora's stock kernel, the same package the ARM installer and OS image carry.
-# The SD card holds that kernel's own upstream device trees.
-distribution = "fedora"
-nevr = "kernel-7.2.11-200.fc44"
-release = "7.2.11-200.fc44.aarch64"
-# C1 boards. D0 boards (2 GB, 16 GB, later 4/8 GB) use broadcom/bcm2712-d-rpi-5-b.dtb.
+# The Luma Raspberry Pi kernel (kernel-luma-rpi): Raspberry Pi's tree with
+# Fedora's configuration plus bcm2711_defconfig. Linux gets the board
+# firmware's device tree (config.txt overlays apply) through U-Boot and GRUB.
+source_lock = "config/kernel/rpi-7.2.json"
+release = "7.2.15-1.luma.rpi.fc44.aarch64"
+rpm_version_release = "7.2.15-1.luma.rpi.fc44"
+config = "config/kernel/rpi.config"
+# C1 boards. D0 boards (2 GB, 16 GB, later 4/8 GB) load broadcom/bcm2712d0-rpi-5-b.dtb.
 dtb = "broadcom/bcm2712-rpi-5-b.dtb"
 
 [boot]
 config = "boot.toml"
 
 [userspace]
-# Wi-Fi NVRAM alias, Shell defaults, V3D runtime PM; gated to Pi 5 hardware.
-# luma-rpi5-kmod: HDMI audio modules, built per kernel (config/kernel/rpi5-kmod.env).
-rpm_requires = ["luma-rpi5-platform", "luma-rpi5-kmod"]
+# Pi 5 defaults and the firmware tree sync (luma-rpi5-platform), Bluetooth
+# patch RAM, and GStreamer with the Raspberry Pi HEVC decoder fix.
+rpm_requires = ["luma-rpi5-platform", "luma-rpi-bluetooth-firmware", "gstreamer1-plugins-bad-free >= 1.28.8-1.luma.1"]
 
 [firmware]
-# Distribution firmware (brcmfmac-firmware); the manifest records the alias
-# luma-rpi5-platform adds. No firmware is redistributed by this profile.
+# Bluetooth patch RAM from luma-rpi-bluetooth-firmware (RPi-Distro/bluez-firmware,
+# LICENCE.cypress) and the Wi-Fi NVRAM alias from luma-rpi5-platform; Wi-Fi
+# firmware itself is Fedora's brcmfmac-firmware.
 manifest = "firmware.manifest"
-manifest_sha256 = "78b7de6e6f284865e1ea708259e93d6d7416287cb484dc2628bc41c20f683841"
-files = 0
+manifest_sha256 = "78ffd79c86b10b70c02a4ad2ebd3d38319b82a1fcccad5a8cc807805ede2aa88"
+files = 5
 store = "/usr/lib/firmware"
 
 [install]

@@ -45,9 +45,10 @@ because U-Boot stores them on the card and an entry would bypass the card menu.
 
 ## Known limits
 
-Bluetooth, fan control, the RTC and the power button do not work on the
-mainline kernel yet; HDMI audio needs `luma-rpi5-kmod` and the card's merged device trees.
-See `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
+This installer card boots Fedora's kernel with upstream device trees: no
+Bluetooth, HDMI audio, fan, RTC or HEVC. The Luma Pi image (the preinstalled
+card, `scripts/devices/build-rpi5-disk-image.sh`) runs `kernel-luma-rpi` on the
+firmware's device tree; see `SUPPORT.md` and `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
 needs a TV input in HDMI 2.0 (enhanced) mode.
 
 ## Hardware results

@@ -1,8 +1,11 @@
 # Luma for Raspberry Pi 5
 # Board firmware -> U-Boot (EFI) -> GRUB (EFI/BOOT/grub.cfg) -> Luma.
-# U-Boot enumerates PCIe and NVMe before GRUB starts, so GRUB and Linux see an
-# NVMe drive on the PCIe connector. Keep this card in after installing: its
-# menu starts the Luma installed on NVMe.
+# Luma's Raspberry Pi kernel (kernel-luma-rpi) runs on the device tree the
+# board firmware builds from the .dtb files and overlays/ on this partition,
+# so dtoverlay= and dtparam= lines below work as on Raspberry Pi OS. U-Boot and
+# GRUB pass that tree on unchanged (there is no dtb/ directory here).
+# luma-rpi5-firmware-sync refreshes the .dtb files and overlays/ from the
+# running kernel after a good boot. Nothing in Luma rewrites this file.
 
 [pi5]
 arm_64bit=1
@@ -12,12 +15,13 @@ enable_uart=1
 disable_overscan=1
 disable_fw_kms_setup=1
 hdmi_ignore_cec_init=1
-# The device trees are the installer kernel's upstream ones with the CMA pool
-# raised to 256 MB below 1 GB (Fedora's cma=256M@0M-1024M), done in the tree
-# so the installed system gets it without a kernel argument.
-# C1 boards load bcm2712-rpi-5-b.dtb, D0 boards bcm2712d0-rpi-5-b.dtb.
 os_check=0
-# No dtoverlay= here: Linux gets the tree U-Boot loads from dtb/broadcom/, not
-# this one. HDMI audio is merged into those (dtb/luma-rpi5-hdmi-audio.dtso).
+# KMS display and HDMI audio, 256 MB CMA below 1 GB.
+dtoverlay=vc4-kms-v3d-pi5,cma-256
+# The PCIe connector (NVMe, HATs); the firmware only turns it on by itself
+# when it boots from NVMe.
+dtparam=pciex1
 
 [all]
+# Add your own lines here (HATs, I2C, SPI, UART, fan curve, RTC charging),
+# for example:  dtparam=i2c_arm=on   dtoverlay=hifiberry-dacplus

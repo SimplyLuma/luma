@@ -87,16 +87,26 @@ hardware path either way.
 | Board firmware, bootloader | Pi 5 EEPROM (on the board) | Raspberry Pi | not shipped by Luma |
 | U-Boot | Fedora uboot-images-armv8 | GPL-2.0-or-later | yes |
 
-## Boot chain with the Luma Pi kernel (decision pending)
+## Boot chain with the Luma Pi kernel
+
+Decision (2026-11-02): option A. The board firmware builds the tree from the
+Raspberry Pi `.dtb` files, `overlays/` and `config.txt` on the card; U-Boot and
+GRUB pass it on; `luma-rpi5-firmware-sync` refreshes the files after a good
+boot. Fedora-kernel boots (installer card, Fedora-kernel deployments) keep the
+U-Boot layout with upstream trees. Implemented in
+`scripts/devices/rpi5-board-dtbs.sh`, `build-rpi5-disk-image.sh` (layout chosen
+from the payload's kernel) and luma-rpi5-platform; proved on a spare card
+before any change to an existing card.
 
 Proved on a Pi 5 D0 (2026-11-02): an rpm-ostree deployment with
 `kernel-luma-rpi`, `luma-rpi-bluetooth-firmware` and the `.luma`
 `gstreamer1-plugins-bad-free` boots cleanly (no failed units, no SELinux
 denials, HDMI audio, Bluetooth, HEVC) when the kernel gets Raspberry Pi's tree
-with the board's fixups. The open question is how that tree reaches the kernel.
-What the firmware normally adds: MAC (`local-mac-address`), Bluetooth address
-(`local-bd-address`), serial and model, memory, `pciex1` (NVMe) and every
-`dtoverlay=`/`dtparam=` in `config.txt`.
+with the board's fixups. What the firmware adds: MAC (`local-mac-address`),
+Bluetooth address (`local-bd-address`), serial and model, memory, `pciex1`
+(NVMe) and every `dtoverlay=`/`dtparam=` in `config.txt`.
+
+Options considered:
 
 | Option | How | For | Against |
 |---|---|---|---|
@@ -105,11 +115,7 @@ What the firmware normally adds: MAC (`local-mac-address`), Bluetooth address
 | C. BLS `devicetree` per deployment | Kernel package ships `/usr/lib/modules/<kver>/devicetree`; ostree writes a `devicetree` line. | Rollback to a Fedora-kernel deployment keeps its own tree. | One board per package; GRUB applies no fixups (random MAC, no Bluetooth address, no overlays). Test use only. |
 | D. Firmware boots Linux directly | Kernel, initramfs and `cmdline.txt` on the FAT, refreshed from the default deployment; `tryboot` for A/B. | No U-Boot or GRUB. | Loses GRUB/BLS menu and greenboot counting; new update tooling. |
 
-Recommendation: A for the preinstalled Pi image (it carries no Fedora kernel),
-with a card entry that boots the upstream tree with GRUB `devicetree` for
-installer/rescue/Fedora-kernel fallback. Prove it on a spare card first; on
-Nick's card it changes what U-Boot loads by default.
-
-On the Pi now: the Luma Pi kernel deployment is the ostree rollback slot; the
-Fedora deployment stays default. The card entry `luma-rpi-deploy` (one-shot)
-boots it with a test tree that has this board's fixups baked in.
+Open: the installer card cannot pick a C1 or D0 upstream tree for a GRUB
+`devicetree` line by itself (GRUB cannot see the board revision), so it keeps
+the U-Boot layout and suits Fedora-kernel payloads only; a Luma Pi kernel
+installer needs its own design.
