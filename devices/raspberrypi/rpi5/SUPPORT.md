@@ -7,7 +7,7 @@ Fedora 44 aarch64 (Workstation/IoT), Manjaro ARM and LibreELEC 12/13.
 
 Status: **done** = in this branch and checked on a Pi 5; **built** = in this
 branch, not yet checked on hardware; **todo** = not in Luma yet;
-**decision** = waiting on Nick.
+**decision** = waiting on a product decision.
 
 ## Kernel and boot
 
@@ -74,7 +74,7 @@ carries a one-function fix (`patches/gstreamer1-plugins-bad`). Mesa 26.2 imports
 NV12/P030 SAND128 as external textures, and vc4 planes scan it out directly. Players built on FFmpeg (mpv, VLC, Celluloid,
 Kodi) and FFmpeg itself would need a Luma FFmpeg with the HEVC decoder enabled
 plus the v4l2-request patches: that is the part Fedora excludes, and it is
-Nick's decision. Viola (Chromium) decodes through VA-API on Linux; Chromium's
+a product decision. Viola (Chromium) decodes through VA-API on Linux; Chromium's
 V4L2 stateless decoder is a ChromeOS build option, so Viola has no Pi HEVC
 hardware path either way.
 
