@@ -34,7 +34,8 @@ install_data('data/session/gnome-initial-setup.desktop',
 install_data('data/systemd/luma-setup.conf',
              install_dir: userunitdir / 'gnome-session@gnome-initial-setup.target.d')
 install_data('data/systemd/luma-setup.service', 'data/systemd/luma-setup-first-session.service',
-             'data/systemd/luma-setup-first-desktop.service', install_dir: userunitdir)
+             'data/systemd/luma-setup-first-desktop.service', 'data/systemd/luma-setup-cover.service',
+             install_dir: userunitdir)
 
 # The session's rights, and the root helper's.
 install_data('data/polkit/org.projectluma.setup.policy', install_dir: datadir / 'polkit-1' / 'actions')

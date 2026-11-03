@@ -16,6 +16,7 @@ the key, except where it joins a network.
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 import os
 from pathlib import Path
@@ -68,6 +69,26 @@ def posture() -> Posture:
     if lumaui.mobile_form_factor():
         return Posture.PHONE
     return Posture.DESKTOP
+
+
+def trace(*parts) -> None:
+    """LUMA_SETUP_TRACE=<file>: focus and key events, one line each (device test runs only)."""
+    path = os.environ.get("LUMA_SETUP_TRACE", "")
+    if path:
+        import time
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{time.monotonic():.3f} " + " ".join(str(p) for p in parts) + "\n")
+
+
+def describe(widget: Gtk.Widget | None) -> str:
+    if widget is None:
+        return "-"
+    owner = widget
+    while owner is not None and not owner.get_name().startswith("su-") and not isinstance(owner, Gtk.Button):
+        owner = owner.get_parent()
+    owner = owner or widget
+    text = owner.get_label() if isinstance(owner, Gtk.Button) else ""
+    return f"{type(widget).__name__}<{type(owner).__name__}#{owner.get_name()}.{'.'.join(owner.get_css_classes())} {text!r}>"
 
 
 # -- small parts ------------------------------------------------------------------
@@ -197,6 +218,7 @@ class ChoiceList(Gtk.Box):
         inner.append(words)
         inner.append(icon("check", 16, "su-tick"))
         row = Gtk.Button(child=inner)
+        row.fkey = f"li:{self.get_name()}:{key}"   # the same row after a redraw keeps the focus
         row.add_css_class("su-li")
         row.update_property([Gtk.AccessibleProperty.LABEL], [text])
         if chosen:
@@ -297,6 +319,7 @@ def wallpaper_for(light: bool) -> str | None:
             or _wallpaper_path(light))
 
 
+@functools.lru_cache(maxsize=4)
 def softened_wallpaper(light: bool, path: str | None = None) -> Gdk.Texture | None:
     """The wallpaper as it is behind the sheet: blurred once, small, then drawn full screen.
 
@@ -316,10 +339,6 @@ def softened_wallpaper(light: bool, path: str | None = None) -> Gdk.Texture | No
     width = SOFTEN["width"]
     height = max(1, (width * pixbuf.get_height() + pixbuf.get_width() // 2) // pixbuf.get_width())
     small = pixbuf.scale_simple(width, height, GdkPixbuf.InterpType.HYPER)
-    if small.get_has_alpha():
-        flat = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, width, height)
-        small.copy_area(0, 0, width, height, flat, 0, 0)  # an opaque picture: alpha is dropped, not blended
-        small = flat
     saturated = small.copy()
     small.saturate_and_pixelate(saturated, SOFTEN["saturation"]["light" if light else "dark"], False)
     blurred = _blur(saturated, radius=SOFTEN["radius"], passes=SOFTEN["passes"])
@@ -456,7 +475,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.phone = form == Posture.PHONE
         # frame: the last frame of a finished setup, drawn again (luma-setup --cover)
         self.light = bool(frame["light"]) if frame else prefers_light()
-        self.wallpaper = frame.get("wallpaper") if frame else wallpaper_for(self.light)
+        self.wallpaper = (frame.get("wallpaper") or None) if frame else wallpaper_for(self.light)
         self._on_signed_in = on_signed_in
         if frame is None:
             self.network = system.Network(self._network_changed)
@@ -538,6 +557,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.scaler.on_resize = self._fit
         self.set_child(self.scaler)
 
+        self.connect("notify::focus-widget", lambda *_a: trace("focus", self.page if self.pages else "-",
+                                                               describe(self.get_focus())))
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self._key)
         self.add_controller(keys)
@@ -638,14 +659,18 @@ class SetupWindow(Gtk.ApplicationWindow):
         if old is not None:
             GLib.timeout_add(self.stack.get_transition_duration() + 40, lambda: (self._drop(old), False)[1])
         self._dots()
-        self._foot()
+        self.set_focus(None)
+        self._build_foot()
         if self.page == "wifi":
             self.network.start_scanning()
         else:
             self.network.stop_scanning()
         if self.page == "device" and self.setup.online and not self._zone_asked:
             self._ask_zone()
-        GLib.idle_add(lambda: (self._first_focus(), False)[1])
+        # The new page's first place, now: a key pressed in the crossfade lands there, never on
+        # whatever GTK would pick when the focused button went (Back). Again once laid out.
+        self._first_focus()
+        GLib.idle_add(lambda: (self._first_focus(only_if_lost=True), False)[1])
         self._snap()
 
     def _snap(self, suffix: str = "") -> None:
@@ -653,7 +678,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         snapshot(self, f"{self._shots:02d}-{self.page}{suffix}")
 
     def redraw(self) -> None:
-        """The same page again (a choice changed), keeping the scroll."""
+        """The same page again (a choice changed), keeping the scroll and the focus."""
+        kept = self._focus_key()
         adjustment = self.body.get_vadjustment()
         value = adjustment.get_value()
         self.page_parts = {}
@@ -667,7 +693,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child(pane)
         if old is not None:
             self.stack.remove(old)
-        self._foot()
+        self._build_foot()
+        self._restore_focus(kept)
         GLib.idle_add(lambda: (adjustment.set_value(value), False)[1])
         self._snap("-change")
 
@@ -703,13 +730,81 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.page_parts["title"] = title_label
         return pane
 
-    def _first_focus(self) -> None:
+    def _first_focus(self, only_if_lost: bool = False) -> None:
+        """The page's first place: its field, else the key (Return goes on), else its first control."""
+        if only_if_lost and self._focus_in(self.stack.get_visible_child()) or only_if_lost and self._focus_in(self.foot):
+            return
         target = self.page_parts.get("focus") or getattr(self, "key", None)   # nothing to type: Return goes on
-        if target is not None and target.get_mapped():
-            if isinstance(target, Field):
-                target.text.grab_focus_without_selecting()
-            else:
-                target.grab_focus()
+        if target is not None and not target.get_sensitive():
+            target = self._first_focusable(self.stack.get_visible_child())
+        trace("first-focus", self.page, describe(target), target is not None and target.get_mapped(),
+              target is not None and target.get_sensitive())
+        if target is None:
+            return
+        if isinstance(target, Field):
+            target.text.grab_focus_without_selecting()
+        else:
+            target.grab_focus()
+
+    def _focus_in(self, ancestor: Gtk.Widget | None) -> bool:
+        focus = self.get_focus()
+        return ancestor is not None and focus is not None and (focus is ancestor or focus.is_ancestor(ancestor))
+
+    def _focus_key(self) -> str | None:
+        """What has the focus, in words that survive a rebuild: a row's or option's key, a field's name, a button's label."""
+        widget = self.get_focus()
+        while widget is not None and widget is not self:
+            if getattr(widget, "fkey", None):
+                return widget.fkey
+            if isinstance(widget, (Gtk.Text, Gtk.Button)) and widget.get_name().startswith("su-"):
+                return "name:" + widget.get_name()
+            if isinstance(widget, Gtk.Button) and widget.get_label():
+                return "label:" + widget.get_label()
+            widget = widget.get_parent()
+        return None
+
+    def _restore_focus(self, kept: str | None) -> None:
+        found = self._find_focus(kept) if kept else None
+        if found is None:
+            self._first_focus()
+        elif isinstance(found, Gtk.Text):
+            found.grab_focus_without_selecting()
+        else:
+            found.grab_focus()
+
+    def _find_focus(self, kept: str) -> Gtk.Widget | None:
+        kind, _, value = kept.partition(":")
+        todo = [self.stack.get_visible_child(), self.foot]
+        while todo:
+            widget = todo.pop()
+            if widget is None:
+                continue
+            if widget.get_sensitive() and (
+                    getattr(widget, "fkey", None) == kept
+                    or kind == "name" and isinstance(widget, (Gtk.Text, Gtk.Button)) and widget.get_name() == value
+                    or kind == "label" and isinstance(widget, Gtk.Button) and widget.get_label() == value):
+                return widget
+            child = widget.get_first_child()
+            while child is not None:
+                todo.append(child)
+                child = child.get_next_sibling()
+        return None
+
+    @staticmethod
+    def _first_focusable(root: Gtk.Widget | None) -> Gtk.Widget | None:
+        todo = [root]
+        while todo:
+            widget = todo.pop(0)
+            if widget is None:
+                continue
+            if widget.get_focusable() and widget.get_sensitive() and widget.get_visible() and \
+                    isinstance(widget, (Gtk.Text, Gtk.Button)):
+                return widget
+            child = widget.get_first_child()
+            while child is not None:
+                todo.append(child)
+                child = child.get_next_sibling()
+        return None
 
     # Hello -----------------------------------------------------------------------------
     def _hello(self):
@@ -1135,6 +1230,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             glyph.append(Gtk.Box())
         words = box(label(name, "su-optn"), label(line, "su-optl"), vertical=True, valign=Gtk.Align.CENTER)
         option = Gtk.Button(child=box(glyph, words, spacing=11), hexpand=True)
+        option.fkey = f"opt:{group}:{key}"
         option.add_css_class("su-opt")
         if on:
             option.add_css_class("su-on")
@@ -1261,6 +1357,12 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     # -- the foot ------------------------------------------------------------------------
     def _foot(self) -> None:
+        kept = self._focus_key() if self._focus_in(self.foot) else None
+        self._build_foot()
+        if kept is not None:
+            self._restore_focus(kept)
+
+    def _build_foot(self) -> None:
         while (child := self.foot.get_first_child()) is not None:
             self.foot.remove(child)
         if self._finishing:
@@ -1311,6 +1413,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.draw(forward=step > 0)
 
     def _key(self, _controller, keyval: int, _code: int, state: Gdk.ModifierType) -> bool:
+        trace("key", Gdk.keyval_name(keyval), self.page, describe(self.get_focus()))
         if keyval == Gdk.KEY_Escape:
             return True  # a system sheet waits for an answer
         if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and not self._finishing:
@@ -1414,7 +1517,9 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.draw(forward=False)
             self.page_parts["hint"].set_label(why)
             return
-        GLib.timeout_add(650, lambda: (self._sign_in(username, password), False)[1])
+        # Signed in once the last tick is on screen (two frames drawn after it, so the
+        # compositor has shown the first): the first session draws this same frame again.
+        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (self._sign_in(username, password), False)[1]))
 
     def _sign_in(self, username: str, password: str) -> None:
         """Signed in with the sheet still up: the first session opens on this same frame (--cover)."""
@@ -1424,6 +1529,32 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     def _sign_in_problem(self, message: str) -> None:
         log.warning("sign-in: %s", message)
+
+
+def after_frames(widget: Gtk.Widget, count: int, then: Callable[[], None]) -> None:
+    """then() once the widget's window has drawn count more frames (3 s at most)."""
+    clock = widget.get_frame_clock()
+    state = {"left": count, "done": False}
+
+    def finish() -> None:
+        if not state["done"]:
+            state["done"] = True
+            if clock is not None and state.get("handler"):
+                clock.disconnect(state["handler"])
+            then()
+
+    def painted(_clock) -> None:
+        state["left"] -= 1
+        if state["left"] <= 0:
+            GLib.idle_add(lambda: (finish(), False)[1])
+        else:
+            widget.queue_draw()
+    if clock is None:
+        finish()
+        return
+    state["handler"] = clock.connect("after-paint", painted)
+    widget.queue_draw()
+    GLib.timeout_add(3000, lambda: (finish(), False)[1])
 
 
 def last_frame(form: Posture, light: bool, wallpaper: str | None, first: str, face: str, rows: list) -> dict:

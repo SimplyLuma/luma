@@ -424,11 +424,13 @@ overview open and close; the open overview's screenshot is unchanged (SSIM
 `0321-luma-setup-welcome-cover.patch`: the first session after Luma's
 first-boot setup (`/var/lib/luma-setup/welcome/<user>`, until
 `~/.local/state/luma-setup/welcome-done`) opens on the setup's last frame.
-Before showing the stage, the Shell starts `luma-setup --cover`, which draws
-that frame again from the same data, code, wallpaper, softening and text
-settings, and waits (15 s at most) for its window's title to say its first
-frame is drawn. The first frame paints the window through a clone in a top
-chrome cover; the cover then keeps a copy (`paint_to_content`) and the window
-closes. At `startup-complete` the cover lifts (1.1 s fade). Without the
+`luma-setup-cover.service` starts with the Shell and draws that frame again
+from the same data, code, wallpaper, softening and text settings; the Shell
+does not show its stage until that window's title says its first frame is
+drawn (15 s at most). The first frames are a clone of the window above
+everything, with the rest of the Shell undrawn (`uiGroup` at opacity 0). At
+`startup-complete` the cover keeps a copy (`paint_to_content`), the window
+closes (a full-screen window keeps the panel and dash away), the Shell draws
+under the cover, and the cover lifts (0.5 s, then a 1.1 s fade). Without the
 setup's frame, the cover is a blurred wallpaper of the Shell's own. The cover
 window never animates in. Shell .158.

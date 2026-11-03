@@ -74,14 +74,19 @@ class SetupApplication(Adw.Application):
         self.frame = None     # set for --cover: the setup's last frame, as data
 
     def do_startup(self) -> None:
+        from .sheet import trace
+        trace("startup")
         Adw.Application.do_startup(self)
+        trace("startup: adw")
         try:
             from luma_appkit import install_lumaui
             install_lumaui()
         except Exception as error:  # noqa: BLE001 - the sheet draws without the kit's sheets
             log.info("LumaUI not installed: %s", error)
+        trace("startup: lumaui")
         from .sheet import load_style
         load_style()
+        trace("startup: style")
         # A field keeps what is in it when it takes the focus; nothing is selected for the person.
         Gtk.Settings.get_default().props.gtk_entry_select_on_focus = False
 
@@ -153,6 +158,8 @@ class SetupApplication(Adw.Application):
                 log.info("cover: setting %s: %s", name, error)
         if frame.get("scale"):
             os.environ["LUMA_SETUP_SCALE"] = str(frame["scale"])
+        from .sheet import trace
+        trace("cover: window")
         setup = Setup(locale=catalog.DEFAULT_LOCALE, layout=catalog.DEFAULT_LAYOUT, timezone="UTC")
         form = Posture(frame.get("posture") or "desktop")
         if form == Posture.TV:
@@ -160,8 +167,12 @@ class SetupApplication(Adw.Application):
             self.window = SetupTVWindow(self, setup, frame)
         else:
             self.window = SetupWindow(self, setup, form, frame=frame)
+        trace("cover: built")
         self.window.set_title(COVER_TITLE)
         self.window.fullscreen()
+        # Nothing has the focus in the setup's last frame; nothing has it here either (no ring).
+        self.window.set_focus_visible(False)
+        self.window.connect("map", lambda window: window.set_focus(None))
         self.window.connect("map", self._shown)
         self.window.connect("realize", self._cover_watch)
         self.window.present()
@@ -178,7 +189,27 @@ class SetupApplication(Adw.Application):
                 return
             clock.disconnect(handler)
             window.set_title(COVER_TITLE + COVER_READY)
+            from .sheet import trace
+            trace("cover: ready")
         handler = clock.connect("after-paint", painted)
+
+
+def _wait_for_wayland(seconds: float) -> str | None:
+    """The session's Wayland display, once its compositor has made the socket."""
+    import stat
+    import time
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        try:
+            for name in sorted(os.listdir(runtime)):
+                if name.startswith("wayland-") and not name.endswith(".lock") and \
+                        stat.S_ISSOCK(os.stat(os.path.join(runtime, name)).st_mode):
+                    return name
+        except OSError:
+            pass
+        time.sleep(0.05)
+    return None
 
 
 COVER_TITLE = "luma-setup-cover"
@@ -205,6 +236,29 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(frame, dict) or not frame.get("rows"):
             log.info("cover: no last frame to draw")
             return 1
+        # Started with the Shell (luma-setup-cover.service): the slow part first, then the display.
+        from . import sheet
+        sheet.trace("cover: modules")
+        sheet.softened_wallpaper(bool(frame.get("light")), frame.get("wallpaper") or None)
+        sheet.trace("cover: softened")
+        if not os.environ.get("WAYLAND_DISPLAY"):
+            display = _wait_for_wayland(30.0)
+            if display is None:
+                log.info("cover: no display")
+                return 1
+            os.environ["WAYLAND_DISPLAY"] = display
+        # GTK was imported before the display existed: initialise it now (PyGObject keeps
+        # its own note of whether that worked, and refuses windows without it).
+        from gi.overrides import Gtk as gtk_override
+        from gi.repository import Gdk
+        if Gdk.Display.get_default() is None:
+            opened = Gdk.Display.open(os.environ["WAYLAND_DISPLAY"])
+            if opened is None or not Gtk.init_check():
+                log.info("cover: the display would not open")
+                return 1
+            Gdk.DisplayManager.get().set_default_display(opened)
+        gtk_override.initialized = True
+        sheet.trace("cover: display", os.environ["WAYLAND_DISPLAY"])
         application.frame = frame
         return application.run(argv[:1])
     if "--welcome" in argv:

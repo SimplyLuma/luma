@@ -30,7 +30,7 @@ from luma_appkit.tv_stage import TvStage, add_tv_style, tv_material  # noqa: E40
 
 from . import catalog, system  # noqa: E402
 from .model import Setup, host_name, mismatch, strength, username_problem  # noqa: E402
-from .sheet import HEAD, OWNER, Posture, _taken, last_frame, prefers_light, wallpaper_for  # noqa: E402
+from .sheet import HEAD, OWNER, Posture, _taken, after_frames, last_frame, prefers_light, wallpaper_for  # noqa: E402
 
 __all__ = ("SetupTVWindow", "SetupTV")
 
@@ -633,8 +633,9 @@ class SetupTV(TvStage):
             self._hint.set_label(why)
             self._hint.add_css_class("bad")
             return
-        GLib.timeout_add(650, lambda: (system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m)),
-                                       False)[1])
+        # Signed in once the last tick is on screen: the first session draws this same frame again.
+        after_frames(self, 2, lambda: GLib.timeout_add(
+            650, lambda: (system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m)), False)[1]))
 
 
 def _children(widget: Gtk.Widget):
