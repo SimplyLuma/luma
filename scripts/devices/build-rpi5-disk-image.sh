@@ -25,12 +25,13 @@
 # starts Luma's first-boot setup. A medium carrying a preview credential is
 # refused.
 #
-# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--uboot-rpm FILE] [--size GIB] [--no-xz] [--test-payload REPO COMMIT]
+# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--uboot-rpm FILE] [--size GIB] [--no-xz] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
 #
 # --test-payload deploys COMMIT from the local OSTree repository REPO instead of
 # the medium's signed commit (origin and update path stay the medium's), for
 # proving a payload on hardware before it is composed. The manifest says so;
-# never publish such an image.
+# never publish such an image. --test-ssh-key adds root SSH access with that
+# public key for the test (systemd credential on the kernel command line).
 #
 # Runs as root on Linux (loop devices). Nothing from the payload is executed:
 # every step uses the build host's own tools, so an x86_64 host can build it.
@@ -56,7 +57,7 @@ disk_id=0x4c554d42
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-iso="" output="" uboot_rpm="" size_gib=12 compress=1 test_repo="" test_commit=""
+iso="" output="" uboot_rpm="" size_gib=12 compress=1 test_repo="" test_commit="" test_key=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --iso) iso=${2:?}; shift 2 ;;
@@ -65,6 +66,7 @@ while [ "$#" -gt 0 ]; do
     --size) size_gib=${2:?}; shift 2 ;;
     --no-xz) compress=0; shift ;;
     --test-payload) test_repo=$(realpath -e "${2:?}"); test_commit=${3:?}; shift 3 ;;
+    --test-ssh-key) test_key=$(realpath -e "${2:?}"); shift 2 ;;
     *) usage ;;
   esac
 done
@@ -250,6 +252,11 @@ else
 fi
 [ "$(ostree --repo="$repo" rev-parse "$remote:$ref")" = "$commit" ] || fail "pulled commit differs from $commit"
 kargs=(root=UUID="$root_uuid" rootflags=subvol=root rw $board_args $release_kargs)
+if [ -n "$test_key" ]; then
+  [ -n "$test_repo" ] || fail "--test-ssh-key is for test payloads only"
+  kargs+=(systemd.wants=sshd.service
+          "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$test_key")")
+fi
 for arg in "${kargs[@]}"; do
   case "$arg" in console=*|firmware_class.path=*|selinux=0|enforcing=0|init=*|rd.break) fail "forbidden kernel argument $arg" ;; esac
 done
@@ -398,6 +405,7 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "grub $(sha256sum "$grub_efi" | cut -d' ' -f1) ${grub_efi#"$deploy"}"
   echo "device_trees $dt_layout"
   [ -z "$test_repo" ] || echo "test_payload $test_repo (not for publication)"
+  [ -z "$test_key" ] || echo "test_ssh_key $(ssh-keygen -lf "$test_key" 2>/dev/null || basename "$test_key")"
   echo "partition1:"
   (cd "$fat" && find . -type f | LC_ALL=C sort | xargs sha256sum | sed 's/^/  /')
 } >"$output/$image_name.manifest.txt"
