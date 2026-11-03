@@ -137,9 +137,11 @@ function gtkModel(G) {
   }
   // Placeholders of entries: GtkText draws them through a child label (already above).
   const glyphs = G.ops.filter(o => (o.k === 'glyph' || o.k === 'texture') && !o.hidden);
+  // A texture is an icon's ink only when it fits the icon (a full-window picture behind, a softened
+  // wallpaper, is centred on whatever small image sits mid-window).
   // Glyphs are symbolic icons (Lucide, the kit's); an app's own full-colour icon is a picture, as the spec's <img> is.
   // App icons pair with the spec's <img> app icons as boxes (appIconRe); other full-colour pictures are left out.
-  const icons = ws.filter(w => (w.css === 'image' || appIconRe.test(w.icon || '')) && w.icon && vis(w) && (/-symbolic$/.test(w.icon) || appIconRe.test(w.icon))).map(w => { const b = B(w.box), gs = glyphs.filter(o => inside(B(o.box), b, 1)), g = gs[0];
+  const icons = ws.filter(w => (w.css === 'image' || appIconRe.test(w.icon || '')) && w.icon && vis(w) && (/-symbolic$/.test(w.icon) || appIconRe.test(w.icon))).map(w => { const b = B(w.box), gs = glyphs.filter(o => inside(B(o.box), b, 1) && (o.k === 'glyph' || (o.box[2] <= b.w + 2 && o.box[3] <= b.h + 2))), g = gs[0];
     if (!gs.length || gs.every(o => (o.op ?? 1) <= 0.02)) return null; // never drawn, or at CSS opacity 0 (v70's hover-only copy buttons)
     const c = g && g.color ? parseColor(g.color) : parseColor(w.color); if (c && g) c.a = (c.a ?? 1) * (g.op ?? 1);
     const ink = gs.length ? gs.map(o => B(o.geo || o.box)).reduce((a, o) => { const x = Math.min(a.x, o.x), y = Math.min(a.y, o.y); return { x, y, w: Math.max(a.x + a.w, o.x + o.w) - x, h: Math.max(a.y + a.h, o.y + o.h) - y }; }) : b;
