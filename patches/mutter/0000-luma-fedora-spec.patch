@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,43 @@
+@@ -29,13 +29,44 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.19%{?dist}
++Release:       1.luma.20%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -42,10 +42,11 @@
 +Patch1025:     0026-backends-native-Clamp-the-frame-threads-minimum-utilization.patch
 +Patch1026:     0027-cogl-Scissor-journal-draws-to-what-they-cover.patch
 +Patch1027:     0028-clutter-actor-Do-not-redraw-the-whole-stage-for-a-first-paint.patch
++Patch1028:     0029-stage-impl-Clip-compact-damage-with-the-scissor-alone.patch
  
  
  BuildRequires: cvt
-@@ -169,6 +195,8 @@
+@@ -169,6 +196,8 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -54,7 +55,7 @@
  
  %build
  %meson -Degl_device=true
-@@ -179,6 +207,29 @@
+@@ -179,6 +208,29 @@
  
  %find_lang %{name}
  
@@ -84,7 +85,7 @@
  %files -f %{name}.lang
  %license COPYING
  %doc NEWS
-@@ -200,6 +250,7 @@
+@@ -200,6 +251,7 @@
  %{_datadir}/GConf/gsettings/mutter-schemas.convert
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.gschema.xml
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.wayland.gschema.xml
