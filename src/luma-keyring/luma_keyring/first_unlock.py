@@ -97,9 +97,19 @@ def unlock(password: str, automatic: bool, keyring: Keyring | None = None,
                 log.info("the keyring went away while unlocking: %s", error)
                 return Result(Kind.UNAVAILABLE, "Your saved passwords aren't available right now.")
             return Result(Kind.WRONG_PASSWORD, "That password didn't unlock them. Try again.")
+    else:
+        # Already open (unlocked earlier this session): an unlock proves nothing, so the
+        # password is checked against the keyring itself, which re-keys it to the same one.
+        try:
+            keyring.change_password(password, password)
+        except KeyringError as error:
+            if keyring.collection() is None:
+                log.info("the keyring went away while checking: %s", error)
+                return Result(Kind.UNAVAILABLE, "Your saved passwords aren't available right now.")
+            return Result(Kind.WRONG_PASSWORD, "That isn't the password your saved passwords use. Try again.")
     if not automatic:
         return Result(Kind.UNLOCKED)
-    if was_locked and login_password_differs(password, verify):
+    if login_password_differs(password, verify):
         # The keyring opened with an older password than the one this account signs in
         # with: the recovery copy must be wrapped with the current one, so ask for it.
         return Result(Kind.NEEDS_LOGIN_PASSWORD, "")
