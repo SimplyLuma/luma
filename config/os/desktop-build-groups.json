@@ -196,6 +196,12 @@
       "paths": [
         "patches/libmanette/"
       ]
+    },
+    "mesa": {
+      "recipe": "scripts/packages/build-mesa.sh",
+      "paths": [
+        "patches/mesa/"
+      ]
     }
   }
 }
