@@ -1,0 +1,112 @@
+From edad8ccd69cf2d96a1244933a11c0090cf11c8f4 Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Mon, 2 Nov 2026 23:49:16 -0600
+Subject: [PATCH 2/2] v3d: upload whole texture levels through the TFU
+
+texture_subdata() on a tiled texture tiled the data on the CPU straight
+into the texture's BO, a scattered write of every utile. Toolkits upload
+whole textures this way all the time (GTK's renderers for cairo-drawn
+nodes and icons, GNOME Shell's St backgrounds), and on a Raspberry Pi 5
+at 4K the tiling was the largest CPU cost of a Settings frame.
+
+For a whole 2D level of at least 128x128 texels, copy the rows into a
+raster staging BO and let the TFU tile them, as blits already do. Other
+uploads (sub-rectangles, arrays, 3D, compressed or depth formats, small
+textures) keep the CPU path.
+---
+ src/gallium/drivers/v3d/v3d_resource.c | 72 ++++++++++++++++++++++++++
+ 1 file changed, 72 insertions(+)
+
+diff --git a/src/gallium/drivers/v3d/v3d_resource.c b/src/gallium/drivers/v3d/v3d_resource.c
+index 33df0d0..3678e6a 100644
+--- a/src/gallium/drivers/v3d/v3d_resource.c
++++ b/src/gallium/drivers/v3d/v3d_resource.c
+@@ -368,6 +368,75 @@ fail:
+         return NULL;
+ }
+ 
++/* Uploads a whole 2D level of a tiled texture through a raster staging BO
++ * and a TFU job: the CPU writes the rows in order and the TFU does the
++ * tiling, instead of the CPU scattering every utile into the (uncached)
++ * tiled BO. Returns false when the upload is not one the TFU can do.
++ */
++static bool
++v3d_texture_subdata_tfu(struct pipe_context *pctx,
++                        struct v3d_resource *rsc,
++                        unsigned level,
++                        const struct pipe_box *box,
++                        const void *data,
++                        unsigned stride)
++{
++        struct pipe_resource *prsc = &rsc->base;
++        struct v3d_context *v3d = v3d_context(pctx);
++        unsigned width = u_minify(prsc->width0, level);
++        unsigned height = u_minify(prsc->height0, level);
++
++        /* Small uploads tile quickly enough on the CPU. */
++        if (box->x != 0 || box->y != 0 || box->z != 0 || box->depth != 1 ||
++            box->width != width || box->height != height ||
++            width * height < 128 * 128 ||
++            (prsc->target != PIPE_TEXTURE_2D &&
++             prsc->target != PIPE_TEXTURE_RECT) ||
++            prsc->nr_samples > 1 ||
++            util_format_is_compressed(prsc->format) ||
++            util_format_is_depth_or_stencil(prsc->format) ||
++            !util_is_power_of_two_nonzero(rsc->cpp) || rsc->cpp > 16) {
++                return false;
++        }
++
++        struct pipe_resource tmpl = {
++                .target = PIPE_TEXTURE_2D,
++                .format = prsc->format,
++                .width0 = width,
++                .height0 = height,
++                .depth0 = 1,
++                .array_size = 1,
++                .bind = PIPE_BIND_LINEAR,
++                .usage = PIPE_USAGE_STAGING,
++        };
++        struct pipe_resource *staging =
++                pctx->screen->resource_create(pctx->screen, &tmpl);
++        if (!staging)
++                return false;
++
++        struct v3d_resource *srsc = v3d_resource(staging);
++        if (srsc->tiled) {
++                pipe_resource_reference(&staging, NULL);
++                return false;
++        }
++
++        MESA_TRACE_FUNC();
++
++        util_copy_rect(v3d_bo_map(srsc->bo), prsc->format,
++                       srsc->slices[0].stride, 0, 0, width, height,
++                       data, stride, 0, 0);
++
++        /* Jobs not yet submitted that write the texture come first; the TFU
++         * job itself waits for the ones reading it.
++         */
++        v3d_flush_jobs_writing_resource(v3d, prsc, V3D_FLUSH_DEFAULT, false);
++        const struct v3d_device_info *devinfo = &v3d->screen->devinfo;
++        bool ok = v3d_X(devinfo, tfu)(pctx, prsc, staging, 0, level, level,
++                                      0, 0, false);
++        pipe_resource_reference(&staging, NULL);
++        return ok;
++}
++
+ static void
+ v3d_texture_subdata(struct pipe_context *pctx,
+                     struct pipe_resource *prsc,
+@@ -387,6 +456,9 @@ v3d_texture_subdata(struct pipe_context *pctx,
+                                                  data, stride, layer_stride);
+         }
+ 
++        if (v3d_texture_subdata_tfu(pctx, rsc, level, box, data, stride))
++                return;
++
+         /* Otherwise, map and store the texture data directly into the tiled
+          * texture.  Note that gallium's texture_subdata may be called with
+          * obvious usage flags missing!
+-- 
+2.56.0
+

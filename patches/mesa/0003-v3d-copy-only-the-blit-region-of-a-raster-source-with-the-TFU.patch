@@ -1,0 +1,138 @@
+From 104d84e3b867bcc6d945b5fd07fa622f3cb373ee Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Mon, 2 Nov 2026 23:56:51 -0600
+Subject: [PATCH] v3d: copy only the blit region of a raster source, with the
+ TFU
+
+v3d_render_blit() copied a raster source into a tiled temporary as large
+as the whole source level, through the TLB or the CPU. A compositor that
+blurs the backdrop behind a panel blits from its linear scanout buffer
+every frame: at 3840x2160 each blit allocated a 33 MB temporary, and
+while the previous one was still busy the BO cache handed out none, so
+the kernel zeroed new pages for every blit.
+
+The TFU reads raster images at any address and stride, so describe the
+source's region (plus one texel of filter margin, its rows starting on a
+64-byte boundary) as a raster image of its own and let one TFU job tile
+it into a temporary of just that size. The TLB and CPU copies remain the
+fallbacks.
+---
+ src/gallium/drivers/v3d/v3d_blit.c | 95 +++++++++++++++++++++++++++++-
+ 1 file changed, 94 insertions(+), 1 deletion(-)
+
+diff --git a/src/gallium/drivers/v3d/v3d_blit.c b/src/gallium/drivers/v3d/v3d_blit.c
+index dd47a6e..b9e3acf 100644
+--- a/src/gallium/drivers/v3d/v3d_blit.c
++++ b/src/gallium/drivers/v3d/v3d_blit.c
+@@ -157,6 +157,96 @@ v3d_tlb_copy_raster_region(struct pipe_context *ctx,
+         return copy.mask == 0;
+ }
+ 
++/* Copies the region a blit reads from a raster (linear) source into a new
++ * tiled texture of just that size with one TFU job: the TFU reads raster
++ * images at any address and stride, so the source's region is described as
++ * a raster image starting at the region's first texel. A compositor that
++ * blurs the backdrop behind a panel blits from its linear scanout buffer
++ * every frame; a temporary the size of the whole screen was allocated (and,
++ * while the previous one was still busy, zeroed) for each blit.
++ *
++ * On success, returns the temporary and moves the blit's source box into
++ * it.
++ */
++static struct pipe_resource *
++v3d_tfu_copy_raster_region(struct pipe_context *ctx,
++                           struct pipe_blit_info *info)
++{
++        struct v3d_context *v3d = v3d_context(ctx);
++        const struct v3d_device_info *devinfo = &v3d->screen->devinfo;
++        struct pipe_resource *psrc = info->src.resource;
++        struct v3d_resource *src = v3d_resource(psrc);
++        unsigned level = info->src.level;
++        const struct v3d_resource_slice *slice = &src->slices[level];
++        int width = u_minify(psrc->width0, level);
++        int height = u_minify(psrc->height0, level);
++
++        if ((psrc->target != PIPE_TEXTURE_2D &&
++             psrc->target != PIPE_TEXTURE_RECT) ||
++            psrc->nr_samples > 1 ||
++            slice->tiling != V3D_TILING_RASTER ||
++            info->src.box.z != 0 || info->src.box.depth != 1 ||
++            util_format_is_compressed(psrc->format) ||
++            util_format_is_depth_or_stencil(psrc->format) ||
++            !util_is_power_of_two_nonzero(src->cpp) || src->cpp > 16) {
++                return NULL;
++        }
++
++        int x0 = info->src.box.x;
++        int y0 = info->src.box.y;
++        int x1 = x0 + info->src.box.width;
++        int y1 = y0 + info->src.box.height;
++        if (x1 < x0)
++                SWAP(x0, x1);
++        if (y1 < y0)
++                SWAP(y0, y1);
++
++        /* One texel of margin for filtered blits; the region starts on a
++         * 64-byte boundary of its row.
++         */
++        int align_px = MAX2(64 / src->cpp, 1);
++        x0 = MAX2(x0 - 1, 0) / align_px * align_px;
++        y0 = MAX2(y0 - 1, 0);
++        x1 = MIN2(x1 + 1, width);
++        y1 = MIN2(y1 + 1, height);
++        if (x1 <= x0 || y1 <= y0)
++                return NULL;
++
++        struct pipe_resource tmpl = {
++                .target = PIPE_TEXTURE_2D,
++                .format = psrc->format,
++                .width0 = x1 - x0,
++                .height0 = y1 - y0,
++                .depth0 = 1,
++                .array_size = 1,
++        };
++        struct pipe_resource *region = ctx->screen->resource_create(ctx->screen, &tmpl);
++        if (!region)
++                return NULL;
++
++        /* The source as a raster image of the region's size starting at the
++         * region's first texel. Only the TFU job reads this description.
++         */
++        struct v3d_resource view = *src;
++        view.base.width0 = tmpl.width0;
++        view.base.height0 = tmpl.height0;
++        view.base.last_level = 0;
++        view.slices[0] = *slice;
++        view.slices[0].offset = slice->offset + y0 * slice->stride + x0 * src->cpp;
++
++        v3d_flush_jobs_writing_resource(v3d, psrc, V3D_FLUSH_DEFAULT, false);
++        if (!v3d_X(devinfo, tfu)(ctx, region, &view.base, 0, 0, 0, 0, 0, false)) {
++                pipe_resource_reference(&region, NULL);
++                return NULL;
++        }
++
++        info->src.resource = region;
++        info->src.level = 0;
++        info->src.box.x -= x0;
++        info->src.box.y -= y0;
++        return region;
++}
++
+ static void
+ v3d_render_blit(struct pipe_context *ctx, struct pipe_blit_info *info)
+ {
+@@ -167,7 +257,10 @@ v3d_render_blit(struct pipe_context *ctx, struct pipe_blit_info *info)
+         if (!info->mask)
+                 return;
+ 
+-        if (!src->tiled &&
++        if (!src->tiled)
++                tiled = v3d_tfu_copy_raster_region(ctx, info);
++
++        if (!tiled && !src->tiled &&
+             info->src.resource->target != PIPE_TEXTURE_1D &&
+             info->src.resource->target != PIPE_TEXTURE_1D_ARRAY) {
+                 struct pipe_box box = {
+-- 
+2.56.0
+

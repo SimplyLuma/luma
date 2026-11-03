@@ -1,8 +1,8 @@
 From ed6ce1cdc23af76d4936f6119a8027684567d74e Mon Sep 17 00:00:00 2001
 From: Project Luma <maintainers@projectluma.org>
 Date: Mon, 2 Nov 2026 22:12:55 -0600
-Subject: [PATCH] v3d: copy raster blit sources to the tiled temporary with the
- TLB
+Subject: [PATCH 1/2] v3d: copy raster blit sources to the tiled temporary with
+ the TLB
 
 v3d_render_blit() samples a raster (linear) source through a tiled
 temporary. It filled that temporary with resource_copy_region(), which
