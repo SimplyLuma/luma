@@ -50,7 +50,10 @@
 # never publish such an image. --test-ssh-key adds root SSH access with that
 # public key for the test (systemd credential on the kernel command line).
 #
-# Runs as root on Linux (loop devices). Nothing from the payload is executed:
+# Runs as root on Linux (loop devices), from an unconfined login or
+# `systemd-run --scope`: a system service (unconfined_service_t) may not write
+# SELinux types the build host's policy lacks (mac_admin), so the OSTree pull
+# fails there. Nothing from the payload is executed:
 # every step uses the build host's own tools, so an x86_64 host can build it.
 set -euo pipefail
 export TZ=UTC LC_ALL=C MTOOLS_SKIP_CHECK=1
@@ -408,29 +411,36 @@ setfiles -F -c "$policy" -r "$sysroot" "$fc" "$sysroot/boot" 2>&1 | grep -v 'Rea
 # Files written into the deployment's /etc above (fstab, the update remote,
 # first-boot units) carry the build host's labels; systemd cannot read a
 # var_t unit file.
-setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy/etc" || fail "labelling the deployment's /etc failed"
-install -d "$var/home"
-mount --bind "$var" "$deploy/var"
-mount -o subvol=home "${loop}p3" "$deploy/var/home"
-# Types the build host's kernel does not know (snapd's) cannot be set here;
-# the first boot labels those paths (luma-rpi5-grow-root, rpi5-relabel.list).
-setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy/var" 2>"$work/setfiles.err" || true
-python3 - "$work/setfiles.err" "$deploy" "$deploy/etc/luma/rpi5-relabel.list" <<'PY' || fail "labelling /var failed"
+# Types the build host's kernel does not know (snapd's) cannot be set here,
+# in /etc or /var; the first boot labels those paths (luma-rpi5-grow-root,
+# rpi5-relabel.list).
+relabel_unknown() {  # TREE: setfiles TREE, list paths with unknown types
+  setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy$1" 2>"$work/setfiles.err" || true
+  python3 - "$work/setfiles.err" "$deploy" "$1" "$deploy/etc/luma/rpi5-relabel.list" <<'PY'
 import re, sys
-err, root, out = sys.argv[1:]
+err, root, tree, out = sys.argv[1:]
 paths, other = [], []
 for line in open(err):
     m = re.match(r"setfiles: Could not set context for (.*):  Invalid argument$", line.rstrip("\n"))
-    if m and m.group(1).startswith(root + "/var/"):
+    if m and m.group(1).startswith(root + tree + "/"):
         paths.append(m.group(1)[len(root):])
     elif line.strip():
         other.append(line.rstrip())
 if other:
     sys.exit("\n".join(other))
 if paths:
-    open(out, "w").write("\n".join(paths) + "\n")
-    print(f"{len(paths)} /var paths left for the first boot to label")
+    with open(out, "a") as stream:
+        stream.write("\n".join(paths) + "\n")
+    print(f"{len(paths)} {tree} paths left for the first boot to label")
 PY
+}
+relabel_unknown /etc || fail "labelling the deployment's /etc failed"
+install -d "$var/home"
+mount --bind "$var" "$deploy/var"
+mount -o subvol=home "${loop}p3" "$deploy/var/home"
+relabel_unknown /var || fail "labelling /var failed"
+# The list itself was written after /etc was labelled.
+setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy/etc/luma" || fail "labelling /etc/luma failed"
 umount "$deploy/var/home" "$deploy/var"
 
 # The boot partition (also the ESP).
