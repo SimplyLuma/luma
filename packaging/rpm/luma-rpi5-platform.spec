@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-rpi5-platform
 Version:        0.3.0
-Release:        1.luma.1%{?dist}
+Release:        1.luma.2%{?dist}
 Summary:        Raspberry Pi 5 platform support for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -25,8 +25,9 @@ Raspberry Pi 5 support for the Luma Pi image: the Wi-Fi NVRAM alias D0
 boards ask for, a V3D runtime-PM delay that keeps the GPU awake between
 frames, GTK's GL renderer, a tool that chooses the SD card boot menu entry
 for the next boot, a service that copies the kernel's device trees to the
-card, and the Pi image's update stream. Everything except the update stream
-is gated on the Pi 5 device tree.
+card, the Pi image's update stream, and no system sleep (the board does not
+resume). Everything except the update stream and sleep policy is gated on
+the Pi 5 device tree.
 
 %prep
 %autosetup -n luma-rpi5-platform
@@ -40,6 +41,7 @@ install -D -m 0755 63-luma-rpi5-gsk-renderer \
   %{buildroot}%{_prefix}/lib/systemd/user-environment-generators/63-luma-rpi5-gsk-renderer
 install -D -m 0755 luma-rpi5-boot-next %{buildroot}%{_bindir}/luma-rpi5-boot-next
 install -D -m 0644 update.conf %{buildroot}%{_sysconfdir}/luma/update.conf
+install -D -m 0644 50-luma-rpi5-no-sleep.conf %{buildroot}%{_prefix}/lib/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf
 install -D -m 0755 luma-rpi5-firmware-sync %{buildroot}%{_libexecdir}/luma-rpi5-firmware-sync
 install -D -m 0644 luma-rpi5-firmware-sync.service %{buildroot}%{_unitdir}/luma-rpi5-firmware-sync.service
 # Enabled by the package itself: a preset applies only on first install.
@@ -56,6 +58,7 @@ grep -Fqx 'ConditionFirmware=|device-tree-compatible(raspberrypi,5-model-b)' \
   %{buildroot}%{_unitdir}/luma-rpi5-firmware-sync.service
 test "$(readlink '%{buildroot}%{_prefix}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b-d0.txt.xz')" = \
   'brcmfmac43455-sdio.raspberrypi,5-model-b.txt.xz'
+grep -Fxq 'AllowSuspend=no' %{buildroot}%{_prefix}/lib/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf
 udevadm verify --no-style %{buildroot}%{_udevrulesdir}/70-luma-rpi5-v3d.rules
 
 %files
@@ -65,12 +68,17 @@ udevadm verify --no-style %{buildroot}%{_udevrulesdir}/70-luma-rpi5-v3d.rules
 %{_prefix}/lib/systemd/user-environment-generators/63-luma-rpi5-gsk-renderer
 %{_bindir}/luma-rpi5-boot-next
 %config(noreplace) %{_sysconfdir}/luma/update.conf
+%{_prefix}/lib/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf
 %{_libexecdir}/luma-rpi5-firmware-sync
 %{_unitdir}/luma-rpi5-firmware-sync.service
 %{_unitdir}/multi-user.target.wants/luma-rpi5-firmware-sync.service
 "%{_prefix}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b-d0.txt.xz"
 
 %changelog
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.3.0-1.luma.2
+- No suspend, hibernate or hybrid sleep: the Pi 5 does not resume (Wi-Fi
+  SDIO and USB fail, Ethernet loses its lease).
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.3.0-1.luma.1
 - Drop the Shell defaults service: backdrop blur is cheap enough on the Pi 5
   now, so it keeps the stock Shell defaults.

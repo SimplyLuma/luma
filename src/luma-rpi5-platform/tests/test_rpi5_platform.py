@@ -39,6 +39,17 @@ class Platform(unittest.TestCase):
         self.assertEqual(update["ref_template"], "luma/1/{arch}/raspberrypi-rpi5/{channel}")
         self.assertTrue(update["graph_url"].endswith("/os/graph/aarch64/raspberrypi-rpi5/{channel}.json"))
 
+    def test_system_sleep_is_off(self):
+        import configparser
+        conf = configparser.ConfigParser()
+        conf.optionxform = str
+        conf.read(HERE / "50-luma-rpi5-no-sleep.conf")
+        self.assertEqual(dict(conf["Sleep"]), {"AllowSuspend": "no", "AllowHibernation": "no",
+                                               "AllowHybridSleep": "no", "AllowSuspendThenHibernate": "no"})
+        spec = HERE.parents[1] / "packaging/rpm/luma-rpi5-platform.spec"
+        if spec.is_file():  # not in the RPM's own %check
+            self.assertIn("%{_prefix}/lib/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf", spec.read_text())
+
     def test_firmware_sync_runs_only_on_pi5_boards(self):
         unit = (HERE / "luma-rpi5-firmware-sync.service").read_text()
         conditions = re.findall(r"^ConditionFirmware=\|device-tree-compatible\((.*)\)$", unit, re.M)
