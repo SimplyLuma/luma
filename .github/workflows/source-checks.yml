@@ -31,6 +31,10 @@ jobs:
           "$RUNNER_TEMP/source-checks/bin/pip" install --quiet jsonschema==4.23.0
       - name: Check the public repository and source contracts
         run: 'PATH="$RUNNER_TEMP/source-checks/bin:$PATH" bash tools/check-repository.sh'
+      # The image build runs this first; a pin with no matching spec or a
+      # fragment naming an unpinned package stops the nightly.
+      - name: Check the package release contract
+        run: bash tests/smoke/package-release-contract.sh
   shared-search:
     strategy:
       fail-fast: false
