@@ -256,7 +256,7 @@ class ChoiceList(Gtk.Box):
 
 
 class Turn(Gtk.Widget):
-    """A spinner whose turn is known (process-working, one turn a second).
+    """A spinner whose turn is known (process-working, one turn a second in twelve steps).
 
     Held, it is drawn at its first angle: the setup holds the step still for the
     frame it hands to the first session, which draws it held and turns it on from
@@ -291,8 +291,12 @@ class Turn(Gtk.Widget):
         now = clock.get_frame_time()
         if not self._start:
             self._start = now
-        self.angle = ((now - self._start) * 360.0 / 1_000_000) % 360.0
-        self.queue_draw()
+        # Twelve steps a turn, one turn a second: a 4K sheet is redrawn twelve times a
+        # second, not sixty, while the first session starts beside it.
+        angle = float(int((now - self._start) * 12 / 1_000_000) % 12 * 30)
+        if angle != self.angle:
+            self.angle = angle
+            self.queue_draw()
         return GLib.SOURCE_CONTINUE
 
     def do_snapshot(self, snapshot) -> None:
@@ -1577,11 +1581,8 @@ class SetupWindow(Gtk.ApplicationWindow):
             return
         # Signed in once the last tick is on screen (two frames drawn after it, so the
         # compositor has shown the first): the first session draws this same frame again.
-        def sign_in() -> None:
-            # The steps still turning are held at their first angle for the hand-over frame.
-            self.hold_steps()
-            after_frames(self, 2, lambda: self._sign_in(username, password))
-        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (sign_in(), False)[1]))
+        after_frames(self, 2, lambda: GLib.timeout_add(
+            650, lambda: (hand_over(self, self, lambda: self._sign_in(username, password)), False)[1]))
 
     def _turns(self) -> list:
         return [row.mark.get_first_child() for row in getattr(self, "_step_rows", {}).values()
@@ -1603,6 +1604,34 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     def _sign_in_problem(self, message: str) -> None:
         log.warning("sign-in: %s", message)
+
+
+def hand_over(widget: Gtk.Widget, sheet, sign_in: Callable[[], None]) -> None:
+    """Sign in and give the screen to the first session, whose first frame is this one.
+
+    With Luma's gdm the setup keeps the screen, its last step turning, until the
+    session's cover has drawn; then it holds the step at its first angle, draws
+    that, and lets gdm switch (handover.py). Without it, the step is held before
+    signing in, as gdm switches at once.
+    """
+    from . import handover
+    if not handover.supported():
+        sheet.hold_steps()
+        after_frames(widget, 2, sign_in)
+        return
+    sign_in()
+    started = GLib.get_monotonic_time()
+
+    def check() -> bool:
+        late = GLib.get_monotonic_time() - started > handover.WAIT_S * 1_000_000
+        if not handover.waiting():
+            return False   # gdm has switched already (its own time limit)
+        if handover.cover_is_ready() or late:
+            sheet.hold_steps()
+            after_frames(widget, 2, handover.go)
+            return False
+        return True
+    GLib.timeout_add(50, check)
 
 
 def after_frames(widget: Gtk.Widget, count: int, then: Callable[[], None]) -> None:

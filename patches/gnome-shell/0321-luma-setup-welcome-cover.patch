@@ -3,18 +3,19 @@ From: Project Luma <engineering@projectluma.org>
 Date: Tue, 3 Nov 2026 14:00:00 -0600
 Subject: [PATCH] Luma setup: the first session opens on the setup's last frame
 
-Luma's first-boot setup asks everything in GDM's initial-setup session and
-signs the person in once, at the end, with its sheet still on screen. The
-first session's first frame is that same frame: luma-setup-cover.service
-(started with the Shell) draws the setup's last frame again from the same
-data, code, wallpaper, softening and text settings, and the Shell shows it
-as its first frame as soon as that window has drawn (15 s at most), before
-its own background and startup work: a clone of the window above
-everything, with the rest of the Shell undrawn. The window keeps turning
-the setup's last step. Once the session has started, the Shell draws under
-the cover and the cover lifts off the desktop; the window then closes.
-Without the setup's frame, the cover is a softened wallpaper of the Shell's
-own. The setup's window never animates in.
+Luma's first-boot setup signs the person in once, at the end, with its sheet
+on screen. luma-setup-cover.service (started with the Shell) draws the
+setup's last frame again from the same data, code, wallpaper, softening and
+text settings; the Shell shows it as its first frame as soon as that window
+has drawn (15 s at most), before its own background and startup work: a
+clone of the window above everything, with the rest of the Shell undrawn.
+With Luma's gdm the setup keeps the screen meanwhile; at startup-complete
+the Shell says so (/run/luma-setup/session/cover-ready), the setup holds its
+frame and gdm switches here, and the Shell registers with GDM only once it
+has drawn on the screen (registering ends the setup's session). The cover
+then lifts off the desktop and the window closes. Without the setup's
+frame, the cover is a softened wallpaper of the Shell's own. The setup's
+window never animates in.
 ---
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
@@ -34,7 +35,7 @@ own. The setup's window never animates in.
          this._systemBackground.show();
          global.stage.show();
  
-@@ -843,6 +850,148 @@
+@@ -843,6 +850,168 @@
          this.emit('startup-complete');
      }
  
@@ -120,6 +121,13 @@ own. The setup's window never animates in.
 +        // The setup's choices were applied before the Shell started; once the session is
 +        // up, the Shell draws under the cover, and then the cover lifts to show the desktop.
 +        this.connectObject('startup-complete', () => {
++            // With Luma's gdm the setup still has the screen: it holds its frame and lets
++            // gdm switch to this session now that the Shell is up (luma-setup handover.py).
++            try {
++                GLib.file_set_contents('/run/luma-setup/session/cover-ready', '');
++            } catch (e) {
++                // no hand-over waiting
++            }
 +            this.uiGroup.opacity = 255;
 +            global.stage.connectObject('after-paint', () => {
 +                global.stage.disconnectObject(cover);
@@ -136,6 +144,19 @@ own. The setup's window never animates in.
 +                });
 +            }, cover);
 +        }, cover);
++    }
++
++    // What waits for this session to have the screen: with Luma's gdm the setup keeps it
++    // until the Shell is up (its first frame is drawn only once the session is active).
++    lumaAfterHandover(callback) {
++        if (!this._lumaWelcomeCover) {
++            callback();
++            return;
++        }
++        const id = global.stage.connect('after-paint', () => {
++            global.stage.disconnect(id);
++            callback();
++        });
 +    }
 +
 +    // The window of luma-setup-cover.service once its first frame is drawn (its title
@@ -183,6 +204,19 @@ own. The setup's window never animates in.
      // setDummyCursorGeometry:
      //
      // The cursor dummy is a standard widget commonly used for popup
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -458,7 +458,9 @@
+             sessionMode.currentMode !== 'initial-setup')
+             _handleLockScreenWarning();
+ 
+-        LoginManager.registerDisplayWithGDM();
++        // Luma: with the setup's hand-over (layout.js), GDM ends the setup's session as
++        // soon as this one registers, so registering waits until this session has the screen.
++        layoutManager.lumaAfterHandover(() => LoginManager.registerDisplayWithGDM());
+ 
+         if (perfModule) {
+             const perfOutput = GLib.getenv('SHELL_PERF_OUTPUT');
 --- a/js/ui/windowManager.js
 +++ b/js/ui/windowManager.js
 @@ -1649,7 +1649,9 @@

@@ -235,6 +235,11 @@ def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None
         except Exception as error:  # noqa: BLE001 - Connect asks again on the desktop
             print(f"luma-setup-apply: connect: {_reason(error)}", file=sys.stderr)
     _markers(answers, state_dir, marks)
+    try:
+        from .handover import prepare
+        prepare(int(os.environ.get("PKEXEC_UID", "-1")), pwd.getpwnam(answers["username"]).pw_uid)
+    except Exception as error:  # noqa: BLE001 - without it gdm switches at once, as it always did
+        print(f"luma-setup-apply: hand-over: {_reason(error)}", file=sys.stderr)
     _say(out, "done")
     return 0
 

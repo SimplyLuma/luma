@@ -30,7 +30,7 @@ from luma_appkit.tv_stage import TvStage, add_tv_style, tv_material  # noqa: E40
 
 from . import catalog, system  # noqa: E402
 from .model import Setup, host_name, mismatch, strength, username_problem  # noqa: E402
-from .sheet import HEAD, OWNER, Posture, Turn, _taken, after_frames, last_frame, prefers_light, wallpaper_for  # noqa: E402
+from .sheet import HEAD, OWNER, Posture, Turn, _taken, after_frames, hand_over, last_frame, prefers_light, wallpaper_for  # noqa: E402
 
 __all__ = ("SetupTVWindow", "SetupTV")
 
@@ -642,10 +642,8 @@ class SetupTV(TvStage):
             return
         # Signed in once the last tick is on screen, the steps still turning held at their first
         # angle: the first session draws this same frame again and turns them on from there.
-        def sign_in() -> None:
-            self.hold_steps()
-            after_frames(self, 2, lambda: system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m)))
-        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (sign_in(), False)[1]))
+        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (hand_over(
+            self, self, lambda: system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m))), False)[1]))
 
     def _turns(self) -> list:
         return [row.mark for row in getattr(self, "_steps", {}).values() if isinstance(row.mark, Turn)]

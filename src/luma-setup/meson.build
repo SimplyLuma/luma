@@ -15,6 +15,7 @@ python.install_sources(
   'luma_setup/apply.py',
   'luma_setup/catalog.py',
   'luma_setup/connect.py',
+  'luma_setup/handover.py',
   'luma_setup/model.py',
   'luma_setup/session.py',
   'luma_setup/sheet.py',

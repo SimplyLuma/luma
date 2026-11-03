@@ -427,10 +427,12 @@ first-boot setup (`/var/lib/luma-setup/welcome/<user>`, until
 `luma-setup-cover.service` starts with the Shell and draws that frame again
 from the same data, code, wallpaper, softening and text settings. At the top
 of the startup animation the Shell waits (15 s at most) for that window's
-title to say its first frame is drawn, then shows the stage at once: a
-clone of the window above everything, `uiGroup` at opacity 0, before the
-background load. The window turns the setup's last step meanwhile. At
-`startup-complete` the Shell draws under the cover, the cover lifts (1.1 s
-fade) and the window closes. Without the setup's frame, the cover is a
-blurred wallpaper of the Shell's own. The cover window never animates in.
-Shell .158.
+title to say its first frame is drawn, then shows the stage: a clone of the
+window above everything, `uiGroup` at opacity 0. With Luma's gdm (patches/gdm)
+the setup keeps the screen while this session starts paused; at
+`startup-complete` the Shell writes `/run/luma-setup/session/cover-ready`,
+the setup holds its frame and gdm switches here, and `registerDisplayWithGDM`
+waits for the first frame on screen, since registering ends the setup's
+session. The cover lifts (1.1 s fade) and the window closes. Without the
+setup's frame, the cover is a blurred wallpaper of the Shell's own. The
+cover window never animates in. Shell .158.
