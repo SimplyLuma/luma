@@ -4,7 +4,7 @@ Luma on the Google Tensor G4 Pixel 9. It shares the Pixel 9 Pro Fold (`comet`) k
 
 ## Alpha 1
 
-Build `alpha1`, OSTree commit `dcb8dada`. Install: [INSTALL.md](INSTALL.md); files at https://simplyluma.com/download/mobile.
+Build `alpha1`, OSTree commit `147cc551`. Install: [INSTALL.md](INSTALL.md); files at https://simplyluma.com/download/mobile.
 
 Works: display and touch, tap to wake, GPU, Wi-Fi, Bluetooth, speaker, earpiece and microphones, calls (VoLTE) and texts with a SIM or eSIM, mobile data, eSIM download, charging, Android apps (with microG for Google sign-in and push).
 
