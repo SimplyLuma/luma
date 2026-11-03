@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Tue, 3 Nov 2026 02:00:00 -0600
+Subject: [PATCH] st: keep the scissor for a scissored clear drawn as a quad
+
+A scissored glClear on a driver without scissored clears is drawn as a
+quad covering the scissor rectangle, with the scissor disabled. Tiling
+drivers size a render pass by the scissor, so the clear counted as
+drawing the whole framebuffer and the pass loaded and stored every
+tile. A compositor clears the stencil this way for every clip region
+of more than one rectangle; on a Raspberry Pi 5 (v3d) at 3840x2160 a
+partial redraw of two small areas paid for a full-screen pass.
+
+The scissor state is current (st_validate_state() ran) and matches the
+quad, so leave it enabled while drawing the quad. What is drawn is
+unchanged.
+---
+ src/mesa/state_tracker/st_cb_clear.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/mesa/state_tracker/st_cb_clear.c b/src/mesa/state_tracker/st_cb_clear.c
+--- a/src/mesa/state_tracker/st_cb_clear.c
++++ b/src/mesa/state_tracker/st_cb_clear.c
+@@ -279,6 +279,14 @@
+    cso_set_sample_mask(cso, ~0);
+    cso_set_min_samples(cso, 1);
+    st->clear.raster.multisample = st->state.fb_num_samples > 1;
++   /* The quad covers only the scissor rectangle. Keep the scissor (which
++    * st_validate_state() left current) enabled as well: a tiling driver
++    * sizes the render pass by the scissor, and a quad drawn with it off
++    * counts as drawing the whole framebuffer, so a scissored clear (a
++    * compositor clearing the stencil for a clip region) made the pass load
++    * and store every tile.
++    */
++   st->clear.raster.scissor = (ctx->Scissor.EnableFlags & 1) != 0;
+    cso_set_rasterizer(cso, &st->clear.raster);
+ 
+    /* viewport state: viewport matching window dims */
+-- 
+2.56.0

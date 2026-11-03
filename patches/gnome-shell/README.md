@@ -376,3 +376,24 @@ paint states (node, size, resource scale) in a 48 MB LRU that later paint
 states copy from; entries go with their node and when its image files change.
 On a Raspberry Pi 5 at 4K these draws were most of the TV quick panel's shell
 CPU time. Shell .155.
+
+
+`0317-blur-bound-pass-after-backdrop-copy.patch`: a background blur copies the
+framebuffer under its actor, which ends a tiling GPU's pass over the frame;
+the pass after it covered the whole framebuffer however little was drawn
+(Raspberry Pi 5, 3840x2160: about 15 ms per blurred dock island, five per
+frame). The blurred backdrop and the actor are drawn inside a clip of the
+actor's paint box, so the driver can bound that pass (mutter 0027 bounds the
+rest). Surfaces thinner than 256 pixels are downscaled for the blur like larger
+ones (the copy keeps 16 pixels per side), a quarter of the pass work for the
+dock; screenshots match the previous blur (SSIM 0.9996 or more). Shell .156.
+
+`0318-st-selector-index.patch`: each new theme node was tested against every
+selector of every stylesheet, about half of the Shell's CPU time while the
+overview or Quick Options opened on a Raspberry Pi 5. Selectors are indexed per
+stylesheet under their last compound selector's ID, first class or element
+type, and a node is tested only against the selectors filed under its ID,
+classes and type ancestry plus the few with none of those, in stylesheet order,
+so the matched declarations are unchanged (checked on 30000 nodes across the
+presentations). `LUMA_ST_NO_SELECTOR_INDEX=1` restores the full scan. Shell
+.156.

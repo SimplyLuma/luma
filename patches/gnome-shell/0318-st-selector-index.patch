@@ -1,0 +1,400 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 3 Nov 2026 02:00:00 -0600
+Subject: [PATCH] st: index selectors by ID, class and element type
+
+Each new theme node was tested against every selector of every
+stylesheet. The Shell's stylesheet has thousands of selectors and
+opening the overview or Quick Options creates hundreds of nodes, so
+add_matched_properties() and the selector tests under it took about half
+of the Shell's CPU time there on a Raspberry Pi 5.
+
+A selector can only match a node that has what its last compound
+selector names. Index every selector once per stylesheet (imports
+inlined in place) under its ID, else its first class, else its element
+type, and test a node only against the selectors filed under its ID, its
+classes, the types it is or derives from, and the few selectors with
+none of those. Candidates are tested in stylesheet order with the same
+test, so the matched declarations, their order and the specificity
+bookkeeping are unchanged (checked against the full scan on 30000 nodes
+across the desktop, mobile, tablet and TV presentations).
+LUMA_ST_NO_SELECTOR_INDEX=1 restores the full scan for measurements.
+---
+ src/st/st-theme.c |  322 ++++++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 319 insertions(+), 3 deletions(-)
+
+diff --git a/src/st/st-theme.c b/src/st/st-theme.c
+index 7f3300e..e3fd1f8 100644
+--- a/src/st/st-theme.c
++++ b/src/st/st-theme.c
+@@ -69,6 +69,9 @@ struct _StTheme
+   GHashTable *stylesheets_by_file;
+   GHashTable *files_by_stylesheet;
+ 
++  /* Luma: CRStyleSheet -> SelectorIndex, built on first use. */
++  GHashTable *selector_indexes;
++
+   CRCascade *cascade;
+ };
+ 
+@@ -111,9 +114,13 @@ file_equal0 (GFile *file1,
+   return g_file_equal (file1, file2);
+ }
+ 
++static void selector_index_free (gpointer data);
++
+ static void
+ st_theme_init (StTheme *theme)
+ {
++  theme->selector_indexes = g_hash_table_new_full (g_direct_hash, g_direct_equal,
++                                                   NULL, selector_index_free);
+   theme->stylesheets_by_file = g_hash_table_new_full (g_file_hash, (GEqualFunc) g_file_equal,
+                                                       (GDestroyNotify)g_object_unref, (GDestroyNotify)cr_stylesheet_unref);
+   theme->files_by_stylesheet = g_hash_table_new (g_direct_hash, g_direct_equal);
+@@ -326,6 +333,7 @@ st_theme_unload_stylesheet (StTheme    *theme,
+    */
+   g_hash_table_remove (theme->stylesheets_by_file, file);
+   g_hash_table_remove (theme->files_by_stylesheet, stylesheet);
++  g_hash_table_remove (theme->selector_indexes, stylesheet);
+   cr_stylesheet_unref (stylesheet);
+ }
+ 
+@@ -389,6 +397,7 @@ st_theme_finalize (GObject * object)
+   g_slist_foreach (theme->custom_stylesheets, (GFunc) cr_stylesheet_unref, NULL);
+   g_clear_slist (&theme->custom_stylesheets, NULL);
+ 
++  g_hash_table_destroy (theme->selector_indexes);
+   g_hash_table_destroy (theme->stylesheets_by_file);
+   g_hash_table_destroy (theme->files_by_stylesheet);
+ 
+@@ -986,6 +995,314 @@ add_matched_properties (StTheme      *a_this,
+     }
+ }
+ 
++
++/* Luma: a selector index per stylesheet.
++ *
++ * add_matched_properties() tests every selector of every stylesheet against
++ * each new theme node. The Shell's stylesheet has thousands of selectors and
++ * opening the overview or Quick Options creates hundreds of nodes, so the
++ * selector tests took about half of the Shell's CPU time there (Raspberry Pi
++ * 5). A selector can only match a node that has what its last compound
++ * selector names: the ID, else the first class, else the element type. The
++ * index files every selector under that key once, and a node is tested only
++ * against the selectors filed under its ID, its classes, its type (and the
++ * types it derives from) and the few with none of those. The candidates are
++ * then tested in the order add_matched_properties() would have reached them,
++ * with the same test, so the result, its order and the specificity
++ * bookkeeping are unchanged.
++ */
++typedef struct
++{
++  CRStatement *stmt;
++  CRSelector  *sel;
++} SelectorEntry;
++
++typedef struct
++{
++  GArray     *entries;  /* SelectorEntry, in stylesheet order (imports inlined) */
++  GHashTable *by_id;    /* char * -> GArray of guint (entry positions) */
++  GHashTable *by_class;
++  GHashTable *by_type;  /* element name -> GArray of guint */
++  GArray     *other;    /* universal and pseudo-class-only selectors */
++  GHashTable *by_gtype; /* GType -> GArray of guint: by_type entries the type matches */
++} SelectorIndex;
++
++static void
++uint_array_free (gpointer data)
++{
++  g_array_unref (data);
++}
++
++static void
++selector_index_free (gpointer data)
++{
++  SelectorIndex *index = data;
++
++  g_array_unref (index->entries);
++  g_hash_table_destroy (index->by_id);
++  g_hash_table_destroy (index->by_class);
++  g_hash_table_destroy (index->by_type);
++  g_array_unref (index->other);
++  g_hash_table_destroy (index->by_gtype);
++  g_free (index);
++}
++
++static void
++selector_index_file (GHashTable *table,
++                     const char *key,
++                     guint       position)
++{
++  GArray *bucket = g_hash_table_lookup (table, key);
++
++  if (!bucket)
++    {
++      bucket = g_array_new (FALSE, FALSE, sizeof (guint));
++      g_hash_table_insert (table, g_strdup (key), bucket);
++    }
++
++  g_array_append_val (bucket, position);
++}
++
++static void
++selector_index_add (SelectorIndex *index,
++                    CRStatement   *stmt,
++                    CRSelector    *sel)
++{
++  SelectorEntry entry = { stmt, sel };
++  guint position = index->entries->len;
++  CRSimpleSel *last;
++  CRAdditionalSel *add_sel;
++  const char *id = NULL;
++  const char *class_name = NULL;
++
++  g_array_append_val (index->entries, entry);
++
++  for (last = sel->simple_sel; last->next; last = last->next)
++    ;
++
++  for (add_sel = last->add_sel; add_sel; add_sel = add_sel->next)
++    {
++      if (add_sel->type == ID_ADD_SELECTOR && !id &&
++          add_sel->content.id_name && add_sel->content.id_name->stryng)
++        id = add_sel->content.id_name->stryng->str;
++      else if (add_sel->type == CLASS_ADD_SELECTOR && !class_name &&
++               add_sel->content.class_name &&
++               add_sel->content.class_name->stryng)
++        class_name = add_sel->content.class_name->stryng->str;
++    }
++
++  if (id)
++    selector_index_file (index->by_id, id, position);
++  else if (class_name)
++    selector_index_file (index->by_class, class_name, position);
++  else if ((last->type_mask & TYPE_SELECTOR) &&
++           last->name && last->name->stryng && last->name->stryng->str)
++    selector_index_file (index->by_type, last->name->stryng->str, position);
++  else
++    g_array_append_val (index->other, position);
++}
++
++static void
++selector_index_add_sheet (StTheme       *theme,
++                          SelectorIndex *index,
++                          CRStyleSheet  *sheet)
++{
++  CRStatement *cur_stmt;
++
++  for (cur_stmt = sheet->statements; cur_stmt; cur_stmt = cur_stmt->next)
++    {
++      if (cur_stmt->type == RULESET_STMT)
++        {
++          CRSelector *cur_sel;
++
++          if (!cur_stmt->kind.ruleset)
++            continue;
++
++          for (cur_sel = cur_stmt->kind.ruleset->sel_list; cur_sel; cur_sel = cur_sel->next)
++            {
++              if (cur_sel->simple_sel)
++                selector_index_add (index, cur_stmt, cur_sel);
++            }
++        }
++      else if (cur_stmt->type == AT_IMPORT_RULE_STMT)
++        {
++          /* Resolved as add_matched_properties() resolves it. */
++          CRAtImportRule *import_rule = cur_stmt->kind.import_rule;
++
++          if (import_rule->sheet == NULL)
++            {
++              CRStyleSheet *imported = NULL;
++              GFile *file = NULL;
++
++              if (import_rule->url->stryng && import_rule->url->stryng->str)
++                {
++                  file = _st_theme_resolve_url (theme, sheet,
++                                                import_rule->url->stryng->str);
++                  imported = resolve_stylesheet (theme, file, NULL);
++                }
++
++              import_rule->sheet = imported ? imported : (CRStyleSheet *) - 1;
++
++              if (file)
++                g_object_unref (file);
++            }
++
++          if (import_rule->sheet != (CRStyleSheet *) - 1)
++            selector_index_add_sheet (theme, index, import_rule->sheet);
++        }
++    }
++}
++
++static SelectorIndex *
++get_selector_index (StTheme      *theme,
++                    CRStyleSheet *sheet)
++{
++  SelectorIndex *index = g_hash_table_lookup (theme->selector_indexes, sheet);
++
++  if (index)
++    return index;
++
++  index = g_new0 (SelectorIndex, 1);
++  index->entries = g_array_new (FALSE, FALSE, sizeof (SelectorEntry));
++  index->by_id = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, uint_array_free);
++  index->by_class = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, uint_array_free);
++  index->by_type = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, uint_array_free);
++  index->other = g_array_new (FALSE, FALSE, sizeof (guint));
++  index->by_gtype = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, uint_array_free);
++
++  selector_index_add_sheet (theme, index, sheet);
++  g_hash_table_insert (theme->selector_indexes, sheet, index);
++
++  return index;
++}
++
++static int
++compare_positions (gconstpointer a,
++                   gconstpointer b)
++{
++  guint pa = *(const guint *) a;
++  guint pb = *(const guint *) b;
++
++  return pa < pb ? -1 : pa > pb;
++}
++
++/* The by_type entries whose element name @type is (or derives from, or
++ * implements). A type's ancestry is fixed when it is registered, so the answer
++ * is kept per type.
++ */
++static GArray *
++selector_index_type_bucket (SelectorIndex *index,
++                            GType          type)
++{
++  GArray *bucket = g_hash_table_lookup (index->by_gtype, GSIZE_TO_POINTER (type));
++  GHashTableIter iter;
++  gpointer name, names_bucket;
++
++  if (bucket)
++    return bucket;
++
++  bucket = g_array_new (FALSE, FALSE, sizeof (guint));
++
++  g_hash_table_iter_init (&iter, index->by_type);
++  while (g_hash_table_iter_next (&iter, &name, &names_bucket))
++    {
++      GArray *positions = names_bucket;
++
++      if (element_name_matches_type (name, type))
++        g_array_append_vals (bucket, positions->data, positions->len);
++    }
++
++  g_array_sort (bucket, compare_positions);
++  g_hash_table_insert (index->by_gtype, GSIZE_TO_POINTER (type), bucket);
++
++  return bucket;
++}
++
++static void
++append_bucket (GArray     *candidates,
++               GHashTable *table,
++               const char *key)
++{
++  GArray *bucket = g_hash_table_lookup (table, key);
++
++  if (bucket)
++    g_array_append_vals (candidates, bucket->data, bucket->len);
++}
++
++static void
++add_indexed_matched_properties (StTheme      *a_this,
++                                CRStyleSheet *a_nodesheet,
++                                StThemeNode  *a_node,
++                                GPtrArray    *props)
++{
++  SelectorIndex *index = get_selector_index (a_this, a_nodesheet);
++  g_autoptr (GArray) candidates = g_array_new (FALSE, FALSE, sizeof (guint));
++  const char *id = st_theme_node_get_element_id (a_node);
++  GStrv classes = st_theme_node_get_element_classes (a_node);
++  GArray *types;
++  guint previous = G_MAXUINT;
++  guint i;
++
++  if (id)
++    append_bucket (candidates, index->by_id, id);
++
++  for (i = 0; classes && classes[i]; i++)
++    append_bucket (candidates, index->by_class, classes[i]);
++
++  types = selector_index_type_bucket (index, st_theme_node_get_element_type (a_node));
++  g_array_append_vals (candidates, types->data, types->len);
++  g_array_append_vals (candidates, index->other->data, index->other->len);
++
++  g_array_sort (candidates, compare_positions);
++
++  for (i = 0; i < candidates->len; i++)
++    {
++      guint position = g_array_index (candidates, guint, i);
++      SelectorEntry *entry;
++      gboolean matches = FALSE;
++      enum CRStatus status;
++
++      /* A node with a class listed twice reaches the same entry twice. */
++      if (position == previous)
++        continue;
++      previous = position;
++
++      entry = &g_array_index (index->entries, SelectorEntry, position);
++      status = sel_matches_style_real (a_this, entry->sel->simple_sel, a_node,
++                                       &matches, TRUE, TRUE);
++
++      if (status == CR_OK && matches)
++        {
++          CRDeclaration *cur_decl = NULL;
++
++          /* As in add_matched_properties(). */
++          cr_simple_sel_compute_specificity (entry->sel->simple_sel);
++          entry->stmt->specificity = entry->sel->simple_sel->specificity;
++
++          for (cur_decl = entry->stmt->kind.ruleset->decl_list; cur_decl; cur_decl = cur_decl->next)
++            g_ptr_array_add (props, cur_decl);
++        }
++    }
++}
++
++static void
++match_stylesheet (StTheme      *theme,
++                  CRStyleSheet *sheet,
++                  StThemeNode  *node,
++                  GPtrArray    *props)
++{
++  /* LUMA_ST_NO_SELECTOR_INDEX=1 tests every selector, for A/B measurements. */
++  static int use_index = -1;
++
++  if (use_index < 0)
++    use_index = g_getenv ("LUMA_ST_NO_SELECTOR_INDEX") == NULL;
++
++  if (use_index)
++    add_indexed_matched_properties (theme, sheet, node, props);
++  else
++    add_matched_properties (theme, sheet, node, props);
++}
++
+ #define ORIGIN_OFFSET_IMPORTANT (NB_ORIGINS)
+ #define ORIGIN_OFFSET_EXTENSION (NB_ORIGINS * 2)
+ 
+@@ -1044,11 +1361,11 @@ _st_theme_get_matched_properties (StTheme        *theme,
+       if (!sheet)
+         continue;
+ 
+-      add_matched_properties (theme, sheet, node, props);
++      match_stylesheet (theme, sheet, node, props);
+     }
+ 
+   for (iter = theme->custom_stylesheets; iter; iter = iter->next)
+-    add_matched_properties (theme, iter->data, node, props);
++    match_stylesheet (theme, iter->data, node, props);
+ 
+   /* We count on a stable sort here so that later declarations come
+    * after earlier declarations */
+-- 
+2.56.0
