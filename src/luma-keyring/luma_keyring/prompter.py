@@ -206,6 +206,7 @@ class LumaPrompter:
     def _ready(self, request: Request, reply: str, changed: dict, secret: str | None) -> None:
         if request.closed:
             return
+        log.info("keyring prompt %s: %s", request.path, reply or "ready")
         if request.received:
             sent = request.exchange.send(secret, -1) if secret is not None else request.exchange.send(None, 0)
             request.answers += 1
@@ -219,6 +220,7 @@ class LumaPrompter:
     def _stop(self, request: Request, done: bool) -> None:
         if request.closed:
             return
+        log.info("keyring prompt %s %s", "stopped by its client" if done else "gone with its client", request.path)
         request.closed = True
         if request.watch:
             Gio.bus_unwatch_name(request.watch)

@@ -97,13 +97,27 @@ class FirstUnlock(Paths):
         self.assertEqual(self.state_files(), [])
         self.assertIs(self.unlock().kind, Kind.AUTOMATIC)
 
-    def test_a_keyring_on_another_password_unlocks_but_is_not_enrolled(self):
+    def test_a_keyring_on_an_older_password_asks_for_the_login_password_then_enrols(self):
         keyring = Keyring(password=KEYRING_PASSWORD, locked=True, files=self.keyrings)
         result = self.unlock(password=KEYRING_PASSWORD, keyring=keyring)
-        self.assertIs(result.kind, Kind.UNLOCKED_ONLY)
+        self.assertIs(result.kind, Kind.NEEDS_LOGIN_PASSWORD)
         self.assertFalse(keyring.locked)
         self.assertEqual(keyring.password, KEYRING_PASSWORD)
         self.assertEqual(self.state_files(), [])
+        # Step two: a wrong login password changes nothing; the right one enrols.
+        wrong = first_unlock.enrol_with_login_password("nope", KEYRING_PASSWORD, keyring, seal=seal,
+                                                       verify=verify)
+        self.assertIs(wrong.kind, Kind.WRONG_PASSWORD)
+        self.assertEqual(keyring.password, KEYRING_PASSWORD)
+        done = first_unlock.enrol_with_login_password(PASSWORD, KEYRING_PASSWORD, keyring, seal=seal,
+                                                      verify=verify)
+        self.assertIs(done.kind, Kind.AUTOMATIC)
+        key = unseal(autounlock.credential_path())
+        self.assertEqual(keyring.password, key)
+        # The recovery copy opens with the current login password, not the older one.
+        self.assertEqual(autounlock.unwrap_key(autounlock.wrap_path().read_bytes(), PASSWORD), key)
+        with self.assertRaises(autounlock.WrongPassword):
+            autounlock.unwrap_key(autounlock.wrap_path().read_bytes(), KEYRING_PASSWORD)
 
     def test_a_device_that_cannot_seal_fails_closed(self):
         result = self.unlock(seal_with=cannot_seal)

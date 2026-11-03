@@ -48,6 +48,8 @@ NOTIFICATION_ID = "login-keyring-locked"
 # How long the sheet waits for a prompter that cannot be replaced (a prompt
 # gcr-prompter is showing) before it shows anyway.
 GATE_WAIT_SECONDS = 5
+# After the first unlock, how long the sheet stays the keyring prompter with nothing asked.
+RELEASE_GRACE_SECONDS = 6
 
 class KeyringService(Adw.Application):
     def __init__(self, ask_first: bool = False, prompter=None) -> None:
@@ -150,9 +152,13 @@ class KeyringService(Adw.Application):
         done = threading.Event()
         GLib.idle_add(self._drain_start, password)
         quiet_since = time.monotonic()
-        deadline = quiet_since + 15
+        # Up to two minutes: another keyring's question, answered meanwhile in its own
+        # sheet, holds the queue; the password stays in this process's memory only.
+        deadline = quiet_since + 120
         while time.monotonic() < deadline:
-            busy = any(r.waiting and r not in self._parked for r in self._prompter.pending())
+            pending = self._prompter.pending()
+            busy = any(r not in self._parked for r in pending) or any(
+                r is self._prompter.active for r in self._parked)
             if busy:
                 quiet_since = time.monotonic()
             elif time.monotonic() - quiet_since > 0.8:
@@ -162,6 +168,8 @@ class KeyringService(Adw.Application):
         done.wait(5)
         if not automatic:
             return Result(Kind.UNLOCKED)
+        if first_unlock.login_password_differs(password):
+            return Result(Kind.NEEDS_LOGIN_PASSWORD, "")
         outcome = repair.enable_auto_unlock(password, self._keyring)
         if outcome.ok:
             return Result(Kind.AUTOMATIC, repair.password_quality_note(password).strip())
@@ -190,8 +198,7 @@ class KeyringService(Adw.Application):
             # Not opened by the sheet's password (another keyring, a key), or asked
             # when no sheet is up: it gets a sheet of its own, once the first is done.
             self._parked.append(request)
-            if self._window is None:
-                self._show_parked()
+            self._show_parked(over_first=self._draining is not None)
         # Otherwise it waits: the first-unlock sheet is up, and its Unlock answers it.
 
     def _on_prompt_closed(self, request) -> None:
@@ -202,8 +209,8 @@ class KeyringService(Adw.Application):
             sheet._finish(None)
         self._show_parked()
 
-    def _show_parked(self) -> None:
-        if self._prompt_sheet is not None or self._window is not None:
+    def _show_parked(self, over_first: bool = False) -> None:
+        if self._prompt_sheet is not None or (self._window is not None and not over_first):
             return
         waiting = [r for r in self._parked if r.waiting and not r.closed]
         if not waiting:
@@ -217,14 +224,30 @@ class KeyringService(Adw.Application):
         self._prompt_sheet.present()
 
     def _maybe_release(self) -> None:
-        """Back to the Shell once nothing here waits for an answer."""
+        """Back to the Shell once nothing here has waited for an answer for a while.
+
+        gnome-keyring asks one keyring at a time: a question for another keyring
+        can come seconds after the first unlock. Holding the name a little longer
+        lets it come here, to the same sheet, rather than to the Shell.
+        """
         if self._prompter is None or self._window is not None or self._prompt_sheet is not None:
             return
-        if any(r.waiting for r in self._prompter.pending()):
+        if self._prompter.pending():
             return
-        self._prompter.release()
-        self._prompter = None
-        log.info("keyring prompts go to the Shell again")
+        if getattr(self, "_release_timer", 0):
+            GLib.source_remove(self._release_timer)
+        self.hold()
+
+        def release() -> bool:
+            self._release_timer = 0
+            if self._prompter is not None and not self._prompter.pending() and self._prompt_sheet is None \
+                    and self._window is None:
+                self._prompter.release()
+                self._prompter = None
+                log.info("keyring prompts go to the Shell again")
+            self.release()
+            return GLib.SOURCE_REMOVE
+        self._release_timer = GLib.timeout_add_seconds(RELEASE_GRACE_SECONDS, release)
 
     def _first_unlock_done(self, result) -> None:
         from .first_unlock import Kind

@@ -100,9 +100,13 @@ class _KitView:
                                on_activate=lambda _text: on_primary())
         self.message = TypeLabel("", role="caption", wrap=True)
         self.message.set_visible(False)
+        # Wrapped words take the sheet's whole width, not a narrower natural width.
+        for label in (self.title_label, self.line, self.message):
+            label.label.set_hexpand(True)
         self.switch_row = Gtk.Box(spacing=12)
         self.switch_label = TypeLabel(automatic_label(noun), role="row_title", wrap=True)
         self.switch_label.set_hexpand(True)
+        self.switch_label.label.set_hexpand(True)
         self.switch = Switch(active=True, label=automatic_label(noun))
         self.switch_row.append(self.switch_label)
         self.switch_row.append(self.switch)
@@ -222,11 +226,13 @@ class UnlockSheet(Adw.ApplicationWindow):
                  noun: str | None = None, autologin: bool | None = None,
                  work: Callable[..., Result] | None = None,
                  on_done: Callable[[Result | None], None] | None = None,
-                 presentation: Posture | None = None, request=None) -> None:
+                 presentation: Posture | None = None, request=None,
+                 second_work: Callable[[str, str], Result] | None = None) -> None:
         install_lumaui()  # the kit's sheets and icons, once per display
         _install_style()
         self.presentation = presentation or posture()
         self._request = request
+        self._second_work = second_work
         title = {Use.FIRST: FIRST_TITLE, Use.MANAGE: MANAGE_TITLE}.get(use) or _prompt_title(request)
         if self.presentation is Posture.DESKTOP:
             super().__init__(application=application, title=title,
@@ -244,6 +250,7 @@ class UnlockSheet(Adw.ApplicationWindow):
         self._result: Result | None = None
         self._finished = False
         self._modal = None
+        self._keyring_password: str | None = None   # step two only: what opened the keyring
 
         if self.presentation is Posture.TV:
             from .sheet_tv import KeyringTV
@@ -407,7 +414,13 @@ class UnlockSheet(Adw.ApplicationWindow):
             self.view.say("Type your password.", True)
             return
         automatic = self.view.automatic
-        if self._work is not None:
+        if self._keyring_password is not None:
+            # Step two: the password this account signs in with, then enrol.
+            opened = self._keyring_password
+            second = self._second_work or (lambda login, older: first_unlock.enrol_with_login_password(
+                login, older, self._keyring))
+            work = lambda: second(password, opened)  # noqa: E731
+        elif self._work is not None:
             work = lambda: self._work(password, automatic)  # noqa: E731 - tests stand in here
         elif self._use is Use.FIRST:
             work = lambda: first_unlock.unlock(password, automatic, self._keyring)  # noqa: E731
@@ -421,13 +434,25 @@ class UnlockSheet(Adw.ApplicationWindow):
                 result = work()
             except Exception as error:  # noqa: BLE001 - shown, never a crash with a password in hand
                 result = Result(Kind.UNAVAILABLE, f"Something went wrong: {error}")
-            GLib.idle_add(self._answered, result)
+            GLib.idle_add(self._answered, result, password)
 
         threading.Thread(target=run, name="luma-keyring-unlock", daemon=True).start()
 
-    def _answered(self, result: Result) -> bool:
+    def _answered(self, result: Result, password: str | None = None) -> bool:
         self._set_busy(False)
         self.view.password = ""
+        if result.kind is Kind.NEEDS_LOGIN_PASSWORD:
+            # The keyring opened with an older password: one more step, in place.
+            self._keyring_password = password
+            self.view.set_texts("One more step", "Enter the password you sign in with. "
+                                "It unlocks your saved passwords on other hardware.")
+            self.view.set_shown(field=True, switch=False, buttons=True, cancel=True, primary="Continue")
+            self.view.set_labels(self.view.texts()[2], "Continue", "Not Now")
+            self.view.say("", False)
+            self.view.focus_field()
+            return GLib.SOURCE_REMOVE
+        if result.kind is not Kind.WRONG_PASSWORD:
+            self._keyring_password = None
         self._result = result
         if result.kind in (Kind.WRONG_PASSWORD, Kind.UNAVAILABLE, Kind.NOT_CHANGED):
             self.view.say(result.message, True)
@@ -444,6 +469,11 @@ class UnlockSheet(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _on_cancel(self) -> None:
+        if self._keyring_password is not None:
+            # "Not Now" on step two: unlocked for this session, asked again next time.
+            self._keyring_password = None
+            self._finish(Result(Kind.UNLOCKED))
+            return
         if self._use is Use.PROMPT:
             self._answer_prompt(cancel=True)
             return
@@ -465,7 +495,10 @@ class UnlockSheet(Adw.ApplicationWindow):
             return
         self._finished = True
         self.view.password = ""
-        if self._on_done is not None:
-            self._on_done(result)
-        if destroy:
-            self.close()
+        self._keyring_password = None
+        try:
+            if self._on_done is not None:
+                self._on_done(result)
+        finally:
+            if destroy:
+                self.close()

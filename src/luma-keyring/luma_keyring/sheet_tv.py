@@ -98,8 +98,11 @@ class KeyringTV(TvStage):
                              action="Unlock")
         self.field.text.set_visibility(False)
         self.message = _label("", "kr-tv-message", wrap=True)
+        for label in (self.title, self.line, self.message):
+            label.set_max_width_chars(1)  # wrap to the sheet, never widen it
         self.message.set_visible(False)
         self.switch_row = TvSwitchRow(f"Unlock automatically on {noun}", active=True, on_toggle=on_toggle)
+        self.switch_row.title.set_max_width_chars(1)  # wrap to the row, never widen the sheet
         self.actions = Gtk.Box(homogeneous=True)
         self.actions.add_css_class("kr-tv-actions")
         self.cancel = TvButton("Cancel", hexpand=True)
@@ -112,7 +115,7 @@ class KeyringTV(TvStage):
         self._place_sheet()
 
         self.focus = TvFocus(self, on_back=self._back)
-        self.focus.add(self.field.text, editable=True, on_activate=self._field_ok)
+        self.focus.add(self.field.text, editable=True, on_activate=self._field_ok, on_key=self._field_key)
         self.focus.add(self.switch_row, on_activate=self.switch_row.toggle)
         self.focus.add(self.cancel, on_activate=on_cancel)
         self.focus.add(self.primary, on_activate=on_primary)
@@ -122,16 +125,32 @@ class KeyringTV(TvStage):
 
     # -- layout ----------------------------------------------------------
     def _place_sheet(self) -> None:
-        self.sheet.set_size_request(round(SHEET["width"] * self.unit), -1)
+        # The sheet is 860 wide whatever its words: long ones (gnome-keyring's own) wrap.
         if self._keyboard_up:
-            self.place(self.sheet, bottom=ABOVE_KEYBOARD, center_x=True)
+            self.place(self.sheet, width=SHEET["width"], bottom=ABOVE_KEYBOARD, center_x=True)
         else:
-            self.place(self.sheet, center_x=True)
+            self.place(self.sheet, width=SHEET["width"], center_x=True)
 
     def _keyboard(self, visible: bool, _height: float) -> None:
         if visible != self._keyboard_up:
-            self._keyboard_up = visible
+            was_up, self._keyboard_up = self._keyboard_up, visible
             self._place_sheet()
+            if was_up and not visible and self.focus.focused is self.field.text:
+                # Typed, and the keyboard put away: the next thing to do is Unlock.
+                GLib.idle_add(lambda: (self._focus_primary(), False)[1])
+
+    def _focus_primary(self) -> None:
+        if self.primary.get_visible() and self.primary.get_sensitive():
+            self.focus.focus(self.primary)
+
+    def _field_key(self, direction: str) -> bool:
+        """Up and Down always leave the field (the keyboard, while up, has them itself)."""
+        if direction == "down":
+            following = [w for w in (self.switch_row, self.primary) if w.get_visible() and w.get_sensitive()]
+            if following:
+                self.focus.focus(following[0])
+            return True
+        return direction == "up"
 
     # -- the remote --------------------------------------------------------
     def _field_ok(self) -> None:
@@ -177,6 +196,9 @@ class KeyringTV(TvStage):
         for widget in (self.field, self.switch_row, self.cancel, self.primary):
             widget.set_sensitive(not busy)
         self.primary.label.set_label(label)
+        if busy:
+            # The keyboard goes with the field's focus; the remote waits on Unlock.
+            self.focus.focus(self.primary)
 
     def set_shown(self, *, field: bool, switch: bool, buttons: bool, cancel: bool, primary: str) -> None:
         self.field.set_visible(field)
@@ -188,6 +210,7 @@ class KeyringTV(TvStage):
                               (self.cancel, buttons and cancel), (self.primary, buttons)):
             if shown:
                 self.focus.add(widget, editable=widget is self.field.text,
+                               on_key=self._field_key if widget is self.field.text else None,
                                on_activate={self.field.text: self._field_ok,
                                             self.switch_row: self.switch_row.toggle,
                                             self.cancel: self._on_cancel,
@@ -195,7 +218,7 @@ class KeyringTV(TvStage):
             else:
                 self.focus.remove(widget)
         if buttons and not field:
-            self.focus.focus(self.primary)
+            GLib.idle_add(lambda: (self._focus_primary(), False)[1])
         elif not field and switch:
             self.focus.focus(self.switch_row)
 

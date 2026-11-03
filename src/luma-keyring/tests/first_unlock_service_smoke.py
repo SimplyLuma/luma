@@ -50,16 +50,30 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def main() -> int:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="luma-keyring: %(message)s")
     keyring = Keyring()
     if autounlock.state_dir().exists():
         raise SystemExit("refusing to run with key slots in this HOME")
     keyring.create_login(PASSWORD)
     by_hand = bool(os.environ.get("LUMA_KEYRING_BY_HAND"))
+    another = bool(os.environ.get("LUMA_KEYRING_ANOTHER"))
+    if another:
+        # Another keyring, on another password: its prompt is not opened by the sheet's
+        # password and must get the same sheet with gnome-keyring's words afterwards.
+        from gi.repository import GLib as _GLib
+        work = keyring._call("/org/freedesktop/secrets", "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
+                             "CreateWithMasterPassword",
+                             _GLib.Variant("(a{sv}(oayays))", ({"org.freedesktop.Secret.Collection.Label": _GLib.Variant("s", "Work")},
+                                                                keyring._secret("work-password"))), "(o)").unpack()[0]
+        keyring.lock(work)
     if not by_hand:
         keyring.lock()
 
     autounlock.is_autologin = lambda user=None, **paths: True
     repair.check_login_password = lambda password, username=None: password == PASSWORD
+    from luma_keyring import login
+    login.check_login_password = repair.check_login_password
     if not os.environ.get("LUMA_KEYRING_REAL_SEAL"):
         autounlock.seal_key = lambda key, user=None: b"sealed:" + key.encode()
 
@@ -75,6 +89,8 @@ def main() -> int:
     # An app asks the instant the session starts, before the sheet is up; another
     # while it is up. Both must be answered by the sheet, never by another prompter.
     early = subprocess.Popen([sys.executable, "-c", CLIENT], stdout=subprocess.PIPE, text=True)
+    work_client = subprocess.Popen([sys.executable, "-c", CLIENT.replace("'/login'", "'/Work'")],
+                                   stdout=subprocess.PIPE, text=True) if another else None
     check("the service decides " + ("not to ask at start" if by_hand else "to ask") + ", before GTK loads",
           ask is not by_hand and "gi.repository.Gtk" not in sys.modules, f"ask={ask}")
     schemas = os.path.join(folder, "schemas")
@@ -118,6 +134,21 @@ def main() -> int:
 
     if by_hand:
         GLib.timeout_add(300, lambda: service.activate() and False)
+    def drive_prompt() -> bool:
+        # After the first sheet: gnome-keyring's own question for "Work", in Luma's sheet.
+        sheets = [w for w in service.get_windows() if w.get_mapped() and getattr(w, "_use", None)
+                  and w._use.value == "prompt"]
+        if not sheets:
+            return GLib.SOURCE_CONTINUE
+        sheet = sheets[0]
+        seen["prompt_title"] = sheet.view.texts()[0]
+        seen["prompt_line"] = sheet.view.texts()[1]
+        sheet.password = "work-password"
+        sheet._on_primary()
+        return GLib.SOURCE_REMOVE
+
+    if another:
+        GLib.timeout_add(200, drive_prompt)
     GLib.timeout_add(100, drive)
     GLib.timeout_add_seconds(60, lambda: service.quit())
     code = service.run(argv)
@@ -127,7 +158,7 @@ def main() -> int:
     check("the service was the keyring prompter while asking (not when unlocked)",
           seen.get("gate_ours", False) is not by_hand)
     check("and gave it back", owner() != bus.get_unique_name())
-    check("the service exits after the answer", code == 0 and time.monotonic() - started < 45)
+    check("the service exits after the answer", code == 0 and time.monotonic() - started < 60)
     if not by_hand:
         for name, child in (("early", early), ("late", seen.get("late"))):
             try:
@@ -137,6 +168,15 @@ def main() -> int:
                 out = "still waiting"
             check(f"the app that asked {name} got its keyring from the sheet", out == "unlocked", out)
         check("no other prompter was ever asked", seen.get("owner_during") == bus.get_unique_name())
+    if another:
+        try:
+            out = work_client.communicate(timeout=15)[0].strip()
+        except Exception:  # noqa: BLE001
+            work_client.kill()
+            out = "still waiting"
+        check("another keyring's prompt got the sheet with gnome-keyring's words",
+              "Work" in seen.get("prompt_line", ""), f"{seen.get('prompt_title')!r} / {seen.get('prompt_line')!r}")
+        check("and its password, typed there, opened it", out == "unlocked", out)
     check("the keyring is unlocked and enrolled",
           not keyring.collection().locked and autounlock.credential_path().exists()
           and first_unlock.is_automatic())
