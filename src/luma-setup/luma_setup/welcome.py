@@ -195,6 +195,60 @@ def page_names(phone: bool, groups: list | None = None) -> list[str]:
     return (["connect"] if phone else ["desk", "connect"]) + (["apps"] if groups else [])
 
 
+def first_session(stage: str) -> int:
+    """luma-setup --first-session: what was chosen at first boot, applied in the account's first session.
+
+    stage "settings" runs before the Shell starts (the desk and accessibility
+    are in place for its first frame); stage "desktop" runs once the desktop
+    is up: Depot installs the chosen apps in the background, and a quiet
+    notification offers Luma Connect when it was left for later.
+    """
+    welcome = pending()
+    if welcome is None:
+        return 0
+    chosen = welcome.get("first_session") or {}
+    if stage == "settings":
+        carry_accessibility(welcome)
+        desk = chosen.get("desk")
+        if desk:
+            if desk.get("dash"):
+                apply_dash(desk["dash"])
+            _set_tiling_setting(bool(desk.get("tiling")))
+        Gio.Settings.sync()
+        return 0
+    start_installs(list(chosen.get("apps") or []))
+    if chosen.get("connect_later"):
+        _notify("Luma Connect", "Sign in to keep your files, photos and messages on every device.")
+    mark_done("first-session")
+    return 0
+
+
+def _set_tiling_setting(on: bool) -> None:
+    """Before the Shell runs: the enabled-extensions list the Shell starts from."""
+    source = Gio.SettingsSchemaSource.get_default()
+    if source is None or source.lookup("org.gnome.shell", True) is None:
+        return
+    shell = Gio.Settings.new("org.gnome.shell")
+    enabled = [e for e in shell.get_strv("enabled-extensions") if e != TILING_UUID]
+    disabled = [e for e in shell.get_strv("disabled-extensions") if e != TILING_UUID]
+    (enabled if on else disabled).append(TILING_UUID)
+    shell.set_strv("enabled-extensions", enabled)
+    shell.set_strv("disabled-extensions", disabled)
+
+
+def _notify(title: str, body: str) -> None:
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call_sync("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+                      "org.freedesktop.Notifications", "Notify",
+                      GLib.Variant("(susssasa{sv}i)", ("Luma Connect", 0, "org.projectluma.Connect", title, body,
+                                                      [], {"desktop-entry": GLib.Variant("s", "org.projectluma.Connect")},
+                                                      -1)),
+                      None, Gio.DBusCallFlags.NONE, 5000, None)
+    except GLib.Error as error:
+        log.info("no notification: %s", error.message)
+
+
 class WelcomeWindow(Gtk.ApplicationWindow):
     """The post-login sheet over their desktop."""
 

@@ -1,36 +1,35 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Project Luma <engineering@projectluma.org>
-Date: Tue, 3 Nov 2026 13:10:00 -0600
-Subject: [PATCH] Luma setup: one sheet across the first sign-in
+Date: Tue, 3 Nov 2026 14:00:00 -0600
+Subject: [PATCH] Luma setup: the first session opens under the setup's cover
 
-A person's first session after Luma's first-boot setup continues the setup
-sheet (luma-setup --welcome). Until that window has drawn, a cover of the
-softened wallpaper stands over the session, so the desktop never shows
-between the two; the welcome window maps without the open animation and
-takes over from the cover it matches. A welcome that never appears lets the
-cover fade after 20 seconds.
+Luma's first-boot setup asks everything in GDM's initial-setup session and
+signs the person in once, at the end. Their first session's first frame is
+the setup's softened wallpaper instead of the desktop, and the cover lifts
+off the desktop once the session has started: the setup's last motion, with
+the desk choices already applied (luma-setup-first-session, before the Shell).
 ---
---- a/js/ui/layout.js
-+++ b/js/ui/layout.js
-@@ -788,6 +788,9 @@
+--- a/js/ui/layout.js	2026-11-03 13:09:31
++++ b/js/ui/layout.js	2026-11-03 13:33:22
+@@ -787,6 +787,9 @@
+ 
              await this._updateBackgrounds();
          }
- 
++
 +        if (!Main.sessionMode.isGreeter)
 +            this._lumaWelcomeCover();
-+
+ 
          // Hack: Work around grab issue when testing greeter UI in nested
          if (GLib.getenv('GDM_GREETER_TEST') === '1')
-             setTimeout(() => this.emit('startup-prepared'), 200);
-@@ -845,6 +848,62 @@
-         this.emit('startup-complete');
-     }
+@@ -843,6 +846,51 @@
+         this._queueUpdateRegions();
  
-+    // A person's first session after Luma's first-boot setup: the setup sheet
-+    // goes on there (luma-setup --welcome) over the softened wallpaper. Until
-+    // its window has drawn, the same cover stands over the whole session, so
-+    // nothing of the desktop shows between the two. A welcome that never
-+    // comes lets the cover fade after 20 seconds.
+         this.emit('startup-complete');
++    }
++
++    // A person's first session after Luma's first-boot setup: the session's first
++    // frame is the setup's softened wallpaper, not the desktop, and the cover
++    // lifts off the desktop once the session is up, as the setup's last motion.
 +    _lumaWelcomeCover() {
 +        if (Main.sessionMode.currentMode !== 'user')
 +            return;
@@ -60,43 +59,17 @@ cover fade after 20 seconds.
 +        }
 +        this.addTopChrome(cover);
 +
-+        const remove = () => {
-+            if (cover.get_parent())
-+                cover.destroy();
-+        };
-+        global.display.connectObject('window-created', (_display, window) => {
-+            if (window.get_wm_class() !== 'org.projectluma.Setup')
-+                return;
-+            window.get_compositor_private()?.connectObject('first-frame', () => {
-+                // The welcome draws the same cover; it takes over once it is on screen.
-+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-+                    remove();
-+                    return GLib.SOURCE_REMOVE;
-+                });
-+            }, cover);
++        // The setup's choices were applied before the Shell started; once the session
++        // is up, the cover lifts to show the desktop, the setup's last motion.
++        this.connectObject('startup-complete', () => {
++            cover.ease({
++                opacity: 0,
++                delay: 150,
++                duration: 1100,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
++                onComplete: () => cover.destroy(),
++            });
 +        }, cover);
-+        GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 20, () => {
-+            if (cover.get_parent())
-+                cover.ease({opacity: 0, duration: 400, onComplete: remove});
-+            return GLib.SOURCE_REMOVE;
-+        });
-+    }
-+
-     // setDummyCursorGeometry:
-     //
-     // The cursor dummy is a standard widget commonly used for popup
---- a/js/ui/windowManager.js
-+++ b/js/ui/windowManager.js
-@@ -1647,6 +1647,12 @@
-         if (actor.meta_window.get_window_type() === Meta.WindowType.NORMAL) {
-             const app = Shell.WindowTracker.get_default().get_window_app(actor.meta_window);
-             actor._lumaLaunchRect = LumaWindowMotion.takeLaunch(app);
-+        }
-+
-+        // Luma setup's welcome replaces the cover it matches in place: it does not open.
-+        if (actor.meta_window.get_wm_class() === 'org.projectluma.Setup') {
-+            shellwm.completed_map(actor);
-+            return;
-         }
+     }
  
-         if (!this._shouldAnimateActor(actor, types)) {
+     // setDummyCursorGeometry:

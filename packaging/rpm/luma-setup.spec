@@ -60,10 +60,12 @@ pages. GNOME Initial Setup is replaced.
 
 %install
 %meson_install
-# Enabled by the package: the welcome checks its own conditions in every session.
-install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
-ln -s ../luma-setup-welcome.service \
-  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-setup-welcome.service
+# Enabled by the package: each checks its own conditions in every session.
+install -d %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants %{buildroot}%{_userunitdir}/graphical-session.target.wants
+ln -s ../luma-setup-first-session.service \
+  %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-setup-first-session.service
+ln -s ../luma-setup-first-desktop.service \
+  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-setup-first-desktop.service
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Setup.desktop
@@ -83,8 +85,10 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/gdm/greeter/wayland-sessions/gnome-initial-setup.desktop
 %{_userunitdir}/gnome-session@gnome-initial-setup.target.d/luma-setup.conf
 %{_userunitdir}/luma-setup.service
-%{_userunitdir}/luma-setup-welcome.service
-%{_userunitdir}/graphical-session.target.wants/luma-setup-welcome.service
+%{_userunitdir}/luma-setup-first-session.service
+%{_userunitdir}/luma-setup-first-desktop.service
+%{_userunitdir}/graphical-session-pre.target.wants/luma-setup-first-session.service
+%{_userunitdir}/graphical-session.target.wants/luma-setup-first-desktop.service
 %{_datadir}/polkit-1/actions/org.projectluma.setup.policy
 %{_datadir}/polkit-1/rules.d/20-luma-setup.rules
 %{_sysusersdir}/luma-setup.conf

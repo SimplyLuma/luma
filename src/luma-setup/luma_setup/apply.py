@@ -147,6 +147,19 @@ def _keyring(answers: dict) -> None:
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
 
 
+def _seal_connect(user: str, token: str) -> None:
+    """The Connect token, sealed for the account with luma-keyring's systemd-creds path; never plain."""
+    from luma_keyring.autounlock import _as_user, seal_key, write_private
+    account = pwd.getpwnam(user)
+    sealed = seal_key(token, user=user)
+
+    def write() -> None:
+        folder = Path(account.pw_dir) / ".local" / "state" / "luma-setup"
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        write_private(folder / "connect.cred", sealed)
+    _as_user(account, write)
+
+
 def _write(path: Path, data: dict, mode: int = 0o644) -> None:
     path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     tmp = path.with_suffix(".new")
@@ -164,7 +177,8 @@ def _markers(answers: dict, state_dir: Path) -> None:
     # The post-login steps run once, in this account's first session.
     _write(state_dir / WELCOME / answers["username"],
            {"accessibility": answers.get("accessibility") or {}, "created": now,
-            "full_name": answers.get("full_name") or "", "pages_before": int(answers.get("pages_before") or 0)})
+            "full_name": answers.get("full_name") or "",
+            "first_session": answers.get("first_session") or {}})
 
 
 def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None) -> int:
@@ -188,6 +202,11 @@ def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None
         except Exception as error:  # noqa: BLE001 - reported, never fatal after the account
             print(f"luma-setup-apply: {name}: {_reason(error)}", file=sys.stderr)
             _say(out, "step", name, "fail")
+    if answers.get("connect_token"):
+        try:
+            _seal_connect(answers["username"], answers["connect_token"])
+        except Exception as error:  # noqa: BLE001 - Connect asks again on the desktop
+            print(f"luma-setup-apply: connect: {_reason(error)}", file=sys.stderr)
     _markers(answers, state_dir)
     _say(out, "done")
     return 0

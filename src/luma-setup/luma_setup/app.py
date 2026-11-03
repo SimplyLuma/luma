@@ -141,6 +141,10 @@ def main(argv: list[str] | None = None) -> int:
         del argv[at:at + 2]
     GLib.set_prgname(APP_ID)
     application = SetupApplication()
+    if "--first-session" in argv:
+        from .welcome import first_session
+        at = argv.index("--first-session")
+        return first_session(argv[at + 1] if at + 1 < len(argv) else "settings")
     if "--welcome" in argv:
         from .welcome import pending
         welcome = pending() if not system.fixture() else dict(system.fixture().get("welcome", {"full_name": "Nick McMillan", "lift": False}))

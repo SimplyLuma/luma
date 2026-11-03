@@ -14,6 +14,7 @@ python.install_sources(
   'luma_setup/app.py',
   'luma_setup/apply.py',
   'luma_setup/catalog.py',
+  'luma_setup/connect.py',
   'luma_setup/model.py',
   'luma_setup/sheet.py',
   'luma_setup/sheet_tv.py',
@@ -32,7 +33,8 @@ install_data('data/session/gnome-initial-setup.desktop',
              install_dir: datadir / 'gdm' / 'greeter' / 'wayland-sessions')
 install_data('data/systemd/luma-setup.conf',
              install_dir: userunitdir / 'gnome-session@gnome-initial-setup.target.d')
-install_data('data/systemd/luma-setup.service', 'data/systemd/luma-setup-welcome.service', install_dir: userunitdir)
+install_data('data/systemd/luma-setup.service', 'data/systemd/luma-setup-first-session.service',
+             'data/systemd/luma-setup-first-desktop.service', install_dir: userunitdir)
 
 # The session's rights, and the root helper's.
 install_data('data/polkit/org.projectluma.setup.policy', install_dir: datadir / 'polkit-1' / 'actions')

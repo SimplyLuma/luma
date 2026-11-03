@@ -30,6 +30,7 @@ gi.require_version("Gsk", "4.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gsk, Gtk, Pango  # noqa: E402
 
 from . import catalog, system  # noqa: E402
+from .connect import ConnectFlow  # noqa: E402
 from .model import Setup, mismatch, strength, username_problem  # noqa: E402
 
 __all__ = ("SetupWindow", "Posture", "posture", "Field", "icon", "load_style")
@@ -444,8 +445,17 @@ class SetupWindow(Gtk.ApplicationWindow):
         if not setup.network:
             setup.network = "wired" if self.network.wired() else self.network.connected_name()
         self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
-        # The steps after sign-in carry on in the same sheet: the dots count them from here.
-        self.later = _later_pages(self.phone)
+        # One sheet for everything: the desk, Luma Connect and apps follow in this
+        # session, and the person is signed in once, at the very end.
+        from . import welcome as later
+        self.later_mod = later
+        self.groups = later.collections()
+        self.pages += later.page_names(self.phone, self.groups)
+        self.later = 0
+        self.tiling = later.tiling_on()
+        self.dash = "luma"
+        self.chosen: set[str] = set()
+        self.connect = ConnectFlow(self._connect_changed)
         self.index = 0
         self.open_network = ""
         self.joining = ""
@@ -590,7 +600,8 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     def draw(self, forward: bool = True) -> None:
         self.page_parts = {}
-        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device}[self.page]
+        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device,
+                 "desk": self._desk, "connect": self._connect_page, "apps": self._apps}[self.page]
         title, lede, body, extra = build()
         pane = self._pane(title, lede, body, extra)
         old = self.stack.get_visible_child()
@@ -619,7 +630,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         adjustment = self.body.get_vadjustment()
         value = adjustment.get_value()
         self.page_parts = {}
-        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device}[self.page]
+        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device,
+                 "desk": self._desk, "connect": self._connect_page, "apps": self._apps}[self.page]
         title, lede, body, extra = build()
         pane = self._pane(title, lede, body, extra)
         old = self.stack.get_visible_child()
@@ -637,6 +649,9 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.stack.remove(child)
 
     def _pane(self, title: str, lede: str, body: Gtk.Widget, extra: str = "") -> Gtk.Widget:
+        app_icon = ""
+        if extra.startswith("icon:"):
+            app_icon, extra = extra[5:], ""
         pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pane.add_css_class("su-pane")
         pane.add_css_class(f"su-k-{self.page}")
@@ -646,6 +661,10 @@ class SetupWindow(Gtk.ApplicationWindow):
         if extra:
             heading.add_css_class(extra)
         heading.set_name("su-hg")
+        if app_icon:
+            picture = Gtk.Image(icon_name=app_icon, pixel_size=52 if self.phone else 60)
+            picture.add_css_class("su-app")
+            heading.append(picture)
         title_label = label(title, "su-title", xalign=0.5, wrap=True)
         heading.append(title_label)
         heading.append(label(lede, "su-lede", xalign=0.5, wrap=True))
@@ -1080,6 +1099,138 @@ class SetupWindow(Gtk.ApplicationWindow):
                 self.redraw()
         system.detect_timezone(found)
 
+    # Make it yours -------------------------------------------------------------------
+    def _option(self, group: str, key: str, name: str, line: str, on: bool) -> Gtk.Button:
+        glyph = Gtk.Box(valign=Gtk.Align.CENTER)
+        glyph.add_css_class("su-gl")
+        glyph.add_css_class(f"g-{key}")
+        for _i in range(3 if key == "luma" else 2 if key in ("stack", "tile") else 1):
+            glyph.append(Gtk.Box())
+        words = box(label(name, "su-optn"), label(line, "su-optl"), vertical=True, valign=Gtk.Align.CENTER)
+        option = Gtk.Button(child=box(glyph, words, spacing=11), hexpand=True)
+        option.add_css_class("su-opt")
+        if on:
+            option.add_css_class("su-on")
+        option.update_property([Gtk.AccessibleProperty.LABEL], [f"{name}, {line}"])
+        option.connect("clicked", lambda _b: self._choose(group, key))
+        return option
+
+    def _choose(self, group: str, key: str) -> None:
+        if group == "win":
+            self.tiling = key == "tile"
+        else:
+            self.dash = key
+        self.redraw()
+
+    def _desk(self):
+        """A live miniature of their desk; the choices apply as the session starts, before the reveal."""
+        preview = self.later_mod.MiniDesktop(self.tiling, self.dash, self.light)
+        preview.set_halign(Gtk.Align.CENTER)
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        rows.set_margin_top(26)
+        for title, group, options in (
+                ("Windows", "win", (("stack", "Stacking", "Overlap freely", not self.tiling),
+                                    ("tile", "Tiling", "Side by side", self.tiling))),
+                ("Dash", "dash", (("luma", "Luma", "Islands", self.dash == "luma"),
+                                  ("cupertino", "Cupertino", "One dock", self.dash == "cupertino"),
+                                  ("redmond", "Redmond", "Taskbar", self.dash == "redmond")))):
+            seg = Gtk.Box(spacing=3, homogeneous=True, hexpand=True)
+            seg.add_css_class("su-seg")
+            for key, name, line, on in options:
+                seg.append(self._option(group, key, name, line, on))
+            heading = label(title, "su-rowb")
+            heading.set_size_request(76, -1)
+            rows.append(box(heading, seg, spacing=12, css=("su-row",)))
+        return "Make it yours.", "How should Luma feel?", box(preview, rows, vertical=True), ""
+
+    # Luma Connect ---------------------------------------------------------------------
+    def _connect_page(self):
+        flow = self.connect
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER)
+        card.add_css_class("su-card")
+        if not self.phone:
+            card.set_size_request(360, -1)
+        if flow.done:
+            card.append(label(f"@{flow.account}" if flow.account else "Signed in", "su-meb", xalign=0.5))
+            card.append(label("Your Luma Connect account", "su-mee", xalign=0.5))
+        elif flow.code:
+            card.append(label("On your phone or another device, open", "su-note", "su-c", xalign=0.5, wrap=True))
+            card.append(label(flow.url_short, "su-meb", xalign=0.5, selectable=True))
+            card.append(label("and enter this code", "su-note", "su-c", xalign=0.5))
+            code = label(flow.code, "su-code", xalign=0.5, selectable=True)
+            code.update_property([Gtk.AccessibleProperty.LABEL], [" ".join(flow.code)])
+            card.append(code)
+            if flow.qr is not None:
+                qr = Gtk.Picture.new_for_paintable(flow.qr)
+                qr.set_size_request(132, 132)
+                qr.set_halign(Gtk.Align.CENTER)
+                qr.add_css_class("su-qr")
+                card.append(qr)
+            spinner = Gtk.Spinner(spinning=True)
+            spinner.add_css_class("su-spin")
+            card.append(box(spinner, label("Waiting for you to approve it", "su-note"), spacing=8,
+                            halign=Gtk.Align.CENTER))
+        else:
+            card.append(label(flow.why or "Sign in to Luma Connect from your desktop once Luma starts.",
+                              "su-note", "su-c", xalign=0.5, wrap=True))
+            if flow.available:
+                card.append(button("Sign in with a code", "su-link", on_click=flow.start, halign=Gtk.Align.CENTER))
+        if not flow.started and flow.available and self.setup.online and not flow.why:
+            GLib.idle_add(lambda: (flow.start(), False)[1])
+        return ("Luma Connect", "Your files, photos and messages, on every device.", card,
+                "icon:org.projectluma.Connect")
+
+    def _skip_connect(self) -> None:
+        self.connect.later = True
+        self.connect.stop()
+        self.go(1)
+
+    def _connect_changed(self) -> None:
+        if self.page == "connect" and not self._finishing:
+            self.redraw()
+
+    # Add apps ------------------------------------------------------------------------
+    def _apps(self):
+        groups = Gtk.Box(spacing=12)
+        if self.phone:
+            groups.set_orientation(Gtk.Orientation.VERTICAL)
+        groups.add_css_class("su-groups")
+        for group in self.groups:
+            ids = [a["id"] for a in group["apps"]]
+            every = all(i in self.chosen for i in ids)
+            head = box(box(label(group["name"], "su-gn"),
+                           label(f"{len(ids)} app{'s' if len(ids) != 1 else ''}", "su-ge"), vertical=True,
+                           hexpand=True),
+                       button("Clear" if every else "Add all", "su-all", valign=Gtk.Align.CENTER,
+                              on_click=lambda ids=ids, every=every: self._all_apps(ids, every)),
+                       spacing=10, css=("su-ghead",))
+            tiles = Gtk.Box(spacing=4, homogeneous=True)
+            tiles.add_css_class("su-tiles")
+            for app in group["apps"]:
+                tile = Gtk.Button(child=box(Gtk.Image(icon_name=app["icon"], pixel_size=48),
+                                            label(app["name"], "su-tn", xalign=0.5), vertical=True, spacing=3))
+                tile.add_css_class("su-tile")
+                if app["id"] in self.chosen:
+                    tile.add_css_class("su-on")
+                tile.update_property([Gtk.AccessibleProperty.LABEL], [app["name"]])
+                tile.connect("clicked", lambda _b, i=app["id"]: self._toggle_app(i))
+                tiles.append(tile)
+            groups.append(box(head, tiles, vertical=True, css=("su-group",), hexpand=True))
+        count = len(self.chosen)
+        summary = label(f"{count} app{'s' if count != 1 else ''}, installed once Luma starts" if count else "",
+                        "su-sum", xalign=0.5)
+        summary.set_visible(bool(count))
+        return "Add apps", "Free tools for your next project.", box(groups, summary, vertical=True), \
+            "icon:org.projectluma.Depot"
+
+    def _toggle_app(self, app_id: str) -> None:
+        self.chosen.symmetric_difference_update({app_id})
+        self.redraw()
+
+    def _all_apps(self, ids: list[str], every: bool) -> None:
+        (self.chosen.difference_update if every else self.chosen.update)(ids)
+        self.redraw()
+
     # -- the foot ------------------------------------------------------------------------
     def _foot(self) -> None:
         while (child := self.foot.get_first_child()) is not None:
@@ -1091,7 +1242,10 @@ class SetupWindow(Gtk.ApplicationWindow):
         skip = None
         if page == "wifi" and not self.setup.online:
             skip = button("Skip", "su-bt", "su-quiet", on_click=lambda: self.go(1))
-        key_text = "Finish" if page == "device" else "Continue"
+        last = self.index == len(self.pages) - 1
+        key_text = "Start using Luma" if last else "Continue"
+        if page == "connect" and not self.connect.done:
+            skip = button("Skip", "su-bt", "su-quiet", on_click=self._skip_connect)
         key = button(key_text, "su-bt", "su-key", on_click=self._press_key)
         key.set_name("su-key")
         key.set_sensitive(self.setup.ready(page, _taken))
@@ -1116,7 +1270,7 @@ class SetupWindow(Gtk.ApplicationWindow):
     def _press_key(self) -> None:
         if not self.key.get_sensitive():
             return
-        if self.page == "device":
+        if self.index == len(self.pages) - 1:
             self.finish()
         else:
             self.go(1)
@@ -1190,7 +1344,13 @@ class SetupWindow(Gtk.ApplicationWindow):
         self._shots = getattr(self, "_shots", 0) + 1
         snapshot(self, f"{self._shots:02d}-finish")
         payload = s.payload()
-        payload["pages_before"] = len(self.pages)
+        payload["first_session"] = {
+            "desk": {"tiling": self.tiling, "dash": self.dash} if "desk" in self.pages else None,
+            "apps": sorted(self.chosen),
+            "connect_later": not self.connect.done,
+        }
+        payload["connect_token"] = self.connect.token   # sealed for the account by the helper, never stored plain
+        self.connect.stop()
         s.password = s.again = ""  # the sheet keeps no copy once the helper has it
         password = payload["password"]
         system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
