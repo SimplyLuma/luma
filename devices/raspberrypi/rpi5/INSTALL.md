@@ -60,3 +60,39 @@ needs a TV input in HDMI 2.0 (enhanced) mode.
 This profile is unqualified: an install from a built card image, an update
 across a kernel change and a rollback on real hardware must be recorded before
 a tier change.
+
+## Test card: Luma Pi kernel (spare microSD only)
+
+A preinstalled card built from a test payload proves the firmware-tree boot
+chain before it touches any card in use. It is not for publication (its
+manifest says `test_payload`), and `rpm-ostree upgrade` on it would return to
+the nightly's Fedora kernel, which does not boot on the firmware tree: do not
+upgrade it.
+
+Build (luma-build, as root, under the heavy-job lock):
+
+    P=/srv/dev-storage/projects/luma-pi5
+    luma-heavy bash scripts/devices/build-rpi5-disk-image.sh \
+      --iso $P/inputs/luma-nightly-<version>-aarch64.iso \
+      --uboot-rpm $P/inputs/uboot-images-armv8-2026.10-1.fc45.noarch.rpm \
+      --output $P/images/spare-pi-kernel --size 16 \
+      --test-payload <ostree repo> <commit with kernel-luma-rpi> \
+      --test-ssh-key <public key>
+
+Flash on a Mac (never the Pi's own card):
+
+1. `scp` the `.img.xz` and its `.sha256` from luma-build and check it:
+   `shasum -a 256 -c luma-rpi5-*.img.xz.sha256`.
+2. Raspberry Pi Imager: Choose OS > Use custom > the `.img.xz`; Choose Storage >
+   the spare card; no OS customisation. Or in a terminal:
+   `diskutil list` (find the card, e.g. `/dev/disk6`), then
+   `diskutil unmountDisk /dev/disk6` and
+   `xz -dc luma-rpi5-*.img.xz | sudo dd of=/dev/rdisk6 bs=4m && diskutil eject /dev/disk6`.
+3. Power the Pi off, take its card out and keep it safe, insert the spare card,
+   power on. The first boot grows the root partition and is slower.
+
+Expected: U-Boot and GRUB pass the firmware's tree (model "Raspberry Pi 5
+Model B Rev …", the board's MAC and Bluetooth address), `uname -r` is the Luma
+Pi kernel, HDMI audio, Bluetooth and `/dev/video19` (HEVC) are present, and
+`luma-rpi5-firmware-sync` (when the payload carries luma-rpi5-platform 0.2.0)
+reports the trees in place. To go back, power off and put the original card in.
