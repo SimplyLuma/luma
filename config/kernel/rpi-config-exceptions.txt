@@ -44,3 +44,12 @@ CONFIG_REGMAP_RAM Only the regmap KUnit suite uses it.
 CONFIG_SND_HDA_CIRRUS_SCODEC Selected here only by its KUnit suite; the Cirrus HDA amp drivers still select it where built.
 CONFIG_CRYPTO_LIB_BENCHMARK_VISIBLE Crypto library benchmarks run under KUnit.
 CONFIG_TEST_* Test modules that depend on KUnit.
+
+# Intel Xe (rpi.config: does not build against the Raspberry Pi DRM tree)
+CONFIG_DRM_XE_* Xe is off.
+CONFIG_XE_VFIO_PCI Xe is off.
+CONFIG_MTD_INTEL_DG Intel discrete GPU flash; selected only by Xe.
+CONFIG_SND_HDA_I915 Intel GPU HDMI audio; selected only by Xe here.
+CONFIG_DRM_GPUSVM Selected only by Xe.
+CONFIG_DRM_DISPLAY_DP_TUNNEL Selected only by Xe.
+CONFIG_VMAP_PFN Selected only by Xe.
