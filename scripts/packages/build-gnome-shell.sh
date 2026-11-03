@@ -527,6 +527,10 @@ done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p
         /org/gnome/shell/ui/lumaControlInk.js >lumaControlInk.js
       grep -Fq "export const CONTROL_INK" lumaControlInk.js
       grep -Fq "CONTROLS_STYLESHEET_URI" usr/lib64/gnome-shell/libshell-18.so
+      # Backdrop blurs bound the pass after their copy (0317); St matches
+      # theme nodes through its selector index (0318).
+      grep -aFq "ShellBlurEffect (paint box)" usr/lib64/gnome-shell/libshell-18.so
+      grep -aFq "LUMA_ST_NO_SELECTOR_INDEX" usr/lib64/gnome-shell/libst-18.so
       grep -Fq "artwork.remove_all_transitions()" \
         usr/lib64/gnome-shell/libshell-18.so
       grep -Fq "Clutter.OffscreenRedirect.NEVER" \
