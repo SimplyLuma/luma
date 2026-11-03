@@ -134,7 +134,15 @@ try {
                 console.log(`${Math.round((Date.now() - started) / 1000)}s ${state.percent} phases=${state.phase}`);
                 await shot(`05-installing-${state.phase}`);
             }
-            if (state.done || state.failed) {
+            // Installed and ejected: Continue to step 6. Installed but not ejected: Restart now is the end.
+            const cont = page.locator(".install-actions .install-btn.primary", { hasText: "Continue" });
+            if (!state.done && await cont.count()) {
+                await shot("05b-installed-ejected");
+                await cont.click();
+                continue;
+            }
+            const stuck = !state.done && await page.locator(".install-actions .install-btn.primary", { hasText: "Restart now" }).count();
+            if (state.done || state.failed || stuck) {
                 console.log(state.text);
                 break;
             }
