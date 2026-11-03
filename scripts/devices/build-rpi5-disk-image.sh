@@ -173,10 +173,18 @@ if [ -n "$test_repo" ]; then
   commit=$(ostree --repo="$test_repo" rev-parse "$test_commit") || fail "the test repository has no $test_commit"
   payload_repo=$test_repo
   echo "warning: test payload $commit from $test_repo; do not publish this image" >&2
+  # A test commit composed for the Pi 5 hardware target keeps the target's
+  # origin, as a --payload card would.
+  target=$(ostree --repo="$payload_repo" show --print-metadata-key=org.projectluma.hardware-target "$commit" 2>/dev/null | tr -d "'" || true)
+  if [ "$target" = raspberrypi,rpi5 ]; then
+    major=$(printf '%s\n' "$ref" | cut -d/ -f2)
+    ref="luma/$major/aarch64/raspberrypi-rpi5/$channel"
+    payload_ref=$ref
+  fi
 fi
 version=$(ostree --repo="$payload_repo" show --print-metadata-key=version "$commit" | tr -d "'")
 echo "Payload: $remote:$ref $commit ($version)"
-if [ -n "$payload_src" ]; then
+if [ -n "$payload_ref" ]; then
   # The card is named after the Pi build, not the ISO that lent its key.
   build_id=$(ostree --repo="$payload_repo" show --print-metadata-key=org.projectluma.build-id "$commit" | tr -d "'")
   [[ "$build_id" =~ ^[0-9]{8}\.[0-9]+$ ]] || fail "payload build id is not a nightly id: $build_id"
