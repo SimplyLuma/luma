@@ -1,0 +1,232 @@
+From 8ea6202a9e2d6217c1e6502c853bb4dd45c850a0 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 2 Nov 2026 23:50:27 -0600
+Subject: [PATCH] LumaUI Settings: one decode per image, wallpapers from
+ thumbnails
+
+Pages rebuild on every owner report, and each rebuild started another
+decode of an image still decoding: on a Raspberry Pi five threads decoded
+the same 6016x3384 wallpaper for a 240x135 card, then uploaded as many
+textures. Image and wallpaper pictures now share one running decode per
+file and size, and a picture up to 1024 pixels of a file over 1 MiB
+decodes from the freedesktop thumbnail (made once if missing).
+---
+ shell/cc-luma-view-discovery.c |  24 +++----
+ shell/cc-luma-view-image.c     | 119 ++++++++++++++++++++++++++++-----
+ shell/cc-luma-view-private.h   |   3 +
+ 3 files changed, 116 insertions(+), 30 deletions(-)
+
+diff --git a/shell/cc-luma-view-discovery.c b/shell/cc-luma-view-discovery.c
+index 942bdba..4b57cc8 100644
+--- a/shell/cc-luma-view-discovery.c
++++ b/shell/cc-luma-view-discovery.c
+@@ -87,21 +87,16 @@ static void wall_job_free (WallJob *job)
+   g_weak_ref_clear (&job->picture);
+   g_free (job);
+ }
+-static void wall_decode (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++static void wall_decoded (GdkPixbuf *image, const GError *error, gpointer data)
+ {
+   WallJob *job = data;
+-  g_autoptr (GError) error = NULL;
+-  GdkPixbuf *image = gdk_pixbuf_new_from_file_at_scale (job->path, job->width, job->height, TRUE, &error);
+-  if (image) g_task_return_pointer (task, image, g_object_unref);
+-  else g_task_return_error (task, g_steal_pointer (&error));
+-}
+-static void wall_decoded (GObject *source, GAsyncResult *result, gpointer unused)
+-{
+-  WallJob *job = g_task_get_task_data (G_TASK (result));
+-  g_autoptr (GdkPixbuf) image = g_task_propagate_pointer (G_TASK (result), NULL);
+   if (!image) return; /* unreadable: the frame stays plain, as with no wallpaper */
+-  GdkTexture *texture = gdk_texture_new_for_pixbuf (image);
+-  g_hash_table_replace (live_textures, g_strdup (job->key), texture);
++  GdkTexture *texture = g_hash_table_lookup (live_textures, job->key);
++  if (!texture)
++    {
++      texture = gdk_texture_new_for_pixbuf (image);
++      g_hash_table_insert (live_textures, g_strdup (job->key), texture);
++    }
+   g_autoptr (GtkWidget) picture = g_weak_ref_get (&job->picture);
+   if (picture) gtk_picture_set_paintable (GTK_PICTURE (picture), GDK_PAINTABLE (texture));
+ }
+@@ -124,9 +119,8 @@ static GtkWidget *live_wallpaper (const char *path, int width, int height)
+   job->width = width;
+   job->height = height;
+   g_weak_ref_init (&job->picture, picture);
+-  g_autoptr (GTask) task = g_task_new (NULL, NULL, wall_decoded, NULL);
+-  g_task_set_task_data (task, job, (GDestroyNotify) wall_job_free);
+-  g_task_run_in_thread (task, wall_decode);
++  cc_luma_decode_image (job->path, job->width, job->height, wall_decoded,
++                        job, (GDestroyNotify) wall_job_free);
+   return picture;
+ }
+ 
+diff --git a/shell/cc-luma-view-image.c b/shell/cc-luma-view-image.c
+index c66b0c3..bb563c6 100644
+--- a/shell/cc-luma-view-image.c
++++ b/shell/cc-luma-view-image.c
+@@ -1,6 +1,8 @@
+ /* SPDX-License-Identifier: GPL-2.0-or-later */
+ #include "cc-luma-view-private.h"
+ #include <glib/gstdio.h>
++#define GNOME_DESKTOP_USE_UNSTABLE_API
++#include <libgnome-desktop/gnome-desktop-thumbnail.h>
+ 
+ typedef struct {
+   GWeakRef root;
+@@ -19,6 +21,105 @@ static void image_job_free (ImageJob *job)
+   g_free (job->cache_key);
+   g_free (job);
+ }
++/* One decode per file and size at a time. Pages rebuild on every owner
++ * report while a large image may still be decoding (a 4K wallpaper takes
++ * seconds on a Raspberry Pi), and each rebuild used to start another decode
++ * of the same file: several threads decoding one image, then as many
++ * textures uploaded. Later requests now wait for the running decode. */
++typedef struct { CcLumaDecoded done; gpointer data; GDestroyNotify destroy; } DecodeWaiter;
++typedef struct { char *key, *path; int width, height; } DecodeJob;
++static GHashTable *decodes_running; /* "path@WxH" → GPtrArray of DecodeWaiter */
++static void decode_waiter_free (DecodeWaiter *waiter)
++{
++  if (waiter->destroy) waiter->destroy (waiter->data);
++  g_free (waiter);
++}
++static void decode_job_free (DecodeJob *job)
++{
++  g_free (job->key);
++  g_free (job->path);
++  g_free (job);
++}
++/* Wallpapers are 4K-6K images: decoding one for a card-sized picture took
++ * seconds of CPU on a Raspberry Pi, in every Settings window. A picture up
++ * to 1024 pixels decodes from the shared freedesktop thumbnail instead,
++ * made once (as Files and the Background panel do) and reused after. */
++static char *thumbnail_for (const char *path, int width, int height)
++{
++  int need = MAX (width, height);
++  GStatBuf metadata;
++  if (need <= 0 || need > 1024 || g_stat (path, &metadata) != 0 || metadata.st_size < 1024 * 1024)
++    return NULL;
++  GnomeDesktopThumbnailSize size = need <= 128 ? GNOME_DESKTOP_THUMBNAIL_SIZE_NORMAL :
++                                   need <= 256 ? GNOME_DESKTOP_THUMBNAIL_SIZE_LARGE :
++                                   need <= 512 ? GNOME_DESKTOP_THUMBNAIL_SIZE_XLARGE :
++                                   GNOME_DESKTOP_THUMBNAIL_SIZE_XXLARGE;
++  g_autoptr (GFile) file = g_file_new_for_path (path);
++  g_autofree char *uri = g_file_get_uri (file);
++  g_autoptr (GFileInfo) info = g_file_query_info (file, G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
++                                                   G_FILE_QUERY_INFO_NONE, NULL, NULL);
++  const char *mime = info ? g_file_info_get_content_type (info) : NULL;
++  time_t mtime = metadata.st_mtime;
++  g_autoptr (GnomeDesktopThumbnailFactory) factory = gnome_desktop_thumbnail_factory_new (size);
++  char *thumbnail = gnome_desktop_thumbnail_factory_lookup (factory, uri, mtime);
++  if (thumbnail || !mime ||
++      !gnome_desktop_thumbnail_factory_can_thumbnail (factory, uri, mime, mtime))
++    return thumbnail;
++  g_autoptr (GdkPixbuf) made = gnome_desktop_thumbnail_factory_generate_thumbnail (factory, uri, mime, NULL, NULL);
++  if (!made || !gnome_desktop_thumbnail_factory_save_thumbnail (factory, made, uri, mtime, NULL, NULL))
++    return NULL;
++  return gnome_desktop_thumbnail_factory_lookup (factory, uri, mtime);
++}
++static void decode_in_thread (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++{
++  DecodeJob *job = data;
++  g_autoptr (GError) error = NULL;
++  g_autofree char *thumbnail = thumbnail_for (job->path, job->width, job->height);
++  GdkPixbuf *image = thumbnail ? gdk_pixbuf_new_from_file_at_scale (thumbnail, job->width, job->height, TRUE, NULL) : NULL;
++  if (!image)
++    image = gdk_pixbuf_new_from_file_at_scale (job->path, job->width, job->height, TRUE, &error);
++  if (!image) g_task_return_error (task, g_steal_pointer (&error));
++  else g_task_return_pointer (task, image, g_object_unref);
++}
++static void decode_finished (GObject *source, GAsyncResult *result, gpointer unused)
++{
++  DecodeJob *job = g_task_get_task_data (G_TASK (result));
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GdkPixbuf) image = g_task_propagate_pointer (G_TASK (result), &error);
++  g_autoptr (GPtrArray) waiters = NULL;
++  g_hash_table_steal_extended (decodes_running, job->key, NULL, (gpointer *) &waiters);
++  for (guint i = 0; waiters && i < waiters->len; i++)
++    {
++      DecodeWaiter *waiter = g_ptr_array_index (waiters, i);
++      waiter->done (image, error, waiter->data);
++    }
++}
++void cc_luma_decode_image (const char *path, int width, int height, CcLumaDecoded done,
++                           gpointer data, GDestroyNotify destroy)
++{
++  if (!decodes_running)
++    decodes_running = g_hash_table_new_full (g_str_hash, g_str_equal, g_free,
++                                             (GDestroyNotify) g_ptr_array_unref);
++  g_autofree char *key = g_strdup_printf ("%s@%dx%d", path, width, height);
++  DecodeWaiter *waiter = g_new0 (DecodeWaiter, 1);
++  waiter->done = done; waiter->data = data; waiter->destroy = destroy;
++  GPtrArray *waiters = g_hash_table_lookup (decodes_running, key);
++  if (waiters)
++    {
++      g_ptr_array_add (waiters, waiter);
++      return;
++    }
++  waiters = g_ptr_array_new_with_free_func ((GDestroyNotify) decode_waiter_free);
++  g_ptr_array_add (waiters, waiter);
++  g_hash_table_insert (decodes_running, g_strdup (key), waiters);
++  DecodeJob *job = g_new0 (DecodeJob, 1);
++  job->key = g_steal_pointer (&key);
++  job->path = g_strdup (path);
++  job->width = width; job->height = height;
++  g_autoptr (GTask) task = g_task_new (NULL, NULL, decode_finished, NULL);
++  g_task_set_task_data (task, job, (GDestroyNotify) decode_job_free);
++  g_task_run_in_thread (task, decode_in_thread);
++}
+ /* Keep decoded local artwork through unrelated live-model page rebuilds.
+  * Main-thread-only, per-view and bounded; file metadata and requested size
+  * prevent an old wallpaper or another resolution from being reused. */
+@@ -42,20 +143,9 @@ static char *image_key (const char *path, int width, int height)
+                           (gint64) metadata.st_mtim.tv_sec, metadata.st_mtim.tv_nsec,
+                           (guint64) metadata.st_ino);
+ }
+-static void decode_image (GTask *task, gpointer source, gpointer data, GCancellable *cancel)
++static void image_decoded (GdkPixbuf *image, const GError *error, gpointer data)
+ {
+   ImageJob *job = data;
+-  g_autoptr (GError) error = NULL;
+-  GdkPixbuf *image = gdk_pixbuf_new_from_file_at_scale (job->path, job->width, job->height, TRUE, &error);
+-  if (!image) g_task_return_error (task, g_steal_pointer (&error));
+-  else g_task_return_pointer (task, image, g_object_unref);
+-}
+-static void image_decoded (GObject *source, GAsyncResult *result, gpointer unused)
+-{
+-  GTask *task = G_TASK (result);
+-  ImageJob *job = g_task_get_task_data (task);
+-  g_autoptr (GError) error = NULL;
+-  g_autoptr (GdkPixbuf) image = g_task_propagate_pointer (task, &error);
+   g_autoptr (GtkWidget) root = g_weak_ref_get (&job->root);
+   g_autoptr (GtkWidget) picture = g_weak_ref_get (&job->picture);
+   if (!root) return;
+@@ -111,8 +201,7 @@ GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height
+   /* Local file decoding cannot be interrupted by GCancellable; allow it to
+    * finish into the cache when a live-model update replaces this generation.
+    * Weak refs still protect a closed view, and generation protects painting. */
+-  g_autoptr (GTask) task = g_task_new (NULL, NULL, image_decoded, NULL);
+-  g_task_set_task_data (task, job, (GDestroyNotify) image_job_free);
+-  g_task_run_in_thread (task, decode_image);
++  cc_luma_decode_image (job->path, job->width, job->height, image_decoded,
++                        job, (GDestroyNotify) image_job_free);
+   return picture;
+ }
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 818d446..96f52af 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -124,6 +124,9 @@ void cc_luma_view_bluetooth_stop (View *v);
+ void cc_luma_view_bluetooth_render (View *v);
+ 
+ GtkWidget *cc_luma_view_image (View *v, const char *asset, int width, int height);
++typedef void (*CcLumaDecoded) (GdkPixbuf *image, const GError *error, gpointer data);
++void cc_luma_decode_image (const char *path, int width, int height, CcLumaDecoded done,
++                           gpointer data, GDestroyNotify destroy);
+ void cc_luma_view_report_error (View *v, const GError *error);
+ 
+ GtkWidget *cc_luma_view_toggle (View *v, const char *key, const char *name, const char *accessible);
+-- 
+2.56.0
+

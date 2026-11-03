@@ -255,3 +255,11 @@ The fixture About page reads its machine (`sys.model`, `sys.mem`, `sys.cpu`, `sy
 from the fixture when it has them, else v70's ThinkPad. In TV posture a header without a top control
 stacks its title and line as one with does (a wrapping line measured unconstrained made the head
 taller than its words).
+
+`0097-lumaui-one-image-decode-per-file.patch`: image and wallpaper pictures
+share one running decode per file and size (pages rebuild on every owner
+report, and each rebuild used to start another decode of the same image), and
+a picture up to 1024 px of a file over 1 MiB decodes from the freedesktop
+thumbnail, made once if missing. On a Raspberry Pi 5 five threads decoded the
+6016x3384 wallpaper for a 240x135 card; Settings Wi-Fi key-to-frame p95
+736 -> 300 ms.
