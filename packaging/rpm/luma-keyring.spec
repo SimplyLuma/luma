@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 Name:           luma-keyring
-Version:        0.2.0
+Version:        0.3.0
 Release:        1.luma.1%{?dist}
 Summary:        Saved passwords that unlock when you log in, or say why they cannot
 License:        MPL-2.0
@@ -23,8 +23,12 @@ BuildRequires:  systemd-rpm-macros
 Requires:       python3 >= 3.11
 Requires:       python3-gobject
 Requires:       libadwaita
+# LumaUI parts (luma_appkit) for the first-unlock sheet.
+Requires:       luma-developer-platform
 # The keyring this looks after, and the PAM module that unlocks it at login.
 Requires:       gnome-keyring
+# Gcr's secret exchange: the sheet answers gnome-keyring's prompts as the system prompter.
+Requires:       gcr-libs
 Requires:       pam
 # Seals the keyring key of an account that signs in automatically, and wraps
 # it with Argon2id and AES-256-GCM for recovery.
@@ -79,10 +83,9 @@ state worth reporting.
 %install
 %meson_install
 # Enabled by the package itself: a preset applies only on first install.
-install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
-ln -s ../luma-keyring.service \
-  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-keyring.service
 install -d %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants
+ln -s ../luma-keyring.service \
+  %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring.service
 ln -s ../luma-keyring-autologin.service \
   %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
 
@@ -97,7 +100,7 @@ glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
 grep -Fq "auth       include      system-auth" %{buildroot}%{_sysconfdir}/pam.d/luma-keyring
 # No password may be written anywhere: they are arguments to a D-Bus call.
 ! grep -rn "log\.\(info\|warning\|error\)(.*password[^s]" %{buildroot}%{python3_sitelib}/luma_keyring/
-PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_keyring.state, luma_keyring.repair, luma_keyring.secrets, luma_keyring.autounlock"
+PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_keyring.state, luma_keyring.repair, luma_keyring.secrets, luma_keyring.autounlock, luma_keyring.first_unlock, luma_keyring.ready, luma_keyring.prompt_gate"
 # The PAM module's only exported function is pam_sm_chauthtok (linker
 # symbols such as _edata or __bss_start are not functions).
 test "$(nm -D --defined-only --format=posix %{buildroot}%{_libdir}/security/pam_luma_keyring.so |
@@ -125,7 +128,7 @@ fi
 %{_datadir}/luma-keyring/
 %{python3_sitelib}/luma_keyring/
 %{_userunitdir}/luma-keyring.service
-%{_userunitdir}/graphical-session.target.wants/luma-keyring.service
+%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring.service
 %{_userunitdir}/luma-keyring-autologin.service
 %{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
 %{_datadir}/applications/org.projectluma.Keyring.desktop
@@ -133,6 +136,12 @@ fi
 %config(noreplace) %{_sysconfdir}/pam.d/luma-keyring
 
 %changelog
+* Mon Nov 02 2026 Project Luma <maintainers@projectluma.org> - 0.3.0-1.luma.1
+- Ask for the first unlock of an unenrolled automatic sign-in in Luma's own
+  sheet, with automatic unlock on by default; decline other keyring prompts
+  while it is up
+- Show the state and turn automatic unlock on or off in the keyring window
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
 - Lock the login keyring of an automatic sign-in with a random key, sealed for
   the device and wrapped with the account password for recovery

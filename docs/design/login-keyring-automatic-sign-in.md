@@ -115,8 +115,9 @@ Each account is enrolled at a point where its password is already in hand.
   - At the first sign-in, the session's keyring daemon makes the login
     keyring with the key.
   - New installs are never prompted.
-- **Devices set up earlier, or automatic sign-in turned on in Settings.** A
-  one-time notification asks for the password.
+- **Devices set up earlier, or automatic sign-in turned on in Settings.** Luma
+  asks once, in its own sheet, at the start of the session (see "First
+  unlock" below).
   - The password is checked with PAM, and the keyring is re-keyed onto a new
     key that is sealed and wrapped. Its contents are kept.
   - The new seal and wrap are written before the keyring is re-keyed, and
@@ -124,6 +125,41 @@ Each account is enrolled at a point where its password is already in hand.
     key nothing holds.
   - Over SSH: `luma-keyring --enable-auto-unlock`, with the password on
     stdin, inside the person's session.
+
+## First unlock
+
+An automatic sign-in with no seal and a locked login keyring is the one
+case nothing opens. Rather than let the first app that wants a secret raise
+gnome-keyring's own prompt, `luma-keyring.service` asks first:
+
+- The unit is ordered after `gnome-session-initialized.target` (the shell
+  is up) and before `graphical-session.target`, so autostarted apps start
+  after it. It is `Type=notify`: it decides before loading GTK, says
+  `READY=1` at once when there is nothing to ask, as soon as the sheet is up
+  when there is, and never later than 8 seconds. The session never waits on
+  a person.
+- The sheet: "Unlock your saved passwords", one line, a password field (the
+  TV keyboard on a TV) and "Unlock automatically on this TV" (LumaUI's
+  device noun), on by default. The password is checked by unlocking the
+  keyring with it (`UnlockWithMasterPassword`); a wrong one stays on the
+  sheet. With the switch on, the enrolment above follows (PAM check, seal,
+  wrap, re-key; nothing changes if any step fails, and the keyring stays
+  unlocked for the session). With it off, only this session is unlocked.
+  Cancel leaves it locked; apps then treat it as locked, not signed out.
+- While the sheet is up the service holds the system prompter's bus name
+  (`org.gnome.keyring.SystemPrompter`; GNOME Shell allows it to be replaced
+  and queues for it again) and declines every prompt, which gnome-keyring
+  reports to the app as dismissed at once. gnome-keyring decides to prompt
+  before it waits for the prompter, so a prompt merely queued behind the
+  sheet would still appear afterwards, asking for a password that no longer
+  opens a re-keyed keyring. The name is released when the sheet closes, and
+  by the bus if the process dies. Where the prompter cannot be replaced
+  (gcr-prompter while it shows a prompt) the sheet waits up to 5 seconds and
+  then shows anyway.
+- Opened by hand, the same window shows the state and the switch. Turning
+  automatic unlock on or off needs the password once: off moves the keyring
+  back onto the login password and removes both slots, since removing only
+  the seal would leave it on a key that only the recovery copy opens.
 
 ## Password changes
 
