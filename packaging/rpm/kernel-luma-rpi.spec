@@ -6,7 +6,9 @@
 # other aarch64 device keeps Fedora's kernel.
 %global debug_package %{nil}
 %global _missing_build_ids_terminate_build 0
-%global __provides_exclude_from ^/usr/lib/modules/.*$
+# kmod(NAME.ko) provides for every module and built-in, as Fedora's kernel
+# has (snapd requires kmod(squashfs.ko)); rpm's kmod.attr only looks in /lib.
+%global __kmod_path ^/usr/lib/modules/.*/(modules[.]builtin|.*[.]ko|.*[.]ko[.]xz)$
 %global __requires_exclude_from ^/usr/lib/modules/.*$
 # modules_install strips, signs and compresses; RPM must not strip again.
 %global __spec_install_post %{nil}
@@ -102,6 +104,7 @@ for b in 8250_bcm7271 rtc-rpi; do
 done
 grep -Fxq 'CONFIG_SECURITY_SELINUX=y' "$moddir/config"
 grep -Fxq 'CONFIG_ARM64_4K_PAGES=y' "$moddir/config"
+test -s "$moddir/kernel/fs/squashfs/squashfs.ko.xz" || grep -q '/squashfs.ko$' "$moddir/modules.builtin"
 
 %post
 /usr/sbin/depmod %{kver} || exit $?
