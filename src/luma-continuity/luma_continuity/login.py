@@ -1,4 +1,5 @@
-"""External-browser OIDC Authorization Code + S256 PKCE, Authlib/joserfc.
+"""External-browser OIDC Authorization Code + S256 PKCE, Authlib/joserfc,
+and adoption of the first-boot setup's device-grant sign-in (DeviceHandoff).
 
 Credentials are persisted only after ID-token and API identity agreement.
 The loopback listener serves only a one-use callback, not a remote API.
@@ -8,6 +9,9 @@ import hashlib
 import hmac
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
+import logging
+import os
+from pathlib import Path
 import secrets
 import ssl
 import socket
@@ -16,8 +20,10 @@ import time
 from urllib.parse import parse_qs, urlsplit
 from .account import AccountError
 
+log = logging.getLogger(__name__)
 
-def validate_id_token(encoded, keys, config, nonce, access_token, *, now=None, refreshed=False):
+
+def validate_id_token(encoded, keys, config, nonce, access_token, *, now=None, refreshed=False, client_id=None):
     from joserfc import jwt
     from joserfc.jwk import KeySet
     from joserfc.jwt import JWTClaimsRegistry
@@ -25,17 +31,22 @@ def validate_id_token(encoded, keys, config, nonce, access_token, *, now=None, r
             or not isinstance(keys, dict) or not isinstance(keys.get('keys'),list)
             or not 1 <= len(keys['keys']) <= 16 or any('d' in key for key in keys['keys'])):
         raise AccountError('invalid_identity_token')
+    client = client_id or config.client_id
     try:
         token = jwt.decode(encoded, KeySet.import_key_set(keys), algorithms=['RS256'])
         claims = token.claims
         JWTClaimsRegistry(now=now, leeway=30,
-            iss={'essential':True,'value':config.issuer}, aud={'essential':True,'value':config.client_id},
+            iss={'essential':True,'value':config.issuer}, aud={'essential':True,'value':client},
             sub={'essential':True}, exp={'essential':True}, iat={'essential':True},
             # OIDC Core12.2: a refreshed ID token may omit nonce. If present,
             # it must retain the original value. Initial login still requires it.
-            nonce={'essential':not refreshed,'value':nonce}).validate(claims)
+            # A device grant (RFC 8628) has no nonce to retain.
+            nonce={'essential':not refreshed,'value':nonce} if nonce is not None or not refreshed
+                  else {'essential':False}).validate(claims)
+        if refreshed and nonce is None and 'nonce' in claims:
+            raise ValueError('unexpected nonce')
         audience = claims['aud']
-        if (isinstance(audience,list) and len(audience)>1 or 'azp' in claims) and claims.get('azp') != config.client_id:
+        if (isinstance(audience,list) and len(audience)>1 or 'azp' in claims) and claims.get('azp') != client:
             raise ValueError('authorized party')
         if 'at_hash' in claims:
             expected = base64.urlsafe_b64encode(hashlib.sha256(access_token.encode('ascii')).digest()[:16]).rstrip(b'=').decode()
@@ -193,13 +204,10 @@ class BrowserLogin:
 
     def renew(self, previous):
         """Rotate an expiring token, bound to the previously approved identity."""
-        from authlib.integrations.httpx_client import OAuth2Client
         from authlib.integrations.base_client.errors import OAuthError
         if not previous.get('refresh_token') or not isinstance(previous.get('_identity'),dict):
             raise AccountError('sign_in_required',401)
-        tls=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);tls.load_default_certs()
-        self.client=OAuth2Client(self.config.client_id,token_endpoint_auth_method='none',
-            verify=tls,timeout=5,trust_env=False,follow_redirects=False,transport=self.http_transport)
+        self.client=self._token_client(self.config.token_client(previous))
         try:
             metadata=self._json(self.config.issuer+'/.well-known/openid-configuration')
             if metadata.get('issuer')!=self.config.issuer:raise AccountError('issuer_mismatch')
@@ -212,6 +220,7 @@ class BrowserLogin:
             # validation, or a lost /v1/me response strands the old token.
             # Pending credentials grant no authority until identity validates.
             token['_identity']=previous['_identity'];token['_nonce']=previous.get('_nonce')
+            if previous.get('_client_id'):token['_client_id']=previous['_client_id']
             token.setdefault('refresh_token',previous['refresh_token'])
             if 'scope' in previous:token.setdefault('scope',previous['scope'])
             token['_pending_verification']=True
@@ -228,7 +237,8 @@ class BrowserLogin:
             raise AccountError('identity_mismatch',401)
         if token.get('id_token'):
             claims=validate_id_token(token['id_token'],self._json(self._endpoint(metadata['jwks_uri'])),
-                self.config,token.get('_nonce'),token['access_token'],refreshed=True)
+                self.config,token.get('_nonce'),token['access_token'],refreshed=True,
+                client_id=self.config.token_client(token))
             if claims['sub']!=identity.get('subject') or claims.get('sid',identity.get('session_id'))!=identity.get('session_id'):
                 raise AccountError('identity_mismatch',401)
         token=dict(token);token.pop('_pending_verification',None)
@@ -237,19 +247,119 @@ class BrowserLogin:
 
     def verify_pending(self,token):
         """Resume verification of a saved rotation without rotating it again."""
-        from authlib.integrations.httpx_client import OAuth2Client
         if not token.get('_pending_verification') or not isinstance(token.get('_identity'),dict):
             raise AccountError('invalid_pending_credential')
-        tls=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);tls.load_default_certs()
-        self.client=OAuth2Client(self.config.client_id,token_endpoint_auth_method='none',
-            verify=tls,timeout=5,trust_env=False,follow_redirects=False,transport=self.http_transport)
+        self.client=self._token_client(self.config.token_client(token))
         try:
             metadata=self._json(self.config.issuer+'/.well-known/openid-configuration')
             if metadata.get('issuer')!=self.config.issuer:raise AccountError('issuer_mismatch')
             return self._verify_replacement(token,metadata)
         finally:self.close()
 
+    def _token_client(self,client_id):
+        from authlib.integrations.httpx_client import OAuth2Client
+        tls=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT);tls.load_default_certs()
+        return OAuth2Client(client_id,token_endpoint_auth_method='none',
+            verify=tls,timeout=5,trust_env=False,follow_redirects=False,transport=self.http_transport)
+
     def close(self):
         if self.server: self.server.server_close();self.server=None
         if self.client: self.client.close();self.client=None
         self.verifier=self.nonce=self.state=self.response=self.callback_error=None
+
+
+def sealed_token_path(home=None):
+    """Where luma-setup leaves the sign-in it sealed for this account at Finish."""
+    return Path(home or Path.home())/'.local'/'state'/'luma-setup'/'connect.cred'
+
+
+def unseal_token(path):
+    """Open the seal with luma-keyring's systemd-creds path, as this user."""
+    from luma_keyring.autounlock import unseal_key
+    return unseal_key(path)
+
+
+class DeviceHandoff:
+    """Sign in at first login with the token the first-boot setup obtained.
+
+    luma-setup runs the OAuth 2.0 device authorization grant (RFC 8628) with
+    the configured device client and seals the token response for the new
+    account (luma-keyring, systemd-creds). Adoption opens the seal, rotates
+    its refresh token with the same public client, validates the new ID token,
+    and stores the result as any renewed credential is stored: pending until
+    the account API agrees on the identity. The seal is removed once its token
+    is in the keyring, or as soon as it can never be used.
+    """
+    PERMANENT_GRANT_ERRORS = frozenset({'invalid_grant', 'invalid_client', 'unauthorized_client',
+                                        'invalid_scope'})
+
+    def __init__(self, config, api, tokens, *, path=None, unseal=unseal_token, http_transport=None):
+        self.config, self.api, self.tokens = config, api, tokens
+        self.path = Path(path) if path else sealed_token_path()
+        self.unseal = unseal
+        self.http_transport = http_transport  # isolated protocol tests only
+
+    def pending(self):
+        return bool(self.config.device_client_id) and os.path.lexists(self.path)
+
+    def discard(self, reason=None):
+        if reason: log.warning('Connect: the setup sign-in cannot be used (%s)', reason)
+        try: self.path.unlink()
+        except FileNotFoundError: pass
+
+    def _sealed(self):
+        try: raw = self.unseal(self.path)
+        except ImportError:
+            log.warning('Connect: luma-keyring is not installed; the setup sign-in stays sealed'); return None
+        except Exception as error:  # noqa: BLE001 - a seal for another machine or user never opens
+            self.discard(type(error).__name__); return None
+        try: token = json.loads(raw) if isinstance(raw, str) and len(raw) <= 65536 else None
+        except ValueError: token = None
+        if (not isinstance(token, dict) or not isinstance(token.get('refresh_token'), str)
+                or not token['refresh_token'] or str(token.get('token_type', '')).lower() != 'bearer'):
+            self.discard('not a token response'); return None
+        return token
+
+    def adopt(self):
+        """The verified token, or None when the seal was unusable (and is gone).
+
+        Raises AccountError while the provider or the account service cannot be
+        reached; the seal, or the pending keyring record, stays for a retry.
+        """
+        from authlib.integrations.base_client.errors import OAuthError
+        sealed = self._sealed()
+        if sealed is None: return None
+        client_id = self.config.device_client_id
+        login = BrowserLogin(self.config, self.api, self.tokens, http_transport=self.http_transport)
+        login.client = login._token_client(client_id)
+        try:
+            metadata = login._json(self.config.issuer+'/.well-known/openid-configuration')
+            if metadata.get('issuer') != self.config.issuer: raise AccountError('issuer_mismatch')
+            # Fetch everything validation needs before the rotation, which the
+            # issuer commits at once and which retires the sealed refresh token.
+            keys = login._json(login._endpoint(metadata['jwks_uri']))
+            try:
+                token = login.client.refresh_token(login._endpoint(metadata['token_endpoint']),
+                                                   refresh_token=sealed['refresh_token'])
+            except OAuthError as error:
+                if error.error in self.PERMANENT_GRANT_ERRORS:
+                    self.discard(error.error); return None
+                raise AccountError('identity_unavailable') from None
+            if not isinstance(token.get('access_token'), str) or str(token.get('token_type', '')).lower() != 'bearer':
+                self.discard('invalid_access_token'); return None
+            try:
+                claims = validate_id_token(token.get('id_token'), keys, self.config, None, token['access_token'],
+                                           refreshed=True, client_id=client_id)
+            except AccountError as error:
+                self.discard(error.code); return None
+            binding = {'issuer': claims['iss'], 'subject': claims['sub']}
+            if isinstance(claims.get('sid'), str) and claims['sid']: binding['session_id'] = claims['sid']
+            token = dict(token, _identity=binding, _nonce=None, _client_id=client_id, _pending_verification=True)
+            token.setdefault('refresh_token', sealed['refresh_token'])
+            if 'scope' in sealed: token.setdefault('scope', sealed['scope'])
+            self.tokens.set(token)
+            self.discard()
+            return login._verify_replacement(token, metadata)
+        except (KeyError, TypeError):
+            raise AccountError('invalid_identity_metadata') from None
+        finally: login.close()
