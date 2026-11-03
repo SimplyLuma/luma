@@ -16,6 +16,7 @@ python.install_sources(
   'luma_setup/catalog.py',
   'luma_setup/connect.py',
   'luma_setup/model.py',
+  'luma_setup/session.py',
   'luma_setup/sheet.py',
   'luma_setup/sheet_tv.py',
   'luma_setup/system.py',

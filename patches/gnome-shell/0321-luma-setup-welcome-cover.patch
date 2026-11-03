@@ -7,52 +7,53 @@ Luma's first-boot setup asks everything in GDM's initial-setup session and
 signs the person in once, at the end, with its sheet still on screen. The
 first session's first frame is that same frame: luma-setup-cover.service
 (started with the Shell) draws the setup's last frame again from the same
-data, code, wallpaper, softening and text settings, and the Shell does not
-show its stage until that window has drawn (15 s at most). The cover is a
-clone of the window above everything, with the rest of the Shell undrawn.
-At startup-complete the cover keeps a copy of the window, the window closes,
-the Shell draws under the cover, and the cover lifts off the desktop.
+data, code, wallpaper, softening and text settings, and the Shell shows it
+as its first frame as soon as that window has drawn (15 s at most), before
+its own background and startup work: a clone of the window above
+everything, with the rest of the Shell undrawn. The window keeps turning
+the setup's last step. Once the session has started, the Shell draws under
+the cover and the cover lifts off the desktop; the window then closes.
 Without the setup's frame, the cover is a softened wallpaper of the Shell's
 own. The setup's window never animates in.
 ---
 --- a/js/ui/layout.js
 +++ b/js/ui/layout.js
-@@ -693,6 +693,9 @@
+@@ -691,8 +691,15 @@
+     }
+ 
      async _doStartupAnimation() {
++        // Luma: after first-boot setup, the first frame is the setup's last frame.
++        await this.lumaWelcomeFirstFrame();
++
          await this._loadBackground();
  
-+        // Luma: after first-boot setup, the first frame is the setup's last frame.
-+        await this._lumaWelcomeCover();
++        // Luma: the setup's frame did not come; a cover of our own instead.
++        if (this._lumaWelcomeAsked && !this._lumaWelcomeCover)
++            await this._lumaWelcomeFallback();
 +
          this._systemBackground.show();
          global.stage.show();
  
-@@ -843,6 +846,150 @@
+@@ -843,6 +850,148 @@
          this.emit('startup-complete');
      }
  
 +    // A person's first session after Luma's first-boot setup opens on the setup's own
 +    // last frame, not on the desktop: the setup draws that frame again in this session
 +    // (luma-setup-cover.service: the same code, wallpaper, softening and text settings),
-+    // and the stage is not shown until it has. The cover is then the only thing drawn
-+    // while the session starts; it lifts off the desktop once the session is up: one
-+    // motion from the setup to the desktop.
-+    async _lumaWelcomeCover() {
++    // and the Shell shows it as its first frame as soon as the window has drawn,
++    // before its own background and startup work. The setup's window keeps turning
++    // its last step's spinner; the rest of the Shell is not drawn until the session is
++    // up, and then the cover lifts off the desktop: one motion from setup to desktop.
++    async lumaWelcomeFirstFrame() {
 +        if (Main.sessionMode.currentMode !== 'user')
 +            return;
 +        const pending = GLib.build_filenamev(['/var/lib/luma-setup/welcome', GLib.get_user_name()]);
 +        const done = GLib.build_filenamev([GLib.get_user_state_dir(), 'luma-setup', 'welcome-done']);
 +        if (!GLib.file_test(pending, GLib.FileTest.EXISTS) || GLib.file_test(done, GLib.FileTest.EXISTS))
 +            return;
++        this._lumaWelcomeAsked = true;
 +
-+        const {width, height} = global.stage;
-+        const cover = new St.Widget({
-+            name: 'lumaWelcomeCover',
-+            style: 'background-color: #0b0d14;',
-+            reactive: true,
-+            width,
-+            height,
-+        });
 +        let window = null;
 +        try {
 +            window = await this._lumaSetupFrame();
@@ -60,72 +61,76 @@ own. The setup's window never animates in.
 +            logError(e, 'Luma setup cover');
 +        }
 +        const actor = window?.get_compositor_private();
-+        if (actor) {
-+            // The window itself, through a clone: the same pixels it drew. The window is
-+            // not drawn where it is (a clone draws its source at its own opacity), so the
-+            // lift shows the desktop under it.
-+            cover.add_child(new Clutter.Clone({source: actor, x: actor.x, y: actor.y}));
-+            actor.opacity = 0;
-+        } else {
-+            // No frame from the setup: a softened wallpaper of our own.
-+            const manager = new Background.BackgroundManager({
-+                container: cover,
-+                monitorIndex: this.primaryIndex,
-+                vignette: false,
++        if (!actor)
++            return;
++        // The window itself, through a clone: the same pixels it draws. The window is not
++        // drawn where it is (a clone draws its source at its own opacity), so the lift
++        // shows the desktop under it.
++        const cover = this._lumaCoverWidget();
++        cover.add_child(new Clutter.Clone({source: actor, x: actor.x, y: actor.y}));
++        actor.opacity = 0;
++        this._lumaShowCover(cover, window);
++    }
++
++    async _lumaWelcomeFallback() {
++        const cover = this._lumaCoverWidget();
++        const {width, height} = global.stage;
++        const manager = new Background.BackgroundManager({
++            container: cover,
++            monitorIndex: this.primaryIndex,
++            vignette: false,
++        });
++        cover.connect('destroy', () => manager.destroy());
++        const scale = Math.max(1, Math.min(width / 1600, height / 1000));
++        manager.backgroundActor.add_effect(new Shell.BlurEffect({
++            radius: Math.round(34 * scale),
++            brightness: 0.62,
++            mode: Shell.BlurMode.ACTOR,
++        }));
++        const background = manager._backgroundSource.getBackground(this.primaryIndex);
++        if (!background.isLoaded) {
++            await new Promise(resolve => {
++                const id = background.connect('loaded', () => resolve());
++                setTimeout(resolve, 3000);
++                cover.connect('destroy', () => background.disconnect(id));
 +            });
-+            cover.connect('destroy', () => manager.destroy());
-+            const scale = Math.max(1, Math.min(width / 1600, height / 1000));
-+            manager.backgroundActor.add_effect(new Shell.BlurEffect({
-+                radius: Math.round(34 * scale),
-+                brightness: 0.62,
-+                mode: Shell.BlurMode.ACTOR,
-+            }));
-+            const background = manager._backgroundSource.getBackground(this.primaryIndex);
-+            if (!background.isLoaded) {
-+                await new Promise(resolve => {
-+                    const id = background.connect('loaded', () => resolve());
-+                    setTimeout(resolve, 3000);
-+                    cover.connect('destroy', () => background.disconnect(id));
-+                });
-+            }
 +        }
-+        // Above everything, and nothing else drawn until the lift: the first frames are
-+        // only the cover, however long the rest of the Shell takes to draw the first time.
++        this._lumaShowCover(cover, null);
++    }
++
++    _lumaCoverWidget() {
++        const {width, height} = global.stage;
++        return new St.Widget({
++            name: 'lumaWelcomeCover',
++            style: 'background-color: #0b0d14;',
++            reactive: true,
++            width,
++            height,
++        });
++    }
++
++    // Above everything, and nothing else drawn until the lift: the first frames are
++    // only the cover, however long the rest of the Shell takes to start.
++    _lumaShowCover(cover, window) {
++        this._lumaWelcomeCover = cover;
 +        global.stage.add_child(cover);
 +        this.uiGroup.opacity = 0;
++        global.stage.show();
 +
 +        // The setup's choices were applied before the Shell started; once the session is
-+        // up, the cover keeps a copy of the window and the window goes (a full-screen window
-+        // keeps the panel and the dash away), the Shell draws under the cover, and then the
-+        // cover lifts to show the desktop.
++        // up, the Shell draws under the cover, and then the cover lifts to show the desktop.
 +        this.connectObject('startup-complete', () => {
-+            if (actor && window) {
-+                actor.opacity = 255;
-+                let content = null;
-+                try {
-+                    content = actor.paint_to_content(null);
-+                } catch (e) {
-+                    logError(e, 'Luma setup cover');
-+                }
-+                actor.opacity = 0;
-+                if (content) {
-+                    const [, w, h] = content.get_preferred_size();
-+                    cover.remove_all_children();
-+                    cover.add_child(new Clutter.Actor({content, x: actor.x, y: actor.y, width: w, height: h}));
-+                    window.delete(global.get_current_time());
-+                    window = null;
-+                }
-+            }
 +            this.uiGroup.opacity = 255;
 +            global.stage.connectObject('after-paint', () => {
 +                global.stage.disconnectObject(cover);
 +                cover.ease({
 +                    opacity: 0,
-+                    delay: 500,
++                    delay: 150,
 +                    duration: 1100,
 +                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
 +                    onComplete: () => {
 +                        cover.destroy();
++                        this._lumaWelcomeCover = null;
 +                        window?.delete(global.get_current_time());
 +                    },
 +                });

@@ -192,6 +192,9 @@ class SetupApplication(Adw.Application):
             window.set_title(COVER_TITLE + COVER_READY)
             from .sheet import trace
             trace("cover: ready")
+            # The hand-over frame is drawn; the step still to come turns on from here.
+            sheet = window.stage if hasattr(window, "stage") else window
+            sheet.turn_steps()
         handler = clock.connect("after-paint", painted)
 
 

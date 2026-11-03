@@ -9,7 +9,7 @@ from unittest import mock
 os.environ.setdefault("LUMA_SETUP_FIXTURE", "1")
 
 try:
-    from luma_setup import welcome
+    from luma_setup import session, welcome
 except (ImportError, ValueError) as error:  # no GTK 4 on this machine
     welcome = None
     REASON = str(error)
@@ -20,8 +20,8 @@ class Welcome(unittest.TestCase):
     def setUp(self):
         self.state = Path(tempfile.mkdtemp())
         self.system = Path(tempfile.mkdtemp())
-        patches = [mock.patch.object(welcome, "_state_dir", lambda: self.state / "luma-setup"),
-                   mock.patch.object(welcome, "SYSTEM_WELCOME", self.system)]
+        patches = [mock.patch.object(session, "_state_dir", lambda: self.state / "luma-setup"),
+                   mock.patch.object(session, "SYSTEM_WELCOME", self.system)]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)

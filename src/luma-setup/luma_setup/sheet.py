@@ -28,7 +28,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gsk", "4.0")
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gsk, Gtk, Pango  # noqa: E402
+gi.require_version("Graphene", "1.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from . import catalog, system  # noqa: E402
 from .connect import ConnectFlow  # noqa: E402
@@ -254,6 +255,60 @@ class ChoiceList(Gtk.Box):
         GLib.idle_add(scroll)
 
 
+class Turn(Gtk.Widget):
+    """A spinner whose turn is known (process-working, one turn a second).
+
+    Held, it is drawn at its first angle: the setup holds the step still for the
+    frame it hands to the first session, which draws it held and turns it on from
+    there, so the hand-over frame is the same in both and the step keeps moving.
+    """
+
+    __gtype_name__ = "LumaSetupTurn"
+
+    def __init__(self, size: int = 16) -> None:
+        super().__init__(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.set_size_request(size, size)
+        self.add_css_class("su-spin")
+        self.angle = 0.0
+        self._tick = 0
+        self._start = 0
+        self._size = size
+        self._icon = None
+
+    def turn(self) -> None:
+        if not self._tick:
+            self._start = 0
+            self._tick = self.add_tick_callback(self._step)
+
+    def hold(self) -> None:
+        if self._tick:
+            self.remove_tick_callback(self._tick)
+            self._tick = 0
+        self.angle = 0.0
+        self.queue_draw()
+
+    def _step(self, _widget, clock) -> bool:
+        now = clock.get_frame_time()
+        if not self._start:
+            self._start = now
+        self.angle = ((now - self._start) * 360.0 / 1_000_000) % 360.0
+        self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def do_snapshot(self, snapshot) -> None:
+        if self._icon is None:
+            theme = Gtk.IconTheme.get_for_display(self.get_display())
+            self._icon = theme.lookup_icon("process-working-symbolic", None, self._size, 1,
+                                           Gtk.TextDirection.NONE, 0)
+        width, height = self.get_width(), self.get_height()
+        snapshot.save()
+        snapshot.translate(Graphene.Point().init(width / 2, height / 2))
+        snapshot.rotate(self.angle)
+        snapshot.translate(Graphene.Point().init(-width / 2, -height / 2))
+        self._icon.snapshot_symbolic(snapshot, width, height, [self.get_color()])
+        snapshot.restore()
+
+
 def avatar(initial: str, size: str, face: str = "") -> Gtk.Widget:
     """Their initial on the accent, or a picture: su-av."""
     if face:
@@ -474,6 +529,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.form = form
         self.phone = form == Posture.PHONE
         # frame: the last frame of a finished setup, drawn again (luma-setup --cover)
+        self.frame = frame
         self.light = bool(frame["light"]) if frame else prefers_light()
         self.wallpaper = (frame.get("wallpaper") or None) if frame else wallpaper_for(self.light)
         self._on_signed_in = on_signed_in
@@ -1443,7 +1499,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         rows = [["account", "Creating your account", f"@{s.username}"],
                 ["language", "Language and keyboard", _keyboard_name(s)],
                 ["timezone", "Time zone", catalog.zone(s.timezone).city],
-                ["name", "Naming this Luma", s.device_name]]
+                ["name", "Naming this Luma", s.device_name],
+                ["signin", "Signing you in", ""]]   # turns until the desktop is up (the first session's cover)
         self._finished_pane(s.first, s.face, rows, {})
         self._shots = getattr(self, "_shots", 0) + 1
         snapshot(self, f"{self._shots:02d}-finish")
@@ -1480,9 +1537,10 @@ class SetupWindow(Gtk.ApplicationWindow):
             if key in marks:
                 self._step_done(key, bool(marks[key]))
             else:
-                spinner = Gtk.Spinner(spinning=True)
-                spinner.add_css_class("su-spin")
+                spinner = Turn()
                 mark.append(spinner)
+                if not self.frame:
+                    spinner.turn()   # the first session's copy turns once it is on screen
         pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pane.add_css_class("su-body")
         heading = box(avatar(first[:1].upper(), "su-mid", face),
@@ -1519,7 +1577,23 @@ class SetupWindow(Gtk.ApplicationWindow):
             return
         # Signed in once the last tick is on screen (two frames drawn after it, so the
         # compositor has shown the first): the first session draws this same frame again.
-        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (self._sign_in(username, password), False)[1]))
+        def sign_in() -> None:
+            # The steps still turning are held at their first angle for the hand-over frame.
+            self.hold_steps()
+            after_frames(self, 2, lambda: self._sign_in(username, password))
+        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (sign_in(), False)[1]))
+
+    def _turns(self) -> list:
+        return [row.mark.get_first_child() for row in getattr(self, "_step_rows", {}).values()
+                if isinstance(row.mark.get_first_child(), Turn)]
+
+    def hold_steps(self) -> None:
+        for turn in self._turns():
+            turn.hold()
+
+    def turn_steps(self) -> None:
+        for turn in self._turns():
+            turn.turn()
 
     def _sign_in(self, username: str, password: str) -> None:
         """Signed in with the sheet still up: the first session opens on this same frame (--cover)."""

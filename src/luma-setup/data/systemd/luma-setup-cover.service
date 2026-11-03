@@ -11,6 +11,9 @@ Type=simple
 # by the time the Shell's display is; the Shell holds its first frame for this window
 # (gnome-shell 0321) and closes it after lifting it off the desktop.
 Environment=GDK_BACKEND=wayland ADW_DISABLE_PORTAL=1 GTK_A11Y=none
+# Ahead of the session services starting with it: it is what is on screen.
+CPUWeight=1000
+IOWeight=1000
 ExecStart=/usr/libexec/luma-setup --cover
 TimeoutStopSec=5
 

@@ -30,7 +30,7 @@ from luma_appkit.tv_stage import TvStage, add_tv_style, tv_material  # noqa: E40
 
 from . import catalog, system  # noqa: E402
 from .model import Setup, host_name, mismatch, strength, username_problem  # noqa: E402
-from .sheet import HEAD, OWNER, Posture, _taken, after_frames, last_frame, prefers_light, wallpaper_for  # noqa: E402
+from .sheet import HEAD, OWNER, Posture, Turn, _taken, after_frames, last_frame, prefers_light, wallpaper_for  # noqa: E402
 
 __all__ = ("SetupTVWindow", "SetupTV")
 
@@ -168,6 +168,7 @@ class SetupTV(TvStage):
         self.connect("notify::unit", lambda *_a: self._place_sheet())
         self._stop_keyboard = watch_tv_keyboard(self._keyboard)
         self.connect("unrealize", lambda *_a: self._stop_keyboard and self._stop_keyboard())
+        self._finishing_frame = frame is not None
         if frame is not None:
             self._finishing = True
             self._finished(frame["first"], frame["rows"], frame.get("marks") or {})
@@ -580,7 +581,8 @@ class SetupTV(TvStage):
         rows = [["account", "Creating your account", f"@{s.username}"],
                 ["language", "Language and keyboard", catalog.language(s.locale).name],
                 ["timezone", "Time zone", catalog.zone(s.timezone).city],
-                ["name", "Naming this Luma", s.device_name]]
+                ["name", "Naming this Luma", s.device_name],
+                ["signin", "Signing you in", ""]]   # turns until the desktop is up (the first session's cover)
         self._finished(s.first, rows, {})
         payload = s.payload()
         # What the last frame is made of (not a picture of it): the first session draws it again.
@@ -605,7 +607,9 @@ class SetupTV(TvStage):
         steps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER, spacing=round(self.px(8)))
         steps.set_size_request(round(self.px(640)), -1)
         for key, text, detail in rows:
-            spinner = Gtk.Spinner(spinning=True)
+            spinner = Turn(round(self.px(20)))
+            if not self._finishing_frame:
+                spinner.turn()   # the first session's copy turns once it is on screen
             row = Gtk.Box()
             row.add_css_class("su-tv-step")
             row.append(spinner)
@@ -636,9 +640,23 @@ class SetupTV(TvStage):
             self._hint.set_label(why)
             self._hint.add_css_class("bad")
             return
-        # Signed in once the last tick is on screen: the first session draws this same frame again.
-        after_frames(self, 2, lambda: GLib.timeout_add(
-            650, lambda: (system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m)), False)[1]))
+        # Signed in once the last tick is on screen, the steps still turning held at their first
+        # angle: the first session draws this same frame again and turns them on from there.
+        def sign_in() -> None:
+            self.hold_steps()
+            after_frames(self, 2, lambda: system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m)))
+        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (sign_in(), False)[1]))
+
+    def _turns(self) -> list:
+        return [row.mark for row in getattr(self, "_steps", {}).values() if isinstance(row.mark, Turn)]
+
+    def hold_steps(self) -> None:
+        for turn in self._turns():
+            turn.hold()
+
+    def turn_steps(self) -> None:
+        for turn in self._turns():
+            turn.turn()
 
 
 def _children(widget: Gtk.Widget):

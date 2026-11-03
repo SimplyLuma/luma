@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -sP
 # SPDX-License-Identifier: Apache-2.0
-from luma_setup.app import main
+import runpy
 
-raise SystemExit(main())
+runpy.run_module("luma_setup", run_name="__main__", alter_sys=True)
