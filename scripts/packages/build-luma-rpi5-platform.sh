@@ -41,13 +41,14 @@ find "$source_dir" -type d -name __pycache__ -prune -exec rm -rf {} +
 source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work_dir" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
   --numeric-owner -cf - luma-rpi5-platform | gzip -n >"$rpmbuild_dir/SOURCES/luma-rpi5-platform.tar.gz"
+install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"
 install -m 0644 "$repo_root/packaging/rpm/luma-rpi5-platform.spec" "$rpmbuild_dir/SPECS/"
 
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" "$builder_container" "
     set -euo pipefail
     dnf5 -q -y install --allowerasing \
-      glib2 python3 rpm-build systemd-rpm-macros systemd-udev
+      python3 rpm-build systemd-rpm-macros systemd-udev
     rpmbuild -ba --define \"_topdir \$PWD\" SPECS/luma-rpi5-platform.spec
   "
 
