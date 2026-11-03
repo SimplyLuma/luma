@@ -52,9 +52,14 @@ def setter(root, sha, nevra):
     return out.split()[-1] if out.split() else None
 
 
-def runs(commit):
-    """CI runs of the pull request behind a main commit, its head first."""
+def runs(root, commit):
+    """CI runs of the pull request behind a main commit, its head first. Just
+    after a merge GitHub may not link the commit yet; the squash title's
+    (#N) still names it."""
     pulls = gh(f'repos/{REPO}/commits/{commit}/pulls')
+    if not pulls:
+        number = re.search(r'\(#(\d+)\)$', run('git', '-C', str(root), 'log', '-1', '--format=%s', commit).strip())
+        pulls = [gh(f'repos/{REPO}/pulls/{number.group(1)}')] if number else []
     found = []
     for pull in pulls[:1]:
         head, branch = pull['head']['sha'], pull['head']['ref']
@@ -101,7 +106,7 @@ def main():
             continue
         commit = setter(args.root, args.sha, nevra)
         source = None
-        for run_id in runs(commit) if commit else []:
+        for run_id in runs(args.root, commit) if commit else []:
             source = fetch(run_id, nevra, args.out, set(missing))
             if source:
                 print(f'fetched {nevra} from run {run_id} ({source})')
