@@ -39,7 +39,6 @@ install -D -m 0644 70-luma-rpi5-v3d.rules %{buildroot}%{_udevrulesdir}/70-luma-r
 install -D -m 0755 63-luma-rpi5-gsk-renderer \
   %{buildroot}%{_prefix}/lib/systemd/user-environment-generators/63-luma-rpi5-gsk-renderer
 install -D -m 0755 luma-rpi5-boot-next %{buildroot}%{_bindir}/luma-rpi5-boot-next
-%config(noreplace) %{_sysconfdir}/luma/update.conf
 install -D -m 0644 update.conf %{buildroot}%{_sysconfdir}/luma/update.conf
 install -D -m 0755 luma-rpi5-firmware-sync %{buildroot}%{_libexecdir}/luma-rpi5-firmware-sync
 install -D -m 0644 luma-rpi5-firmware-sync.service %{buildroot}%{_unitdir}/luma-rpi5-firmware-sync.service
