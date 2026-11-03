@@ -28,6 +28,11 @@ on:
 permissions:
   contents: read
 
+# A kernel build takes hours: let it finish, and keep only the newest pending run.
+concurrency:
+  group: device-packages-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   LUMA_RPM_BUILDER_DIRECT: '1'
 
