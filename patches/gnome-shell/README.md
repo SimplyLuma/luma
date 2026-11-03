@@ -397,3 +397,26 @@ classes and type ancestry plus the few with none of those, in stylesheet order,
 so the matched declarations are unchanged (checked on 30000 nodes across the
 presentations). `LUMA_ST_NO_SELECTOR_INDEX=1` restores the full scan. Shell
 .156.
+`0319-blur-keep-pass-textures.patch`: a background blur repaints every frame,
+and each paint built a ClutterBlurNode with three new textures and two
+pipelines, then copied its result into a further texture before drawing it to
+the stage. The effect now runs the two gaussian passes itself (ClutterBlur's
+shader; ClutterBlur is private to mutter) into textures kept while the actor's
+size and downscale stay the same: the vertical pass samples the source copy
+directly, the horizontal pass reads it, and the brightness pipeline draws the
+result. Two fewer GPU passes and no texture allocations per blurred surface
+and frame; on a Raspberry Pi 5 with the dock's four blurs and full redraws,
+29% fewer GPU jobs and 22% less Shell CPU time, screenshots unchanged (SSIM
+0.99997). Shell .157.
+
+`0320-blur-hold-backgrounds-under-modal.patch`: a background blur's copy ends a
+tiling GPU's pass, so the dock's blurred surfaces, drawn before a modal
+dialog's full-screen lightbox, made every frame of the search overview opening
+two full-screen passes (about 20 ms each at 3840x2160 on a Raspberry Pi 5;
+frames took two refreshes). `Shell.BlurEffect.hold_backgrounds(owner)` keeps the
+last blurred background of every background blur outside `owner` while its
+actor stays where it was copied from; `release_backgrounds(owner)` (or
+disposing `owner`) ends it. ModalDialog holds while it has a lightbox and is
+not closed. Headless at 3840x2160 with full redraws: 45% fewer GPU jobs across
+overview open and close; the open overview's screenshot is unchanged (SSIM
+0.99999). Shell .157.

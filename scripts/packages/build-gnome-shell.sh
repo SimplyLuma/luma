@@ -530,6 +530,10 @@ done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p
       # Backdrop blurs bound the pass after their copy (0317); St matches
       # theme nodes through its selector index (0318).
       grep -aFq "ShellBlurEffect (paint box)" usr/lib64/gnome-shell/libshell-18.so
+      # Blur passes draw into kept textures (0319).
+      grep -aFq "ShellBlurEffect (vertical)" usr/lib64/gnome-shell/libshell-18.so
+      # Modal dialogs hold the blurred backgrounds beneath them (0320).
+      grep -aFq "shell_blur_effect_hold_backgrounds" usr/lib64/gnome-shell/libshell-18.so
       grep -aFq "LUMA_ST_NO_SELECTOR_INDEX" usr/lib64/gnome-shell/libst-18.so
       grep -Fq "artwork.remove_all_transitions()" \
         usr/lib64/gnome-shell/libshell-18.so
