@@ -26,7 +26,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
+gi.require_version("Gsk", "4.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gsk, Gtk, Pango  # noqa: E402
 
 from . import catalog, system  # noqa: E402
 from .model import Setup, mismatch, strength, username_problem  # noqa: E402
@@ -353,6 +354,51 @@ def _wallpaper_path(light: bool) -> str | None:
     return str(fallback) if fallback.exists() else None
 
 
+class ScaleBin(Gtk.Widget):
+    """Draws its child larger on a big screen at scale 1 (a 4K TV's login screen), from the first frame.
+
+    The child is laid out at the window size divided by the factor and drawn
+    through a scale transform, which GTK also applies to input. The factor
+    keeps the layout near 1600 x 1000 logical pixels; at a normal size it is 1.
+    """
+
+    __gtype_name__ = "LumaSetupScaleBin"
+
+    def __init__(self, child: Gtk.Widget) -> None:
+        super().__init__(hexpand=True, vexpand=True)
+        self.child = child
+        child.set_parent(self)
+        self.factor = 1.0
+        self.size = (0, 0)
+        self.on_resize = None
+
+    @staticmethod
+    def factor_for(width: int, height: int) -> float:
+        forced = os.environ.get("LUMA_SETUP_SCALE", "")
+        if forced:
+            return max(1.0, float(forced))
+        raw = min(width / 1600, height / 1000)
+        return max(1.0, int(raw * 4) / 4)
+
+    def do_dispose(self) -> None:
+        if self.child is not None:
+            self.child.unparent()
+            self.child = None
+        Gtk.Widget.do_dispose(self)
+
+    def do_measure(self, orientation, for_size):
+        return 0, 0, -1, -1
+
+    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
+        self.factor = self.factor_for(width, height)
+        if (width, height) != self.size:
+            self.size = (width, height)
+            if self.on_resize is not None:
+                GLib.idle_add(lambda: (self.on_resize(), False)[1])
+        transform = Gsk.Transform.new().scale(self.factor, self.factor)
+        self.child.allocate(round(width / self.factor), round(height / self.factor), -1, transform)
+
+
 # -- the window -------------------------------------------------------------------
 class SetupWindow(Gtk.ApplicationWindow):
     """The room and the sheet (desktop and phone); sheet_tv.SetupTV is the TV's."""
@@ -429,7 +475,9 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.foot.set_name("su-foot")
         self.sheet.append(self.foot)
         root.add_overlay(self.sheet)
-        self.set_child(root)
+        self.scaler = ScaleBin(root)
+        self.scaler.on_resize = self._fit
+        self.set_child(self.scaler)
 
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self._key)
@@ -494,13 +542,14 @@ class SetupWindow(Gtk.ApplicationWindow):
     # -- size --------------------------------------------------------------------------
     def _fit(self) -> None:
         """The sheet is never taller than the screen less 40 (phone: 48); the page scrolls inside."""
-        height = self.get_height() or self.get_default_size()[1]
+        factor = getattr(self, "scaler", None).factor if getattr(self, "scaler", None) else 1.0
+        height = (self.get_height() or self.get_default_size()[1]) / factor
         if height <= 0:
             return
         room = height - (48 if self.phone else 40) - 60 - 72
         self.body.set_max_content_height(max(200, room))
         if not self.phone:
-            width = self.get_width()
+            width = self.get_width() / factor
             self.sheet.set_size_request(min(720, max(320, width - 32)) if width else 720, -1)
 
     # -- pages -------------------------------------------------------------------------
