@@ -2,6 +2,7 @@
 """luma-setup: the application.
 
     luma-setup              first boot, in GDM's initial-setup session
+    luma-setup --welcome    the steps after the first sign-in, once (welcome.py)
     luma-setup --fixture F  the same with LUMA_SETUP_FIXTURE=F (captures, reviews)
 
 The pages the installer answered are left out (system.installer_answers).
@@ -57,6 +58,7 @@ class SetupApplication(Adw.Application):
     def __init__(self) -> None:
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
         self.window = None
+        self.welcome = None   # set for --welcome: the post-login steps
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
@@ -76,6 +78,22 @@ class SetupApplication(Adw.Application):
             return
         from .sheet import Posture, SetupWindow, posture
 
+        if self.welcome is not None:
+            from .welcome import WelcomeWindow, carry_accessibility
+            carry_accessibility(self.welcome)
+            if posture() == Posture.TV:
+                # TV: no desk to style, Connect and apps have their own TV places; nothing to ask here.
+                from .welcome import mark_done
+                mark_done("tv")
+                return
+            self.window = WelcomeWindow(self, self.welcome, phone=posture() == Posture.PHONE)
+            if os.environ.get("LUMA_SETUP_WINDOWED"):
+                width, _, height = os.environ["LUMA_SETUP_WINDOWED"].partition("x")
+                self.window.set_default_size(int(width) if height else 1440, int(height) if height else 900)
+            elif not os.environ.get("LUMAUI_CONFORM_DUMP"):
+                self.window.fullscreen()
+            self.window.present()
+            return
         setup = initial_setup()
         form = posture()
         if form == Posture.TV:
@@ -107,4 +125,11 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["LUMA_SETUP_FIXTURE"] = argv[at + 1] if at + 1 < len(argv) else "1"
         del argv[at:at + 2]
     GLib.set_prgname(APP_ID)
-    return SetupApplication().run(argv[:1])
+    application = SetupApplication()
+    if "--welcome" in argv:
+        from .welcome import pending
+        welcome = pending() if not system.fixture() else dict(system.fixture().get("welcome", {"full_name": "Nick McMillan", "lift": False}))
+        if welcome is None:
+            return 0   # done, or never asked for
+        application.welcome = welcome
+    return application.run(argv[:1])

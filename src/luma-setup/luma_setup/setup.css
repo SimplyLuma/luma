@@ -170,3 +170,53 @@ popover.su-pop > contents { padding: 8px; border-radius: 16px; background: var(-
 .su-ph .su-foot { padding: 12px 20px 28px; }
 .su-ph .su-foot button.su-bt { min-height: 50px; border-radius: 16px; font-size: 15px; }
 .su-ph .su-foot button.su-bt:not(.su-key) { min-height: 40px; background: none; color: var(--ink-2); }
+
+/* ══ After the first sign-in (welcome.py): the same sheet over their desktop ══ */
+window.su-window.su-over { background: none; }
+button.su-leave { min-height: 32px; padding: 0 2px; border-radius: 8px; font-size: 12.5px; color: var(--ink-3); background: none; box-shadow: none; }
+button.su-leave:hover { color: var(--ink-2); }
+.su-app { margin-bottom: 16px; }
+.su-mini { border-radius: 14px; background: #1a2040; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 12px 30px -12px rgba(0,0,0,.6); }
+.su-mw { border-radius: 7px; background: oklch(0.305 0.006 265); padding: 18px 4px 4px; box-shadow: 0 0 0 .6px rgba(0,0,0,.35), 0 7px 17px -4px rgba(0,0,0,.5); }
+.su-light .su-mw { background: oklch(0.95 0.004 265); }
+.su-mi { border-radius: 5px; background: oklch(0.212 0.006 265); }
+.su-light .su-mi { background: #fff; }
+.su-isl { min-width: 24px; border-radius: 9px; background: oklch(0.27 0.006 265 / .88); box-shadow: inset 0 .4px 0 oklch(1 0 0 / .1), 0 0 0 .4px rgba(0,0,0,.35); }
+.su-light .su-isl { background: rgba(255,255,255,.86); }
+.su-isl.su-ap { min-width: 120px; } .su-isl.su-st { min-width: 40px; }
+.su-d-cupertino, .su-d-redmond { border-radius: 10px; background: oklch(0.27 0.006 265 / .88); }
+.su-d-redmond { border-radius: 0; }
+.su-d-cupertino .su-isl, .su-d-redmond .su-isl { background: none; box-shadow: none; }
+.su-rowb { font-size: 13px; font-weight: 600; color: var(--ink-3); }
+.su-seg { padding: 3px; border-radius: 15px; background: var(--well);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+button.su-opt { min-height: 50px; padding: 0 12px 0 8px; border-radius: 12px; background: none; box-shadow: none; color: var(--ink); }
+button.su-opt:hover { background: var(--fill-1); }
+button.su-opt.su-on { background: var(--chip); box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+.su-optn { font-size: 13.5px; font-weight: 600; }
+.su-optl { font-size: 12px; color: var(--ink-3); }
+.su-gl { min-width: 44px; min-height: 32px; border-radius: 8px; background: oklch(0.255 0.006 265); box-shadow: inset 0 0 0 1px var(--hair); }
+.su-light .su-gl { background: oklch(0.955 0.004 265); }
+.su-gl > box { border-radius: 2.5px; background: alpha(var(--ink-4), .55); }
+.su-gl.g-stack > box:nth-child(1) { min-width: 20px; min-height: 14px; margin: 6px 0 12px 6px; }
+.su-gl.g-stack > box:nth-child(2) { min-width: 14px; min-height: 15px; margin: 11px 6px 6px -8px; box-shadow: 0 0 0 1.5px oklch(0.255 0.006 265); }
+.su-gl.g-tile > box { min-width: 16px; min-height: 22px; margin: 5px 1px; }
+.su-gl.g-tile > box:first-child { margin-left: 5px; } .su-gl.g-tile > box:last-child { margin-right: 5px; }
+.su-gl.g-luma > box { min-height: 5px; margin: 22px 1px 5px; border-radius: 2px; }
+.su-gl.g-luma > box:nth-child(1) { min-width: 16px; margin-left: 7px; } .su-gl.g-luma > box:nth-child(2) { min-width: 5px; }
+.su-gl.g-luma > box:nth-child(3) { min-width: 6px; }
+.su-gl.g-cupertino > box { min-width: 26px; min-height: 5px; margin: 22px 9px 5px; border-radius: 2px; }
+.su-gl.g-redmond > box { min-width: 44px; min-height: 6px; margin: 26px 0 0; border-radius: 0; }
+.su-opt.su-on .su-gl > box { background: alpha(var(--ink-2), .85); }
+.su-card { padding: 16px; border-radius: 20px; background: var(--su-card); box-shadow: inset 0 0 0 1px var(--hair); }
+button.su-link { margin-top: 8px; min-height: 28px; padding: 0 8px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: var(--acc-ink); background: none; box-shadow: none; }
+.su-meb { margin-top: 12px; font-size: 15px; font-weight: 650; } .su-mee { font-size: 12.5px; color: var(--ink-3); }
+.su-group { border-radius: 20px; background: var(--su-card); box-shadow: inset 0 0 0 1px var(--hair); }
+.su-ghead { padding: 12px 12px 2px 16px; }
+.su-gn { font-size: 15px; font-weight: 650; } .su-ge { font-size: 12px; color: var(--ink-3); }
+.su-tiles { padding: 8px; }
+button.su-tile { padding: 12px 4px 10px; border-radius: 14px; background: none; box-shadow: none; color: var(--ink); }
+button.su-tile:hover { background: var(--fill-1); }
+button.su-tile.su-on { background: oklch(0.72 0.12 250 / .1); box-shadow: inset 0 0 0 1.5px oklch(0.72 0.12 250 / .55); }
+.su-tn { font-size: 12.5px; font-weight: 600; }
+.su-sum { margin: 14px 2px 0; font-size: 12.5px; color: var(--ink-3); }
