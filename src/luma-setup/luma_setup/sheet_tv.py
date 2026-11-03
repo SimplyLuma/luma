@@ -224,7 +224,10 @@ class SetupTV(TvStage):
         self.sheet.append(body)
         self._foot()
         if focus_first and first is not None:
-            GLib.idle_add(lambda: (self.focus.focus(first), False)[1])
+            # Now, not in an idle: a remote key pressed as the page changes lands on the page's
+            # first place, never on whatever comes first (Back). Again once laid out.
+            self.focus.focus(first)
+            GLib.idle_add(lambda: (self.focus.focused is None and self.focus.focus(first), False)[1])
         if self.page == "wifi":
             self.network.start_scanning()
         else:
