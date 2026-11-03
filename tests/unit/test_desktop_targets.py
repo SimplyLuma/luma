@@ -16,7 +16,10 @@ spec.loader.exec_module(target)
 
 class DesktopTargets(unittest.TestCase):
     def test_existing_x86_selection_is_unchanged(self):
-        self.assertEqual(target.packages(ROOT, 'x86_64'), target.lines(ROOT / 'config/desktop/packages.txt'))
+        # Hardware-target packages (desktop-targets.json) are never in a generic image.
+        owned = target.device_package_names(ROOT)
+        self.assertEqual(target.packages(ROOT, 'x86_64'),
+                         [p for p in target.lines(ROOT / 'config/desktop/packages.txt') if target.package_name(p) not in owned])
         self.assertEqual(target.packages(ROOT, 'x86_64', fedora=True), target.lines(ROOT / 'config/os/fedora-packages.txt'))
         old = dict(line.split('=', 1) for line in target.lines(ROOT / 'config/os/release.env'))
         # New installations use the arch URL; every other x86 contract field stays identical.

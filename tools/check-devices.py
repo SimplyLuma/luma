@@ -3,7 +3,7 @@
 """Validate every device under devices/ and every SoC family under socs/.
 
 A device directory holds exactly: device.toml, boot.toml, firmware.manifest,
-INSTALL.md and tests/. Manifests are checked against their JSON Schemas, the
+INSTALL.md and tests/, plus an optional SUPPORT.md (hardware support matrix). Manifests are checked against their JSON Schemas, the
 firmware manifest and initramfs sources against the hashes device.toml records, and the whole tree
 against the rules that keep it public: text only, no firmware blobs, no IMEI
 or ICCID values, and an owner in .github/CODEOWNERS for every directory.
@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover - reported as exit 2
     jsonschema = None
 
 DEVICE_FILES = {"device.toml", "boot.toml", "firmware.manifest", "INSTALL.md", "tests"}
+DEVICE_OPTIONAL = {"SUPPORT.md"}
 SOC_FILES = {"soc.toml"}
 SCHEMA_FILES = {"device.schema.json", "boot.schema.json", "soc.schema.json"}
 MAX_FILE_BYTES = 512 * 1024
@@ -351,7 +352,7 @@ class Checker:
             for device_dir in sorted(p for p in vendor.iterdir() if p.is_dir()):
                 if device_dir.name == "__pycache__":
                     continue
-                entries = {p.name for p in device_dir.iterdir()}
+                entries = {p.name for p in device_dir.iterdir()} - DEVICE_OPTIONAL
                 if entries != DEVICE_FILES:
                     missing, extra = DEVICE_FILES - entries, entries - DEVICE_FILES
                     self.error(device_dir, f"must hold exactly {sorted(DEVICE_FILES)}"
