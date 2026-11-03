@@ -30,6 +30,15 @@ class Platform(unittest.TestCase):
         # V3D blit work, so the Pi keeps the stock Shell defaults.
         self.assertEqual(sorted(p.name for p in HERE.glob("*.gschema.override")), [])
 
+    def test_update_stream_is_the_pi5_target(self):
+        import configparser
+        conf = configparser.ConfigParser()
+        conf.read(HERE / "update.conf")
+        update = conf["update"]
+        self.assertEqual(update["hardware_target"], "raspberrypi,rpi5")
+        self.assertEqual(update["ref_template"], "luma/1/{arch}/raspberrypi-rpi5/{channel}")
+        self.assertTrue(update["graph_url"].endswith("/os/graph/aarch64/raspberrypi-rpi5/{channel}.json"))
+
     def test_firmware_sync_runs_only_on_pi5_boards(self):
         unit = (HERE / "luma-rpi5-firmware-sync.service").read_text()
         conditions = re.findall(r"^ConditionFirmware=\|device-tree-compatible\((.*)\)$", unit, re.M)

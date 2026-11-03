@@ -16,15 +16,17 @@ BuildRequires:  systemd-udev
 Requires:       brcmfmac-firmware
 # grub2-editenv for boot-next.
 Requires:       grub2-tools-minimal
+# The Raspberry Pi 5 update stream (update.conf).
+Requires:       luma-update >= 1.0.0-1.luma.27
 Requires:       util-linux
 
 %description
-Raspberry Pi 5 support for the generic Luma ARM image: the Wi-Fi NVRAM alias
-D0 boards ask for, a V3D runtime-PM delay that keeps the GPU awake between
+Raspberry Pi 5 support for the Luma Pi image: the Wi-Fi NVRAM alias D0
+boards ask for, a V3D runtime-PM delay that keeps the GPU awake between
 frames, GTK's GL renderer, a tool that chooses the SD card boot menu entry
-for the next boot, and a service that copies the kernel's device trees to
-the card. Everything is gated on the Pi 5 device tree and is inert on other
-hardware.
+for the next boot, a service that copies the kernel's device trees to the
+card, and the Pi image's update stream. Everything except the update stream
+is gated on the Pi 5 device tree.
 
 %prep
 %autosetup -n luma-rpi5-platform
@@ -37,6 +39,8 @@ install -D -m 0644 70-luma-rpi5-v3d.rules %{buildroot}%{_udevrulesdir}/70-luma-r
 install -D -m 0755 63-luma-rpi5-gsk-renderer \
   %{buildroot}%{_prefix}/lib/systemd/user-environment-generators/63-luma-rpi5-gsk-renderer
 install -D -m 0755 luma-rpi5-boot-next %{buildroot}%{_bindir}/luma-rpi5-boot-next
+%config(noreplace) %{_sysconfdir}/luma/update.conf
+install -D -m 0644 update.conf %{buildroot}%{_sysconfdir}/luma/update.conf
 install -D -m 0755 luma-rpi5-firmware-sync %{buildroot}%{_libexecdir}/luma-rpi5-firmware-sync
 install -D -m 0644 luma-rpi5-firmware-sync.service %{buildroot}%{_unitdir}/luma-rpi5-firmware-sync.service
 # Enabled by the package itself: a preset applies only on first install.
@@ -61,6 +65,7 @@ udevadm verify --no-style %{buildroot}%{_udevrulesdir}/70-luma-rpi5-v3d.rules
 %{_udevrulesdir}/70-luma-rpi5-v3d.rules
 %{_prefix}/lib/systemd/user-environment-generators/63-luma-rpi5-gsk-renderer
 %{_bindir}/luma-rpi5-boot-next
+%config(noreplace) %{_sysconfdir}/luma/update.conf
 %{_libexecdir}/luma-rpi5-firmware-sync
 %{_unitdir}/luma-rpi5-firmware-sync.service
 %{_unitdir}/multi-user.target.wants/luma-rpi5-firmware-sync.service
@@ -70,6 +75,7 @@ udevadm verify --no-style %{buildroot}%{_udevrulesdir}/70-luma-rpi5-v3d.rules
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.3.0-1.luma.1
 - Drop the Shell defaults service: backdrop blur is cheap enough on the Pi 5
   now, so it keeps the stock Shell defaults.
+- Follow the Raspberry Pi 5 update stream (/etc/luma/update.conf).
 
 * Mon Nov 02 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
 - luma-rpi5-firmware-sync: copy the Raspberry Pi kernel's device trees and
