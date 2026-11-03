@@ -223,7 +223,7 @@ def main() -> int:
     after = first_unlock.unlock("not-it", True, keyring, seal=seal,
                                 verify=lambda candidate: candidate == PASSWORD)
     check("a wrong password on an unlocked keyring changes nothing",
-          after.kind is Kind.NOT_CHANGED and not keyring.collection().locked
+          after.kind is Kind.WRONG_PASSWORD and not keyring.collection().locked
           and autounlock.credential_path().read_bytes() == cred, repr(after))
 
     manage = UnlockSheet(app, Use.MANAGE, keyring, autologin=True)

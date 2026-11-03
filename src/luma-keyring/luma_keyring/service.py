@@ -235,7 +235,7 @@ class KeyringService(Adw.Application):
         if self._prompter.pending():
             return
         if getattr(self, "_release_timer", 0):
-            GLib.source_remove(self._release_timer)
+            return  # already counting down
         self.hold()
 
         def release() -> bool:

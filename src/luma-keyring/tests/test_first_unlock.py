@@ -92,10 +92,16 @@ class FirstUnlock(Paths):
 
     def test_an_unlocked_keyring_still_checks_the_password(self):
         self.keyring.locked = False
-        self.assertIs(self.unlock(password="nope").kind, Kind.NOT_CHANGED)
+        self.assertIs(self.unlock(password="nope").kind, Kind.WRONG_PASSWORD)
         self.assertEqual(self.keyring.password, PASSWORD)
         self.assertEqual(self.state_files(), [])
         self.assertIs(self.unlock().kind, Kind.AUTOMATIC)
+
+    def test_an_open_keyring_on_an_older_password_asks_for_the_login_password_too(self):
+        keyring = Keyring(password=KEYRING_PASSWORD, locked=False, files=self.keyrings)
+        self.assertIs(self.unlock(password=PASSWORD, keyring=keyring).kind, Kind.WRONG_PASSWORD)
+        self.assertIs(self.unlock(password=KEYRING_PASSWORD, keyring=keyring).kind, Kind.NEEDS_LOGIN_PASSWORD)
+        self.assertEqual(keyring.password, KEYRING_PASSWORD)
 
     def test_a_keyring_on_an_older_password_asks_for_the_login_password_then_enrols(self):
         keyring = Keyring(password=KEYRING_PASSWORD, locked=True, files=self.keyrings)
