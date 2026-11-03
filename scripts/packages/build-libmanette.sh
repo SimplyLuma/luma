@@ -11,7 +11,7 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 package=libmanette
 srpm_name=libmanette-0.2.13-2.fc44.src.rpm
 srpm_url=https://kojipkgs.fedoraproject.org/packages/libmanette/0.2.13/2.fc44/src/libmanette-0.2.13-2.fc44.src.rpm
-srpm_sha256=f352a4d52b50fc83f17447acedce00575cae71d269361bf379eaf4d139c10638
+srpm_sha256=326468857a9209d7b33f0b1e836fac2ab034d542941be963a83c3f7479313711
 
 for tool in cpio curl git mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
