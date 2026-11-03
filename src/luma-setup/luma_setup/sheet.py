@@ -286,28 +286,43 @@ def prefers_light() -> bool:
     return False
 
 
-def softened_wallpaper(light: bool) -> Gdk.Texture | None:
+# The softened room: one definition for the setup's sheet and for the first session's
+# cover (luma-setup --cover, gnome-shell 0321), so the two are the same picture.
+SOFTEN = {"read": 640, "width": 160, "radius": 4, "passes": 3, "saturation": {"dark": 1.15, "light": 1.05}}
+
+
+def wallpaper_for(light: bool) -> str | None:
+    """The picture the room is made from: LUMA_SETUP_WALLPAPER(_LIGHT), else the session's wallpaper."""
+    return (os.environ.get("LUMA_SETUP_WALLPAPER_LIGHT" if light else "LUMA_SETUP_WALLPAPER")
+            or _wallpaper_path(light))
+
+
+def softened_wallpaper(light: bool, path: str | None = None) -> Gdk.Texture | None:
     """The wallpaper as it is behind the sheet: blurred once, small, then drawn full screen.
 
     A 4K picture blurred every frame is too much for a Pi; one small copy,
     blurred once here (three box passes, close to a gaussian) and scaled up
-    smoothly, is the same softness for nothing.
+    smoothly, is the same softness for nothing. Pure integer work on the same
+    file gives the same texture in any session (SOFTEN is the whole recipe).
     """
-    path = (os.environ.get("LUMA_SETUP_WALLPAPER_LIGHT" if light else "LUMA_SETUP_WALLPAPER")
-            or _wallpaper_path(light))
+    path = path or wallpaper_for(light)
     if not path:
         return None
     try:
-        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 640, -1, True)
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, SOFTEN["read"], -1, True)
     except GLib.Error as error:
         log.info("no wallpaper: %s", error.message)
         return None
-    width = 160
-    height = max(1, round(width * pixbuf.get_height() / pixbuf.get_width()))
+    width = SOFTEN["width"]
+    height = max(1, (width * pixbuf.get_height() + pixbuf.get_width() // 2) // pixbuf.get_width())
     small = pixbuf.scale_simple(width, height, GdkPixbuf.InterpType.HYPER)
+    if small.get_has_alpha():
+        flat = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, width, height)
+        small.copy_area(0, 0, width, height, flat, 0, 0)  # an opaque picture: alpha is dropped, not blended
+        small = flat
     saturated = small.copy()
-    small.saturate_and_pixelate(saturated, 1.05 if light else 1.15, False)
-    blurred = _blur(saturated, radius=4, passes=3)
+    small.saturate_and_pixelate(saturated, SOFTEN["saturation"]["light" if light else "dark"], False)
+    blurred = _blur(saturated, radius=SOFTEN["radius"], passes=SOFTEN["passes"])
     return Gdk.MemoryTexture.new(width, height, Gdk.MemoryFormat.R8G8B8, GLib.Bytes.new(blurred), width * 3)
 
 
@@ -340,7 +355,7 @@ def _blur(pixbuf: GdkPixbuf.Pixbuf, radius: int, passes: int) -> bytes:
         for x in range(width):
             base = (y * width + x) * 3
             for c in range(3):
-                out[base + c] = max(0, min(255, round(planes[c][y][x])))
+                out[base + c] = max(0, min(255, int(planes[c][y][x] + 0.5)))
     return bytes(out)
 
 
@@ -433,29 +448,35 @@ class SetupWindow(Gtk.ApplicationWindow):
     __gtype_name__ = "LumaSetupWindow"
 
     def __init__(self, application: Gtk.Application, setup: Setup, form: Posture,
-                 on_signed_in: Callable[[], None] | None = None) -> None:
+                 on_signed_in: Callable[[], None] | None = None, *, frame: dict | None = None) -> None:
         super().__init__(application=application, title=HEAD, decorated=False)
         self.add_css_class("su-window")
         self.setup = setup
         self.form = form
         self.phone = form == Posture.PHONE
-        self.light = prefers_light()
+        # frame: the last frame of a finished setup, drawn again (luma-setup --cover)
+        self.light = bool(frame["light"]) if frame else prefers_light()
+        self.wallpaper = frame.get("wallpaper") if frame else wallpaper_for(self.light)
         self._on_signed_in = on_signed_in
-        self.network = system.Network(self._network_changed)
-        if not setup.network:
-            setup.network = "wired" if self.network.wired() else self.network.connected_name()
-        self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
-        # One sheet for everything: the desk, Luma Connect and apps follow in this
-        # session, and the person is signed in once, at the very end.
-        from . import welcome as later
-        self.later_mod = later
-        self.groups = later.collections()
-        self.pages += later.page_names(self.phone, self.groups)
+        if frame is None:
+            self.network = system.Network(self._network_changed)
+            if not setup.network:
+                setup.network = "wired" if self.network.wired() else self.network.connected_name()
+            self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
+            # One sheet for everything: the desk, Luma Connect and apps follow in this
+            # session, and the person is signed in once, at the very end.
+            from . import welcome as later
+            self.later_mod = later
+            self.groups = later.collections()
+            self.pages += later.page_names(self.phone, self.groups)
+            self.tiling = later.tiling_on()
+            self.connect_flow = ConnectFlow(self._connect_changed)
+        else:
+            self.network = None
+            self.pages = ["hello"]
         self.later = 0
-        self.tiling = later.tiling_on()
         self.dash = "luma"
         self.chosen: set[str] = set()
-        self.connect_flow = ConnectFlow(self._connect_changed)
         self.index = 0
         self.open_network = ""
         self.joining = ""
@@ -476,7 +497,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             root.add_css_class("su-ph")
         self.root = root
         cover = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.COVER, hexpand=True, vexpand=True)
-        texture = softened_wallpaper(self.light)
+        texture = softened_wallpaper(self.light, self.wallpaper)
         if texture is not None:
             cover.set_paintable(texture)
         cover.set_name("su-cover")
@@ -522,6 +543,12 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.add_controller(keys)
         self.connect("notify::default-height", lambda *_a: self._fit())
         self.connect("realize", lambda *_a: GLib.idle_add(lambda: (self._fit(), False)[1]))
+        if frame is not None:
+            self._finishing = True
+            self._dots()
+            self._foot()
+            self._finished_pane(frame["first"], frame.get("face", ""), frame["rows"], frame.get("marks") or {})
+            return
         self.draw()
         if os.environ.get("LUMA_SETUP_SNAPSHOTS"):
             import signal
@@ -1306,32 +1333,57 @@ class SetupWindow(Gtk.ApplicationWindow):
         s = self.setup
         self._finishing = True
         self.network.stop_scanning()
+        # Nothing keeps the focus (no ring in the last frame): the first session draws this frame again.
+        self.set_focus(None)
         self._dots()
         self._foot()
-        rows = (("account", "Creating your account", f"@{s.username}"),
-                ("language", "Language and keyboard", _keyboard_name(s)),
-                ("timezone", "Time zone", catalog.zone(s.timezone).city),
-                ("name", "Naming this Luma", s.device_name))
+        rows = [["account", "Creating your account", f"@{s.username}"],
+                ["language", "Language and keyboard", _keyboard_name(s)],
+                ["timezone", "Time zone", catalog.zone(s.timezone).city],
+                ["name", "Naming this Luma", s.device_name]]
+        self._finished_pane(s.first, s.face, rows, {})
+        self._shots = getattr(self, "_shots", 0) + 1
+        snapshot(self, f"{self._shots:02d}-finish")
+        payload = s.payload()
+        payload["first_session"] = {
+            "desk": {"tiling": self.tiling, "dash": self.dash} if "desk" in self.pages else None,
+            "apps": sorted(self.chosen),
+            "connect_later": not self.connect_flow.done,
+        }
+        payload["connect_token"] = self.connect_flow.token   # sealed for the account by the helper, never stored plain
+        # What the last frame is made of (not a picture of it): the first session draws it again.
+        payload["last_frame"] = last_frame(self.form, self.light, self.wallpaper, s.first, s.face, rows)
+        self.connect_flow.stop()
+        s.password = s.again = ""  # the sheet keeps no copy once the helper has it
+        password = payload["password"]
+        system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
+                       ).run(payload)
+
+    def _finished_pane(self, first: str, face: str, rows: list, marks: dict) -> None:
+        """Welcome, the photo and the four steps; marks says which have ticked (else a spinner)."""
         steps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, halign=Gtk.Align.CENTER)
         steps.add_css_class("su-steps")
         steps.set_name("su-steps")
         steps.set_size_request(300, -1)
         self._step_rows: dict[str, Gtk.Box] = {}
         for key, text, detail in rows:
-            spinner = Gtk.Spinner(spinning=True)
-            spinner.add_css_class("su-spin")
             mark = Gtk.Box(valign=Gtk.Align.CENTER)
             mark.set_size_request(20, 20)
-            mark.append(spinner)
             row = box(mark, label(text), label(detail, "su-sub", xalign=1.0, hexpand=True, ellipsize=Pango.EllipsizeMode.END),
                       spacing=12, css=("su-step",))
             row.mark = mark
             steps.append(row)
             self._step_rows[key] = row
+            if key in marks:
+                self._step_done(key, bool(marks[key]))
+            else:
+                spinner = Gtk.Spinner(spinning=True)
+                spinner.add_css_class("su-spin")
+                mark.append(spinner)
         pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pane.add_css_class("su-body")
-        heading = box(avatar(s.first[:1].upper(), "su-mid", s.face),
-                      label(f"Welcome, {s.first}.", "su-title", xalign=0.5),
+        heading = box(avatar(first[:1].upper(), "su-mid", face),
+                      label(f"Welcome, {first}.", "su-title", xalign=0.5),
                       label("Getting Luma ready for you.", "su-lede", xalign=0.5),
                       vertical=True, css=("su-hg",))
         heading.get_first_child().set_margin_bottom(14)
@@ -1343,21 +1395,6 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child(pane)
         if old is not None:
             GLib.timeout_add(300, lambda: (self._drop(old), False)[1])
-        self._shots = getattr(self, "_shots", 0) + 1
-        snapshot(self, f"{self._shots:02d}-finish")
-        payload = s.payload()
-        payload["first_session"] = {
-            "desk": {"tiling": self.tiling, "dash": self.dash} if "desk" in self.pages else None,
-            "apps": sorted(self.chosen),
-            "connect_later": not self.connect_flow.done,
-        }
-        payload["connect_token"] = self.connect_flow.token   # sealed for the account by the helper, never stored plain
-        payload["cover"] = self._save_cover()
-        self.connect_flow.stop()
-        s.password = s.again = ""  # the sheet keeps no copy once the helper has it
-        password = payload["password"]
-        system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
-                       ).run(payload)
 
     def _step_done(self, key: str, ok: bool) -> None:
         # The keyring is enrolled with the account; its row is the account's.
@@ -1379,44 +1416,39 @@ class SetupWindow(Gtk.ApplicationWindow):
             return
         GLib.timeout_add(650, lambda: (self._sign_in(username, password), False)[1])
 
-    def _save_cover(self) -> str | None:
-        """The room as it is behind the sheet, at the screen's size: the first session's first
-        frame shows exactly this, so nothing changes when the session takes over the screen."""
-        path = os.path.join(GLib.get_user_runtime_dir(), "luma-setup-cover.png")
-        try:
-            width, height = self.get_width(), self.get_height()
-            renderer = self.get_renderer()
-            if not width or not height or renderer is None:
-                log.info("no cover saved: the window is not drawn yet")
-                return None
-            self.sheet.set_opacity(0)
-            snap = Gtk.Snapshot()
-            Gtk.WidgetPaintable.new(self).snapshot(snap, width, height)
-            self.sheet.set_opacity(1)
-            node = snap.to_node()
-            if node is None:
-                return None
-            renderer.render_texture(node, None).save_to_png(path)
-            os.chmod(path, 0o644)
-            log.info("cover saved for the first session: %s", path)
-            return path
-        except (GLib.Error, OSError) as error:
-            log.info("no cover saved: %s", error)
-            self.sheet.set_opacity(1)
-            return None
-
     def _sign_in(self, username: str, password: str) -> None:
-        """The sheet fades from the room; the room is what the first session opens on."""
-        from gi.repository import Adw
-        target = Adw.CallbackAnimationTarget.new(lambda value: self.sheet.set_opacity(value))
-        fade = Adw.TimedAnimation.new(self.sheet, 1.0, 0.0, 350, target)
-        fade.connect("done", lambda *_a: system.sign_in(username, password, self._sign_in_problem))
-        fade.play()
+        """Signed in with the sheet still up: the first session opens on this same frame (--cover)."""
+        system.sign_in(username, password, self._sign_in_problem)
         if self._on_signed_in is not None:
             self._on_signed_in()
 
     def _sign_in_problem(self, message: str) -> None:
         log.warning("sign-in: %s", message)
+
+
+def last_frame(form: Posture, light: bool, wallpaper: str | None, first: str, face: str, rows: list) -> dict:
+    """The setup's last frame as data: the first session draws it again from this (luma-setup --cover).
+
+    The text settings go with it, so the same words are drawn the same way in
+    the person's own session, whatever their own settings are.
+    """
+    settings = Gtk.Settings.get_default()
+    text = {}
+    for name in ("gtk-font-name", "gtk-xft-dpi", "gtk-xft-antialias", "gtk-xft-hinting", "gtk-xft-hintstyle",
+                 "gtk-xft-rgba", "gtk-hint-font-metrics", "gtk-icon-theme-name", "gtk-theme-name"):
+        try:
+            value = settings.get_property(name)
+        except TypeError:
+            continue
+        if isinstance(value, (bool, int, str)):
+            text[name] = value
+    try:
+        text["gtk-font-rendering"] = int(settings.get_property("gtk-font-rendering"))
+    except TypeError:
+        pass
+    return {"posture": form.value, "light": bool(light), "wallpaper": wallpaper or "", "first": first,
+            "face": face or "", "rows": [list(row) for row in rows], "settings": text,
+            "scale": os.environ.get("LUMA_SETUP_SCALE", "")}
 
 
 def _later_pages(phone: bool) -> int:

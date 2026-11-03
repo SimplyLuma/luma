@@ -216,10 +216,6 @@ def first_session(stage: str) -> int:
             _set_tiling_setting(bool(desk.get("tiling")))
         Gio.Settings.sync()
         return 0
-    try:
-        (_state_dir() / "cover.png").unlink()
-    except OSError:
-        pass
     start_installs(list(chosen.get("apps") or []))
     if chosen.get("connect_later"):
         _notify("Luma Connect", "Sign in to keep your files, photos and messages on every device.")

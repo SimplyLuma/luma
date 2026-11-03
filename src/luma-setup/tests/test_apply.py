@@ -92,6 +92,24 @@ class Apply(unittest.TestCase):
         self.assertTrue(out.getvalue().endswith("done\n"))
         self.assertTrue((self.state / "first-boot.json").exists())
 
+    def test_last_frame_is_data_with_the_ticks(self):
+        frame = {"posture": "desktop", "light": False, "wallpaper": "/usr/share/backgrounds/luma/prism.png",
+                 "first": "Nick", "face": "", "rows": [["account", "Creating your account", "@nick"],
+                                                       ["timezone", "Time zone", "Chicago"]],
+                 "settings": {"gtk-xft-dpi": 98304, "gtk-font-name": "Figtree 11", "evil": "x"}, "scale": ""}
+        apply.apply(dict(ANSWERS, last_frame=frame), out=io.StringIO(), bus=FakeBus(fail="SetTimezone"),
+                    state_dir=self.state)
+        last = json.loads((self.state / "welcome" / "nick").read_text())["last_frame"]
+        self.assertEqual(last["marks"], {"account": True, "language": True, "timezone": False, "name": True,
+                                         "keyring": True})
+        self.assertEqual(last["settings"], {"gtk-xft-dpi": 98304, "gtk-font-name": "Figtree 11"})
+        self.assertEqual(last["rows"], frame["rows"])
+
+    def test_last_frame_refuses_paths_outside_the_system(self):
+        frame = {"first": "Nick", "rows": [["account", "a", "b"]], "wallpaper": "/home/nick/x.png"}
+        apply.apply(dict(ANSWERS, last_frame=frame), out=io.StringIO(), bus=FakeBus(), state_dir=self.state)
+        self.assertIsNone(json.loads((self.state / "welcome" / "nick").read_text())["last_frame"])
+
 
 if __name__ == "__main__":
     unittest.main()

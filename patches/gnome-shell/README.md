@@ -420,3 +420,15 @@ disposing `owner`) ends it. ModalDialog holds while it has a lightbox and is
 not closed. Headless at 3840x2160 with full redraws: 45% fewer GPU jobs across
 overview open and close; the open overview's screenshot is unchanged (SSIM
 0.99999). Shell .157.
+
+`0321-luma-setup-welcome-cover.patch`: the first session after Luma's
+first-boot setup (`/var/lib/luma-setup/welcome/<user>`, until
+`~/.local/state/luma-setup/welcome-done`) opens on the setup's last frame.
+Before showing the stage, the Shell starts `luma-setup --cover`, which draws
+that frame again from the same data, code, wallpaper, softening and text
+settings, and waits (15 s at most) for its window's title to say its first
+frame is drawn. The first frame paints the window through a clone in a top
+chrome cover; the cover then keeps a copy (`paint_to_content`) and the window
+closes. At `startup-complete` the cover lifts (1.1 s fade). Without the
+setup's frame, the cover is a blurred wallpaper of the Shell's own. The cover
+window never animates in. Shell .158.
