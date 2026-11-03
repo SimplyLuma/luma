@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Luma Setup
+Exec=/usr/libexec/luma-setup
+Type=Application
+NoDisplay=true
+Icon=luma-logo

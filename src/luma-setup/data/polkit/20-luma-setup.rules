@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+// Luma setup runs in GDM's initial-setup session as a member of the
+// gnome-initial-setup group. Locally it may: make the first account and apply
+// the setup (org.projectluma.setup.apply; the helper refuses once anyone has
+// an account), and join a network, set the language, keyboard, time zone and
+// name while it shows.
+polkit.addRule(function(action, subject) {
+    if (!subject.isInGroup("gnome-initial-setup"))
+        return undefined;
+
+    var ours = action.id == "org.projectluma.setup.apply" ||
+               action.id.indexOf("org.freedesktop.hostname1.") === 0 ||
+               action.id.indexOf("org.freedesktop.NetworkManager.") === 0 ||
+               action.id.indexOf("org.freedesktop.locale1.") === 0 ||
+               action.id.indexOf("org.freedesktop.accounts.") === 0 ||
+               action.id.indexOf("org.freedesktop.timedate1.") === 0;
+    if (!ours)
+        return undefined;
+    return subject.local && subject.active ? polkit.Result.YES : polkit.Result.AUTH_ADMIN;
+});

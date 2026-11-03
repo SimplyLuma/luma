@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Luma Setup
+Comment=Set up this Luma: language, network, your account and the device's name
+Exec=gnome-session --session gnome-initial-setup
+TryExec=gnome-session
+Type=Application
+DesktopNames=GNOME-Greeter:GNOME-Initial-Setup:GNOME
+NoDisplay=true
+X-GDM-SessionRegisters=true
+X-GDM-CanRunHeadless=true
