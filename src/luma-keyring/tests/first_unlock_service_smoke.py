@@ -50,6 +50,8 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def main() -> int:
+    import logging
+    logging.basicConfig(level=logging.INFO, format="luma-keyring: %(message)s")
     keyring = Keyring()
     if autounlock.state_dir().exists():
         raise SystemExit("refusing to run with key slots in this HOME")

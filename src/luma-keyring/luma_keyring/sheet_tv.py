@@ -98,8 +98,11 @@ class KeyringTV(TvStage):
                              action="Unlock")
         self.field.text.set_visibility(False)
         self.message = _label("", "kr-tv-message", wrap=True)
+        for label in (self.title, self.line, self.message):
+            label.set_max_width_chars(1)  # wrap to the sheet, never widen it
         self.message.set_visible(False)
         self.switch_row = TvSwitchRow(f"Unlock automatically on {noun}", active=True, on_toggle=on_toggle)
+        self.switch_row.title.set_max_width_chars(1)  # wrap to the row, never widen the sheet
         self.actions = Gtk.Box(homogeneous=True)
         self.actions.add_css_class("kr-tv-actions")
         self.cancel = TvButton("Cancel", hexpand=True)
@@ -122,11 +125,11 @@ class KeyringTV(TvStage):
 
     # -- layout ----------------------------------------------------------
     def _place_sheet(self) -> None:
-        self.sheet.set_size_request(round(SHEET["width"] * self.unit), -1)
+        # The sheet is 860 wide whatever its words: long ones (gnome-keyring's own) wrap.
         if self._keyboard_up:
-            self.place(self.sheet, bottom=ABOVE_KEYBOARD, center_x=True)
+            self.place(self.sheet, width=SHEET["width"], bottom=ABOVE_KEYBOARD, center_x=True)
         else:
-            self.place(self.sheet, center_x=True)
+            self.place(self.sheet, width=SHEET["width"], center_x=True)
 
     def _keyboard(self, visible: bool, _height: float) -> None:
         if visible != self._keyboard_up:

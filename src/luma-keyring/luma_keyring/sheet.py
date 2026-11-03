@@ -226,11 +226,13 @@ class UnlockSheet(Adw.ApplicationWindow):
                  noun: str | None = None, autologin: bool | None = None,
                  work: Callable[..., Result] | None = None,
                  on_done: Callable[[Result | None], None] | None = None,
-                 presentation: Posture | None = None, request=None) -> None:
+                 presentation: Posture | None = None, request=None,
+                 second_work: Callable[[str, str], Result] | None = None) -> None:
         install_lumaui()  # the kit's sheets and icons, once per display
         _install_style()
         self.presentation = presentation or posture()
         self._request = request
+        self._second_work = second_work
         title = {Use.FIRST: FIRST_TITLE, Use.MANAGE: MANAGE_TITLE}.get(use) or _prompt_title(request)
         if self.presentation is Posture.DESKTOP:
             super().__init__(application=application, title=title,
@@ -415,7 +417,9 @@ class UnlockSheet(Adw.ApplicationWindow):
         if self._keyring_password is not None:
             # Step two: the password this account signs in with, then enrol.
             opened = self._keyring_password
-            work = lambda: first_unlock.enrol_with_login_password(password, opened, self._keyring)  # noqa: E731
+            second = self._second_work or (lambda login, older: first_unlock.enrol_with_login_password(
+                login, older, self._keyring))
+            work = lambda: second(password, opened)  # noqa: E731
         elif self._work is not None:
             work = lambda: self._work(password, automatic)  # noqa: E731 - tests stand in here
         elif self._use is Use.FIRST:
