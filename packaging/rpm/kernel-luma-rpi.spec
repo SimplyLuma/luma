@@ -85,7 +85,7 @@ install -m 0644 "$source_dir/COPYING" "$source_dir/LICENSES/preferred/GPL-2.0" \
 
 %check
 moddir=%{buildroot}/usr/lib/modules/%{kver}
-file "$moddir/vmlinuz" | grep -q 'EFI application'
+file "$moddir/vmlinuz" | grep -q 'for EFI (application)'
 for f in broadcom/bcm2712-rpi-5-b.dtb broadcom/bcm2712d0-rpi-5-b.dtb broadcom/bcm2712-rpi-500.dtb \
          broadcom/bcm2712-rpi-cm5-cm5io.dtb broadcom/bcm2711-rpi-4-b.dtb broadcom/bcm2711-rpi-400.dtb \
          overlays/overlay_map.dtb overlays/hifiberry-dacplus.dtbo overlays/vc4-kms-v3d-pi5.dtbo; do
