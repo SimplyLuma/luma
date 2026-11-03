@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 Name:           luma-setup
-Version:        0.1.0
+Version:        0.2.0
 Release:        1.luma.1%{?dist}
 Summary:        Set up this Luma: language, network, your account and the device's name
 License:        Apache-2.0
@@ -60,6 +60,10 @@ pages. GNOME Initial Setup is replaced.
 
 %install
 %meson_install
+# Enabled by the package: the welcome checks its own conditions in every session.
+install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
+ln -s ../luma-setup-welcome.service \
+  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-setup-welcome.service
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Setup.desktop
@@ -79,6 +83,8 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/gdm/greeter/wayland-sessions/gnome-initial-setup.desktop
 %{_userunitdir}/gnome-session@gnome-initial-setup.target.d/luma-setup.conf
 %{_userunitdir}/luma-setup.service
+%{_userunitdir}/luma-setup-welcome.service
+%{_userunitdir}/graphical-session.target.wants/luma-setup-welcome.service
 %{_datadir}/polkit-1/actions/org.projectluma.setup.policy
 %{_datadir}/polkit-1/rules.d/20-luma-setup.rules
 %{_sysusersdir}/luma-setup.conf
@@ -88,6 +94,10 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/applications/org.projectluma.Setup.desktop
 
 %changelog
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
+- After the first sign-in the same sheet goes on: Make it yours (windows
+  and dash), Luma Connect, Add apps; each can be left for good
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - First-boot setup in GDM's initial-setup session: language and keyboard,
   Wi-Fi, the account, the device name and time zone, then a direct sign-in

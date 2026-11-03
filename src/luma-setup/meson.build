@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-project('luma-setup', version: '0.1.0', meson_version: '>= 1.3.0', license: 'Apache-2.0')
+project('luma-setup', version: '0.2.0', meson_version: '>= 1.3.0', license: 'Apache-2.0')
 
 python = import('python').find_installation('python3')
 prefix = get_option('prefix')
@@ -18,6 +18,7 @@ python.install_sources(
   'luma_setup/sheet.py',
   'luma_setup/sheet_tv.py',
   'luma_setup/system.py',
+  'luma_setup/welcome.py',
   'luma_setup/setup.css',
   subdir: 'luma_setup',
 )
@@ -31,7 +32,7 @@ install_data('data/session/gnome-initial-setup.desktop',
              install_dir: datadir / 'gdm' / 'greeter' / 'wayland-sessions')
 install_data('data/systemd/luma-setup.conf',
              install_dir: userunitdir / 'gnome-session@gnome-initial-setup.target.d')
-install_data('data/systemd/luma-setup.service', install_dir: userunitdir)
+install_data('data/systemd/luma-setup.service', 'data/systemd/luma-setup-welcome.service', install_dir: userunitdir)
 
 # The session's rights, and the root helper's.
 install_data('data/polkit/org.projectluma.setup.policy', install_dir: datadir / 'polkit-1' / 'actions')
