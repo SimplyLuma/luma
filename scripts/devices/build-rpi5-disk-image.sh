@@ -378,6 +378,7 @@ install -d "$fat/EFI/BOOT/fonts" "$fat/EFI/fedora"
 # GRUB itself, not shim: U-Boot has no Secure Boot and shim's fallback
 # resets the board.
 install -m 0644 "$grub_efi" "$fat/EFI/BOOT/BOOTAA64.EFI"
+grub_sha256=$(sha256sum "$grub_efi" | cut -d' ' -f1)
 install -m 0644 "$card_src/grub-system.cfg" "$fat/EFI/BOOT/grub.cfg"
 install -m 0644 "$work/iso/EFI/BOOT/fonts/unicode.pf2" "$fat/EFI/BOOT/fonts/unicode.pf2"
 grub2-editenv "$fat/EFI/BOOT/grubenv" create
@@ -424,7 +425,7 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "kernel $release"
   echo "kargs ${kargs[*]}"
   echo "uboot $uboot_nevra $uboot_rpm_sha256"
-  echo "grub $(sha256sum "$grub_efi" | cut -d' ' -f1) ${grub_efi#"$deploy"}"
+  echo "grub $grub_sha256 ${grub_efi#"$deploy"}"
   echo "device_trees $dt_layout"
   [ -z "$test_repo" ] || echo "test_payload $test_repo (not for publication)"
   [ -z "$test_key" ] || echo "test_ssh_key $(ssh-keygen -lf "$test_key" 2>/dev/null || basename "$test_key")"
