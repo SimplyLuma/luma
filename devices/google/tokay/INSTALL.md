@@ -70,7 +70,7 @@ Luma writes only `userdata` and `boot_a`. The modem, radio calibration and ident
 
 The phone shows Google's unlocked-bootloader warning, then Luma. The first start takes a minute or two while Luma expands to fill the phone's storage. Luma signs in on its own; the lock screen password is **1234**. Change it in Settings right away.
 
-Calls, texts and mobile data work with a physical SIM or an eSIM already on the phone. Android apps run alongside Luma's own; Google sign-in works through microG.
+Calls, texts and mobile data work with a physical SIM or an eSIM already on the phone. In Alpha 1 the modem carries calls or mobile data one at a time: turn on **Mobile Data** in Quick Settings for data, and off again for calls and texts. Android apps run alongside Luma's own; Google sign-in works through microG.
 
 ## If something goes wrong
 
