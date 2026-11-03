@@ -24,7 +24,6 @@ Requires:       luma-developer-platform
 # GDM runs the setup in its initial-setup session; it signs the new account in.
 Requires:       gdm
 Requires:       gnome-session
-Requires:       gnome-shell
 Requires:       polkit
 # The system services Finish applies through, and what the pages read.
 Requires:       accountsservice
@@ -36,6 +35,8 @@ Requires:       libgweather4
 Requires:       geoclue2-libs
 # Saved passwords unlock with the account password from the first sign-in.
 Requires:       luma-keyring >= 0.2.0
+# The first session's cover (luma-setup --cover) is held and lifted by gnome-shell 0321.
+Requires:       gnome-shell >= 50.3-1.luma.158
 # GNOME Initial Setup never runs on Luma: this package owns its session.
 Obsoletes:      gnome-initial-setup < 999
 Conflicts:      gnome-initial-setup

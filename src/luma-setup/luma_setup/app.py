@@ -176,8 +176,9 @@ class SetupApplication(Adw.Application):
         self.window.connect("map", self._shown)
         self.window.connect("realize", self._cover_watch)
         self.window.present()
-        # Never outstays the lift: the Shell closes it, else it goes by itself.
-        GLib.timeout_add_seconds(90, lambda: (self.quit(), False)[1])
+        # Never outstays the lift: the Shell closes it, else it goes by itself (the Shell
+        # gives up waiting for it after 15 s).
+        GLib.timeout_add_seconds(45, lambda: (self.quit(), False)[1])
 
     def _cover_watch(self, window: Gtk.Window) -> None:
         clock = window.get_frame_clock()
