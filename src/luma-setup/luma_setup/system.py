@@ -29,15 +29,24 @@ INSTALLER_ANSWERS = Path(os.environ.get("LUMA_SETUP_INSTALLER", "/var/lib/luma-s
 GEOCLUE_ID = "org.projectluma.Setup"
 
 
+_FIXTURE: dict | None = None
+
+
 def fixture() -> dict | None:
-    """LUMA_SETUP_FIXTURE: a JSON file (or "1") standing in for the system."""
+    """LUMA_SETUP_FIXTURE: a JSON file (or "1") standing in for the system, with
+    LUMA_SETUP_FIXTURE_STATE (JSON) over it: a capture's page and answers."""
+    global _FIXTURE
     value = os.environ.get("LUMA_SETUP_FIXTURE", "")
     if not value:
         return None
-    if value == "1" or not os.path.isfile(value):
-        return {}
-    with open(value, encoding="utf-8") as handle:
-        return json.load(handle)
+    if _FIXTURE is None:
+        data = {}
+        if value != "1" and os.path.isfile(value):
+            with open(value, encoding="utf-8") as handle:
+                data = json.load(handle)
+        data.update(json.loads(os.environ.get("LUMA_SETUP_FIXTURE_STATE", "") or "{}"))
+        _FIXTURE = data
+    return _FIXTURE
 
 
 # -- the installer's answers ----------------------------------------------------

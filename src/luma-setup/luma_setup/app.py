@@ -81,9 +81,12 @@ class SetupApplication(Adw.Application):
             self.window = SetupTVWindow(self, setup)
         else:
             self.window = SetupWindow(self, setup, form)
-        page = (system.fixture() or {}).get("page")
+        data = system.fixture() or {}
+        page = data.get("page")
         if page and page in self.window.pages:
             self.window.index = self.window.pages.index(page)
+            if data.get("open_network"):
+                self.window.open_network = data["open_network"]
             self.window.draw()
         windowed = os.environ.get("LUMA_SETUP_WINDOWED", "")
         if windowed:

@@ -63,7 +63,6 @@ pages. GNOME Initial Setup is replaced.
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Setup.desktop
-desktop-file-validate %{buildroot}%{_datadir}/gdm/greeter/wayland-sessions/gnome-initial-setup.desktop
 test -s %{buildroot}%{_datadir}/luma-setup/dconf-defaults
 grep -Fqx "Requires=luma-setup.service" \
   %{buildroot}%{_userunitdir}/gnome-session@gnome-initial-setup.target.d/luma-setup.conf

@@ -67,6 +67,7 @@ def _style(opaque: bool) -> str:
 .su-tv-note {{ font-size: 22tv; font-weight: 600; color: {m('ink_3')}; margin: 6tv 8tv 0; }}
 .su-tv-note.bad {{ color: rgba(255, 190, 92, 1); }}
 .su-tv-foot {{ border-spacing: 16tv; margin-top: 34tv; }}
+.su-tv-foot .tv-btn:disabled {{ opacity: .4; }}
 .su-tv-av {{ min-width: 120tv; min-height: 120tv; border-radius: 60tv; font-size: 48tv; font-weight: 650; color: #fff;
   background-image: linear-gradient(135deg, oklch(0.7 0.13 250), oklch(0.55 0.14 280)); }}
 .su-tv-step {{ min-height: 72tv; padding: 0 24tv; border-radius: 24tv; background-color: {m('chip')}; font-size: 26tv;
@@ -276,9 +277,9 @@ class SetupTV(TvStage):
         right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         right.append(_label("Keyboard", "tv-meta", "su-tv-lab"))
         right.append(right_list)
-        left.set_size_request(round(self.px(600)), -1)
         left.set_valign(Gtk.Align.START)
-        lists = Gtk.Box()
+        left.set_hexpand(True)
+        lists = Gtk.Box(homogeneous=True)
         lists.add_css_class("su-tv-lists")
         lists.append(left)
         lists.append(right)

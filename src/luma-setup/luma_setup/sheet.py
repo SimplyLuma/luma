@@ -287,7 +287,8 @@ def softened_wallpaper(light: bool) -> Gdk.Texture | None:
     blurred once here (three box passes, close to a gaussian) and scaled up
     smoothly, is the same softness for nothing.
     """
-    path = os.environ.get("LUMA_SETUP_WALLPAPER") or _wallpaper_path(light)
+    path = (os.environ.get("LUMA_SETUP_WALLPAPER_LIGHT" if light else "LUMA_SETUP_WALLPAPER")
+            or _wallpaper_path(light))
     if not path:
         return None
     try:
