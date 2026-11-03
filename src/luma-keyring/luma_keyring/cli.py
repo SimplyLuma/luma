@@ -134,8 +134,24 @@ def enrol(args: list[str]) -> int:
     return 0
 
 
+def verify_login() -> int:
+    """luma-keyring-verify@.service: one password on stdin (the socket), one answer out."""
+    from .login import PamUnavailable, _check_with_pam
+
+    (password,) = _secrets()
+    try:
+        answer = "yes" if password and _check_with_pam(password) else "no"
+    except PamUnavailable:
+        answer = "unavailable"
+    sys.stdout.write(answer + "\n")
+    sys.stdout.flush()
+    return 0
+
+
 def dispatch(argv: list[str]) -> int | None:
     """The command-line steps, without loading GTK; None for the service."""
+    if "--verify-login" in argv:
+        return verify_login()
     if "--check" in argv:
         return check()
     if "--autologin" in argv:

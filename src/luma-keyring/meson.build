@@ -50,6 +50,7 @@ install_data('tools/luma-keyring-recover-standalone', install_dir: datadir / 'lu
              install_mode: 'rwxr-xr-x')
 
 install_data('data/systemd/luma-keyring.service', 'data/systemd/luma-keyring-autologin.service',
+             'data/systemd/luma-keyring-verify.socket', 'data/systemd/luma-keyring-verify@.service',
              install_dir: prefix / 'lib' / 'systemd' / 'user')
 install_data('data/applications/org.projectluma.Keyring.desktop', install_dir: datadir / 'applications')
 install_data('data/glib-2.0/org.projectluma.keyring.gschema.xml',

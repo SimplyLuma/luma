@@ -88,6 +88,10 @@ ln -s ../luma-keyring.service \
   %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring.service
 ln -s ../luma-keyring-autologin.service \
   %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
+# The sandboxed service checks the account's password through this socket (see login.py).
+install -d %{buildroot}%{_userunitdir}/sockets.target.wants
+ln -s ../luma-keyring-verify.socket \
+  %{buildroot}%{_userunitdir}/sockets.target.wants/luma-keyring-verify.socket
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Keyring.desktop
@@ -131,6 +135,9 @@ fi
 %{_userunitdir}/graphical-session-pre.target.wants/luma-keyring.service
 %{_userunitdir}/luma-keyring-autologin.service
 %{_userunitdir}/graphical-session-pre.target.wants/luma-keyring-autologin.service
+%{_userunitdir}/luma-keyring-verify.socket
+%{_userunitdir}/luma-keyring-verify@.service
+%{_userunitdir}/sockets.target.wants/luma-keyring-verify.socket
 %{_datadir}/applications/org.projectluma.Keyring.desktop
 %{_datadir}/glib-2.0/schemas/org.projectluma.keyring.gschema.xml
 %config(noreplace) %{_sysconfdir}/pam.d/luma-keyring
