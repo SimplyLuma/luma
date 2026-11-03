@@ -340,6 +340,10 @@ fc="$deploy/etc/selinux/targeted/contexts/files/file_contexts"
 policy=$(find "$deploy/etc/selinux/targeted/policy" -maxdepth 1 -name 'policy.*' | sort -V | tail -n 1)
 [ -n "$policy" ] || fail "the payload has no targeted binary policy"
 setfiles -F -c "$policy" -r "$sysroot" "$fc" "$sysroot/boot" 2>&1 | grep -v 'Read-only\|efi' || true
+# Files written into the deployment's /etc above (fstab, the update remote,
+# first-boot units) carry the build host's labels; systemd cannot read a
+# var_t unit file.
+setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy/etc" || fail "labelling the deployment's /etc failed"
 install -d "$var/home"
 mount --bind "$var" "$deploy/var"
 mount -o subvol=home "${loop}p3" "$deploy/var/home"
