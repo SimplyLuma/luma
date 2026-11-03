@@ -29,7 +29,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import system  # noqa: E402
 from .model import first_name  # noqa: E402
-from .sheet import box, button, icon, label, prefers_light, softened_wallpaper  # noqa: E402
+from .sheet import ScaleBin, box, button, icon, label, prefers_light, snapshot, softened_wallpaper  # noqa: E402
 
 __all__ = ("WelcomeWindow", "pending", "mark_done", "DASH_PRESETS", "apply_dash", "set_tiling")
 
@@ -247,11 +247,12 @@ class WelcomeWindow(Gtk.ApplicationWindow):
         self.foot.set_name("su-foot")
         self.sheet.append(self.foot)
         root.add_overlay(self.sheet)
-        self.set_child(root)
+        self.scaler = ScaleBin(root)
+        self.scaler.on_resize = self._fit
+        self.set_child(self.scaler)
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self._key)
         self.add_controller(keys)
-        self.connect("map", lambda *_a: self._fit())
         self.draw()
 
     def _lift(self) -> bool:
@@ -262,9 +263,9 @@ class WelcomeWindow(Gtk.ApplicationWindow):
         return False
 
     def _fit(self) -> None:
-        height = self.get_height()
+        height = self.get_height() / self.scaler.factor
         if height > 0:
-            self.body.set_max_content_height(max(200, height - (48 if self.phone else 40) - 60 - 72))
+            self.body.set_max_content_height(max(200, round(height) - (48 if self.phone else 40) - 60 - 72))
 
     # -- the frame ----------------------------------------------------------------
     def _head(self) -> Gtk.Widget:
@@ -312,6 +313,8 @@ class WelcomeWindow(Gtk.ApplicationWindow):
         if old is not None:
             GLib.timeout_add(300, lambda: (old.get_parent() is self.stack and self.stack.remove(old), False)[1])
         self._foot()
+        self._shots = getattr(self, "_shots", 0) + 1
+        snapshot(self, f"w{self._shots:02d}-{self.page}")
 
     def _foot(self) -> None:
         while (child := self.foot.get_first_child()) is not None:
@@ -329,6 +332,7 @@ class WelcomeWindow(Gtk.ApplicationWindow):
             key = button("Continue", "su-bt", "su-key", on_click=lambda: self.go(1))
         key.set_name("su-key")
         self.key = key
+        GLib.idle_add(lambda: (key.get_mapped() and key.grab_focus(), False)[1])  # Return goes on
         if self.phone:
             self.foot.set_orientation(Gtk.Orientation.VERTICAL)
             self.foot.set_spacing(4)
