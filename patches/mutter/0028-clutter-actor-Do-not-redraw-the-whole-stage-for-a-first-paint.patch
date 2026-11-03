@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 3 Nov 2026 04:00:00 -0600
+Subject: [PATCH] clutter/actor: Do not redraw the whole stage for an actor's
+ first paint
+
+An actor whose visible paint volume has never been computed has not
+been painted, so its first layout has no old area to repair. It was
+treated as a moved actor with an unknown old volume, which queues a
+full stage redraw: every new actor (an icon texture, a label, a menu
+item) repainted the whole stage.
+---
+ clutter/clutter/clutter-actor.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/clutter/clutter/clutter-actor.c b/clutter/clutter/clutter-actor.c
+index 82d89da..56fc7f5 100644
+--- a/clutter/clutter/clutter-actor.c
++++ b/clutter/clutter/clutter-actor.c
+@@ -728,6 +728,9 @@ struct _ClutterActorPrivate
+   guint propagated_one_redraw       : 1;
+   guint has_paint_volume            : 1;
+   guint visible_paint_volume_valid  : 1;
++  /* The visible paint volume was computed at least once, so the actor
++   * may have been painted where it said it was. */
++  guint visible_paint_volume_known  : 1;
+   guint in_clone_paint              : 1;
+   guint transform_valid             : 1;
+   /* This is TRUE if anything has queued a redraw since we were last
+@@ -15029,7 +15032,11 @@ clutter_actor_finish_layout (ClutterActor *self,
+     {
+       ensure_paint_volume (self);
+ 
+-      actor_moved = TRUE;
++      /* An actor whose visible paint volume was never computed has not
++       * been painted yet: there is no old area to repair, and its first
++       * paint only needs its new volume, not a full stage redraw.
++       */
++      actor_moved = priv->visible_paint_volume_known;
+       old_visible_paint_volume = priv->visible_paint_volume;
+       old_visible_paint_volume_valid = priv->visible_paint_volume_valid;
+ 
+@@ -15043,6 +15050,7 @@ clutter_actor_finish_layout (ClutterActor *self,
+ 
+       priv->visible_paint_volume_valid = priv->has_paint_volume;
+       priv->needs_visible_paint_volume_update = FALSE;
++      priv->visible_paint_volume_known = TRUE;
+     }
+ 
+   if (priv->needs_update_stage_views)
+-- 
+2.56.0
+
