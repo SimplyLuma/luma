@@ -190,6 +190,12 @@
         "config/android/",
         "packaging/rpm/luma-android-runtime.spec"
       ]
+    },
+    "libmanette": {
+      "recipe": "scripts/packages/build-libmanette.sh",
+      "paths": [
+        "patches/libmanette/"
+      ]
     }
   }
 }
