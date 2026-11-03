@@ -120,7 +120,7 @@ Open: the installer card cannot pick a C1 or D0 upstream tree for a GRUB
 the U-Boot layout and suits Fedora-kernel payloads only; a Luma Pi kernel
 installer needs its own design.
 
-## Nick's Pi: transitional state (2026-11-02)
+## Test Pi (D0, 16 GB): transitional state (2026-11-02)
 
 - Deployments: index 0 (default) Fedora kernel 7.2.11 on U-Boot's upstream
   trees; index 1 (rollback slot) `kernel-luma-rpi` 7.2.15 +
