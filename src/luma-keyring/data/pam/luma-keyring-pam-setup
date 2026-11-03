@@ -1,0 +1,47 @@
+#!/bin/sh
+# SPDX-License-Identifier: MPL-2.0
+#
+# luma-keyring-pam-setup add|remove [FILE]
+#
+# Keeps the recovery copy of an automatic sign-in's keyring key in step with
+# the account password, the way pam_gnome_keyring keeps the login keyring in
+# step: one optional line in the passwd PAM stack, after the modules that set
+# the new password. pam_luma_keyring.so never prompts, re-wraps only once the
+# new password verifies against /etc/shadow, and always returns PAM_IGNORE;
+# the leading "-" skips the line if the module is ever missing (a rollback).
+# The pam_exec line of earlier builds is replaced.
+set -eu
+file=${2:-/etc/pam.d/passwd}
+line='-password   optional	pam_luma_keyring.so'
+marker='pam_luma_keyring.so'
+legacy='luma-keyring --pam-rewrap'
+
+[ -f "$file" ] || exit 0
+case "${1:-}" in
+    add)
+        if grep -qF "$marker" "$file" && ! grep -qF "$legacy" "$file"; then
+            exit 0
+        fi
+        tmp=$(mktemp "$file.XXXXXX")
+        if grep -q 'pam_gnome_keyring.so' "$file"; then
+            { grep -vF -e "$legacy" -e "$marker" "$file" || :; } |
+                awk -v line="$line" '{ print } /pam_gnome_keyring\.so/ && !done { print line; done = 1 }' >"$tmp"
+        else
+            { grep -vF -e "$legacy" -e "$marker" "$file" || :; } |
+                awk -v line="$line" '/^password[ \t]+substack[ \t]+postlogin/ && !done { print line; done = 1 } { print } END { if (!done) print line }' >"$tmp"
+        fi
+        ;;
+    remove)
+        grep -qF -e "$marker" -e "$legacy" "$file" || exit 0
+        tmp=$(mktemp "$file.XXXXXX")
+        grep -vF -e "$marker" -e "$legacy" "$file" >"$tmp" || :
+        ;;
+    *)
+        echo "usage: $0 add|remove [FILE]" >&2
+        exit 2
+        ;;
+esac
+chmod --reference="$file" "$tmp"
+chown --reference="$file" "$tmp"
+mv -f "$tmp" "$file"
+command -v restorecon >/dev/null 2>&1 && restorecon "$file" >/dev/null 2>&1 || :

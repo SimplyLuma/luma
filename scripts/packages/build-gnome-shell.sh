@@ -363,7 +363,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0302-keycap-warm-layers-after-ev
 install -m 0644 "$repo_root/patches/gnome-shell/0294-notification-dismissal-policy.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0303-mobile-data-quick-toggle.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tools/check-shell-shadows.py" "$rpmbuild_dir/SOURCES/"
-for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
+for source in safeAreas.js powerButton.js incomingCall.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
@@ -527,6 +527,14 @@ done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p
         /org/gnome/shell/ui/lumaControlInk.js >lumaControlInk.js
       grep -Fq "export const CONTROL_INK" lumaControlInk.js
       grep -Fq "CONTROLS_STYLESHEET_URI" usr/lib64/gnome-shell/libshell-18.so
+      # Backdrop blurs bound the pass after their copy (0317); St matches
+      # theme nodes through its selector index (0318).
+      grep -aFq "ShellBlurEffect (paint box)" usr/lib64/gnome-shell/libshell-18.so
+      # Blur passes draw into kept textures (0319).
+      grep -aFq "ShellBlurEffect (vertical)" usr/lib64/gnome-shell/libshell-18.so
+      # Modal dialogs hold the blurred backgrounds beneath them (0320).
+      grep -aFq "shell_blur_effect_hold_backgrounds" usr/lib64/gnome-shell/libshell-18.so
+      grep -aFq "LUMA_ST_NO_SELECTOR_INDEX" usr/lib64/gnome-shell/libst-18.so
       grep -Fq "artwork.remove_all_transitions()" \
         usr/lib64/gnome-shell/libshell-18.so
       grep -Fq "Clutter.OffscreenRedirect.NEVER" \

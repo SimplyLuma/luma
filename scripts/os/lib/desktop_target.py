@@ -74,8 +74,11 @@ def packages(root, architecture, *, fedora=False, profile_name='full'):
     selection = profile(root, architecture, profile_name)
     _, scoped = target(root, architecture)
     path = 'config/os/fedora-packages.txt' if fedora else 'config/desktop/packages.txt'
+    values = lines(root / path)
+    if fedora and selection['capabilities'].get('phone'):
+        values += lines(root / 'config/os/phone-packages.txt')
     result = []
-    for value in lines(root / path):
+    for value in values:
         name = package_name(value) if re.search(r'\.(x86_64|aarch64|noarch)$', value) else value
         if excluded(name, selection):
             continue

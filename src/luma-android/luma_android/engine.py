@@ -20,6 +20,7 @@ from .apk import native_abis_for_apk
 from .appearance import surface_treatment
 from .config import device_class, load_runtime_config
 from .errors import LumaAndroidError, RuntimeUnavailableError
+from .presentation import current_presentation, presentation_density
 from .kernel import (
     FP6_SOFTWARE_PORT,
     FP6_SOFTWARE_SOCKET,
@@ -147,10 +148,35 @@ def _session_identity() -> str | None:
     return f"{found['session']}/{found['container']}"
 
 
-# Luma's top bar is GNOME Shell's 34 px #panel (patches/gnome-shell/0002); its
-# handheld gesture strip is GESTURE_HEIGHT, 28 px, at the bottom edge.
+# Fallback bar heights for shells that do not publish them: GNOME Shell's
+# 34 px #panel (patches/gnome-shell/0002) and the 28 px handheld gesture strip.
 HOST_TOP_BAR_LOGICAL_PX = 34
 HOST_GESTURE_STRIP_LOGICAL_PX = 28
+
+
+def host_bars_path() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return Path(runtime) / "luma-shell" / "bars.json"
+
+
+def host_bar_logical_px(path: Path | None = None) -> tuple[int, int]:
+    """Return the logical heights of the Shell's top bar and gesture strip.
+
+    The Shell writes the chrome it draws over applications to
+    $XDG_RUNTIME_DIR/luma-shell/bars.json ({"schema": 1, "top": 44,
+    "bottom": 28}, zero on Desktop). A missing or invalid file falls back to
+    the fixed heights.
+    """
+    try:
+        value = json.loads((path or host_bars_path()).read_text(encoding="utf-8"))
+        top, bottom = value["top"], value["bottom"]
+        if (value.get("schema") == 1 and all(
+                isinstance(height, int) and not isinstance(height, bool) and 0 <= height <= 256
+                for height in (top, bottom))):
+            return top, bottom
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return HOST_TOP_BAR_LOGICAL_PX, HOST_GESTURE_STRIP_LOGICAL_PX
 
 
 def host_status_bar_px(runtime_device_class: str, display_scale: str,
@@ -576,6 +602,7 @@ class WaydroidEngine:
             timeout=30,
         )
         self.sync_host_bar_insets(runtime_device_class)
+        self.sync_presentation_density()
         self.sync_host_appearance()
         # Android already exposes its soft keyboard alongside Waydroid's
         # virtual hardware keyboard on touch-first profiles. Only a desktop
@@ -600,14 +627,27 @@ class WaydroidEngine:
         _write_ready_stamp(_ready_key(runtime_config.idle_freeze, multi_window))
         return started_session
 
+    def sync_presentation_density(self, presentation: str | None = None) -> None:
+        # Android takes ro.sf.lcd_density once, from the presentation it boots
+        # into; the image applies this property as WindowManager's forced
+        # density whenever the presentation changes afterwards.
+        presentation = presentation or current_presentation(device_class())
+        touch = self._run("prop", "get", "luma.touch_density", timeout=15, check=False).stdout.strip()
+        scale = self._run("prop", "get", "waydroid.display_scale", timeout=15, check=False).stdout.strip()
+        value = str(presentation_density(presentation, touch, scale))
+        current = self._run("prop", "get", "persist.luma.forced_density", timeout=15, check=False).stdout.strip()
+        if current != value:
+            self._run("prop", "set", "persist.luma.forced_density", value, timeout=30)
+
     def sync_host_bar_insets(self, runtime_device_class: str) -> None:
         # Android uses these as its status and navigation bar heights and keeps
         # SystemUI's bars hidden (patches/android-frameworks-base/0002).
         scale = self._run("prop", "get", "waydroid.display_scale",
                           timeout=15, check=False).stdout.strip()
+        top, bottom = host_bar_logical_px()
         for prop, logical_px in (
-            ("persist.luma.status_bar_px", HOST_TOP_BAR_LOGICAL_PX),
-            ("persist.luma.nav_bar_px", HOST_GESTURE_STRIP_LOGICAL_PX),
+            ("persist.luma.status_bar_px", top),
+            ("persist.luma.nav_bar_px", bottom),
         ):
             value = str(host_status_bar_px(runtime_device_class, scale, logical_px))
             current = self._run("prop", "get", prop, timeout=15, check=False).stdout.strip()

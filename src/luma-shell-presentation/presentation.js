@@ -16,10 +16,11 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
-import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
+import {homeLayout, pageProgress, statusGlyph, visiblePageRange} from './layout.js';
 import {bottomInset} from './keycap.js';
 import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
+import {CallTakeover} from './incomingCall.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
@@ -46,6 +47,52 @@ function button(name, onClick, styleClass = '') {
     return result;
 }
 
+// While the handheld status bar holds GNOME's indicators, each icon is drawn
+// as its LumaUI (Lucide) glyph, following the indicator's state as it changes.
+class StatusGlyphs {
+    constructor() {
+        this._icons = new Map();
+        this._containers = new Map();
+    }
+
+    watch(actor) {
+        if (this._containers.has(actor) || this._icons.has(actor))
+            return;
+        if (actor instanceof St.Icon) {
+            const original = actor.icon_name;
+            // Battery sets a themed gicon rather than an icon name.
+            const ids = ['notify::icon-name', 'notify::gicon']
+                .map(signal => actor.connect(signal, () => this._draw(actor)));
+            this._icons.set(actor, {ids, original});
+            this._draw(actor);
+            return;
+        }
+        this._containers.set(actor, actor.connect('child-added', (_actor, child) => this.watch(child)));
+        for (const child of actor.get_children())
+            this.watch(child);
+    }
+
+    _draw(icon) {
+        const glyph = statusGlyph(icon.icon_name);
+        if (!glyph)
+            return;
+        this._icons.get(icon).original = icon.icon_name;
+        icon.icon_name = glyph;
+    }
+
+    release() {
+        for (const [icon, {ids, original}] of this._icons) {
+            ids.forEach(id => icon.disconnect(id));
+            if (original && icon.icon_name !== original)
+                icon.icon_name = original;
+        }
+        for (const [container, id] of this._containers)
+            container.disconnect(id);
+        this._icons.clear();
+        this._containers.clear();
+    }
+}
+
 export class Presentation {
     constructor({stylesheet = null, widgets = null, settings = null} = {}) {
         this.mode = 'desktop';
@@ -64,6 +111,7 @@ export class Presentation {
         this._settings = settings ?? new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
         this._watchHomePreferences();
         this._powerButton = new HandheldPowerButton();
+        this._callTakeover = new CallTakeover(this);
         this._motion = new HandheldMotion(this);
         this._page = 0;
         this._displayProfiles = null;
@@ -555,6 +603,7 @@ export class Presentation {
                 }
             }
             move(actor, this._statusRight);
+            (this._statusGlyphs ??= new StatusGlyphs()).watch(actor);
             actor.set_size(-1, -1);
             actor.x_expand = false;
             actor.x_align = Clutter.ActorAlign.END;
@@ -564,6 +613,7 @@ export class Presentation {
     }
 
     _releaseStatus() {
+        this._statusGlyphs?.release();
         for (const click of this._pressRecognizers ?? [])
             click.set_recognize_on_press(true);
         this._pressRecognizers = [];
@@ -1193,6 +1243,7 @@ export class Presentation {
         this._backNavigation.destroy();
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
+        this._callTakeover.destroy();
         this._motion.destroy();
         this._cancellable.cancel();
         this.mode = 'desktop';

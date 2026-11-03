@@ -78,6 +78,15 @@ def button(icon, title, callback, name, *, css=None, sensitive=True, size=20):
     return control
 
 
+def texture(data):
+    """A contact photo as a texture, or None when it can't be decoded, so a
+    bad photo falls back to the avatar instead of stopping Phone."""
+    try:
+        return Gdk.Texture.new_from_bytes(GLib.Bytes.new(data))
+    except GLib.Error:
+        return None
+
+
 def _highlight(text, query):
     """Bold every word of `text` that starts with `query` (v71 hl())."""
     escaped = GLib.markup_escape_text(text)
@@ -370,7 +379,7 @@ class PhoneWindow(AppWindow):
             picture = None
             data = self.source.photo(person) if person else None
             if data:
-                picture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(data))
+                picture = texture(data)
             if self.fixture and person and person.face and face:
                 face_path = self.fixture._asset("phone-v70/face-" + person.uid + ".jpg")
                 if face_path.is_file():
@@ -999,10 +1008,11 @@ class PhoneWindow(AppWindow):
         light.set_visible(False)
         if person:
             data = self.source.photo(person)
-            if data and not group:
+            picture = texture(data) if data and not group else None
+            if picture:
                 light.set_visible(True)
                 focus = tuple(person.face[:2]) if person.face else (.5, .5)
-                light.set_source(picture=Gdk.Texture.new_from_bytes(GLib.Bytes.new(data)), name=person.name, focus=focus, hue=person.hue)
+                light.set_source(picture=picture, name=person.name, focus=focus, hue=person.hue)
         backdrop = box(vertical=True, vexpand=True)
         backdrop.append(light)
         overlay = Gtk.Overlay(child=backdrop)
@@ -1196,8 +1206,9 @@ class PhoneWindow(AppWindow):
         if c.kind == "voice":
             person = self._person(c.people[0])
             data = self.source.photo(person) if person else None
-            if data:
-                root.set_child(CallPhoto(Gdk.Texture.new_from_bytes(GLib.Bytes.new(data)), wash=True))
+            picture = texture(data) if data else None
+            if picture:
+                root.set_child(CallPhoto(picture, wash=True))
             if phone:
                 root.add_overlay(self._voice_head_phone())
             else:
@@ -1409,9 +1420,10 @@ class PhoneWindow(AppWindow):
         data = self.fixture.photo(person) if person else None
         if uid == "me":
             data = (self.fixture.path.parent / "phone-v70/life-hero-home.webp").read_bytes()
-        if data and not (uid == "me" and self.call.camera_off):
+        picture = texture(data) if data and not (uid == "me" and self.call.camera_off) else None
+        if picture:
             focus = (.8, .3) if uid == "me" else tuple(person.face[:2]) if person and person.face else (.5, .5)
-            tile.set_child(CallPhoto(Gdk.Texture.new_from_bytes(GLib.Bytes.new(data)), focus=focus, effects=self.call.effects and not self_view))
+            tile.set_child(CallPhoto(picture, focus=focus, effects=self.call.effects and not self_view))
         else:
             tile.set_child(PersonAvatar("Nick", 40 if self_view else 64, hue=250) if uid == "me" else self._avatar(uid, 64))
         if len(self.call.people) > 1:
