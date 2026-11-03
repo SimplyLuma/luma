@@ -15,6 +15,16 @@ new toast replaces the one showing. Parts, all optional except the title:
     sub     a quiet line under the title; rarely: a toast says one thing
     tint    a colour the toast takes as soft light from its leading edge
     ms      how long it stays (TV motion toast_ms; toast_long_ms for a moment worth reading)
+
+Work that takes a while has one progress toast, the same one in every app:
+
+    toast = TvToast.progress(stage, "Syncing music…", count="120 of 840")
+    toast.update("Syncing album art…", count="40 of 300")   # the one line changes in place
+    TvToast.show(stage, "Music is up to date.", lead="check")  # it ends as a plain toast
+
+A progress toast stays while the work runs, with a quiet activity mark in the
+lead; `count` follows the line after a middle dot. Show one only for real
+work: never for a check that finds nothing to do.
 """
 from __future__ import annotations
 
@@ -45,6 +55,8 @@ def _sheet(opaque: bool) -> str:
 .tv-toast-lead {{ min-width: {t['lead']}tv; min-height: {t['lead']}tv; border-radius: {t['lead_radius']}tv;
   background-color: rgba(255,255,255,.08); }}
 .tv-toast-lead image {{ -gtk-icon-size: {t['lead_icon']}tv; }}
+.tv-toast-activity {{ min-width: {t['lead_icon']}tv; min-height: {t['lead_icon']}tv; color: {m('ink_2')}; }}
+.tv-toast-title {{ font-feature-settings: "tnum"; }}
 .tv-toast-kicker {{ font-size: {t['kicker_size']}tv; font-weight: {t['kicker_weight']}; letter-spacing: 1.7tv; color: {m('ink_2')}; }}
 .tv-toast-title {{ font-size: {t['title_size']}tv; font-weight: {t['title_weight']}; }}
 .tv-toast-value {{ font-size: {t['value_size']}tv; font-weight: {t['value_weight']}; letter-spacing: -0.8tv;
@@ -74,6 +86,29 @@ class TvToast(Gtk.Widget):
         self._animation = None
         self._hide_source = 0
         self._stage: TvStage | None = None
+        self.working = False          # a progress toast, until a plain one replaces it
+        self._line: Gtk.Label | None = None
+
+    @classmethod
+    def progress(cls, stage: TvStage, title: str, *, count: str = "") -> "TvToast":
+        """A toast that stays while work runs; `update()` changes its line, `show()` ends it."""
+        toast = getattr(stage, "_tv_toast", None)
+        if toast is not None and toast.working and toast._rise > 0.5:
+            toast.update(title, count=count)
+            return toast
+        spinner = Gtk.Spinner(spinning=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        spinner.add_css_class("tv-toast-activity")
+        toast = cls.show(stage, title, lead=spinner, ms=-1)
+        toast.working = True
+        toast.update(title, count=count)
+        return toast
+
+    def update(self, title: str, *, count: str = "") -> None:
+        """A progress toast's line, changed in place (no new slide)."""
+        line = f"{title} · {count}" if count else title
+        if self._line is not None and self._line.get_label() != line:
+            self._line.set_label(line)
+            self.update_property([Gtk.AccessibleProperty.LABEL], [line])
 
     @classmethod
     def show(cls, stage: TvStage, title: str, *, lead: str | Gtk.Widget | None = None, kicker: str = "",
@@ -91,7 +126,10 @@ class TvToast(Gtk.Widget):
         toast._animate(1.0, TV["motion"]["toast_in_ms"])
         if toast._hide_source:
             GLib.source_remove(toast._hide_source)
-        toast._hide_source = GLib.timeout_add(ms or TV["motion"]["toast_ms"], toast._hide)
+            toast._hide_source = 0
+        toast.working = False
+        if ms != -1:  # -1: it stays (a progress toast) until replaced or hidden
+            toast._hide_source = GLib.timeout_add(ms or TV["motion"]["toast_ms"], toast._hide)
         toast.update_property([Gtk.AccessibleProperty.LABEL], [" ".join(p for p in (kicker, title, value, sub) if p)])
         if hasattr(toast, "announce"):
             toast.announce(title, Gtk.AccessibleAnnouncementPriority.MEDIUM)
@@ -126,11 +164,14 @@ class TvToast(Gtk.Widget):
         else:
             self.box.add_css_class("tv-plain")
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
+        self._line = None
         for content, css in ((kicker, "tv-toast-kicker"), (title, "tv-toast-title"), (sub, "tv-toast-sub")):
             if content:
                 label = Gtk.Label(label=content, xalign=0)
                 label.add_css_class(css)
                 text.append(label)
+                if css == "tv-toast-title":
+                    self._line = label
         self.content.append(text)
         if value:
             figure = Gtk.Label(label=value, valign=Gtk.Align.CENTER)

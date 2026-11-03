@@ -9,11 +9,16 @@
   Cairo), so parts that draw their own pixels never hold a literal.
 - `glyph_path(name)` is a Lucide glyph as a `Gsk.Path`, for glyphs a part must
   fill (a favourite heart) or draw thousands of times.
-- `TextureLoader` decodes pictures off the main loop into a small LRU cache,
-  with a generation check so a recycled tile never shows a stale picture.
+- `TextureLoader` decodes pictures off the main loop into an LRU of decoded
+  textures bounded by bytes (scaled to the device's memory, emptied on a
+  low-memory warning), over a shared on-disk cache of pre-scaled copies
+  (`artwork_cache`), with a generation check so a recycled tile never shows a
+  stale picture. `colour(source)` is a picture's dominant colour, for a
+  placeholder before it arrives.
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import threading
@@ -221,6 +226,43 @@ def brightness_matrix(amount: float) -> tuple[Graphene.Matrix, Graphene.Vec4]:
 
 # ── Pictures, decoded off the main loop ────────────────────────────────────
 
+def memory_budget(total: int | None = None) -> int:
+    """Bytes of decoded pictures an app may keep: 1/48 of the device's memory, 48-384 MB."""
+    if total is None:
+        try:
+            total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        except (AttributeError, OSError, ValueError):
+            total = 4 << 30
+    return int(max(48 << 20, min(384 << 20, total // 48)))
+
+
+def _flatten_if_opaque(pixbuf):
+    """An RGBA picture whose every pixel is opaque, as RGB: a quarter less memory, JPEG on disk."""
+    if not pixbuf.get_has_alpha() or pixbuf.get_n_channels() != 4:
+        return pixbuf
+    width, height = pixbuf.get_width(), pixbuf.get_height()
+    data = pixbuf.read_pixel_bytes().get_data()
+    stride = pixbuf.get_rowstride()
+    if stride == width * 4:
+        alpha = data[3::4]
+    else:
+        alpha = b"".join(data[row * stride + 3: row * stride + width * 4: 4] for row in range(height))
+    if alpha.count(255) != width * height:
+        return pixbuf
+    from gi.repository import GdkPixbuf
+    flat = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, width, height)
+    flat.fill(0x000000ff)
+    pixbuf.composite(flat, 0, 0, width, height, 0, 0, 1, 1, GdkPixbuf.InterpType.NEAREST, 255)
+    return flat
+
+
+def _texture_from_pixbuf(pixbuf) -> Gdk.Texture:
+    return Gdk.MemoryTexture.new(
+        pixbuf.get_width(), pixbuf.get_height(),
+        Gdk.MemoryFormat.R8G8B8A8 if pixbuf.get_has_alpha() else Gdk.MemoryFormat.R8G8B8,
+        pixbuf.read_pixel_bytes(), pixbuf.get_rowstride())
+
+
 class TextureRequest:
     """A cancellable subscription; cancelling never touches a GTK widget."""
 
@@ -249,9 +291,12 @@ class TextureLoader:
     MAX_SOURCE_PIXELS = 100_000_000
 
     def __init__(self, capacity: int = 600, workers: int | None = None, *,
-                 byte_budget: int = 64 * 1024 * 1024, pending_limit: int = 64) -> None:
+                 byte_budget: int | None = None, pending_limit: int = 64, disk=None) -> None:
+        if byte_budget is None:
+            byte_budget = memory_budget()
         if capacity < 1 or byte_budget < 1 or pending_limit < 1:
             raise ValueError("texture budgets must be positive")
+        self.disk = disk  # an ArtworkDiskCache, or None
         self._cache: OrderedDict[tuple, Gdk.Texture] = OrderedDict()
         self._costs: dict[tuple, int] = {}
         self._cache_bytes = 0
@@ -271,15 +316,50 @@ class TextureLoader:
     @classmethod
     def shared(cls) -> "TextureLoader":
         if cls._shared is None:
-            cls._shared = cls()
+            disk = None
+            if os.environ.get("LUMA_ARTWORK_DISK_CACHE", "1") != "0":
+                from .artwork_cache import ArtworkDiskCache
+                disk = ArtworkDiskCache()
+            cls._shared = cls(disk=disk)
+            cls._shared._watch_memory()
+            if disk is not None:
+                cls._shared._pool.submit(disk._ensure_colours)  # placeholders known before the first cover
         return cls._shared
 
     @staticmethod
     def bucket(side: float) -> int:
-        """Round nearby sizes together without exceeding the preview ceiling."""
-        side = min(TextureLoader.MAX_SIDE, max(32, int(side)))
-        step = 64 if side <= 512 else 256
-        return min(TextureLoader.MAX_SIDE, (side + step - 1) // step * step)
+        """Round nearby sizes together (32-pixel steps) without exceeding the preview ceiling."""
+        side = min(TextureLoader.MAX_SIDE, max(32, int(math.ceil(side))))
+        return min(TextureLoader.MAX_SIDE, (side + 31) // 32 * 32)
+
+    def colour(self, source: str) -> tuple[int, int, int] | None:
+        """`source`'s dominant colour as measured on an earlier decode (0-255 RGB), or None."""
+        return self.disk.colour(source) if self.disk is not None else None
+
+    def trim(self, keep: float = 0.0) -> None:
+        """Drop decoded textures, least recently used first, down to `keep` of the budget."""
+        with self._lock:
+            limit = int(self._byte_budget * keep)
+            while self._cache and self._cache_bytes > limit:
+                old, _ = self._cache.popitem(last=False)
+                self._cache_bytes -= self._costs.pop(old)
+
+    @property
+    def cached_bytes(self) -> int:
+        return self._cache_bytes
+
+    def _watch_memory(self) -> None:
+        try:
+            from gi.repository import Gio
+            monitor = Gio.MemoryMonitor.dup_default()
+        except Exception:  # noqa: BLE001 - no monitor on this system: the budget alone bounds the cache
+            return
+        self._memory_monitor = monitor
+
+        def warned(_monitor, level) -> None:
+            # Low: keep a quarter (what is on screen); medium or critical: drop it all.
+            self.trim(0.25 if level == Gio.MemoryMonitorWarningLevel.LOW else 0.0)
+        monitor.connect("low-memory-warning", warned)
 
     def cached(self, source: str, side: float) -> Gdk.Texture | None:
         key = (source, self.bucket(side))
@@ -378,24 +458,35 @@ class TextureLoader:
         source, side = key
         texture = None
         try:
-            gi.require_version("GdkPixbuf", "2.0")
-            from gi.repository import GdkPixbuf
-
-            _format, width, height = GdkPixbuf.Pixbuf.get_file_info(source)
-            if not width or not height or width * height > self.MAX_SOURCE_PIXELS:
-                raise ValueError("missing or oversized image dimensions")
-            scale = min(1.0, side / min(width, height), self.MAX_SIDE / max(width, height),
-                        (self.MAX_PIXELS / (width * height)) ** 0.5)
-            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                source, max(1, int(width * scale)), max(1, int(height * scale)), True)
-            pixbuf = pixbuf.apply_embedded_orientation() or pixbuf
-            texture = Gdk.MemoryTexture.new(
-                pixbuf.get_width(), pixbuf.get_height(),
-                Gdk.MemoryFormat.R8G8B8A8 if pixbuf.get_has_alpha() else Gdk.MemoryFormat.R8G8B8,
-                pixbuf.read_pixel_bytes(), pixbuf.get_rowstride())
+            pixbuf = self.disk.load(source, side) if self.disk is not None else None
+            if pixbuf is None:
+                pixbuf = self._decode_original(source, side)
+            texture = _texture_from_pixbuf(pixbuf)
         except Exception:  # noqa: BLE001 - unreadable pictures show the empty tile
             texture = None
         GLib.idle_add(self._finish, key, texture)
+
+    def _decode_original(self, source: str, side: int):
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+
+        _format, width, height = GdkPixbuf.Pixbuf.get_file_info(source)
+        if not width or not height or width * height > self.MAX_SOURCE_PIXELS:
+            raise ValueError("missing or oversized image dimensions")
+        scale = min(1.0, side / min(width, height), self.MAX_SIDE / max(width, height),
+                    (self.MAX_PIXELS / (width * height)) ** 0.5)
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+            source, max(1, int(width * scale)), max(1, int(height * scale)), True)
+        pixbuf = pixbuf.apply_embedded_orientation() or pixbuf
+        pixbuf = _flatten_if_opaque(pixbuf)
+        if self.disk is not None:
+            from .artwork_cache import dominant_colour
+            if self.disk.colour(source) is None:
+                self.disk.set_colour(source, dominant_colour(pixbuf))
+            # worth keeping when the original is much larger than what is drawn
+            if scale < 0.8:
+                self.disk.store(source, side, pixbuf)
+        return pixbuf
 
     def _finish(self, key: tuple, texture: Gdk.Texture | None) -> bool:
         with self._lock:
@@ -404,7 +495,8 @@ class TextureLoader:
             self._waiting.pop(key, None)
             if texture is not None and callbacks and not self._closed:
                 # MemoryTexture retains rowstride-sized bytes, not compressed file size.
-                cost = texture.get_width() * texture.get_height() * 4
+                cost = texture.get_width() * texture.get_height() * (
+                    3 if texture.get_format() == Gdk.MemoryFormat.R8G8B8 else 4)
                 self._cache_bytes -= self._costs.pop(key, 0)
                 self._cache[key] = texture
                 self._costs[key] = cost
@@ -423,6 +515,8 @@ class TextureLoader:
 
     def close(self) -> None:
         """Stop admitting work and discard queued subscriptions and cached pixels."""
+        if self.disk is not None:
+            self._pool.submit(self.disk.save_colours)
         with self._lock:
             self._closed = True
             self._pending.clear()

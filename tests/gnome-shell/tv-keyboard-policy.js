@@ -132,4 +132,19 @@ assert(/_completionAllowed\(\) \{\s*\/\/[^\n]*\n\s*return !this\._tv &&/.test(ke
 assert(/org\.projectluma\.Shell\.Keyboard1/.test(keyboard) && /SetActionLabel/.test(keyboard) &&
     /name="Height" type="u"/.test(keyboard), 'the application contract');
 
+// A Shell surface over a window (the quick panel opened by Start, the app switcher) takes the
+// keys for a while: the keyboard steps away with its keys (OK included) and the window gets it
+// back as it was: open, or put away with OK to open it again. Its field taking the focus back
+// is no request to type (Start over a keyring sheet once brought the keyboard up instead).
+assert(/tvSuspend\(\) \{\s*return this\._tv \? this\._keyboard\?\.tvSuspend\(\) \?\? null : null;/.test(keyboard) &&
+    /tvResume\(state\) \{\s*this\._keyboard\?\.tvResume\(state\);/.test(keyboard), 'the manager passes it on');
+assert(/tvSuspend\(\) \{[\s\S]*?open: this\._keyboardVisible \|\| Boolean\(this\._showIdleId\)[\s\S]*?armed: this\._tvReopenArmed[\s\S]*?this\._tvSuspended = true;[\s\S]*?this\.close\(true\);\s*this\._tvReleaseKeys\(\);/.test(keyboard),
+    'suspended: how it was, closed, no keys held');
+assert(/_tvFieldFocus\(\) \{\s*if \(this\._tvSuspended\)\s*return;\s*if \(Main\.inputMethod\.currentFocus && this\._tvResumed\(\)\)\s*return;/.test(keyboard),
+    'no field focus opens it while a Shell surface is up, nor as the window gets its field back');
+assert(/if \(this\._tv\) \{\s*if \(this\._tvSuspended\)\s*return;/.test(keyboard), 'nor a panel request');
+assert(/_tvResumed\(\) \{[\s\S]*?global\.display\.focus_window !== state\.window[\s\S]*?if \(state\.open\)\s*return false;\s*if \(state\.armed\)\s*this\._tvArmReopen\(\);\s*return true;/.test(keyboard),
+    'back as it was, for the same window only');
+assert(/TV_RESUME_US = \d+ \* 1000;/.test(keyboard), 'only right after the surface lets go');
+
 (gjs ? globalThis.print : console.log)('tv-keyboard-policy: ok');

@@ -405,7 +405,7 @@ only while it holds TV posture: gamepads read through libmanette
 (`gi://Manette?version=0.2`, optional; Recommends libmanette) become TV keys
 from a Clutter virtual keyboard (D-pad and left stick = arrows at the
 `tv.input` repeat pace, South = Return, East and Select = Escape, Start =
-Menu, Guide or Select+Start = the TV home), and remote keys that are not TV
+the quick panel (0315), Guide or Select+Start = the TV home), and remote keys that are not TV
 keys (XF86Back, XF86Close, XF86OK, XF86Select, XF86HomePage, XF86RootMenu,
 XF86MenuKB, XF86ContextMenu; CEC keys through rc-cec) are Mutter accelerators
 re-sent as TV keys. A pad reaches only the Shell, the TV keyboard and
@@ -469,3 +469,14 @@ Close (`Meta.Window.kill()`, as the not-responding dialog). The TV home's
 tiles get a running dot and a held-OK menu with Open and Close. A single Home
 now goes home after the double-press window. docs/developer-platform/
 tv-mode.md "Closing apps". Test: `tv-app-switcher-policy.js` in %check.
+
+`0315-tv-pointer.patch`: registers `lumaPresentation/tvPointer.js` in the JS
+resource. In TV posture the pointer hides the moment a remote, pad or keyboard
+key arrives and after `POINTER_IDLE_MS` (3 s) of rest, through Mutter's
+cursor tracker (`inhibit_cursor_visibility`); motion, a click or a scroll
+shows it. The posture's end always shows it again. The same branch makes a
+pad's Start the system pause menu (the quick panel over any app; a game that
+claimed the pads keeps it), adds `Remote1.ShowQuickPanel` for an app's bar
+clock, and taps a Shell-held accelerator (XF86Launch9, at most every 5 s) on
+pad input so Mutter's idle time sees a pad. Test: `tv-input-policy.js` (with
+`tvPointer.js`) in %check.

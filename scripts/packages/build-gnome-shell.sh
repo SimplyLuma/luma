@@ -370,7 +370,7 @@ install -m 0644 "$repo_root/patches/gnome-shell/0312-tv-screen-edges.patch" "$rp
 install -m 0644 "$repo_root/patches/gnome-shell/0313-tv-quick-panel.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0314-tv-app-switcher.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tools/check-shell-shadows.py" "$rpmbuild_dir/SOURCES/"
-for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css tv.js tvModel.js tvTokens.js tv-backdrop.jpg tvKeyboard.js tvInput.js tvInputModel.js tvDialogs.js tvDialogsModel.js tvScreenEdges.js tvQuickPanel.js tvQuickPanelModel.js tvAppSwitcher.js tvAppSwitcherModel.js; do
+for source in safeAreas.js powerButton.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css tv.js tvModel.js tvTokens.js tv-backdrop.jpg tvKeyboard.js tvInput.js tvInputModel.js tvDialogs.js tvDialogsModel.js tvScreenEdges.js tvQuickPanel.js tvQuickPanelModel.js tvAppSwitcher.js tvAppSwitcherModel.js tvPointer.js; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"

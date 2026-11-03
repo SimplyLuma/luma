@@ -22,6 +22,7 @@ import {okPress, okRelease} from './tvQuickPanelModel.js';
 import {TvAppSwitcher, TvItemMenu, appRunning, requestQuit, switcherApp} from './tvAppSwitcher.js';
 import {TvDialogs} from './tvDialogs.js';
 import {TvInput} from './tvInput.js';
+import {TvPointer} from './tvPointer.js';
 import {TvScreenEdges} from './tvScreenEdges.js';
 import {TvQuickPanel} from './tvQuickPanel.js';
 import {tileMenu} from './tvAppSwitcherModel.js';
@@ -141,8 +142,13 @@ export class TvPresentation {
         // A tile's menu (a held OK): Open and Close while its app runs.
         this._itemMenu = new TvItemMenu({unit: () => this._unit(), opaque: () => this._opaque()});
         // Every remote and gamepad becomes the TV's keys (tvInput.js).
+        // The pointer hides while the remote is in use and once it rests (tvPointer.js).
+        this._pointer = new TvPointer();
         this._input = new TvInput({home: () => this.showHome('home'),
             quickPanel: () => this._quick?.toggle('remote'),
+            // Start is the system's pause menu: the quick panel over whatever is showing.
+            pause: () => this._quick?.toggle('start'),
+            showQuickPanel: () => this._quick?.open('app'),
             switcher: () => this.toggleSwitcher()});
         // Every field, the Shell's and every app's, gets the TV keyboard.
         Main.keyboard?.setTvPosture?.(true);
@@ -157,6 +163,8 @@ export class TvPresentation {
         for (const [object, id] of this._activeSignals) object.disconnect(id);
         this._activeSignals = [];
         this._input?.destroy();
+        this._pointer?.destroy();
+        this._pointer = null;
         this._input = null;
         this._quick?.destroy();
         this._quick = null;

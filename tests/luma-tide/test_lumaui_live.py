@@ -39,6 +39,24 @@ class LivePresentationTests(unittest.TestCase):
         library = self.source.load()
         self.assertEqual({s.id for a in library.albums for s in a.songs}, {both.id})
         self.assertEqual(library.source(remote.id).subtitle, 'Signed out')
+        self.assertTrue(library.source(remote.id).signed_out)
+        self.assertFalse(library.source(local.id).signed_out)
+    def test_the_last_view_is_kept_for_an_instant_start(self):
+        local = self.store.add_source('Music', 'local-folder', self.root / 'music', local=True)
+        self.store.upsert_copy(local.id, MediaMetadata(uri=(self.root / 'one.flac').as_uri(),
+            content_digest='c' * 64, title='Kept', album='A', artist='Artist'))
+        with patch.dict('os.environ', {'XDG_CACHE_HOME': str(self.root / 'cache')}):
+            self.assertIsNone(self.source.load() and self.source.snapshot(), 'off unless the window asks')
+            self.source.keep_snapshots = True
+            library = self.source.load()
+            again = LiveLibrary(SimpleNamespace(store=self.store, controller=self.controller))
+            try:
+                self.assertEqual(again.snapshot(), library)
+            finally:
+                again.close()
+            (self.root / 'cache/luma-tide/library-view.pickle').write_bytes(b'damaged')
+            self.assertIsNone(self.source.snapshot())
+
     def test_only_the_real_system_output_is_advertised(self):
         self.assertEqual(self.source.player.outputs, (('This computer', 'monitor', 'System audio output'),))
         with self.assertRaises(ValueError):

@@ -272,6 +272,8 @@ export class TvAppSwitcher {
             throw error;
         }
         this.isOpen = true;
+        // The TV keyboard steps out of the way and comes back as it was (KeyboardManager.tvSuspend).
+        this._keyboardState = Main.keyboard?.tvSuspend?.() ?? null;
         this._grab = Main.pushModal(this._actor, {actionMode: Shell.ActionMode.POPUP});
         this._actor.grab_key_focus();
         this._actor.opacity = 0;
@@ -300,6 +302,8 @@ export class TvAppSwitcher {
         this._menu.close();
         if (this._grab) Main.popModal(this._grab);
         this._grab = null;
+        Main.keyboard?.tvResume?.(this._keyboardState);
+        this._keyboardState = null;
         this._actor?.destroy();
         this._actor = null;
         this._cards = [];

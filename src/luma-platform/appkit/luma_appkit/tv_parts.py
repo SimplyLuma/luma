@@ -7,7 +7,11 @@ tabs and clock sit at exactly the same place everywhere: pin it at
 recessed track of tabs; the focused tab is the bright key and the open tab is
 a chip whenever the focus is elsewhere (another tab or the page), so exactly one
 thing is bright.
-The right holds the clock (28/700, tabular figures).
+The right holds the clock (28/700, tabular figures) in the bar's cluster: the
+remote reaches it (Up to the bar, Right past the tabs) and OK opens the
+shell's quick panel over the app, as on the TV home. `TvFocus` adopts every
+bar's cluster by itself; an app registers nothing. The cluster is a key with
+the home's padding while focused; its clock never moves.
 
 `TvButton` is the 66-tall button (chip at rest, key when focused).
 `TvField` is the recessed text field (a real Gtk.Text: keyboards type into it).
@@ -15,6 +19,7 @@ The right holds the clock (28/700, tabular figures).
 """
 from __future__ import annotations
 
+import weakref
 from typing import Sequence
 
 import gi
@@ -25,9 +30,16 @@ from gi.repository import GLib, Gio, Gtk  # noqa: E402
 from . import icons  # noqa: E402
 from . import lumaui_tokens as tokens  # noqa: E402
 
-__all__ = ["TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow"]
+__all__ = ["TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow", "top_bars"]
 
 TV = tokens.TV
+# Every TV bar alive, for TvFocus to adopt its cluster.
+_BARS: "weakref.WeakSet[TvTopBar]" = weakref.WeakSet()
+
+
+def top_bars() -> list["TvTopBar"]:
+    """The TV bars alive (TvFocus adopts the clusters of those inside its root)."""
+    return list(_BARS)
 
 
 class TvTab(Gtk.Box):
@@ -80,10 +92,17 @@ class TvTopBar(Gtk.Box):
         self.append(Gtk.Box(hexpand=True))
         self.end = Gtk.Box(valign=Gtk.Align.CENTER)
         self.append(self.end)
+        # The cluster: what the bar's right holds (the clock), the quick panel's bar item.
+        self.cluster = Gtk.Box(valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.BUTTON)
+        self.cluster.add_css_class("tv-cluster")
+        self.cluster.update_property([Gtk.AccessibleProperty.LABEL], ["Quick panel"])
+        self.end.append(self.cluster)
         self.clock = Gtk.Label(valign=Gtk.Align.CENTER)
         self.clock.add_css_class("tv-clock")
-        self.end.append(self.clock)
+        self.cluster.append(self.clock)
+        self.cluster.set_visible(clock)
         self.clock.set_visible(clock)
+        _BARS.add(self)
         self.tabs: list[TvTab] = []
         self.open = -1
         self._tick_source = 0

@@ -65,7 +65,7 @@ def tv_material(name: str, *, opaque: bool = False) -> str:
 
 def _sheet(opaque: bool) -> str:
     m = lambda name: tv_material(name, opaque=opaque)  # noqa: E731
-    ty, bar, btn, sheet = TV["type"], TV["bar"], TV["button"], TV["sheet"]
+    ty, bar, btn, sheet, qp = TV["type"], TV["bar"], TV["button"], TV["sheet"], TV["quick_panel"]
     focus = TV["focus"]
     return f"""
 .lumaui-tv-stage {{ font-family: Figtree, sans-serif; color: {m('ink')}; }}
@@ -105,6 +105,12 @@ def _sheet(opaque: bool) -> str:
 .tv-tab.tv-key {{ color: {m('key_ink')}; }}
 .tv-clock {{ font-size: {bar['clock_size']}tv; font-weight: {bar['clock_weight']}; color: {m('ink')};
   font-feature-settings: "tnum"; }}
+/* the bar's cluster (the clock): a key with the TV home's padding when focused; the clock stays put */
+.tv-cluster {{ min-height: {qp['cluster_height']}tv; padding: 0 {qp['cluster_padding_x']}tv;
+  margin-right: -{qp['cluster_padding_x']}tv; border-radius: {qp['cluster_radius']}tv; }}
+.tv-cluster.tv-focus {{ background-image: linear-gradient(180deg, {m('key_top')}, {m('key_bottom')});
+  box-shadow: inset 0 1.5tv 0 {m('key_glint')}, 0 0 0 1.5tv {m('key_rim')}, 0 3tv 10tv {m('key_drop')}; }}
+.tv-cluster.tv-focus .tv-clock {{ color: {m('key_ink')}; }}
 
 /* buttons: 66 tall, radius 22, 25/650, icon 26 */
 .tv-btn {{ min-height: {btn['height']}tv; padding: 0 {btn['padding_x']}tv; border-radius: {btn['radius']}tv;
