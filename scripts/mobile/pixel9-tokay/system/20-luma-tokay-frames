@@ -1,0 +1,2 @@
+[org/gnome/mutter]
+frame-utilization-min=uint32 512

@@ -1,18 +1,20 @@
 #!/bin/bash
-# On the Pixel 9 (root): build the fresh-install userdata image for a release
-# commit in /ostree/repo. userdata holds a disk: LumaBoot (FAT) and LumaRoot
-# (ext4) with the UUIDs the boot image's command line names; the initramfs
-# grows LumaRoot to fill userdata on the first boot. Nothing from the running
+# As root on any Linux host with ostree: build the fresh-install userdata
+# image for a commit in $SRC_REPO (default /ostree/repo, the phone's own).
+# userdata holds a disk: LumaBoot (FAT) and LumaRoot (ext4) with the UUIDs
+# the boot image's command line names; the initramfs grows LumaRoot to fill
+# userdata on the first boot. Nothing from the running
 # system's /etc or /var is copied. The image has one user, luma, password 1234.
 # Writes $OUT/luma-pixel9-$TAG-userdata.sparse, its sha256 and ostree-path (for
 # the boot image). Compress it off the phone: zstd -19 on all cores overheats it.
-# Usage: COMMIT=<commit> TAG=<name> OUT=<dir> build-release-image.sh
+# Usage: COMMIT=<commit> TAG=<name> OUT=<dir> [SRC_REPO=<repo>] [REF=<ref>] build-release-image.sh
 set -euo pipefail
 : "${COMMIT:?}" "${TAG:?}" "${OUT:?}"
 ROOT_UUID=${ROOT_UUID:-03797c05-cf87-4eda-adc4-6ce111baf2d3}
 BOOT_UUID=${BOOT_UUID:-032D-57AD}
 SIZE=${SIZE:-10G}
-REF=luma/1/aarch64/google-tokay/$TAG
+SRC_REPO=${SRC_REPO:-/ostree/repo}
+REF=${REF:-luma/1/aarch64/google-tokay/$TAG}
 mkdir -p $OUT; D=$OUT/disk.raw; M=$OUT/mnt
 rm -f $D; truncate -s $SIZE $D
 # The initramfs reads userdata with 4096-byte sectors (UFS), so the disk
@@ -32,7 +34,7 @@ mkdir -p $M; mount ${L}p2 $M
 
 ostree admin init-fs $M
 ostree admin os-init --sysroot=$M luma
-ostree --repo=$M/ostree/repo pull-local /ostree/repo $COMMIT
+ostree --repo=$M/ostree/repo pull-local $SRC_REPO $COMMIT
 printf '[origin]\nrefspec=luma:%s\n' $REF > $OUT/origin
 ostree --repo=$M/ostree/repo refs --create=luma:$REF $COMMIT
 ostree admin deploy --sysroot=$M --os=luma --origin-file=$OUT/origin $COMMIT
@@ -70,7 +72,8 @@ setfiles -r $M/ostree/deploy/luma $DEP/etc/selinux/targeted/contexts/files/file_
 sync; umount -R $M; trap 'losetup -d $L' EXIT
 e2fsck -fy ${L}p2 >/dev/null || [ $? -le 1 ]
 losetup -d $L; trap - EXIT
-img2simg $D $OUT/luma-pixel9-$TAG-userdata.sparse
+if command -v img2simg >/dev/null; then img2simg $D $OUT/luma-pixel9-$TAG-userdata.sparse
+else python3 "$(dirname "$0")/img2simg.py" $D $OUT/luma-pixel9-$TAG-userdata.sparse; fi
 rm -f $D
 cd $OUT && sha256sum luma-pixel9-$TAG-userdata.sparse > userdata.sparse.sha256
 cat userdata.sparse.sha256 ostree-path
