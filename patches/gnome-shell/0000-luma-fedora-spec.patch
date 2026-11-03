@@ -314,7 +314,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1293:      0311-compact-lock-keeps-prompt-between-swipes.patch
 +Patch1294:      0312-input-sources-no-password-reload-without-ibus.patch
 +Patch1295:      0313-osk-auto-ignores-button-key-devices.patch
-+Patch1296:      0314-st-reuse-prerendered-backgrounds.patch
++Patch1296:      0316-st-reuse-prerendered-backgrounds.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js

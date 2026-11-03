@@ -367,7 +367,7 @@ bound to `org.projectluma.MobileMode1` for modems that carry either IMS or
 mobile data at a time; hidden where that service does not run. Quick Options
 gives it a fifth utility slot. Shell .140.
 
-`0314-st-reuse-prerendered-backgrounds.patch`: St drew, blurred and uploaded
+`0316-st-reuse-prerendered-backgrounds.patch`: St drew, blurred and uploaded
 a cairo-prerendered background (gradients, mixed borders) and its box-shadow
 again whenever a paint state changed, so a focus moving between two styles
 and every row of a list of identical rows paid for a CPU draw, a CPU blur and
