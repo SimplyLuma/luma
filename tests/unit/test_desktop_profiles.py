@@ -15,7 +15,10 @@ class DesktopProfiles(unittest.TestCase):
     def test_full_selection_unchanged(self):
         for arch in t.ARCHITECTURES:
             self.assertEqual(t.packages(ROOT, arch), t.packages(ROOT, arch, profile_name='full'))
-            self.assertTrue(all(t.capabilities(ROOT, arch)['capabilities'].values()))
+            capabilities = t.capabilities(ROOT, arch)['capabilities']
+            # Phones are ARM-only: full is every desktop capability, without the phone stack.
+            self.assertFalse(capabilities.pop('phone'))
+            self.assertTrue(all(capabilities.values()))
 
     def test_preview_excludes_only_declared_capability_providers(self):
         selection = t.profile(ROOT, 'aarch64', 'arm-preview')
@@ -54,9 +57,17 @@ class DesktopProfiles(unittest.TestCase):
         result = subprocess.run(['python3', 'scripts/os/lib/desktop_target.py', '--arch', 'aarch64', 'roles'], cwd=ROOT, env=env, text=True, capture_output=True, check=True)
         self.assertIn('luma-android-runtime', result.stdout.splitlines())
 
+    def test_phone_capability_adds_the_phone_stack_on_arm_only(self):
+        phone = t.lines(ROOT / 'config/os/phone-packages.txt')
+        self.assertTrue(phone)
+        arm = t.packages(ROOT, 'aarch64', fedora=True, profile_name='arm-preview')
+        self.assertTrue(set(phone) <= set(arm))
+        for arch in t.ARCHITECTURES:
+            self.assertFalse(set(phone) & set(t.packages(ROOT, arch, fedora=True)))
+
     def test_capabilities_describe_preview_honestly(self):
         self.assertEqual(t.capabilities(ROOT, 'aarch64', 'arm-preview')['capabilities'],
-                         dict(desktop=True, android_apps=True, windows_apps=False, casting=False))
+                         dict(desktop=True, android_apps=True, windows_apps=False, casting=False, phone=True))
 
     def test_shell_environment_passes_profile_and_rejects_x86(self):
         env = {**os.environ, 'LUMA_TARGET_ARCHITECTURE': 'aarch64', 'LUMA_OS_PROFILE': 'arm-preview'}

@@ -50,10 +50,10 @@ import json, sys
 value = json.load(open(sys.argv[1]))
 assert value['schema'] == 'org.projectluma.desktop-capabilities/v1'
 assert value['architecture'] == sys.argv[2]
-expected = {'desktop': True, 'android_apps': True, 'windows_apps': True, 'casting': True}
+expected = {'desktop': True, 'android_apps': True, 'windows_apps': True, 'casting': True, 'phone': False}
 if value['profile'] == 'arm-preview':
     assert sys.argv[2] == 'aarch64'
-    expected.update(android_apps=False, windows_apps=False, casting=False)
+    expected.update(windows_apps=False, casting=False, phone=True)
 else:
     assert value['profile'] == 'full'
 assert value['capabilities'] == expected
