@@ -455,7 +455,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.tiling = later.tiling_on()
         self.dash = "luma"
         self.chosen: set[str] = set()
-        self.connect = ConnectFlow(self._connect_changed)
+        self.connect_flow = ConnectFlow(self._connect_changed)
         self.index = 0
         self.open_network = ""
         self.joining = ""
@@ -677,7 +677,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         return pane
 
     def _first_focus(self) -> None:
-        target = self.page_parts.get("focus")
+        target = self.page_parts.get("focus") or getattr(self, "key", None)   # nothing to type: Return goes on
         if target is not None and target.get_mapped():
             if isinstance(target, Field):
                 target.text.grab_focus_without_selecting()
@@ -1121,6 +1121,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         else:
             self.dash = key
         self.redraw()
+        GLib.idle_add(lambda: (self.key.grab_focus(), False)[1])  # chosen; Return goes on
 
     def _desk(self):
         """A live miniature of their desk; the choices apply as the session starts, before the reveal."""
@@ -1145,7 +1146,7 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     # Luma Connect ---------------------------------------------------------------------
     def _connect_page(self):
-        flow = self.connect
+        flow = self.connect_flow
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER)
         card.add_css_class("su-card")
         if not self.phone:
@@ -1181,8 +1182,8 @@ class SetupWindow(Gtk.ApplicationWindow):
                 "icon:org.projectluma.Connect")
 
     def _skip_connect(self) -> None:
-        self.connect.later = True
-        self.connect.stop()
+        self.connect_flow.later = True
+        self.connect_flow.stop()
         self.go(1)
 
     def _connect_changed(self) -> None:
@@ -1244,7 +1245,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             skip = button("Skip", "su-bt", "su-quiet", on_click=lambda: self.go(1))
         last = self.index == len(self.pages) - 1
         key_text = "Start using Luma" if last else "Continue"
-        if page == "connect" and not self.connect.done:
+        if page == "connect" and not self.connect_flow.done:
             skip = button("Skip", "su-bt", "su-quiet", on_click=self._skip_connect)
         key = button(key_text, "su-bt", "su-key", on_click=self._press_key)
         key.set_name("su-key")
@@ -1291,7 +1292,8 @@ class SetupWindow(Gtk.ApplicationWindow):
             if isinstance(focus, Gtk.Text) and self.page == "wifi":
                 return False
             # On a row already chosen, Return goes on; on any other button it presses that button.
-            chosen_row = isinstance(focus, Gtk.Button) and focus.has_css_class("su-li") and focus.has_css_class("su-on")
+            chosen_row = (isinstance(focus, Gtk.Button) and focus.has_css_class("su-on")
+                          and (focus.has_css_class("su-li") or focus.has_css_class("su-opt")))
             if isinstance(focus, Gtk.Button) and focus is not getattr(self, "key", None) and not chosen_row:
                 return False
             self._press_key()
@@ -1347,10 +1349,11 @@ class SetupWindow(Gtk.ApplicationWindow):
         payload["first_session"] = {
             "desk": {"tiling": self.tiling, "dash": self.dash} if "desk" in self.pages else None,
             "apps": sorted(self.chosen),
-            "connect_later": not self.connect.done,
+            "connect_later": not self.connect_flow.done,
         }
-        payload["connect_token"] = self.connect.token   # sealed for the account by the helper, never stored plain
-        self.connect.stop()
+        payload["connect_token"] = self.connect_flow.token   # sealed for the account by the helper, never stored plain
+        payload["cover"] = self._save_cover()
+        self.connect_flow.stop()
         s.password = s.again = ""  # the sheet keeps no copy once the helper has it
         password = payload["password"]
         system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
@@ -1376,9 +1379,39 @@ class SetupWindow(Gtk.ApplicationWindow):
             return
         GLib.timeout_add(650, lambda: (self._sign_in(username, password), False)[1])
 
+    def _save_cover(self) -> str | None:
+        """The room as it is behind the sheet, at the screen's size: the first session's first
+        frame shows exactly this, so nothing changes when the session takes over the screen."""
+        path = os.path.join(GLib.get_user_runtime_dir(), "luma-setup-cover.png")
+        try:
+            width, height = self.get_width(), self.get_height()
+            renderer = self.get_renderer()
+            if not width or not height or renderer is None:
+                log.info("no cover saved: the window is not drawn yet")
+                return None
+            self.sheet.set_opacity(0)
+            snap = Gtk.Snapshot()
+            Gtk.WidgetPaintable.new(self).snapshot(snap, width, height)
+            self.sheet.set_opacity(1)
+            node = snap.to_node()
+            if node is None:
+                return None
+            renderer.render_texture(node, None).save_to_png(path)
+            os.chmod(path, 0o644)
+            log.info("cover saved for the first session: %s", path)
+            return path
+        except (GLib.Error, OSError) as error:
+            log.info("no cover saved: %s", error)
+            self.sheet.set_opacity(1)
+            return None
+
     def _sign_in(self, username: str, password: str) -> None:
-        self.root.add_css_class("su-in")
-        system.sign_in(username, password, self._sign_in_problem)
+        """The sheet fades from the room; the room is what the first session opens on."""
+        from gi.repository import Adw
+        target = Adw.CallbackAnimationTarget.new(lambda value: self.sheet.set_opacity(value))
+        fade = Adw.TimedAnimation.new(self.sheet, 1.0, 0.0, 350, target)
+        fade.connect("done", lambda *_a: system.sign_in(username, password, self._sign_in_problem))
+        fade.play()
         if self._on_signed_in is not None:
             self._on_signed_in()
 

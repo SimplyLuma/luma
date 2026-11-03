@@ -5,12 +5,13 @@ Subject: [PATCH] Luma setup: the first session opens under the setup's cover
 
 Luma's first-boot setup asks everything in GDM's initial-setup session and
 signs the person in once, at the end. Their first session's first frame is
-the setup's softened wallpaper instead of the desktop, and the cover lifts
+the setup's own last frame without its sheet (saved by the setup at Finish),
+not the desktop, and the cover lifts
 off the desktop once the session has started: the setup's last motion, with
 the desk choices already applied (luma-setup-first-session, before the Shell).
 ---
 --- a/js/ui/layout.js	2026-11-03 13:09:31
-+++ b/js/ui/layout.js	2026-11-03 13:33:22
++++ b/js/ui/layout.js	2026-11-03 13:49:08
 @@ -787,6 +787,9 @@
  
              await this._updateBackgrounds();
@@ -21,7 +22,7 @@ the desk choices already applied (luma-setup-first-session, before the Shell).
  
          // Hack: Work around grab issue when testing greeter UI in nested
          if (GLib.getenv('GDM_GREETER_TEST') === '1')
-@@ -843,6 +846,51 @@
+@@ -843,6 +846,55 @@
          this._queueUpdateRegions();
  
          this.emit('startup-complete');
@@ -46,8 +47,12 @@ the desk choices already applied (luma-setup-first-session, before the Shell).
 +            width,
 +            height,
 +        });
++        // The setup's own last frame without its sheet, pixel for pixel; else a cover of our own.
++        const frame = GLib.build_filenamev([GLib.get_user_state_dir(), 'luma-setup', 'cover.png']);
 +        const background = this._bgManagers[this.primaryIndex]?.backgroundActor;
-+        if (background) {
++        if (GLib.file_test(frame, GLib.FileTest.EXISTS)) {
++            cover.style = `background-color: #0b0d14; background-image: url("file://${frame}"); background-size: cover;`;
++        } else if (background) {
 +            const wall = new Clutter.Clone({source: background, width, height});
 +            const scale = Math.max(1, Math.min(width / 1600, height / 1000));
 +            wall.add_effect(new Shell.BlurEffect({

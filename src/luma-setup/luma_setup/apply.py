@@ -147,6 +147,25 @@ def _keyring(answers: dict) -> None:
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
 
 
+def _give_cover(user: str, source: str) -> None:
+    """The setup's last frame without the sheet, for the first session's first frame (gnome-shell 0321)."""
+    caller = int(os.environ.get("PKEXEC_UID", "-1"))
+    path = Path(source).resolve(strict=True)
+    if path.parent != Path(f"/run/user/{caller}") or path.stat().st_uid != caller or path.stat().st_size > 64 << 20:
+        raise ValueError("not the setup session's own cover")
+    data = path.read_bytes()
+    if not data.startswith(b"\x89PNG"):
+        raise ValueError("not a PNG")
+    from luma_keyring.autounlock import _as_user, write_private
+    account = pwd.getpwnam(user)
+
+    def write() -> None:
+        folder = Path(account.pw_dir) / ".local" / "state" / "luma-setup"
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        write_private(folder / "cover.png", data, 0o600)
+    _as_user(account, write)
+
+
 def _seal_connect(user: str, token: str) -> None:
     """The Connect token, sealed for the account with luma-keyring's systemd-creds path; never plain."""
     from luma_keyring.autounlock import _as_user, seal_key, write_private
@@ -202,6 +221,11 @@ def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None
         except Exception as error:  # noqa: BLE001 - reported, never fatal after the account
             print(f"luma-setup-apply: {name}: {_reason(error)}", file=sys.stderr)
             _say(out, "step", name, "fail")
+    if answers.get("cover"):
+        try:
+            _give_cover(answers["username"], answers["cover"])
+        except Exception as error:  # noqa: BLE001 - the Shell falls back to a cover of its own
+            print(f"luma-setup-apply: cover: {_reason(error)}", file=sys.stderr)
     if answers.get("connect_token"):
         try:
             _seal_connect(answers["username"], answers["connect_token"])
