@@ -163,7 +163,8 @@ def _markers(answers: dict, state_dir: Path) -> None:
     _write(state_dir / DONE, {"user": answers["username"], "finished": now})
     # The post-login steps run once, in this account's first session.
     _write(state_dir / WELCOME / answers["username"],
-           {"accessibility": answers.get("accessibility") or {}, "created": now})
+           {"accessibility": answers.get("accessibility") or {}, "created": now,
+            "full_name": answers.get("full_name") or "", "pages_before": int(answers.get("pages_before") or 0)})
 
 
 def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None) -> int:

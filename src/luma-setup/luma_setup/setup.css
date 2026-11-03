@@ -6,21 +6,21 @@
 
 window.su-window { background: #0b0d14; }
 .su {
-  --ink: oklch(0.965 0.003 265); --ink-2: oklch(0.82 0.005 265); --ink-3: oklch(0.65 0.006 265); --ink-4: oklch(0.5 0.006 265);
-  --fill-1: oklch(1 0 0 / .06); --fill-2: oklch(1 0 0 / .1); --fill-3: oklch(1 0 0 / .16); --hair: oklch(1 0 0 / .075);
-  --hi: oklch(1 0 0 / .07); --good: oklch(0.76 0.15 150); --acc-ink: oklch(0.82 0.09 250); --acc-ring: oklch(0.72 0.12 250 / .55);
-  --bad: oklch(0.64 0.19 25); --fair: oklch(0.76 0.15 75);
-  --su-pop: oklch(0.315 0.006 265); --su-card: oklch(0.275 0.006 265); --well: oklch(0.212 0.006 265);
-  --chip: oklch(0.405 0.008 265); --key-top: oklch(0.93 0.003 265); --key-bottom: oklch(0.855 0.004 265); --key-ink: oklch(0.2 0.006 265);
-  --av-a: oklch(0.7 0.13 250); --av-b: oklch(0.55 0.14 280);
+  --ink: #f2f3f5; --ink-2: #c2c4c7; --ink-3: #8d8f93; --ink-4: #616367;
+  --fill-1: rgba(255,255,255,.06); --fill-2: rgba(255,255,255,.1); --fill-3: rgba(255,255,255,.16); --hair: rgba(255,255,255,.075);
+  --hi: rgba(255,255,255,.07); --good: #61cb7c; --acc-ink: #97c9fd; --acc-ring: rgba(103,170,237,.55);
+  --bad: #e9504d; --fair: #e8a127;
+  --su-pop: #303235; --su-card: #26282b; --well: #17191c;
+  --chip: #47494d; --key-top: #e7e8ea; --key-bottom: #cecfd2; --key-ink: #151619;
+  --av-a: #5aa3ec; --av-b: #6365c1;
   font-family: Figtree, sans-serif; color: var(--ink);
 }
 .su.su-light {
-  --ink: oklch(0.2 0.008 265); --ink-2: oklch(0.38 0.008 265); --ink-3: oklch(0.54 0.008 265); --ink-4: oklch(0.68 0.006 265);
-  --fill-1: oklch(0.2 0.01 265 / .05); --fill-2: oklch(0.2 0.01 265 / .085); --fill-3: oklch(0.2 0.01 265 / .13); --hair: oklch(0.2 0.01 265 / .09);
-  --hi: rgba(255,255,255,.8); --good: oklch(0.62 0.15 150); --acc-ink: oklch(0.48 0.12 250);
-  --su-pop: #ffffff; --su-card: oklch(0.975 0.003 265); --well: oklch(0.955 0.004 265);
-  --chip: #ffffff; --key-top: oklch(0.33 0.008 265); --key-bottom: oklch(0.22 0.008 265); --key-ink: #ffffff;
+  --ink: #14161a; --ink-2: #404247; --ink-3: #6c6f73; --ink-4: #96989c;
+  --fill-1: rgba(20,22,27,.05); --fill-2: rgba(20,22,27,.085); --fill-3: rgba(20,22,27,.13); --hair: rgba(20,22,27,.09);
+  --hi: rgba(255,255,255,.8); --good: #2e9e52; --acc-ink: #1a609e;
+  --su-pop: #ffffff; --su-card: #f6f7f9; --well: #eff0f3;
+  --chip: #ffffff; --key-top: #33353a; --key-bottom: #191b1e; --key-ink: #ffffff;
 }
 
 /* the room: the wallpaper, softened (the picture is pre-blurred; this dims it as brightness .78 did) */
@@ -33,7 +33,7 @@ window.su-window { background: #0b0d14; }
 /* ── the sheet: head, body, foot ── */
 .su-sheet {
   border-radius: 26px; background-color: var(--su-pop);
-  box-shadow: 0 0 0 .5px oklch(1 0 0 / .1), 0 12px 32px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25), inset 0 1px 0 var(--hi), 0 0 0 1px var(--hair);
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.1), 0 12px 32px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25), inset 0 1px 0 var(--hi), 0 0 0 1px var(--hair);
 }
 .su-light .su-sheet { box-shadow: 0 0 0 .5px rgba(0,0,0,.1), 0 12px 32px -8px rgba(0,0,0,.2), 0 2px 6px rgba(0,0,0,.06), inset 0 1px 0 var(--hi), 0 0 0 1px var(--hair); }
 .su-head { min-height: 60px; padding: 0 28px; border-bottom: 1px solid var(--hair); font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
@@ -65,14 +65,14 @@ button.su-bt.su-key { padding: 0 16px 0 18px; font-weight: 600; letter-spacing: 
 .su-light button.su-bt.su-key { box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 0 0 1px rgba(0,0,0,.7), 0 1px 3px rgba(0,0,0,.25); }
 button.su-bt.su-key:disabled { opacity: .38; box-shadow: none; }
 button.su-bt:focus-visible, button.su-li:focus-visible, button.su-nh:focus-visible, button.su-all:focus-visible,
-button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-visible { outline: 2px solid oklch(0.72 0.12 250 / .6); outline-offset: 2px; }
+button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-visible { outline: 2px solid rgba(103,170,237,.6); outline-offset: 2px; }
 
 /* fields: a recessed well, the accent ring with the focus */
 .su-field { min-height: 42px; padding: 0 13px; border-radius: 12px; background: var(--well);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05); }
 .su-light .su-field, .su-light .su-list, .su-light .su-nets { box-shadow: inset 0 0 0 1px rgba(0,0,0,.075), inset 0 1px 2px rgba(0,0,0,.06), 0 1px 0 rgba(255,255,255,.9); }
 .su-field:focus-within { box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 0 0 2px var(--acc-ring); }
-.su-field.su-bad { box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 0 0 1.5px oklch(0.64 0.19 25 / .7); }
+.su-field.su-bad { box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 0 0 1.5px rgba(233,80,77,.7); }
 .su-field text { font-size: 14px; font-weight: 500; color: var(--ink); background: none; caret-color: var(--ink); }
 .su-field text placeholder { color: var(--ink-4); font-weight: 450; }
 .su-field .su-pre { font-size: 14px; font-weight: 600; color: var(--ink-3); }
@@ -82,7 +82,7 @@ button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-vi
 
 /* lists: rows in a recessed well; the chosen one is a raised chip with a tick */
 .su-list { padding: 4px; border-radius: 16px; background: var(--well);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05); }
 .su-list > row, .su-list > list > row { padding: 0; background: none; }
 .su-li { min-height: 40px; padding: 0 12px; border-radius: 12px; font-size: 14px; font-weight: 500; color: var(--ink); background: none; }
 .su-li:hover { background: var(--fill-1); }
@@ -90,7 +90,7 @@ button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-vi
 .su-li .su-tick { color: var(--acc-ink); opacity: 0; }
 .su-li .su-sub { font-size: 12px; color: var(--ink-3); }
 .su-li.su-on { background: var(--chip); font-weight: 600;
-  box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
 .su-light .su-li.su-on { box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.12); }
 .su-li.su-on .su-tick { opacity: 1; }
 .su-lab { margin: 2px 4px 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
@@ -98,9 +98,9 @@ button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-vi
 
 /* Get online: the networks as one list; a secured one opens in place for its password */
 .su-nets { padding: 4px; border-radius: 18px; background: var(--well);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05); }
 .su-net { border-radius: 14px; }
-.su-net.su-open, .su-net.su-on { background: var(--chip); box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+.su-net.su-open, .su-net.su-on { background: var(--chip); box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
 .su-light .su-net.su-open, .su-light .su-net.su-on { box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.12); }
 button.su-nh { min-height: 44px; padding: 0 14px; border-radius: 14px; font-size: 14px; font-weight: 500; color: var(--ink); background: none; }
 .su-net:not(.su-open):not(.su-on) button.su-nh:hover { background: var(--fill-1); }
@@ -111,8 +111,8 @@ button.su-nh { min-height: 44px; padding: 0 14px; border-radius: 14px; font-size
 .su-sig > .su-bar.su-lit { background: var(--ink-2); }
 .su-nf { padding: 2px 8px 8px; }
 .su-nf button.su-bt { min-height: 42px; min-width: 72px; }
-.su-why { margin: 0 12px 8px; font-size: 12px; color: oklch(0.72 0.17 40); }
-.su-light .su-why { color: oklch(0.55 0.19 30); }
+.su-why { margin: 0 12px 8px; font-size: 12px; color: #fb794a; }
+.su-light .su-why { color: #c83122; }
 
 /* About you: the photo beside four fields, the strength line under them */
 button.su-avb { padding: 0; border-radius: 30px; background: none; box-shadow: none; }
@@ -123,12 +123,12 @@ button.su-avb { padding: 0; border-radius: 30px; background: none; box-shadow: n
 .su-av.su-small { min-width: 34px; min-height: 34px; font-size: 13px; border-radius: 11px; }
 .su-av.su-photo { background-size: cover; background-position: center; }
 .su-cam { min-width: 30px; min-height: 30px; border-radius: 15px; background: var(--chip); color: var(--ink-2);
-  box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
 popover.su-faces-pop > contents { padding: 0; border-radius: 16px; background: var(--su-pop);
-  box-shadow: 0 0 0 .5px oklch(1 0 0 / .1), 0 12px 32px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25), 0 0 0 1px var(--hair); }
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.1), 0 12px 32px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25), 0 0 0 1px var(--hair); }
 .su-faces { padding: 8px; }
 .su-faces button { padding: 0; border-radius: 11px; background: none; }
-.su-faces button.su-on .su-av { box-shadow: 0 0 0 2px var(--su-pop), 0 0 0 4px oklch(0.72 0.13 250); }
+.su-faces button.su-on .su-av { box-shadow: 0 0 0 2px var(--su-pop), 0 0 0 4px #60aaf3; }
 .su-un .su-pre { font-size: 12.5px; }
 .su-un text { color: var(--ink-2); }
 .su-un .su-pen { color: var(--ink-4); }
@@ -177,29 +177,29 @@ button.su-leave { min-height: 32px; padding: 0 2px; border-radius: 8px; font-siz
 button.su-leave:hover { color: var(--ink-2); }
 .su-app { margin-bottom: 16px; }
 .su-mini { border-radius: 14px; background: #1a2040; box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 12px 30px -12px rgba(0,0,0,.6); }
-.su-mw { border-radius: 7px; background: oklch(0.305 0.006 265); padding: 18px 4px 4px; box-shadow: 0 0 0 .6px rgba(0,0,0,.35), 0 7px 17px -4px rgba(0,0,0,.5); }
-.su-light .su-mw { background: oklch(0.95 0.004 265); }
-.su-mi { border-radius: 5px; background: oklch(0.212 0.006 265); }
+.su-mw { border-radius: 7px; background: #2e2f32; padding: 18px 4px 4px; box-shadow: 0 0 0 .6px rgba(0,0,0,.35), 0 7px 17px -4px rgba(0,0,0,.5); }
+.su-light .su-mw { background: #edeef1; }
+.su-mi { border-radius: 5px; background: #17191c; }
 .su-light .su-mi { background: #fff; }
-.su-isl { min-width: 24px; border-radius: 9px; background: oklch(0.27 0.006 265 / .88); box-shadow: inset 0 .4px 0 oklch(1 0 0 / .1), 0 0 0 .4px rgba(0,0,0,.35); }
+.su-isl { min-width: 24px; border-radius: 9px; background: rgba(37,38,41,.88); box-shadow: inset 0 .4px 0 rgba(255,255,255,.1), 0 0 0 .4px rgba(0,0,0,.35); }
 .su-light .su-isl { background: rgba(255,255,255,.86); }
 .su-isl.su-ap { min-width: 120px; } .su-isl.su-st { min-width: 40px; }
-.su-d-cupertino, .su-d-redmond { border-radius: 10px; background: oklch(0.27 0.006 265 / .88); }
+.su-d-cupertino, .su-d-redmond { border-radius: 10px; background: rgba(37,38,41,.88); }
 .su-d-redmond { border-radius: 0; }
 .su-d-cupertino .su-isl, .su-d-redmond .su-isl { background: none; box-shadow: none; }
 .su-rowb { font-size: 13px; font-weight: 600; color: var(--ink-3); }
 .su-seg { padding: 3px; border-radius: 15px; background: var(--well);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05); }
 button.su-opt { min-height: 50px; padding: 0 12px 0 8px; border-radius: 12px; background: none; box-shadow: none; color: var(--ink); }
 button.su-opt:hover { background: var(--fill-1); }
-button.su-opt.su-on { background: var(--chip); box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+button.su-opt.su-on { background: var(--chip); box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
 .su-optn { font-size: 13.5px; font-weight: 600; }
 .su-optl { font-size: 12px; color: var(--ink-3); }
-.su-gl { min-width: 44px; min-height: 32px; border-radius: 8px; background: oklch(0.255 0.006 265); box-shadow: inset 0 0 0 1px var(--hair); }
-.su-light .su-gl { background: oklch(0.955 0.004 265); }
+.su-gl { min-width: 44px; min-height: 32px; border-radius: 8px; background: #212326; box-shadow: inset 0 0 0 1px var(--hair); }
+.su-light .su-gl { background: #eff0f3; }
 .su-gl > box { border-radius: 2.5px; background: alpha(var(--ink-4), .55); }
 .su-gl.g-stack > box:nth-child(1) { min-width: 20px; min-height: 14px; margin: 6px 0 12px 6px; }
-.su-gl.g-stack > box:nth-child(2) { min-width: 14px; min-height: 15px; margin: 11px 6px 6px -8px; box-shadow: 0 0 0 1.5px oklch(0.255 0.006 265); }
+.su-gl.g-stack > box:nth-child(2) { min-width: 14px; min-height: 15px; margin: 11px 6px 6px -8px; box-shadow: 0 0 0 1.5px #212326; }
 .su-gl.g-tile > box { min-width: 16px; min-height: 22px; margin: 5px 1px; }
 .su-gl.g-tile > box:first-child { margin-left: 5px; } .su-gl.g-tile > box:last-child { margin-right: 5px; }
 .su-gl.g-luma > box { min-height: 5px; margin: 22px 1px 5px; border-radius: 2px; }
@@ -217,6 +217,6 @@ button.su-link { margin-top: 8px; min-height: 28px; padding: 0 8px; border-radiu
 .su-tiles { padding: 8px; }
 button.su-tile { padding: 12px 4px 10px; border-radius: 14px; background: none; box-shadow: none; color: var(--ink); }
 button.su-tile:hover { background: var(--fill-1); }
-button.su-tile.su-on { background: oklch(0.72 0.12 250 / .1); box-shadow: inset 0 0 0 1.5px oklch(0.72 0.12 250 / .55); }
+button.su-tile.su-on { background: rgba(103,170,237,.1); box-shadow: inset 0 0 0 1.5px rgba(103,170,237,.55); }
 .su-tn { font-size: 12.5px; font-weight: 600; }
 .su-sum { margin: 14px 2px 0; font-size: 12.5px; color: var(--ink-3); }

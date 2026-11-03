@@ -444,6 +444,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         if not setup.network:
             setup.network = "wired" if self.network.wired() else self.network.connected_name()
         self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
+        # The steps after sign-in carry on in the same sheet: the dots count them from here.
+        self.later = _later_pages(self.phone)
         self.index = 0
         self.open_network = ""
         self.joining = ""
@@ -557,7 +559,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.dots.remove(child)
         if self._finishing:
             return
-        for i, _page in enumerate(self.pages):
+        for i in range(len(self.pages) + self.later):
             dot = Gtk.Box(valign=Gtk.Align.CENTER)
             dot.add_css_class("su-dot")
             if i == self.index:
@@ -566,7 +568,7 @@ class SetupWindow(Gtk.ApplicationWindow):
                 dot.add_css_class("su-past")
             self.dots.append(dot)
         self.dots.update_property([Gtk.AccessibleProperty.LABEL],
-                                  [f"Step {self.index + 1} of {len(self.pages)}"])
+                                  [f"Step {self.index + 1} of {len(self.pages) + self.later}"])
 
     # -- size --------------------------------------------------------------------------
     def _fit(self) -> None:
@@ -1188,6 +1190,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         self._shots = getattr(self, "_shots", 0) + 1
         snapshot(self, f"{self._shots:02d}-finish")
         payload = s.payload()
+        payload["pages_before"] = len(self.pages)
         s.password = s.again = ""  # the sheet keeps no copy once the helper has it
         password = payload["password"]
         system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
@@ -1221,6 +1224,15 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     def _sign_in_problem(self, message: str) -> None:
         log.warning("sign-in: %s", message)
+
+
+def _later_pages(phone: bool) -> int:
+    try:
+        from .welcome import page_names
+        return len(page_names(phone))
+    except Exception as error:  # noqa: BLE001 - no welcome to count: the dots are first boot's own
+        log.info("welcome pages unknown: %s", error)
+        return 0
 
 
 def _taken(name: str) -> bool:

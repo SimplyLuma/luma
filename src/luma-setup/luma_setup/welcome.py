@@ -189,6 +189,12 @@ def connect_account() -> str:
     return str(profile.get("username") or "")
 
 
+def page_names(phone: bool, groups: list | None = None) -> list[str]:
+    """The welcome's pages; first boot counts them so the dots run on across both."""
+    groups = collections() if groups is None else groups
+    return (["connect"] if phone else ["desk", "connect"]) + (["apps"] if groups else [])
+
+
 class WelcomeWindow(Gtk.ApplicationWindow):
     """The post-login sheet over their desktop."""
 
@@ -202,7 +208,9 @@ class WelcomeWindow(Gtk.ApplicationWindow):
         self.light = prefers_light()
         self.name = first_name(welcome.get("full_name") or GLib.get_real_name() or "")
         self.groups = collections()
-        self.pages = (["connect"] if phone else ["desk", "connect"]) + (["apps"] if self.groups else [])
+        self.pages = page_names(phone, self.groups)
+        # First boot's pages, already behind them: one count across both stages.
+        self.before = max(0, int(welcome.get("pages_before", 0) or 0))
         self.index = 0
         self.tiling = tiling_on()
         self.dash = current_dash()
@@ -222,7 +230,8 @@ class WelcomeWindow(Gtk.ApplicationWindow):
         if texture is not None and welcome.get("lift", True):
             self.cover.set_paintable(texture)
             root.add_overlay(self.cover)
-            GLib.timeout_add(100, self._lift)
+            # The cover lifts once this window is on screen: the shell held a matching cover until then.
+            self.connect("map", lambda *_a: GLib.timeout_add(350, self._lift))
         self.sheet = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, overflow=Gtk.Overflow.HIDDEN)
         self.sheet.add_css_class("su-sheet")
         self.sheet.set_name("su-sheet")
@@ -286,10 +295,11 @@ class WelcomeWindow(Gtk.ApplicationWindow):
     def draw(self) -> None:
         while (child := self.dots.get_first_child()) is not None:
             self.dots.remove(child)
-        for i, _p in enumerate(self.pages):
+        here = self.before + self.index
+        for i in range(self.before + len(self.pages)):
             dot = Gtk.Box(valign=Gtk.Align.CENTER)
             dot.add_css_class("su-dot")
-            dot.add_css_class("su-on" if i == self.index else "su-past" if i < self.index else "su-next")
+            dot.add_css_class("su-on" if i == here else "su-past" if i < here else "su-next")
             self.dots.append(dot)
         title, lede, body, app_icon = {"desk": self._desk, "connect": self._connect, "apps": self._apps}[self.page]()
         pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)

@@ -8,6 +8,9 @@ PartOf=graphical-session.target
 
 [Service]
 Type=exec
+# On screen as soon as it can be: the sheet reads the appearance itself, and the
+# portal is still starting in a first session.
+Environment=ADW_DISABLE_PORTAL=1
 ExecStart=/usr/libexec/luma-setup --welcome
 Restart=no
 

@@ -26,6 +26,7 @@ __all__ = ("SetupApplication", "main", "APP_ID")
 
 APP_ID = "org.projectluma.Setup"
 log = logging.getLogger("luma-setup")
+STARTED = __import__("time").monotonic()
 
 
 def initial_setup() -> Setup:
@@ -54,6 +55,15 @@ def initial_setup() -> Setup:
     return setup
 
 
+def _process_age() -> float:
+    try:
+        ticks = int(open("/proc/self/stat").read().rsplit(")", 1)[1].split()[19])
+        uptime = float(open("/proc/uptime").read().split()[0])
+        return uptime - ticks / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        return -1.0
+
+
 class SetupApplication(Adw.Application):
     def __init__(self) -> None:
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.NON_UNIQUE)
@@ -71,6 +81,10 @@ class SetupApplication(Adw.Application):
         load_style()
         # A field keeps what is in it when it takes the focus; nothing is selected for the person.
         Gtk.Settings.get_default().props.gtk_entry_select_on_focus = False
+
+    def _shown(self, *_args) -> None:
+        log.info("on screen %.1f s after the process started (%.1f s in this module)",
+                 _process_age(), __import__("time").monotonic() - STARTED)
 
     def do_activate(self) -> None:
         if self.window is not None:
@@ -92,6 +106,7 @@ class SetupApplication(Adw.Application):
                 self.window.set_default_size(int(width) if height else 1440, int(height) if height else 900)
             elif not os.environ.get("LUMAUI_CONFORM_DUMP"):
                 self.window.fullscreen()
+            self.window.connect("map", self._shown)
             self.window.present()
             return
         setup = initial_setup()

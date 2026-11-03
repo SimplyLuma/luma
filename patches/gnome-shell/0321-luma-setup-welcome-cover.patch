@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 3 Nov 2026 13:10:00 -0600
+Subject: [PATCH] Luma setup: one sheet across the first sign-in
+
+A person's first session after Luma's first-boot setup continues the setup
+sheet (luma-setup --welcome). Until that window has drawn, a cover of the
+softened wallpaper stands over the session, so the desktop never shows
+between the two; the welcome window maps without the open animation and
+takes over from the cover it matches. A welcome that never appears lets the
+cover fade after 20 seconds.
+---
+--- a/js/ui/layout.js
++++ b/js/ui/layout.js
+@@ -788,6 +788,9 @@
+             await this._updateBackgrounds();
+         }
+ 
++        if (!Main.sessionMode.isGreeter)
++            this._lumaWelcomeCover();
++
+         // Hack: Work around grab issue when testing greeter UI in nested
+         if (GLib.getenv('GDM_GREETER_TEST') === '1')
+             setTimeout(() => this.emit('startup-prepared'), 200);
+@@ -845,6 +848,62 @@
+         this.emit('startup-complete');
+     }
+ 
++    // A person's first session after Luma's first-boot setup: the setup sheet
++    // goes on there (luma-setup --welcome) over the softened wallpaper. Until
++    // its window has drawn, the same cover stands over the whole session, so
++    // nothing of the desktop shows between the two. A welcome that never
++    // comes lets the cover fade after 20 seconds.
++    _lumaWelcomeCover() {
++        if (Main.sessionMode.currentMode !== 'user')
++            return;
++        const pending = GLib.build_filenamev(['/var/lib/luma-setup/welcome', GLib.get_user_name()]);
++        const done = GLib.build_filenamev([GLib.get_user_state_dir(), 'luma-setup', 'welcome-done']);
++        if (!GLib.file_test(pending, GLib.FileTest.EXISTS) || GLib.file_test(done, GLib.FileTest.EXISTS))
++            return;
++
++        const {width, height} = global.stage;
++        const cover = new St.Widget({
++            name: 'lumaWelcomeCover',
++            style: 'background-color: #0b0d14;',
++            reactive: true,
++            width,
++            height,
++        });
++        const background = this._bgManagers[this.primaryIndex]?.backgroundActor;
++        if (background) {
++            const wall = new Clutter.Clone({source: background, width, height});
++            const scale = Math.max(1, Math.min(width / 1600, height / 1000));
++            wall.add_effect(new Shell.BlurEffect({
++                radius: Math.round(34 * scale),
++                brightness: 0.62,
++                mode: Shell.BlurMode.ACTOR,
++            }));
++            cover.add_child(wall);
++        }
++        this.addTopChrome(cover);
++
++        const remove = () => {
++            if (cover.get_parent())
++                cover.destroy();
++        };
++        global.display.connectObject('window-created', (_display, window) => {
++            if (window.get_wm_class() !== 'org.projectluma.Setup')
++                return;
++            window.get_compositor_private()?.connectObject('first-frame', () => {
++                // The welcome draws the same cover; it takes over once it is on screen.
++                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
++                    remove();
++                    return GLib.SOURCE_REMOVE;
++                });
++            }, cover);
++        }, cover);
++        GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 20, () => {
++            if (cover.get_parent())
++                cover.ease({opacity: 0, duration: 400, onComplete: remove});
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
+     // setDummyCursorGeometry:
+     //
+     // The cursor dummy is a standard widget commonly used for popup
+--- a/js/ui/windowManager.js
++++ b/js/ui/windowManager.js
+@@ -1647,6 +1647,12 @@
+         if (actor.meta_window.get_window_type() === Meta.WindowType.NORMAL) {
+             const app = Shell.WindowTracker.get_default().get_window_app(actor.meta_window);
+             actor._lumaLaunchRect = LumaWindowMotion.takeLaunch(app);
++        }
++
++        // Luma setup's welcome replaces the cover it matches in place: it does not open.
++        if (actor.meta_window.get_wm_class() === 'org.projectluma.Setup') {
++            shellwm.completed_map(actor);
++            return;
+         }
+ 
+         if (!this._shouldAnimateActor(actor, types)) {
