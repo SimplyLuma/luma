@@ -1,7 +1,0 @@
-#!/bin/sh
-# SPDX-License-Identifier: Apache-2.0
-# systemd user environment generator: Raspberry Pi 5 Shell defaults. The
-# directory exists only after luma-rpi5-shell-defaults.service ran on a Pi 5.
-dir=/run/luma-rpi5/schemas
-[ -f "$dir/gschemas.compiled" ] || exit 0
-echo "GSETTINGS_SCHEMA_DIR=$dir${GSETTINGS_SCHEMA_DIR:+:$GSETTINGS_SCHEMA_DIR}"

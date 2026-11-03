@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 """Static and runnable checks for luma-rpi5-platform and its SD card sources."""
-import configparser
 import re
 import shutil
 import subprocess
@@ -9,7 +8,6 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
-SHELL_SCHEMA = HERE.parent / "luma-shell-state" / "org.project_luma.shell-state.gschema.xml"
 PI5 = ("raspberrypi,5-model-b", "raspberrypi,5-model-b-d0")
 
 
@@ -27,33 +25,17 @@ class Platform(unittest.TestCase):
                        'ATTR{power/autosuspend_delay_ms}="2000"'):
             self.assertIn(needle, active[0])
 
-    def test_shell_default_is_backdrop_blur_not_reduce_transparency(self):
-        override = configparser.ConfigParser()
-        override.read(HERE / "rpi5.gschema.override")
-        self.assertEqual(dict(override["org.project_luma.shell-state"]), {"backdrop-blur": "false"})
+    def test_no_shell_defaults_on_the_pi(self):
+        # Backdrop blur costs ~15-20% on the Pi 5 since the partial-redraw and
+        # V3D blit work, so the Pi keeps the stock Shell defaults.
+        self.assertEqual(sorted(p.name for p in HERE.glob("*.gschema.override")), [])
 
-    @unittest.skipUnless(SHELL_SCHEMA.is_file() and shutil.which("glib-compile-schemas"),
-                         "Shell state schema or glib-compile-schemas unavailable")
-    def test_override_compiles_strictly_against_the_shell_schema(self):
-        with tempfile.TemporaryDirectory() as directory:
-            shutil.copy(SHELL_SCHEMA, directory)
-            shutil.copy(HERE / "rpi5.gschema.override", Path(directory) / "90-luma-rpi5.gschema.override")
-            subprocess.run(["glib-compile-schemas", "--strict", directory], check=True)
-            self.assertTrue((Path(directory) / "gschemas.compiled").is_file())
-
-    def test_service_runs_only_on_pi5_boards(self):
-        unit = (HERE / "luma-rpi5-shell-defaults.service").read_text()
-        conditions = re.findall(r"^ConditionFirmware=(.*)$", unit, re.M)
-        self.assertEqual(conditions, [f"|device-tree-compatible({name})" for name in PI5])
-
-    def test_generator_is_silent_without_the_pi_schemas(self):
-        if Path("/run/luma-rpi5/schemas/gschemas.compiled").exists():
-            self.skipTest("running on a configured Pi 5")
-        result = subprocess.run([str(HERE / "62-luma-rpi5-schemas")], capture_output=True, text=True, check=True)
-        self.assertEqual(result.stdout, "")
+    def test_firmware_sync_runs_only_on_pi5_boards(self):
+        unit = (HERE / "luma-rpi5-firmware-sync.service").read_text()
+        conditions = re.findall(r"^ConditionFirmware=\|device-tree-compatible\((.*)\)$", unit, re.M)
+        self.assertTrue(set(PI5) <= set(conditions), conditions)
 
     def test_gsk_generator_picks_gl_only_on_a_pi5(self):
-        import tempfile
         gen = str(HERE / "63-luma-rpi5-gsk-renderer")
         cases = {b"raspberrypi,5-model-b\0brcm,bcm2712\0": "GSK_RENDERER=gl\n",
                  b"raspberrypi,5-model-b-d0\0brcm,bcm2712\0": "GSK_RENDERER=gl\n",
