@@ -1,0 +1,76 @@
+From 20e2646e01ca1a9d300afa6ee0ef6a00eb46b459 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 2 Nov 2026 22:59:26 -0600
+Subject: [PATCH] evdev-backend: stop watching a device's fd once it hangs up
+
+The evdev backend watched its device fd for G_IO_IN only. When the device
+is unplugged, poll() reports POLLHUP/POLLERR for the fd from then on; a
+GIOChannel watch ignores conditions it was not asked for, so the source
+never dispatches but stays in the poll set, and every main-loop iteration
+returns from poll() at once. The loop spins at full CPU until the device
+and its backend are finalized, which a language binding (GJS, Python) can
+put off for a long time after "disconnected".
+
+Watch for HUP, ERR and NVAL too and remove the source when they arrive.
+
+poll_events() also stops draining when libevdev_next_event() fails
+(-ENODEV once the device is gone, while poll() keeps reporting the fd
+readable) instead of retrying forever.
+---
+ src/manette-evdev-backend.c | 30 +++++++++++++++++++++++-------
+ 1 file changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/src/manette-evdev-backend.c b/src/manette-evdev-backend.c
+index 24e95fb..aa8cc8b 100644
+--- a/src/manette-evdev-backend.c
++++ b/src/manette-evdev-backend.c
+@@ -203,15 +203,30 @@ poll_events (GIOChannel          *source,
+ 
+   g_assert (MANETTE_IS_EVDEV_BACKEND (self));
+ 
+-  while (libevdev_has_event_pending (self->evdev_device)) {
+-    if (libevdev_next_event (self->evdev_device,
+-                             (guint) LIBEVDEV_READ_FLAG_NORMAL,
+-                             &evdev_event) == 0) {
++  while (libevdev_has_event_pending (self->evdev_device) > 0) {
++    int rc = libevdev_next_event (self->evdev_device,
++                                  (guint) LIBEVDEV_READ_FLAG_NORMAL,
++                                  &evdev_event);
++
++    if (rc == 0)
+       on_evdev_event (self, &evdev_event);
+-    }
++    else if (rc < 0)
++      /* -EAGAIN, or -ENODEV once the device is gone: its fd stays
++       * readable for poll() (HUP), so retrying would never end. */
++      break;
+   }
+ 
+-  return TRUE;
++  /* An unplugged device's fd reports HUP/ERR from then on. A watch that
++   * takes no notice of them stays in the poll set and wakes the main loop
++   * at once on every iteration, a busy loop until the device is finalized,
++   * which a language binding can put off for a long time. */
++  if (condition & (G_IO_HUP | G_IO_ERR | G_IO_NVAL)) {
++    self->event_source_id = 0;
++
++    return G_SOURCE_REMOVE;
++  }
++
++  return G_SOURCE_CONTINUE;
+ }
+ 
+ static void
+@@ -275,7 +290,8 @@ manette_evdev_backend_initialize (ManetteBackend *backend)
+ 
+   // Poll the events in the main loop.
+   channel = g_io_channel_unix_new (self->fd);
+-  self->event_source_id = g_io_add_watch (channel, G_IO_IN, (GIOFunc) poll_events, self);
++  self->event_source_id = g_io_add_watch (channel, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
++                                          (GIOFunc) poll_events, self);
+ 
+   buttons_number = 0;
+ 
+-- 
+2.56.0
+
