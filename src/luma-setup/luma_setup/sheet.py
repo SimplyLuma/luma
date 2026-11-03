@@ -1447,7 +1447,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.foot.set_spacing(4)
             self.foot.append(key)
             if back or skip:
-                pair = box(back, skip, spacing=0, homogeneous=True)
+                pair = box(back, skip, spacing=0)   # each grows by the same share, as flex: 1
                 for child in (back, skip):
                     if child is not None:
                         child.set_hexpand(True)
