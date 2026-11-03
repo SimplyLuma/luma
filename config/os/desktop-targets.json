@@ -19,6 +19,21 @@
   "hardware_packages": {
     "intel-crashlog": [
       "x86_64"
+    ],
+    "kernel-luma-rpi": [
+      "aarch64"
+    ],
+    "luma-rpi5-platform": [
+      "aarch64"
+    ],
+    "luma-rpi-bluetooth-firmware": [
+      "aarch64"
+    ],
+    "gstreamer1-plugins-bad-free": [
+      "aarch64"
+    ],
+    "gstreamer1-plugins-bad-free-libs": [
+      "aarch64"
     ]
   },
   "hardware_targets": {

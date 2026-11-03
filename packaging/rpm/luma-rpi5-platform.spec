@@ -17,7 +17,7 @@ Requires:       brcmfmac-firmware
 # grub2-editenv for boot-next.
 Requires:       grub2-tools-minimal
 # The Raspberry Pi 5 update stream (update.conf).
-Requires:       luma-update >= 1.0.0-1.luma.27
+Requires:       luma-update >= 1.0.0-1.luma.28
 Requires:       util-linux
 
 %description
