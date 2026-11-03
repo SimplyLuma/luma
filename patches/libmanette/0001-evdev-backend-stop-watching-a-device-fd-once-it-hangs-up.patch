@@ -1,0 +1,54 @@
+From f4565edf42d1e7d5e77fa48b26961155fa9edd86 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 2 Nov 2026 22:59:26 -0600
+Subject: [PATCH] evdev-backend: stop watching a device's fd once it hangs up
+
+The evdev backend watched its device fd for G_IO_IN only. When the device
+is unplugged, poll() reports POLLHUP/POLLERR for the fd from then on; a
+GIOChannel watch ignores conditions it was not asked for, so the source
+never dispatches but stays in the poll set, and every main-loop iteration
+returns from poll() at once. The loop spins at full CPU until the device
+and its backend are finalized, which a language binding (GJS, Python) can
+put off for a long time after "disconnected".
+
+Watch for HUP, ERR and NVAL too and remove the source when they arrive.
+---
+ src/manette-evdev-backend.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/src/manette-evdev-backend.c b/src/manette-evdev-backend.c
+index 24e95fb..e2f92bb 100644
+--- a/src/manette-evdev-backend.c
++++ b/src/manette-evdev-backend.c
+@@ -211,7 +211,17 @@ poll_events (GIOChannel          *source,
+     }
+   }
+ 
+-  return TRUE;
++  /* An unplugged device's fd reports HUP/ERR from then on. A watch that
++   * takes no notice of them stays in the poll set and wakes the main loop
++   * at once on every iteration, a busy loop until the device is finalized,
++   * which a language binding can put off for a long time. */
++  if (condition & (G_IO_HUP | G_IO_ERR | G_IO_NVAL)) {
++    self->event_source_id = 0;
++
++    return G_SOURCE_REMOVE;
++  }
++
++  return G_SOURCE_CONTINUE;
+ }
+ 
+ static void
+@@ -275,7 +285,8 @@ manette_evdev_backend_initialize (ManetteBackend *backend)
+ 
+   // Poll the events in the main loop.
+   channel = g_io_channel_unix_new (self->fd);
+-  self->event_source_id = g_io_add_watch (channel, G_IO_IN, (GIOFunc) poll_events, self);
++  self->event_source_id = g_io_add_watch (channel, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
++                                          (GIOFunc) poll_events, self);
+ 
+   buttons_number = 0;
+ 
+-- 
+2.56.0
+
