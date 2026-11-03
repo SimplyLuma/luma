@@ -23,7 +23,12 @@ from typing import Callable
 
 from gi.repository import GLib
 
-__all__ = ("ConnectFlow",)
+__all__ = ("ConnectFlow", "show_code", "CLEAR")
+
+# RFC 8628 6.1: a code a person copies by eye uses no letters or digits that look
+# alike. The identity provider issues it from these twenty consonants (no vowels,
+# so no words either); the sheet shows it in a monospace face, in groups of four.
+CLEAR = frozenset("BCDFGHJKLMNPQRSTVWXZ")
 
 log = logging.getLogger("luma-setup")
 CLIENT = Path("/etc/luma-connect/client.json")
@@ -88,7 +93,10 @@ class ConnectFlow:
                 return
             grant = self._post(endpoint, {"client_id": cfg["client_id"],
                                           "scope": cfg.get("scope", "openid profile email offline_access")})
-            self.code = grant["user_code"]
+            self.code = show_code(grant["user_code"])
+            if not set(self.code.replace("-", "")) <= CLEAR:
+                log.warning("Connect: the identity provider's code has characters that can be misread: "
+                            "configure its user codes from RFC 8628's twenty consonants")
             self.url = grant.get("verification_uri_complete") or grant["verification_uri"]
             self.url_short = urllib.parse.urlsplit(grant["verification_uri"]).netloc + \
                 urllib.parse.urlsplit(grant["verification_uri"]).path
@@ -101,6 +109,7 @@ class ConnectFlow:
                     "device_code": grant["device_code"], "client_id": cfg["client_id"]})
                 if "access_token" in answer:
                     self.token = json.dumps(answer)
+                    self.account = _account(answer.get("id_token", ""))
                     self.done = True
                     self._tell()
                     return
@@ -115,3 +124,20 @@ class ConnectFlow:
             log.info("Connect sign-in unavailable: %s", error)
             self.why = "Sign in to Luma Connect from your desktop once Luma starts."
             self._tell()
+
+
+def show_code(code: str) -> str:
+    """The user code as the sheet shows it: upper case, in groups of four (ABCD-EFGH)."""
+    bare = "".join(ch for ch in code.upper() if ch.isalnum())
+    return "-".join(bare[i:i + 4] for i in range(0, len(bare), 4))
+
+
+def _account(id_token: str) -> str:
+    """The account's name from the ID token, for the sheet only (the token itself is verified by Connect)."""
+    import base64
+    try:
+        payload = id_token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        return str(claims.get("preferred_username") or "")[:64]
+    except (IndexError, ValueError):
+        return ""
