@@ -333,11 +333,15 @@ chmod 0600 "$sysroot/boot/grub2/grubenv"
 # the stateroot's /var (with /home), from the payload's own policy.
 fc="$deploy/etc/selinux/targeted/contexts/files/file_contexts"
 [ -f "$fc" ] || fail "the payload has no targeted file_contexts"
-setfiles -F -r "$sysroot" "$fc" "$sysroot/boot" 2>&1 | grep -v 'Read-only\|efi' || true
+# Validate contexts against the payload's own policy, not the build host's
+# (the payload has modules the host lacks, such as snapd's).
+policy=$(find "$deploy/etc/selinux/targeted/policy" -maxdepth 1 -name 'policy.*' | sort -V | tail -n 1)
+[ -n "$policy" ] || fail "the payload has no targeted binary policy"
+setfiles -F -c "$policy" -r "$sysroot" "$fc" "$sysroot/boot" 2>&1 | grep -v 'Read-only\|efi' || true
 install -d "$var/home"
 mount --bind "$var" "$deploy/var"
 mount -o subvol=home "${loop}p3" "$deploy/var/home"
-setfiles -F -r "$deploy" "$fc" "$deploy/var" || fail "labelling /var failed"
+setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy/var" || fail "labelling /var failed"
 umount "$deploy/var/home" "$deploy/var"
 
 # The boot partition (also the ESP).
