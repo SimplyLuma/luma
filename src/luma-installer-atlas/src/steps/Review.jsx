@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Project Luma contributors
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * Step 6 · Here is what will happen.
+ * Step 4 · Here is what will happen.
  * Every answer, each a link back to its step; the Layout line is generated
  * from the applied plan's device tree; the warning names the drive that
  * changes and every drive that does not. Nothing before the primary button

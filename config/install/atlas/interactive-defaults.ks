@@ -178,7 +178,7 @@ exit 0
 # this and leaves out Hello, starting from the language and keyboard set here.
 # The time zone, the account and more apps are asked at first boot.
 %post --nochroot --interpreter=/usr/bin/python3
-import json, os, re
+import json, os, re, subprocess
 root = os.environ.get("ANA_INSTALL_PATH", "/mnt/sysroot")
 def read(path):
     try:
@@ -201,6 +201,7 @@ if locale and layout:
     with open(os.path.join(folder, "installer.json"), "w", encoding="utf-8") as handle:
         json.dump({"answered": ["hello"], "locale": locale,
                    "layout": layout + ("+" + variant if variant else "")}, handle)
+    subprocess.run(["chroot", root, "/usr/sbin/restorecon", "-RF", "/var/lib/luma-setup"], check=False)
     print(f"atlas: first-boot setup starts from {locale} and the {layout} keyboard")
 %end
 

@@ -6,13 +6,13 @@
  * Walk a REAL Atlas installer running in a throwaway VM (vm-test.sh remote),
  * capturing each step with the data Anaconda actually reports.
  *
- *   node test/visual/vm-walk.mjs OUTDIR review    walk steps 1-6, wait on the review step until
+ *   node test/visual/vm-walk.mjs OUTDIR review    walk steps 1-4, wait on the review step until
  *                                                  OUTDIR/go exists (checksum the drives then),
- *                                                  press the primary button, follow step 7 to 8
+ *                                                  press the primary button, follow step 5 to 6
  *   node test/visual/vm-walk.mjs OUTDIR look      screenshot whatever is on screen
  *
  * ATLAS_URL defaults to http://127.0.0.1:18080/cockpit/@localhost/anaconda-webui/index.html
- * ATLAS_SURFACE (paper|ink) and ATLAS_TARGET (disk name, default nvme0n1).
+ * ATLAS_SURFACE (paper|ink), ATLAS_TARGET (disk name, default nvme0n1) and ATLAS_LOCK=0 (no drive lock).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -45,7 +45,7 @@ const shot = async (name) => {
     await page.screenshot({ path: file });
     console.log(`screenshot ${file}`);
 };
-const waitStep = (n, timeout = 120000) => page.locator(".install-kicker", { hasText: `Step ${n} of 9` }).waitFor({ timeout });
+const waitStep = (n, timeout = 120000) => page.locator(".install-kicker", { hasText: `Step ${n} of 6` }).waitFor({ timeout });
 const primary = () => page.locator(".install-actions .install-btn.primary");
 const facts = async () => page.evaluate(() => ({
     kicker: document.querySelector(".install-kicker")?.textContent,
@@ -69,62 +69,43 @@ try {
         await primary().click();
 
         await waitStep(2);
-        await page.locator(".install-note", { hasText: "Your clock will read" }).waitFor({ timeout: 60000 });
-        await shot("02-location");
-        await primary().click();
-
-        await waitStep(3);
         await page.locator(`#disk-${target}`).waitFor({ timeout: 120000 });
-        await shot("03a-disk-before-choice");
+        await shot("02a-disk-before-choice");
         await page.locator(`#disk-${target}`).click();
         await page.locator("#disk-method-erase-all").waitFor({ timeout: 120000 });
         await page.locator("#disk-method-erase-all").click();
         await page.locator("#disk-method-erase-all[aria-pressed='true']").waitFor();
-        await shot("03-disk");
+        await shot("02-disk");
         console.log((await facts()).text);
         await primary().click();
 
-        await waitStep(4);
-        if (!await page.locator("#encryption-lock").isChecked()) await page.locator("#encryption-lock").press("Space");
-        await page.fill("#encryption-passphrase", "atlas vm test passphrase");
-        await page.fill("#encryption-confirm", "atlas vm test passphrase");
+        await waitStep(3);
+        // ATLAS_LOCK=0 leaves the drive unlocked, so the installed system boots without a passphrase.
+        const lock = process.env.ATLAS_LOCK !== "0";
+        if (await page.locator("#encryption-lock").isChecked() !== lock) await page.locator("#encryption-lock").press("Space");
+        if (lock) {
+            await page.fill("#encryption-passphrase", "atlas vm test passphrase");
+            await page.fill("#encryption-confirm", "atlas vm test passphrase");
+        }
         await page.waitForTimeout(800);
-        await shot("04-encryption");
+        await shot("03-encryption");
         await primary().click();
 
-        await waitStep(5, 300000);
-        await page.fill("#account-name", "Atlas Tester");
-        await page.waitForTimeout(1500);
-        await page.fill("#account-password", "atlas-vm-test-pw");
-        await page.fill("#account-confirm", "atlas-vm-test-pw");
-        await page.locator("label[for=account-autologin]").click();
-        await page.waitForTimeout(800);
-        await shot("05-account");
-        console.log((await facts()).text);
-        await primary().click();
-
-        await waitStep(6, 300000);
-        await page.locator("#apps-office").click();
-        await page.locator("#apps-studio").click();
-        await shot("06-apps");
-        console.log((await facts()).text);
-        await primary().click();
-
-        await waitStep(7, 300000);
+        await waitStep(4, 300000);
         await page.locator(".install-summary").waitFor({ timeout: 300000 });
-        await shot("07-review");
+        await shot("04-review");
         console.log((await facts()).text);
         // A viewer reload must come back to the same step with Anaconda's answers.
         if (process.env.ATLAS_SKIP_RELOAD !== "1") {
         await page.reload();
-        await waitStep(7, 120000);
+        await waitStep(4, 120000);
         await page.locator(".install-summary").waitFor({ timeout: 120000 });
-        await shot("07r-review-after-reload");
+        await shot("04r-review-after-reload");
         console.log(`AFTER RELOAD: ${(await facts()).text.split("\n").filter(Boolean).slice(0, 3).join(" | ")}`);
         }
         await page.locator(".install-rail button").nth(2).hover();
         await page.waitForTimeout(300);
-        await shot("07b-review-dot-hover");
+        await shot("04b-review-dot-hover");
         await page.mouse.move(0, 0);
         console.log("STOPPED AT REVIEW: create OUTDIR/go to press the primary button");
         const go = path.join(outdir, "go");
@@ -132,17 +113,17 @@ try {
             await page.waitForTimeout(2000);
         }
         fs.rmSync(go);
-        await shot("07c-review-before-erase");
+        await shot("04c-review-before-erase");
         await primary().click();
-        await waitStep(8);
+        await waitStep(5);
         await page.waitForTimeout(3000);
-        await shot("08a-installing-start");
+        await shot("05a-installing-start");
         console.log((await facts()).text);
         const started = Date.now();
         let lastPhase = "";
         for (;;) {
             const state = await page.evaluate(() => ({
-                done: !!document.querySelector(".install-kicker")?.textContent.includes("Step 9"),
+                done: !!document.querySelector(".install-kicker")?.textContent.includes("Step 6"),
                 failed: !!document.querySelector(".install-warn")?.textContent.includes("Something went wrong"),
                 percent: document.querySelector(".install-percent")?.textContent,
                 phase: [...document.querySelectorAll(".install-phase")].map(p => p.dataset.state.slice(0, 2)).join(","),
@@ -151,7 +132,7 @@ try {
             if (state.phase !== lastPhase) {
                 lastPhase = state.phase;
                 console.log(`${Math.round((Date.now() - started) / 1000)}s ${state.percent} phases=${state.phase}`);
-                await shot(`08-installing-${state.phase}`);
+                await shot(`05-installing-${state.phase}`);
             }
             if (state.done || state.failed) {
                 console.log(state.text);
@@ -163,7 +144,7 @@ try {
             }
             await page.waitForTimeout(5000);
         }
-        await shot("09-final");
+        await shot("06-final");
         console.log(`elapsed ${Math.round((Date.now() - started) / 1000)}s`);
         if (process.env.ATLAS_RESTART === "1") {
             await page.locator(".install-btn.primary", { hasText: "Restart now" }).click();

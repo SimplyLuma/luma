@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Project Luma contributors
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * Step 4 · Should we lock this drive?
+ * Step 3 · Should we lock this drive?
  * LUKS2 through Anaconda's automatic partitioning request (encrypted +
  * passphrase), then the plan is configured, applied and validated exactly as
  * anaconda-webui 68 does (storage_partitioning.js applyStorage). Applying a
