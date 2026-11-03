@@ -366,3 +366,13 @@ slides in or sits idle, never in a frame that handles a touch. Shell .137.
 bound to `org.projectluma.MobileMode1` for modems that carry either IMS or
 mobile data at a time; hidden where that service does not run. Quick Options
 gives it a fifth utility slot. Shell .140.
+
+`0314-st-reuse-prerendered-backgrounds.patch`: St drew, blurred and uploaded
+a cairo-prerendered background (gradients, mixed borders) and its box-shadow
+again whenever a paint state changed, so a focus moving between two styles
+and every row of a list of identical rows paid for a CPU draw, a CPU blur and
+a texture upload. Interned theme nodes now keep recently rendered prerendered
+paint states (node, size, resource scale) in a 48 MB LRU that later paint
+states copy from; entries go with their node and when its image files change.
+On a Raspberry Pi 5 at 4K these draws were most of the TV quick panel's shell
+CPU time. Shell .155.

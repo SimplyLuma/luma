@@ -1,0 +1,257 @@
+From 9c402c4dff4291f50d13f8f593d6e008cfefc29c Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Mon, 2 Nov 2026 22:41:29 -0600
+Subject: [PATCH] st: reuse cairo-prerendered backgrounds for the same node and
+ size
+
+Backgrounds St draws with cairo (gradients, mixed borders, background
+images with rounded corners) and the box-shadows blurred from them were
+drawn, blurred and uploaded again whenever a widget's paint state
+changed: a focus moving between two styles and back, or each row of a
+list of identical rows. The per-node texture cache skips them because
+they are size specific.
+
+Theme nodes are interned, so keep recently rendered prerendered paint
+states, keyed by node, allocation size and resource scale, in a 48 MB
+LRU and copy them into a paint state that needs the same ones. Entries
+go with their node (dispose) and when its background or border image
+file changes.
+---
+ src/st/st-theme-node-drawing.c | 153 ++++++++++++++++++++++++++++++++-
+ src/st/st-theme-node-private.h |   3 +
+ src/st/st-theme-node.c         |   1 +
+ 3 files changed, 154 insertions(+), 3 deletions(-)
+
+diff --git a/src/st/st-theme-node-drawing.c b/src/st/st-theme-node-drawing.c
+index da8fd5d..1109dfc 100644
+--- a/src/st/st-theme-node-drawing.c
++++ b/src/st/st-theme-node-drawing.c
+@@ -1618,6 +1618,143 @@ st_theme_node_load_background_image (StThemeNode         *node,
+   return node->background_texture != NULL;
+ }
+ 
++/* Cairo-prerendered backgrounds (gradients, mixed borders, background
++ * images with rounded corners) and the box-shadows made from them depend only
++ * on the theme node, the allocation size and the resource scale. They are
++ * drawn and blurred on the CPU and uploaded as new textures whenever a paint
++ * state changes: a focus moving between two styles and back, or every row of
++ * a list of identical rows. Theme nodes are interned, so the recently
++ * rendered ones are kept here, most recent first, within a byte budget, and
++ * a paint state for the same node, size and scale takes their textures.
++ */
++#define PRERENDERED_CACHE_MAX_BYTES (48 * 1024 * 1024)
++
++typedef struct
++{
++  StThemeNodePaintState state;
++  gsize bytes;
++} PrerenderedEntry;
++
++static GQueue prerendered_cache = G_QUEUE_INIT;
++static gsize prerendered_cache_bytes = 0;
++
++static void
++prerendered_entry_free (PrerenderedEntry *entry)
++{
++  prerendered_cache_bytes -= entry->bytes;
++  st_theme_node_paint_state_free (&entry->state);
++  g_free (entry);
++}
++
++static gboolean
++st_theme_node_reuse_prerendered (StThemeNodePaintState *state,
++                                 StThemeNode           *node,
++                                 float                  width,
++                                 float                  height,
++                                 float                  resource_scale)
++{
++  GList *l;
++
++  if (!node->prerendered_cached)
++    return FALSE;
++
++  for (l = prerendered_cache.head; l != NULL; l = l->next)
++    {
++      PrerenderedEntry *entry = l->data;
++
++      if (entry->state.node != node ||
++          entry->state.prerendered_pipeline == NULL ||
++          entry->state.alloc_width != width ||
++          entry->state.alloc_height != height ||
++          fabsf (entry->state.resource_scale - resource_scale) > FLT_EPSILON)
++        continue;
++
++      st_theme_node_paint_state_copy (state, &entry->state);
++      g_queue_unlink (&prerendered_cache, l);
++      g_queue_push_head_link (&prerendered_cache, l);
++      return TRUE;
++    }
++
++  return FALSE;
++}
++
++static void
++st_theme_node_keep_prerendered (StThemeNodePaintState *state)
++{
++  StThemeNode *node = state->node;
++  StShadow *box_shadow_spec;
++  PrerenderedEntry *entry;
++  GList *l, *next;
++
++  if (node == NULL || state->prerendered_pipeline == NULL ||
++      state->prerendered_texture == NULL)
++    return;
++
++  /* Only complete states: the box-shadow is there if the node has one. */
++  box_shadow_spec = st_theme_node_get_box_shadow (node);
++  if (box_shadow_spec && !box_shadow_spec->inset &&
++      state->box_shadow_pipeline == NULL)
++    return;
++
++  /* Entries whose node went away hold nothing any more. */
++  for (l = prerendered_cache.head; l != NULL; l = next)
++    {
++      PrerenderedEntry *old = l->data;
++
++      next = l->next;
++      if (old->state.node == NULL)
++        {
++          g_queue_delete_link (&prerendered_cache, l);
++          prerendered_entry_free (old);
++        }
++    }
++
++  entry = g_new0 (PrerenderedEntry, 1);
++  st_theme_node_paint_state_init (&entry->state);
++  st_theme_node_paint_state_copy (&entry->state, state);
++  /* The background, and about as much again for its shadow. */
++  entry->bytes = (gsize) cogl_texture_get_width (state->prerendered_texture) *
++                 cogl_texture_get_height (state->prerendered_texture) * 4 *
++                 (state->box_shadow_pipeline ? 2 : 1);
++
++  if (entry->bytes > PRERENDERED_CACHE_MAX_BYTES / 4)
++    {
++      st_theme_node_paint_state_free (&entry->state);
++      g_free (entry);
++      return;
++    }
++
++  node->prerendered_cached = TRUE;
++  g_queue_push_head (&prerendered_cache, entry);
++  prerendered_cache_bytes += entry->bytes;
++
++  while (prerendered_cache_bytes > PRERENDERED_CACHE_MAX_BYTES)
++    prerendered_entry_free (g_queue_pop_tail (&prerendered_cache));
++}
++
++void
++_st_theme_node_forget_prerendered (StThemeNode *node)
++{
++  GList *l, *next;
++
++  if (!node->prerendered_cached)
++    return;
++
++  node->prerendered_cached = FALSE;
++
++  for (l = prerendered_cache.head; l != NULL; l = next)
++    {
++      PrerenderedEntry *entry = l->data;
++
++      next = l->next;
++      if (entry->state.node == node || entry->state.node == NULL)
++        {
++          g_queue_delete_link (&prerendered_cache, l);
++          prerendered_entry_free (entry);
++        }
++    }
++}
++
+ static gboolean
+ st_theme_node_invalidate_resources_for_file (StThemeNode *node,
+                                              GFile       *file)
+@@ -1641,6 +1778,9 @@ st_theme_node_invalidate_resources_for_file (StThemeNode *node,
+       changed = TRUE;
+     }
+ 
++  if (changed)
++    _st_theme_node_forget_prerendered (node);
++
+   return changed;
+ }
+ 
+@@ -1713,6 +1853,8 @@ st_theme_node_render_resources (StThemeNodePaintState *state,
+           node->cached_textures = TRUE;
+         }
+     }
++
++  st_theme_node_keep_prerendered (state);
+ }
+ 
+ static void
+@@ -1759,6 +1901,8 @@ st_theme_node_update_resources (StThemeNodePaintState *state,
+                                                              paint_context,
+                                                              state->prerendered_texture,
+                                                              state->resource_scale);
++
++  st_theme_node_keep_prerendered (state);
+ }
+ 
+ static void
+@@ -2855,7 +2999,8 @@ st_theme_node_paint (StThemeNode           *node,
+           width >= node->box_shadow_min_width && height >= node->box_shadow_min_height &&
+           fabsf (resource_scale - state->resource_scale) < FLT_EPSILON)
+         st_theme_node_paint_state_copy (state, &node->cached_state);
+-      else
++      else if (!st_theme_node_reuse_prerendered (state, node, width, height,
++                                                 resource_scale))
+         st_theme_node_render_resources (state, node, cogl_context, paint_context,
+                                         width, height, resource_scale);
+ 
+@@ -2864,8 +3009,10 @@ st_theme_node_paint (StThemeNode           *node,
+   else if (state->alloc_width != width || state->alloc_height != height ||
+            fabsf (state->resource_scale - resource_scale) > FLT_EPSILON)
+     {
+-      st_theme_node_update_resources (state, node, cogl_context, paint_context,
+-                                      width, height, resource_scale);
++      if (!st_theme_node_reuse_prerendered (state, node, width, height,
++                                            resource_scale))
++        st_theme_node_update_resources (state, node, cogl_context, paint_context,
++                                        width, height, resource_scale);
+     }
+ 
+   /* Rough notes about the relationship of borders and backgrounds in CSS3;
+diff --git a/src/st/st-theme-node-private.h b/src/st/st-theme-node-private.h
+index 0fb3646..2acce36 100644
+--- a/src/st/st-theme-node-private.h
++++ b/src/st/st-theme-node-private.h
+@@ -100,6 +100,7 @@ struct _StThemeNode {
+   guint link_type : 2;
+   guint rendered_once : 1;
+   guint cached_textures : 1;
++  guint prerendered_cached : 1;
+ 
+   int box_shadow_min_width;
+   int box_shadow_min_height;
+@@ -120,4 +121,6 @@ void _st_theme_node_ensure_geometry (StThemeNode *node);
+ void _st_theme_node_apply_margins (StThemeNode *node,
+                                    ClutterActor *actor);
+ 
++void _st_theme_node_forget_prerendered (StThemeNode *node);
++
+ G_END_DECLS
+diff --git a/src/st/st-theme-node.c b/src/st/st-theme-node.c
+index 2a5c9e2..dd5868a 100644
+--- a/src/st/st-theme-node.c
++++ b/src/st/st-theme-node.c
+@@ -83,6 +83,7 @@ st_theme_node_dispose (GObject *gobject)
+   g_clear_pointer (&node->icon_colors, st_icon_colors_unref);
+ 
+   st_theme_node_paint_state_free (&node->cached_state);
++  _st_theme_node_forget_prerendered (node);
+ 
+   maybe_free_properties (node);
+   g_clear_object (&node->theme);
+-- 
+2.56.0
+
