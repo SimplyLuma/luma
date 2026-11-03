@@ -119,3 +119,30 @@ Open: the installer card cannot pick a C1 or D0 upstream tree for a GRUB
 `devicetree` line by itself (GRUB cannot see the board revision), so it keeps
 the U-Boot layout and suits Fedora-kernel payloads only; a Luma Pi kernel
 installer needs its own design.
+
+## Nick's Pi: transitional state (2026-11-02)
+
+- Deployments: index 0 (default) Fedora kernel 7.2.11 on U-Boot's upstream
+  trees; index 1 (rollback slot) `kernel-luma-rpi` 7.2.15 +
+  `luma-rpi-bluetooth-firmware` + `.luma` GStreamer (commit afe2fb32).
+- The Luma Pi kernel boots only through the card's one-shot entry
+  `luma-rpi-deploy` (`grub2-editenv /run/media/nick/LUMA_PI5/EFI/BOOT/grubenv
+  set next_entry=luma-rpi-deploy`, then reboot), which loads
+  `luma-rpi-kernel/bcm2712d0-rpi-5-b.dtb` (Raspberry Pi D0 tree with this
+  board's MAC, Bluetooth address, serial/model, `pciex1` and 256 MiB CMA
+  baked in) with GRUB `devicetree`. Test only; the card's default path is
+  unchanged.
+- Risk 1: `rpm-ostree rollback` (or `ostree admin set-default 1`) makes the
+  rollback slot the default; its BLS entry has no `devicetree`, so it would
+  boot Raspberry Pi's kernel on U-Boot's upstream tree (untested; may hang).
+  Do not run either until the card is converted to option A.
+- Risk 2: the installed GRUB's grubenv has `fallback=1`: if the default
+  entry fails to load in GRUB (missing kernel or initramfs), GRUB boots
+  entry 1, the same untested combination. A power cycle with
+  `next_entry=installed-debug` on the card recovers.
+- greenboot cannot roll back on its own today: there is no `boot_counter` in
+  `/boot/grub2/grubenv` (it is set only when a new deployment is staged).
+- Removing the transition: once the card is converted to option A, make the
+  Pi kernel deployment the default and drop the `luma-rpi-kernel/` folder
+  and the `luma-rpi-kernel` / `luma-rpi-deploy` entries from the card's
+  `EFI/BOOT/grub.cfg` (backup: `grub.cfg.before-luma-rpi-kernel`).
