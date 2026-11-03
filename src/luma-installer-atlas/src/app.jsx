@@ -32,17 +32,14 @@ import { restoreEncryptionChoice } from "./model/encryption.js";
 
 const N_ = cockpit.noop;
 
-/* Step indices, Fedora 44's order one for one. */
+/* Step indices (steps/index.js). */
 export const STEP = {
-    ACCOUNT: 4,
-    APPS: 5,
-    DESTINATION: 2,
-    DONE: 8,
-    INSTALLING: 7,
+    DESTINATION: 1,
+    DONE: 5,
+    INSTALLING: 4,
     LANGUAGE: 0,
-    LOCK: 3,
-    REVIEW: 6,
-    TIME: 1,
+    LOCK: 2,
+    REVIEW: 3,
 };
 
 const useAddress = (onCritFail) => {

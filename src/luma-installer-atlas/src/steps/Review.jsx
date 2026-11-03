@@ -11,25 +11,19 @@
  */
 import React, { useContext, useEffect, useMemo, useState } from "react";
 
-import { _getProperty } from "../apis/helpers.js";
 import { getAppliedPartitioning } from "../apis/storage_partitioning.js";
-import { getNTPEnabled } from "../apis/timezone.js";
-import { UsersClient } from "../apis/users.js";
 
 import { getDevicesAction, getPartitioningDataAction, setAppliedPartitioningAction } from "../actions/storage-actions.js";
 
-import { displayCity } from "../model/format.js";
 import { driveModel, driveTitle } from "../model/drives.js";
 import { formatSize } from "../model/format.js";
 import { findLocale, localeNativeName } from "../model/languages.js";
 import { layoutLine } from "../model/layout.js";
 import { durationClause, installingText, networkAdvice } from "../model/delivery.js";
 import { batteryAdvice } from "../model/power.js";
-import catalog from "../data/app-collections.json";
-import { reviewAppsText } from "../model/apps.js";
 import { METHOD_NAMES, primaryLabel, reviewWarning } from "../model/review.js";
 
-import { LanguageContext, ProbeContext, StorageContext, TimezoneContext, UsersContext } from "../contexts/Common.jsx";
+import { LanguageContext, ProbeContext, StorageContext } from "../contexts/Common.jsx";
 
 import {
     useFreeSpaceForSystem,
@@ -74,8 +68,6 @@ const useNetwork = (initial, media) => {
 
 export const ReviewStep = ({ answers, back, dispatch, go, index, next, panelRef }) => {
     const { language, languages } = useContext(LanguageContext);
-    const { timezone } = useContext(TimezoneContext);
-    const accounts = useContext(UsersContext);
     const probe = useContext(ProbeContext);
     const { appliedPartitioning, diskSelection, luks, storageScenarioId } = useContext(StorageContext);
     const originalDevices = useOriginalDevices();
@@ -87,11 +79,6 @@ export const ReviewStep = ({ answers, back, dispatch, go, index, next, panelRef 
     const requiredSize = useRequiredSize();
     const battery = useBattery(probe?.battery);
     const network = useNetwork(probe?.network, probe?.media);
-    const [ntp, setNtp] = useState(null);
-
-    useEffect(() => {
-        getNTPEnabled().then(value => setNtp(!!value)).catch(() => setNtp(null));
-    }, []);
 
     // The store learns of an applied plan from a change signal. After a
     // viewer reload there is no signal, so ask Anaconda for the plan it holds.
@@ -110,14 +97,6 @@ export const ReviewStep = ({ answers, back, dispatch, go, index, next, panelRef 
                 .catch(() => {});
     }, [appliedPartitioning, dispatch]);
 
-    // The account as Anaconda holds it, so the row stays true after a reload.
-    const [backendUser, setBackendUser] = useState(null);
-    useEffect(() => {
-        _getProperty(UsersClient, "/org/fedoraproject/Anaconda/Modules/Users", "org.fedoraproject.Anaconda.Modules.Users", "Users")
-                .then(users => setBackendUser(users?.[0] ? { fullName: users[0].gecos?.v || "", userName: users[0].name?.v || "" } : null))
-                .catch(() => setBackendUser(null));
-    }, []);
-    const account = backendUser?.userName ? backendUser : accounts;
 
     const disk = diskSelection.selectedDisks[0];
     const payload = probe?.payload;
@@ -145,7 +124,6 @@ export const ReviewStep = ({ answers, back, dispatch, go, index, next, panelRef 
     });
 
     const locale = findLocale(languages, language);
-    const [zoneRegion, ...zoneCity] = (timezone || "").split("/");
     const installing = installingText({ media: probe?.media, payload });
 
     const lockedValue = storageScenarioId === "mount-point-mapping" || storageScenarioId === "home-reuse"
@@ -155,14 +133,11 @@ export const ReviewStep = ({ answers, back, dispatch, go, index, next, panelRef 
     const rows = [
         installing && { key: "installing", term: "Installing", value: installing },
         { key: "language", onEdit: () => go(0), term: "Language", value: locale ? localeNativeName(locale) : language },
-        { key: "time", onEdit: () => go(1), term: "Time", value: `${displayCity(zoneCity.join("/") || zoneRegion)}${ntp === null ? "" : ntp ? " · set automatically" : " · set by hand"}` },
-        disk && { key: "drive", onEdit: () => go(2), term: "Drive", value: `${driveTitle(knownDevices[disk])} · ${driveModel(knownDevices[disk])}` },
-        storageScenarioId && { key: "method", onEdit: () => go(2), term: "Method", value: METHOD_NAMES[storageScenarioId] },
-        { key: "locked", onEdit: () => go(3), term: "Locked", value: lockedValue },
-        { key: "layout", onEdit: () => go(storageScenarioId === "mount-point-mapping" ? 3 : 2), term: "Layout", value: layout },
-        storageScenarioId === "mount-point-mapping" && typeof answers.manualKeepBootOrder === "boolean" && { key: "startup", onEdit: () => go(3), term: "Startup", value: answers.manualKeepBootOrder ? "Keep the current default" : "Start Luma by default" },
-        { key: "apps", onEdit: () => go(5), term: "Apps", value: reviewAppsText(catalog, answers.collections || []) },
-        { key: "account", onEdit: () => go(4), term: "Account", value: `${account.fullName ? `${account.fullName} · ` : ""}${account.userName}${answers.autologin ? " · signs in automatically" : ""}` },
+        disk && { key: "drive", onEdit: () => go(1), term: "Drive", value: `${driveTitle(knownDevices[disk])} · ${driveModel(knownDevices[disk])}` },
+        storageScenarioId && { key: "method", onEdit: () => go(1), term: "Method", value: METHOD_NAMES[storageScenarioId] },
+        { key: "locked", onEdit: () => go(2), term: "Locked", value: lockedValue },
+        { key: "layout", onEdit: () => go(storageScenarioId === "mount-point-mapping" ? 2 : 1), term: "Layout", value: layout },
+        storageScenarioId === "mount-point-mapping" && typeof answers.manualKeepBootOrder === "boolean" && { key: "startup", onEdit: () => go(2), term: "Startup", value: answers.manualKeepBootOrder ? "Keep the current default" : "Start Luma by default" },
     ].filter(Boolean);
 
     const power = batteryAdvice(battery, durationClause(probe?.media));

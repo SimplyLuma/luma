@@ -174,6 +174,36 @@ esac
 exit 0
 %end
 
+# What Atlas asked is not asked again: first-boot setup (luma-setup) reads
+# this and leaves out Hello, starting from the language and keyboard set here.
+# The time zone, the account and more apps are asked at first boot.
+%post --nochroot --interpreter=/usr/bin/python3
+import json, os, re
+root = os.environ.get("ANA_INSTALL_PATH", "/mnt/sysroot")
+def read(path):
+    try:
+        with open(os.path.join(root, path), encoding="utf-8") as handle:
+            return dict(re.findall(r'^\s*([A-Z_]+)="?([^"\n]*)"?', handle.read(), re.M))
+    except OSError:
+        return {}
+locale = read("etc/locale.conf").get("LANG", "")
+x11 = {}
+try:
+    with open(os.path.join(root, "etc/X11/xorg.conf.d/00-keyboard.conf"), encoding="utf-8") as handle:
+        x11 = dict(re.findall(r'Option\s+"(XkbLayout|XkbVariant)"\s+"([^"]*)"', handle.read()))
+except OSError:
+    pass
+layout = (x11.get("XkbLayout") or read("etc/vconsole.conf").get("KEYMAP", "")).split(",")[0]
+variant = (x11.get("XkbVariant") or "").split(",")[0]
+if locale and layout:
+    folder = os.path.join(root, "var/lib/luma-setup")
+    os.makedirs(folder, mode=0o755, exist_ok=True)
+    with open(os.path.join(folder, "installer.json"), "w", encoding="utf-8") as handle:
+        json.dump({"answered": ["hello"], "locale": locale,
+                   "layout": layout + ("+" + variant if variant else "")}, handle)
+    print(f"atlas: first-boot setup starts from {locale} and the {layout} keyboard")
+%end
+
 # The explicit city choice is read back from Anaconda before Atlas continues.
 # Apply it after Anaconda's tasks to the actual OSTree deployment /etc, and
 # retain the representative city's offline tzdata coordinates for Clock/Weather.
