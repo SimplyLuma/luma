@@ -301,6 +301,11 @@ def detect_timezone(done: Callable[[str | None], None], seconds: int = 12) -> No
     if data is not None:
         GLib.idle_add(lambda: (done(data.get("timezone")), False)[1])
         return
+    # The setup session's own location switch: the Shell's GeoClue agent asks it. A greeter
+    # user's settings can outlive a session, so it is set here rather than trusted.
+    location = _settings("org.gnome.system.location")
+    if location is not None and not location.get_boolean("enabled"):
+        location.set_boolean("enabled", True)
     try:
         gi.require_version("Geoclue", "2.0")
         gi.require_version("GWeather", "4.0")
@@ -352,8 +357,11 @@ class Applier:
             GLib.timeout_add(450, tick)
             return
         flags = Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE
+        launcher = Gio.SubprocessLauncher.new(flags)
+        # pkexec refuses a SHELL that is not in /etc/shells; GDM's setup user has none of its own.
+        launcher.setenv("SHELL", "/bin/sh", True)
         try:
-            process = Gio.Subprocess.new(["pkexec", APPLY], flags)
+            process = launcher.spawnv(["pkexec", APPLY])
         except GLib.Error as error:
             self._on_done(False, error.message)
             return

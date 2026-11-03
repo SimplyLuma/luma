@@ -131,6 +131,10 @@ class Field(Gtk.Box):
             self.trail.set_visible(trail != "check")
             self.append(self.trail)
         self._quiet = False
+        # Leaving a field leaves no selection drawn in it.
+        leave = Gtk.EventControllerFocus()
+        leave.connect("leave", lambda _c: self.text.select_region(self.text.get_position(), self.text.get_position()))
+        self.text.add_controller(leave)
         if on_changed is not None:
             self.text.connect("changed", lambda t: None if self._quiet else on_changed(t.get_text()))
         if on_activate is not None:
@@ -399,6 +403,28 @@ class ScaleBin(Gtk.Widget):
         self.child.allocate(round(width / self.factor), round(height / self.factor), -1, transform)
 
 
+def snapshot(window: Gtk.Window, name: str) -> None:
+    """LUMA_SETUP_SNAPSHOTS=<dir>: a PNG of the window as each page settles (device test runs only)."""
+    folder = os.environ.get("LUMA_SETUP_SNAPSHOTS", "")
+    if not folder:
+        return
+
+    def save() -> bool:
+        width, height = window.get_width(), window.get_height()
+        renderer = window.get_renderer()
+        if not width or not height or renderer is None:
+            return False
+        paintable = Gtk.WidgetPaintable.new(window)
+        snap = Gtk.Snapshot()
+        paintable.snapshot(snap, width, height)
+        node = snap.to_node()
+        if node is not None:
+            os.makedirs(folder, exist_ok=True)
+            renderer.render_texture(node, None).save_to_png(os.path.join(folder, f"{name}.png"))
+        return False
+    GLib.timeout_add(1200, save)
+
+
 # -- the window -------------------------------------------------------------------
 class SetupWindow(Gtk.ApplicationWindow):
     """The room and the sheet (desktop and phone); sheet_tv.SetupTV is the TV's."""
@@ -485,6 +511,9 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.connect("notify::default-height", lambda *_a: self._fit())
         self.connect("realize", lambda *_a: GLib.idle_add(lambda: (self._fit(), False)[1]))
         self.draw()
+        if os.environ.get("LUMA_SETUP_SNAPSHOTS"):
+            import signal
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, lambda: (self._snap("-now"), True)[1])
 
     # -- head ----------------------------------------------------------------------
     def _head(self) -> Gtk.Widget:
@@ -577,6 +606,11 @@ class SetupWindow(Gtk.ApplicationWindow):
         if self.page == "device" and self.setup.online and not self._zone_asked:
             self._ask_zone()
         GLib.idle_add(lambda: (self._first_focus(), False)[1])
+        self._snap()
+
+    def _snap(self, suffix: str = "") -> None:
+        self._shots = getattr(self, "_shots", 0) + 1
+        snapshot(self, f"{self._shots:02d}-{self.page}{suffix}")
 
     def redraw(self) -> None:
         """The same page again (a choice changed), keeping the scroll."""
@@ -594,6 +628,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.stack.remove(old)
         self._foot()
         GLib.idle_add(lambda: (adjustment.set_value(value), False)[1])
+        self._snap("-change")
 
     def _drop(self, child: Gtk.Widget) -> None:
         if child.get_parent() is self.stack and child is not self.stack.get_visible_child():
@@ -623,7 +658,10 @@ class SetupWindow(Gtk.ApplicationWindow):
     def _first_focus(self) -> None:
         target = self.page_parts.get("focus")
         if target is not None and target.get_mapped():
-            target.grab_focus()
+            if isinstance(target, Field):
+                target.text.grab_focus_without_selecting()
+            else:
+                target.grab_focus()
 
     # Hello -----------------------------------------------------------------------------
     def _hello(self):
@@ -825,6 +863,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         face.add_css_class("su-avb")
         face.update_property([Gtk.AccessibleProperty.LABEL], ["Choose a photo"])
         face_overlay = Gtk.Overlay(child=avatar(s.first[:1].upper(), "su-big", s.face))
+        self.page_parts["face-overlay"] = face_overlay
         cam = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.END)
         cam.add_css_class("su-cam")
         glyph = icon("x" if self.faces_open else "camera", 14)
@@ -911,8 +950,13 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.redraw()
 
     def _typed_name(self, value: str) -> None:
+        had = self.setup.first[:1].upper()
         self.setup.set_name(value)
         self.page_parts["user"].set_value(self.setup.username)
+        initial = self.setup.first[:1].upper()
+        overlay = self.page_parts.get("face-overlay")
+        if overlay is not None and not self.setup.face and initial != had:
+            overlay.set_child(avatar(initial, "su-big"))   # the initial on the photo follows the name
         self._update_you()
 
     def _typed_username(self, value: str) -> None:
@@ -1028,8 +1072,10 @@ class SetupWindow(Gtk.ApplicationWindow):
             if zone and not self.zone_open:
                 self.setup.timezone = zone
                 self.setup.timezone_automatic = True
-                if self.page == "device" and not self._finishing:
-                    self.redraw()
+            elif not zone:
+                self.zone_open = True   # online, but nowhere found: pick it, as offline
+            if self.page == "device" and not self._finishing:
+                self.redraw()
         system.detect_timezone(found)
 
     # -- the foot ------------------------------------------------------------------------
@@ -1088,7 +1134,9 @@ class SetupWindow(Gtk.ApplicationWindow):
             # Return in a network's password joins it (the field's own activate); on a row it picks the row.
             if isinstance(focus, Gtk.Text) and self.page == "wifi":
                 return False
-            if isinstance(focus, Gtk.Button) and focus is not getattr(self, "key", None):
+            # On a row already chosen, Return goes on; on any other button it presses that button.
+            chosen_row = isinstance(focus, Gtk.Button) and focus.has_css_class("su-li") and focus.has_css_class("su-on")
+            if isinstance(focus, Gtk.Button) and focus is not getattr(self, "key", None) and not chosen_row:
                 return False
             self._press_key()
             return True
@@ -1137,6 +1185,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child(pane)
         if old is not None:
             GLib.timeout_add(300, lambda: (self._drop(old), False)[1])
+        self._shots = getattr(self, "_shots", 0) + 1
+        snapshot(self, f"{self._shots:02d}-finish")
         payload = s.payload()
         s.password = s.again = ""  # the sheet keeps no copy once the helper has it
         password = payload["password"]

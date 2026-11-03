@@ -67,6 +67,8 @@ class SetupApplication(Adw.Application):
             log.info("LumaUI not installed: %s", error)
         from .sheet import load_style
         load_style()
+        # A field keeps what is in it when it takes the focus; nothing is selected for the person.
+        Gtk.Settings.get_default().props.gtk_entry_select_on_focus = False
 
     def do_activate(self) -> None:
         if self.window is not None:
