@@ -31,7 +31,12 @@ is not in mainline or linux-next. Drop 0001-0007 and the kmod's DMA module
 once the kernel ships a `brcm,bcm2712-dma` driver, and 0008 once vc4 passes
 physical addresses upstream; then the card fragment's binding must match upstream's.
 
-## Follow-ups (not built yet)
+## Follow-ups (superseded)
+
+The Luma Raspberry Pi kernel (`kernel-luma-rpi`, Raspberry Pi's rpi-7.2.y,
+`config/kernel/rpi-7.2.json`) carries all of the below and the DMA/vc4
+changes above; this series and luma-rpi5-kmod retire with it.
+
 
 - **Bluetooth**: the mainline Pi 5 tree already has the BT UART
   (`uarta: serial@7d50c000`, `brcm,bcm7271-uart`, child `brcm,bcm43438-bt`).

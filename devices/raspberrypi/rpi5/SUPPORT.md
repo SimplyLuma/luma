@@ -26,12 +26,12 @@ branch, not yet checked on hardware; **todo** = not in Luma yet;
 |---|---|---|---|---|---|---|---|
 | Wi-Fi (CYW43455) | brcmfmac, RPi firmware-nonfree | linux-firmware | linux-firmware (brcmfmac-firmware) | firmware-raspberrypi | yes | Fedora brcmfmac-firmware + NVRAM alias (luma-rpi5-platform) | done |
 | Wi-Fi regulatory domain | raspi-config / `cfg80211.ieee80211_regdom` | wireless-regdb | wireless-regdb | wireless-regdb | yes | wireless-regdb; country from NetworkManager | todo: check country is set |
-| Bluetooth (CYW43455, BT UART) | bluez-firmware (RPi), serdev hci_uart | linux-firmware-raspi, pi-bluetooth | no (no 8250_bcm7271, no .hcd) | firmware-raspberrypi | yes | `8250_bcm7271`, `hci_uart` BCM; `luma-rpi-bluetooth-firmware` (BCM4345C0/C5, 43430A1/B0, 4343A2) | built |
+| Bluetooth (CYW43455, BT UART) | bluez-firmware (RPi), serdev hci_uart | linux-firmware-raspi, pi-bluetooth | no (no 8250_bcm7271, no .hcd) | firmware-raspberrypi | yes | `8250_bcm7271`, `hci_uart` BCM; `luma-rpi-bluetooth-firmware` (BCM4345C0/C5, 43430A1/B0, 4343A2) | done: patch RAM build 0382, scan finds devices (2026-11-02) |
 | HDMI video, 2 × 4Kp60 | vc4 KMS | vc4 | vc4 | vc4 | vc4 | vc4 (Raspberry Pi tree) | built |
-| HDMI audio, both ports | yes | yes | no on Pi 5 (no BCM2712 DMA) | yes | yes | Raspberry Pi tree has the BCM2712 DMA engine; retires `luma-rpi5-kmod` | built |
+| HDMI audio, both ports | yes | yes | no on Pi 5 (no BCM2712 DMA) | yes | yes | Raspberry Pi tree has the BCM2712 DMA engine; retires `luma-rpi5-kmod` | done: two vc4hdmi cards, playback through PipeWire on HDMI 0 |
 | HDMI-CEC | vc4 CEC, cec-utils, libcec | yes | vc4 CEC | yes | Kodi (libcec) | `DRM_VC4_HDMI_CEC`; Fedora v4l-utils (`cec-ctl`), libcec; card sets `hdmi_ignore_cec_init=1` | built |
 | GPU GL/Vulkan (V3D 7.1) | Mesa v3d/v3dv | Mesa | Mesa | Mesa | Mesa | Fedora Mesa; GTK GL renderer, V3D autosuspend (luma-rpi5-platform) | done |
-| HEVC decode (up to 4Kp60) | rpi-hevc-dec + FFmpeg fork (v4l2-request, SAND) + VLC/mpv/Chromium | rpi-hevc-dec | none | yes | rpi-hevc-dec + FFmpeg v4l2-request + Kodi | `rpi-hevc-dec` (V4L2 stateless) + GStreamer `v4l2slh265dec` (Fedora); FFmpeg path see below | built; userspace decision |
+| HEVC decode (up to 4Kp60) | rpi-hevc-dec + FFmpeg fork (v4l2-request, SAND) + VLC/mpv/Chromium | rpi-hevc-dec | none | yes | rpi-hevc-dec + FFmpeg v4l2-request + Kodi | `rpi-hevc-dec` + GStreamer `v4l2slh265dec` with one Luma patch (`gstreamer1-plugins-bad-free` `.luma`); FFmpeg path see below | done: 2160p60 decodes at 62.6 fps, plays zero-copy to the compositor at 6 % CPU |
 | H.264 decode | software (Pi 5 has no H.264 block) | software | software | software | software | software (openh264) | n/a |
 | Video encode | software (no block on Pi 5) | software | software | software | software | software | n/a |
 | Cameras (CSI, PiSP) | rp1-cfe, pisp-be, libcamera fork, rpicam-apps | libcamera, rpicam-apps | libcamera 0.7.2 with rpi/vc4 only (Pi 4), no PiSP | libcamera, rpicam-apps | no | kernel: rp1-cfe, pisp-be, imx219/477/500/708 and the rest; userspace needs libpisp + libcamera rpi/pisp + tuning files | kernel built; userspace todo |
@@ -67,8 +67,11 @@ each piece is and where it stands in Fedora 44 (facts, not legal advice):
 | FFmpeg `hevc` decoder | software decoder and the parser FFmpeg's hwaccels use | disabled in ffmpeg-free (`--disable-decoder=h264,hevc,vc1,vvc`) |
 | FFmpeg `v4l2-request` hwaccel | the path Raspberry Pi OS, LibreELEC, mpv and VLC use | not in upstream FFmpeg 8.1; Raspberry Pi and LibreELEC patch it in |
 
-So hardware HEVC through GStreamer (`playbin` in Tide/GTK apps, `gtk4paintablesink`)
-needs nothing Fedora excludes. Players built on FFmpeg (mpv, VLC, Celluloid,
+So hardware HEVC through GStreamer (`playbin` in Tide/GTK apps, `gtk4paintablesink`,
+`waylandsink`) needs nothing Fedora excludes. Fedora's 1.28.8 cannot negotiate
+the decoder's SAND128 output with any sink; Luma's `gstreamer1-plugins-bad-free`
+carries a one-function fix (`patches/gstreamer1-plugins-bad`). Mesa 26.2 imports
+NV12/P030 SAND128 as external textures, and vc4 planes scan it out directly. Players built on FFmpeg (mpv, VLC, Celluloid,
 Kodi) and FFmpeg itself would need a Luma FFmpeg with the HEVC decoder enabled
 plus the v4l2-request patches: that is the part Fedora excludes, and it is
 Nick's decision. Viola (Chromium) decodes through VA-API on Linux; Chromium's
