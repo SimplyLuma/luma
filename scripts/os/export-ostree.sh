@@ -179,6 +179,9 @@ metadata_file="$build_dir/commit-metadata.args"
   printf -- '--add-metadata-string=org.projectluma.build-version=%s\n' "$LUMA_OS_VERSION"
   printf -- '--add-metadata-string=org.projectluma.channel=%s\n' "$channel"
   printf -- '--add-metadata-string=org.projectluma.architecture=%s\n' "$LUMA_OS_ARCH"
+  # luma-update on a hardware target accepts only commits that name it.
+  [ -z "${LUMA_OS_HARDWARE_TARGET:-}" ] ||
+    printf -- '--add-metadata-string=org.projectluma.hardware-target=%s\n' "$LUMA_OS_HARDWARE_TARGET"
   # The release's name as people see it (os-release PRETTY_NAME, ADR-040).
   [ -z "${LUMA_DISPLAY_NAME:-}" ] ||
     printf -- '--add-metadata-string=org.projectluma.display-name=%s\n' "$LUMA_DISPLAY_NAME"

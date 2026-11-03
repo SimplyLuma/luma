@@ -10,7 +10,8 @@
 
 Name:           luma-rpi-bluetooth-firmware
 Version:        0
-Release:        1.20251002git%(c=%{commit}; echo ${c:0:7}).luma.1%{?dist}
+# The git suffix is the first seven characters of the commit above.
+Release:        1.20251002gitcdf61dc.luma.1%{?dist}
 Summary:        Bluetooth firmware for Raspberry Pi boards (CYW43455, CYW43438)
 License:        LicenseRef-Fedora-Firmware
 URL:            https://github.com/RPi-Distro/bluez-firmware

@@ -17,6 +17,20 @@
     }
   },
   "hardware_packages": {
-    "intel-crashlog": ["x86_64"]
+    "intel-crashlog": [
+      "x86_64"
+    ]
+  },
+  "hardware_targets": {
+    "raspberrypi,rpi5": {
+      "kernel": "kernel-luma-rpi",
+      "packages": [
+        "kernel-luma-rpi",
+        "luma-rpi5-platform",
+        "luma-rpi-bluetooth-firmware",
+        "gstreamer1-plugins-bad-free",
+        "gstreamer1-plugins-bad-free-libs"
+      ]
+    }
   }
 }
