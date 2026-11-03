@@ -65,14 +65,20 @@ a tier change.
 
 A preinstalled card built from a test payload proves the firmware-tree boot
 chain before it touches any card in use. It is not for publication (its
-manifest says `test_payload`), and `rpm-ostree upgrade` on it would return to
-the nightly's Fedora kernel, which does not boot on the firmware tree: do not
-upgrade it.
+manifest says `test_payload`). A test payload composed for the
+`raspberrypi,rpi5` hardware target (`build-image.sh --hardware-target`) keeps
+the Pi ref `luma/1/aarch64/raspberrypi-rpi5/<channel>`; any other test payload
+keeps the medium's generic ref, and `rpm-ostree upgrade` there would return to
+Fedora's kernel, which does not boot on the firmware tree.
 
-Build (luma-build, as root, under the heavy-job lock):
+The first boot imports the offline apps and needs several GB free after the
+root grows: a 12 GiB image needs a card (or a VM disk) of 16 GB or more.
+
+Build (luma-build, as root, under the heavy-job lock, unconfined: a system
+service may not write SELinux types the host's policy lacks):
 
     P=/srv/dev-storage/projects/luma-pi5
-    luma-heavy bash scripts/devices/build-rpi5-disk-image.sh \
+    systemd-run --scope luma-heavy bash scripts/devices/build-rpi5-disk-image.sh \
       --iso $P/inputs/luma-nightly-<version>-aarch64.iso \
       --uboot-rpm $P/inputs/uboot-images-armv8-2026.10-1.fc45.noarch.rpm \
       --output $P/images/spare-pi-kernel --size 16 \
@@ -94,5 +100,5 @@ Flash on a Mac (never the Pi's own card):
 Expected: U-Boot and GRUB pass the firmware's tree (model "Raspberry Pi 5
 Model B Rev …", the board's MAC and Bluetooth address), `uname -r` is the Luma
 Pi kernel, HDMI audio, Bluetooth and `/dev/video19` (HEVC) are present, and
-`luma-rpi5-firmware-sync` (when the payload carries luma-rpi5-platform 0.2.0)
+`luma-rpi5-firmware-sync`
 reports the trees in place. To go back, power off and put the original card in.

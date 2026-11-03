@@ -48,7 +48,7 @@
 # the medium's signed commit (origin and update path stay the medium's), for
 # proving a payload on hardware before it is composed. The manifest says so;
 # never publish such an image. --test-ssh-key adds root SSH access with that
-# public key for the test (systemd credential on the kernel command line).
+# public key for the test (/root/.ssh/authorized_keys and sshd started).
 #
 # Runs as root on Linux (loop devices), from an unconfined login or
 # `systemd-run --scope`: a system service (unconfined_service_t) may not write
@@ -307,8 +307,7 @@ fi
 kargs=(root=UUID="$root_uuid" rootflags=subvol=root rw $board_args $release_kargs)
 if [ -n "$test_key" ]; then
   [ -n "$test_repo" ] || fail "--test-ssh-key is for test payloads only"
-  kargs+=(systemd.wants=sshd.service
-          "systemd.set_credential_binary=ssh.authorized_keys.root:$(base64 -w0 "$test_key")")
+  kargs+=(systemd.wants=sshd.service)
 fi
 for arg in "${kargs[@]}"; do
   case "$arg" in console=*|firmware_class.path=*|selinux=0|enforcing=0|init=*|rd.break) fail "forbidden kernel argument $arg" ;; esac
@@ -345,7 +344,15 @@ UUID=$boot_uuid /boot ext4 defaults 1 2
 UUID=$esp_uuid /boot/efi vfat umask=0077,shortname=winnt 0 2
 UUID=$root_uuid /home btrfs subvol=home,compress=zstd:1 0 0
 EOF
-cp -a "$deploy"/etc/skel/.bash* "$var/roothome/" 2>/dev/null || true
+install -d -m 0700 "$var/roothome"
+cp -a "$deploy"/etc/skel/.bash* "$var/roothome/"
+# Test cards only. /root is a symlink into /var on OSTree systems, which
+# systemd-tmpfiles' ssh.authorized_keys.root credential cannot follow, so the
+# key is written into the stateroot's /var (labelled with the rest of /var).
+if [ -n "$test_key" ]; then
+  install -d -m 0700 "$var/roothome/.ssh"
+  install -m 0600 "$test_key" "$var/roothome/.ssh/authorized_keys"
+fi
 
 # First boot: grow the root partition to the card.
 install -m 0755 "$card_src/luma-rpi5-grow-root" "$deploy/etc/luma/rpi5-grow-root"
