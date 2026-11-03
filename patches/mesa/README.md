@@ -1,8 +1,8 @@
 # mesa patches
 
-Applied by `packaging/rpm/mesa.spec` (Fedora's mesa 26.2.5-1 spec, release
-`.luma.N`; Source1 and the crate tarballs come from Fedora's SRPM) on top of
-`mesa-26.2.5.tar.xz`.
+Applied by `0000-luma-fedora-spec.patch` to Fedora's mesa 26.2.5-1 spec
+(release `.luma.N`) on top of `mesa-26.2.5.tar.xz`; built by
+`scripts/packages/build-mesa.sh` (desktop-components group `mesa`).
 
 | Patch | Origin | Why |
 |---|---|---|

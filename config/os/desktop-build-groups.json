@@ -190,6 +190,12 @@
         "config/android/",
         "packaging/rpm/luma-android-runtime.spec"
       ]
+    },
+    "mesa": {
+      "recipe": "scripts/packages/build-mesa.sh",
+      "paths": [
+        "patches/mesa/"
+      ]
     }
   }
 }
