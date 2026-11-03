@@ -1,4 +1,4 @@
-From f4565edf42d1e7d5e77fa48b26961155fa9edd86 Mon Sep 17 00:00:00 2001
+From 20e2646e01ca1a9d300afa6ee0ef6a00eb46b459 Mon Sep 17 00:00:00 2001
 From: Project Luma <engineering@projectluma.org>
 Date: Mon, 2 Nov 2026 22:59:26 -0600
 Subject: [PATCH] evdev-backend: stop watching a device's fd once it hangs up
@@ -12,16 +12,38 @@ and its backend are finalized, which a language binding (GJS, Python) can
 put off for a long time after "disconnected".
 
 Watch for HUP, ERR and NVAL too and remove the source when they arrive.
+
+poll_events() also stops draining when libevdev_next_event() fails
+(-ENODEV once the device is gone, while poll() keeps reporting the fd
+readable) instead of retrying forever.
 ---
- src/manette-evdev-backend.c | 15 +++++++++++++--
- 1 file changed, 13 insertions(+), 2 deletions(-)
+ src/manette-evdev-backend.c | 30 +++++++++++++++++++++++-------
+ 1 file changed, 23 insertions(+), 7 deletions(-)
 
 diff --git a/src/manette-evdev-backend.c b/src/manette-evdev-backend.c
-index 24e95fb..e2f92bb 100644
+index 24e95fb..aa8cc8b 100644
 --- a/src/manette-evdev-backend.c
 +++ b/src/manette-evdev-backend.c
-@@ -211,7 +211,17 @@ poll_events (GIOChannel          *source,
-     }
+@@ -203,15 +203,30 @@ poll_events (GIOChannel          *source,
+ 
+   g_assert (MANETTE_IS_EVDEV_BACKEND (self));
+ 
+-  while (libevdev_has_event_pending (self->evdev_device)) {
+-    if (libevdev_next_event (self->evdev_device,
+-                             (guint) LIBEVDEV_READ_FLAG_NORMAL,
+-                             &evdev_event) == 0) {
++  while (libevdev_has_event_pending (self->evdev_device) > 0) {
++    int rc = libevdev_next_event (self->evdev_device,
++                                  (guint) LIBEVDEV_READ_FLAG_NORMAL,
++                                  &evdev_event);
++
++    if (rc == 0)
+       on_evdev_event (self, &evdev_event);
+-    }
++    else if (rc < 0)
++      /* -EAGAIN, or -ENODEV once the device is gone: its fd stays
++       * readable for poll() (HUP), so retrying would never end. */
++      break;
    }
  
 -  return TRUE;
@@ -39,7 +61,7 @@ index 24e95fb..e2f92bb 100644
  }
  
  static void
-@@ -275,7 +285,8 @@ manette_evdev_backend_initialize (ManetteBackend *backend)
+@@ -275,7 +290,8 @@ manette_evdev_backend_initialize (ManetteBackend *backend)
  
    // Poll the events in the main loop.
    channel = g_io_channel_unix_new (self->fd);
