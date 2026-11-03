@@ -341,7 +341,25 @@ setfiles -F -c "$policy" -r "$sysroot" "$fc" "$sysroot/boot" 2>&1 | grep -v 'Rea
 install -d "$var/home"
 mount --bind "$var" "$deploy/var"
 mount -o subvol=home "${loop}p3" "$deploy/var/home"
-setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy/var" || fail "labelling /var failed"
+# Types the build host's kernel does not know (snapd's) cannot be set here;
+# the first boot labels those paths (luma-rpi5-grow-root, rpi5-relabel.list).
+setfiles -F -c "$policy" -r "$deploy" "$fc" "$deploy/var" 2>"$work/setfiles.err" || true
+python3 - "$work/setfiles.err" "$deploy" "$deploy/etc/luma/rpi5-relabel.list" <<'PY' || fail "labelling /var failed"
+import re, sys
+err, root, out = sys.argv[1:]
+paths, other = [], []
+for line in open(err):
+    m = re.match(r"setfiles: Could not set context for (.*):  Invalid argument$", line.rstrip("\n"))
+    if m and m.group(1).startswith(root + "/var/"):
+        paths.append(m.group(1)[len(root):])
+    elif line.strip():
+        other.append(line.rstrip())
+if other:
+    sys.exit("\n".join(other))
+if paths:
+    open(out, "w").write("\n".join(paths) + "\n")
+    print(f"{len(paths)} /var paths left for the first boot to label")
+PY
 umount "$deploy/var/home" "$deploy/var"
 
 # The boot partition (also the ESP).

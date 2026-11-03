@@ -29,6 +29,14 @@ else
   log "grew $part from $((before / 2048)) MiB to $((size / 2048)) MiB"
 fi
 
+# Paths whose SELinux type the image's build host could not set (snapd's).
+if [ -s /etc/luma/rpi5-relabel.list ]; then
+  mapfile -t paths </etc/luma/rpi5-relabel.list
+  restorecon -RF "${paths[@]}" || log "restorecon reported errors"
+  log "labelled ${#paths[@]} paths"
+fi
+
 rm -f /etc/systemd/system/multi-user.target.wants/luma-rpi5-grow-root.service \
+      /etc/luma/rpi5-relabel.list \
       /etc/systemd/system/luma-rpi5-grow-root.service \
       /etc/luma/rpi5-grow-root
