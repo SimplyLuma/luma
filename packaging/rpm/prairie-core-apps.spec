@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.129%{?dist}
+Release:        1.luma.130%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -692,6 +692,10 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.130
+- Phone falls back to the avatar when a contact photo can't be decoded,
+  instead of failing to open (favourites, call screens).
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.129
 - Show the hub's reason when Connect enrolment is refused.
 
