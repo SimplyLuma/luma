@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma saved passwords (one password check)
+Documentation=https://projectluma.org/saved-passwords
+CollectMode=inactive-or-failed
+
+[Service]
+# Reads one password from the socket, runs PAM for the account it runs as, answers
+# yes, no or unavailable, exits. Not NoNewPrivileges: pam_unix's setuid unix_chkpwd must
+# run, which checks only the calling account's own password. No seccomp-based option
+# either (LockPersonality=, RestrictRealtime=, SystemCallFilter=...): in a user unit
+# systemd implies NoNewPrivileges for them. What is left: no core dumps, a short life,
+# little memory, one connection at a time per check.
+ExecStart=/usr/libexec/luma-keyring --verify-login
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=30
+LimitCORE=0
+MemoryHigh=64M

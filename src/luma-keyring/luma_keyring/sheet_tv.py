@@ -97,6 +97,8 @@ class KeyringTV(TvStage):
         self.field = TvField(placeholder="Password", icon="lock", purpose=Gtk.InputPurpose.PASSWORD,
                              action="Unlock")
         self.field.text.set_visibility(False)
+        # The TV keyboard's action key sends Enter to the field: that is Unlock (or Continue).
+        self.field.text.connect("activate", lambda *_a: self._field_ok())
         self.message = _label("", "kr-tv-message", wrap=True)
         for label in (self.title, self.line, self.message):
             label.set_max_width_chars(1)  # wrap to the sheet, never widen it
@@ -193,11 +195,12 @@ class KeyringTV(TvStage):
         return self.message.has_css_class("error")
 
     def set_busy(self, busy: bool, label: str) -> None:
-        for widget in (self.field, self.switch_row, self.cancel, self.primary):
-            widget.set_sensitive(not busy)
+        # On a TV nothing is made insensitive while the answer comes (the sheet ignores
+        # presses meanwhile): taking a focused field away would leave the remote, the
+        # GTK focus and the TV keyboard out of step. The focus waits on Unlock instead,
+        # which also puts the keyboard away.
         self.primary.label.set_label(label)
         if busy:
-            # The keyboard goes with the field's focus; the remote waits on Unlock.
             self.focus.focus(self.primary)
 
     def set_shown(self, *, field: bool, switch: bool, buttons: bool, cancel: bool, primary: str) -> None:
@@ -227,8 +230,21 @@ class KeyringTV(TvStage):
                 "buttons": self.actions.get_visible(), "primary": self.primary.label.get_label()}
 
     def focus_field(self) -> None:
-        if self.field.get_visible():
-            self.focus.focus(self.field.text)
+        """The remote and the GTK focus on the field, from somewhere else, so the
+        field is entered afresh and the TV keyboard comes up for it."""
+        if not self.field.get_visible():
+            return
+        if self.focus.focused is self.field.text or self.field.text.has_focus():
+            self.focus.focus(self.primary if self.primary.get_visible() else self.cancel)
+
+        def enter() -> bool:
+            if not self.get_mapped():
+                return GLib.SOURCE_CONTINUE  # the window is still opening
+            if self.field.get_visible():
+                self.focus.focus(self.field.text)
+                self.field.text.grab_focus()
+            return GLib.SOURCE_REMOVE
+        GLib.timeout_add(30, enter)
 
     def toggle(self) -> None:
         self.switch_row.toggle()
