@@ -1,7 +1,7 @@
 # libmanette patches
 
-Applied by `packaging/rpm/libmanette.spec` (Fedora's 0.2.13-2 spec, release
-`.luma.N`) on top of `libmanette-0.2.13.tar.xz`.
+Applied by `0000-luma-fedora-spec.patch` (to Fedora's 0.2.13-2 spec, release
+`.luma.N`) on top of `libmanette-0.2.13.tar.xz`; built by `scripts/packages/build-libmanette.sh` (desktop-components group `libmanette`).
 
 | Patch | Origin | Why |
 |---|---|---|
