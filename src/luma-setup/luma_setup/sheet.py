@@ -136,7 +136,7 @@ class Field(Gtk.Box):
     def __init__(self, placeholder: str = "", *, value: str = "", prefix: str = "", lead: str = "",
                  trail: str = "", password: bool = False, purpose: Gtk.InputPurpose = Gtk.InputPurpose.FREE_FORM,
                  on_changed: Callable[[str], None] | None = None, on_activate: Callable[[], None] | None = None,
-                 name: str = "") -> None:
+                 name: str = "", accessible: str = "") -> None:
         super().__init__(spacing=6)
         self.add_css_class("su-field")
         if lead:
@@ -146,7 +146,7 @@ class Field(Gtk.Box):
         self.text = Gtk.Text(text=value, placeholder_text=placeholder, hexpand=True, visibility=not password,
                              input_purpose=Gtk.InputPurpose.PASSWORD if password else purpose,
                              accessible_role=Gtk.AccessibleRole.TEXT_BOX)
-        self.text.update_property([Gtk.AccessibleProperty.LABEL], [placeholder or prefix])
+        self.text.update_property([Gtk.AccessibleProperty.LABEL], [accessible or placeholder or prefix])
         if name:
             self.text.set_name(name)
         self.append(self.text)
@@ -1197,7 +1197,8 @@ class SetupWindow(Gtk.ApplicationWindow):
     # Name this Luma ------------------------------------------------------------------
     def _device(self):
         s = self.setup
-        name = Field("Luma", value=s.device_name, name="su-dev", on_changed=self._typed_device)
+        name = Field("Luma", value=s.device_name, name="su-dev", on_changed=self._typed_device,
+                     accessible="Device name")
         host = label(f"{_host(s.device_name)}.local", "su-note")
         zone = catalog.zone(s.timezone)
         automatic = s.online and s.timezone_automatic and not self.zone_open
