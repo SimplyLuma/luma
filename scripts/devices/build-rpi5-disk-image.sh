@@ -218,7 +218,9 @@ EOF
 loop=$(losetup --find --show --partscan "$img")
 udevadm settle 2>/dev/null || true
 for n in 1 2 3; do [ -b "${loop}p$n" ] || fail "${loop}p$n did not appear"; done
-mkfs.vfat -F 32 -n "$fat_label" -i "$esp_id" --invariant "${loop}p1" >/dev/null
+# --invariant sets the volume ID to 1234-ABCD; -i must come after it.
+mkfs.vfat -F 32 -n "$fat_label" --invariant -i "$esp_id" "${loop}p1" >/dev/null
+[ "$(blkid -s UUID -o value "${loop}p1")" = "$esp_uuid" ] || fail "the boot partition ID is not $esp_uuid"
 mkfs.ext4 -q -L boot -U "$boot_uuid" -E "hash_seed=$boot_uuid" -T default "${loop}p2"
 mkfs.btrfs -q -L luma -U "$root_uuid" "${loop}p3"
 mount "${loop}p3" "$work/top"
