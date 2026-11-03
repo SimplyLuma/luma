@@ -1,6 +1,6 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,124 @@
+@@ -28,14 +28,125 @@
  
  Name:           gnome-control-center
  Version:        50.4
@@ -113,6 +113,7 @@
 +Patch1094:      0095-lumaui-tv-wifi-nearby-in-place.patch
 +Patch1095:      0096-lumaui-tv-page-words-and-one-display-fixture.patch
 +Patch1096:      0097-lumaui-one-image-decode-per-file.patch
++Patch1097:      0098-lumaui-page-wash-300px-and-hidden-on-tv.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.89.lumaui20260929.1
@@ -126,7 +127,7 @@
  BuildRequires:  desktop-file-utils
  BuildRequires:  docbook-style-xsl libxslt
  BuildRequires:  gcc
-@@ -85,6 +190,12 @@
+@@ -85,6 +191,12 @@
  %endif
  
  # Versioned library deps
@@ -139,7 +140,7 @@
  Requires: libadwaita%{?_isa} >= %{libadwaita_version}
  Requires: glib2%{?_isa} >= %{glib2_version}
  Requires: gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
-@@ -170,16 +281,10 @@
+@@ -170,16 +282,10 @@
  
  %build
  %meson \
@@ -158,7 +159,7 @@
  %if %{with malcontent}
    -Dmalcontent=true \
  %else
-@@ -200,6 +305,50 @@
+@@ -200,6 +306,50 @@
  
  %find_lang %{name} --all-name --with-gnome
  

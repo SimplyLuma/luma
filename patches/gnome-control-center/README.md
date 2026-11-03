@@ -263,3 +263,9 @@ a picture up to 1024 px of a file over 1 MiB decodes from the freedesktop
 thumbnail, made once if missing. On a Raspberry Pi 5 five threads decoded the
 6016x3384 wallpaper for a 240x135 card; Settings Wi-Fi key-to-frame p95
 736 -> 300 ms.
+
+`0098-lumaui-page-wash-300px-and-hidden-on-tv.patch`: the page wash was a
+page-sized GtkDrawingArea, so every redraw rasterized and uploaded a cairo
+surface of the whole page (on TV an empty one); it is now 300 px tall and
+hidden on TV. Pi 5 4K Settings: cairo upload share 10% -> 1%, page-switch
+key-to-frame p50 ~200 -> 169 ms.
