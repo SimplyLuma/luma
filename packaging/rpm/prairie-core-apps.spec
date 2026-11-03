@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.128%{?dist}
+Release:        1.luma.129%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -692,6 +692,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.129
+- Show the hub's reason when Connect enrolment is refused.
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.128
 - Log every call when it begins and settle it when it ends, keyed by call
   and start time, so a restarted modem service never drops a call.
