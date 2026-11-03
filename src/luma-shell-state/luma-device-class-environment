@@ -1,0 +1,11 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# systemd user environment generator: the image's device class for the session.
+# GNOME Shell reads LUMA_DEVICE_CLASS, not the marker. environment.d runs later
+# and still wins.
+class=$(head -n 1 /etc/luma-device-class 2>/dev/null | tr -d '[:space:]')
+case $class in
+	handheld | mobile) echo LUMA_DEVICE_CLASS=handheld ;;
+	tablet | desktop) echo "LUMA_DEVICE_CLASS=$class" ;;
+esac
+exit 0
