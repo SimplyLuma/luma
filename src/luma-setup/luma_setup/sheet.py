@@ -136,7 +136,7 @@ class Field(Gtk.Box):
     def __init__(self, placeholder: str = "", *, value: str = "", prefix: str = "", lead: str = "",
                  trail: str = "", password: bool = False, purpose: Gtk.InputPurpose = Gtk.InputPurpose.FREE_FORM,
                  on_changed: Callable[[str], None] | None = None, on_activate: Callable[[], None] | None = None,
-                 name: str = "") -> None:
+                 name: str = "", accessible: str = "") -> None:
         super().__init__(spacing=6)
         self.add_css_class("su-field")
         if lead:
@@ -144,12 +144,13 @@ class Field(Gtk.Box):
         if prefix:
             self.append(label(prefix, "su-pre"))
         self.text = Gtk.Text(text=value, placeholder_text=placeholder, hexpand=True, visibility=not password,
-                             input_purpose=Gtk.InputPurpose.PASSWORD if password else purpose)
-        self.text.update_property([Gtk.AccessibleProperty.LABEL], [placeholder or prefix])
+                             input_purpose=Gtk.InputPurpose.PASSWORD if password else purpose,
+                             accessible_role=Gtk.AccessibleRole.TEXT_BOX)
+        self.text.update_property([Gtk.AccessibleProperty.LABEL], [accessible or placeholder or prefix])
         if name:
             self.text.set_name(name)
         self.append(self.text)
-        self.trail = icon(trail, 16, "su-ok" if trail == "check" else "su-pen") if trail else None
+        self.trail = icon(trail, 16 if trail == "check" else 13, "su-ok" if trail == "check" else "su-pen") if trail else None
         if self.trail is not None:
             self.trail.set_visible(trail != "check")
             self.append(self.trail)
@@ -193,6 +194,7 @@ class ChoiceList(Gtk.Box):
     def __init__(self, label_text: str, *, max_height: int = 0, name: str = "") -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.add_css_class("su-list")
+        self.update_property([Gtk.AccessibleProperty.LABEL], [label_text])
         if name:
             self.set_name(name)
         self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -884,7 +886,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         if self.phone:
             body = box(languages, column, vertical=True, spacing=16)
         else:
-            languages.set_size_request(336, -1)
+            languages.set_size_request(334, -1)
             languages.set_hexpand(False)
             languages.set_valign(Gtk.Align.START)
             column.set_valign(Gtk.Align.START)
@@ -925,7 +927,6 @@ class SetupWindow(Gtk.ApplicationWindow):
         nets.append(self._other_row())
         note = label("You can do this later in Settings. The time zone is set for you once you’re online.",
                      "su-note", xalign=0.5, wrap=True)
-        note.set_margin_top(14)
         self.page_parts["focus"] = self.page_parts.get("open-field") or (first and first.get_first_child())
         return "Get online", "No cable found. Pick a Wi-Fi network.", box(nets, note, vertical=True), ""
 
@@ -1076,7 +1077,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         face.set_child(face_overlay)
         face.set_halign(Gtk.Align.CENTER)
         face.connect("clicked", lambda _b: self._toggle_faces())
-        face_column = box(face, vertical=True, spacing=10, css=("su-face",))
+        face_column = box(face, vertical=True, spacing=10, css=("su-face",), valign=Gtk.Align.START)
+        face_column.set_hexpand(False)
         if self.faces_open:
             picker = Gtk.Popover(child=self._faces(), has_arrow=False, position=Gtk.PositionType.BOTTOM,
                                  autohide=True)
@@ -1195,9 +1197,9 @@ class SetupWindow(Gtk.ApplicationWindow):
     # Name this Luma ------------------------------------------------------------------
     def _device(self):
         s = self.setup
-        name = Field("Luma", value=s.device_name, name="su-dev", on_changed=self._typed_device)
+        name = Field("Luma", value=s.device_name, name="su-dev", on_changed=self._typed_device,
+                     accessible="Device name")
         host = label(f"{_host(s.device_name)}.local", "su-note")
-        host.set_margin_top(4)
         zone = catalog.zone(s.timezone)
         automatic = s.online and s.timezone_automatic and not self.zone_open
         line = f"{zone.name} · {zone.city}" + (" · set automatically" if automatic else "")
@@ -1207,6 +1209,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         globe = icon("globe", 16)
         globe.set_hexpand(True)
         glyph.append(globe)
+        glyph.set_hexpand(False)
         card.append(glyph)
         card.append(box(label("Time zone", "su-tzt"), label(line, "su-tzs", ellipsize=Pango.EllipsizeMode.END), vertical=True,
                         spacing=1, hexpand=True, valign=Gtk.Align.CENTER))
@@ -1445,7 +1448,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.foot.set_spacing(4)
             self.foot.append(key)
             if back or skip:
-                pair = box(back, skip, spacing=0, homogeneous=True)
+                pair = box(back, skip, spacing=0)   # each grows by the same share, as flex: 1
                 for child in (back, skip):
                     if child is not None:
                         child.set_hexpand(True)

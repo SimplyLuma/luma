@@ -13,8 +13,10 @@ window.su-window { background: #0b0d14; }
   --su-pop: #303235; --su-card: #26282b; --well: #17191c;
   --chip: #47494d; --key-top: #e7e8ea; --key-bottom: #cecfd2; --key-ink: #151619;
   --av-a: #5aa3ec; --av-b: #6365c1;
-  font-family: Figtree, sans-serif; color: var(--ink);
+  font-family: Figtree, sans-serif; letter-spacing: -0.078px; color: var(--ink);   /* the design's -.006em at 13 px, inherited */
 }
+/* buttons and fields set their own letter-spacing back to normal (the browser's form controls) */
+.su button, .su .su-field text { letter-spacing: 0; }
 .su.su-light {
   --ink: #14161a; --ink-2: #404247; --ink-3: #6c6f73; --ink-4: #96989c;
   --fill-1: rgba(20,22,27,.05); --fill-2: rgba(20,22,27,.085); --fill-3: rgba(20,22,27,.13); --hair: rgba(20,22,27,.09);
@@ -36,7 +38,7 @@ window.su-window { background: #0b0d14; }
   box-shadow: 0 0 0 .5px rgba(255,255,255,.1), 0 12px 32px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25), inset 0 1px 0 var(--hi), 0 0 0 1px var(--hair);
 }
 .su-light .su-sheet { box-shadow: 0 0 0 .5px rgba(0,0,0,.1), 0 12px 32px -8px rgba(0,0,0,.2), 0 2px 6px rgba(0,0,0,.06), inset 0 1px 0 var(--hi), 0 0 0 1px var(--hair); }
-.su-head { min-height: 60px; padding: 0 28px; border-bottom: 1px solid var(--hair); font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.su-head { min-height: 59px; padding: 0 28px; border-bottom: 1px solid var(--hair); font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
 .su-wordmark { font-size: 17px; font-weight: 700; letter-spacing: -0.5px; color: var(--ink); }
 .su-head .su-sep { min-width: 1px; min-height: 12px; background: var(--hair); box-shadow: 0 0 0 .5px var(--hair); }
 .su-dots > .su-dot { min-width: 6px; min-height: 6px; border-radius: 3px; background: var(--fill-3); transition: min-width 350ms cubic-bezier(.3, 1.3, .5, 1), background 200ms; }
@@ -48,9 +50,9 @@ window.su-window { background: #0b0d14; }
 .su-foot { padding: 16px 20px 16px 28px; border-top: 1px solid var(--hair); }
 
 /* every page opens the same way: a centred title and one short line */
-.su-title { font-size: 28px; font-weight: 700; letter-spacing: -0.78px; }
-.su-greet .su-title { font-size: 40px; letter-spacing: -1.4px; }
-.su-lede { margin-top: 8px; font-size: 15px; color: var(--ink-2); }
+.su-title { font-size: 28px; line-height: 32px; font-weight: 700; letter-spacing: -0.78px; }
+.su-greet .su-title { font-size: 40px; line-height: 46px; letter-spacing: -1.4px; }
+.su-lede { margin-top: 8px; font-size: 15px; line-height: 22px; color: var(--ink-2); }
 .su-main { margin-top: 26px; }
 
 /* the foot's buttons: the way back and the key on the right */
@@ -63,7 +65,7 @@ button.su-bt.su-key { padding: 0 16px 0 18px; font-weight: 600; letter-spacing: 
   background-image: linear-gradient(180deg, var(--key-top), var(--key-bottom));
   box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 0 0 1px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.4); }
 .su-light button.su-bt.su-key { box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 0 0 1px rgba(0,0,0,.7), 0 1px 3px rgba(0,0,0,.25); }
-button.su-bt.su-key:disabled { opacity: .38; box-shadow: none; }
+button.su-bt.su-key:disabled { opacity: .38; filter: none; box-shadow: none; }
 button.su-bt:focus-visible, button.su-li:focus-visible, button.su-nh:focus-visible, button.su-all:focus-visible,
 button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-visible { outline: 2px solid rgba(103,170,237,.6); outline-offset: 2px; }
 
@@ -73,11 +75,12 @@ button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-vi
 .su-light .su-field, .su-light .su-list, .su-light .su-nets { box-shadow: inset 0 0 0 1px rgba(0,0,0,.075), inset 0 1px 2px rgba(0,0,0,.06), 0 1px 0 rgba(255,255,255,.9); }
 .su-field:focus-within { box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 0 0 2px var(--acc-ring); }
 .su-field.su-bad { box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 0 0 1.5px rgba(233,80,77,.7); }
-.su-field text { font-size: 14px; font-weight: 500; color: var(--ink); background: none; caret-color: var(--ink); }
+.su-field text { margin: 0 2px; font-size: 14px; font-weight: 500; color: var(--ink); background: none; caret-color: var(--ink); }   /* an input's own 2 px */
 .su-field text placeholder { color: var(--ink-4); font-weight: 450; }
 .su-field .su-pre { font-size: 14px; font-weight: 600; color: var(--ink-3); }
 .su-field .su-ok { color: var(--good); }
-.su-note { margin: 6px 4px 0; font-size: 11.5px; color: var(--ink-3); }
+.su-note { margin: 6px 4px 0; font-size: 11.5px; line-height: 17px; color: var(--ink-3); }
+.su-k-wifi .su-note { margin-top: 14px; }
 .su-spin { color: var(--ink-2); min-width: 12px; min-height: 12px; }
 
 /* lists: rows in a recessed well; the chosen one is a raised chip with a tick */
@@ -93,7 +96,7 @@ button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-vi
   box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
 .su-light .su-li.su-on { box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.12); }
 .su-li.su-on .su-tick { opacity: 1; }
-.su-lab { margin: 2px 4px 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.su-lab { margin: 2px 4px 8px; font-size: 12.5px; line-height: 18px; font-weight: 600; color: var(--ink-3); }
 .su-try { margin-top: 12px; }
 
 /* Get online: the networks as one list; a secured one opens in place for its password */
@@ -110,15 +113,15 @@ button.su-nh { min-height: 44px; padding: 0 14px; border-radius: 14px; font-size
 .su-sig > .su-bar { min-width: 3px; border-radius: 1px; background: var(--fill-3); }
 .su-sig > .su-bar.su-lit { background: var(--ink-2); }
 .su-nf { padding: 2px 8px 8px; }
-.su-nf button.su-bt { min-height: 42px; min-width: 72px; }
+.su-nf button.su-bt { min-height: 42px; min-width: 38px; }   /* 72 with the key's padding */
 .su-why { margin: 0 12px 8px; font-size: 12px; color: #fb794a; }
 .su-light .su-why { color: #c83122; }
 
 /* About you: the photo beside four fields, the strength line under them */
-button.su-avb { padding: 0; border-radius: 30px; background: none; box-shadow: none; }
+button.su-avb { padding: 0; border-radius: 48px; background: none; box-shadow: none; }
 .su-av { border-radius: 30px; color: #fff; font-weight: 650; background-image: linear-gradient(135deg, var(--av-a), var(--av-b));
   box-shadow: 0 0 0 3px var(--su-card), 0 0 0 4px var(--hair); }
-.su-av.su-big { min-width: 96px; min-height: 96px; font-size: 36px; }
+.su-av.su-big { min-width: 96px; min-height: 96px; font-size: 36px; border-radius: 48px; }
 .su-av.su-mid { min-width: 64px; min-height: 64px; font-size: 24px; border-radius: 20px; }
 .su-av.su-small { min-width: 34px; min-height: 34px; font-size: 13px; border-radius: 11px; }
 .su-av.su-photo { background-size: cover; background-position: center; }
@@ -132,22 +135,22 @@ popover.su-faces-pop > contents { padding: 0; border-radius: 16px; background: v
 .su-un .su-pre { font-size: 12.5px; }
 .su-un text { color: var(--ink-2); }
 .su-un .su-pen { color: var(--ink-4); }
-.su-str { margin: 2px 4px 0; font-size: 12px; color: var(--ink-3); }
+.su-str { margin: 2px 4px 0; font-size: 12px; line-height: 17px; color: var(--ink-3); }
 .su-str .su-bar { min-width: 18px; min-height: 4px; border-radius: 2px; background: var(--fill-2); }
 .su-str.s1 .su-bar.su-lit { background: var(--bad); }
 .su-str.s2 .su-bar.su-lit { background: var(--fair); }
 .su-str.s3 .su-bar.su-lit, .su-str.s4 .su-bar.su-lit { background: var(--good); }
-.su-owner { margin-top: 22px; font-size: 12.5px; color: var(--ink-3); }
+.su-owner { margin-top: 22px; font-size: 12.5px; line-height: 18px; color: var(--ink-3); }
 
 /* Name this Luma: its name, then the time zone, set for them when online and picked when not */
 .su-narrow > .su-field text { font-size: 16px; font-weight: 600; }
-.su-tz { margin-top: 14px; padding: 12px 12px 12px 14px; border-radius: 16px; background: var(--su-card); box-shadow: inset 0 0 0 1px var(--hair); }
-.su-tz .su-tzt { font-size: 13.5px; font-weight: 600; }
-.su-tz .su-tzs { font-size: 12.5px; color: var(--ink-3); }
+.su-tz { margin-top: 22px; padding: 12px 12px 12px 14px; border-radius: 16px; background: var(--su-card); box-shadow: inset 0 0 0 1px var(--hair); }
+.su-tz .su-tzt { font-size: 13.5px; line-height: 20px; font-weight: 600; }
+.su-tz .su-tzs { font-size: 12.5px; line-height: 18px; color: var(--ink-3); }
 .su-tzi { min-width: 34px; min-height: 34px; border-radius: 10px; background: var(--fill-1); color: var(--ink-2); }
 button.su-all { min-height: 28px; padding: 0 11px; border-radius: 14px; background: var(--fill-1); color: var(--ink-2); font-size: 12px; font-weight: 600; box-shadow: none; }
 button.su-all:hover { background: var(--fill-2); color: var(--ink); }
-.su-tzpick { margin-top: 8px; }
+.su-tzpick { margin-top: 16px; }
 .su-search .su-lead { color: var(--ink-3); }
 
 /* Finish: their face over the steps, which tick off in turn */
@@ -162,11 +165,11 @@ popover.su-pop > contents { padding: 8px; border-radius: 16px; background: var(-
 
 /* ══ phone: a LumaUI drawer from the bottom edge, full width, 28 px top corners, a grabber ══ */
 .su-ph .su-sheet { border-radius: 28px 28px 0 0; }
-.su-ph .su-grab { min-width: 36px; min-height: 5px; border-radius: 3px; background: var(--fill-3); margin-top: 8px; }
-.su-ph .su-head { min-height: 50px; padding: 0 22px; }
+.su-ph .su-grab { min-width: 36px; min-height: 5px; border-radius: 3px; background: var(--fill-3); margin: 8px 0 -13px; }   /* over the head, as the design's ::before */
+.su-ph .su-head { min-height: 47px; padding: 10px 22px 0; }
 .su-ph .su-body { padding: 26px 20px 22px; }
-.su-ph .su-title { font-size: 26px; }
-.su-ph .su-greet .su-title { font-size: 34px; }
+.su-ph .su-title { font-size: 26px; line-height: 30px; }
+.su-ph .su-greet .su-title { font-size: 34px; line-height: 39px; }
 .su-ph .su-foot { padding: 12px 20px 28px; }
 .su-ph .su-foot button.su-bt { min-height: 50px; border-radius: 16px; font-size: 15px; }
 .su-ph .su-foot button.su-bt:not(.su-key) { min-height: 40px; background: none; color: var(--ink-2); }

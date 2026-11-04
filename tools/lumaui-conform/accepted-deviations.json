@@ -281,6 +281,90 @@
       "prop": "^colou?r$",
       "spec_value": "#757575",
       "gtk_value": "#85878b"
+    },
+    {
+      "id": "first-boot-accessibility",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The sheet's head has an Accessibility button (screen reader, larger text, zoom) that the design asked for but did not draw.",
+      "apps": [
+        "first-boot"
+      ],
+      "group": "head",
+      "subject": "accessibility",
+      "prop": "^extra$"
+    },
+    {
+      "id": "first-boot-wordmark",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The Luma mark is the luma-logos wordmark icon, not a painted box; the comparator sees only symbolic icons and painted boxes.",
+      "apps": [
+        "first-boot"
+      ],
+      "group": "head",
+      "subject": "^box \"Luma\"$",
+      "prop": "^missing$"
+    },
+    {
+      "id": "first-boot-one-session-key",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The one-session redesign moved Finish off Name this Luma: its key is Continue (Make it yours, Luma Connect and Add apps follow in the same sheet), so Back sits beside a wider key.",
+      "apps": [
+        "first-boot"
+      ],
+      "states": [
+        "device-offline"
+      ],
+      "group": "foot",
+      "subject": "\"(Finish|Continue|Back)\"$",
+      "prop": "^(missing|extra|position)$",
+      "max_delta": 30
+    },
+    {
+      "id": "first-boot-placeholder-weight",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The design draws placeholders at 450 (input::placeholder); the spec capture reads the input's own 500.",
+      "apps": [
+        "first-boot"
+      ],
+      "subject": "^text \"(Type here to try it|Full name|nick|Password|Password again|Password for Studio North|Network name|Password \\(leave empty if open\\)|Search for a city)\"$",
+      "prop": "^font weight$",
+      "spec_value": "^500$",
+      "gtk_value": "^450$"
+    },
+    {
+      "id": "first-boot-first-focus",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "Each page puts the keyboard focus in its first field as it opens (typing works at once, Return goes on), so that field shows its focus ring; the design's pages open with nothing focused.",
+      "apps": [
+        "first-boot"
+      ],
+      "subject": "^textbox ",
+      "prop": "^shadow$",
+      "spec_value": "^none$",
+      "gtk_value": "blur ≤0"
+    },
+    {
+      "id": "first-boot-photo-button",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The photo button is exactly its avatar; GTK reports the avatar's gradient and ring under the button as well.",
+      "apps": [
+        "first-boot"
+      ],
+      "subject": "^button \"Choose a photo\"$",
+      "prop": "^(gradient|shadow)$"
+    },
+    {
+      "id": "first-boot-password-bullets",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The spec capture measures a password field's value as its letters; both draw bullets.",
+      "apps": [
+        "first-boot"
+      ],
+      "states": [
+        "you-mismatch"
+      ],
+      "subject": "^text \"(abc|abd)\"$",
+      "prop": "^width$"
     }
   ]
 }
