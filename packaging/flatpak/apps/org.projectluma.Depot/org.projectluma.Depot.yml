@@ -6,6 +6,8 @@ sdk: org.projectluma.Sdk
 command: luma-depot
 appstream-compose: false
 finish-args:
+  - --talk-name=org.projectluma.Shell.Keyboard
+  - --talk-name=org.projectluma.Shell.Remote
   - --talk-name=org.project_luma.ShellState1
   - --metadata=X-Luma=min-host-installer=68
   - --metadata=X-Luma=app-data-schema=depot-v1

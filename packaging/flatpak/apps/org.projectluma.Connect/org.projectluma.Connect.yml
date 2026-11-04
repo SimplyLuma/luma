@@ -5,6 +5,8 @@
   "sdk": "org.projectluma.Sdk",
   "command": "luma-connect",
   "finish-args": [
+    "--talk-name=org.projectluma.Shell.Keyboard",
+    "--talk-name=org.projectluma.Shell.Remote",
     "--talk-name=org.project_luma.ShellState1",
     "--metadata=X-Luma=min-host-installer=57",
     "--metadata=X-Luma=app-data-schema=connect-host-v1",
