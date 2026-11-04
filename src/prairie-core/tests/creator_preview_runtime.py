@@ -185,6 +185,11 @@ def main():
             window = PhotosWindow(app, library=library)
             window.present()
             settle(lambda: window.state is not None)
+            # Before the first scan ends an empty catalog reads as loading, not as "No photos yet".
+            assert not window.library_empty.get_visible() and window.scroll.get_visible()
+            window._scanned = True
+            window._render_library()
+            settle()
             assert window.library_empty.get_visible() and not window.scroll.get_visible()
             assert not window.toggle.get_visible()
             assert window.library_empty.primary_button.grab_focus()
