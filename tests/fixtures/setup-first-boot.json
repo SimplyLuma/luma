@@ -1,0 +1,4 @@
+{
+ "networks": [["Studio North", 3, 1], ["Studio North 5G", 3, 1], ["Thursday", 2, 1], ["Café Guest", 2, 0], ["DIRECT-LaserJet", 1, 1]],
+ "timezone": "America/Chicago"
+}

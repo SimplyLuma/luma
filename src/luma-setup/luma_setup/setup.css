@@ -1,0 +1,172 @@
+/* SPDX-License-Identifier: Apache-2.0
+ * Luma setup: the system's own sheet (design: Design Center 9685b33, desktop/setup.css; every
+ * class keeps the design's su- name). One flat sheet over the softened wallpaper, no window chrome:
+ * a fixed head with the steps, a body that fits the page, a foot. Hairlines part the three.
+ * The colours are the design's tokens; .su-light carries the light ones. */
+
+window.su-window { background: #0b0d14; }
+.su {
+  --ink: oklch(0.965 0.003 265); --ink-2: oklch(0.82 0.005 265); --ink-3: oklch(0.65 0.006 265); --ink-4: oklch(0.5 0.006 265);
+  --fill-1: oklch(1 0 0 / .06); --fill-2: oklch(1 0 0 / .1); --fill-3: oklch(1 0 0 / .16); --hair: oklch(1 0 0 / .075);
+  --hi: oklch(1 0 0 / .07); --good: oklch(0.76 0.15 150); --acc-ink: oklch(0.82 0.09 250); --acc-ring: oklch(0.72 0.12 250 / .55);
+  --bad: oklch(0.64 0.19 25); --fair: oklch(0.76 0.15 75);
+  --su-pop: oklch(0.315 0.006 265); --su-card: oklch(0.275 0.006 265); --well: oklch(0.212 0.006 265);
+  --chip: oklch(0.405 0.008 265); --key-top: oklch(0.93 0.003 265); --key-bottom: oklch(0.855 0.004 265); --key-ink: oklch(0.2 0.006 265);
+  --av-a: oklch(0.7 0.13 250); --av-b: oklch(0.55 0.14 280);
+  font-family: Figtree, sans-serif; color: var(--ink);
+}
+.su.su-light {
+  --ink: oklch(0.2 0.008 265); --ink-2: oklch(0.38 0.008 265); --ink-3: oklch(0.54 0.008 265); --ink-4: oklch(0.68 0.006 265);
+  --fill-1: oklch(0.2 0.01 265 / .05); --fill-2: oklch(0.2 0.01 265 / .085); --fill-3: oklch(0.2 0.01 265 / .13); --hair: oklch(0.2 0.01 265 / .09);
+  --hi: rgba(255,255,255,.8); --good: oklch(0.62 0.15 150); --acc-ink: oklch(0.48 0.12 250);
+  --su-pop: #ffffff; --su-card: oklch(0.975 0.003 265); --well: oklch(0.955 0.004 265);
+  --chip: #ffffff; --key-top: oklch(0.33 0.008 265); --key-bottom: oklch(0.22 0.008 265); --key-ink: #ffffff;
+}
+
+/* the room: the wallpaper, softened (the picture is pre-blurred; this dims it as brightness .78 did) */
+.su-cover-dim { background: rgba(0, 0, 0, .22); }
+.su-light .su-cover-dim { background: rgba(0, 0, 0, .04); }
+.su-scrim { background: rgba(0, 0, 0, .12); }
+.su-in .su-scrim { background: rgba(0, 0, 0, .34); }
+.su-light.su-in .su-scrim { background: rgba(20, 20, 30, .16); }
+
+/* ── the sheet: head, body, foot ── */
+.su-sheet {
+  border-radius: 26px; background-color: var(--su-pop);
+  box-shadow: 0 0 0 .5px oklch(1 0 0 / .1), 0 12px 32px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25), inset 0 1px 0 var(--hi), 0 0 0 1px var(--hair);
+}
+.su-light .su-sheet { box-shadow: 0 0 0 .5px rgba(0,0,0,.1), 0 12px 32px -8px rgba(0,0,0,.2), 0 2px 6px rgba(0,0,0,.06), inset 0 1px 0 var(--hi), 0 0 0 1px var(--hair); }
+.su-head { min-height: 60px; padding: 0 28px; border-bottom: 1px solid var(--hair); font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.su-wordmark { font-size: 17px; font-weight: 700; letter-spacing: -0.5px; color: var(--ink); }
+.su-head .su-sep { min-width: 1px; min-height: 12px; background: var(--hair); box-shadow: 0 0 0 .5px var(--hair); }
+.su-dots > .su-dot { min-width: 6px; min-height: 6px; border-radius: 3px; background: var(--fill-3); transition: min-width 350ms cubic-bezier(.3, 1.3, .5, 1), background 200ms; }
+.su-dots > .su-dot.su-on { min-width: 18px; background: var(--ink-2); }
+.su-dots > .su-dot.su-past { background: var(--ink-3); }
+.su-a11y > button { min-width: 28px; min-height: 28px; padding: 0; border-radius: 14px; color: var(--ink-3); background: none; box-shadow: none; }
+.su-a11y > button:hover, .su-a11y > button:checked { background: var(--fill-1); color: var(--ink-2); }
+.su-body { padding: 32px 40px 38px; }
+.su-foot { padding: 16px 20px 16px 28px; border-top: 1px solid var(--hair); }
+
+/* every page opens the same way: a centred title and one short line */
+.su-title { font-size: 28px; font-weight: 700; letter-spacing: -0.78px; }
+.su-greet .su-title { font-size: 40px; letter-spacing: -1.4px; }
+.su-lede { margin-top: 8px; font-size: 15px; color: var(--ink-2); }
+.su-main { margin-top: 26px; }
+
+/* the foot's buttons: the way back and the key on the right */
+button.su-bt { min-height: 38px; padding: 0 16px; border-radius: 12px; font-size: 13.5px; font-weight: 500; color: var(--ink); background: none; box-shadow: none; border: none; }
+button.su-bt.su-fill { background: var(--fill-1); }
+button.su-bt.su-fill:hover { background: var(--fill-2); }
+button.su-bt.su-quiet { padding: 0 12px; color: var(--ink-2); }
+button.su-bt.su-quiet:hover { background: var(--fill-1); color: var(--ink); }
+button.su-bt.su-key { padding: 0 16px 0 18px; font-weight: 600; letter-spacing: -0.135px; color: var(--key-ink);
+  background-image: linear-gradient(180deg, var(--key-top), var(--key-bottom));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 0 0 1px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.4); }
+.su-light button.su-bt.su-key { box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 0 0 1px rgba(0,0,0,.7), 0 1px 3px rgba(0,0,0,.25); }
+button.su-bt.su-key:disabled { opacity: .38; box-shadow: none; }
+button.su-bt:focus-visible, button.su-li:focus-visible, button.su-nh:focus-visible, button.su-all:focus-visible,
+button.su-avb:focus-visible, .su-a11y > button:focus-visible, row.su-li:focus-visible { outline: 2px solid oklch(0.72 0.12 250 / .6); outline-offset: 2px; }
+
+/* fields: a recessed well, the accent ring with the focus */
+.su-field { min-height: 42px; padding: 0 13px; border-radius: 12px; background: var(--well);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+.su-light .su-field, .su-light .su-list, .su-light .su-nets { box-shadow: inset 0 0 0 1px rgba(0,0,0,.075), inset 0 1px 2px rgba(0,0,0,.06), 0 1px 0 rgba(255,255,255,.9); }
+.su-field:focus-within { box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 0 0 2px var(--acc-ring); }
+.su-field.su-bad { box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 0 0 1.5px oklch(0.64 0.19 25 / .7); }
+.su-field text { font-size: 14px; font-weight: 500; color: var(--ink); background: none; caret-color: var(--ink); }
+.su-field text placeholder { color: var(--ink-4); font-weight: 450; }
+.su-field .su-pre { font-size: 14px; font-weight: 600; color: var(--ink-3); }
+.su-field .su-ok { color: var(--good); }
+.su-note { margin: 6px 4px 0; font-size: 11.5px; color: var(--ink-3); }
+.su-spin { color: var(--ink-2); min-width: 12px; min-height: 12px; }
+
+/* lists: rows in a recessed well; the chosen one is a raised chip with a tick */
+.su-list { padding: 4px; border-radius: 16px; background: var(--well);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+.su-list > row, .su-list > list > row { padding: 0; background: none; }
+.su-li { min-height: 40px; padding: 0 12px; border-radius: 12px; font-size: 14px; font-weight: 500; color: var(--ink); background: none; }
+.su-li:hover { background: var(--fill-1); }
+.su-li .su-lead { color: var(--ink-3); }
+.su-li .su-tick { color: var(--acc-ink); opacity: 0; }
+.su-li .su-sub { font-size: 12px; color: var(--ink-3); }
+.su-li.su-on { background: var(--chip); font-weight: 600;
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+.su-light .su-li.su-on { box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.12); }
+.su-li.su-on .su-tick { opacity: 1; }
+.su-lab { margin: 2px 4px 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+.su-try { margin-top: 12px; }
+
+/* Get online: the networks as one list; a secured one opens in place for its password */
+.su-nets { padding: 4px; border-radius: 18px; background: var(--well);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.42), inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 oklch(1 0 0 / .05); }
+.su-net { border-radius: 14px; }
+.su-net.su-open, .su-net.su-on { background: var(--chip); box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+.su-light .su-net.su-open, .su-light .su-net.su-on { box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.12); }
+button.su-nh { min-height: 44px; padding: 0 14px; border-radius: 14px; font-size: 14px; font-weight: 500; color: var(--ink); background: none; }
+.su-net:not(.su-open):not(.su-on) button.su-nh:hover { background: var(--fill-1); }
+.su-nh .su-lock { color: var(--ink-3); }
+.su-other { color: var(--ink-2); }
+.su-con { font-size: 12px; font-weight: 600; color: var(--good); }
+.su-sig > .su-bar { min-width: 3px; border-radius: 1px; background: var(--fill-3); }
+.su-sig > .su-bar.su-lit { background: var(--ink-2); }
+.su-nf { padding: 2px 8px 8px; }
+.su-nf button.su-bt { min-height: 42px; min-width: 72px; }
+.su-why { margin: 0 12px 8px; font-size: 12px; color: oklch(0.72 0.17 40); }
+.su-light .su-why { color: oklch(0.55 0.19 30); }
+
+/* About you: the photo beside four fields, the strength line under them */
+button.su-avb { padding: 0; border-radius: 30px; background: none; box-shadow: none; }
+.su-av { border-radius: 30px; color: #fff; font-weight: 650; background-image: linear-gradient(135deg, var(--av-a), var(--av-b));
+  box-shadow: 0 0 0 3px var(--su-card), 0 0 0 4px var(--hair); }
+.su-av.su-big { min-width: 96px; min-height: 96px; font-size: 36px; }
+.su-av.su-mid { min-width: 64px; min-height: 64px; font-size: 24px; border-radius: 20px; }
+.su-av.su-small { min-width: 34px; min-height: 34px; font-size: 13px; border-radius: 11px; }
+.su-av.su-photo { background-size: cover; background-position: center; }
+.su-cam { min-width: 30px; min-height: 30px; border-radius: 15px; background: var(--chip); color: var(--ink-2);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / .1), 0 0 0 1px rgba(0,0,0,.32), 0 1px 2px rgba(0,0,0,.35); }
+popover.su-faces-pop > contents { padding: 0; border-radius: 16px; background: var(--su-pop);
+  box-shadow: 0 0 0 .5px oklch(1 0 0 / .1), 0 12px 32px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25), 0 0 0 1px var(--hair); }
+.su-faces { padding: 8px; }
+.su-faces button { padding: 0; border-radius: 11px; background: none; }
+.su-faces button.su-on .su-av { box-shadow: 0 0 0 2px var(--su-pop), 0 0 0 4px oklch(0.72 0.13 250); }
+.su-un .su-pre { font-size: 12.5px; }
+.su-un text { color: var(--ink-2); }
+.su-un .su-pen { color: var(--ink-4); }
+.su-str { margin: 2px 4px 0; font-size: 12px; color: var(--ink-3); }
+.su-str .su-bar { min-width: 18px; min-height: 4px; border-radius: 2px; background: var(--fill-2); }
+.su-str.s1 .su-bar.su-lit { background: var(--bad); }
+.su-str.s2 .su-bar.su-lit { background: var(--fair); }
+.su-str.s3 .su-bar.su-lit, .su-str.s4 .su-bar.su-lit { background: var(--good); }
+.su-owner { margin-top: 22px; font-size: 12.5px; color: var(--ink-3); }
+
+/* Name this Luma: its name, then the time zone, set for them when online and picked when not */
+.su-narrow > .su-field text { font-size: 16px; font-weight: 600; }
+.su-tz { margin-top: 14px; padding: 12px 12px 12px 14px; border-radius: 16px; background: var(--su-card); box-shadow: inset 0 0 0 1px var(--hair); }
+.su-tz .su-tzt { font-size: 13.5px; font-weight: 600; }
+.su-tz .su-tzs { font-size: 12.5px; color: var(--ink-3); }
+.su-tzi { min-width: 34px; min-height: 34px; border-radius: 10px; background: var(--fill-1); color: var(--ink-2); }
+button.su-all { min-height: 28px; padding: 0 11px; border-radius: 14px; background: var(--fill-1); color: var(--ink-2); font-size: 12px; font-weight: 600; box-shadow: none; }
+button.su-all:hover { background: var(--fill-2); color: var(--ink); }
+.su-tzpick { margin-top: 8px; }
+.su-search .su-lead { color: var(--ink-3); }
+
+/* Finish: their face over the steps, which tick off in turn */
+.su-steps > .su-step { min-height: 44px; padding: 0 14px; border-radius: 14px; background: var(--fill-1); font-size: 14px; color: var(--ink-3); }
+.su-steps > .su-step.su-past { color: var(--ink); }
+.su-steps .su-done { color: var(--good); }
+.su-steps .su-sub { font-size: 12.5px; color: var(--ink-3); }
+
+/* accessibility, from the head */
+popover.su-pop > contents { padding: 8px; border-radius: 16px; background: var(--su-pop); color: var(--ink); }
+.su-pop .su-row { min-height: 40px; padding: 0 6px 0 10px; font-size: 14px; font-weight: 500; }
+
+/* ══ phone: a LumaUI drawer from the bottom edge, full width, 28 px top corners, a grabber ══ */
+.su-ph .su-sheet { border-radius: 28px 28px 0 0; }
+.su-ph .su-grab { min-width: 36px; min-height: 5px; border-radius: 3px; background: var(--fill-3); margin-top: 8px; }
+.su-ph .su-head { min-height: 50px; padding: 0 22px; }
+.su-ph .su-body { padding: 26px 20px 22px; }
+.su-ph .su-title { font-size: 26px; }
+.su-ph .su-greet .su-title { font-size: 34px; }
+.su-ph .su-foot { padding: 12px 20px 28px; }
+.su-ph .su-foot button.su-bt { min-height: 50px; border-radius: 16px; font-size: 15px; }
+.su-ph .su-foot button.su-bt:not(.su-key) { min-height: 40px; background: none; color: var(--ink-2); }
