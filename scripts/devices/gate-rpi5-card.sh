@@ -189,8 +189,14 @@ grep -q '^baseurl=https://' /etc/yum.repos.d/luma-raspberrypi-rpi5.repo 2>/dev/n
 [ -s /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release ] || problems+=("no release key for the device repository")
 grep -qx repo_gpgcheck=1 /etc/yum.repos.d/luma-raspberrypi-rpi5.repo || problems+=("device repository metadata is not signature-checked")
 if rpm -q luma-rpi5-platform >/dev/null 2>&1; then
-  [ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
-    problems+=("logind still offers suspend")
+  # The no-sleep policy applies on Pi 5 boards only (the VM is linux,dummy-virt).
+  if tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -q '^raspberrypi,5'; then
+    [ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
+      problems+=("logind still offers suspend")
+  else
+    [ -f /usr/lib/systemd/system/luma-rpi5-no-sleep.service ] || problems+=("no no-sleep unit")
+    [ ! -e /run/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf ] || problems+=("no-sleep policy applied off the Pi")
+  fi
   [ -f /usr/lib/systemd/system/luma-rpi5-firmware-sync.service ] || problems+=("no firmware-sync unit")
 fi
 for unit in luma-app-baseline gdm; do
@@ -203,8 +209,9 @@ apps=$(flatpak list --app --columns=application 2>/dev/null | wc -l)
 if [ "${#problems[@]}" -eq 0 ]; then echo "PASS $apps apps, kernel $(uname -r)"; else printf 'FAIL %s; ' "${problems[@]}"; echo; fi
 EOF
 )
-[[ "$contract" == PASS* ]] || fail_now fresh-image-contract "${contract#FAIL }"
-stage fresh-image-contract pass "${contract#PASS }"
+# A failed contract fails the gate; the later stages still run and report.
+if [[ "$contract" == PASS* ]]; then stage fresh-image-contract pass "${contract#PASS }"
+else stage fresh-image-contract fail "${contract#FAIL }"; fi
 
 account=$(vm 'bash -s' <<'EOF'
 problems=()
