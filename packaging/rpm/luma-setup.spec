@@ -2,7 +2,7 @@
 
 Name:           luma-setup
 Version:        0.2.0
-Release:        1.luma.2%{?dist}
+Release:        1.luma.3%{?dist}
 Summary:        Set up this Luma: language, network, your account and the device's name
 License:        Apache-2.0
 URL:            https://projectluma.org/setup
@@ -106,6 +106,11 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/applications/org.projectluma.Setup.desktop
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.3
+- One press, one step: a page takes Continue, Back or Skip only once it has
+  been on screen for the double-click time, and a held Return or space acts once
+  (a double click on Continue skipped Make it yours)
+
 * Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.2
 - Install the initial-setup session where GDM looks for it
   (/usr/share/gnome-session/sessions); with it in /etc/xdg GDM showed the

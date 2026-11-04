@@ -554,6 +554,47 @@ def snapshot(window: Gtk.Window, name: str) -> None:
 
 
 # -- the window -------------------------------------------------------------------
+class StepGate:
+    """One press, one step. A page takes Continue, Back or Skip only once it has been on
+    screen for SETTLE: the second click of a double click lands on the next page's key,
+    which can sit where the last one was, and a press queued while a page was built
+    belongs to the page it was meant for. Either would skip a page unseen. SETTLE is the
+    double-click time (at least 400 ms): a second click inside it is part of the first."""
+
+    NO_FRAME_US = 1_000_000   # a window that draws no frame (unmapped) opens after this
+
+    def __init__(self, widget: Gtk.Widget) -> None:
+        self.widget = widget
+        self.drawn = 0
+        self.seen = 0
+
+    def shown(self) -> None:
+        """A new page: closed until its first frame is on screen, then for SETTLE."""
+        stamp = self.drawn = GLib.get_monotonic_time()
+        self.seen = 0
+
+        def painted() -> None:
+            if self.drawn == stamp:
+                self.seen = GLib.get_monotonic_time()
+        after_frames(self.widget, 1, painted)
+
+    @staticmethod
+    def settle_us() -> int:
+        settings = Gtk.Settings.get_default()
+        clicks = settings.get_property("gtk-double-click-time") if settings is not None else 0
+        return max(400, clicks or 0) * 1000
+
+    def open(self) -> bool:
+        now = GLib.get_monotonic_time()
+        if self.seen:
+            return now - self.seen >= self.settle_us()
+        return now - self.drawn >= self.NO_FRAME_US
+
+
+# A held key repeats (the compositor sends repeats as presses); only a new press acts.
+REPEAT_GUARDED = (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter, Gdk.KEY_space, Gdk.KEY_KP_Space)
+
+
 class SetupWindow(Gtk.ApplicationWindow):
     """The room and the sheet (desktop and phone); sheet_tv.SetupTV is the TV's."""
 
@@ -600,6 +641,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         self._zone_asked = False
         self._finishing = False
         self.page_parts: dict[str, Gtk.Widget] = {}
+        self._gate = StepGate(self)
+        self._down: dict[int, int] = {}   # REPEAT_GUARDED keys held: keyval -> last press (µs)
 
         root = Gtk.Overlay()
         root.add_css_class("su")
@@ -655,6 +698,7 @@ class SetupWindow(Gtk.ApplicationWindow):
                                                                describe(self.get_focus())))
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self._key)
+        keys.connect("key-released", self._key_released)
         self.add_controller(keys)
         self.connect("notify::default-height", lambda *_a: self._fit())
         self.connect("realize", lambda *_a: GLib.idle_add(lambda: (self._fit(), False)[1]))
@@ -755,6 +799,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         self._dots()
         self.set_focus(None)
         self._build_foot()
+        self._gate.shown()
         if self.page == "wifi":
             self.network.start_scanning()
         else:
@@ -1402,6 +1447,8 @@ class SetupWindow(Gtk.ApplicationWindow):
                 "icon:org.projectluma.Connect")
 
     def _skip_connect(self) -> None:
+        if not self._gate.open():
+            return
         self.connect_flow.later = True
         self.connect_flow.stop()
         self.go(1)
@@ -1495,7 +1542,7 @@ class SetupWindow(Gtk.ApplicationWindow):
                     self.foot.append(part)
 
     def _press_key(self) -> None:
-        if not self.key.get_sensitive():
+        if not self.key.get_sensitive() or not self._gate.open():
             return
         if self.index == len(self.pages) - 1:
             self.finish()
@@ -1503,6 +1550,9 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.go(1)
 
     def go(self, step: int) -> None:
+        if not self._gate.open():
+            trace("step-early", self.page, step)
+            return
         self.index = max(0, min(len(self.pages) - 1, self.index + step))
         self.open_network = ""
         self.faces_open = False
@@ -1511,6 +1561,14 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     def _key(self, _controller, keyval: int, _code: int, state: Gdk.ModifierType) -> bool:
         trace("key", Gdk.keyval_name(keyval), self.page, describe(self.get_focus()))
+        if keyval in REPEAT_GUARDED and not (keyval in (Gdk.KEY_space, Gdk.KEY_KP_Space)
+                                             and isinstance(self.get_focus(), Gtk.Text)):
+            # A press long after the last one of a key whose release was lost counts as new.
+            now = GLib.get_monotonic_time()
+            last = self._down.get(keyval)
+            self._down[keyval] = now
+            if last is not None and now - last < 800_000:
+                return True
         if keyval == Gdk.KEY_Escape:
             return True  # a system sheet waits for an answer
         if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and not self._finishing:
@@ -1526,6 +1584,9 @@ class SetupWindow(Gtk.ApplicationWindow):
             self._press_key()
             return True
         return False
+
+    def _key_released(self, _controller, keyval: int, _code: int, _state: Gdk.ModifierType) -> None:
+        self._down.pop(keyval, None)
 
     # -- Finish ----------------------------------------------------------------------------
     def finish(self) -> None:
