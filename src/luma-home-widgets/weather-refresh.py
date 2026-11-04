@@ -33,12 +33,17 @@ def main():
                 result = subprocess.run(['flatpak', 'run', '--command=python3',
                     'org.projectluma.Weather', '-', '--provider'],
                     input=Path(__file__).read_text(), text=True, timeout=40)
-                return result.returncode
+                if result.returncode:
+                    print(f'Weather refresh unavailable: provider exited {result.returncode}', file=sys.stderr)
+                return 0
         refresh_saved_city()
         return 0
     except Exception as error:
+        # Best effort: offline, without the Weather app, or on the login
+        # screen's own account there is nothing to refresh, and the widget
+        # keeps its cached reading. That is not a failed unit.
         print(f'Weather refresh unavailable: {error}', file=sys.stderr)
-        return 1
+        return 0
 
 
 if __name__ == '__main__':
