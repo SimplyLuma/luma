@@ -33,13 +33,15 @@ fail() {
 
 architecture=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
 profile=${LUMA_OS_PROFILE:-full}
+hardware_target=${LUMA_OS_HARDWARE_TARGET:-}
+target_args=(--arch "$architecture" --profile "$profile" --hardware-target "$hardware_target")
 [ "$(rpm --eval '%{_arch}')" = "$architecture" ] || fail 'package transaction architecture differs from target'
-python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" plan >/tmp/luma-desktop-target.json || fail 'invalid desktop target'
-mapfile -t pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" pins)
+python3 "$src/scripts/os/lib/desktop_target.py" "${target_args[@]}" plan >/tmp/luma-desktop-target.json || fail 'invalid desktop target'
+mapfile -t pins < <(python3 "$src/scripts/os/lib/desktop_target.py" "${target_args[@]}" pins)
 [ "${#pins[@]}" -gt 0 ] || fail 'the Luma pin list is empty'
 # Always include exact Fedora pins in the transaction, even when already
 # installed, so dependency resolution cannot silently upgrade them.
-mapfile -t -O "${#pins[@]}" pins < <(python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
+mapfile -t -O "${#pins[@]}" pins < <(python3 "$src/scripts/os/lib/desktop_target.py" "${target_args[@]}" fedora | grep -E '\.(x86_64|aarch64|noarch)$' || true)
 for nevra in "${pins[@]}"; do
   [ -f "$packages/Packages/$nevra.rpm" ] || fail "pinned package is not in the build repository: $nevra"
 done
@@ -94,8 +96,8 @@ while IFS= read -r name; do
   fi
   contains "$name" "${requests[@]}" || requests+=("$name")
 done < <(
-  python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" fedora
-  python3 "$src/scripts/os/lib/desktop_target.py" --arch "$architecture" --profile "$profile" roles
+  python3 "$src/scripts/os/lib/desktop_target.py" "${target_args[@]}" fedora
+  python3 "$src/scripts/os/lib/desktop_target.py" "${target_args[@]}" roles
 )
 
 # /opt is a symlink to /var/opt in Fedora's bootable images, and nothing a
@@ -140,6 +142,31 @@ done
 if [ "${#installed_removals[@]}" -gt 0 ]; then
   printf 'Removing: %s\n' "${installed_removals[*]}"
   rpm -e "${installed_removals[@]}"
+fi
+
+# A hardware target with its own kernel (desktop-targets.json hardware_targets
+# kernel): the pinned kernel is installed above beside the base image's
+# Fedora kernel, which is removed here. OSTree boots the one kernel in
+# /usr/lib/modules. --noscripts: kernel-install has nothing to remove in an
+# image; rpm's dependency check still runs, and the target kernel provides
+# kernel-core and kmod() for everything that requires them.
+kernel_package=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["kernel_package"])' /tmp/luma-desktop-target.json)
+if [ -n "$kernel_package" ]; then
+  rpm -q "$kernel_package" >/dev/null || fail "hardware target kernel $kernel_package is not installed"
+  target_kver=$(rpm -ql "$kernel_package" | sed -n 's|^/usr/lib/modules/\([^/]*\)/vmlinuz$|\1|p')
+  [ -n "$target_kver" ] || fail "$kernel_package ships no /usr/lib/modules/<release>/vmlinuz"
+  fedora_kernel=()
+  for name in kernel kernel-core kernel-modules kernel-modules-core kernel-modules-extra kernel-modules-internal; do
+    rpm -q "$name" >/dev/null 2>&1 && fedora_kernel+=("$name")
+  done
+  if [ "${#fedora_kernel[@]}" -gt 0 ]; then
+    printf 'Replacing the base kernel (%s) with %s\n' "${fedora_kernel[*]}" "$kernel_package"
+    rpm -e --noscripts "${fedora_kernel[@]}"
+  fi
+  for dir in /usr/lib/modules/*; do
+    [ "$(basename "$dir")" = "$target_kver" ] || rm -rf "$dir"
+  done
+  [ -f "/usr/lib/modules/$target_kver/vmlinuz" ] || fail "kernel $target_kver is missing after the swap"
 fi
 
 # Refuse excluded capability providers even if a base or dependency brought

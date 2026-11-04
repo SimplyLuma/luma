@@ -35,6 +35,7 @@ app_baseline=${LUMA_OS_APP_BASELINE:-}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --profile) export LUMA_OS_PROFILE=${2:?}; shift 2 ;;
+    --hardware-target) export LUMA_OS_HARDWARE_TARGET=${2:?}; shift 2 ;;
     --arch) luma_os_select_architecture "${2:?}"; shift 2 ;;
     --build-id) build_id=${2:?}; shift 2 ;;
     --channel) channel=${2:?}; shift 2 ;;
@@ -44,7 +45,7 @@ while [ "$#" -gt 0 ]; do
     --allow-dirty) allow_dirty=1; shift ;;
     --source-snapshot) source_snapshot=$(realpath "${2:?}"); shift 2 ;;
     --app-baseline) app_baseline=$(realpath "${2:?}"); shift 2 ;;
-    *) printf 'usage: %s [--arch x86_64|aarch64] [--profile full|arm-preview] [--build-id ID] [--channel C] [--base pinned|latest] [--source DIR] [--cache] [--allow-dirty] [--source-snapshot FILE] --app-baseline DIR\n' "$0" >&2; exit 2 ;;
+    *) printf 'usage: %s [--arch x86_64|aarch64] [--profile full|arm-preview] [--hardware-target TARGET] [--build-id ID] [--channel C] [--base pinned|latest] [--source DIR] [--cache] [--allow-dirty] [--source-snapshot FILE] --app-baseline DIR\n' "$0" >&2; exit 2 ;;
   esac
 done
 
@@ -227,6 +228,7 @@ if ! luma_os_podman build \
     --build-arg "BASE_IMAGE=$base_ref" \
     --build-arg "LUMA_TARGET_ARCHITECTURE=$LUMA_OS_ARCH" \
     --build-arg "LUMA_OS_PROFILE=$LUMA_OS_PROFILE" \
+    --build-arg "LUMA_OS_HARDWARE_TARGET=$LUMA_OS_HARDWARE_TARGET" \
     --build-arg "LUMA_BUILD_ID=$build_id" \
     --build-arg "LUMA_OS_VERSION=$version" \
     --build-arg "LUMA_OS_CHANNEL=$channel" \
@@ -324,6 +326,7 @@ LUMA_BUILD_ID=$build_id
 LUMA_OS_ARCH=$LUMA_OS_ARCH
 LUMA_OS_REF_PREFIX=$LUMA_OS_REF_PREFIX
 LUMA_OS_PROFILE=$LUMA_OS_PROFILE
+LUMA_OS_HARDWARE_TARGET=$LUMA_OS_HARDWARE_TARGET
 LUMA_OS_CAPABILITIES_SHA256=$capabilities_sha
 LUMA_OS_GRAPH_PREFIX=$LUMA_OS_GRAPH_PREFIX
 LUMA_OS_HUB_GRAPH_URL_TEMPLATE=$LUMA_OS_HUB_GRAPH_URL_TEMPLATE

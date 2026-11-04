@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Project Luma contributors
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * Step 7 · Setting up Luma.
+ * Step 5 · Setting up Luma.
  * Boss.InstallWithTasks and the task's ProgressChanged / CategoryChanged /
  * Succeeded / Failed signals, as anaconda-webui 68 InstallationProgress.jsx
  * uses them, mapped onto four phases (model/progress.js).

@@ -1,0 +1,96 @@
+# Luma for Raspberry Pi 5: SD card boot menu.
+# Generated from src/luma-rpi5-platform/card/grub.cfg.in for @ISO_NAME@.
+#
+# With Luma installed (an ESP holding EFI/fedora/bootuuid.cfg), the default
+# runs the installed system's own GRUB menu with configfile: its BLS entries,
+# greenboot boot counting and rollback stay in charge, and nothing here names
+# a kernel or deployment. This GRUB has no chainloader, and U-Boot keeps no
+# EFI boot entries, so the card starts both the installer and the system.
+#
+# GRUB gets no USB keyboard under U-Boot. Pick an entry for the next boot only
+# from Linux:  luma-rpi5-boot-next ID   (or grub2-editenv on EFI/BOOT/grubenv:
+# set next_entry=ID). IDs: installed, install, rescue, uboot.
+
+set timeout=5
+set timeout_style=menu
+
+insmod part_msdos
+insmod part_gpt
+insmod fat
+insmod ext2
+insmod btrfs
+insmod gzio
+insmod efi_gop
+insmod all_video
+insmod gfxterm
+set gfxpayload=keep
+
+search --no-floppy --set=luma_card --label LUMA_PI5
+set root=$luma_card
+
+# U-Boot's EFI text console reaches only the serial port; draw on HDMI.
+if loadfont ($luma_card)/EFI/BOOT/fonts/unicode.pf2; then
+  terminal_output gfxterm
+fi
+
+set luma_iso="@ISO_VOLID@"
+# No console= here: any console= argument makes the installer use text mode.
+set luma_args="@INSTALLER_ARGS@"
+set luma_verbose="loglevel=7 systemd.show_status=1 plymouth.enable=0 rd.plymouth=0"
+export luma_card
+export luma_iso
+export luma_args
+export luma_verbose
+
+set luma_esp=""
+search --no-floppy --file --set=luma_esp /EFI/fedora/bootuuid.cfg
+export luma_esp
+
+if [ -n "$luma_esp" ]; then
+  set default="installed"
+  set fallback="install"
+else
+  set default="install"
+fi
+
+# One-shot: the entry runs once; a failure or the next power cycle returns
+# to the normal default.
+load_env -f ($luma_card)/EFI/BOOT/grubenv next_entry
+if [ -n "$next_entry" ]; then
+  set fallback="$default"
+  set default="$next_entry"
+  set next_entry=
+  save_env -f ($luma_card)/EFI/BOOT/grubenv next_entry
+fi
+
+if [ -n "$luma_esp" ]; then
+  menuentry 'Start Luma' --id installed {
+    set BOOT_UUID=""
+    set boot=""
+    source ($luma_esp)/EFI/fedora/bootuuid.cfg
+    if [ -n "$BOOT_UUID" ]; then
+      search --no-floppy --fs-uuid --set=boot $BOOT_UUID
+      if [ -f ($boot)/grub2/grub.cfg ]; then
+        set root=$boot
+        set prefix=($boot)/grub2
+        configfile ($boot)/grub2/grub.cfg
+      fi
+    fi
+    echo "The Luma boot partition or its GRUB configuration was not found."
+  }
+fi
+
+menuentry 'Install Luma' --id install {
+  echo 'Loading the installer from the card...'
+  linux ($luma_card)/images/pxeboot/vmlinuz inst.stage2=hd:LABEL=$luma_iso ro $luma_args $luma_verbose
+  initrd ($luma_card)/images/pxeboot/initrd.img
+}
+
+menuentry 'Rescue a Luma system' --id rescue {
+  linux ($luma_card)/images/pxeboot/vmlinuz inst.stage2=hd:LABEL=$luma_iso inst.rescue $luma_args $luma_verbose
+  initrd ($luma_card)/images/pxeboot/initrd.img
+}
+
+menuentry 'Next boot device (U-Boot)' --id uboot {
+  exit
+}

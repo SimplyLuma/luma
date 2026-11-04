@@ -107,7 +107,7 @@ def load_config(path=Path('/etc/luma-connect/client.json')):
         raise AccountError('untrusted_client_configuration')
     raw=path.read_text()
     if len(raw)>16384: raise AccountError('invalid_client_configuration')
-    return AccountConfig(**json.loads(raw))
+    return AccountConfig.from_settings(json.loads(raw))
 
 
 class Daemon:
@@ -931,7 +931,11 @@ def main(argv=None):
         api=AccountAPI(config)
         try: tokens=SecretTokens(config)
         except Exception: pass  # signed-out/unavailable, never a plaintext fallback
-    model=AccountModel(api,tokens)
+    handoff=None
+    if config and tokens and config.device_client_id:
+        from .login import DeviceHandoff
+        handoff=DeviceHandoff(config,api,tokens)
+    model=AccountModel(api,tokens,handoff=handoff)
     loop=GLib.MainLoop();holder=[]
     def acquired(connection,_name):
         daemon=Daemon(connection,model,config);holder.append(daemon)

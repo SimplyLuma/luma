@@ -1,0 +1,15 @@
+Luma for Raspberry Pi 5 (installer: @ISO_NAME@)
+
+This card starts the Luma installer, and after installing, the Luma installed
+on NVMe or USB. Keep it in the Pi.
+
+Partition 1 (LUMA_PI5, this one): config.txt, U-Boot, device trees, GRUB and
+the installer kernel. Partition 2: the unmodified Luma installer ISO.
+
+The installer on this card may be older than the current Luma release.
+Install, then update from Settings; the installed system updates itself.
+
+Choose a different menu entry for the next boot from a running Luma:
+  sudo luma-rpi5-boot-next install     (reinstall)
+  sudo luma-rpi5-boot-next rescue
+The GRUB menu on HDMI cannot be driven with a USB keyboard.

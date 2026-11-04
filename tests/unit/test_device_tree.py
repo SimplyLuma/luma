@@ -135,6 +135,34 @@ class DeviceTree(unittest.TestCase):
         self.edit(self.fp6 / "device.toml", 'tag = "luma-fp6-', 'tag = "luma-fp5-')
         self.assertRejected("kernel.tag must start with 'luma-fp6-'")
 
+    def distribution_kernel(self, release="7.2.11-200.fc44.aarch64", extra=""):
+        """Turn the Pi 5 into a device on Fedora's unmodified kernel."""
+        pi = self.root / "devices/raspberrypi/rpi5/device.toml"
+        text = pi.read_text()
+        start, end = text.index("[kernel]\n"), text.index("\n[boot]")
+        pi.write_text(text[:start] + "[kernel]\n" + 'distribution = "fedora"\n'
+                      + 'nevr = "kernel-7.2.11-200.fc44"\n' + f'release = "{release}"\n'
+                      + 'dtb = "broadcom/bcm2712-rpi-5-b.dtb"\n' + extra + text[end:])
+
+    def test_distribution_kernel_is_accepted(self):
+        self.distribution_kernel()
+        self.assertEqual(self.errors(), [])
+
+    def test_distribution_kernel_release_must_match_its_package(self):
+        self.distribution_kernel(release="7.2.12-200.fc44.aarch64")
+        self.assertRejected("kernel.release must be '7.2.11-200.fc44.aarch64'")
+
+    def test_distribution_kernel_refuses_luma_kernel_keys(self):
+        for extra in ('config = "config/kernel/rpi5.config"\n', 'tag = "luma-rpi5-a1-7.2.11-200.fc44.aarch64"\n'):
+            with self.subTest(extra=extra):
+                self.distribution_kernel(extra=extra)
+                self.assertRejected("kernel")
+
+    def test_luma_kernel_still_needs_its_config(self):
+        surface = self.root / "devices/microsoft/sp12in/device.toml"
+        self.edit(surface, 'config = "config/kernel/surface-pro12.config"\n', '')
+        self.assertRejected("kernel")
+
     def test_every_device_needs_an_owner(self):
         self.edit(self.root / ".github" / "CODEOWNERS", "/devices/fairphone/fp6/ @nmcmil", "")
         self.assertRejected("no entry for /devices/fairphone/fp6/")

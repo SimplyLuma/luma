@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+format = "uefi"
+
+[uefi]
+# The SD card's BOOTAA64.EFI is the installer ISO's GRUB (grubaa64.efi), not
+# shim: U-Boot has no Secure Boot and shim's fallback resets the board.
+loader = "BOOTAA64.EFI"
+dtb = "broadcom/bcm2712-rpi-5-b.dtb"
+secure_boot = "development-disabled"
+
+[cmdline]
+# Installer arguments on the card menu, as used for the first install.
+args = ["clk_ignore_unused", "pd_ignore_unused"]
+generated = ["root", "ostree"]
+# console= makes Anaconda fall back to text mode on a serial console nobody
+# sees. firmware_class.path= was a bring-up workaround for the Wi-Fi NVRAM.
+forbidden = ["console=", "firmware_class.path=", "selinux=0", "enforcing=0", "init=", "rd.break"]

@@ -102,8 +102,8 @@ luma_os_channel_ref() { case "$1" in nightly|beta|stable) printf 'luma/1/%s/%s\n
         from luma_update.hardware import DEVICES
         producer = load()
         self.assertEqual(set(DEVICES), set(producer))
-        for name, (board, arch, slug) in DEVICES.items():
-            self.assertTrue(board)
+        for name, (boards, arch, slug, _exclusive) in DEVICES.items():
+            self.assertTrue(boards and all(boards))
             self.assertEqual((arch, slug), (producer[name]["arch"], producer[name]["slug"]))
 
     def test_publisher_required_label_inputs_exist(self):

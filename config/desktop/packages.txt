@@ -48,6 +48,7 @@ fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
 luma-keyring-0.3.0-1.luma.1.fc44.x86_64
 luma-logos-0.1.0-1.luma.2.fc44.noarch
+luma-setup-0.1.0-1.luma.1.fc44.noarch
 luma-logos-httpd-0.1.0-1.luma.2.fc44.noarch
 luma-release-1-1.luma.2.fc44.noarch
 plymouth-24.004.60-24.luma.3.fc44.x86_64
@@ -84,8 +85,8 @@ luma-install-commands-0.1.0-1.luma.6.fc44.noarch
 luma-search-0.1.0-1.luma.10.fc44.noarch
 luma-home-widgets-0.1.0-1.luma.4.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.40.fc44.noarch
-luma-os-remote-1.0.0-1.luma.26.fc44.noarch
-luma-update-1.0.0-1.luma.26.fc44.noarch
+luma-os-remote-1.0.0-1.luma.28.fc44.noarch
+luma-update-1.0.0-1.luma.28.fc44.noarch
 prairie-core-apps-0.1.0-1.luma.130.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.45.fc44.noarch
@@ -93,7 +94,7 @@ prairie-icon-theme-0.1.0-1.luma.45.fc44.noarch
 # Luma Connect, messaging and accounts
 luma-calls-0.1.0-1.luma.3.fc44.noarch
 luma-charlie-0.2.14-1.luma.6.creator20261007.1.fc44.noarch
-luma-continuity-0.1.0-0.66.experiment.fc44.noarch
+luma-continuity-0.1.0-0.67.experiment.fc44.noarch
 luma-media-bridge-0.1.0-1.luma.2.fc44.noarch
 luma-portal-0.1.0-1.luma.9.fc44.noarch
 luma-wifi-guard-0.1.0-1.luma.1.fc44.noarch
@@ -126,3 +127,12 @@ luma-vitals-crash-evidence-0.1.0-1.luma.15.nightly20261026.1.fc44.noarch
 luma-vitals-power-guard-0.1.0-1.luma.15.nightly20261026.1.fc44.noarch
 viola-browser-stable-151.0.7922.72-15.viola8210.native40.creator20261102.1.fc44.x86_64
 luma-messages-e2ee-0.1.0-1.luma.2.creator20261007.1.fc44.x86_64
+
+# Raspberry Pi 5 hardware target only (config/os/desktop-targets.json
+# hardware_targets): the Luma Pi kernel replaces Fedora's, platform support,
+# Bluetooth patch RAM, GStreamer with the Pi HEVC decoder fix.
+kernel-luma-rpi-7.2.15-1.luma.rpi.fc44.aarch64
+luma-rpi5-platform-0.3.0-1.luma.2.fc44.noarch
+luma-rpi-bluetooth-firmware-0-1.20251002gitcdf61dc.luma.1.fc44.noarch
+gstreamer1-plugins-bad-free-1.28.8-1.luma.1.fc44.aarch64
+gstreamer1-plugins-bad-free-libs-1.28.8-1.luma.1.fc44.aarch64
