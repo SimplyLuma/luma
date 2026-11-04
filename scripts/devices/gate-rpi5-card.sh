@@ -130,7 +130,7 @@ override_ok() {  # ORIGIN REQUESTED REMOVALS
 # fresh-install: the card image on a 32 GiB sparse disk (the first boot grows
 # the root partition and imports the offline apps).
 if [ -n "$disk_url" ]; then
-  drive="file=$disk_url,if=virtio,cache=writeback"
+  drive="file=$disk_url,format=raw,if=virtio,cache=writeback"
   disk_detail="served disk $disk_url"
 else
 python3 - "$image" "$work/disk.img" <<'PY'
