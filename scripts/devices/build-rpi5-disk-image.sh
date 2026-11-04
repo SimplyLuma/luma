@@ -367,7 +367,7 @@ grep -Fxq "refspec=$remote:$ref" "$deploy.origin" || fail "the deployment's orig
 device_key_path=/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release
 device_repo_file=/etc/yum.repos.d/luma-raspberrypi-rpi5.repo
 override_removed="" override_layered=""
-write_device_repo() {  # DEPLOYMENT BASEURL
+write_device_repo() {  # DEPLOYMENT BASEURL REPO_GPGCHECK
   local excludes=""
   [ ! -s "$1/usr/share/luma/luma-owned-packages.txt" ] || excludes=$(paste -sd, "$1/usr/share/luma/luma-owned-packages.txt")
   {
@@ -378,7 +378,7 @@ write_device_repo() {  # DEPLOYMENT BASEURL
     echo "baseurl=$2"
     echo "enabled=1"
     echo "gpgcheck=1"
-    echo "repo_gpgcheck=1"
+    echo "repo_gpgcheck=$3"
     echo "gpgkey=file://$device_key_path"
     echo "includepkgs=$(IFS=,; echo "kernel-luma-rpi${device_packages[*]+,${device_packages[*]}}")"
     [ -z "$excludes" ] || echo "# Luma: packages the Luma image owns never come from this repository"
@@ -398,7 +398,16 @@ if [ -n "$device_repo" ]; then
   mkdir "$work/repos-aside"
   find "$generic/etc/yum.repos.d" -maxdepth 1 -name '*.repo' -exec mv -t "$work/repos-aside" {} +
   install -D -m 0644 "$device_key" "$generic$device_key_path"
-  write_device_repo "$generic" file:///run/luma-device-repo
+  # rpm-ostree cannot check repomd.xml.asc on the unbooted sysroot ("Signing
+  # key not found"; package signatures do work), so the build checks it here
+  # with the host's gpg and the build-time file sets repo_gpgcheck=0. The
+  # card's own file keeps repo_gpgcheck=1; the gate's update stage runs it.
+  gpg_home=$(mktemp -d "$work/gpg.XXXXXX")
+  gpg --homedir "$gpg_home" --batch --quiet --import "$device_key" 2>/dev/null
+  gpg --homedir "$gpg_home" --batch --quiet --verify "$device_repo/repodata/repomd.xml.asc" \
+    "$device_repo/repodata/repomd.xml" 2>/dev/null || fail "the device repository's repomd.xml.asc does not verify with --device-key"
+  gpgconf --homedir "$gpg_home" --kill all 2>/dev/null || true
+  write_device_repo "$generic" file:///run/luma-device-repo 0
   args=(override remove "${fedora_kernel[@]}" --install=kernel-luma-rpi)
   for name in "${device_packages[@]+"${device_packages[@]}"}"; do args+=(--install="$name"); done
   binds=(--bind "$device_repo:/run/luma-device-repo")
@@ -423,7 +432,7 @@ if [ -n "$device_repo" ]; then
   deploy=${deploys[0]}
   rm -f "$deploy$device_repo_file"
   cp -a "$work/repos-aside/." "$deploy/etc/yum.repos.d/"
-  write_device_repo "$deploy" "$device_repo_url"
+  write_device_repo "$deploy" "$device_repo_url" 1
   origin=$deploy.origin
   grep -Fxq "baserefspec=$remote:$ref" "$origin" || fail "the override's origin is not based on $remote:$ref"
   grep -Eq '^requested=(.*;)?kernel-luma-rpi;' "$origin" || fail "the override does not request kernel-luma-rpi"
