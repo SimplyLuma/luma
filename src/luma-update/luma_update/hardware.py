@@ -3,12 +3,18 @@
 
 FP6 = "fairphone,fp6"
 TITAN2E = "unihertz,titan2e"
+RPI5 = "raspberrypi,rpi5"
 
-# Hardware targets with their own update stream: the board compatible string
-# the kernel's device tree must list, and the only architecture it runs.
+# Hardware targets with their own update stream: the board compatible strings
+# the kernel's device tree must list (any one), the only architecture it runs,
+# the stream's slug, and whether that board may only follow its own stream.
+# A Raspberry Pi 5 may also run the generic ARM desktop (installed from the
+# installer card on Fedora's kernel), so its stream is not exclusive.
 DEVICES = {
-    FP6: ("fairphone,fp6", "aarch64", "fairphone-fp6"),
-    TITAN2E: ("unihertz,titan2-elite", "aarch64", "unihertz-titan2e"),
+    FP6: (("fairphone,fp6",), "aarch64", "fairphone-fp6", True),
+    TITAN2E: (("unihertz,titan2-elite",), "aarch64", "unihertz-titan2e", True),
+    RPI5: (("raspberrypi,5-model-b", "raspberrypi,5-model-b-d0", "raspberrypi,500",
+            "raspberrypi,5-compute-module"), "aarch64", "raspberrypi-rpi5", False),
 }
 
 
@@ -47,10 +53,11 @@ def require_device_target(paths, configured: str, arch: str) -> None:
     except UnicodeDecodeError as error:
         raise ValueError("device hardware identity is malformed") from error
     if configured:
-        board, board_arch, _slug = DEVICES.get(configured, (None, None, None))
-        if board_arch != arch or board not in compatible:
+        boards, board_arch, _slug, _exclusive = DEVICES.get(configured, ((), None, None, False))
+        if board_arch != arch or not set(boards) & set(compatible):
             raise ValueError("configured update hardware target does not match this device")
-    elif any(board in compatible for board, _arch, _slug in DEVICES.values()):
+    elif any(exclusive and set(boards) & set(compatible)
+             for boards, _arch, _slug, exclusive in DEVICES.values()):
         raise ValueError("this device requires a hardware-targeted update stream")
 
 

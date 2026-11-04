@@ -38,9 +38,13 @@ def pins(root, sha):
                                  check=True, capture_output=True).stdout
         tarfile.open(fileobj=BytesIO(archive)).extractall(tmp, filter='data')
         result = set()
-        for arch, profile in (('x86_64', 'full'), ('aarch64', 'arm-preview')):
+        # Hardware targets (desktop-targets.json) are ARM desktops with their own packages.
+        targets = json.loads(Path(tmp, 'config/os/desktop-targets.json').read_text()).get('hardware_targets', {})
+        for arch, profile, target in (('x86_64', 'full', ''), ('aarch64', 'arm-preview', ''),
+                                      *(('aarch64', 'arm-preview', name) for name in targets)):
             result |= set(run(sys.executable, '-I', f'{tmp}/scripts/os/lib/desktop_target.py',
-                              '--root', tmp, '--arch', arch, '--profile', profile, 'pins').split())
+                              '--root', tmp, '--arch', arch, '--profile', profile,
+                              '--hardware-target', target, 'pins').split())
         return result
 
 

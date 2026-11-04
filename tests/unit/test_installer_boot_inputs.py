@@ -166,7 +166,18 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
             template = "efiarch64 = 'AA64'\n## make boot.iso\n${efigraft} ${filegraft}\n"
             (generic / 'aarch64.tmpl').write_text(template)
             (generic / 'efi.tmpl').write_text('runcmd mkefiboot ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}\n')
+            # Lorax 44.6 runtime-cleanup.tmpl, first module removal.
+            cleanup = ('removekmod sound drivers/media drivers/hwmon drivers/iio \\\n'
+                       '           drivers/usb/serial drivers/usb/host drivers/usb/misc \\\n'
+                       '           arch/x86/kvm\n'
+                       'removekmod drivers/char --allbut virtio_console hw_random \\\n')
+            (generic / 'runtime-cleanup.tmpl').write_text(cleanup)
             LORAX.prepare(root / 'source', root / 'good', 'aarch64')
+            kept = (root / 'good/templates.d/99-generic/runtime-cleanup.tmpl').read_text()
+            self.assertIn('arch/x86/kvm \\\n           --allbut /kernel/sound/soundcore.ko ', kept)
+            for module in ('ac97_bus', 'snd-soc-core', 'snd-soc-hdmi-codec', 'cec', 'xhci-plat-hcd'):
+                self.assertIn(f'/{module}.ko', kept)
+            self.assertTrue(kept.endswith('removekmod drivers/char --allbut virtio_console hw_random \\\n'))
             result = (root / 'good/templates.d/99-generic/config_files/aarch64/grub2-efi.cfg').read_text()
             self.assertIn('@ROOT@ ro rhgb quiet', result)
             self.assertIn('@ROOT@ rd.live.check rhgb quiet', result)
@@ -181,6 +192,23 @@ menuentry 'Rescue' { linux @KERNELPATH@ @ROOT@ inst.rescue
             with self.assertRaisesRegex(ValueError, 'unsupported Lorax aarch64'):
                 LORAX.prepare(root / 'source', root / 'bad', 'aarch64')
             self.assertFalse((root / 'bad').exists())
+            (generic / 'aarch64.tmpl').write_text(template)
+            (generic / 'runtime-cleanup.tmpl').write_text(cleanup.replace('arch/x86/kvm', 'arch/x86/kvm drivers/gpu'))
+            with self.assertRaisesRegex(ValueError, 'runtime module cleanup'):
+                LORAX.prepare(root / 'source', root / 'bad', 'aarch64')
+            self.assertFalse((root / 'bad').exists())
+
+    def test_final_arm_stage2_must_keep_pi5_display_and_usb_modules(self):
+        release = '7.2.11-200.fc44.aarch64'
+        with tempfile.TemporaryDirectory() as temporary:
+            listing = Path(temporary) / 'stage2-contents.txt'
+            rows = [f'-rw-r--r-- root/root 1 2026-10-27 squashfs-root/usr/lib/modules/{release}/{module}.xz'
+                    for module in LORAX.ARM_RUNTIME_MODULES]
+            listing.write_text('\n'.join(rows) + '\n')
+            LORAX.verify_modules(listing, release)
+            listing.write_text('\n'.join(row for row in rows if 'xhci-plat-hcd' not in row) + '\n')
+            with self.assertRaisesRegex(ValueError, 'xhci-plat-hcd'):
+                LORAX.verify_modules(listing, release)
 
     def test_final_iso_requires_native_menu_set_and_resolved_theme(self):
         with tempfile.TemporaryDirectory() as temporary:

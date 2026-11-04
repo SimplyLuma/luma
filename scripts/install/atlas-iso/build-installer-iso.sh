@@ -451,6 +451,9 @@ podman run --rm --umask=0022 "${runtime_mount[@]}" "${builder_security[@]}" --ar
     echo \"error: the installer runtime kernel is '\$runtime_kernel', not the pinned $ATLAS_RUNTIME_KERNEL_NVR.$ATLAS_RUNTIME_KERNEL_ARCH\" >&2
     exit 1
   }
+  if [ '$architecture' = aarch64 ]; then
+    python3 /s/prepare-lorax-boot.py --verify-modules /w/logs/stage2-contents.txt \"\$runtime_kernel\"
+  fi
   grep -q 'usr/lib/systemd/systemd-sysroot-fstab-check' /w/logs/initrd-contents.txt || {
     echo 'error: the installer initramfs is incomplete' >&2
     exit 1

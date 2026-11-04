@@ -74,7 +74,23 @@ INSTALL_BOOTUPD = '''def _luma_firmware_order():
     return [item.upper() for item in order]
 
 
+def _luma_card_firmware():
+    # Raspberry Pi 5: U-Boot on the SD card is the EFI firmware and saves EFI
+    # variables to the card (ubootefi.var). A persisted Luma entry would start
+    # the installed shim directly, skipping the card's menu, which is what
+    # starts the installed system on this board.
+    try:
+        with open("/proc/device-tree/compatible", "rb") as handle:
+            compatible = handle.read().split(b"\\0")
+    except OSError:
+        return False
+    return any(name in (b"raspberrypi,5-model-b", b"raspberrypi,5-model-b-d0") for name in compatible)
+
+
 def _luma_install_bootupd(sysroot, argv, keep_boot_order):
+    if _luma_card_firmware():
+        log.info("Card-booted firmware: leaving EFI boot entries unchanged")
+        return execWithRedirect("bootupctl", [a for a in argv if a != "--update-firmware"], root=sysroot)
     # A named Luma entry avoids shim's generic fallback, which can rebuild and
     # reorder every vendor's entries on first boot. Register our entry normally,
     # then retain all existing priorities and append any newly created entry.
