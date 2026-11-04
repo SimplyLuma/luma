@@ -45,8 +45,9 @@ def slug(text: str) -> str:
 
 
 def host_name(text: str) -> str:
-    """The static host name from the device name: "Nick's Luma" is nicks-luma."""
-    plain = re.sub(r"[’']", "", _plain(text))
+    """The static host name from the device name: "Nick's Luma" is nicks-luma, "Atlas's Luma" atlas-luma."""
+    plain = re.sub(r"(?<=s)[’']s\b", "", _plain(text))   # a possessive after s adds nothing
+    plain = re.sub(r"[’']", "", plain)
     name = re.sub(r"[^a-z0-9]+", "-", plain).strip("-")[:63].strip("-")
     return name or "luma"
 

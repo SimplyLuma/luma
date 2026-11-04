@@ -147,6 +147,42 @@ def _keyring(answers: dict) -> None:
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
 
 
+def _last_frame(answers: dict, marks: dict) -> dict | None:
+    """The setup's last frame as plain data (luma-setup --cover draws it again), with the steps' ticks."""
+    frame = answers.get("last_frame")
+    if not isinstance(frame, dict):
+        return None
+    rows = frame.get("rows")
+    if not (isinstance(rows, list) and len(rows) <= 8
+            and all(isinstance(r, list) and len(r) == 3 and all(isinstance(x, str) and len(x) < 256 for x in r)
+                    for r in rows)):
+        return None
+    settings = {k: v for k, v in (frame.get("settings") or {}).items()
+                if isinstance(k, str) and k.startswith("gtk-") and isinstance(v, (bool, int, str))
+                and len(str(v)) < 256}
+    face = frame.get("face") or ""
+    wallpaper = frame.get("wallpaper") or ""
+    for path in (face, wallpaper):
+        if path and not (isinstance(path, str) and path.startswith("/usr/share/")):
+            return None
+    return {"posture": str(frame.get("posture") or "desktop")[:16], "light": bool(frame.get("light")),
+            "wallpaper": wallpaper, "first": str(frame.get("first") or "")[:128], "face": face,
+            "rows": rows, "marks": marks, "settings": settings, "scale": str(frame.get("scale") or "")[:8]}
+
+
+def _seal_connect(user: str, token: str) -> None:
+    """The Connect token, sealed for the account with luma-keyring's systemd-creds path; never plain."""
+    from luma_keyring.autounlock import _as_user, seal_key, write_private
+    account = pwd.getpwnam(user)
+    sealed = seal_key(token, user=user)
+
+    def write() -> None:
+        folder = Path(account.pw_dir) / ".local" / "state" / "luma-setup"
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        write_private(folder / "connect.cred", sealed)
+    _as_user(account, write)
+
+
 def _write(path: Path, data: dict, mode: int = 0o644) -> None:
     path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     tmp = path.with_suffix(".new")
@@ -158,12 +194,15 @@ def _write(path: Path, data: dict, mode: int = 0o644) -> None:
     os.replace(tmp, path)
 
 
-def _markers(answers: dict, state_dir: Path) -> None:
+def _markers(answers: dict, state_dir: Path, marks: dict | None = None) -> None:
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     _write(state_dir / DONE, {"user": answers["username"], "finished": now})
     # The post-login steps run once, in this account's first session.
     _write(state_dir / WELCOME / answers["username"],
-           {"accessibility": answers.get("accessibility") or {}, "created": now})
+           {"accessibility": answers.get("accessibility") or {}, "created": now,
+            "full_name": answers.get("full_name") or "",
+            "first_session": answers.get("first_session") or {},
+            "last_frame": _last_frame(answers, marks or {})})
 
 
 def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None) -> int:
@@ -175,6 +214,7 @@ def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None
     bus = bus or _Bus()
     username = _create_account(bus, answers)
     _say(out, "step", "account", "ok", f"@{username}")
+    marks = {"account": True}
     # The rest is applied even when one step fails: the person is signed in either
     # way, and Settings can put a step right; each failure is said.
     for name, step in (("language", lambda: _language(bus, answers)),
@@ -184,10 +224,22 @@ def apply(answers: dict, out=sys.stdout, bus=None, state_dir: Path | None = None
         try:
             step()
             _say(out, "step", name, "ok")
+            marks[name] = True
         except Exception as error:  # noqa: BLE001 - reported, never fatal after the account
             print(f"luma-setup-apply: {name}: {_reason(error)}", file=sys.stderr)
             _say(out, "step", name, "fail")
-    _markers(answers, state_dir)
+            marks[name] = False
+    if answers.get("connect_token"):
+        try:
+            _seal_connect(answers["username"], answers["connect_token"])
+        except Exception as error:  # noqa: BLE001 - Connect asks again on the desktop
+            print(f"luma-setup-apply: connect: {_reason(error)}", file=sys.stderr)
+    _markers(answers, state_dir, marks)
+    try:
+        from .handover import prepare
+        prepare(int(os.environ.get("PKEXEC_UID", "-1")), pwd.getpwnam(answers["username"]).pw_uid)
+    except Exception as error:  # noqa: BLE001 - without it gdm switches at once, as it always did
+        print(f"luma-setup-apply: hand-over: {_reason(error)}", file=sys.stderr)
     _say(out, "done")
     return 0
 

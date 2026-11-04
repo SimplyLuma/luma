@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 Name:           luma-setup
-Version:        0.1.0
-Release:        1.luma.2%{?dist}
+Version:        0.2.0
+Release:        1.luma.1%{?dist}
 Summary:        Set up this Luma: language, network, your account and the device's name
 License:        Apache-2.0
 URL:            https://projectluma.org/setup
@@ -24,10 +24,11 @@ Requires:       luma-developer-platform
 # GDM runs the setup in its initial-setup session; it signs the new account in.
 Requires:       gdm
 Requires:       gnome-session
-Requires:       gnome-shell
 Requires:       polkit
 # The system services Finish applies through, and what the pages read.
 Requires:       accountsservice
+# The Luma Connect sign-in QR code (connect.qr_modules).
+Requires:       qrencode-libs
 Requires:       systemd
 Requires:       shadow-utils
 Requires:       NetworkManager-libnm
@@ -36,6 +37,8 @@ Requires:       libgweather4
 Requires:       geoclue2-libs
 # Saved passwords unlock with the account password from the first sign-in.
 Requires:       luma-keyring >= 0.2.0
+# The first session's cover (luma-setup --cover) is held and lifted by gnome-shell 0321.
+Requires:       gnome-shell >= 50.3-1.luma.158
 # GNOME Initial Setup never runs on Luma: this package owns its session.
 Obsoletes:      gnome-initial-setup < 999
 Conflicts:      gnome-initial-setup
@@ -60,6 +63,14 @@ pages. GNOME Initial Setup is replaced.
 
 %install
 %meson_install
+# Enabled by the package: each checks its own conditions in every session.
+install -d %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants %{buildroot}%{_userunitdir}/graphical-session.target.wants
+ln -s ../luma-setup-first-session.service \
+  %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-setup-first-session.service
+ln -s ../luma-setup-first-desktop.service \
+  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-setup-first-desktop.service
+ln -s ../luma-setup-cover.service \
+  %{buildroot}%{_userunitdir}/graphical-session-pre.target.wants/luma-setup-cover.service
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Setup.desktop
@@ -78,6 +89,12 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %config %{_sysconfdir}/xdg/gnome-session/sessions/gnome-initial-setup.session
 %{_userunitdir}/gnome-session@gnome-initial-setup.target.d/luma-setup.conf
 %{_userunitdir}/luma-setup.service
+%{_userunitdir}/luma-setup-first-session.service
+%{_userunitdir}/luma-setup-first-desktop.service
+%{_userunitdir}/luma-setup-cover.service
+%{_userunitdir}/graphical-session-pre.target.wants/luma-setup-cover.service
+%{_userunitdir}/graphical-session-pre.target.wants/luma-setup-first-session.service
+%{_userunitdir}/graphical-session.target.wants/luma-setup-first-desktop.service
 %{_datadir}/polkit-1/actions/org.projectluma.setup.policy
 %{_datadir}/polkit-1/rules.d/20-luma-setup.rules
 %{_sysusersdir}/luma-setup.conf
@@ -87,6 +104,12 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/applications/org.projectluma.Setup.desktop
 
 %changelog
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
+- One sheet from Hello to the desktop: Make it yours, Luma Connect (sign-in
+  by code) and Add apps follow in the setup session; signed in once, at the end
+- The first session opens on the setup's last frame (luma-setup-cover.service,
+  gnome-shell 0321) and lifts it off the desktop
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.2
 - Ship no file gdm or gnome-initial-setup owns: GDM's own initial-setup session
   entry starts the session; the session file and the dconf profile live in /etc

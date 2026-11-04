@@ -1,0 +1,21 @@
+[Unit]
+Description=Luma setup: the setup's last frame, drawn again as the first session's first frame
+ConditionPathExists=/var/lib/luma-setup/welcome/%u
+ConditionPathExists=!%S/luma-setup/welcome-done
+Before=org.gnome.Shell@wayland.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Starts with the Shell, not after it: the imports and the softened picture are ready
+# by the time the Shell's display is; the Shell holds its first frame for this window
+# (gnome-shell 0321) and closes it after lifting it off the desktop.
+Environment=GDK_BACKEND=wayland ADW_DISABLE_PORTAL=1 GTK_A11Y=none
+# Ahead of the session services starting with it: it is what is on screen.
+CPUWeight=1000
+IOWeight=1000
+ExecStart=/usr/libexec/luma-setup --cover
+TimeoutStopSec=5
+
+[Install]
+WantedBy=graphical-session-pre.target

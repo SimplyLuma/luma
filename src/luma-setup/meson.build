@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-project('luma-setup', version: '0.1.0', meson_version: '>= 1.3.0', license: 'Apache-2.0')
+project('luma-setup', version: '0.2.0', meson_version: '>= 1.3.0', license: 'Apache-2.0')
 
 python = import('python').find_installation('python3')
 prefix = get_option('prefix')
@@ -14,10 +14,14 @@ python.install_sources(
   'luma_setup/app.py',
   'luma_setup/apply.py',
   'luma_setup/catalog.py',
+  'luma_setup/connect.py',
+  'luma_setup/handover.py',
   'luma_setup/model.py',
+  'luma_setup/session.py',
   'luma_setup/sheet.py',
   'luma_setup/sheet_tv.py',
   'luma_setup/system.py',
+  'luma_setup/welcome.py',
   'luma_setup/setup.css',
   subdir: 'luma_setup',
 )
@@ -32,7 +36,9 @@ install_data('bin/luma-setup', 'bin/luma-setup-apply', install_dir: get_option('
 install_data('data/session/gnome-initial-setup.session', install_dir: sysconfdir / 'xdg' / 'gnome-session' / 'sessions')
 install_data('data/systemd/luma-setup.conf',
              install_dir: userunitdir / 'gnome-session@gnome-initial-setup.target.d')
-install_data('data/systemd/luma-setup.service', install_dir: userunitdir)
+install_data('data/systemd/luma-setup.service', 'data/systemd/luma-setup-first-session.service',
+             'data/systemd/luma-setup-first-desktop.service', 'data/systemd/luma-setup-cover.service',
+             install_dir: userunitdir)
 
 # The session's rights, and the root helper's.
 install_data('data/polkit/org.projectluma.setup.policy', install_dir: datadir / 'polkit-1' / 'actions')

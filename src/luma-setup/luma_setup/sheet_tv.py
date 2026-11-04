@@ -30,7 +30,7 @@ from luma_appkit.tv_stage import TvStage, add_tv_style, tv_material  # noqa: E40
 
 from . import catalog, system  # noqa: E402
 from .model import Setup, host_name, mismatch, strength, username_problem  # noqa: E402
-from .sheet import HEAD, OWNER, _taken, _wallpaper_path, prefers_light  # noqa: E402
+from .sheet import HEAD, OWNER, Posture, Turn, _taken, after_frames, hand_over, last_frame, prefers_light, wallpaper_for  # noqa: E402
 
 __all__ = ("SetupTVWindow", "SetupTV")
 
@@ -128,14 +128,19 @@ class SetupTV(TvStage):
 
     __gtype_name__ = "LumaSetupTV"
 
-    def __init__(self, setup: Setup) -> None:
+    def __init__(self, setup: Setup, frame: dict | None = None) -> None:
         super().__init__()
         add_tv_style(_style)
         self.setup = setup
-        self.network = system.Network(self._network_changed)
-        if not setup.network:
-            setup.network = "wired" if self.network.wired() else self.network.connected_name()
-        self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
+        # frame: the last frame of a finished setup, drawn again (luma-setup --cover)
+        if frame is None:
+            self.network = system.Network(self._network_changed)
+            if not setup.network:
+                setup.network = "wired" if self.network.wired() else self.network.connected_name()
+            self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
+        else:
+            self.network = None
+            self.pages = ["hello"]
         self.index = 0
         self.open_network = ""
         self.joining = False
@@ -146,7 +151,9 @@ class SetupTV(TvStage):
         self._keyboard_up = False
 
         self.room = TvRoom()
-        wallpaper = _wallpaper_path(prefers_light())
+        self.light = bool(frame["light"]) if frame else prefers_light()
+        wallpaper = frame.get("wallpaper") if frame else wallpaper_for(self.light)
+        self.wallpaper = wallpaper
         if wallpaper:
             self.room.set_artwork(wallpaper)
         else:
@@ -161,6 +168,11 @@ class SetupTV(TvStage):
         self.connect("notify::unit", lambda *_a: self._place_sheet())
         self._stop_keyboard = watch_tv_keyboard(self._keyboard)
         self.connect("unrealize", lambda *_a: self._stop_keyboard and self._stop_keyboard())
+        self._finishing_frame = frame is not None
+        if frame is not None:
+            self._finishing = True
+            self._finished(frame["first"], frame["rows"], frame.get("marks") or {})
+            return
         self.draw()
 
     # -- layout ----------------------------------------------------------------------
@@ -213,7 +225,10 @@ class SetupTV(TvStage):
         self.sheet.append(body)
         self._foot()
         if focus_first and first is not None:
-            GLib.idle_add(lambda: (self.focus.focus(first), False)[1])
+            # Now, not in an idle: a remote key pressed as the page changes lands on the page's
+            # first place, never on whatever comes first (Back). Again once laid out.
+            self.focus.focus(first)
+            GLib.idle_add(lambda: (self.focus.focused is None and self.focus.focus(first), False)[1])
         if self.page == "wifi":
             self.network.start_scanning()
         else:
@@ -563,23 +578,38 @@ class SetupTV(TvStage):
         s = self.setup
         self._finishing = True
         self.network.stop_scanning()
+        rows = [["account", "Creating your account", f"@{s.username}"],
+                ["language", "Language and keyboard", catalog.language(s.locale).name],
+                ["timezone", "Time zone", catalog.zone(s.timezone).city],
+                ["name", "Naming this Luma", s.device_name],
+                ["signin", "Signing you in", ""]]   # turns until the desktop is up (the first session's cover)
+        self._finished(s.first, rows, {})
+        payload = s.payload()
+        # What the last frame is made of (not a picture of it): the first session draws it again.
+        payload["last_frame"] = last_frame(Posture.TV, self.light, self.wallpaper, s.first, "", rows)
+        s.password = s.again = ""
+        password = payload["password"]
+        system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
+                       ).run(payload)
+
+    def _finished(self, first: str, rows: list, marks: dict) -> None:
+        """Welcome and the four steps; marks says which have ticked (else a spinner)."""
         self._clear()
         self._head()
-        avatar = _label((s.first[:1] or "").upper(), "su-tv-av", xalign=0.5)
+        avatar = _label((first[:1] or "").upper(), "su-tv-av", xalign=0.5)
         avatar.set_halign(Gtk.Align.CENTER)
         self.sheet.append(avatar)
-        title = _label(f"Welcome, {s.first}.", "su-tv-title", xalign=0.5)
+        title = _label(f"Welcome, {first}.", "su-tv-title", xalign=0.5)
         title.set_margin_top(round(self.px(18)))
         self.sheet.append(title)
         self.sheet.append(_label("Getting Luma ready for you.", "tv-body", "su-tv-lede", xalign=0.5))
         self._steps = {}
         steps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER, spacing=round(self.px(8)))
         steps.set_size_request(round(self.px(640)), -1)
-        for key, text, detail in (("account", "Creating your account", f"@{s.username}"),
-                                  ("language", "Language and keyboard", catalog.language(s.locale).name),
-                                  ("timezone", "Time zone", catalog.zone(s.timezone).city),
-                                  ("name", "Naming this Luma", s.device_name)):
-            spinner = Gtk.Spinner(spinning=True)
+        for key, text, detail in rows:
+            spinner = Turn(round(self.px(20)))
+            if not self._finishing_frame:
+                spinner.turn()   # the first session's copy turns once it is on screen
             row = Gtk.Box()
             row.add_css_class("su-tv-step")
             row.append(spinner)
@@ -588,12 +618,9 @@ class SetupTV(TvStage):
             row.mark = spinner
             steps.append(row)
             self._steps[key] = row
+            if key in marks:
+                self._step_done(key, bool(marks[key]))
         self.sheet.append(steps)
-        payload = s.payload()
-        s.password = s.again = ""
-        password = payload["password"]
-        system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
-                       ).run(payload)
 
     def _step_done(self, key: str, ok: bool) -> None:
         row = self._steps.get(key)
@@ -613,8 +640,21 @@ class SetupTV(TvStage):
             self._hint.set_label(why)
             self._hint.add_css_class("bad")
             return
-        GLib.timeout_add(650, lambda: (system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m)),
-                                       False)[1])
+        # Signed in once the last tick is on screen, the steps still turning held at their first
+        # angle: the first session draws this same frame again and turns them on from there.
+        after_frames(self, 2, lambda: GLib.timeout_add(650, lambda: (hand_over(
+            self, self, lambda: system.sign_in(username, password, lambda m: log.warning("sign-in: %s", m))), False)[1]))
+
+    def _turns(self) -> list:
+        return [row.mark for row in getattr(self, "_steps", {}).values() if isinstance(row.mark, Turn)]
+
+    def hold_steps(self) -> None:
+        for turn in self._turns():
+            turn.hold()
+
+    def turn_steps(self) -> None:
+        for turn in self._turns():
+            turn.turn()
 
 
 def _children(widget: Gtk.Widget):
@@ -629,9 +669,9 @@ class SetupTVWindow(Gtk.ApplicationWindow):
 
     __gtype_name__ = "LumaSetupTVWindow"
 
-    def __init__(self, application: Gtk.Application, setup: Setup) -> None:
+    def __init__(self, application: Gtk.Application, setup: Setup, frame: dict | None = None) -> None:
         super().__init__(application=application, title=HEAD, decorated=False)
-        self.stage = SetupTV(setup)
+        self.stage = SetupTV(setup, frame)
         self.set_child(self.stage)
 
     @property

@@ -420,3 +420,19 @@ disposing `owner`) ends it. ModalDialog holds while it has a lightbox and is
 not closed. Headless at 3840x2160 with full redraws: 45% fewer GPU jobs across
 overview open and close; the open overview's screenshot is unchanged (SSIM
 0.99999). Shell .157.
+
+`0321-luma-setup-welcome-cover.patch`: the first session after Luma's
+first-boot setup (`/var/lib/luma-setup/welcome/<user>`, until
+`~/.local/state/luma-setup/welcome-done`) opens on the setup's last frame.
+`luma-setup-cover.service` starts with the Shell and draws that frame again
+from the same data, code, wallpaper, softening and text settings. At the top
+of the startup animation the Shell waits (15 s at most) for that window's
+title to say its first frame is drawn, then shows the stage: a clone of the
+window above everything, `uiGroup` at opacity 0. With Luma's gdm (patches/gdm)
+the setup keeps the screen while this session starts paused; at
+`startup-complete` the Shell writes `/run/luma-setup/session/cover-ready`,
+the setup holds its frame and gdm switches here, and `registerDisplayWithGDM`
+waits for the first frame on screen, since registering ends the setup's
+session. The cover lifts (1.1 s fade) and the window closes. Without the
+setup's frame, the cover is a blurred wallpaper of the Shell's own. The
+cover window never animates in. Shell .158.

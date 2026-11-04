@@ -16,6 +16,7 @@ the key, except where it joins a network.
 from __future__ import annotations
 
 import enum
+import functools
 import logging
 import os
 from pathlib import Path
@@ -27,9 +28,11 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("Gsk", "4.0")
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gsk, Gtk, Pango  # noqa: E402
+gi.require_version("Graphene", "1.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from . import catalog, system  # noqa: E402
+from .connect import ConnectFlow  # noqa: E402
 from .model import Setup, mismatch, strength, username_problem  # noqa: E402
 
 __all__ = ("SetupWindow", "Posture", "posture", "Field", "icon", "load_style")
@@ -67,6 +70,26 @@ def posture() -> Posture:
     if lumaui.mobile_form_factor():
         return Posture.PHONE
     return Posture.DESKTOP
+
+
+def trace(*parts) -> None:
+    """LUMA_SETUP_TRACE=<file>: focus and key events, one line each (device test runs only)."""
+    path = os.environ.get("LUMA_SETUP_TRACE", "")
+    if path:
+        import time
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{time.monotonic():.3f} " + " ".join(str(p) for p in parts) + "\n")
+
+
+def describe(widget: Gtk.Widget | None) -> str:
+    if widget is None:
+        return "-"
+    owner = widget
+    while owner is not None and not owner.get_name().startswith("su-") and not isinstance(owner, Gtk.Button):
+        owner = owner.get_parent()
+    owner = owner or widget
+    text = owner.get_label() if isinstance(owner, Gtk.Button) else ""
+    return f"{type(widget).__name__}<{type(owner).__name__}#{owner.get_name()}.{'.'.join(owner.get_css_classes())} {text!r}>"
 
 
 # -- small parts ------------------------------------------------------------------
@@ -113,7 +136,7 @@ class Field(Gtk.Box):
     def __init__(self, placeholder: str = "", *, value: str = "", prefix: str = "", lead: str = "",
                  trail: str = "", password: bool = False, purpose: Gtk.InputPurpose = Gtk.InputPurpose.FREE_FORM,
                  on_changed: Callable[[str], None] | None = None, on_activate: Callable[[], None] | None = None,
-                 name: str = "") -> None:
+                 name: str = "", accessible: str = "") -> None:
         super().__init__(spacing=6)
         self.add_css_class("su-field")
         if lead:
@@ -121,12 +144,13 @@ class Field(Gtk.Box):
         if prefix:
             self.append(label(prefix, "su-pre"))
         self.text = Gtk.Text(text=value, placeholder_text=placeholder, hexpand=True, visibility=not password,
-                             input_purpose=Gtk.InputPurpose.PASSWORD if password else purpose)
-        self.text.update_property([Gtk.AccessibleProperty.LABEL], [placeholder or prefix])
+                             input_purpose=Gtk.InputPurpose.PASSWORD if password else purpose,
+                             accessible_role=Gtk.AccessibleRole.TEXT_BOX)
+        self.text.update_property([Gtk.AccessibleProperty.LABEL], [accessible or placeholder or prefix])
         if name:
             self.text.set_name(name)
         self.append(self.text)
-        self.trail = icon(trail, 16, "su-ok" if trail == "check" else "su-pen") if trail else None
+        self.trail = icon(trail, 16 if trail == "check" else 13, "su-ok" if trail == "check" else "su-pen") if trail else None
         if self.trail is not None:
             self.trail.set_visible(trail != "check")
             self.append(self.trail)
@@ -170,6 +194,7 @@ class ChoiceList(Gtk.Box):
     def __init__(self, label_text: str, *, max_height: int = 0, name: str = "") -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.add_css_class("su-list")
+        self.update_property([Gtk.AccessibleProperty.LABEL], [label_text])
         if name:
             self.set_name(name)
         self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -196,6 +221,7 @@ class ChoiceList(Gtk.Box):
         inner.append(words)
         inner.append(icon("check", 16, "su-tick"))
         row = Gtk.Button(child=inner)
+        row.fkey = f"li:{self.get_name()}:{key}"   # the same row after a redraw keeps the focus
         row.add_css_class("su-li")
         row.update_property([Gtk.AccessibleProperty.LABEL], [text])
         if chosen:
@@ -229,6 +255,96 @@ class ChoiceList(Gtk.Box):
                 adjustment.set_value(max(0, top))
             return False
         GLib.idle_add(scroll)
+
+
+class Turn(Gtk.Widget):
+    """A spinner whose turn is known (process-working, one turn a second in twelve steps).
+
+    Held, it is drawn at its first angle: the setup holds the step still for the
+    frame it hands to the first session, which draws it held and turns it on from
+    there, so the hand-over frame is the same in both and the step keeps moving.
+    """
+
+    __gtype_name__ = "LumaSetupTurn"
+
+    def __init__(self, size: int = 16) -> None:
+        super().__init__(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        self.set_size_request(size, size)
+        self.add_css_class("su-spin")
+        self.angle = 0.0
+        self._tick = 0
+        self._start = 0
+        self._size = size
+        self._icon = None
+
+    def turn(self) -> None:
+        if not self._tick:
+            self._start = 0
+            self._tick = self.add_tick_callback(self._step)
+
+    def hold(self) -> None:
+        if self._tick:
+            self.remove_tick_callback(self._tick)
+            self._tick = 0
+        self.angle = 0.0
+        self.queue_draw()
+
+    def _step(self, _widget, clock) -> bool:
+        now = clock.get_frame_time()
+        if not self._start:
+            self._start = now
+        # Twelve steps a turn, one turn a second: a 4K sheet is redrawn twelve times a
+        # second, not sixty, while the first session starts beside it.
+        angle = float(int((now - self._start) * 12 / 1_000_000) % 12 * 30)
+        if angle != self.angle:
+            self.angle = angle
+            self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def do_snapshot(self, snapshot) -> None:
+        if self._icon is None:
+            theme = Gtk.IconTheme.get_for_display(self.get_display())
+            self._icon = theme.lookup_icon("process-working-symbolic", None, self._size, 1,
+                                           Gtk.TextDirection.NONE, 0)
+        width, height = self.get_width(), self.get_height()
+        snapshot.save()
+        snapshot.translate(Graphene.Point().init(width / 2, height / 2))
+        snapshot.rotate(self.angle)
+        snapshot.translate(Graphene.Point().init(-width / 2, -height / 2))
+        self._icon.snapshot_symbolic(snapshot, width, height, [self.get_color()])
+        snapshot.restore()
+
+
+@functools.lru_cache(maxsize=2)
+def _qr_texture(text: str) -> Gdk.Texture | None:
+    from .connect import qr_modules
+    rows = qr_modules(text)
+    if not rows:
+        return None
+    unit, quiet = 8, 4                       # pixels a module; the quiet zone, in modules
+    size = (len(rows) + 2 * quiet) * unit
+    data = bytearray(b"\xff" * size * size)
+    for y, row in enumerate(rows):
+        for x, dark in enumerate(row):
+            if dark:
+                for dy in range(unit):
+                    start = ((y + quiet) * unit + dy) * size + (x + quiet) * unit
+                    data[start:start + unit] = b"\x00" * unit
+    return Gdk.MemoryTexture.new(size, size, Gdk.MemoryFormat.G8, GLib.Bytes.new(bytes(data)), size)
+
+
+def qr_picture(text: str) -> Gtk.Widget | None:
+    """A QR code of text, black on white with its quiet zone (su-qr), or None without libqrencode."""
+    texture = _qr_texture(text) if text else None
+    if texture is None:
+        return None
+    picture = Gtk.Picture.new_for_paintable(texture)
+    picture.set_can_shrink(True)
+    picture.set_size_request(168, 168)
+    picture.set_halign(Gtk.Align.CENTER)
+    picture.add_css_class("su-qr")
+    picture.update_property([Gtk.AccessibleProperty.LABEL], ["QR code to sign in to Luma Connect"])
+    return picture
 
 
 def avatar(initial: str, size: str, face: str = "") -> Gtk.Widget:
@@ -285,28 +401,40 @@ def prefers_light() -> bool:
     return False
 
 
-def softened_wallpaper(light: bool) -> Gdk.Texture | None:
+# The softened room: one definition for the setup's sheet and for the first session's
+# cover (luma-setup --cover, gnome-shell 0321), so the two are the same picture.
+SOFTEN = {"read": 640, "width": 160, "radius": 4, "passes": 3, "saturation": {"dark": 1.15, "light": 1.05}}
+
+
+def wallpaper_for(light: bool) -> str | None:
+    """The picture the room is made from: LUMA_SETUP_WALLPAPER(_LIGHT), else the session's wallpaper."""
+    return (os.environ.get("LUMA_SETUP_WALLPAPER_LIGHT" if light else "LUMA_SETUP_WALLPAPER")
+            or _wallpaper_path(light))
+
+
+@functools.lru_cache(maxsize=4)
+def softened_wallpaper(light: bool, path: str | None = None) -> Gdk.Texture | None:
     """The wallpaper as it is behind the sheet: blurred once, small, then drawn full screen.
 
     A 4K picture blurred every frame is too much for a Pi; one small copy,
     blurred once here (three box passes, close to a gaussian) and scaled up
-    smoothly, is the same softness for nothing.
+    smoothly, is the same softness for nothing. Pure integer work on the same
+    file gives the same texture in any session (SOFTEN is the whole recipe).
     """
-    path = (os.environ.get("LUMA_SETUP_WALLPAPER_LIGHT" if light else "LUMA_SETUP_WALLPAPER")
-            or _wallpaper_path(light))
+    path = path or wallpaper_for(light)
     if not path:
         return None
     try:
-        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 640, -1, True)
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, SOFTEN["read"], -1, True)
     except GLib.Error as error:
         log.info("no wallpaper: %s", error.message)
         return None
-    width = 160
-    height = max(1, round(width * pixbuf.get_height() / pixbuf.get_width()))
+    width = SOFTEN["width"]
+    height = max(1, (width * pixbuf.get_height() + pixbuf.get_width() // 2) // pixbuf.get_width())
     small = pixbuf.scale_simple(width, height, GdkPixbuf.InterpType.HYPER)
     saturated = small.copy()
-    small.saturate_and_pixelate(saturated, 1.05 if light else 1.15, False)
-    blurred = _blur(saturated, radius=4, passes=3)
+    small.saturate_and_pixelate(saturated, SOFTEN["saturation"]["light" if light else "dark"], False)
+    blurred = _blur(saturated, radius=SOFTEN["radius"], passes=SOFTEN["passes"])
     return Gdk.MemoryTexture.new(width, height, Gdk.MemoryFormat.R8G8B8, GLib.Bytes.new(blurred), width * 3)
 
 
@@ -339,7 +467,7 @@ def _blur(pixbuf: GdkPixbuf.Pixbuf, radius: int, passes: int) -> bytes:
         for x in range(width):
             base = (y * width + x) * 3
             for c in range(3):
-                out[base + c] = max(0, min(255, round(planes[c][y][x])))
+                out[base + c] = max(0, min(255, int(planes[c][y][x] + 0.5)))
     return bytes(out)
 
 
@@ -432,18 +560,36 @@ class SetupWindow(Gtk.ApplicationWindow):
     __gtype_name__ = "LumaSetupWindow"
 
     def __init__(self, application: Gtk.Application, setup: Setup, form: Posture,
-                 on_signed_in: Callable[[], None] | None = None) -> None:
+                 on_signed_in: Callable[[], None] | None = None, *, frame: dict | None = None) -> None:
         super().__init__(application=application, title=HEAD, decorated=False)
         self.add_css_class("su-window")
         self.setup = setup
         self.form = form
         self.phone = form == Posture.PHONE
-        self.light = prefers_light()
+        # frame: the last frame of a finished setup, drawn again (luma-setup --cover)
+        self.frame = frame
+        self.light = bool(frame["light"]) if frame else prefers_light()
+        self.wallpaper = (frame.get("wallpaper") or None) if frame else wallpaper_for(self.light)
         self._on_signed_in = on_signed_in
-        self.network = system.Network(self._network_changed)
-        if not setup.network:
-            setup.network = "wired" if self.network.wired() else self.network.connected_name()
-        self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
+        if frame is None:
+            self.network = system.Network(self._network_changed)
+            if not setup.network:
+                setup.network = "wired" if self.network.wired() else self.network.connected_name()
+            self.pages = setup.pages(wired=self.network.wired(), wifi=self.network.has_wifi())
+            # One sheet for everything: the desk, Luma Connect and apps follow in this
+            # session, and the person is signed in once, at the very end.
+            from . import welcome as later
+            self.later_mod = later
+            self.groups = later.collections()
+            self.pages += later.page_names(self.phone, self.groups)
+            self.tiling = later.tiling_on()
+            self.connect_flow = ConnectFlow(self._connect_changed)
+        else:
+            self.network = None
+            self.pages = ["hello"]
+        self.later = 0
+        self.dash = "luma"
+        self.chosen: set[str] = set()
         self.index = 0
         self.open_network = ""
         self.joining = ""
@@ -464,7 +610,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             root.add_css_class("su-ph")
         self.root = root
         cover = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.COVER, hexpand=True, vexpand=True)
-        texture = softened_wallpaper(self.light)
+        texture = softened_wallpaper(self.light, self.wallpaper)
         if texture is not None:
             cover.set_paintable(texture)
         cover.set_name("su-cover")
@@ -505,11 +651,19 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.scaler.on_resize = self._fit
         self.set_child(self.scaler)
 
+        self.connect("notify::focus-widget", lambda *_a: trace("focus", self.page if self.pages else "-",
+                                                               describe(self.get_focus())))
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self._key)
         self.add_controller(keys)
         self.connect("notify::default-height", lambda *_a: self._fit())
         self.connect("realize", lambda *_a: GLib.idle_add(lambda: (self._fit(), False)[1]))
+        if frame is not None:
+            self._finishing = True
+            self._dots()
+            self._foot()
+            self._finished_pane(frame["first"], frame.get("face", ""), frame["rows"], frame.get("marks") or {})
+            return
         self.draw()
         if os.environ.get("LUMA_SETUP_SNAPSHOTS"):
             import signal
@@ -557,7 +711,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.dots.remove(child)
         if self._finishing:
             return
-        for i, _page in enumerate(self.pages):
+        for i in range(len(self.pages) + self.later):
             dot = Gtk.Box(valign=Gtk.Align.CENTER)
             dot.add_css_class("su-dot")
             if i == self.index:
@@ -566,7 +720,7 @@ class SetupWindow(Gtk.ApplicationWindow):
                 dot.add_css_class("su-past")
             self.dots.append(dot)
         self.dots.update_property([Gtk.AccessibleProperty.LABEL],
-                                  [f"Step {self.index + 1} of {len(self.pages)}"])
+                                  [f"Step {self.index + 1} of {len(self.pages) + self.later}"])
 
     # -- size --------------------------------------------------------------------------
     def _fit(self) -> None:
@@ -588,7 +742,8 @@ class SetupWindow(Gtk.ApplicationWindow):
 
     def draw(self, forward: bool = True) -> None:
         self.page_parts = {}
-        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device}[self.page]
+        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device,
+                 "desk": self._desk, "connect": self._connect_page, "apps": self._apps}[self.page]
         title, lede, body, extra = build()
         pane = self._pane(title, lede, body, extra)
         old = self.stack.get_visible_child()
@@ -598,14 +753,18 @@ class SetupWindow(Gtk.ApplicationWindow):
         if old is not None:
             GLib.timeout_add(self.stack.get_transition_duration() + 40, lambda: (self._drop(old), False)[1])
         self._dots()
-        self._foot()
+        self.set_focus(None)
+        self._build_foot()
         if self.page == "wifi":
             self.network.start_scanning()
         else:
             self.network.stop_scanning()
         if self.page == "device" and self.setup.online and not self._zone_asked:
             self._ask_zone()
-        GLib.idle_add(lambda: (self._first_focus(), False)[1])
+        # The new page's first place, now: a key pressed in the crossfade lands there, never on
+        # whatever GTK would pick when the focused button went (Back). Again once laid out.
+        self._first_focus()
+        GLib.idle_add(lambda: (self._first_focus(only_if_lost=True), False)[1])
         self._snap()
 
     def _snap(self, suffix: str = "") -> None:
@@ -613,11 +772,13 @@ class SetupWindow(Gtk.ApplicationWindow):
         snapshot(self, f"{self._shots:02d}-{self.page}{suffix}")
 
     def redraw(self) -> None:
-        """The same page again (a choice changed), keeping the scroll."""
+        """The same page again (a choice changed), keeping the scroll and the focus."""
+        kept = self._focus_key()
         adjustment = self.body.get_vadjustment()
         value = adjustment.get_value()
         self.page_parts = {}
-        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device}[self.page]
+        build = {"hello": self._hello, "wifi": self._wifi, "you": self._you, "device": self._device,
+                 "desk": self._desk, "connect": self._connect_page, "apps": self._apps}[self.page]
         title, lede, body, extra = build()
         pane = self._pane(title, lede, body, extra)
         old = self.stack.get_visible_child()
@@ -626,7 +787,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child(pane)
         if old is not None:
             self.stack.remove(old)
-        self._foot()
+        self._build_foot()
+        self._restore_focus(kept)
         GLib.idle_add(lambda: (adjustment.set_value(value), False)[1])
         self._snap("-change")
 
@@ -635,6 +797,9 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.stack.remove(child)
 
     def _pane(self, title: str, lede: str, body: Gtk.Widget, extra: str = "") -> Gtk.Widget:
+        app_icon = ""
+        if extra.startswith("icon:"):
+            app_icon, extra = extra[5:], ""
         pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pane.add_css_class("su-pane")
         pane.add_css_class(f"su-k-{self.page}")
@@ -644,6 +809,10 @@ class SetupWindow(Gtk.ApplicationWindow):
         if extra:
             heading.add_css_class(extra)
         heading.set_name("su-hg")
+        if app_icon:
+            picture = Gtk.Image(icon_name=app_icon, pixel_size=52 if self.phone else 60)
+            picture.add_css_class("su-app")
+            heading.append(picture)
         title_label = label(title, "su-title", xalign=0.5, wrap=True)
         heading.append(title_label)
         heading.append(label(lede, "su-lede", xalign=0.5, wrap=True))
@@ -655,13 +824,81 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.page_parts["title"] = title_label
         return pane
 
-    def _first_focus(self) -> None:
-        target = self.page_parts.get("focus")
-        if target is not None and target.get_mapped():
-            if isinstance(target, Field):
-                target.text.grab_focus_without_selecting()
-            else:
-                target.grab_focus()
+    def _first_focus(self, only_if_lost: bool = False) -> None:
+        """The page's first place: its field, else the key (Return goes on), else its first control."""
+        if only_if_lost and self._focus_in(self.stack.get_visible_child()) or only_if_lost and self._focus_in(self.foot):
+            return
+        target = self.page_parts.get("focus") or getattr(self, "key", None)   # nothing to type: Return goes on
+        if target is not None and not target.get_sensitive():
+            target = self._first_focusable(self.stack.get_visible_child())
+        trace("first-focus", self.page, describe(target), target is not None and target.get_mapped(),
+              target is not None and target.get_sensitive())
+        if target is None:
+            return
+        if isinstance(target, Field):
+            target.text.grab_focus_without_selecting()
+        else:
+            target.grab_focus()
+
+    def _focus_in(self, ancestor: Gtk.Widget | None) -> bool:
+        focus = self.get_focus()
+        return ancestor is not None and focus is not None and (focus is ancestor or focus.is_ancestor(ancestor))
+
+    def _focus_key(self) -> str | None:
+        """What has the focus, in words that survive a rebuild: a row's or option's key, a field's name, a button's label."""
+        widget = self.get_focus()
+        while widget is not None and widget is not self:
+            if getattr(widget, "fkey", None):
+                return widget.fkey
+            if isinstance(widget, (Gtk.Text, Gtk.Button)) and widget.get_name().startswith("su-"):
+                return "name:" + widget.get_name()
+            if isinstance(widget, Gtk.Button) and widget.get_label():
+                return "label:" + widget.get_label()
+            widget = widget.get_parent()
+        return None
+
+    def _restore_focus(self, kept: str | None) -> None:
+        found = self._find_focus(kept) if kept else None
+        if found is None:
+            self._first_focus()
+        elif isinstance(found, Gtk.Text):
+            found.grab_focus_without_selecting()
+        else:
+            found.grab_focus()
+
+    def _find_focus(self, kept: str) -> Gtk.Widget | None:
+        kind, _, value = kept.partition(":")
+        todo = [self.stack.get_visible_child(), self.foot]
+        while todo:
+            widget = todo.pop()
+            if widget is None:
+                continue
+            if widget.get_sensitive() and (
+                    getattr(widget, "fkey", None) == kept
+                    or kind == "name" and isinstance(widget, (Gtk.Text, Gtk.Button)) and widget.get_name() == value
+                    or kind == "label" and isinstance(widget, Gtk.Button) and widget.get_label() == value):
+                return widget
+            child = widget.get_first_child()
+            while child is not None:
+                todo.append(child)
+                child = child.get_next_sibling()
+        return None
+
+    @staticmethod
+    def _first_focusable(root: Gtk.Widget | None) -> Gtk.Widget | None:
+        todo = [root]
+        while todo:
+            widget = todo.pop(0)
+            if widget is None:
+                continue
+            if widget.get_focusable() and widget.get_sensitive() and widget.get_visible() and \
+                    isinstance(widget, (Gtk.Text, Gtk.Button)):
+                return widget
+            child = widget.get_first_child()
+            while child is not None:
+                todo.append(child)
+                child = child.get_next_sibling()
+        return None
 
     # Hello -----------------------------------------------------------------------------
     def _hello(self):
@@ -681,7 +918,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         if self.phone:
             body = box(languages, column, vertical=True, spacing=16)
         else:
-            languages.set_size_request(336, -1)
+            languages.set_size_request(334, -1)
             languages.set_hexpand(False)
             languages.set_valign(Gtk.Align.START)
             column.set_valign(Gtk.Align.START)
@@ -722,7 +959,6 @@ class SetupWindow(Gtk.ApplicationWindow):
         nets.append(self._other_row())
         note = label("You can do this later in Settings. The time zone is set for you once you’re online.",
                      "su-note", xalign=0.5, wrap=True)
-        note.set_margin_top(14)
         self.page_parts["focus"] = self.page_parts.get("open-field") or (first and first.get_first_child())
         return "Get online", "No cable found. Pick a Wi-Fi network.", box(nets, note, vertical=True), ""
 
@@ -873,7 +1109,8 @@ class SetupWindow(Gtk.ApplicationWindow):
         face.set_child(face_overlay)
         face.set_halign(Gtk.Align.CENTER)
         face.connect("clicked", lambda _b: self._toggle_faces())
-        face_column = box(face, vertical=True, spacing=10, css=("su-face",))
+        face_column = box(face, vertical=True, spacing=10, css=("su-face",), valign=Gtk.Align.START)
+        face_column.set_hexpand(False)
         if self.faces_open:
             picker = Gtk.Popover(child=self._faces(), has_arrow=False, position=Gtk.PositionType.BOTTOM,
                                  autohide=True)
@@ -992,9 +1229,9 @@ class SetupWindow(Gtk.ApplicationWindow):
     # Name this Luma ------------------------------------------------------------------
     def _device(self):
         s = self.setup
-        name = Field("Luma", value=s.device_name, name="su-dev", on_changed=self._typed_device)
+        name = Field("Luma", value=s.device_name, name="su-dev", on_changed=self._typed_device,
+                     accessible="Device name")
         host = label(f"{_host(s.device_name)}.local", "su-note")
-        host.set_margin_top(4)
         zone = catalog.zone(s.timezone)
         automatic = s.online and s.timezone_automatic and not self.zone_open
         line = f"{zone.name} · {zone.city}" + (" · set automatically" if automatic else "")
@@ -1004,6 +1241,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         globe = icon("globe", 16)
         globe.set_hexpand(True)
         glyph.append(globe)
+        glyph.set_hexpand(False)
         card.append(glyph)
         card.append(box(label("Time zone", "su-tzt"), label(line, "su-tzs", ellipsize=Pango.EllipsizeMode.END), vertical=True,
                         spacing=1, hexpand=True, valign=Gtk.Align.CENTER))
@@ -1078,8 +1316,150 @@ class SetupWindow(Gtk.ApplicationWindow):
                 self.redraw()
         system.detect_timezone(found)
 
+    # Make it yours -------------------------------------------------------------------
+    def _option(self, group: str, key: str, name: str, line: str, on: bool) -> Gtk.Button:
+        glyph = Gtk.Box(valign=Gtk.Align.CENTER)
+        glyph.add_css_class("su-gl")
+        glyph.add_css_class(f"g-{key}")
+        for _i in range(3 if key == "luma" else 2 if key in ("stack", "tile") else 1):
+            glyph.append(Gtk.Box())
+        words = box(label(name, "su-optn"), label(line, "su-optl"), vertical=True, valign=Gtk.Align.CENTER)
+        option = Gtk.Button(child=box(glyph, words, spacing=11), hexpand=True)
+        option.fkey = f"opt:{group}:{key}"
+        option.add_css_class("su-opt")
+        if on:
+            option.add_css_class("su-on")
+        option.update_property([Gtk.AccessibleProperty.LABEL], [f"{name}, {line}"])
+        option.connect("clicked", lambda _b: self._choose(group, key))
+        return option
+
+    def _choose(self, group: str, key: str) -> None:
+        if group == "win":
+            self.tiling = key == "tile"
+        else:
+            self.dash = key
+        self.redraw()
+        GLib.idle_add(lambda: (self.key.grab_focus(), False)[1])  # chosen; Return goes on
+
+    def _desk(self):
+        """A live miniature of their desk; the choices apply as the session starts, before the reveal."""
+        preview = self.later_mod.MiniDesktop(self.tiling, self.dash, self.light)
+        preview.set_halign(Gtk.Align.CENTER)
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        rows.set_margin_top(26)
+        for title, group, options in (
+                ("Windows", "win", (("stack", "Stacking", "Overlap freely", not self.tiling),
+                                    ("tile", "Tiling", "Side by side", self.tiling))),
+                ("Dash", "dash", (("luma", "Luma", "Islands", self.dash == "luma"),
+                                  ("cupertino", "Cupertino", "One dock", self.dash == "cupertino"),
+                                  ("redmond", "Redmond", "Taskbar", self.dash == "redmond")))):
+            seg = Gtk.Box(spacing=3, homogeneous=True, hexpand=True)
+            seg.add_css_class("su-seg")
+            for key, name, line, on in options:
+                seg.append(self._option(group, key, name, line, on))
+            heading = label(title, "su-rowb")
+            heading.set_size_request(76, -1)
+            rows.append(box(heading, seg, spacing=12, css=("su-row",)))
+        return "Make it yours.", "How should Luma feel?", box(preview, rows, vertical=True), ""
+
+    # Luma Connect ---------------------------------------------------------------------
+    def _connect_page(self):
+        flow = self.connect_flow
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER)
+        card.add_css_class("su-card")
+        if not self.phone:
+            card.set_size_request(360, -1)
+        if flow.done:
+            card.append(label(f"@{flow.account}" if flow.account else "Signed in", "su-meb", xalign=0.5))
+            card.append(label("Your Luma Connect account", "su-mee", xalign=0.5))
+        elif flow.code:
+            # The main path is the phone's camera: nothing to type. The code is there for
+            # another device, large, in a face where O, I and L cannot be taken for 0, 1 and l.
+            qr = qr_picture(flow.url)
+            if qr is not None:
+                card.append(label("Scan with your phone's camera", "su-note", "su-c", xalign=0.5, wrap=True))
+                card.append(qr)
+                card.append(label(f"or open {flow.url_short} and enter", "su-note", "su-c", xalign=0.5, wrap=True))
+            else:
+                card.append(label("On your phone or another device, open", "su-note", "su-c", xalign=0.5, wrap=True))
+                card.append(label(flow.url_short, "su-meb", xalign=0.5, selectable=True))
+                card.append(label("and enter this code", "su-note", "su-c", xalign=0.5))
+            code = label(flow.code, "su-code", xalign=0.5, selectable=True)
+            code.update_property([Gtk.AccessibleProperty.LABEL], [" ".join(flow.code)])
+            card.append(code)
+            spinner = Gtk.Spinner(spinning=True)
+            spinner.add_css_class("su-spin")
+            card.append(box(spinner, label("Waiting for you to approve it", "su-note"), spacing=8,
+                            halign=Gtk.Align.CENTER))
+        else:
+            card.append(label(flow.why or "Sign in to Luma Connect from your desktop once Luma starts.",
+                              "su-note", "su-c", xalign=0.5, wrap=True))
+            if flow.available:
+                card.append(button("Sign in with a code", "su-link", on_click=flow.start, halign=Gtk.Align.CENTER))
+        if not flow.started and flow.available and self.setup.online and not flow.why:
+            GLib.idle_add(lambda: (flow.start(), False)[1])
+        return ("Luma Connect", "Your files, photos and messages, on every device.", card,
+                "icon:org.projectluma.Connect")
+
+    def _skip_connect(self) -> None:
+        self.connect_flow.later = True
+        self.connect_flow.stop()
+        self.go(1)
+
+    def _connect_changed(self) -> None:
+        if self.page == "connect" and not self._finishing:
+            self.redraw()
+
+    # Add apps ------------------------------------------------------------------------
+    def _apps(self):
+        groups = Gtk.Box(spacing=12)
+        if self.phone:
+            groups.set_orientation(Gtk.Orientation.VERTICAL)
+        groups.add_css_class("su-groups")
+        for group in self.groups:
+            ids = [a["id"] for a in group["apps"]]
+            every = all(i in self.chosen for i in ids)
+            head = box(box(label(group["name"], "su-gn"),
+                           label(f"{len(ids)} app{'s' if len(ids) != 1 else ''}", "su-ge"), vertical=True,
+                           hexpand=True),
+                       button("Clear" if every else "Add all", "su-all", valign=Gtk.Align.CENTER,
+                              on_click=lambda ids=ids, every=every: self._all_apps(ids, every)),
+                       spacing=10, css=("su-ghead",))
+            tiles = Gtk.Box(spacing=4, homogeneous=True)
+            tiles.add_css_class("su-tiles")
+            for app in group["apps"]:
+                tile = Gtk.Button(child=box(Gtk.Image(icon_name=app["icon"], pixel_size=48),
+                                            label(app["name"], "su-tn", xalign=0.5), vertical=True, spacing=3))
+                tile.add_css_class("su-tile")
+                if app["id"] in self.chosen:
+                    tile.add_css_class("su-on")
+                tile.update_property([Gtk.AccessibleProperty.LABEL], [app["name"]])
+                tile.connect("clicked", lambda _b, i=app["id"]: self._toggle_app(i))
+                tiles.append(tile)
+            groups.append(box(head, tiles, vertical=True, css=("su-group",), hexpand=True))
+        count = len(self.chosen)
+        summary = label(f"{count} app{'s' if count != 1 else ''}, installed once Luma starts" if count else "",
+                        "su-sum", xalign=0.5)
+        summary.set_visible(bool(count))
+        return "Add apps", "Free tools for your next project.", box(groups, summary, vertical=True), \
+            "icon:org.projectluma.Depot"
+
+    def _toggle_app(self, app_id: str) -> None:
+        self.chosen.symmetric_difference_update({app_id})
+        self.redraw()
+
+    def _all_apps(self, ids: list[str], every: bool) -> None:
+        (self.chosen.difference_update if every else self.chosen.update)(ids)
+        self.redraw()
+
     # -- the foot ------------------------------------------------------------------------
     def _foot(self) -> None:
+        kept = self._focus_key() if self._focus_in(self.foot) else None
+        self._build_foot()
+        if kept is not None:
+            self._restore_focus(kept)
+
+    def _build_foot(self) -> None:
         while (child := self.foot.get_first_child()) is not None:
             self.foot.remove(child)
         if self._finishing:
@@ -1089,7 +1469,10 @@ class SetupWindow(Gtk.ApplicationWindow):
         skip = None
         if page == "wifi" and not self.setup.online:
             skip = button("Skip", "su-bt", "su-quiet", on_click=lambda: self.go(1))
-        key_text = "Finish" if page == "device" else "Continue"
+        last = self.index == len(self.pages) - 1
+        key_text = "Start using Luma" if last else "Continue"
+        if page == "connect" and not self.connect_flow.done:
+            skip = button("Skip", "su-bt", "su-quiet", on_click=self._skip_connect)
         key = button(key_text, "su-bt", "su-key", on_click=self._press_key)
         key.set_name("su-key")
         key.set_sensitive(self.setup.ready(page, _taken))
@@ -1099,7 +1482,7 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.foot.set_spacing(4)
             self.foot.append(key)
             if back or skip:
-                pair = box(back, skip, spacing=0, homogeneous=True)
+                pair = box(back, skip, spacing=0)   # each grows by the same share, as flex: 1
                 for child in (back, skip):
                     if child is not None:
                         child.set_hexpand(True)
@@ -1114,7 +1497,7 @@ class SetupWindow(Gtk.ApplicationWindow):
     def _press_key(self) -> None:
         if not self.key.get_sensitive():
             return
-        if self.page == "device":
+        if self.index == len(self.pages) - 1:
             self.finish()
         else:
             self.go(1)
@@ -1127,6 +1510,7 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.draw(forward=step > 0)
 
     def _key(self, _controller, keyval: int, _code: int, state: Gdk.ModifierType) -> bool:
+        trace("key", Gdk.keyval_name(keyval), self.page, describe(self.get_focus()))
         if keyval == Gdk.KEY_Escape:
             return True  # a system sheet waits for an answer
         if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and not self._finishing:
@@ -1135,7 +1519,8 @@ class SetupWindow(Gtk.ApplicationWindow):
             if isinstance(focus, Gtk.Text) and self.page == "wifi":
                 return False
             # On a row already chosen, Return goes on; on any other button it presses that button.
-            chosen_row = isinstance(focus, Gtk.Button) and focus.has_css_class("su-li") and focus.has_css_class("su-on")
+            chosen_row = (isinstance(focus, Gtk.Button) and focus.has_css_class("su-on")
+                          and (focus.has_css_class("su-li") or focus.has_css_class("su-opt")))
             if isinstance(focus, Gtk.Button) and focus is not getattr(self, "key", None) and not chosen_row:
                 return False
             self._press_key()
@@ -1148,32 +1533,59 @@ class SetupWindow(Gtk.ApplicationWindow):
         s = self.setup
         self._finishing = True
         self.network.stop_scanning()
+        # Nothing keeps the focus (no ring in the last frame): the first session draws this frame again.
+        self.set_focus(None)
         self._dots()
         self._foot()
-        rows = (("account", "Creating your account", f"@{s.username}"),
-                ("language", "Language and keyboard", _keyboard_name(s)),
-                ("timezone", "Time zone", catalog.zone(s.timezone).city),
-                ("name", "Naming this Luma", s.device_name))
+        rows = [["account", "Creating your account", f"@{s.username}"],
+                ["language", "Language and keyboard", _keyboard_name(s)],
+                ["timezone", "Time zone", catalog.zone(s.timezone).city],
+                ["name", "Naming this Luma", s.device_name],
+                ["signin", "Signing you in", ""]]   # turns until the desktop is up (the first session's cover)
+        self._finished_pane(s.first, s.face, rows, {})
+        self._shots = getattr(self, "_shots", 0) + 1
+        snapshot(self, f"{self._shots:02d}-finish")
+        payload = s.payload()
+        payload["first_session"] = {
+            "desk": {"tiling": self.tiling, "dash": self.dash} if "desk" in self.pages else None,
+            "apps": sorted(self.chosen),
+            "connect_later": not self.connect_flow.done,
+        }
+        payload["connect_token"] = self.connect_flow.token   # sealed for the account by the helper, never stored plain
+        # What the last frame is made of (not a picture of it): the first session draws it again.
+        payload["last_frame"] = last_frame(self.form, self.light, self.wallpaper, s.first, s.face, rows)
+        self.connect_flow.stop()
+        s.password = s.again = ""  # the sheet keeps no copy once the helper has it
+        password = payload["password"]
+        system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
+                       ).run(payload)
+
+    def _finished_pane(self, first: str, face: str, rows: list, marks: dict) -> None:
+        """Welcome, the photo and the four steps; marks says which have ticked (else a spinner)."""
         steps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, halign=Gtk.Align.CENTER)
         steps.add_css_class("su-steps")
         steps.set_name("su-steps")
         steps.set_size_request(300, -1)
         self._step_rows: dict[str, Gtk.Box] = {}
         for key, text, detail in rows:
-            spinner = Gtk.Spinner(spinning=True)
-            spinner.add_css_class("su-spin")
             mark = Gtk.Box(valign=Gtk.Align.CENTER)
             mark.set_size_request(20, 20)
-            mark.append(spinner)
             row = box(mark, label(text), label(detail, "su-sub", xalign=1.0, hexpand=True, ellipsize=Pango.EllipsizeMode.END),
                       spacing=12, css=("su-step",))
             row.mark = mark
             steps.append(row)
             self._step_rows[key] = row
+            if key in marks:
+                self._step_done(key, bool(marks[key]))
+            else:
+                spinner = Turn()
+                mark.append(spinner)
+                if not self.frame:
+                    spinner.turn()   # the first session's copy turns once it is on screen
         pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         pane.add_css_class("su-body")
-        heading = box(avatar(s.first[:1].upper(), "su-mid", s.face),
-                      label(f"Welcome, {s.first}.", "su-title", xalign=0.5),
+        heading = box(avatar(first[:1].upper(), "su-mid", face),
+                      label(f"Welcome, {first}.", "su-title", xalign=0.5),
                       label("Getting Luma ready for you.", "su-lede", xalign=0.5),
                       vertical=True, css=("su-hg",))
         heading.get_first_child().set_margin_bottom(14)
@@ -1185,13 +1597,6 @@ class SetupWindow(Gtk.ApplicationWindow):
         self.stack.set_visible_child(pane)
         if old is not None:
             GLib.timeout_add(300, lambda: (self._drop(old), False)[1])
-        self._shots = getattr(self, "_shots", 0) + 1
-        snapshot(self, f"{self._shots:02d}-finish")
-        payload = s.payload()
-        s.password = s.again = ""  # the sheet keeps no copy once the helper has it
-        password = payload["password"]
-        system.Applier(self._step_done, lambda ok, why: self._applied(ok, why, payload["username"], password)
-                       ).run(payload)
 
     def _step_done(self, key: str, ok: bool) -> None:
         # The keyring is enrolled with the account; its row is the account's.
@@ -1211,16 +1616,119 @@ class SetupWindow(Gtk.ApplicationWindow):
             self.draw(forward=False)
             self.page_parts["hint"].set_label(why)
             return
-        GLib.timeout_add(650, lambda: (self._sign_in(username, password), False)[1])
+        # Signed in once the last tick is on screen (two frames drawn after it, so the
+        # compositor has shown the first): the first session draws this same frame again.
+        after_frames(self, 2, lambda: GLib.timeout_add(
+            650, lambda: (hand_over(self, self, lambda: self._sign_in(username, password)), False)[1]))
+
+    def _turns(self) -> list:
+        return [row.mark.get_first_child() for row in getattr(self, "_step_rows", {}).values()
+                if isinstance(row.mark.get_first_child(), Turn)]
+
+    def hold_steps(self) -> None:
+        for turn in self._turns():
+            turn.hold()
+
+    def turn_steps(self) -> None:
+        for turn in self._turns():
+            turn.turn()
 
     def _sign_in(self, username: str, password: str) -> None:
-        self.root.add_css_class("su-in")
+        """Signed in with the sheet still up: the first session opens on this same frame (--cover)."""
         system.sign_in(username, password, self._sign_in_problem)
         if self._on_signed_in is not None:
             self._on_signed_in()
 
     def _sign_in_problem(self, message: str) -> None:
         log.warning("sign-in: %s", message)
+
+
+def hand_over(widget: Gtk.Widget, sheet, sign_in: Callable[[], None]) -> None:
+    """Sign in and give the screen to the first session, whose first frame is this one.
+
+    With Luma's gdm the setup keeps the screen, its last step turning, until the
+    session's cover has drawn; then it holds the step at its first angle, draws
+    that, and lets gdm switch (handover.py). Without it, the step is held before
+    signing in, as gdm switches at once.
+    """
+    from . import handover
+    if not handover.supported():
+        sheet.hold_steps()
+        after_frames(widget, 2, sign_in)
+        return
+    sign_in()
+    started = GLib.get_monotonic_time()
+
+    def check() -> bool:
+        late = GLib.get_monotonic_time() - started > handover.WAIT_S * 1_000_000
+        if not handover.waiting():
+            return False   # gdm has switched already (its own time limit)
+        if handover.cover_is_ready() or late:
+            sheet.hold_steps()
+            after_frames(widget, 2, handover.go)
+            return False
+        return True
+    GLib.timeout_add(50, check)
+
+
+def after_frames(widget: Gtk.Widget, count: int, then: Callable[[], None]) -> None:
+    """then() once the widget's window has drawn count more frames (3 s at most)."""
+    clock = widget.get_frame_clock()
+    state = {"left": count, "done": False}
+
+    def finish() -> None:
+        if not state["done"]:
+            state["done"] = True
+            if clock is not None and state.get("handler"):
+                clock.disconnect(state["handler"])
+            then()
+
+    def painted(_clock) -> None:
+        state["left"] -= 1
+        if state["left"] <= 0:
+            GLib.idle_add(lambda: (finish(), False)[1])
+        else:
+            widget.queue_draw()
+    if clock is None:
+        finish()
+        return
+    state["handler"] = clock.connect("after-paint", painted)
+    widget.queue_draw()
+    GLib.timeout_add(3000, lambda: (finish(), False)[1])
+
+
+def last_frame(form: Posture, light: bool, wallpaper: str | None, first: str, face: str, rows: list) -> dict:
+    """The setup's last frame as data: the first session draws it again from this (luma-setup --cover).
+
+    The text settings go with it, so the same words are drawn the same way in
+    the person's own session, whatever their own settings are.
+    """
+    settings = Gtk.Settings.get_default()
+    text = {}
+    for name in ("gtk-font-name", "gtk-xft-dpi", "gtk-xft-antialias", "gtk-xft-hinting", "gtk-xft-hintstyle",
+                 "gtk-xft-rgba", "gtk-hint-font-metrics", "gtk-icon-theme-name", "gtk-theme-name"):
+        try:
+            value = settings.get_property(name)
+        except TypeError:
+            continue
+        if isinstance(value, (bool, int, str)):
+            text[name] = value
+    try:
+        text["gtk-font-rendering"] = int(settings.get_property("gtk-font-rendering"))
+    except TypeError:
+        pass
+    return {"posture": form.value, "light": bool(light), "wallpaper": wallpaper or "", "first": first,
+            "face": face or "", "rows": [list(row) for row in rows], "settings": text,
+            "scale": os.environ.get("LUMA_SETUP_SCALE", "")}
+
+
+def _later_pages(phone: bool) -> int:
+    try:
+        from .welcome import page_names
+        return len(page_names(phone))
+    except Exception as error:  # noqa: BLE001 - no welcome to count: the dots are first boot's own
+        log.info("welcome pages unknown: %s", error)
+        return 0
 
 
 def _taken(name: str) -> bool:
