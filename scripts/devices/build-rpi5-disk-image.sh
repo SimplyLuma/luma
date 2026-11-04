@@ -468,7 +468,7 @@ if [ -n "$device_repo" ]; then
   done
 fi
 grep -Eq "^(base)?refspec=$remote:$ref\$" "$deploy.origin" || fail "the deployment does not follow $remote:$ref"
-! grep -q 'raspberrypi-rpi5' "$deploy.origin" || fail "the deployment names the Raspberry Pi hardware ref"
+! grep -Eq '^(base)?refspec=.*raspberrypi-rpi5' "$deploy.origin" || fail "the deployment follows the Raspberry Pi hardware ref"
 # The Pi follows the generic ARM stream: no hardware-targeted update.conf.
 if [ -e "$deploy/etc/luma/update.conf" ] &&
    grep -Eq '^\s*(hardware_target\s*=\s*\S|ref_template\s*=.*raspberrypi)' "$deploy/etc/luma/update.conf"; then
