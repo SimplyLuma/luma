@@ -26,9 +26,10 @@ install_data('bin/luma-setup', 'bin/luma-setup-apply', install_dir: get_option('
              install_mode: 'rwxr-xr-x')
 
 # GDM's initial-setup session: GDM looks for these names and runs Luma's setup in it.
-install_data('data/session/gnome-initial-setup.session', install_dir: datadir / 'gnome-session' / 'sessions')
-install_data('data/session/gnome-initial-setup.desktop',
-             install_dir: datadir / 'gdm' / 'greeter' / 'wayland-sessions')
+# GDM's own gnome-initial-setup.desktop starts `gnome-session --session gnome-initial-setup`; gnome-session
+# reads /etc/xdg before /usr/share, so this session (and the dconf profile GDM names) are Luma's
+# without shipping a file gdm or gnome-initial-setup owns.
+install_data('data/session/gnome-initial-setup.session', install_dir: sysconfdir / 'xdg' / 'gnome-session' / 'sessions')
 install_data('data/systemd/luma-setup.conf',
              install_dir: userunitdir / 'gnome-session@gnome-initial-setup.target.d')
 install_data('data/systemd/luma-setup.service', install_dir: userunitdir)
@@ -39,7 +40,7 @@ install_data('data/polkit/20-luma-setup.rules', install_dir: datadir / 'polkit-1
 install_data('data/sysusers.conf', rename: 'luma-setup.conf', install_dir: prefix / 'lib' / 'sysusers.d')
 
 # The session's settings: a dconf profile over Luma's defaults.
-install_data('data/dconf/gnome-initial-setup', install_dir: datadir / 'dconf' / 'profile')
+install_data('data/dconf/gnome-initial-setup', install_dir: sysconfdir / 'dconf' / 'profile')
 dconf = find_program('dconf')
 custom_target('dconf-defaults',
   output: 'dconf-defaults',
