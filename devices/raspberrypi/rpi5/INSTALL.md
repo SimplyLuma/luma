@@ -102,3 +102,24 @@ Model B Rev …", the board's MAC and Bluetooth address), `uname -r` is the Luma
 Pi kernel, HDMI audio, Bluetooth and `/dev/video19` (HEVC) are present, and
 `luma-rpi5-firmware-sync`
 reports the trees in place. To go back, power off and put the original card in.
+
+## Nightly gate for the Pi ref
+
+`publish-channel.sh` publishes `luma/1/aarch64/raspberrypi-rpi5/<channel>`
+only with a passing `gate-result.json` in the build directory. Produce it from
+the exported candidate:
+
+1. Test card of the candidate (luma-build, unconfined):
+   `systemd-run --scope luma-heavy bash scripts/devices/build-rpi5-disk-image.sh --iso <aarch64 ISO> --output <dir> --test-payload <root>/ostree/candidate-repo <candidate> --test-ssh-key <key.pub>`
+2. On an aarch64 host with qemu (the Mac: HVF), with the card, the private key
+   and the build's `build.env` and `export.env` (or `export-prepared.env`):
+   `scripts/devices/gate-rpi5-card.sh --image <card>.img.xz --key <key> --build-env build.env --export-env export.env --output gate-result.json`
+3. Copy `gate-result.json` into `<root>/builds/<id>/`.
+
+Stages: the card boots on a 32 GiB disk, the candidate is booted from the Pi
+ref, greenboot passes (`boot_success=1`), and the image contract holds (Luma
+Pi kernel, no Fedora kernel, CanSuspend=no, Pi update stream, offline apps,
+no failed units). The no-account stage requires that no account exists and
+Luma's setup is on screen with GNOME Initial Setup absent. Update and rollback
+are `not-applicable` only while the ref has no release. The script refuses
+once it has one, until those stages exist.
