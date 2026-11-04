@@ -48,19 +48,22 @@ if [ "$(uname -m)" != aarch64 ]; then
 fi
 
 work=$(mktemp -d "${TMPDIR:-/var/tmp}/rpm-ostree-offline.XXXXXX")
+# The bus socket lives under /run: a socket path under a deep TMPDIR exceeds
+# the 108-byte sun_path limit.
+bus=$(mktemp -d /run/luma-rpmo-bus.XXXXXX)
 bus_pid=""
 cleanup() {
   [ -z "$bus_pid" ] || kill "$bus_pid" 2>/dev/null || true
-  rm -rf "$work"
+  rm -rf "$work" "$bus"
 }
 trap cleanup EXIT INT TERM
-mkdir -p "$work/bus" "$work/upper" "$work/work" "$work/root" "$work/x86"
+mkdir -p "$work/upper" "$work/work" "$work/root" "$work/x86"
 cat >"$work/bus.conf" <<EOF
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
   <type>system</type>
-  <listen>unix:path=$work/bus/system_bus_socket</listen>
+  <listen>unix:path=$bus/system_bus_socket</listen>
   <auth>EXTERNAL</auth>
   <policy context="default">
     <allow user="root"/><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/>
@@ -97,7 +100,7 @@ case "$verb" in
 esac
 
 unshare --mount --propagation private bash -euc '
-work=$1 sysroot=$2 deployment=$3 host_bwrap=$4 binds=$5; shift 5
+work=$1 sysroot=$2 deployment=$3 host_bwrap=$4 binds=$5 bus=$6; shift 6
 r=$work/root
 mount -t overlay overlay -o "lowerdir=$deployment,upperdir=$work/upper,workdir=$work/work" "$r"
 mount -t proc proc "$r/proc"
@@ -105,7 +108,7 @@ mount --rbind /sys "$r/sys"; mount --make-rslave "$r/sys"
 mount --rbind /dev "$r/dev"; mount --make-rslave "$r/dev"
 for d in run tmp var; do mount -t tmpfs tmpfs "$r/$d"; done
 mkdir -p "$r/run/dbus" "$r/run/systemd/journal" "$r/sysroot" "$r/var/tmp" "$r/var/cache"
-mount --bind "$work/bus" "$r/run/dbus"
+mount --bind "$bus" "$r/run/dbus"
 [ ! -S /run/systemd/journal/socket ] || mount --bind /run/systemd/journal "$r/run/systemd/journal"
 mount --rbind "$sysroot" "$r/sysroot"  # with /boot: deployments are found through the boot loader entries
 IFS=$'\''\n'\''
@@ -136,4 +139,4 @@ for _ in 1 2 3 4 5; do
   sleep 1
 done
 exit $rc
-' _ "$work" "$sysroot" "$deployment" "$host_bwrap" "$(printf '%s\n' "${binds[@]+"${binds[@]}"}")" "$@"
+' _ "$work" "$sysroot" "$deployment" "$host_bwrap" "$(printf '%s\n' "${binds[@]+"${binds[@]}"}")" "$bus" "$@"
