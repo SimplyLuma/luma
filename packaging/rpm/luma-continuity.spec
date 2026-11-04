@@ -2,7 +2,7 @@
 # Private experiment only. No composed pin or enabled service until Class D gates.
 Name:           luma-continuity
 Version:        0.1.0
-Release:        0.67.experiment%{?dist}
+Release:        0.68.experiment%{?dist}
 Summary:        Luma Connect experimental native device boundary
 License:        Apache-2.0
 BuildArch:      noarch
@@ -52,7 +52,7 @@ Requires:       libnice-gstreamer1
 Requires:       pipewire-pulseaudio
 Requires:       libsecret
 Requires:       prairie-core-apps >= 0.1.0-1.luma.74.connect.32~preview.20260915.1
-Requires:       luma-developer-platform
+Requires:       luma-developer-platform >= 0.1.0-1.luma.123
 Requires:       luma-application-installer >= 0.1.0-1.luma.55
 Requires:       libadwaita >= 1.6
 # Opens the Connect sign-in luma-setup sealed for the account at Finish.
@@ -136,6 +136,10 @@ node shell/test-notification-export.mjs
 %{_datadir}/icons/hicolor/scalable/actions/luma-connect-*-symbolic.svg
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-0.68.experiment
+- Connect in TV posture: sign-in, pairing and device pages for the remote,
+  and the floating island.
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-0.67.experiment
 - Ship /etc/luma-connect/client.json: the luma-connect realm issuer, the account
   API, the luma-device client (RFC 8628 device grant) and the browser client.

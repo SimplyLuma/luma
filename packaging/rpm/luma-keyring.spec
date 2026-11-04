@@ -2,7 +2,7 @@
 
 Name:           luma-keyring
 Version:        0.3.0
-Release:        1.luma.1%{?dist}
+Release:        1.luma.2%{?dist}
 Summary:        Saved passwords that unlock when you log in, or say why they cannot
 License:        MPL-2.0
 URL:            https://projectluma.org/saved-passwords
@@ -24,7 +24,7 @@ Requires:       python3 >= 3.11
 Requires:       python3-gobject
 Requires:       libadwaita
 # LumaUI parts (luma_appkit) for the first-unlock sheet.
-Requires:       luma-developer-platform
+Requires:       luma-developer-platform >= 0.1.0-1.luma.123
 # The keyring this looks after, and the PAM module that unlocks it at login.
 Requires:       gnome-keyring
 # Gcr's secret exchange: the sheet answers gnome-keyring's prompts as the system prompter.
@@ -143,6 +143,10 @@ fi
 %config(noreplace) %{_sysconfdir}/pam.d/luma-keyring
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.3.0-1.luma.2
+- First-unlock sheet in TV and phone layouts; a second step for an older
+  keyring password, checked through a scoped sign-in password helper.
+
 * Mon Nov 02 2026 Project Luma <maintainers@projectluma.org> - 0.3.0-1.luma.1
 - Ask for the first unlock of an unenrolled automatic sign-in in Luma's own
   sheet, with automatic unlock on by default; decline other keyring prompts

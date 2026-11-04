@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.122%{?dist}
+Release:        1.luma.123%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -373,6 +373,10 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.123
+- LumaUI TV parts (API level 10): focus, stage, menu, keyboard, island,
+  media, wide tiles, shelves, grids and pages; TV design tokens.
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.122
 - Settle responsive layouts before the first content frame.
 

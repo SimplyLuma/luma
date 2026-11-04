@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.130%{?dist}
+Release:        1.luma.131%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -59,7 +59,7 @@ Requires:       ibm-plex-mono-fonts
 Requires:       libadwaita >= 1.9
 # Native Tide owns the non-interactive credential API used by Connect.
 Requires:       (luma-tide >= 0.1.0-2.luma.38 if luma-tide)
-Requires:       luma-developer-platform >= 0.1.0-1.luma.121
+Requires:       luma-developer-platform >= 0.1.0-1.luma.123
 # Messages' glyphs are Prairie's Lucide set by standard name (1.luma.27).
 Requires:       prairie-icon-theme >= 0.1.0-1.luma.28
 Requires:       gstreamer1
@@ -696,6 +696,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.131
+- Weather in TV posture.
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.130
 - Phone falls back to the avatar when a contact photo can't be decoded,
   instead of failing to open (favourites, call screens).

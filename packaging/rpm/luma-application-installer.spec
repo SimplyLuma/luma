@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.84%{?dist}
+Release:        1.luma.85%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -36,7 +36,7 @@ Requires:       dpkg
 Requires:       flatpak
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.111.tester20261026.1
+Requires:       luma-developer-platform >= 0.1.0-1.luma.123
 Requires:       container-selinux
 Requires:       policycoreutils
 Requires:       podman
@@ -272,6 +272,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.85
+- Depot on TV: installed apps, updates and the system row as wide tiles
+  and app pages in TV posture.
+
 * Mon Nov 02 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.84
 - Seed the offline app baseline through the luma remote
 

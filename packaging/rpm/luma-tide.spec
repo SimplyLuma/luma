@@ -29,7 +29,7 @@
 # cherry-pick -- the right home for the canvas artwork re-sync.
 Name:           luma-tide
 Version:        0.1.0
-Release:        2.luma.38%{?dist}
+Release:        2.luma.39%{?dist}
 Summary:        Source-aware native music player for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/apps/tide
@@ -66,7 +66,7 @@ Requires:       python3-gobject
 Requires:       python3-mutagen
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
-Requires:       luma-developer-platform >= 0.1.0-1.luma.121
+Requires:       luma-developer-platform >= 0.1.0-1.luma.123
 Requires:       gstreamer1
 Requires:       gstreamer1-plugins-base
 # souphttpsrc streams from Navidrome/Subsonic servers; libsoup takes TLS from
@@ -175,6 +175,9 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 %{_userunitdir}/graphical-session-pre.target.wants/luma-tide-retire-preview-overrides.service
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.39
+- Tide in TV posture: library, now playing and sources for the remote.
+
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.38
 - Merge the shared prepared application runtime with the October 30 nightly.
 
