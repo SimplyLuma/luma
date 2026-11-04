@@ -114,7 +114,7 @@ wine-luma-relay-explorer-11.0-3.luma.2.fc44.x86_64
 
 # Luma applications and desktop utilities
 luma-agenda-0.1.0-1.luma.9.fc44.noarch
-luma-ari-0.1.0-1.luma.21.creator20261029.1.fc44.noarch
+luma-ari-0.1.0-1.luma.22.fc44.noarch
 luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64
 luma-display-config-0.1.0-1.luma.7.creator20261024.1.fc44.noarch
 luma-leaf-0.1.0-1.luma.13.creator20261007.1.fc44.noarch
