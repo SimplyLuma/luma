@@ -12,25 +12,31 @@ python.install_sources('ari/tools/__init__.py', 'ari/tools/answers.py', 'ari/too
                         'ari/tools/preferences.py', 'ari/tools/system.py', 'ari/tools/applications.py',
                         'ari/tools/workspace.py', 'ari/tools/accessibility.py', 'ari/tools/processes.py',
                         'ari/tools/productivity.py', 'ari/tools/media.py', subdir: 'ari/tools')
-python.install_sources('ari_ui/__init__.py', 'ari_ui/app.py', 'ari_ui/chatgpt_settings.py', 'ari_ui/rich_text.py', 'ari_ui/settings.py', 'ari_ui/fixture.py', 'ari_ui/lumaui_app.py',
-                       'ari_ui/lumaui_style.py', 'ari_ui/live_data.py', 'ari_ui/model_families.py', subdir: 'ari_ui')
-
-install_subdir('ari_ui/assets', install_dir: python.get_install_dir() / 'ari_ui')
 
 datadir = get_option('datadir')
 install_data('data/models.json', 'data/cloud-models.json', 'data/ari.css', install_dir: datadir / 'luma-ari')
 install_subdir('eval/results', install_dir: datadir / 'luma-ari/eval', strip_directory: true)
-install_data('data/org.projectluma.Ari.desktop', install_dir: datadir / 'applications')
-install_data('data/org.projectluma.Ari.metainfo.xml', install_dir: datadir / 'metainfo')
+# The daemon reads its preferences from this schema.
 install_data('data/org.projectluma.Ari.gschema.xml', install_dir: datadir / 'glib-2.0/schemas')
-install_data('data/org.projectluma.Ari.svg', install_dir: datadir / 'icons/hicolor/scalable/apps')
-install_data('data/org.projectluma.Ari1.service', 'data/org.projectluma.Ari.service',
-             install_dir: datadir / 'dbus-1/services')
+install_data('data/org.projectluma.Ari1.service', install_dir: datadir / 'dbus-1/services')
 install_data('data/ari-daemon.service', install_dir: get_option('prefix') / 'lib/systemd/user')
 
-foreach script : [['data/ari-daemon.in', 'ari-daemon', get_option('libexecdir') / 'luma-ari'],
-                  ['data/ari.in', 'ari', get_option('bindir')],
-                  ['data/org.projectluma.Ari.in', 'org.projectluma.Ari', get_option('bindir')]]
+scripts = [['data/ari-daemon.in', 'ari-daemon', get_option('libexecdir') / 'luma-ari'],
+           ['data/ari.in', 'ari', get_option('bindir')]]
+
+# The interface ships as the org.projectluma.Ari Flatpak; -Dui=false builds the host only.
+if get_option('ui')
+  python.install_sources('ari_ui/__init__.py', 'ari_ui/app.py', 'ari_ui/chatgpt_settings.py', 'ari_ui/rich_text.py', 'ari_ui/settings.py', 'ari_ui/fixture.py', 'ari_ui/lumaui_app.py',
+                         'ari_ui/lumaui_style.py', 'ari_ui/live_data.py', 'ari_ui/model_families.py', subdir: 'ari_ui')
+  install_subdir('ari_ui/assets', install_dir: python.get_install_dir() / 'ari_ui')
+  install_data('data/org.projectluma.Ari.desktop', install_dir: datadir / 'applications')
+  install_data('data/org.projectluma.Ari.metainfo.xml', install_dir: datadir / 'metainfo')
+  install_data('data/org.projectluma.Ari.svg', install_dir: datadir / 'icons/hicolor/scalable/apps')
+  install_data('data/org.projectluma.Ari.service', install_dir: datadir / 'dbus-1/services')
+  scripts += [['data/org.projectluma.Ari.in', 'org.projectluma.Ari', get_option('bindir')]]
+endif
+
+foreach script : scripts
   configure_file(input: script[0], output: script[1], copy: true, install: true,
                  install_dir: script[2], install_mode: 'rwxr-xr-x')
 endforeach
