@@ -107,7 +107,7 @@ for d in run tmp var; do mount -t tmpfs tmpfs "$r/$d"; done
 mkdir -p "$r/run/dbus" "$r/run/systemd/journal" "$r/sysroot" "$r/var/tmp" "$r/var/cache"
 mount --bind "$work/bus" "$r/run/dbus"
 [ ! -S /run/systemd/journal/socket ] || mount --bind /run/systemd/journal "$r/run/systemd/journal"
-mount --bind "$sysroot" "$r/sysroot"
+mount --rbind "$sysroot" "$r/sysroot"  # with /boot: deployments are found through the boot loader entries
 IFS=$'\''\n'\''
 for pair in $binds; do
   [ -n "$pair" ] || continue
