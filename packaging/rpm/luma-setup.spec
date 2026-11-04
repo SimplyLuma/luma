@@ -86,8 +86,7 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_libexecdir}/luma-setup
 %{_libexecdir}/luma-setup-apply
 %{python3_sitelib}/luma_setup/
-%{_datadir}/gnome-session/sessions/gnome-initial-setup.session
-%{_datadir}/gdm/greeter/wayland-sessions/gnome-initial-setup.desktop
+%config %{_sysconfdir}/xdg/gnome-session/sessions/gnome-initial-setup.session
 %{_userunitdir}/gnome-session@gnome-initial-setup.target.d/luma-setup.conf
 %{_userunitdir}/luma-setup.service
 %{_userunitdir}/luma-setup-first-session.service
@@ -99,7 +98,7 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/polkit-1/actions/org.projectluma.setup.policy
 %{_datadir}/polkit-1/rules.d/20-luma-setup.rules
 %{_sysusersdir}/luma-setup.conf
-%{_datadir}/dconf/profile/gnome-initial-setup
+%config %{_sysconfdir}/dconf/profile/gnome-initial-setup
 %{_datadir}/luma-setup/
 %config(noreplace) %{_sysconfdir}/geoclue/conf.d/90-luma-setup.conf
 %{_datadir}/applications/org.projectluma.Setup.desktop
@@ -110,6 +109,10 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
   by code) and Add apps follow in the setup session; signed in once, at the end
 - The first session opens on the setup's last frame (luma-setup-cover.service,
   gnome-shell 0321) and lifts it off the desktop
+
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.2
+- Ship no file gdm or gnome-initial-setup owns: GDM's own initial-setup session
+  entry starts the session; the session file and the dconf profile live in /etc
 
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - First-boot setup in GDM's initial-setup session: language and keyboard,
