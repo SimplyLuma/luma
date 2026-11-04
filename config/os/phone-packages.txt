@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Fedora 44 packages for phones, added to every profile with the phone
+# capability (config/os/desktop-profiles.json). One ARM build runs laptops
+# and phones alike: without a modem or a vibration motor these stay idle.
+# Device files (kernel, firmware, device services) come from the device's
+# boot image, never from this image.
+
+# Call audio routing (earpiece, speaker, headset during a call)
+callaudiod
+
+# Haptic and LED feedback for calls, texts and notifications
+feedbackd
+
+# MMS over the carrier's MMS APN
+mmsd-tng

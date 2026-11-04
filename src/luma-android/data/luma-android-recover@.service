@@ -1,9 +1,19 @@
 [Unit]
 Description=Restart Android for %i after a graphics failure
 Documentation=https://project-luma.local/android
+# The watchdog is restarted with the container, so its in-memory budget resets.
+# Keep the recovery budget here, where it survives container restarts.
+StartLimitIntervalSec=600
+StartLimitBurst=3
 
 [Service]
 Type=oneshot
+# Keep the unit loaded so systemd retains its start-limit counters.
+# The watchdog requests restart for subsequent recoveries.
+RemainAfterExit=yes
+# A surviving user broker still owns Binder handles from the old container.
+# Cancel an in-flight readiness pass and stop that broker before replacing it.
+ExecStart=/usr/bin/systemctl --user --machine=%i@ stop luma-android-prewarm.service luma-android-session.service
 ExecStart=/usr/bin/systemctl restart waydroid-container.service
 # The session and the readiness pass, exactly as after sign-in.
 ExecStart=/usr/bin/systemctl --user --machine=%i@ start luma-android-prewarm.service

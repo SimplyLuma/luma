@@ -31,6 +31,22 @@ published boot image and the SHA-256 of its kernel, DTB, `.config` and modules.
 The device's exact `.config`, device-tree overlays and build steps are in
 `luma/<codename>/<release>/` on that branch. `device.toml` points at the tag.
 
+**Distribution kernels.** A device that boots its distribution's stock
+kernel, unmodified, has no tag, source lock or `.config`. Its `[kernel]`
+table names the distribution and the package it was qualified with instead:
+
+```toml
+[kernel]
+distribution = "fedora"
+nevr = "kernel-7.2.11-200.fc44"
+release = "7.2.11-200.fc44.aarch64"   # the NEVR's version-release on the SoC's arch
+dtb = "broadcom/bcm2712-rpi-5-b.dtb"  # from that kernel package
+```
+
+`tag`, `source_lock`, `config`, `branch`, `rpm_version_release` and
+`dtb_overlays` are refused alongside `distribution`. The Raspberry Pi 5 uses
+Fedora's kernel this way.
+
 **SoC config** (`socs/<vendor>/<family>/soc.toml`) holds the kernel branch,
 boot image format, page size, load offsets and firmware directory. A second
 phone on the same chip inherits all of it, so its `device.toml` and
@@ -94,6 +110,7 @@ python3 -m venv /tmp/devices && /tmp/devices/bin/pip install jsonschema==4.23.0
 - any file contains a number shaped like an IMEI or ICCID;
 - `firmware.manifest` does not match its recorded hash, count or row format,
   or an alias points outside the firmware store;
+- a distribution kernel's `release` is not its `nevr` on the SoC's architecture;
 - the kernel command line drops `enforcing=1` (outside `experimental`) or
   contains a forbidden argument such as `selinux=0`;
 - the install guide flashes or erases a partition the device must preserve;

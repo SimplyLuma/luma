@@ -1,0 +1,17 @@
+diff --git a/services/surfaceflinger/SurfaceFlinger.cpp b/services/surfaceflinger/SurfaceFlinger.cpp
+index 96b85d1..c875e02 100644
+--- a/services/surfaceflinger/SurfaceFlinger.cpp
++++ b/services/surfaceflinger/SurfaceFlinger.cpp
+@@ -967,8 +967,11 @@ status_t SurfaceFlinger::getStaticDisplayInfo(const sp<IBinder>& displayToken,
+     if (mEmulatedDisplayDensity) {
+         info->density = mEmulatedDisplayDensity;
+     } else {
++        // The Waydroid composer derives the density from the host output and
++        // can publish it after SurfaceFlinger starts: read it when display
++        // info is requested rather than only at construction.
+         info->density = info->connectionType == ui::DisplayConnectionType::Internal
+-                ? mInternalDisplayDensity
++                ? getDensityFromProperty("ro.sf.lcd_density", true)
+                 : FALLBACK_DENSITY;
+     }
+     info->density /= ACONFIGURATION_DENSITY_MEDIUM;

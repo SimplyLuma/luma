@@ -31,6 +31,17 @@ not use a user stylesheet, application wrapper, or second shell surface.
 diagnostics. Mutating operations validate desktop IDs and local wallpaper URIs
 before changing the canonical settings.
 
+`reduce-transparency` is the accessibility preference: it makes Shell and
+application surfaces opaque. `backdrop-blur` (default true) is a device
+capability, not a user preference, and is not shown in Settings. Set it to
+false on hardware where live backdrop blur is costly (for example a linear
+scanout whose tiles the driver converts on the CPU): Shell surfaces then keep
+their translucent fill and only lose the blur behind it. A device sets it with
+a schema override, for example
+`/usr/share/glib-2.0/schemas/90_luma-device.gschema.override` containing
+`[org.project_luma.shell-state]` and `backdrop-blur=false`, so the login
+screen follows it too.
+
 Dash spacing uses `shelf-padding` (integer, 4–24 logical pixels, default 14).
 It controls content insets, floating screen-edge gaps and island separation;
 inter-icon spacing remains independent. The additive snapshot field is `shelf.padding`.

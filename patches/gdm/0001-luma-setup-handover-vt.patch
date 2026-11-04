@@ -1,0 +1,81 @@
+--- a/daemon/gdm-session-worker.c
++++ b/daemon/gdm-session-worker.c
+@@ -24,6 +24,7 @@
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <fcntl.h>
++#include <sys/stat.h>
+ #include <unistd.h>
+ #include <string.h>
+ #include <sys/types.h>
+@@ -1109,6 +1110,60 @@
+         close (active_vt_tty_fd);
+ }
+ 
++/* Luma's first-boot setup signs the person in with its last frame still on
++ * screen and keeps it moving while their first session starts; that session
++ * shows the same frame once it can. luma-setup-apply makes
++ * /run/luma-setup/greeter just before the sign-in; while it is there (and
++ * fresh), the jump to the session's VT waits for the setup's go
++ * (/run/luma-setup/greeter/go), 30 s at most, so the setup's frame stays
++ * on screen until the session's first frame can replace it. */
++#define LUMA_HANDOVER_DIR "/run/luma-setup/greeter"
++#define LUMA_HANDOVER_GO LUMA_HANDOVER_DIR "/go"
++#define LUMA_HANDOVER_TIMEOUT_US (30 * G_USEC_PER_SEC)
++
++static void jump_to_vt (GdmSessionWorker *worker, int vt_number);
++
++typedef struct {
++        GdmSessionWorker *worker;
++        gint64            deadline;
++} LumaHandover;
++
++static gboolean
++luma_handover_check (gpointer user_data)
++{
++        LumaHandover *handover = user_data;
++
++        if (!g_file_test (LUMA_HANDOVER_GO, G_FILE_TEST_EXISTS) &&
++            g_get_monotonic_time () < handover->deadline)
++                return G_SOURCE_CONTINUE;
++
++        g_debug ("GdmSessionWorker: Luma setup hand-over done, jumping to VT %d",
++                 handover->worker->session_vt);
++        jump_to_vt (handover->worker, handover->worker->session_vt);
++        g_unlink (LUMA_HANDOVER_GO);
++        g_rmdir (LUMA_HANDOVER_DIR);
++        g_object_unref (handover->worker);
++        g_free (handover);
++        return G_SOURCE_REMOVE;
++}
++
++static gboolean
++luma_handover_defer (GdmSessionWorker *worker)
++{
++        struct stat st;
++        LumaHandover *handover;
++
++        if (stat (LUMA_HANDOVER_DIR, &st) < 0 || !S_ISDIR (st.st_mode) ||
++            time (NULL) - st.st_mtime > 120)
++                return FALSE;
++
++        handover = g_new0 (LumaHandover, 1);
++        handover->worker = g_object_ref (worker);
++        handover->deadline = g_get_monotonic_time () + LUMA_HANDOVER_TIMEOUT_US;
++        g_timeout_add (50, luma_handover_check, handover);
++        return TRUE;
++}
++
+ static void
+ gdm_session_worker_set_state (GdmSessionWorker      *worker,
+                               GdmSessionWorkerState  state)
+@@ -1977,7 +2032,8 @@
+          * the other two modes: in the logind case, the session will activate itself when
+          * ready, and in the reuse server case, we're already on the correct VT. */
+         if (g_strcmp0 (worker->display_seat_id, "seat0") == 0 && worker->seat0_has_vts) {
+-                if (worker->display_mode == GDM_SESSION_DISPLAY_MODE_NEW_VT) {
++                if (worker->display_mode == GDM_SESSION_DISPLAY_MODE_NEW_VT &&
++                    !luma_handover_defer (worker)) {
+                         jump_to_vt (worker, worker->session_vt);
+                 }
+         }

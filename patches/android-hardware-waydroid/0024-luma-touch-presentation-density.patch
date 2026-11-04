@@ -1,0 +1,97 @@
+diff --git a/hwcomposer/wayland-hwc.cpp b/hwcomposer/wayland-hwc.cpp
+index ae41f09..afe6aa5 100644
+--- a/hwcomposer/wayland-hwc.cpp
++++ b/hwcomposer/wayland-hwc.cpp
+@@ -278,6 +278,37 @@ void choose_width_height(struct display* display, int32_t hint_width, int32_t hi
+     display->height = height;
+ }
+ 
++// The output's physical pixel density snapped to an Android bucket, so
++// Android lays out as a phone or tablet of that size; 0 for outputs that
++// report no physical size (virtual outputs).
++static int output_touch_density(const struct display *d)
++{
++    if (d->physical_width_mm <= 0 || d->physical_height_mm <= 0 ||
++        d->full_width <= 0 || d->full_height <= 0)
++        return 0;
++    const double ppi = (d->full_width * 25.4 / d->physical_width_mm +
++                        d->full_height * 25.4 / d->physical_height_mm) / 2;
++    static const int buckets[] = { 120, 140, 160, 180, 200, 213, 220, 240, 260, 280, 300,
++                                   320, 340, 360, 400, 420, 440, 480, 560, 600, 640 };
++    int density = buckets[0];
++    for (int bucket : buckets)
++        if (std::abs(bucket - ppi) < std::abs(density - ppi))
++            density = bucket;
++    return density;
++}
++
++// Touch presentations: Luma reserves its top bar or gesture strip over
++// Android (persist.luma.status_bar_px or nav_bar_px > 0). The desktop keeps
++// 180 per scale step once the first window calibrates.
++static bool touch_presentation()
++{
++    char property[PROPERTY_VALUE_MAX];
++    auto reserved = [&](const char *key) {
++        return property_get(key, property, "0") > 0 && atoi(property) > 0;
++    };
++    return reserved("persist.luma.status_bar_px") || reserved("persist.luma.nav_bar_px");
++}
++
+ void
+ finished_calibrating(struct display *d)
+ {
+@@ -1968,13 +1999,16 @@ output_handle_mode(void *data, struct wl_output *,
+ }
+ 
+ static void
+-output_handle_geometry(void *, struct wl_output *,
+-               int32_t, int32_t,
++output_handle_geometry(void *data, struct wl_output *,
+                int32_t, int32_t,
++               int32_t physical_width, int32_t physical_height,
+                int32_t,
+                const char *, const char *,
+                int32_t)
+ {
++    struct display *d = (struct display *)data;
++    d->physical_width_mm = physical_width;
++    d->physical_height_mm = physical_height;
+ }
+ 
+ static void
+@@ -2677,6 +2711,21 @@ create_display(const char *gralloc)
+     // Registry callbacks bind xdg-output objects. Receive their initial logical
+     // geometry before the first window calibrates the Android display.
+     wl_display_roundtrip(display->display);
++    // SurfaceFlinger reads the density once Android asks for display info;
++    // a touch presentation knows it from the output alone, so publish it now
++    // rather than when the first window calibrates.
++    // luma.touch_density lets the host switch presentations at runtime through
++    // WindowManager's forced density; ro.sf.lcd_density is set only once.
++    if (int density = output_touch_density(display)) {
++        property_set("luma.touch_density", std::to_string(density).c_str());
++        char current[PROPERTY_VALUE_MAX];
++        if (touch_presentation() && property_get("ro.sf.lcd_density", current, nullptr) <= 0) {
++            property_set("ro.sf.lcd_density", std::to_string(density).c_str());
++            ALOGI("Android density %d from the output's %dx%d px over %dx%d mm",
++                  density, display->full_width, display->full_height,
++                  display->physical_width_mm, display->physical_height_mm);
++        }
++    }
+     luma_text_input_start(display);
+ 
+     if (pthread_create(&display->wayland_thread, nullptr, hwc_wayland_thread, display->display) != 0) {
+diff --git a/hwcomposer/wayland-hwc.h b/hwcomposer/wayland-hwc.h
+index f3ec1db..f8b887b 100644
+--- a/hwcomposer/wayland-hwc.h
++++ b/hwcomposer/wayland-hwc.h
+@@ -462,6 +462,9 @@ struct display {
+     int height;
+     int full_width;
+     int full_height;
++    // Physical size of the output, 0 when it reports none (virtual outputs).
++    int physical_width_mm = 0;
++    int physical_height_mm = 0;
+     int req_width;
+     int req_height;
+     int refresh;

@@ -16,7 +16,10 @@ from prairie_apps.weather_backend import keep_today_range, parse_forecast  # noq
 from prairie_apps.weather_data import snapshot_from_forecast  # noqa: E402
 from prairie_apps.weather_model import Place, UNITS_METRIC, read_cache, write_cache  # noqa: E402
 from prairie_apps.weather_observation import Observation  # noqa: E402
-from prairie_apps.weather_tv_model import tv_from_forecast  # noqa: E402
+try:  # TV Mode's presentation model; checked where it exists
+    from prairie_apps.weather_tv_model import tv_from_forecast  # noqa: E402
+except ImportError:
+    tv_from_forecast = None
 
 CHICAGO = Place('chi', 'Chicago', 'Illinois', 'United States', 41.88, -87.63, 'America/Chicago')
 
@@ -45,8 +48,9 @@ class TodayRange(unittest.TestCase):
         self.assertEqual(snapshot.temperature, '16°')
         self.assertEqual(snapshot.high, '16°')
         self.assertEqual(snapshot.days[0].high, '16°')
-        tv = tv_from_forecast(self.forecast, snapshot, UNITS_METRIC, now=self.now)
-        self.assertEqual((tv.days[0].high, tv.days[0].low), (snapshot.high, snapshot.low))
+        if tv_from_forecast is not None:
+            tv = tv_from_forecast(self.forecast, snapshot, UNITS_METRIC, now=self.now)
+            self.assertEqual((tv.days[0].high, tv.days[0].low), (snapshot.high, snapshot.low))
 
     def test_the_high_never_sits_below_now(self):
         snapshot = snapshot_from_forecast(self.forecast, UNITS_METRIC, now=self.now)

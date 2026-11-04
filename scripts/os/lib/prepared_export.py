@@ -12,7 +12,7 @@ import subprocess
 SCHEMA = 'org.projectluma.prepared-os-export/v1'
 FILES = ('build.env', 'provenance.json', 'sbom.spdx.json', 'packages-installed.tsv',
          'image-import-metadata.json', 'image-modes.txt', 'commit-metadata.args')
-BUILD_KEYS = frozenset('LUMA_BUILD_ID LUMA_OS_ARCH LUMA_OS_REF_PREFIX LUMA_OS_PROFILE '
+BUILD_KEYS = frozenset('LUMA_BUILD_ID LUMA_OS_ARCH LUMA_OS_REF_PREFIX LUMA_OS_PROFILE LUMA_OS_HARDWARE_TARGET '
     'LUMA_OS_CAPABILITIES_SHA256 LUMA_OS_GRAPH_PREFIX LUMA_OS_HUB_GRAPH_URL_TEMPLATE '
     'LUMA_OS_VERSION LUMA_OS_CHANNEL LUMA_NIGHTLY_DATE LUMA_DISPLAY_NAME '
     'LUMA_SOURCE_REVISION LUMA_SOURCE_DIRTY LUMA_SOURCE_SNAPSHOT_SHA256 '

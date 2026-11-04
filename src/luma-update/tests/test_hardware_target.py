@@ -9,7 +9,7 @@ import fakes
 from fakes import NOW, graph_doc
 from luma_update.config import Paths, Settings
 from luma_update.graph import GraphError, check_freshness, parse_graph
-from luma_update.hardware import FP6, TITAN2E, require_commit_target, require_device_target
+from luma_update.hardware import FP6, RPI5, TITAN2E, graph_slug, require_commit_target, require_device_target
 from luma_update.engine import Engine, UpdateError
 
 
@@ -64,6 +64,27 @@ class DeviceIdentity(unittest.TestCase):
                              ("unihertz,titan2-elite", "aarch64")):
             with self.subTest(target=target, arch=arch), self.assertRaises(ValueError):
                 require_device_target(self.paths, target, arch)
+
+    def test_pi5_target_matches_every_pi5_family_board(self):
+        for board in (b"raspberrypi,5-model-b", b"raspberrypi,5-model-b-d0", b"raspberrypi,500",
+                      b"raspberrypi,5-compute-module"):
+            self.paths.device_tree_compatible.write_bytes(board + b"\0brcm,bcm2712\0")
+            with self.subTest(board=board):
+                require_device_target(self.paths, RPI5, "aarch64")
+                with self.assertRaises(ValueError):
+                    require_device_target(self.paths, RPI5, "x86_64")
+        self.assertEqual(graph_slug(RPI5, "aarch64"), "raspberrypi-rpi5")
+
+    def test_pi5_may_still_follow_the_generic_arm_desktop(self):
+        # Installed from the installer card on Fedora's kernel: generic stream.
+        self.paths.device_tree_compatible.write_bytes(b"raspberrypi,5-model-b\0brcm,bcm2712\0")
+        require_device_target(self.paths, "", "aarch64")
+
+    def test_pi5_target_refuses_other_boards(self):
+        for data in (b"raspberrypi,4-model-b\0brcm,bcm2711\0", b"fairphone,fp6\0qcom,milos\0"):
+            self.paths.device_tree_compatible.write_bytes(data)
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                require_device_target(self.paths, RPI5, "aarch64")
 
     def test_titan_target_string_is_not_its_board_compatible(self):
         self.paths.device_tree_compatible.write_bytes(b"unihertz,titan2e\0mediatek,mt6878\0")

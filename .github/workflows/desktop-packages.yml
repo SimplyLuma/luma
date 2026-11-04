@@ -10,6 +10,12 @@ on:
       - 'scripts/packages/build-luma-search.sh'
       - 'src/luma-search/**'
       - 'packaging/rpm/luma-search.spec'
+      - 'scripts/packages/build-luma-keyring.sh'
+      - 'src/luma-keyring/**'
+      - 'packaging/rpm/luma-keyring.spec'
+      - 'scripts/packages/build-luma-setup.sh'
+      - 'src/luma-setup/**'
+      - 'packaging/rpm/luma-setup.spec'
       - 'config/desktop/inputs.env'
   workflow_dispatch:
 
@@ -45,6 +51,10 @@ jobs:
         run: test "$(rpm --eval '%{_arch}')" = "$LUMA_TARGET_ARCHITECTURE"
       - name: Build and check the shared Search package
         run: bash scripts/packages/build-luma-search.sh
+      - name: Build and check the keyring package (unit tests in %check)
+        run: bash scripts/packages/build-luma-keyring.sh
+      - name: Build and check the setup package (unit tests in %check)
+        run: bash scripts/packages/build-luma-setup.sh
       - name: Build and check the shared GTK3 package
         run: bash scripts/packages/build-gtk3.sh
       - name: Retain checked packages and source RPMs
@@ -58,5 +68,11 @@ jobs:
             build/packages/gtk3/RPMS/
             build/packages/gtk3/SRPMS/
             build/packages/gtk3/SHA256SUMS
+            build/packages/luma-keyring/RPMS/
+            build/packages/luma-keyring/SRPMS/
+            build/packages/luma-keyring/SHA256SUMS
+            build/packages/luma-setup/RPMS/
+            build/packages/luma-setup/SRPMS/
+            build/packages/luma-setup/SHA256SUMS
           if-no-files-found: error
           retention-days: 14

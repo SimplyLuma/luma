@@ -2,7 +2,7 @@
 
 Name:           prairie-icon-theme
 Version:        0.1.0
-Release:        1.luma.44.nightly20261030.2%{?dist}
+Release:        1.luma.45%{?dist}
 Summary:        Prairie application icon theme for Project Luma
 License:        CC-BY-SA-4.0 AND Apache-2.0 AND ISC AND MIT AND LicenseRef-Luma-System-Artwork-Pending
 URL:            https://project-luma.local/
@@ -152,6 +152,9 @@ done
 %{_datadir}/glib-2.0/schemas/90-prairie.gschema.override
 
 %changelog
+* Mon Nov 02 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.45
+- Add Lucide battery, signal, volume and empty Wi-Fi glyphs for the top bar.
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.44.nightly20261030.2
 - Render application icons during packaging to avoid SVG work during launch.
 

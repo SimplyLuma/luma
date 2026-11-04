@@ -1,0 +1,36 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copy the running Raspberry Pi kernel's device trees and overlays to the
+# board firmware's partition (/boot/efi), which builds Linux's device tree
+# from them on the next boot. Runs after a good boot, so a kernel update
+# brings its trees only once it has booted. Never touches config.txt.
+set -eu
+esp=${LUMA_RPI5_ESP:-/boot/efi}
+src=${LUMA_RPI5_DTB:-/usr/lib/modules/$(uname -r)/dtb}
+
+# Only Luma's Raspberry Pi kernel ships overlays; Fedora's kernel needs the
+# U-Boot layout (dtb/ on the partition), which this must not mix with.
+[ -f "$src/overlays/overlay_map.dtb" ] || { echo "not a Raspberry Pi kernel: nothing to do"; exit 0; }
+grep -qx 'kernel=u-boot.bin' "$esp/config.txt" 2>/dev/null || { echo "$esp is not a Luma Pi boot partition"; exit 0; }
+if [ -e "$esp/dtb" ]; then
+  echo "$esp/dtb exists: U-Boot loads its own trees there; not syncing"
+  exit 0
+fi
+
+changed=0
+put() {
+  if ! cmp -s "$1" "$2"; then
+    cp "$1" "$2.luma-new"
+    mv -f "$2.luma-new" "$2"
+    changed=$((changed + 1))
+  fi
+}
+for f in "$src"/broadcom/bcm27*.dtb; do
+  [ -f "$f" ] && put "$f" "$esp/${f##*/}"
+done
+mkdir -p "$esp/overlays"
+for f in "$src"/overlays/*; do
+  [ -f "$f" ] && put "$f" "$esp/overlays/${f##*/}"
+done
+sync
+echo "device trees for $(uname -r): $changed files updated"

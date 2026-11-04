@@ -147,6 +147,32 @@ def read_device_posture(root: Path = Path("/")) -> str | None:
     return None
 
 
+def record_device_class(root: Path = Path("/")) -> str:
+    """Record a device tree handset as the image's device class, once.
+
+    One image boots laptops and phones; a phone's device tree says it is a
+    handset. Writing the marker lets every reader agree (LumaUI, Android, the
+    session environment). A marker an image or device layer wrote wins."""
+    marker = root / "etc/luma-device-class"
+    try:
+        current = marker.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        current = ""
+    except (OSError, UnicodeError):
+        return ""
+    if current:
+        return current
+    for name in ("sys/firmware/devicetree/base/chassis-type", "proc/device-tree/chassis-type"):
+        try:
+            if (root / name).read_bytes()[:16].rstrip(b"\0").strip() == b"handset":
+                marker.write_text("handheld\n", encoding="utf-8")
+                marker.chmod(0o644)
+                return "handheld"
+        except OSError:
+            continue
+    return ""
+
+
 FOLD_POSTURES = frozenset({"folded", "unfolded"})
 
 

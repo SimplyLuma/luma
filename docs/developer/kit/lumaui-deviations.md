@@ -133,3 +133,15 @@ v70 leaves some inputs on Chromium's placeholder grey #757575, 3.8:1 on the dark
 ## tv-page-edge-fade
 
 A TV page's scroll edge fades are longer and eased (about 48 at the top, 128 at the bottom, only where the page continues), Nick's ruling of 1 November 2026 over the mockup's 12/40 linear mask. A glyph in the bottom strip (from y 952 at 1080) stands on a differently faded ground, so its sampled colour differs by up to ΔE 8. Glyph colour only, in that strip; never positions, sizes or other parts.
+
+## First-boot setup (first-boot-*)
+
+The first-boot sheet departs from the Design Center mockup where the one-session redesign was approved, and where the spec capture reads something the design does not draw:
+
+- `first-boot-accessibility`: the head's Accessibility button (screen reader, larger text, zoom), asked for in the design handoff but not drawn.
+- `first-boot-wordmark`: the Luma mark is the luma-logos wordmark icon, not a painted box.
+- `first-boot-one-session-key`: Name this Luma's key is Continue, not Finish; Make it yours, Luma Connect and Add apps follow in the same sheet, and the last page's key is "Start using Luma".
+- `first-boot-placeholder-weight`: placeholders are 450 in the design (`input::placeholder`); the spec capture reports the input's 500.
+- `first-boot-first-focus`: each page focuses its first field as it opens, so that field shows its focus ring; the mockup's pages open unfocused.
+- `first-boot-photo-button`: the photo button is exactly its avatar, so the avatar's gradient and ring are also reported under the button.
+- `first-boot-password-bullets`: the spec capture measures a password value's letters; both sides draw bullets.

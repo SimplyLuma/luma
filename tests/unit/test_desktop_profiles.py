@@ -15,7 +15,10 @@ class DesktopProfiles(unittest.TestCase):
     def test_full_selection_unchanged(self):
         for arch in t.ARCHITECTURES:
             self.assertEqual(t.packages(ROOT, arch), t.packages(ROOT, arch, profile_name='full'))
-            self.assertTrue(all(t.capabilities(ROOT, arch)['capabilities'].values()))
+            capabilities = t.capabilities(ROOT, arch)['capabilities']
+            # Phones are ARM-only: full is every desktop capability, without the phone stack.
+            self.assertFalse(capabilities.pop('phone'))
+            self.assertTrue(all(capabilities.values()))
 
     def test_preview_excludes_only_declared_capability_providers(self):
         selection = t.profile(ROOT, 'aarch64', 'arm-preview')
@@ -54,9 +57,17 @@ class DesktopProfiles(unittest.TestCase):
         result = subprocess.run(['python3', 'scripts/os/lib/desktop_target.py', '--arch', 'aarch64', 'roles'], cwd=ROOT, env=env, text=True, capture_output=True, check=True)
         self.assertIn('luma-android-runtime', result.stdout.splitlines())
 
+    def test_phone_capability_adds_the_phone_stack_on_arm_only(self):
+        phone = t.lines(ROOT / 'config/os/phone-packages.txt')
+        self.assertTrue(phone)
+        arm = t.packages(ROOT, 'aarch64', fedora=True, profile_name='arm-preview')
+        self.assertTrue(set(phone) <= set(arm))
+        for arch in t.ARCHITECTURES:
+            self.assertFalse(set(phone) & set(t.packages(ROOT, arch, fedora=True)))
+
     def test_capabilities_describe_preview_honestly(self):
         self.assertEqual(t.capabilities(ROOT, 'aarch64', 'arm-preview')['capabilities'],
-                         dict(desktop=True, android_apps=True, windows_apps=False, casting=False))
+                         dict(desktop=True, android_apps=True, windows_apps=False, casting=False, phone=True))
 
     def test_shell_environment_passes_profile_and_rejects_x86(self):
         env = {**os.environ, 'LUMA_TARGET_ARCHITECTURE': 'aarch64', 'LUMA_OS_PROFILE': 'arm-preview'}
@@ -64,6 +75,37 @@ class DesktopProfiles(unittest.TestCase):
         self.assertEqual(result.stdout.splitlines(), t.packages(ROOT, 'aarch64', profile_name='arm-preview'))
         env['LUMA_TARGET_ARCHITECTURE'] = 'x86_64'
         self.assertNotEqual(subprocess.run(['bash', '-ec', '. scripts/os/lib/common.sh'], cwd=ROOT, env=env, capture_output=True).returncode, 0)
+
+    def test_hardware_target_adds_only_its_packages_and_kernel(self):
+        generic = t.packages(ROOT, 'aarch64', profile_name='arm-preview')
+        pi = t.packages(ROOT, 'aarch64', profile_name='arm-preview', hardware_target='raspberrypi,rpi5')
+        device = t.hardware(ROOT, 'aarch64', 'raspberrypi,rpi5')
+        added = {t.package_name(p) for p in pi} - {t.package_name(p) for p in generic}
+        self.assertEqual(added, set(device['packages']))
+        self.assertTrue(set(generic) < set(pi))
+        self.assertEqual(device['kernel'], 'kernel-luma-rpi')
+        for arch in t.ARCHITECTURES:
+            names = {t.package_name(p) for p in t.packages(ROOT, arch)}
+            self.assertFalse(names & t.device_package_names(ROOT), arch)
+
+    def test_hardware_target_has_its_own_ref_and_architecture(self):
+        values = t.contract(ROOT, 'aarch64', 'arm-preview', 'raspberrypi,rpi5')
+        self.assertEqual(values['LUMA_OS_REF_PREFIX'], 'luma/1/aarch64/raspberrypi-rpi5')
+        self.assertEqual(values['LUMA_OS_HARDWARE_TARGET'], 'raspberrypi,rpi5')
+        self.assertEqual(values['LUMA_OS_KERNEL_PACKAGE'], 'kernel-luma-rpi')
+        self.assertNotIn('LUMA_OS_HARDWARE_TARGET', t.contract(ROOT, 'aarch64', 'arm-preview'))
+        for arch, target in (('x86_64', 'raspberrypi,rpi5'), ('aarch64', 'fairphone,fp6'), ('aarch64', 'unknown')):
+            with self.subTest(arch=arch, target=target), self.assertRaises(ValueError):
+                t.packages(ROOT, arch, hardware_target=target)
+
+    def test_shell_environment_passes_the_hardware_target(self):
+        env = {**os.environ, 'LUMA_TARGET_ARCHITECTURE': 'aarch64', 'LUMA_OS_PROFILE': 'arm-preview',
+               'LUMA_OS_HARDWARE_TARGET': 'raspberrypi,rpi5'}
+        result = subprocess.run(['bash', '-ec', '. scripts/os/lib/common.sh; echo "$LUMA_OS_REF_PREFIX"; luma_os_desktop_packages'],
+                                cwd=ROOT, env=env, text=True, capture_output=True, check=True)
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines[0], 'luma/1/aarch64/raspberrypi-rpi5')
+        self.assertEqual(lines[1:], t.packages(ROOT, 'aarch64', profile_name='arm-preview', hardware_target='raspberrypi,rpi5'))
 
 if __name__ == '__main__':
     unittest.main()

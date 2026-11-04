@@ -54,8 +54,21 @@ class ResponsiveChrome:
         self.scroll_direction = 0
         self.center = ActionCenter().attach(host.page_layers)
         self.center.set_name('viola-page-bar')
+        self.center.bar.add_css_class('viola-page-bar-motion')
+        # A notch in the window's bottom frame: the tab, flanked by inverted
+        # corners that join it to the frame edge without an outline.
+        notch = Gtk.Box(valign=Gtk.Align.END)
+        for part, child in (('start', None), ('tab', Gtk.Image(icon_name='pan-up-symbolic')),
+                            ('end', None)):
+            piece = Gtk.Box(valign=Gtk.Align.END if part != 'tab' else Gtk.Align.FILL)
+            piece.add_css_class('viola-bar-handle-' + part)
+            if child:
+                piece.set_halign(Gtk.Align.FILL)
+                child.set_hexpand(True)
+                piece.append(child)
+            notch.append(piece)
         self.bar_handle = Gtk.Button(halign=Gtk.Align.CENTER, valign=Gtk.Align.END,
-                                     icon_name='pan-down-symbolic')
+                                     child=notch, visible=False)
         self.bar_handle.add_css_class('viola-bar-handle')
         self.bar_handle.connect('clicked', self.toggle_bar)
         host.page_layers.add_overlay(self.bar_handle)
@@ -310,18 +323,53 @@ class ResponsiveChrome:
         self.center.grow('downloads', panel)
         self.panel = 'downloads'
 
+    # The bar sinks into the frame-edge handle and rises back out of it. The
+    # tucked pose and its transition live in native_sidebar.css; these delays
+    # only decide when the widget is truly hidden or the handle unmapped.
+    BAR_TUCK_MS = 280
+    HANDLE_FADE_MS = 180
+
+    def _animations(self):
+        return Gtk.Settings.get_default().get_property('gtk-enable-animations')
+
+    def _after(self, name, delay, callback):
+        previous = getattr(self, name, None)
+        if previous:
+            GLib.source_remove(previous)
+        def run():
+            setattr(self, name, None)
+            callback()
+            return GLib.SOURCE_REMOVE
+        setattr(self, name, GLib.timeout_add(delay if self._animations() else 0, run))
+
     def reveal_bar(self):
-        self.center.bar.set_visible(True)
+        bar = self.center.bar
+        tucked = not bar.get_visible() or bar.has_css_class('viola-bar-tucked')
         self.bar_hidden = False
         self.scroll_distance = 0
+        if tucked:
+            bar.add_css_class('viola-bar-tucked')
+            bar.set_visible(True)
+            # Lay out one frame in the tucked pose so the transition rises.
+            self._after('bar_motion', 16, lambda: bar.remove_css_class('viola-bar-tucked'))
         self.update_bar_handle()
 
     def update_bar_handle(self):
-        self.bar_handle.set_visible(not self.phone)
-        label = 'Show address bar' if self.bar_hidden else 'Hide address bar'
-        self.bar_handle.set_tooltip_text(label + (' (Ctrl+L)' if self.bar_hidden else ''))
-        self.bar_handle.update_property([Gtk.AccessibleProperty.LABEL], [label])
-        self.bar_handle.set_icon_name('pan-up-symbolic' if self.bar_hidden else 'pan-down-symbolic')
+        handle = self.bar_handle
+        shown = self.bar_hidden and not self.phone
+        handle.set_tooltip_text('Show address bar (Ctrl+L)')
+        handle.update_property([Gtk.AccessibleProperty.LABEL], ['Show address bar'])
+        if shown == handle.has_css_class('viola-bar-handle-shown') and handle.get_visible() == shown:
+            return
+        if shown:
+            handle.set_visible(True)
+            # The handle surfaces as the bar lands in it.
+            self._after('handle_motion', self.BAR_TUCK_MS // 2,
+                        lambda: handle.add_css_class('viola-bar-handle-shown'))
+        else:
+            handle.remove_css_class('viola-bar-handle-shown')
+            self._after('handle_motion', self.HANDLE_FADE_MS,
+                        lambda: handle.set_visible(self.bar_hidden and not self.phone))
 
     def hide_bar(self):
         if self.bar_hidden:
@@ -336,7 +384,10 @@ class ResponsiveChrome:
             sheet.close()
         self.host.page.grab_focus()
         self.bar_hidden = True
-        self.center.bar.set_visible(False)
+        bar = self.center.bar
+        bar.add_css_class('viola-bar-tucked')
+        self._after('bar_motion', self.BAR_TUCK_MS,
+                    lambda: bar.set_visible(not self.bar_hidden))
         self.scroll_distance = 0
         self.update_bar_handle()
 

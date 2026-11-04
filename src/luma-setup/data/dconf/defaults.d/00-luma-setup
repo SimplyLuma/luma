@@ -1,0 +1,22 @@
+# The initial-setup session's settings: nothing to lock, log out of or switch
+# to, the accessibility menu always there, Luma's look.
+[org/gnome/desktop/lockdown]
+disable-lock-screen=true
+disable-log-out=true
+disable-user-switching=true
+
+[org/gnome/desktop/a11y]
+always-show-universal-access-status=true
+
+[org/gnome/desktop/interface]
+color-scheme='prefer-dark'
+font-name='Figtree 11'
+icon-theme='Prairie'
+
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/luma/meadow.png'
+picture-uri-dark='file:///usr/share/backgrounds/luma/prism.png'
+
+# The time zone is found from where the device is, once it is online.
+[org/gnome/system/location]
+enabled=true

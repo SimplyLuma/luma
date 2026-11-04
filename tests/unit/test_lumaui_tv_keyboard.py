@@ -21,7 +21,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk  # noqa: E402
 from luma_appkit import lumaui_tokens, tv_keyboard  # noqa: E402
 
 HAS_DISPLAY = Gtk.init_check() if hasattr(Gtk, "init_check") else Gdk.Display.get_default() is not None
-SHELL = REPO_ROOT / "patches/gnome-shell/0309-tv-keyboard.patch"
+SHELL = REPO_ROOT / "patches/gnome-shell/0323-tv-keyboard.patch"
 
 
 class FakeProxy:

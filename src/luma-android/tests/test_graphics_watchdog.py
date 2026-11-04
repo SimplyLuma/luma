@@ -76,8 +76,35 @@ class GraphicsWatchdog(unittest.TestCase):
             user.return_value.pw_name = "luma"
             watchdog.restart_android(self.proc)
         run.assert_called_once_with(
-            ["/usr/bin/systemctl", "--no-block", "start", "luma-android-recover@luma.service"],
+            ["/usr/bin/systemctl", "--no-block", "restart", "luma-android-recover@luma.service"],
             check=False, timeout=10)
+
+    def test_recovery_discards_old_session_before_starting_container(self):
+        unit = (Path(__file__).parents[1] / "data" /
+                "luma-android-recover@.service").read_text()
+        commands = [line.removeprefix("ExecStart=") for line in unit.splitlines()
+                    if line.startswith("ExecStart=")]
+        # A start on an already-active broker is a no-op: stale Binder handles
+        # survive the container restart and prewarm waits until its timeout.
+        stop = next(i for i, command in enumerate(commands)
+                    if " stop " in command and "--machine=%i@" in command
+                    and "luma-android-session.service" in command)
+        self.assertIn("luma-android-prewarm.service", commands[stop])
+        replace = commands.index("/usr/bin/systemctl restart waydroid-container.service")
+        warm = next(i for i, command in enumerate(commands)
+                    if " start luma-android-prewarm.service" in command)
+        self.assertLess(stop, replace)
+        self.assertLess(replace, warm)
+
+    def test_recovery_budget_survives_watchdog_process_replacement(self):
+        unit = (Path(__file__).parents[1] / "data" /
+                "luma-android-recover@.service").read_text()
+        settings = dict(line.split("=", 1) for line in unit.splitlines()
+                        if "=" in line and not line.startswith("#"))
+        self.assertEqual(settings["RemainAfterExit"], "yes")
+        self.assertEqual(int(settings["StartLimitBurst"]), watchdog.MAX_RESTARTS)
+        self.assertEqual(int(settings["StartLimitIntervalSec"]),
+                         watchdog.RESTART_WINDOW_SECONDS)
 
     def test_no_session_owner_restarts_nothing(self):
         with patch("luma_android.graphics_watchdog.subprocess.run") as run:

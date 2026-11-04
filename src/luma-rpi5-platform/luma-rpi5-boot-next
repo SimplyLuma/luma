@@ -1,0 +1,20 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Choose the Raspberry Pi 5 SD card menu entry for the next boot only.
+set -eu
+usage() { echo "usage: luma-rpi5-boot-next installed|install|rescue|uboot" >&2; exit 2; }
+[ "$#" -eq 1 ] || usage
+case "$1" in installed|install|rescue|uboot) ;; *) usage ;; esac
+[ "$(id -u)" = 0 ] || { echo "luma-rpi5-boot-next: run as root" >&2; exit 1; }
+device=$(blkid -L LUMA_PI5) || { echo "luma-rpi5-boot-next: no LUMA_PI5 card partition" >&2; exit 1; }
+mountpoint=$(findmnt -n -o TARGET -S "$device" | head -n 1)
+if [ -z "$mountpoint" ]; then
+  mountpoint=$(mktemp -d)
+  trap 'umount "$mountpoint"; rmdir "$mountpoint"' EXIT
+  mount -t vfat -o noexec,nosuid,nodev "$device" "$mountpoint"
+fi
+env="$mountpoint/EFI/BOOT/grubenv"
+[ -f "$env" ] || { echo "luma-rpi5-boot-next: $env is missing" >&2; exit 1; }
+grub2-editenv "$env" set "next_entry=$1"
+sync
+echo "Next boot: $1 (once)"

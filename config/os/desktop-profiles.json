@@ -10,7 +10,8 @@
         "desktop": true,
         "android_apps": true,
         "windows_apps": true,
-        "casting": true
+        "casting": true,
+        "phone": false
       },
       "excluded_packages": [],
       "excluded_package_prefixes": []
@@ -23,7 +24,8 @@
         "desktop": true,
         "android_apps": true,
         "windows_apps": false,
-        "casting": false
+        "casting": false,
+        "phone": true
       },
       "excluded_packages": [
         "wine",

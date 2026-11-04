@@ -90,10 +90,11 @@ class InitialEFIDeployment(unittest.TestCase):
 
 
 class PreservedEFIStartup(unittest.TestCase):
-    def exercise(self, *, efi=True, preserve=True, result=0, raise_install=False):
+    def exercise(self, *, efi=True, preserve=True, result=0, raise_install=False, card=False):
         tree = ast.parse(PATCH.patched_pull_source(UPSTREAM).decode())
         tree.body = [node for node in tree.body if getattr(node, "name", "") in
-                     ("safe_exec_program", "_luma_firmware_order", "_luma_install_bootupd")]
+                     ("safe_exec_program", "_luma_firmware_order", "_luma_card_firmware",
+                      "_luma_install_bootupd")]
         order = ["000A", "0009", "0003"]
         calls = []
         def execute(command, argv, **kwargs):
@@ -114,10 +115,14 @@ class PreservedEFIStartup(unittest.TestCase):
         namespace = dict(execProgram=execute, execWithRedirect=install,
                          STORAGE=SimpleNamespace(get_proxy=lambda _: SimpleNamespace(IsEFI=lambda: efi)),
                          BOOTLOADER="bootloader", BootloaderInstallationError=RuntimeError,
-                         PayloadInstallationError=RuntimeError)
+                         PayloadInstallationError=RuntimeError,
+                         log=SimpleNamespace(info=lambda *args: None))
         exec(compile(tree, "native-bootupd-install", "exec"), namespace)
+        if card:
+            namespace["_luma_card_firmware"] = lambda: True
         try:
-            returned = namespace["_luma_install_bootupd"]("/sysroot", ["backend", "install", "--auto", "/"], preserve)
+            argv = ["backend", "install", "--auto", *(["--update-firmware"] if not preserve else []), "/"]
+            returned = namespace["_luma_install_bootupd"]("/sysroot", argv, preserve)
         except RuntimeError:
             if not raise_install: raise
             returned = None
@@ -139,6 +144,23 @@ class PreservedEFIStartup(unittest.TestCase):
             _, calls, _ = self.exercise(**options)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0][0], "bootupctl")
+
+    def test_card_booted_pi_never_writes_an_efi_entry(self):
+        for preserve in (False, True):
+            order, calls, result = self.exercise(card=True, preserve=preserve)
+            self.assertEqual(result, 0)
+            self.assertEqual([cmd for cmd, _ in calls], ["bootupctl"])
+            self.assertNotIn("--update-firmware", calls[0][1])
+            self.assertEqual(order, ["000A", "0009", "0003"])
+
+    def test_card_firmware_is_detected_from_the_pi5_device_tree_only(self):
+        tree = ast.parse(PATCH.patched_pull_source(UPSTREAM).decode())
+        source = next(node for node in tree.body if getattr(node, "name", "") == "_luma_card_firmware")
+        self.assertIn("/proc/device-tree/compatible", ast.unparse(source))
+        namespace = {}
+        exec(compile(ast.Module(body=[source], type_ignores=[]), "card", "exec"), namespace)
+        if not Path("/proc/device-tree/compatible").exists():
+            self.assertFalse(namespace["_luma_card_firmware"]())
 
 
 if __name__ == "__main__":

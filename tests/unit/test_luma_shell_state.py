@@ -4,6 +4,7 @@ import importlib.util
 import itertools
 import json
 import pathlib
+import subprocess
 import tempfile
 import unittest
 
@@ -41,6 +42,38 @@ class ShellStateModelTests(unittest.TestCase):
             self.assertEqual(state.read_presentation_profile(root), "mobile")
             write("sys/firmware/devicetree/base/chassis-type", b"x" * 129)
             self.assertEqual(state.read_presentation_profile(root), "desktop")
+
+    def test_device_tree_handset_records_the_handheld_class_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "etc").mkdir()
+            self.assertEqual(state.record_device_class(root), "")
+            self.assertFalse((root / "etc/luma-device-class").exists())
+            tree = root / "sys/firmware/devicetree/base/chassis-type"
+            tree.parent.mkdir(parents=True)
+            tree.write_bytes(b"laptop\0")
+            self.assertEqual(state.record_device_class(root), "")
+            tree.write_bytes(b"handset\0")
+            self.assertEqual(state.record_device_class(root), "handheld")
+            self.assertEqual((root / "etc/luma-device-class").read_text(), "handheld\n")
+            self.assertEqual(state.read_presentation_profile(root), "mobile")
+            # A device layer's own marker always wins.
+            (root / "etc/luma-device-class").write_text("desktop\n")
+            self.assertEqual(state.record_device_class(root), "desktop")
+
+    def test_device_class_environment_generator(self):
+        generator = ROOT / "src/luma-shell-state/luma-device-class-environment"
+        text = generator.read_text()
+        self.assertIn("/etc/luma-device-class", text)
+        for marker, expected in (("handheld", "LUMA_DEVICE_CLASS=handheld"), ("mobile", "LUMA_DEVICE_CLASS=handheld"),
+                                 ("tablet", "LUMA_DEVICE_CLASS=tablet"), ("other", ""), (None, "")):
+            with tempfile.TemporaryDirectory() as directory:
+                path = pathlib.Path(directory) / "luma-device-class"
+                if marker is not None:
+                    path.write_text(marker + "\n")
+                script = text.replace("/etc/luma-device-class", str(path))
+                result = subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=True)
+                self.assertEqual(result.stdout.strip(), expected)
 
     def test_home_grid_accepts_integer_widget_spans(self):
         value = {"columns": 4, "rows": 5, "pages": [[

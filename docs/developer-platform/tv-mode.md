@@ -439,7 +439,7 @@ the focus, and with `""` as it leaves), and the properties `Visible` (b) and
 `Height` (u, TV units) change with the keyboard. Outside TV posture the
 keyboard ignores the label and never reports itself visible. The layout and
 look are the `tv.keyboard` tokens; the shell side is
-`patches/gnome-shell/0309-tv-keyboard.patch` with its pure rules in
+`patches/gnome-shell/0323-tv-keyboard.patch` with its pure rules in
 `src/luma-shell-presentation/tvKeyboard.js`.
 
 ## Menus and long press

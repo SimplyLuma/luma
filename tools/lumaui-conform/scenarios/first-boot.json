@@ -1,0 +1,252 @@
+{
+ "app": "first-boot",
+ "title": "First-boot setup",
+ "spec": {
+  "url": "dc/mockups/luma-next-73.html?desktop=1&app=none&setup=first",
+  "phone_url": "dc/mockups/luma-next-73.html?phone=1&setup=first",
+  "window": ".su",
+  "ready": ".su.show",
+  "viewport": {
+   "width": 1440,
+   "height": 900
+  },
+  "phone_viewport": {
+   "width": 390,
+   "height": 844
+  },
+  "before": [
+   {
+    "wait": 900
+   }
+  ],
+  "exclude": [
+   ".su-cover",
+   ".su-scrim"
+  ]
+ },
+ "gtk": {
+  "pythonpath": [
+   "src/luma-setup"
+  ],
+  "module": "luma_setup",
+  "app_id": "org.projectluma.Setup",
+  "fixtures": [
+   "tests/fixtures/setup-first-boot.json",
+   "assets/wallpapers/prism.png",
+   "assets/wallpapers/meadow.png"
+  ],
+  "env": {
+   "LUMA_SETUP_FIXTURE": "{run}/fixtures/setup-first-boot.json",
+   "LUMA_SETUP_FACES": "{run}/fixtures/none",
+   "LUMA_SETUP_WALLPAPER": "{run}/fixtures/prism.png",
+   "LUMA_SETUP_WALLPAPER_LIGHT": "{run}/fixtures/meadow.png"
+  }
+ },
+ "phone_states": [
+  "hello",
+  "wifi",
+  "you",
+  "you-mismatch",
+  "device-offline"
+ ],
+ "groups": [
+  {
+   "name": "head",
+   "spec": ".su-head"
+  },
+  {
+   "name": "foot",
+   "spec": ".su-foot"
+  },
+  {
+   "name": "page",
+   "spec": ".su-body"
+  },
+  {
+   "name": "sheet",
+   "spec": ".su-sheet"
+  }
+ ],
+ "pairs": [
+  {
+   "spec": ".su-sheet",
+   "gtk": "su-sheet",
+   "name": "sheet"
+  },
+  {
+   "spec": ".su-head",
+   "gtk": "su-head",
+   "name": "head"
+  },
+  {
+   "spec": ".su-foot",
+   "gtk": "su-foot",
+   "name": "foot"
+  }
+ ],
+ "states": [
+  {
+   "name": "hello",
+   "about": "Hello: English (US)",
+   "spec": [],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{}"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hello-es",
+   "about": "Hello in Spanish",
+   "spec": [
+    {
+     "click": ".su [data-lang=\"es\"]",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{\"locale\": \"es_ES.UTF-8\", \"layout\": \"es\"}"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wifi",
+   "about": "Get online: the list",
+   "spec": [
+    {
+     "click": ".su [data-next]",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{\"page\": \"wifi\"}"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wifi-join",
+   "about": "Get online: a secured network opened",
+   "spec": [
+    {
+     "click": ".su [data-next]",
+     "wait": 600
+    },
+    {
+     "click": ".su [data-net=\"Studio North\"]",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{\"page\": \"wifi\", \"open_network\": \"Studio North\"}"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wifi-other",
+   "about": "Get online: Other network",
+   "spec": [
+    {
+     "click": ".su [data-next]",
+     "wait": 600
+    },
+    {
+     "click": ".su [data-net=\"*\"]",
+     "wait": 500
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{\"page\": \"wifi\", \"open_network\": \"*\"}"
+     }
+    }
+   ]
+  },
+  {
+   "name": "you",
+   "about": "About you, empty",
+   "spec": [
+    {
+     "click": ".su [data-next]",
+     "wait": 600
+    },
+    {
+     "click": ".su [data-skip]",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{\"page\": \"you\"}"
+     }
+    }
+   ]
+  },
+  {
+   "name": "you-mismatch",
+   "about": "About you: the passwords differ",
+   "spec": [
+    {
+     "click": ".su [data-next]",
+     "wait": 600
+    },
+    {
+     "click": ".su [data-skip]",
+     "wait": 600
+    },
+    {
+     "eval": "const s=(f,v)=>{const i=document.querySelector(`.su [data-f=\"${f}\"]`);i.value=v;i.dispatchEvent(new Event('input',{bubbles:true}));};s('name','Nick McMillan');s('pw','abc');s('pw2','abd');",
+     "wait": 300
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{\"page\": \"you\", \"name\": \"Nick McMillan\", \"password\": \"abc\", \"again\": \"abd\"}"
+     }
+    }
+   ]
+  },
+  {
+   "name": "device-offline",
+   "about": "Name this Luma, offline: the zone picker open",
+   "spec": [
+    {
+     "click": ".su [data-next]",
+     "wait": 600
+    },
+    {
+     "click": ".su [data-skip]",
+     "wait": 600
+    },
+    {
+     "eval": "const s=(f,v)=>{const i=document.querySelector(`.su [data-f=\"${f}\"]`);i.value=v;i.dispatchEvent(new Event('input',{bubbles:true}));};s('name','Nick McMillan');s('pw','Abcdefgh1!');s('pw2','Abcdefgh1!');",
+     "wait": 300
+    },
+    {
+     "click": ".su [data-next]",
+     "wait": 600
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_SETUP_FIXTURE_STATE": "{\"page\": \"device\", \"name\": \"Nick McMillan\"}"
+     }
+    }
+   ]
+  }
+ ]
+}

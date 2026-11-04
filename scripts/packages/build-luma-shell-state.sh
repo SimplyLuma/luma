@@ -39,6 +39,7 @@ for source in \
   luma-shell-statectl \
   luma-presentation-profile \
   luma-presentation-profile.service \
+  luma-device-class-environment \
   org.project_luma.shell-state.gschema.xml \
   luma-shell-state.service \
   org.project_luma.ShellState1.service \
@@ -62,7 +63,8 @@ done
 chmod 0755 \
   "$rpmbuild_dir/SOURCES/luma-shell-state-service" \
   "$rpmbuild_dir/SOURCES/luma-shell-statectl" \
-  "$rpmbuild_dir/SOURCES/luma-tv-cec"
+  "$rpmbuild_dir/SOURCES/luma-tv-cec" \
+  "$rpmbuild_dir/SOURCES/luma-device-class-environment"
 install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"
 install -m 0644 "$repo_root/packaging/rpm/luma-shell-state.spec" \
   "$rpmbuild_dir/SPECS/"

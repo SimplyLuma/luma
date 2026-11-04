@@ -24,6 +24,25 @@ ARCH = '## configure grub2 config file\nmkdir ${GRUB2DIR}\n'
 ASSETS = '''mkdir ${GRUB2DIR}/themes/luma
 install usr/share/luma/boot/grub-theme/* ${GRUB2DIR}/themes/luma/
 '''
+# Lorax's runtime cleanup removes sound/, drivers/media/ and drivers/usb/host/.
+# On ARM the installer keeps the modules a Raspberry Pi 5 needs for its
+# display and USB: vc4 depends on the HDMI audio and CEC cores (snd-soc-hdmi-
+# codec is its soft pre-dependency), and RP1's USB controllers bind through
+# xhci-plat-hcd. Paths are relative to /lib/modules/<release>/.
+ARM_RUNTIME_MODULES = (
+    'kernel/sound/soundcore.ko',
+    'kernel/sound/ac97_bus.ko',
+    'kernel/sound/core/snd.ko',
+    'kernel/sound/core/snd-timer.ko',
+    'kernel/sound/core/snd-pcm.ko',
+    'kernel/sound/core/snd-pcm-dmaengine.ko',
+    'kernel/sound/core/snd-compress.ko',
+    'kernel/sound/soc/snd-soc-core.ko',
+    'kernel/sound/soc/codecs/snd-soc-hdmi-codec.ko',
+    'kernel/drivers/media/cec/core/cec.ko',
+    'kernel/drivers/usb/host/xhci-plat-hcd.ko',
+)
+CLEANUP_KMOD = '           arch/x86/kvm\n'
 
 def verify_iso(root, architecture):
     if architecture not in ('x86_64', 'aarch64'):
@@ -104,12 +123,32 @@ install usr/share/luma/boot/grub-theme/* boot/grub2/themes/luma/
         raise ValueError('unsupported Lorax EFI image creation layout')
     changes[path.relative_to(source)] = text.replace(
         command, 'runcmd python3 /s/make-efi-image.py ${args} ${outroot}/${EFIBOOTDIR} ${outroot}/${img}')
+    if architecture == 'aarch64':
+        path = generic / 'runtime-cleanup.tmpl'
+        text = path.read_text()
+        if text.count(CLEANUP_KMOD) != 1 or text.count('removekmod sound drivers/media') != 1:
+            raise ValueError('unsupported Lorax runtime module cleanup layout')
+        keep = ' '.join('/' + module for module in ARM_RUNTIME_MODULES)
+        changes[path.relative_to(source)] = text.replace(
+            CLEANUP_KMOD, '           arch/x86/kvm \\\n           --allbut ' + keep + '\n')
     shutil.copytree(source, destination)
     for relative, text in changes.items():
         (destination / relative).write_text(text)
 
+def verify_modules(listing, release):
+    """Every kept ARM module is in the final stage 2 (an unsquashfs -ll listing)."""
+    text = Path(listing).read_text()
+    missing = [module for module in ARM_RUNTIME_MODULES
+               if f'usr/lib/modules/{release}/{module}' not in text]
+    if missing:
+        raise ValueError('installer runtime lacks ARM modules: ' + ', '.join(missing))
+
 if __name__ == '__main__':
     if sys.argv[1] == '--verify-iso':
         verify_iso(Path(sys.argv[2]), sys.argv[3])
+    elif sys.argv[1] == '--verify-modules':
+        verify_modules(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == '--list-arm-modules':
+        print('\n'.join(ARM_RUNTIME_MODULES))
     else:
         prepare(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else 'x86_64')

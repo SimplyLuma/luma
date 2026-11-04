@@ -1,0 +1,14 @@
+[Unit]
+Description=Luma setup: apps and Luma Connect after the first sign-in, in the background
+ConditionPathExists=/var/lib/luma-setup/welcome/%u
+ConditionPathExists=!%S/luma-setup/welcome-done
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/sleep 3
+ExecStart=/usr/libexec/luma-setup --first-session desktop
+
+[Install]
+WantedBy=graphical-session.target

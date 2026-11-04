@@ -1,0 +1,53 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] v4l2codecs: h265dec: plain pool for opaque DMA_DRM formats
+
+The Raspberry Pi HEVC decoder outputs NV12 in 128-byte columns, which
+v4l2codecs exposes as DMA_DRM NV12:DRM_FORMAT_MOD_BROADCOM_SAND128.
+There is no GstVideoFormat for it, so GstVideoBufferPool rejects the
+caps and the base class decide_allocation fails, even though with
+GstVideoMeta and no crop the decoder never uses that pool. Give the
+base class a plain GstBufferPool in that case.
+
+---
+diff --git a/sys/v4l2codecs/gstv4l2codech265dec.c b/sys/v4l2codecs/gstv4l2codech265dec.c
+index 43cf9bb..04ed3e4 100644
+--- a/sys/v4l2codecs/gstv4l2codech265dec.c
++++ b/sys/v4l2codecs/gstv4l2codech265dec.c
+@@ -593,6 +593,37 @@ gst_v4l2_codec_h265_dec_decide_allocation (GstVideoDecoder * decoder,
+       gst_v4l2_codec_pool_new (self->src_allocator, &self->vinfo_drm);
+ 
+ no_internal_changes:
++  /* A DMA_DRM format with no GstVideoFormat (NV12 with a Broadcom SAND
++   * modifier, from the Raspberry Pi HEVC decoder) cannot back a
++   * GstVideoBufferPool, so the base class fails to set one up. With
++   * GstVideoMeta and no crop that pool is never used: hand it a plain one. */
++  {
++    GstCaps *alloc_caps = NULL;
++    GstVideoInfoDmaDrm drm_info;
++
++    gst_query_parse_allocation (query, &alloc_caps, NULL);
++    if (alloc_caps && !self->copy_frames
++        && gst_video_is_dma_drm_caps (alloc_caps)
++        && gst_video_info_dma_drm_from_caps (&drm_info, alloc_caps)
++        && GST_VIDEO_INFO_FORMAT (&drm_info.vinfo) == GST_VIDEO_FORMAT_DMA_DRM) {
++      GstBufferPool *pool = gst_buffer_pool_new ();
++      GstStructure *config = gst_buffer_pool_get_config (pool);
++      guint size = MAX (GST_VIDEO_INFO_SIZE (&self->vinfo_drm.vinfo), 1);
++
++      gst_buffer_pool_config_set_params (config, alloc_caps, size, 0, 0);
++      if (!gst_buffer_pool_set_config (pool, config)) {
++        gst_object_unref (pool);
++        return FALSE;
++      }
++      if (gst_query_get_n_allocation_pools (query) > 0)
++        gst_query_set_nth_allocation_pool (query, 0, pool, size, 0, 0);
++      else
++        gst_query_add_allocation_pool (query, pool, size, 0, 0);
++      gst_object_unref (pool);
++      return TRUE;
++    }
++  }
++
+   /* Our buffer pool is internal, we will let the base class create a video
+    * pool, and use it if we are running out of buffers or if downstream does
+    * not support GstVideoMeta */

@@ -9,7 +9,7 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 39
+%global native_release 40
 # The native host is shared. ARM uses the source-built engine; x86 keeps its
 # existing engine and original release identity.
 %ifarch aarch64
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261026.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261102.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -278,6 +278,10 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Mon Nov 02 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native40.creator20261102.1
+- Tuck the address bar into a notch of the bottom frame, shown only while the bar is hidden.
+- Stop advertising WebAuthn until the host draws the passkey dialog, so sign-in offers other methods.
+
 * Sun Oct 25 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native38.creator20261025.1
 - Add an explicit ARM desktop frame transport profile and native frame diagnostics.
 

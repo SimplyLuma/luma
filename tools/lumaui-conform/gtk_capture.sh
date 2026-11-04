@@ -66,8 +66,11 @@ find "$stage" -name __pycache__ -type d -prune -exec rm -rf {} +
 
 case "$route" in
   local)
-    LUMAUI_CONFORM_SLOTS=0 LUMAUI_CONFORM_LOAD_GUARD=0 python3 "$stage/remote_capture.py" "$stage" "$stage/gtk-plan.json"
-    cp -R "$stage/out/." "$out/"
+    status=0
+    LUMAUI_CONFORM_SLOTS=0 LUMAUI_CONFORM_LOAD_GUARD=0 python3 "$stage/remote_capture.py" "$stage" "$stage/gtk-plan.json" || status=$?
+    # The captures and remote.log come back either way: a failed run is read from its log.
+    cp -R "$stage/out/." "$out/" 2>/dev/null || true
+    [ "$status" = 0 ] || exit "$status"
     ;;
   thinkpad)
     if node -e 'process.exit("build" in JSON.parse(require("fs").readFileSync(process.argv[1])).gtk ? 0 : 1)' "$scenario"; then

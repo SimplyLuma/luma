@@ -2,7 +2,7 @@
 # Private experiment only. No composed pin or enabled service until Class D gates.
 Name:           luma-continuity
 Version:        0.1.0
-Release:        0.66.experiment%{?dist}
+Release:        0.67.experiment%{?dist}
 Summary:        Luma Connect experimental native device boundary
 License:        Apache-2.0
 BuildArch:      noarch
@@ -55,13 +55,16 @@ Requires:       prairie-core-apps >= 0.1.0-1.luma.74.connect.32~preview.20260915
 Requires:       luma-developer-platform
 Requires:       luma-application-installer >= 0.1.0-1.luma.55
 Requires:       libadwaita >= 1.6
+# Opens the Connect sign-in luma-setup sealed for the account at Finish.
+Recommends:     luma-keyring
 
 %description
 Explicit local device pairing tools and native continuity transport library,
 and Luma Connect for Android phones (ADR-021): QR pairing without an account,
 notifications, clipboard, files, webcam, screen, calls and texts.
-The account daemon is session D-Bus activated on demand and remains signed out
-without administrator-provided HTTPS configuration. No composed release integration. Native app and hardware acceptance remain open.
+The account daemon is session D-Bus activated on demand. /etc/luma-connect/client.json
+names the Luma Connect issuer, account API and public clients; the first-boot
+setup's device sign-in is adopted at first login. No composed release integration. Native app and hardware acceptance remain open.
 
 %prep
 %autosetup -n luma-continuity
@@ -77,6 +80,7 @@ install -D -m 0755 bin/luma-connect %{buildroot}%{_bindir}/luma-connect
 install -D -m 0755 bin/luma-connect-daemon %{buildroot}%{_bindir}/luma-connect-daemon
 install -D -m 0644 data/org.projectluma.Connect.desktop %{buildroot}%{_datadir}/applications/org.projectluma.Connect.desktop
 install -D -m 0644 data/org.projectluma.Connect1.service %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.Connect1.service
+install -D -m 0644 data/client.json %{buildroot}%{_sysconfdir}/luma-connect/client.json
 # D-Bus activation runs the daemon under systemd, never beside it.
 install -D -m 0644 data/luma-connect.service %{buildroot}%{_userunitdir}/luma-connect.service
 # ADR-033: the daemon is Luma Connect's background agent, declared for luma-background;
@@ -120,6 +124,8 @@ node shell/test-notification-export.mjs
 %{_bindir}/luma-connect-daemon
 %{_datadir}/applications/org.projectluma.Connect.desktop
 %{_datadir}/dbus-1/services/org.projectluma.Connect1.service
+%dir %{_sysconfdir}/luma-connect
+%config(noreplace) %{_sysconfdir}/luma-connect/client.json
 %{_userunitdir}/luma-connect.service
 %dir %{_datadir}/luma
 %dir %{_datadir}/luma/background
@@ -130,6 +136,14 @@ node shell/test-notification-export.mjs
 %{_datadir}/icons/hicolor/scalable/actions/luma-connect-*-symbolic.svg
 
 %changelog
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-0.67.experiment
+- Ship /etc/luma-connect/client.json: the luma-connect realm issuer, the account
+  API, the luma-device client (RFC 8628 device grant) and the browser client.
+- Adopt the token luma-setup sealed at Finish (~/.local/state/luma-setup/connect.cred)
+  at first login: rotate it with luma-device, validate the ID token, require
+  account API agreement, then store it in the keyring and remove the seal.
+- Renewal uses the client a stored token was issued to.
+
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-0.66.experiment
 - Package the October 26 shared source updates.
 
