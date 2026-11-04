@@ -69,8 +69,9 @@ and runs `kernel-luma-rpi` as a client-side rpm-ostree override (Fedora's
 kernel packages removed), applied when the card is built, so the first boot
 needs no network. There is no Raspberry Pi OS ref, graph or Depot entry. The
 card keeps `/etc/yum.repos.d/luma-raspberrypi-rpi5.repo` (the signed Raspberry
-Pi 5 device repository, only `kernel-luma-rpi`) and its key
-`/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5`; every update
+Pi 5 device repository, only `kernel-luma-rpi`, signed with the Luma OS
+release key) and that key armored for rpm,
+`/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release`; every update
 (luma-update or `rpm-ostree upgrade`) rebuilds the override on the new commit
 and takes newer Pi kernels from that repository. `rpm-ostree status` shows the
 override.
@@ -80,7 +81,8 @@ root grows: the 14 GiB image (the override adds a second tree while the card is 
 
 Inputs: the night's aarch64 ISO (release key, update URL), the signed OSTree
 repository holding the generic commit, and the signed device repository
-(rpm-md with `repomd.xml.asc`, signed RPMs) with its armored public key.
+(rpm-md with `repomd.xml.asc`, RPMs signed with the Luma OS release key) and
+that key, armored (`RPM-GPG-KEY-luma-os-release` beside the repository).
 
 1. Gate card (luma-build, as root, unconfined: a system service may not write
    SELinux types the host's policy lacks; about 25 minutes, 10 of them the

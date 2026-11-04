@@ -61,6 +61,7 @@ version=$(field version)
 card=$(field image)
 override=$(field override)
 locals=$(awk '$1 == "local_package" {print $2}' "$manifest" | sed -E 's/-[^-]+-[^-]+\.(noarch|aarch64)\.rpm$//' | tr '\n' ' ')
+locals="$locals $(printf '%s\n' "$override" | sed -n 's/.*requested=\([^ ]*\).*/\1/p' | tr ';' ' ')"
 ref=${origin#*:}
 [[ "$candidate" =~ ^[0-9a-f]{64}$ ]] || { echo "no commit in $manifest" >&2; exit 1; }
 [ -z "$expect_commit" ] || [ "$candidate" = "$expect_commit" ] || { echo "the card carries $candidate, not $expect_commit" >&2; exit 1; }
@@ -121,7 +122,7 @@ import json, sys
 rows = json.load(sys.stdin)["deployments"]
 d = rows[0] if sys.argv[1] == "0" else [x for x in rows if x.get(sys.argv[1])][0]
 print(d.get("base-checksum") or d["checksum"], d["origin"], ",".join(d.get("requested-packages") or []) or "-",
-      ",".join(sorted(d.get("base-removals") or [])) or "-", d["checksum"])' "$1"
+      ",".join(sorted(x if isinstance(x, str) else str(x[0]) for x in d.get("base-removals") or [])) or "-", d["checksum"])' "$1"
 }
 override_ok() {  # ORIGIN REQUESTED REMOVALS
   [ "$1" = "$origin" ] && [[ "$1" != *raspberrypi-rpi5* ]] && [[ ",$2," == *,kernel-luma-rpi,* ]] && [[ "$3" == *kernel-core* ]]
@@ -185,10 +186,17 @@ if [ -e /etc/luma/update.conf ] && grep -Eq '^\s*(hardware_target\s*=\s*\S|ref_t
   problems+=("update.conf names a hardware target")
 fi
 grep -q '^baseurl=https://' /etc/yum.repos.d/luma-raspberrypi-rpi5.repo 2>/dev/null || problems+=("no Raspberry Pi 5 device repository")
-[ -s /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5 ] || problems+=("no device repository key")
+[ -s /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release ] || problems+=("no release key for the device repository")
+grep -qx repo_gpgcheck=1 /etc/yum.repos.d/luma-raspberrypi-rpi5.repo || problems+=("device repository metadata is not signature-checked")
 if rpm -q luma-rpi5-platform >/dev/null 2>&1; then
-  [ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
-    problems+=("logind still offers suspend")
+  # The no-sleep policy applies on Pi 5 boards only (the VM is linux,dummy-virt).
+  if [ -r /proc/device-tree/compatible ] && tr '\0' '\n' </proc/device-tree/compatible | grep -q '^raspberrypi,5'; then
+    [ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
+      problems+=("logind still offers suspend")
+  else
+    [ -f /usr/lib/systemd/system/luma-rpi5-no-sleep.service ] || problems+=("no no-sleep unit")
+    [ ! -e /run/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf ] || problems+=("no-sleep policy applied off the Pi")
+  fi
   [ -f /usr/lib/systemd/system/luma-rpi5-firmware-sync.service ] || problems+=("no firmware-sync unit")
 fi
 for unit in luma-app-baseline gdm; do
@@ -201,8 +209,9 @@ apps=$(flatpak list --app --columns=application 2>/dev/null | wc -l)
 if [ "${#problems[@]}" -eq 0 ]; then echo "PASS $apps apps, kernel $(uname -r)"; else printf 'FAIL %s; ' "${problems[@]}"; echo; fi
 EOF
 )
-[[ "$contract" == PASS* ]] || fail_now fresh-image-contract "${contract#FAIL }"
-stage fresh-image-contract pass "${contract#PASS }"
+# A failed contract fails the gate; the later stages still run and report.
+if [[ "$contract" == PASS* ]]; then stage fresh-image-contract pass "${contract#PASS }"
+else stage fresh-image-contract fail "${contract#FAIL }"; fi
 
 account=$(vm 'bash -s' <<'EOF'
 problems=()
@@ -221,8 +230,9 @@ s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); f = s.makefile("rw");
 for cmd in ({"execute": "qmp_capabilities"}, {"execute": "screendump", "arguments": {"filename": sys.argv[2], "format": "png"}}):
     f.write(json.dumps(cmd) + "\n"); f.flush(); f.readline()
 PY
-[[ "$account" == PASS* ]] || fail_now no-account "${account#FAIL }"
-stage no-account pass "${account#PASS } (screen: $work/first-boot.png)"
+# A failed no-account stage fails the gate but does not stop the update stage.
+if [[ "$account" == PASS* ]]; then stage no-account pass "${account#PASS } (screen: $work/first-boot.png)"
+else stage no-account fail "${account#FAIL } (screen: $work/first-boot.png)"; fi
 
 # override-update: a newer commit (a local child of the generic commit with
 # the same tree; the remote ref moves to it), the device repository served by
