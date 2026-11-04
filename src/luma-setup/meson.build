@@ -30,10 +30,11 @@ install_data('bin/luma-setup', 'bin/luma-setup-apply', install_dir: get_option('
              install_mode: 'rwxr-xr-x')
 
 # GDM's initial-setup session: GDM looks for these names and runs Luma's setup in it.
-# GDM's own gnome-initial-setup.desktop starts `gnome-session --session gnome-initial-setup`; gnome-session
-# reads /etc/xdg before /usr/share, so this session (and the dconf profile GDM names) are Luma's
-# without shipping a file gdm or gnome-initial-setup owns.
-install_data('data/session/gnome-initial-setup.session', install_dir: sysconfdir / 'xdg' / 'gnome-session' / 'sessions')
+# GDM's own gnome-initial-setup.desktop starts `gnome-session --session gnome-initial-setup`. GDM only
+# runs initial setup when /usr/share/gnome-session/sessions/gnome-initial-setup.session exists (a fixed
+# path in gdm), so the session lives there; only gnome-initial-setup also ships it, and the package
+# conflicts with that.
+install_data('data/session/gnome-initial-setup.session', install_dir: datadir / 'gnome-session' / 'sessions')
 install_data('data/systemd/luma-setup.conf',
              install_dir: userunitdir / 'gnome-session@gnome-initial-setup.target.d')
 install_data('data/systemd/luma-setup.service', 'data/systemd/luma-setup-first-session.service',

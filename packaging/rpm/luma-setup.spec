@@ -2,7 +2,7 @@
 
 Name:           luma-setup
 Version:        0.2.0
-Release:        1.luma.1%{?dist}
+Release:        1.luma.2%{?dist}
 Summary:        Set up this Luma: language, network, your account and the device's name
 License:        Apache-2.0
 URL:            https://projectluma.org/setup
@@ -74,6 +74,8 @@ ln -s ../luma-setup-cover.service \
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Setup.desktop
+# GDM starts initial setup only if this exact path exists.
+test -s %{buildroot}%{_datadir}/gnome-session/sessions/gnome-initial-setup.session
 test -s %{buildroot}%{_datadir}/luma-setup/dconf-defaults
 grep -Fqx "Requires=luma-setup.service" \
   %{buildroot}%{_userunitdir}/gnome-session@gnome-initial-setup.target.d/luma-setup.conf
@@ -86,7 +88,7 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_libexecdir}/luma-setup
 %{_libexecdir}/luma-setup-apply
 %{python3_sitelib}/luma_setup/
-%config %{_sysconfdir}/xdg/gnome-session/sessions/gnome-initial-setup.session
+%{_datadir}/gnome-session/sessions/gnome-initial-setup.session
 %{_userunitdir}/gnome-session@gnome-initial-setup.target.d/luma-setup.conf
 %{_userunitdir}/luma-setup.service
 %{_userunitdir}/luma-setup-first-session.service
@@ -104,6 +106,11 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/applications/org.projectluma.Setup.desktop
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.2
+- Install the initial-setup session where GDM looks for it
+  (/usr/share/gnome-session/sessions); with it in /etc/xdg GDM showed the
+  login screen instead of the setup
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
 - One sheet from Hello to the desktop: Make it yours, Luma Connect (sign-in
   by code) and Add apps follow in the setup session; signed in once, at the end
