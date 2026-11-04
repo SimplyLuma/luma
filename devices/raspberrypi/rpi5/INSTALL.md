@@ -116,6 +116,11 @@ the exported candidate:
    `scripts/devices/gate-rpi5-card.sh --image <card>.img.xz --key <key> --build-env build.env --export-env export.env --output gate-result.json`
 3. Copy `gate-result.json` into `<root>/builds/<id>/`.
 
+The published card is a separate build from the same signed candidate:
+`build-rpi5-disk-image.sh --release --iso <ISO> --payload <candidate repo> luma/1/aarch64/raspberrypi-rpi5/<channel> --output <dir>`.
+`--release` refuses test payloads and test keys, and checks that the card gives
+no root SSH access.
+
 Stages: the card boots on a 32 GiB disk, the candidate is booted from the Pi
 ref, greenboot passes (`boot_success=1`), and the image contract holds (Luma
 Pi kernel, no Fedora kernel, CanSuspend=no, Pi update stream, offline apps,

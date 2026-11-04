@@ -25,7 +25,7 @@
 # starts Luma's first-boot setup. A medium carrying a preview credential is
 # refused.
 #
-# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--payload REPO REF] [--uboot-rpm FILE] [--size GIB] [--no-xz] [--first-boot-overlay DIR] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
+# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--release] [--payload REPO REF] [--uboot-rpm FILE] [--size GIB] [--no-xz] [--first-boot-overlay DIR] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
 #
 # --payload deploys REF (the Raspberry Pi 5 hardware target's channel ref,
 # luma/<major>/aarch64/raspberrypi-rpi5/<channel>) from the signed OSTree
@@ -34,6 +34,10 @@
 # raspberrypi,rpi5 and the medium's channel. The ISO still supplies the
 # release key, the update URL and the GRUB font. Without --payload the card
 # deploys the medium's generic commit (Fedora's kernel, U-Boot device trees).
+#
+# --release makes a card for publication: it requires --payload (the signed
+# commit), refuses --test-payload and --test-ssh-key, and checks that the card
+# gives no root SSH access (no /root/.ssh, sshd not forced on, root locked).
 #
 # First boot: the card has no account and root is locked. The builder marks
 # the deployment for first-boot setup with /etc/luma/first-boot/pending
@@ -78,7 +82,7 @@ fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
 iso="" output="" uboot_rpm="" size_gib=12 compress=1 test_repo="" test_commit="" test_key=""
-payload_src="" payload_ref="" first_boot_overlay=""
+payload_src="" payload_ref="" first_boot_overlay="" release=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --iso) iso=${2:?}; shift 2 ;;
@@ -86,6 +90,7 @@ while [ "$#" -gt 0 ]; do
     --uboot-rpm) uboot_rpm=${2:?}; shift 2 ;;
     --size) size_gib=${2:?}; shift 2 ;;
     --no-xz) compress=0; shift ;;
+    --release) release=1; shift ;;
     --payload) payload_src=$(realpath -e "${2:?}"); payload_ref=${3:?}; shift 3 ;;
     --first-boot-overlay) first_boot_overlay=$(realpath -e "${2:?}"); shift 2 ;;
     --test-payload) test_repo=$(realpath -e "${2:?}"); test_commit=${3:?}; shift 3 ;;
@@ -95,6 +100,10 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$iso" ] && [ -n "$output" ] || usage
 [ -z "$payload_src" ] || [ -z "$test_repo" ] || fail "--payload and --test-payload are exclusive"
+if [ "$release" = 1 ]; then
+  [ -n "$payload_src" ] || fail "--release requires --payload (the signed Raspberry Pi 5 commit)"
+  [ -z "$test_repo" ] && [ -z "$test_key" ] || fail "--release refuses --test-payload and --test-ssh-key"
+fi
 [ -z "$first_boot_overlay" ] || [ -d "$first_boot_overlay" ] || fail "--first-boot-overlay must be a directory"
 [[ "$size_gib" =~ ^[0-9]+$ ]] && [ "$size_gib" -ge 8 ] || fail "--size must be at least 8 (GiB)"
 [ "$(uname -s)" = Linux ] || fail "build the card image on Linux"
@@ -478,6 +487,16 @@ find "$fat" -exec touch -h -d "@$epoch" {} +
  find . -type f | sort | while read -r f; do cp --preserve=timestamps "$f" "$sysroot/boot/efi/${f#./}"; done)
 diff -r "$fat" "$sysroot/boot/efi" >/dev/null || fail "the boot partition does not read back as staged"
 
+# A release card gives nobody root over the network: no authorized keys for
+# root, no forced sshd, root's password locked in the image.
+if [ "$release" = 1 ]; then
+  [ ! -e "$var/roothome/.ssh" ] || fail "release card has /root/.ssh"
+  for arg in "${kargs[@]}"; do
+    case "$arg" in systemd.wants=sshd*|systemd.set_credential*) fail "release card forces $arg" ;; esac
+  done
+  root_hash=$(awk -F: '$1 == "root" {print $2}' "$deploy/etc/shadow" 2>/dev/null || true)
+  case "$root_hash" in '!'*|'*'*|'') ;; *) fail "release card has a root password" ;; esac
+fi
 used_mib=$(df -BM --output=used "$sysroot" | tail -n 1 | tr -dc 0-9)
 sync
 umount "$sysroot/boot/efi" "$sysroot/boot" "$sysroot"
@@ -516,6 +535,7 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "grub $grub_sha256 ${grub_efi#"$deploy"}"
   echo "device_trees $dt_layout"
   echo "first_boot $first_boot"
+  [ "$release" = 0 ] || echo "release yes (signed payload; no root SSH, root locked)"
   [ -z "$first_boot_overlay" ] || echo "first_boot_overlay $(cd "$first_boot_overlay" && find . -type f | LC_ALL=C sort | tr '\n' ' ')"
   [ -z "$payload_src" ] || echo "payload_repo $payload_src"
   [ -z "$test_repo" ] || echo "test_payload $test_repo (not for publication)"
