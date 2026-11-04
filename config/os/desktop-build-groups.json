@@ -191,6 +191,12 @@
         "packaging/rpm/luma-android-runtime.spec"
       ]
     },
+    "gdm": {
+      "recipe": "scripts/packages/build-gdm.sh",
+      "paths": [
+        "patches/gdm/"
+      ]
+    },
     "libmanette": {
       "recipe": "scripts/packages/build-libmanette.sh",
       "paths": [
