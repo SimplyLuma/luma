@@ -14,7 +14,8 @@ decodes from the freedesktop thumbnail (made once if missing).
  shell/cc-luma-view-discovery.c |  24 +++----
  shell/cc-luma-view-image.c     | 119 ++++++++++++++++++++++++++++-----
  shell/cc-luma-view-private.h   |   3 +
- 3 files changed, 116 insertions(+), 30 deletions(-)
+ shell/meson.build              |   2 +
+ 4 files changed, 118 insertions(+), 30 deletions(-)
 
 diff --git a/shell/cc-luma-view-discovery.c b/shell/cc-luma-view-discovery.c
 index 942bdba..4b57cc8 100644
@@ -227,6 +228,18 @@ index 818d446..96f52af 100644
  void cc_luma_view_report_error (View *v, const GError *error);
  
  GtkWidget *cc_luma_view_toggle (View *v, const char *key, const char *name, const char *accessible);
+diff --git a/shell/meson.build b/shell/meson.build
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -375,6 +375,8 @@
+ fixture_view_deps = [json_glib_dep, gio_dep, gtk_dep, libadwaita_dep, dependency('luma-ui-1'), dependency('luma-appearance-1'), m_dep]
+ fixture_view_deps += [goa_dep, dependency('goa-backend-1.0', version: goa_req_version)]
+ fixture_view_deps += [dependency('gio-unix-2.0')]
++# cc-luma-view-image.c decodes large pictures from the freedesktop thumbnail.
++fixture_view_deps += [gnome_desktop_dep]
+ live_pointer_test = executable('test-luma-live-pointer',
+   ['test-luma-live-pointer.c', 'cc-luma-live-gsettings.c'] + fixture_view_sources + generated_sources,
+   include_directories: top_inc, dependencies: fixture_view_deps)
 -- 
 2.56.0
 
