@@ -121,5 +121,6 @@ if [ -n "$host_bwrap" ]; then
   mount --bind "$work/x86" "$r/run/luma-host"
   mount --bind "$work/bwrap" "$r/usr/bin/bwrap"
 fi
-chroot "$r" /run/luma-offline.sh "$@"
+# The host TMPDIR does not exist inside the root.
+chroot "$r" env -u TMPDIR /run/luma-offline.sh "$@"
 ' _ "$work" "$sysroot" "$deployment" "$host_bwrap" "$(printf '%s\n' "${binds[@]+"${binds[@]}"}")" "$@"
