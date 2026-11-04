@@ -27,6 +27,8 @@ Requires:       gnome-session
 Requires:       polkit
 # The system services Finish applies through, and what the pages read.
 Requires:       accountsservice
+# The Luma Connect sign-in QR code (connect.qr_modules).
+Requires:       qrencode-libs
 Requires:       systemd
 Requires:       shadow-utils
 Requires:       NetworkManager-libnm
@@ -104,8 +106,10 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 
 %changelog
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.1
-- After the first sign-in the same sheet goes on: Make it yours (windows
-  and dash), Luma Connect, Add apps; each can be left for good
+- One sheet from Hello to the desktop: Make it yours, Luma Connect (sign-in
+  by code) and Add apps follow in the setup session; signed in once, at the end
+- The first session opens on the setup's last frame (luma-setup-cover.service,
+  gnome-shell 0321) and lifts it off the desktop
 
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - First-boot setup in GDM's initial-setup session: language and keyboard,

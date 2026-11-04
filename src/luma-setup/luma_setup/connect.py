@@ -23,12 +23,7 @@ from typing import Callable
 
 from gi.repository import GLib
 
-__all__ = ("ConnectFlow", "show_code", "CLEAR")
-
-# RFC 8628 6.1: a code a person copies by eye uses no letters or digits that look
-# alike. The identity provider issues it from these twenty consonants (no vowels,
-# so no words either); the sheet shows it in a monospace face, in groups of four.
-CLEAR = frozenset("BCDFGHJKLMNPQRSTVWXZ")
+__all__ = ("ConnectFlow", "show_code", "qr_modules")
 
 log = logging.getLogger("luma-setup")
 CLIENT = Path("/etc/luma-connect/client.json")
@@ -94,9 +89,6 @@ class ConnectFlow:
             grant = self._post(endpoint, {"client_id": cfg["client_id"],
                                           "scope": cfg.get("scope", "openid profile email offline_access")})
             self.code = show_code(grant["user_code"])
-            if not set(self.code.replace("-", "")) <= CLEAR:
-                log.warning("Connect: the identity provider's code has characters that can be misread: "
-                            "configure its user codes from RFC 8628's twenty consonants")
             self.url = grant.get("verification_uri_complete") or grant["verification_uri"]
             self.url_short = urllib.parse.urlsplit(grant["verification_uri"]).netloc + \
                 urllib.parse.urlsplit(grant["verification_uri"]).path
@@ -141,3 +133,27 @@ def _account(id_token: str) -> str:
         return str(claims.get("preferred_username") or "")[:64]
     except (IndexError, ValueError):
         return ""
+
+
+def qr_modules(text: str) -> list[list[bool]] | None:
+    """The QR code of text (libqrencode, level M), as rows of dark modules; None without the library."""
+    import ctypes
+    import ctypes.util
+
+    class QRcode(ctypes.Structure):
+        _fields_ = [("version", ctypes.c_int), ("width", ctypes.c_int), ("data", ctypes.POINTER(ctypes.c_ubyte))]
+    try:
+        lib = ctypes.CDLL(ctypes.util.find_library("qrencode") or "libqrencode.so.4")
+    except OSError:
+        return None
+    lib.QRcode_encodeString.restype = ctypes.POINTER(QRcode)
+    lib.QRcode_encodeString.argtypes = (ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int)
+    code = lib.QRcode_encodeString(text.encode(), 0, 1, 2, 1)   # any version, level M, 8-bit, case-sensitive
+    if not code:
+        return None
+    try:
+        width = code.contents.width
+        data = code.contents.data
+        return [[bool(data[y * width + x] & 1) for x in range(width)] for y in range(width)]
+    finally:
+        lib.QRcode_free(code)

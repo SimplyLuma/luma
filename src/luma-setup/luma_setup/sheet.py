@@ -315,6 +315,38 @@ class Turn(Gtk.Widget):
         snapshot.restore()
 
 
+@functools.lru_cache(maxsize=2)
+def _qr_texture(text: str) -> Gdk.Texture | None:
+    from .connect import qr_modules
+    rows = qr_modules(text)
+    if not rows:
+        return None
+    unit, quiet = 8, 4                       # pixels a module; the quiet zone, in modules
+    size = (len(rows) + 2 * quiet) * unit
+    data = bytearray(b"\xff" * size * size)
+    for y, row in enumerate(rows):
+        for x, dark in enumerate(row):
+            if dark:
+                for dy in range(unit):
+                    start = ((y + quiet) * unit + dy) * size + (x + quiet) * unit
+                    data[start:start + unit] = b"\x00" * unit
+    return Gdk.MemoryTexture.new(size, size, Gdk.MemoryFormat.G8, GLib.Bytes.new(bytes(data)), size)
+
+
+def qr_picture(text: str) -> Gtk.Widget | None:
+    """A QR code of text, black on white with its quiet zone (su-qr), or None without libqrencode."""
+    texture = _qr_texture(text) if text else None
+    if texture is None:
+        return None
+    picture = Gtk.Picture.new_for_paintable(texture)
+    picture.set_can_shrink(True)
+    picture.set_size_request(168, 168)
+    picture.set_halign(Gtk.Align.CENTER)
+    picture.add_css_class("su-qr")
+    picture.update_property([Gtk.AccessibleProperty.LABEL], ["QR code to sign in to Luma Connect"])
+    return picture
+
+
 def avatar(initial: str, size: str, face: str = "") -> Gtk.Widget:
     """Their initial on the accent, or a picture: su-av."""
     if face:
@@ -1341,18 +1373,20 @@ class SetupWindow(Gtk.ApplicationWindow):
             card.append(label(f"@{flow.account}" if flow.account else "Signed in", "su-meb", xalign=0.5))
             card.append(label("Your Luma Connect account", "su-mee", xalign=0.5))
         elif flow.code:
-            card.append(label("On your phone or another device, open", "su-note", "su-c", xalign=0.5, wrap=True))
-            card.append(label(flow.url_short, "su-meb", xalign=0.5, selectable=True))
-            card.append(label("and enter this code", "su-note", "su-c", xalign=0.5))
+            # The main path is the phone's camera: nothing to type. The code is there for
+            # another device, large, in a face where O, I and L cannot be taken for 0, 1 and l.
+            qr = qr_picture(flow.url)
+            if qr is not None:
+                card.append(label("Scan with your phone's camera", "su-note", "su-c", xalign=0.5, wrap=True))
+                card.append(qr)
+                card.append(label(f"or open {flow.url_short} and enter", "su-note", "su-c", xalign=0.5, wrap=True))
+            else:
+                card.append(label("On your phone or another device, open", "su-note", "su-c", xalign=0.5, wrap=True))
+                card.append(label(flow.url_short, "su-meb", xalign=0.5, selectable=True))
+                card.append(label("and enter this code", "su-note", "su-c", xalign=0.5))
             code = label(flow.code, "su-code", xalign=0.5, selectable=True)
             code.update_property([Gtk.AccessibleProperty.LABEL], [" ".join(flow.code)])
             card.append(code)
-            if flow.qr is not None:
-                qr = Gtk.Picture.new_for_paintable(flow.qr)
-                qr.set_size_request(132, 132)
-                qr.set_halign(Gtk.Align.CENTER)
-                qr.add_css_class("su-qr")
-                card.append(qr)
             spinner = Gtk.Spinner(spinning=True)
             spinner.add_css_class("su-spin")
             card.append(box(spinner, label("Waiting for you to approve it", "su-note"), spacing=8,

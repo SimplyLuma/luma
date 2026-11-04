@@ -13,10 +13,12 @@ class Code(unittest.TestCase):
         self.assertEqual(connect.show_code("bcdf ghjk"), "BCDF-GHJK")
         self.assertEqual(connect.show_code("WDJB-MJHT"), "WDJB-MJHT")
 
-    def test_the_clear_alphabet_has_nothing_that_looks_alike(self):
-        for ch in "AEIOUY0123456789":  # no vowels (I, O), no digits (0, 1)
-            self.assertNotIn(ch, connect.CLEAR)
-        self.assertEqual(len(connect.CLEAR), 20)
+    def test_qr_has_its_finder_patterns(self):
+        rows = connect.qr_modules("https://connect.example/device?code=WDJBMJHT")
+        if rows is None:
+            self.skipTest("libqrencode is not installed")
+        self.assertTrue(all(rows[0][:7]) and all(rows[6][:7]))    # top-left finder, first and last rows
+        self.assertTrue(len(rows) >= 21 and all(len(r) == len(rows) for r in rows))
 
 
 if __name__ == "__main__":

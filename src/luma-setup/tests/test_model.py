@@ -34,6 +34,9 @@ class Names(unittest.TestCase):
         s.set_name("Someone Else")
         self.assertEqual(host_name(s.device_name), "living-room-tv")
         self.assertEqual(host_name("   "), "luma")
+        self.assertEqual(host_name("Atlas’s Luma"), "atlas-luma")
+        self.assertEqual(host_name("James's TV"), "james-tv")
+        self.assertEqual(host_name("Nick’s Luma"), "nicks-luma")
         self.assertEqual(host_name("Café's Tablet!"), "cafes-tablet")
 
     def test_slug(self):
