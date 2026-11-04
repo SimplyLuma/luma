@@ -76,7 +76,7 @@ set -u
 touch /run/ostree-booted
 rpm-ostree start-daemon --sysroot=/sysroot &
 daemon=$!
-trap 'kill $daemon 2>/dev/null' EXIT
+trap 'kill $daemon 2>/dev/null; wait $daemon 2>/dev/null' EXIT
 for _ in $(seq 1 60); do rpm-ostree status >/dev/null 2>&1 && break; sleep 1; done
 rpm-ostree "$@"
 EOF
@@ -122,5 +122,18 @@ if [ -n "$host_bwrap" ]; then
   mount --bind "$work/bwrap" "$r/usr/bin/bwrap"
 fi
 # The host TMPDIR does not exist inside the root.
-chroot "$r" env -u TMPDIR /run/luma-offline.sh "$@"
+rc=0
+chroot "$r" env -u TMPDIR /run/luma-offline.sh "$@" || rc=$?
+# Nothing may outlive the call: a process left in this namespace keeps the
+# card'\''s filesystems mounted (and the FAT dirty) after the caller unmounts.
+for _ in 1 2 3 4 5; do
+  left=""
+  for proc in /proc/[0-9]*; do
+    [ "$(readlink "$proc/root" 2>/dev/null)" = "$r" ] && left="$left ${proc#/proc/}"
+  done
+  [ -n "$left" ] || break
+  kill -9 $left 2>/dev/null || true
+  sleep 1
+done
+exit $rc
 ' _ "$work" "$sysroot" "$deployment" "$host_bwrap" "$(printf '%s\n' "${binds[@]+"${binds[@]}"}")" "$@"
