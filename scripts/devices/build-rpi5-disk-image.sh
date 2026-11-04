@@ -368,8 +368,8 @@ if [ -n "$first_boot_overlay" ]; then
   (cd "$first_boot_overlay" && find . -mindepth 1 | grep -q .) || fail "--first-boot-overlay is empty"
   cp -a --no-preserve=ownership "$first_boot_overlay/." "$deploy/etc/"
 fi
-if [ -e "$deploy/usr/lib/luma/first-boot" ] || [ -e "$deploy/usr/libexec/luma-first-boot" ]; then
-  first_boot=luma
+if [ -e "$deploy/usr/libexec/luma-setup" ]; then
+  first_boot=luma-setup
 elif [ -e "$deploy/usr/libexec/gnome-initial-setup" ]; then
   first_boot="gnome-initial-setup (not shippable: Luma's first-boot setup is missing)"
   echo "warning: the payload's first boot is GNOME Initial Setup; do not publish this image" >&2
