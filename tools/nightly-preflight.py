@@ -6,11 +6,17 @@ the CI build of the pull request that set the pin.
   nightly-preflight.py --sha SHA --have FILE --out DIR
 
 --have lists the NEVRAs already available (one per line, extra columns
-ignored), for example the pool manifest plus the loose directory. Fetched
-RPMs land in --out; their headers are verified when the pool admits them.
-Exit status 1 when a pin is still missing, naming the commit that set it.
+ignored), for example the pool manifest plus the loose directory and
+rpms/media. Fetched RPMs land in --out; their headers are verified when the
+pool admits them. Exit status 1 when a pin is still missing, naming the commit
+that set it.
+
+The installer media's Atlas pin (config/os/media.env) is checked too. No CI
+job builds Atlas, so it is never fetched: a missing one is reported with the
+revision and SHA-256 that nightly-media.sh will demand from incoming/.
 """
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -46,6 +52,13 @@ def pins(root, sha):
                               '--root', tmp, '--arch', arch, '--profile', profile,
                               '--hardware-target', target, 'pins').split())
         return result
+
+
+def media_pin(root, sha):
+    """config/os/media.env's Atlas: NEVRA, SHA-256 and source revision."""
+    text = run('git', '-C', str(root), 'show', f'{sha}:config/os/media.env')
+    env = dict(re.findall(r'^(LUMA_MEDIA_ATLAS_[A-Z0-9_]+)=(\S*)$', text, re.M))
+    return env['LUMA_MEDIA_ATLAS_NEVRA'], env['LUMA_MEDIA_ATLAS_SHA256'], env['LUMA_MEDIA_ATLAS_REVISION']
 
 
 def setter(root, sha, nevra):
@@ -117,6 +130,13 @@ def main():
                 break
         if not source:
             unresolved.append(f'{nevra} (pinned by {commit[:8] if commit else "unknown"})')
+    atlas, digest, revision = media_pin(args.root, args.sha)
+    local = args.out / f'{atlas}.rpm'
+    if local.exists() and hashlib.sha256(local.read_bytes()).hexdigest() != digest:
+        unresolved.append(f'{atlas} (installer media: {local} is not SHA-256 {digest})')
+    elif atlas not in have and not local.exists():
+        unresolved.append(f'{atlas} (installer media, config/os/media.env: no CI build; put the RPM with '
+                          f'SHA-256 {digest}, built at {revision[:8]}, in incoming/)')
     for line in unresolved:
         print(f'MISSING {line}')
     print(f'{len(missing)} pin(s) not in the pool, {len(unresolved)} unresolved')
