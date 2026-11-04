@@ -422,8 +422,11 @@ if [ -n "$device_repo" ]; then
     done
   fi
   echo "Override: ${args[*]}"
+  # The boot partition stays out of rpm-ostree's reach (and its namespace).
+  umount "$sysroot/boot/efi"
   TMPDIR="$work" bash "$repo_root/scripts/devices/rpm-ostree-offline.sh" --sysroot "$sysroot" --stateroot "$stateroot" \
     --deployment "$generic" "${binds[@]}" -- "${args[@]}"
+  mount -o umask=0077,shortname=winnt "${loop}p1" "$sysroot/boot/efi"
   deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
   [ "${#deploys[@]}" = 2 ] || fail "rpm-ostree did not write the override deployment"
   ostree admin undeploy --sysroot="$sysroot" 1 >/dev/null
@@ -637,7 +640,7 @@ fi
 used_mib=$(df -BM --output=used "$sysroot" | tail -n 1 | tr -dc 0-9)
 sync
 umount "$sysroot/boot/efi" "$sysroot/boot" "$sysroot"
-fsck.fat -n "${loop}p1" >/dev/null || fail "the boot partition failed fsck"
+fsck.fat -n "${loop}p1" >"$work/fsck.log" 2>&1 || { cat "$work/fsck.log" >&2; fail "the boot partition failed fsck"; }
 e2fsck -fn "${loop}p2" >/dev/null || fail "/boot failed fsck"
 btrfs check --readonly "${loop}p3" >/dev/null 2>&1 || fail "the root filesystem failed btrfs check"
 losetup -d "$loop"
