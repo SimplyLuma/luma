@@ -73,9 +73,10 @@ for dark,width in ((dark,width) for dark in (False,True) for width in (360,500,1
     assert not submit.get_sensitive()
     code.entry.set_text('short');code.entry.emit('activate');assert cloud.calls==[]
     code.entry.set_text('ABCD EFGH');name.entry.set_text('  Synthetic ThinkPad  ');pump()
+    assert code.entry.get_text()=='ABCDEFGH'  # base32 code: the typed space is dropped
     assert submit.get_sensitive() and submit.has_css_class('key') and not submit.has_css_class('suggested-action')
     button(handle.card,'Back').emit('clicked');pump();button(handle.card,'Enter a Code…').emit('clicked');pump()
-    assert code.entry.get_text()=='ABCD EFGH'
+    assert code.entry.get_text()=='ABCDEFGH'
     code.entry.emit('activate');code.entry.emit('activate')
     assert cloud.calls==[('ABCDEFGH','Synthetic ThinkPad')]
     assert not code.get_sensitive() and not name.get_sensitive() and not submit.get_sensitive()
@@ -105,7 +106,7 @@ for dark,width in ((dark,width) for dark in (False,True) for width in (360,500,1
     if width==1024:
         window.set_default_size(360,740);pump(.4)
         assert handle.card.get_width()<=window.get_width(),('resize overflow',handle.card.get_width(),window.get_width())
-        assert code.entry.get_text()=='ABCD EFGH'
+        assert code.entry.get_text()=='ABCDEFGH'
         window.set_default_size(1024,740);pump(.4)
     submit.emit('clicked');cloud.done(None);pump()
     assert handle.closed and window.layer_host.modal is None
