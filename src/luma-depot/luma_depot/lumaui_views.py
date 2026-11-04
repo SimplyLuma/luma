@@ -95,6 +95,17 @@ def _more_button(window, listing: Listing, *, big: bool = False) -> Gtk.Button:
     return button
 
 
+#: Discover's stories: (key, eyebrow, title, summary, catalogue ids). TV posture shows the same
+#: stories, keeping the apps that run on a TV.
+STORIES = (
+    ("create", "Start a studio", "Make music on Luma",
+     "Record in Audacity, then listen in Tide. Keep your own files.", ("audacity", "tide")),
+    ("play", "Game night", "Your games already work here",
+     "Steam, Epic and GOG libraries run as they are. Stream the rest from your PC.",
+     ("steam", "heroic", "moonlight")),
+)
+
+
 def _open(window, listing: Listing) -> None:
     window.go("app", listing.id)
 
@@ -500,13 +511,11 @@ def render_home(window) -> None:
                           min_children_per_line=1, max_children_per_line=2,
                           row_spacing=12, column_spacing=12)
     stories.set_homogeneous(True)
-    stories.insert(_story(window, key="create", eyebrow="Start a studio", title="Make music on Luma",
-                          summary=("Record in Sessions, clean up in Audacity, and master anywhere. No subscriptions."
-                                   if window.fixture else "Record in Audacity, then listen in Tide. Keep your own files."),
-                          app_ids=("sessions", "audacity", "tide") if window.fixture else ("audacity", "tide")), -1)
-    stories.insert(_story(window, key="play", eyebrow="Game night", title="Your games already work here",
-                          summary="Steam, Epic and GOG libraries run as they are. Stream the rest from your PC.",
-                          app_ids=("steam", "heroic", "moonlight")), -1)
+    for key, eyebrow, title, summary, app_ids in STORIES:
+        if window.fixture and key == "create":
+            summary = "Record in Sessions, clean up in Audacity, and master anywhere. No subscriptions."
+            app_ids = ("sessions", "audacity", "tide")
+        stories.insert(_story(window, key=key, eyebrow=eyebrow, title=title, summary=summary, app_ids=app_ids), -1)
     stories.set_hexpand(True)
     stories.add_css_class("depot-stories")
     window.content.append(stories)
@@ -657,9 +666,9 @@ def render_mine(window) -> None:
 
 
 
-def render_updates(window) -> None:
+def system_update_words(window, system_state) -> tuple[str, str, bool]:
+    """The system update's title, summary and whether one is ready (Updates, desktop and TV)."""
     fixture = bool(window.fixture)
-    system_state = window.system.state if window.system is not None else None
     ready = fixture or bool(system_state and (system_state.available or system_state.staged or
                                              system_state.restart_required))
     if fixture:
@@ -679,6 +688,13 @@ def render_updates(window) -> None:
                                                       else "An update is available.")
     else:
         title, summary = "Luma is up to date", "There is no system update waiting."
+    return title, summary, ready
+
+
+def render_updates(window) -> None:
+    fixture = bool(window.fixture)
+    system_state = window.system.state if window.system is not None else None
+    title, summary, ready = system_update_words(window, system_state)
     title_label = _text(title, "title-1", wrap=True, weight=750)
     title_label.set_max_width_chars(22)
     summary_label = _text(summary, "body", wrap=True)

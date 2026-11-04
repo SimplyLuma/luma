@@ -372,6 +372,15 @@
       "prop": "^width$",
       "max_ratio": 0.05,
       "gtk_family": "figtree"
+    },
+    {
+      "id": "rating-stars-fallback",
+      "doc": "lumaui-deviations.md: rating-stars-fallback",
+      "reason": "Figtree has no \u2605/\u2606: both sides draw a rating's five stars from a fallback face; the spec reports the CSS family, GTK the face that drew them, whose advances are a few px wider.",
+      "apps": ["tv-depot"],
+      "subject": "^text \"[\u2605\u2606]{5}\"$",
+      "prop": "^(font family|font weight|width)$",
+      "max_delta": 8
     }
   ]
 }

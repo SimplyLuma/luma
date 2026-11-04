@@ -1,0 +1,366 @@
+{
+ "source": "design-center mockups/apps/depot/catalogue.js, the apps luma-tv-depot.html lists",
+ "apps": [
+  {
+   "id": "tide",
+   "name": "Tide",
+   "summary": "Your music, from everywhere you keep it",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "size": "38 MB",
+   "version": "1.0.4",
+   "shots": [
+    "tide-desktop-dark",
+    "tide-desktop-light",
+    "tide-phone-dark"
+   ],
+   "desc": [
+    "Tide plays the music on this computer and on your own music server in one library. The album that's playing lights the window, and the queue survives a restart.",
+    "Gapless playback, a mini player in the Shelf, and the same library on your phone."
+   ],
+   "news": {
+    "v": "1.0.4",
+    "date": "Oct 18",
+    "items": [
+     "Crossfade between tracks, from off to 12 seconds",
+     "Albums from a Navidrome server load twice as fast"
+    ]
+   },
+   "rating": {
+    "avg": 4.9,
+    "n": 1204
+   },
+   "reach": [
+    [
+     "music-2",
+     "Your Music folder",
+     "Reads it to build your library"
+    ],
+    [
+     "headphones",
+     "Your music server",
+     "Only if you add one, like Navidrome"
+    ],
+    [
+     "shield-check",
+     "No account",
+     "Nothing about what you play leaves this computer"
+    ]
+   ],
+   "alt": [
+    "iTunes",
+    "Apple Music",
+    "Winamp"
+   ]
+  },
+  {
+   "id": "photos",
+   "name": "Photos",
+   "summary": "Every photo you've taken, beautifully kept",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "size": "44 MB",
+   "version": "1.0.3",
+   "shots": [
+    "photos-desktop-dark",
+    "photos-desktop-light",
+    "photos-phone-dark"
+   ],
+   "desc": [
+    "Your photos by day, month and year, with the places and the people in them. Memories gathers a weekend or a trip without being asked.",
+    "Edits are kept beside the original, so you can always go back."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 902
+   },
+   "reach": [
+    [
+     "image",
+     "Your Pictures folder",
+     "Where your library lives"
+    ],
+    [
+     "map-pin",
+     "Places in your photos",
+     "Read from the photos themselves; nothing is uploaded"
+    ]
+   ],
+   "alt": [
+    "Google Photos",
+    "Apple Photos"
+   ]
+  },
+  {
+   "id": "youtube",
+   "name": "YouTube",
+   "summary": "Watch YouTube, made for Luma",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "size": "27 MB",
+   "version": "0.9",
+   "shots": [
+    "youtube-desktop-dark",
+    "youtube-desktop-light",
+    "youtube-phone-dark"
+   ],
+   "desc": [
+    "A YouTube client in Luma's own parts: the video leads, Up next sits beside it, and it keeps your place across the desktop, a tablet and your phone."
+   ],
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ]
+   ]
+  },
+  {
+   "id": "weather",
+   "name": "Weather",
+   "summary": "The sky, at a glance",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "size": "6 MB",
+   "version": "1.0",
+   "shots": [
+    "weather-desktop-dark",
+    "weather-desktop-light",
+    "weather-phone-dark"
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 311
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "map-pin",
+     "Your location",
+     "If you let it, for local weather"
+    ]
+   ]
+  },
+  {
+   "id": "ari",
+   "name": "Ari",
+   "summary": "Ask anything, on this computer",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "size": "1.2 GB",
+   "version": "0.8",
+   "shots": [
+    "ari-desktop-dark",
+    "ari-desktop-light",
+    "ari-phone-dark"
+   ],
+   "desc": [
+    "Ari answers questions, finds things across your apps and does small jobs for you. It runs on this computer; when a question needs the internet, it says so and asks."
+   ],
+   "reach": [
+    [
+     "layers",
+     "Your apps' content",
+     "Only what you ask about"
+    ],
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ]
+   ]
+  },
+  {
+   "id": "vlc",
+   "name": "VLC",
+   "summary": "Plays everything",
+   "cat": "media",
+   "dev": "VideoLAN",
+   "verified": true,
+   "size": "53 MB",
+   "version": "3.0.21",
+   "rating": {
+    "avg": 4.7,
+    "n": 3310
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ],
+    [
+     "globe",
+     "The network",
+     "For streams you open"
+    ]
+   ],
+   "mark": {
+    "file": "vlcmediaplayer",
+    "bg": "#FF8800"
+   }
+  },
+  {
+   "id": "kodi",
+   "name": "Kodi",
+   "summary": "Your media centre",
+   "cat": "media",
+   "dev": "Team Kodi",
+   "size": "96 MB",
+   "version": "21.2",
+   "rating": {
+    "avg": 4.5,
+    "n": 288
+   },
+   "mark": {
+    "file": "kodi",
+    "bg": "#17B2E7"
+   }
+  },
+  {
+   "id": "spotify",
+   "name": "Spotify",
+   "summary": "Music and podcasts, streamed",
+   "cat": "media",
+   "dev": "Spotify",
+   "size": "180 MB",
+   "version": "1.2.48",
+   "rating": {
+    "avg": 4.4,
+    "n": 5412
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "volume-2",
+     "Sound",
+     "To play"
+    ]
+   ],
+   "mark": {
+    "file": "spotify",
+    "bg": "#121212",
+    "fg": "#1ED760"
+   },
+   "alt": [
+    "iTunes",
+    "Apple Music"
+   ]
+  },
+  {
+   "id": "discord",
+   "name": "Discord",
+   "summary": "Talk, play, hang out",
+   "cat": "work",
+   "dev": "Discord",
+   "size": "92 MB",
+   "version": "1.0.159",
+   "news": {
+    "v": "1.0.160",
+    "date": "Oct 21",
+    "items": [
+     "Faster start-up",
+     "A fix for sharing your screen"
+    ]
+   },
+   "rating": {
+    "avg": 4.3,
+    "n": 2018
+   },
+   "mark": {
+    "file": "discord",
+    "bg": "#5865F2"
+   }
+  },
+  {
+   "id": "steam",
+   "name": "Steam",
+   "summary": "Your games library",
+   "cat": "play",
+   "dev": "Valve",
+   "verified": true,
+   "size": "4 MB",
+   "version": "1.0.0.82",
+   "desc": [
+    "Your Steam library on Luma. Most Windows games run through Proton without changes."
+   ],
+   "rating": {
+    "avg": 4.6,
+    "n": 5120
+   },
+   "reach": [
+    [
+     "shield-check",
+     "Installed into the system",
+     "It comes off the next time you restart after removing it"
+    ]
+   ],
+   "mark": {
+    "file": "steam",
+    "bg": "#1B2838"
+   }
+  },
+  {
+   "id": "heroic",
+   "name": "Heroic",
+   "summary": "Your Epic, GOG and Amazon games",
+   "cat": "play",
+   "dev": "Heroic Games Launcher",
+   "size": "326 MB",
+   "version": "2.18",
+   "rating": {
+    "avg": 4.5,
+    "n": 311
+   }
+  },
+  {
+   "id": "moonlight",
+   "name": "Moonlight",
+   "summary": "Stream games from your PC",
+   "cat": "play",
+   "dev": "Moonlight Game Streaming",
+   "size": "8 MB",
+   "version": "6.1",
+   "rating": {
+    "avg": 4.6,
+    "n": 190
+   }
+  },
+  {
+   "id": "supertux",
+   "name": "SuperTux",
+   "summary": "A classic side-scroller",
+   "cat": "play",
+   "dev": "SuperTux Team",
+   "size": "160 MB",
+   "version": "0.6.3"
+  }
+ ],
+ "system": {
+  "name": "Luma 1.0 · nightly October 22",
+  "blurb": "Faster wake from sleep, Tide crossfades, plus 14 more changes.",
+  "size": "312 MB"
+ },
+ "switching": [
+  [
+   "iTunes",
+   [
+    "tide",
+    "spotify"
+   ]
+  ]
+ ]
+}

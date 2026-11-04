@@ -2416,6 +2416,14 @@
       "gtk_symbolic_sha256": "8f092c77f8004e21672957922216f0af7e938ac7b53f47a8139d9dbf68a1ab30"
     },
     {
+      "lucide": "tv-minimal",
+      "icon": "lumaui-tv-minimal-symbolic",
+      "source": "upstream/lucide/lumaui/tv-minimal.svg",
+      "sha256": "30f94480851b6548e160d8d8735dbc8ef437de567d6e91c130b2e6c586cc238f",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "29253c78461d86c286c324752f24d2eab69786e35eca65181bb060f10bd2b607"
+    },
+    {
       "lucide": "type",
       "icon": "lumaui-type-symbolic",
       "source": "upstream/lucide/lumaui/type.svg",
