@@ -37,9 +37,9 @@
 #
 # --device-repo applies the Pi's kernel at build time, as a client-side
 # rpm-ostree override of that commit: Fedora's kernel packages removed,
-# kernel-luma-rpi installed from DIR, the signed rpm-md repository the
-# Raspberry Pi 5 device repository publishes (repomd.xml.asc and package
-# signatures checked against --device-key, an armored public key). The card
+# kernel-luma-rpi installed from DIR, the rpm-md repository the Raspberry Pi 5
+# device repository publishes (package signatures checked against
+# --device-key, an armored public key: gpgcheck=1). The card
 # keeps that repository (/etc/yum.repos.d/luma-raspberrypi-rpi5.repo at
 # --device-repo-url, only kernel-luma-rpi, excluding every Luma-owned name)
 # and key (/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5), so every
@@ -135,8 +135,7 @@ fi
 [ -z "$first_boot_overlay" ] || [ -d "$first_boot_overlay" ] || fail "--first-boot-overlay must be a directory"
 if [ -n "$device_repo" ]; then
   [ -n "$device_key" ] || fail "--device-repo needs --device-key (the repository's armored public key)"
-  [ -f "$device_repo/repodata/repomd.xml" ] && [ -f "$device_repo/repodata/repomd.xml.asc" ] ||
-    fail "--device-repo is not a signed rpm-md repository (repodata/repomd.xml and repomd.xml.asc)"
+  [ -f "$device_repo/repodata/repomd.xml" ] || fail "--device-repo is not an rpm-md repository (repodata/repomd.xml)"
   grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$device_key" || fail "--device-key is not an armored public key"
   [[ "$device_repo_url" =~ ^https://[^[:space:]]+/$ ]] || fail "--device-repo-url must be an https:// URL ending in /"
 else
@@ -366,7 +365,6 @@ write_device_repo() {  # DEPLOYMENT BASEURL
     echo "baseurl=$2"
     echo "enabled=1"
     echo "gpgcheck=1"
-    echo "repo_gpgcheck=1"
     echo "gpgkey=file://$device_key_path"
     echo "includepkgs=kernel-luma-rpi"
     [ -z "$excludes" ] || echo "# Luma: packages the Luma image owns never come from this repository"
