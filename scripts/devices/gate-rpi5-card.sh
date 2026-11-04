@@ -190,7 +190,7 @@ grep -q '^baseurl=https://' /etc/yum.repos.d/luma-raspberrypi-rpi5.repo 2>/dev/n
 grep -qx repo_gpgcheck=1 /etc/yum.repos.d/luma-raspberrypi-rpi5.repo || problems+=("device repository metadata is not signature-checked")
 if rpm -q luma-rpi5-platform >/dev/null 2>&1; then
   # The no-sleep policy applies on Pi 5 boards only (the VM is linux,dummy-virt).
-  if tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | grep -q '^raspberrypi,5'; then
+  if [ -r /proc/device-tree/compatible ] && tr '\0' '\n' </proc/device-tree/compatible | grep -q '^raspberrypi,5'; then
     [ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
       problems+=("logind still offers suspend")
   else
