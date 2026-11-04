@@ -6,8 +6,12 @@
 # and write the gate-result.json that publish-channel.sh checks
 # (org.projectluma.os-gate/v1).
 #
-#   gate-rpi5-card.sh --image CARD.img.xz --key SSH_PRIVATE_KEY --build-env build.env
-#                     --export-env export.env --output gate-result.json [--work DIR]
+#   gate-rpi5-card.sh (--image CARD.img.xz | --disk-url nbd://HOST:PORT) --key SSH_PRIVATE_KEY
+#                     --build-env build.env --export-env export.env --output gate-result.json [--work DIR]
+#
+# --disk-url boots a disk served elsewhere (the expanded card, raw, 32 GiB, e.g.
+# qemu-nbd on the build host behind an SSH tunnel) so the gate host needs no
+# local disk space.
 #
 # CARD is the card build-rpi5-disk-image.sh made from the candidate with
 # --test-payload <candidate repo> <candidate> --test-ssh-key <KEY.pub>: the
@@ -24,10 +28,11 @@
 # publish-channel.sh refuses once it does, until those stages are added here.
 set -euo pipefail
 
-image="" key="" build_env="" export_env="" output="" work=""
+image="" disk_url="" key="" build_env="" export_env="" output="" work=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --image) image=$(realpath "${2:?}"); shift 2 ;;
+    --disk-url) disk_url=${2:?}; shift 2 ;;
     --key) key=$(realpath "${2:?}"); shift 2 ;;
     --build-env) build_env=$(realpath "${2:?}"); shift 2 ;;
     --export-env) export_env=$(realpath "${2:?}"); shift 2 ;;
@@ -36,7 +41,7 @@ while [ "$#" -gt 0 ]; do
     *) sed -n 's/^#   gate-rpi5-card.sh /usage: gate-rpi5-card.sh /p' "$0" >&2; exit 2 ;;
   esac
 done
-[ -n "$image" ] && [ -n "$key" ] && [ -n "$build_env" ] && [ -n "$export_env" ] && [ -n "$output" ] || {
+{ [ -n "$image" ] || [ -n "$disk_url" ]; } && [ -n "$key" ] && [ -n "$build_env" ] && [ -n "$export_env" ] && [ -n "$output" ] || {
   sed -n 's/^#   gate-rpi5-card.sh /usage: gate-rpi5-card.sh /p' "$0" >&2; exit 2; }
 value() { sed -n "s/^$2=//p" "$1" | head -n 1; }
 candidate=$(value "$export_env" LUMA_EXPORT_CANDIDATE)
@@ -93,6 +98,10 @@ fail_now() { stage "$1" fail "$2"; finish || true; exit 1; }
 
 # fresh-install: the card image on a 32 GiB sparse disk (the first boot grows
 # the root partition and imports the offline apps).
+if [ -n "$disk_url" ]; then
+  drive="file=$disk_url,format=raw,if=virtio,cache=writeback"
+  disk_detail="served disk $disk_url"
+else
 python3 - "$image" "$work/disk.img" <<'PY'
 import lzma, sys
 src, dst = sys.argv[1:]
@@ -105,14 +114,17 @@ with lzma.open(src) as i, open(dst, "wb") as o:
             o.write(chunk)
     o.truncate(32 << 30)
 PY
+  drive="if=virtio,format=raw,file=$work/disk.img"
+  disk_detail="card image $(basename "$image") on a 32 GiB disk"
+fi
 cp "$(dirname "$firmware")/edk2-arm-vars.fd" "$work/vars.fd" 2>/dev/null || dd if=/dev/zero of="$work/vars.fd" bs=1048576 count=64 2>/dev/null
 qemu-system-aarch64 -M virt -accel "$accel" -cpu host -m 6G -smp 4 \
   -drive if=pflash,format=raw,readonly=on,file="$firmware" -drive if=pflash,format=raw,file="$work/vars.fd" \
-  -drive if=virtio,format=raw,file="$work/disk.img" -device virtio-gpu-pci -device qemu-xhci -device usb-kbd \
+  -drive "$drive" -device virtio-gpu-pci -device qemu-xhci -device usb-kbd \
   -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$port-:22 \
   -display none -serial file:"$work/serial.log" -qmp unix:"$work/qmp.sock",server,nowait &
 qemu_pid=$!
-stage fresh-install pass "card image $(basename "$image") on a 32 GiB disk, UEFI boot"
+stage fresh-install pass "$disk_detail, UEFI boot"
 
 for _ in $(seq 1 90); do vm true 2>/dev/null && break; sleep 10; done
 vm true 2>/dev/null || fail_now fresh-first-boot "no SSH within 15 minutes (serial: $work/serial.log)"
