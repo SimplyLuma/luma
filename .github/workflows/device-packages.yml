@@ -97,11 +97,29 @@ jobs:
       - name: Prepare Fedora build tools
         run: dnf5 -y install git cpio curl rpm-build dnf5-plugins python3 findutils glibc-langpack-en
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - name: Mark the checkout safe for git archive
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      # A pull request that changes no kernel input reuses the artifacts of the
+      # pull request that set the kernel pin (the nightly preflight fetches
+      # those), so it skips the hours-long build.
+      - name: Decide whether the kernel changed
+        id: kernel
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE" ] || git diff --name-only "$BASE" HEAD -- scripts/packages/build-kernel-luma-rpi.sh \
+               packaging/rpm/kernel-luma-rpi.spec config/kernel scripts/kernel | grep -q .; then
+            echo build=1 >>"$GITHUB_OUTPUT"
+          else
+            echo "No kernel input changed; kernel-luma-rpi comes from the pull request that pinned it."
+          fi
       - name: Build kernel-luma-rpi (Fedora configuration, a few hours)
+        if: steps.kernel.outputs.build == '1'
         run: bash scripts/packages/build-kernel-luma-rpi.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.kernel.outputs.build == '1'
         with:
           name: device-kernel-luma-rpi-aarch64
           path: build/packages/kernel-luma-rpi/

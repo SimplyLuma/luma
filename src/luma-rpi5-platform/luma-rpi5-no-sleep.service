@@ -1,0 +1,18 @@
+[Unit]
+Description=Turn off system sleep on the Raspberry Pi 5
+Documentation=file:///usr/share/doc/luma-rpi5-platform/README.md
+ConditionFirmware=|device-tree-compatible(raspberrypi,5-model-b)
+ConditionFirmware=|device-tree-compatible(raspberrypi,5-model-b-d0)
+ConditionFirmware=|device-tree-compatible(raspberrypi,500)
+ConditionFirmware=|device-tree-compatible(raspberrypi,5-compute-module)
+DefaultDependencies=no
+Before=sysinit.target systemd-logind.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# logind reads sleep.conf.d (including /run) whenever it is asked CanSuspend.
+ExecStart=/usr/bin/install -D -m 0644 /usr/share/luma-rpi5-platform/50-luma-rpi5-no-sleep.conf /run/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf
+
+[Install]
+WantedBy=sysinit.target

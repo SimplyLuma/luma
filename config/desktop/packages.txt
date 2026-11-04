@@ -133,7 +133,7 @@ luma-messages-e2ee-0.1.0-1.luma.2.creator20261007.1.fc44.x86_64
 # hardware_targets): the Luma Pi kernel replaces Fedora's, platform support,
 # Bluetooth patch RAM, GStreamer with the Pi HEVC decoder fix.
 kernel-luma-rpi-7.2.15-1.luma.rpi.fc44.aarch64
-luma-rpi5-platform-0.3.0-1.luma.2.fc44.noarch
+luma-rpi5-platform-0.4.0-1.luma.1.fc44.noarch
 luma-rpi-bluetooth-firmware-0-1.20251002gitcdf61dc.luma.1.fc44.noarch
 gstreamer1-plugins-bad-free-1.28.8-1.luma.1.fc44.aarch64
 gstreamer1-plugins-bad-free-libs-1.28.8-1.luma.1.fc44.aarch64
