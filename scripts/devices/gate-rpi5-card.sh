@@ -61,6 +61,7 @@ version=$(field version)
 card=$(field image)
 override=$(field override)
 locals=$(awk '$1 == "local_package" {print $2}' "$manifest" | sed -E 's/-[^-]+-[^-]+\.(noarch|aarch64)\.rpm$//' | tr '\n' ' ')
+locals="$locals $(printf '%s\n' "$override" | sed -n 's/.*requested=\([^ ]*\).*/\1/p' | tr ';' ' ')"
 ref=${origin#*:}
 [[ "$candidate" =~ ^[0-9a-f]{64}$ ]] || { echo "no commit in $manifest" >&2; exit 1; }
 [ -z "$expect_commit" ] || [ "$candidate" = "$expect_commit" ] || { echo "the card carries $candidate, not $expect_commit" >&2; exit 1; }
@@ -185,7 +186,8 @@ if [ -e /etc/luma/update.conf ] && grep -Eq '^\s*(hardware_target\s*=\s*\S|ref_t
   problems+=("update.conf names a hardware target")
 fi
 grep -q '^baseurl=https://' /etc/yum.repos.d/luma-raspberrypi-rpi5.repo 2>/dev/null || problems+=("no Raspberry Pi 5 device repository")
-[ -s /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5 ] || problems+=("no device repository key")
+[ -s /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release ] || problems+=("no release key for the device repository")
+grep -qx repo_gpgcheck=1 /etc/yum.repos.d/luma-raspberrypi-rpi5.repo || problems+=("device repository metadata is not signature-checked")
 if rpm -q luma-rpi5-platform >/dev/null 2>&1; then
   [ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
     problems+=("logind still offers suspend")
