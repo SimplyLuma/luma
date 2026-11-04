@@ -76,7 +76,7 @@ and takes newer Pi kernels from that repository. `rpm-ostree status` shows the
 override.
 
 The first boot imports the offline apps and needs several GB free after the
-root grows: a 12 GiB image needs a card (or a VM disk) of 16 GB or more.
+root grows: the 14 GiB image (the override adds a second tree while the card is built) needs a card (or a VM disk) of 16 GB or more.
 
 Inputs: the night's aarch64 ISO (release key, update URL), the signed OSTree
 repository holding the generic commit, and the signed device repository

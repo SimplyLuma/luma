@@ -101,7 +101,7 @@ disk_id=0x4c554d42
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-iso="" output="" uboot_rpm="" size_gib=12 compress=1 test_repo="" test_commit="" test_key=""
+iso="" output="" uboot_rpm="" size_gib=14 compress=1 test_repo="" test_commit="" test_key=""
 payload_src="" payload_ref="" first_boot_overlay="" release=0
 device_repo="" device_key="" device_repo_url=https://dl.simplyluma.com/os/devices/aarch64/raspberrypi-rpi5/
 local_packages=() replace_local=()
