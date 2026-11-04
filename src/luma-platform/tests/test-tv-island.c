@@ -192,6 +192,19 @@ static void check_desktop(GtkApplication *app) {
   spin(100);
 }
 
+/* The unit the frame styles with: the window's screen (a TV app fills it), else the window. */
+static double frame_unit(GtkWidget *window) {
+  GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
+  GdkMonitor *monitor = surface != NULL ? gdk_display_get_monitor_at_surface(gtk_widget_get_display(window), surface) : NULL;
+  if (monitor != NULL) {
+    GdkRectangle geometry;
+    gdk_monitor_get_geometry(monitor, &geometry);
+    if (geometry.width > 0 && geometry.height > 0)
+      return luma_ui_tv_unit(geometry.width, geometry.height);
+  }
+  return luma_ui_tv_unit(gtk_widget_get_width(window), gtk_widget_get_height(window));
+}
+
 static void check_tv(GtkApplication *app) {
   g_setenv("LUMA_POSTURE", "tv", TRUE);
   GtkWidget *sidebar, *page;
@@ -257,7 +270,7 @@ static void check_tv(GtkApplication *app) {
   GtkWidget *clock = find_with_class(window, "lumaui-tv-clock");
   CHECK(cluster != NULL && clock != NULL && !gtk_widget_get_focusable(cluster));
   if (cluster != NULL && clock != NULL) {
-    double u = luma_ui_tv_unit(gtk_widget_get_width(window), gtk_widget_get_height(window));
+    double u = frame_unit(window); /* the frame sizes the bar from the screen, not the window */
     graphene_rect_t c, k;
     CHECK(gtk_widget_compute_bounds(clock, window, &k) && gtk_widget_compute_bounds(cluster, window, &c));
     CHECK(fabs(k.origin.x + k.size.width - (gtk_widget_get_width(window) - 96 * u)) < 2);
