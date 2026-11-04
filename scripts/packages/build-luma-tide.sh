@@ -111,7 +111,7 @@ install -m 0644 "$repo_root/packaging/rpm/luma-tide.spec" "$rpmbuild_dir/SPECS/"
     # inside a track row does not also activate the row.
     dnf5 -q -y --setopt=exclude= install \
       ../../luma-developer-platform/$architecture/RPMS/$platform_rpm_name \
-      appstream dbus-daemon desktop-file-utils gstreamer1 gstreamer1-plugins-base \
+      acl appstream dbus-daemon desktop-file-utils glib2 gstreamer1 gstreamer1-plugins-base \
       gstreamer1-plugins-good gtk4 libadwaita libappstream-glib meson ninja-build \
       python3-devel python3-gobject python3-gobject-base python3-mutagen rpm-build shared-mime-info \
       xdotool xorg-x11-server-Xvfb
