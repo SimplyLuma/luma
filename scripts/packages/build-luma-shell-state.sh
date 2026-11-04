@@ -53,6 +53,9 @@ for source in \
   gtk-translucent.css \
   gtk4-translucent.css \
   index-translucent.theme \
+  luma-tv-cec \
+  luma-tv-cec@.service \
+  70-luma-tv-cec.rules \
   README.md; do
   install -m 0644 "$repo_root/src/luma-shell-state/$source" \
     "$rpmbuild_dir/SOURCES/$source"
@@ -60,6 +63,7 @@ done
 chmod 0755 \
   "$rpmbuild_dir/SOURCES/luma-shell-state-service" \
   "$rpmbuild_dir/SOURCES/luma-shell-statectl" \
+  "$rpmbuild_dir/SOURCES/luma-tv-cec" \
   "$rpmbuild_dir/SOURCES/luma-device-class-environment"
 install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"
 install -m 0644 "$repo_root/packaging/rpm/luma-shell-state.spec" \

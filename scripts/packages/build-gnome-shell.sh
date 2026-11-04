@@ -362,8 +362,15 @@ install -m 0644 "$repo_root/patches/gnome-shell/0301-keycap-layer-switch-swaps-c
 install -m 0644 "$repo_root/patches/gnome-shell/0302-keycap-warm-layers-after-every-show.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0294-notification-dismissal-policy.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/patches/gnome-shell/0303-mobile-data-quick-toggle.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0322-tv-home.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0323-tv-keyboard.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0324-tv-input.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0325-tv-dialogs.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0326-tv-screen-edges.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0327-tv-quick-panel.patch" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/patches/gnome-shell/0328-tv-app-switcher.patch" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tools/check-shell-shadows.py" "$rpmbuild_dir/SOURCES/"
-for source in safeAreas.js powerButton.js incomingCall.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css; do
+for source in safeAreas.js powerButton.js incomingCall.js presentation.js layout.js grid.js homeEditor.js widgets.js tabletTasks.js handheldOptions.js frameTokens.js switcherDrag.js statusGrid.js fillSlider.js optionsSurface.js optionsSurface.css presentation.css appDrawer.js launcherFolders.js fileFaces.js launcherModel.js launcherFolders.css launcher.svg keycap.js keycapTokens.js keycap.css tv.js tvModel.js tvTokens.js tv-backdrop.jpg tvKeyboard.js tvInput.js tvInputModel.js tvDialogs.js tvDialogsModel.js tvScreenEdges.js tvQuickPanel.js tvQuickPanelModel.js tvAppSwitcher.js tvAppSwitcherModel.js tvPointer.js; do
   install -m 0644 "$repo_root/src/luma-shell-presentation/$source" "$rpmbuild_dir/SOURCES/"
 done
 install -m 0644 "$repo_root/LICENSES/CC-BY-SA-4.0.txt" "$rpmbuild_dir/SOURCES/"
@@ -388,6 +395,11 @@ install -m 0644 "$repo_root/tests/gnome-shell/dock-badges.js" "$rpmbuild_dir/SOU
 install -m 0644 "$repo_root/tests/gnome-shell/android-existing-activation.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/settings-input-source.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/keycap-policy.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/tv-keyboard-policy.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/tv-input-policy.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/tv-dialogs-policy.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/tv-quick-panel-policy.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/tv-app-switcher-policy.js" "$rpmbuild_dir/SOURCES/"
 # Keycap icons are derived from Stevia's outlines; refuse stale copies.
 python3 "$repo_root/scripts/developer/generate-keycap-shell-icons.py" --check
 (

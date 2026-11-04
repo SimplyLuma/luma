@@ -62,6 +62,10 @@ The same texts as system-mono-face: IBM Plex Mono's advance differs from the fac
 
 A character Figtree lacks (U+23CE ⏎) falls back on both sides; the spec reports the CSS family, GTK the face that drew it.
 
+## rating-stars-fallback
+
+Figtree has no stars (U+2605 ★, U+2606 ☆). Depot's TV app page draws a rating as five of them; both sides draw them from a fallback face, the spec reports Figtree, GTK the face that drew them, and that face's advances make the run a few px wider. Only that run, on tv-depot.
+
 ## nb-hyphen-fallback
 
 Figtree has no non-breaking hyphen (U+2011, v70's "Wi‑Fi"); Pango draws it from the next face in the stack and Chromium from its own fallback, whose advances differ by a few px. The rest of the string is Figtree on both sides.
@@ -114,6 +118,10 @@ The device hints Figtree (Nick's setting, the real one): GTK rounds each glyph's
 
 The same hinted advances: an end-aligned Figtree run keeps its right edge, so its start moves by exactly its own width difference (up to 3%) and nowhere else. Only that shift of that text; never other parts.
 
+## hinted-figtree-label-small
+
+Ruled 2 November 2026. The field label (the label role, 11.5 px semibold) is a fractional size; the hinted Figtree advances of a short run at that size come out more than the 3% of hinted-figtree-advance wider: the saved-passwords phone sheet's "Password" is 53.3 px in GTK against 51.2 in the mockup (4.1%). The token stays 11.5 px (the label and caption roles share it). That label's text-run width only, up to 5%; never boxes, positions, size or weight.
+
 ## pending-nb-hyphen-line
 
 PENDING google-figtree-fonts 1.luma.4 (U+2010/U+2011 mapped to Figtree's hyphen). Until it ships, a line holding U+2011 draws its fallback face's taller line box, 1 px, and what follows on Settings' Wi‑Fi pages sits up to 2.5 px lower. Remove when the font is on the ThinkPad.
@@ -122,6 +130,9 @@ PENDING google-figtree-fonts 1.luma.4 (U+2010/U+2011 mapped to Figtree's hyphen)
 
 v70 leaves some inputs on Chromium's placeholder grey #757575, 3.8:1 on the dark well; the coordinator ruled an AA dark value, so @luma_placeholder_ink is #85878b in dark. Only that pair.
 
+## tv-page-edge-fade
+
+A TV page's scroll edge fades are longer and eased (about 48 at the top, 128 at the bottom, only where the page continues), Nick's ruling of 1 November 2026 over the mockup's 12/40 linear mask. A glyph in the bottom strip (from y 952 at 1080) stands on a differently faded ground, so its sampled colour differs by up to ΔE 8. Glyph colour only, in that strip; never positions, sizes or other parts.
 
 ## First-boot setup (first-boot-*)
 

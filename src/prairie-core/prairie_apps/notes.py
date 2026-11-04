@@ -293,6 +293,7 @@ class NotesWindow(AppWindow):
             minimum_height=380,
         )
         self.add_css_class("luma-notes")
+        self.add_css_class("notes-window")
         self.toast_overlay = Adw.ToastOverlay()
         self.split = IslandSplitView(collapsed=False, show_content=False)
         self.split.set_sidebar_width_unit(Adw.LengthUnit.PX)

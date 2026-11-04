@@ -1267,6 +1267,31 @@ class LibraryStore:
             ).fetchall()
             return self._tracks_from_rows(rows)
 
+    def library_listing(self) -> tuple[list[sqlite3.Row], list[tuple[str, str]]]:
+        """What the library view draws, in two queries and without credits: the
+        shown tracks' plain columns in library order, and every (track, source)
+        pair that has a copy (shown or not)."""
+        with self._lock:
+            shown = self._shown_clause()
+            where = f" WHERE {shown}" if shown else ""
+            rows = self._connection.execute(
+                "SELECT t.id, t.title, t.album, t.album_artist, t.duration_ns, t.track_number, t.year, t.favorite"
+                f" FROM tracks t{where} ORDER BY t.album_artist COLLATE NOCASE, t.album COLLATE NOCASE,"
+                " t.disc_number, t.track_number, t.title COLLATE NOCASE"
+            ).fetchall()
+            pairs = self._connection.execute("SELECT DISTINCT track_id, source_id FROM copies").fetchall()
+        return rows, [(track_id, source_id) for track_id, source_id in pairs]
+
+    def offline_ready_tracks(self) -> set[str]:
+        """Tracks with a completed download still on this device (TrackCopy.offline_ready), in one query."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT c.track_id, o.path FROM offline_items o JOIN copies c ON c.id=o.copy_id"
+                " WHERE o.state=? AND o.path IS NOT NULL",
+                (OfflineState.COMPLETE.value,),
+            ).fetchall()
+        return {track_id for track_id, path in rows if Path(path).is_file()}
+
     def has_tracks(self) -> bool:
         with self._lock:
             return self._connection.execute("SELECT 1 FROM tracks LIMIT 1").fetchone() is not None

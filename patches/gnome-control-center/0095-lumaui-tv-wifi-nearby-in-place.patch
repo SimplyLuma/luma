@@ -1,0 +1,302 @@
+diff --git a/shell/cc-luma-rows.c b/shell/cc-luma-rows.c
+index 181e015..86114cf 100644
+--- a/shell/cc-luma-rows.c
++++ b/shell/cc-luma-rows.c
+@@ -474,6 +474,13 @@ void cf_rows_parts (View *v)
+   parts_walk (GTK_WIDGET (v->body));
+ }
+ 
++/* One subtree added to a drawn page (a row updated in place): wrapped and named as the page is. */
++void cf_rows_prepare (View *v, GtkWidget *w)
++{
++  if (v->phone) wrap_walk (w);
++  parts_walk (w);
++}
++
+ void cf_rows_wrap (View *v)
+ {
+   if (v->phone) wrap_walk (GTK_WIDGET (v->body));
+diff --git a/shell/cc-luma-rows.h b/shell/cc-luma-rows.h
+index 9b5a880..4e05b01 100644
+--- a/shell/cc-luma-rows.h
++++ b/shell/cc-luma-rows.h
+@@ -62,6 +62,7 @@ void cf_rows_parts (View *v);
+ GtkWidget *cf_off_hero (View *v, const char *icon, const char *title, const char *subtitle, const char *key, GCallback turn_on);
+ /* On a phone, rows whose control doesn't fit beside their words put it on its own line. */
+ void cf_rows_wrap (View *v);
++void cf_rows_prepare (View *v, GtkWidget *w);
+ /* A part that keeps its proportions: natural size where it fits, scaled down where it does not. */
+ GtkWidget *cf_fit_new (GtkWidget *child);
+ G_END_DECLS
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index a293f27..818d446 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -29,6 +29,8 @@ typedef struct {
+   char *join_last;   /* the password last tried, offered again selected after a refusal */
+   gboolean join_select;
+   gboolean join_change; /* TV: a saved network's row shows its password field (Change password) */
++  GtkWidget *wifi_near;  /* weak: the drawn Wi-Fi page's Nearby card, updated in place by a scan */
++  char *wifi_sig;        /* everything that page drew apart from the Nearby list */
+   char *connecting;
+   char *variant;
+   guint variant_tick;
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index d4dd40b..73585cb 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -17,6 +17,7 @@ static void island_drawn (View *v);
+ static void island_free (View *v);
+ static gboolean page_valid (CcLumaFixture *model, const char *page);
+ void cc_luma_view_queue_refresh (View *v);
++static gboolean wifi_update_nearby (View *v);
+ 
+ 
+ static gboolean refresh_view (gpointer data)
+@@ -37,6 +38,8 @@ static gboolean refresh_view (gpointer data)
+       if (field && g_strcmp0 (gtk_widget_get_name (field), "cf-join-password") == 0)
+         { v->refresh = g_timeout_add (400, refresh_view, v); return G_SOURCE_REMOVE; }
+     }
++  if (g_str_equal (v->page, "wifi") && wifi_update_nearby (v))
++    return G_SOURCE_REMOVE;
+   if (!g_str_equal (v->page, "windows") || !cc_luma_view_windows_sync (v))
+     render (v);
+   return G_SOURCE_REMOVE;
+@@ -814,6 +817,48 @@ GtkWidget *cf_signal_bars (int strength, gboolean big)
+   gtk_widget_set_tooltip_text (bars, names[strength - 1]);
+   return bars;
+ }
++/* A scan's report changes only the Nearby list most of the time (signal, order, networks coming
++ * and going). Rebuilding the whole page for it redrew every widget, lost the focused row and
++ * re-laid the page out, on every desktop and on a TV alike. The page's other inputs are this
++ * signature; while it holds, the list is updated in place (wifi_update_nearby). */
++static char *wifi_signature (View *v)
++{
++  JsonObject *data = cc_luma_fixture_get_data (v->model);
++  JsonObject *wifi_data = json_object_get_object_member (data, "CFWIFI");
++  JsonArray *nets = json_object_get_array_member (data, "CFNETS");
++  JsonArray *known = json_object_get_array_member (data, "CFKNOWN");
++  const char *network = cc_luma_view_text (v, "net");
++  g_autoptr (GString) sig = g_string_new (NULL);
++  g_string_append_printf (sig, "%d|%d|%d|%d|%s|%s|%s|%s|%s|%u|%d|%d|%d|%s|%s|%s|%s",
++    cc_luma_view_flag (v, "wifi"), cc_luma_fixture_is_live (v->model),
++    wifi_data ? json_object_get_boolean_member_with_default (wifi_data, "present", FALSE) : -1,
++    wifi_data ? json_object_get_boolean_member_with_default (wifi_data, "hardwareEnabled", TRUE) : -1,
++    cc_luma_view_flag (v, "wifiConnecting") ? "c" : "", network, cc_luma_view_text (v, "metered"),
++    cc_luma_view_text (v, "netError"), cc_luma_view_text (v, "netStatus"), json_array_get_length (known),
++    cc_luma_view_flag (v, "hotspot"), cc_luma_fixture_get (v->model, "airplane") != NULL,
++    cc_luma_fixture_get (v->model, "airplane") ? cc_luma_view_flag (v, "airplane") : -1,
++    v->connecting ? v->connecting : "", v->joining ? v->joining : "",
++    cc_luma_view_text (v, "joinFailed"), cc_luma_view_text (v, "joinDone"));
++  g_string_append_printf (sig, "|%d", v->phone);
++  /* the connected network's own line (the hero) */
++  for (guint i = 0; nets && i < json_array_get_length (nets); i++)
++    {
++      JsonObject *n = json_array_get_object_element (nets, i);
++      if (g_str_equal (json_object_get_string_member (n, "n"), network))
++        g_string_append_printf (sig, "|%" G_GINT64_FORMAT "|%d", json_object_get_int_member (n, "sig"), json_object_get_boolean_member (n, "lock"));
++    }
++  return g_string_free (g_steal_pointer (&sig), FALSE);
++}
++/* What a nearby network's row shows: a row whose key is unchanged is kept as it is. */
++static char *nearby_key (View *v, JsonObject *network)
++{
++  const char *name = json_object_get_string_member (network, "n");
++  return g_strdup_printf ("%s|%" G_GINT64_FORMAT "|%d|%d|%d|%d", name, json_object_get_int_member (network, "sig"),
++    json_object_get_boolean_member (network, "lock"),
++    json_object_has_member (network, "known") && json_object_get_boolean_member (network, "known"),
++    json_object_has_member (network, "ent") && json_object_get_boolean_member (network, "ent"),
++    g_strcmp0 (v->connecting, name) == 0);
++}
+ /* A nearby network and an adaptive inline join form. */
+ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+ {
+@@ -837,6 +882,8 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+   g_signal_connect_object (item, "clicked", G_CALLBACK (nearby_clicked), v->root, 0);
+   gtk_box_append (GTK_BOX (wrap), item);
+   gtk_box_append (rows, wrap);
++  g_object_set_data_full (G_OBJECT (wrap), "cf-nearby-name", g_strdup (name), g_free);
++  g_object_set_data_full (G_OBJECT (wrap), "cf-nearby-key", nearby_key (v, network), g_free);
+   if (g_strcmp0 (v->joining, name) == 0 && saved && locked && luma_ui_tv_posture () && !v->join_change)
+     {
+       GtkWidget *actions = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+@@ -1041,9 +1088,12 @@ static void wifi (View *v)
+         gtk_box_append (GTK_BOX (hero_body), actions);
+     }
+   cf_hero (v, hero_body, "cf-wifi-current");
++  g_clear_weak_pointer (&v->wifi_near);
++  g_free (v->wifi_sig); v->wifi_sig = wifi_signature (v);
+   if (enabled)
+     {
+       GtkBox *near = cf_group (v, "Nearby", NULL);
++      g_set_weak_pointer (&v->wifi_near, GTK_WIDGET (near));
+       for (guint i = 0; i < json_array_get_length (nets); i++)
+         {
+           JsonObject *n = json_array_get_object_element (nets, i);
+@@ -1062,6 +1112,74 @@ static void wifi (View *v)
+       cf_sw (v, more, "airplane", "Airplane mode", "Turns off Wi‑Fi, Bluetooth and mobile data", NULL);
+   }
+ }
++/* The Nearby list brought up to date in place: rows whose network and what it shows are unchanged
++ * are kept (and with them the focus, the scroll and every drawn node), changed rows are replaced
++ * where they stand, new ones added, gone ones removed, and the order follows the scan. FALSE when
++ * anything else on the page changed: the page is then drawn afresh. */
++static gboolean wifi_update_nearby (View *v)
++{
++  if (!v->wifi_near || !g_str_equal (v->page, "wifi") || (v->query && *v->query) || v->live_lock || v->live_permission)
++    return FALSE;
++  g_autofree char *sig = wifi_signature (v);
++  if (g_strcmp0 (sig, v->wifi_sig) != 0)
++    return FALSE;
++  GtkBox *near = GTK_BOX (v->wifi_near);
++  JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (v->model), "CFNETS");
++  const char *network = cc_luma_view_text (v, "net");
++  g_autoptr (GHashTable) rows = g_hash_table_new (g_str_hash, g_str_equal);
++  GtkWidget *tail = NULL; /* the rows after the networks (Hidden network) stay last */
++  for (GtkWidget *c = gtk_widget_get_first_child (GTK_WIDGET (near)); c; c = gtk_widget_get_next_sibling (c))
++    {
++      const char *name = g_object_get_data (G_OBJECT (c), "cf-nearby-name");
++      if (name) g_hash_table_insert (rows, (gpointer) name, c);
++      else if (!tail) tail = c;
++    }
++  GtkWidget *previous = NULL;
++  g_autoptr (GHashTable) kept = g_hash_table_new (g_direct_hash, g_direct_equal);
++  for (guint i = 0; nets && i < json_array_get_length (nets); i++)
++    {
++      JsonObject *n = json_array_get_object_element (nets, i);
++      const char *name = json_object_get_string_member (n, "n");
++      if (g_str_equal (name, network)) continue;
++      GtkWidget *row = g_hash_table_lookup (rows, name);
++      g_autofree char *key = nearby_key (v, n);
++      if (row && g_hash_table_contains (kept, row)) continue; /* the same name twice in a scan */
++      if (!row || g_strcmp0 (g_object_get_data (G_OBJECT (row), "cf-nearby-key"), key) != 0)
++        {
++          /* new, or showing something new: drawn as the full page would draw it, in its place */
++          GtkWidget *scratch = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
++          g_object_ref_sink (scratch);
++          nearby_row (v, GTK_BOX (scratch), n);
++          GtkWidget *fresh = g_object_ref (gtk_widget_get_first_child (scratch));
++          gtk_box_remove (GTK_BOX (scratch), fresh);
++          g_object_unref (scratch);
++          gtk_box_insert_child_after (near, fresh, previous);
++          cf_rows_prepare (v, fresh);
++          g_object_unref (fresh);
++          if (row) gtk_box_remove (near, row);
++          row = fresh;
++        }
++      else if (gtk_widget_get_prev_sibling (row) != previous)
++        gtk_box_reorder_child_after (near, row, previous);
++      g_hash_table_add (kept, row);
++      previous = row;
++    }
++  for (GtkWidget *c = gtk_widget_get_first_child (GTK_WIDGET (near)), *next; c; c = next)
++    {
++      next = gtk_widget_get_next_sibling (c);
++      if (g_object_get_data (G_OBJECT (c), "cf-nearby-name") && !g_hash_table_contains (kept, c))
++        gtk_box_remove (near, c);
++    }
++  if (tail && gtk_widget_get_prev_sibling (tail) != previous)
++    gtk_box_reorder_child_after (near, tail, previous);
++  /* the header's count, as the page would say it */
++  if (v->subtitle && cc_luma_view_flag (v, "wifi") && !*network)
++    {
++      g_autofree char *meta = g_strdup_printf ("%u networks nearby", json_array_get_length (nets));
++      gtk_label_set_text (v->subtitle, meta);
++    }
++  return TRUE;
++}
+ static void copy_value (LumaBarItem *item, GtkWidget *root)
+ {
+   const char *value = g_object_get_data (G_OBJECT (item), "cf-value");
+@@ -1344,6 +1462,8 @@ static gboolean restore_scroll (gpointer data)
+ }
+ static void view_free (View *v)
+ {
++  g_clear_weak_pointer (&v->wifi_near);
++  g_free (v->wifi_sig);
+   if (v->model_changed) g_clear_signal_handler (&v->model_changed, v->model);
+   cc_luma_live_lock_free (v->live_lock);
+   cc_luma_live_permission_free (v->live_permission);
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 59978e0..96fe362 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -259,6 +259,70 @@ static void nearby_join (void)
+   g_signal_emit_by_name (find_network (view, "Studio North"), "clicked");
+   g_object_unref (view); drain ();
+ }
++/* The page's words in order: two drawings of the same state read the same. */
++static void words (GtkWidget *w, GString *out)
++{
++  if (!gtk_widget_get_visible (w)) return;
++  if (GTK_IS_LABEL (w)) { g_string_append (out, gtk_label_get_text (GTK_LABEL (w))); g_string_append_c (out, '\n'); }
++  for (GtkWidget *c = gtk_widget_get_first_child (w); c; c = gtk_widget_get_next_sibling (c)) words (c, out);
++}
++/* A scan's report (signal, order, networks coming and going) updates the Nearby list in place:
++ * unchanged rows are the same widgets, and the page reads exactly as one drawn afresh. */
++static void nearby_in_place (void)
++{
++  g_autoptr (CcLumaFixture) model = load ();
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  drain ();
++  JsonArray *nets = json_object_get_array_member (cc_luma_fixture_get_data (model), "CFNETS");
++  const char *net = json_node_get_string (cc_luma_fixture_get (model, "net"));
++  g_autoptr (GPtrArray) names = g_ptr_array_new_with_free_func (g_free);
++  for (guint i = 0; i < json_array_get_length (nets); i++)
++    {
++      const char *n = json_object_get_string_member (json_array_get_object_element (nets, i), "n");
++      if (!g_str_equal (n, net)) g_ptr_array_add (names, g_strdup (n));
++    }
++  g_assert_cmpuint (names->len, >=, 3);
++  const char *kept = names->pdata[0], *changed = names->pdata[1], *gone = names->pdata[2];
++  GtkWidget *kept_row = find_network (view, kept), *changed_row = find_network (view, changed);
++  g_assert_nonnull (kept_row);
++  /* the next scan: reversed, one weaker, one gone, one new */
++  g_autoptr (JsonNode) next = json_node_new (JSON_NODE_ARRAY);
++  JsonArray *list = json_array_new ();
++  for (guint i = json_array_get_length (nets); i-- > 0;)
++    {
++      JsonObject *n = json_array_get_object_element (nets, i);
++      const char *name = json_object_get_string_member (n, "n");
++      if (g_str_equal (name, gone)) continue;
++      JsonNode *copy = json_node_copy (json_array_get_element (nets, i));
++      if (g_str_equal (name, changed))
++        json_object_set_int_member (json_node_get_object (copy), "sig", json_object_get_int_member (n, "sig") > 1 ? 1 : 4);
++      json_array_add_element (list, copy);
++    }
++  JsonObject *fresh = json_object_new ();
++  json_object_set_string_member (fresh, "n", "Luma Test Network");
++  json_object_set_int_member (fresh, "sig", 2);
++  json_object_set_boolean_member (fresh, "lock", TRUE);
++  json_array_add_object_element (list, fresh);
++  json_node_take_array (next, list);
++  /* every network can be shared (the model's own rule for a valid page) */
++  JsonObject *codes = json_object_get_object_member (json_object_get_object_member (cc_luma_fixture_get_data (model), "CFWIFI"), "share_codes");
++  json_object_set_string_member (codes, "Luma Test Network", "WIFI:T:WPA;S:Luma Test Network;P:test;;");
++  cc_luma_fixture_publish_data (model, "CFNETS", next);
++  cc_luma_view_refresh (view); /* a live owner's report refreshes the view the same way */
++  drain (); drain ();
++  g_assert_true (find_network (view, kept) == kept_row);          /* the same widget, kept */
++  g_assert_true (find_network (view, changed) != changed_row);    /* redrawn where it stands */
++  g_assert_null (find_network (view, gone));
++  g_assert_nonnull (find_network (view, "Luma Test Network"));
++  GtkWidget *drawn = g_object_ref_sink (cc_luma_view_new (model, "wifi", NULL));
++  drain ();
++  g_autoptr (GString) a = g_string_new (NULL), b = g_string_new (NULL);
++  words (view, a); words (drawn, b);
++  g_assert_cmpstr (a->str, ==, b->str);
++  g_object_unref (drawn);
++  g_object_unref (view);
++  drain ();
++}
+ static void turn_on (void)
+ {
+   g_autoptr (CcLumaFixture) model = load ();
+@@ -2308,6 +2372,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/picker-binding", picker_binding);
+   g_test_add_func ("/settings/view/missing-share-artwork", missing_share_artwork);
+   g_test_add_func ("/settings/view/nearby-join", nearby_join);
++  g_test_add_func ("/settings/view/nearby-in-place", nearby_in_place);
+   g_test_add_func ("/settings/view/turn-on", turn_on);
+   g_test_add_func ("/settings/view/scenario-variants", scenario_variants);
+   g_test_add_func ("/settings/view/bluetooth", bluetooth_view);

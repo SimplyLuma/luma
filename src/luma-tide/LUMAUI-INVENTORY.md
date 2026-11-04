@@ -43,6 +43,7 @@ all retained native scripts, 196 units and identity/title-entry actions.
 | Sign-out confirmation, retained downloads and Undo | DestructiveDialog, one-time backup and in-memory credential Undo; ToastHost tracks the attached deck | sign-out-confirm; data tests; actual mouse Cancel/confirm/Undo PASS at 1180 and 390 in daytime sign-out-candidate | Shared confirmation treatment (07) |
 | Remove confirmation and Undo | DestructiveDialog and independent DeferredRemovals timers; Cancel restores the selected source | remove-confirm; data/timer tests; actual mouse Remove/Cancel PASS at 1180 and 390 in daytime sign-out-candidate | Shared confirmation treatment (07) |
 | Recently played album ordering | Documented additive AlbumRecency store; locked RMW, backup and atomic replacement | Pure/live tests; fixture ordering stays deterministic | None in the data adapter |
+| TV presentation (TV posture) | ui_tv.TideTV on LumaUI TV parts and media parts; same library, controller and queue | tv_runtime.py, tv_posture_runtime.py (360/500/1024/1280 unchanged), test_tv.py | Accent Play button variant and the bar's chip rule belong to the shared TV parts |
 
 Fixture execution isolates config, data, cache and state. It never starts the
 real database, keyring, audio, remote sync or local history writes. Real artwork

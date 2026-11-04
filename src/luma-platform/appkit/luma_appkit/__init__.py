@@ -89,6 +89,32 @@ __all__ = [
     "person_hue",
     "oklch_rgba",
     "reduced_motion",
+    # LumaUI TV posture (API level 3)
+    "tv_posture",
+    "watch_posture",
+    "tv_unit",
+    "device_noun",
+    "set_part",
+    "open_link",
+    "set_ways",
+    "set_link",
+    "set_code_field",
+    "set_busy",
+    # LumaUI TV parts (API level 4): stage, materials, focus, bar, buttons, field, toast, idle
+    "TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade",
+    "TvFocus", "tv_nearest",
+    "TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow",
+    "TvToast",
+    "TvIdle",
+    "TvMenu",
+    "TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
+    # wide tiles and app surfaces (API level 10)
+    "TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvShot", "TvScreenshotViewer", "TvEmptyState",
+    "compose_wide_tile", "wide_tile_art",
+    # the system's TV keyboard: action label, height
+    "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
+    # remotes and gamepads: an app that reads the pad itself claims it
+    "claim_gamepads",
     # LumaUI window: the frame LumaUI draws itself (F0, ADR-052)
     "WindowIdentity",
     "WindowControls",
@@ -248,6 +274,7 @@ __all__ = [
     "APP_ICON_SIZES",
     "AppIcon",
     "NoteCard",
+    "app_icon_paintable",
     # v71 (K-ROWS): swipe rows, the A-Z index, message runs
     "SWIPE_COLORS",
     "SwipeAction",
@@ -335,11 +362,56 @@ def __getattr__(name: str):
         from . import menus
 
         return getattr(menus, name)
+    # ── LumaUI TV parts
+    if name in {"TvStage", "TvLift", "TvRaster", "add_tv_style", "tv_css", "tv_material", "tv_fade"}:
+        from . import tv_stage
+        return getattr(tv_stage, name)
+    if name == "TvFocus":
+        from .tv_focus import TvFocus
+        return TvFocus
+    if name == "tv_nearest":
+        from .tv_focus import nearest
+        return nearest
+    if name in {"TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow"}:
+        from . import tv_parts
+        return getattr(tv_parts, name)
+    if name == "TvToast":
+        from .tv_toast import TvToast
+        return TvToast
+    if name == "TvMenu":
+        from .tv_menu import TvMenu
+        return TvMenu
+    if name == "TvIdle":
+        from .tv_idle import TvIdle
+        return TvIdle
+    if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide"}:
+        from . import tv_media
+        return getattr(tv_media, name)
+    if name in {"TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvShot", "TvScreenshotViewer",
+                "TvEmptyState", "compose_wide_tile", "wide_tile_art"}:
+        from . import tv_tiles
+        return getattr(tv_tiles, name)
+    if name in {"set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state"}:
+        from . import tv_keyboard
+        return getattr(tv_keyboard, name)
+    if name == "claim_gamepads":
+        from .tv_input import claim_gamepads
+        return claim_gamepads
     # ── LumaUI core
     if name in {"LUMAUI_API_LEVEL", "install_lumaui", "reduced_motion", "hue_class", "person_hue", "oklch_rgba",
-                "media_context", "in_media_context", "hue_tint"}:
+                "media_context", "in_media_context", "hue_tint", "tv_posture", "watch_posture", "tv_unit",
+                "device_noun"}:
         from . import lumaui
         return getattr(lumaui, name)
+    if name == "set_part":
+        from .tv_frame import set_part
+        return set_part
+    if name in {"set_ways", "set_link", "set_code_field", "set_busy"}:
+        from . import tv_forms
+        return getattr(tv_forms, name)
+    if name == "open_link":
+        from .tv_link import open_link
+        return open_link
     if name in {"lumaui_icon"}:
         from . import icons
         return getattr(icons, name)
@@ -489,6 +561,9 @@ def __getattr__(name: str):
     if name in {"MenuSection", "RichMenuItem"}:
         from . import rows_menu
         return getattr(rows_menu, name)
+    if name == "app_icon_paintable":
+        from .svg_icons import app_icon_paintable
+        return app_icon_paintable
     if name in {"APP_ICON_SIZES", "AppIcon", "NoteCard"}:
         from . import rows_identity
         return getattr(rows_identity, name)

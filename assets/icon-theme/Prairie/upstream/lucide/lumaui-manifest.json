@@ -2367,6 +2367,15 @@
       "gtk_symbolic_sha256": "b2f2b6b8b1bf8344d098c55352888618b63f24924cfeee453e5a9474c4f82195"
     },
     {
+      "lucide": "thermometer",
+      "icon": "lumaui-thermometer-symbolic",
+      "source": "upstream/lucide/lumaui/thermometer.svg",
+      "sha256": "5047bb69c791a0a63a1963b20b0f5b385494853de142f13957b6d7eb195985c1",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "47a2028e74718973fc2bdd9ac920050dd5e247a13d87de56e4344b66cb0e55b0",
+      "source_origin": "https://unpkg.com/lucide-static@1.48.0/icons/thermometer.svg"
+    },
+    {
       "lucide": "timer",
       "icon": "lumaui-timer-symbolic",
       "source": "upstream/lucide/lumaui/timer.svg",
@@ -2405,6 +2414,14 @@
       "sha256": "d96c1a1700b18a9cf1903e8d89151bc9fe881f58f6ba986a367daadf4a6fef17",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "8f092c77f8004e21672957922216f0af7e938ac7b53f47a8139d9dbf68a1ab30"
+    },
+    {
+      "lucide": "tv-minimal",
+      "icon": "lumaui-tv-minimal-symbolic",
+      "source": "upstream/lucide/lumaui/tv-minimal.svg",
+      "sha256": "30f94480851b6548e160d8d8735dbc8ef437de567d6e91c130b2e6c586cc238f",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "29253c78461d86c286c324752f24d2eab69786e35eca65181bb060f10bd2b607"
     },
     {
       "lucide": "type",

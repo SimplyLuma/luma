@@ -18,7 +18,7 @@ G_BEGIN_DECLS
  * `luma_appkit.LUMAUI_API_LEVEL`. It rises by one whenever a public name, an
  * argument or a toast kind is added; within a level nothing is removed.
  */
-#define LUMA_UI_API_LEVEL 2
+#define LUMA_UI_API_LEVEL 9
 
 /**
  * luma_ui_get_api_level:
@@ -94,9 +94,108 @@ gboolean luma_ui_reduced_motion(void);
  * determines layout separately. Applications should use this shared policy
  * rather than maintaining their own device detection.
  *
+ * In TV posture nothing is a phone: the TV presentation replaces the phone one.
+ *
  * Returns: whether the current device uses phone presentation
  */
 gboolean luma_ui_mobile_form_factor(void);
+
+/**
+ * luma_ui_tv_posture:
+ *
+ * Whether the shell is in TV posture, as the system states it: LUMA_POSTURE,
+ * then the shell-state `posture` key, then a device that declares itself a
+ * television (/etc/luma-device-class) while that key is automatic. Never
+ * inferred from a screen's size. A window follows the live value through its
+ * #LumaContext (`tv`); see docs/developer-platform/tv-mode.md. Since API level 8.
+ *
+ * Returns: %TRUE in TV posture
+ */
+gboolean luma_ui_tv_posture(void);
+
+/**
+ * luma_ui_tv_unit:
+ * @width: the screen or window width
+ * @height: its height
+ *
+ * One TV layout pixel at this size: min(width/1920, height/1080). Since API level 8.
+ *
+ * Returns: the unit, 0 for an empty size
+ */
+double luma_ui_tv_unit(int width, int height);
+
+/**
+ * luma_ui_set_part:
+ * @widget: a widget on a page
+ * @part: "header", "back", "hero", "group", "card", "row", "title", "lede", "emblem", "buttons",
+ *   "footnote", "ways", "way", "chips", "chip", "swatch", "subject" or %NULL
+ *
+ * Name the page part @widget is (class `lumaui-part-<part>`), replacing any
+ * other: the page's header (its title and one-line summary), its way back up
+ * to the parent page, its hero (the thing itself), a group (a heading over a
+ * card), the group's card of rows, or one row (a row that starts with a lead
+ * also gets `lumaui-part-leads`, and the lead `lumaui-part-lead`); since API level 9 also a page's
+ * title and its lede (the line under it), an emblem (the app's mark on a welcome), a row of
+ * buttons (laid out in a row on a TV, Left/Right moving through it) and a footnote (on the
+ * bottom safe line of a centred window), and ways (alternatives, each a "way": equal cards side
+ * by side on a TV), or a row of choices drawn as themselves (chips: a wallpaper's picture is a
+ * chip, an accent colour a round swatch; the one in use carries the class `on` or the checked
+ * state), or a subject (a row heading its card, the thing it is about, drawn larger; also a "row";
+ * the class `lumaui-away` on it while the thing is out of reach). Nothing changes on a desktop, tablet or
+ * phone; in TV posture LumaUI draws the parts at TV size (the floating
+ * island's page) and Back activates the page's back part, so an app needs no
+ * TV-specific code. An unknown part is
+ * refused with a critical. Since API level 8.
+ */
+void luma_ui_set_part(GtkWidget *widget, const char *part);
+
+/**
+ * luma_ui_set_keyboard_action:
+ * @widget: a text field (or a widget holding one)
+ * @label: (nullable): what Enter does here, one short verb ("Join", "Search")
+ *
+ * Label the system TV keyboard's action key while @widget has the focus
+ * (docs/developer-platform/tv-mode.md "Typing"); %NULL or "" returns to the
+ * field's own label. Outside TV posture nothing visible changes. Since API level 8.
+ */
+void luma_ui_set_keyboard_action(GtkWidget *widget, const char *label);
+
+/**
+ * luma_window_set_tv_frame:
+ * @window: an #AdwApplicationWindow
+ * @content: (nullable): the window's content widget, laid over the TV room while the frame is active
+ * @frame: (nullable): the box holding @sidebar and @island side by side (or @island alone)
+ * @sidebar: (nullable): the window's sidebar: a #LumaNavigationSidebar, or any widget holding the
+ *   destinations' #GtkListBox (it is then told by its classes: `lumaui-tv-island`, and
+ *   `lumaui-tv-rail` while folded); %NULL for a centred window (a welcome, an error) with no island
+ * @island: (nullable): the page
+ *
+ * The floating island for any window (docs/developer-platform/tv-mode.md): in TV posture
+ * (luma_window_set_tv_active()) @frame is drawn as the TV frame, the sidebar lifted into the
+ * floating island beside the page, or the page centred in the safe area when there is no sidebar.
+ * A #LumaApplicationWindow does this itself; toolkits built on other windows (luma_appkit) call it.
+ * %NULL @content, @frame or @island removes the frame. Nothing changes outside TV posture.
+ * Since API level 9.
+ */
+void luma_window_set_tv_frame(GtkWindow *window, GtkWidget *content, GtkWidget *frame,
+                              GtkWidget *sidebar, GtkWidget *island);
+
+/**
+ * luma_window_set_tv_active:
+ * @window: a window given a frame by luma_window_set_tv_frame()
+ * @tv: whether the window is in TV posture
+ *
+ * Draw the window's frame as the TV frame, or restore its own layout exactly. Since API level 9.
+ */
+void luma_window_set_tv_active(GtkWindow *window, gboolean tv);
+
+/**
+ * luma_window_get_tv_active:
+ * @window: a window
+ *
+ * Returns: whether the window's TV frame is drawn. Since API level 9.
+ */
+gboolean luma_window_get_tv_active(GtkWindow *window);
 
 /**
  * luma_ui_is_phone_width:

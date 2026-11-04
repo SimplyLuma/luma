@@ -22,3 +22,8 @@ keyboard = true
 semantics = true
 reduced_motion = true
 
+
+[tv]
+supported = true
+tile = "data/org.projectluma.Tide-tv.svg"
+presentation = "tv"

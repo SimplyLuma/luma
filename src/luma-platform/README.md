@@ -41,3 +41,10 @@ glass sheets (fully generated), then append the same `@define-color` lines to
 the three hand-kept sheets by hand, as the ADR-043 `controls` roles were.
 `tests/filled_controls.py` in `%check` reads the sheets themselves, so a
 missing token fails the build there.
+
+## TV posture
+
+LumaUI reports the shell's TV posture (`lumaui.tv_posture()`,
+`lumaui.watch_posture()`, `AppContext.posture`, the `AppWindow` `tv-posture`
+property) and owns the shared TV scale (`lumaui.tv_unit()`, the `tv` design
+tokens). See `docs/developer-platform/tv-mode.md`.

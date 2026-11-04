@@ -92,12 +92,21 @@ def main() -> int:
     sheet.password = "older-keyring-password"
     focus.handle(Gdk.KEY_Return)
     spin(lambda: view.texts()[0] == "One more step", 5)
+    spin(lambda: False, 0.3)
     check("an older keyring password asks for the sign-in password, in place",
           view.texts()[0] == "One more step" and view.shown()["field"] and not view.shown()["switch"],
           repr(view.texts()[:2]))
+    spin(lambda: view.field.text.has_focus(), 3)
+    check("step two: the field has the remote and the GTK focus (so the TV keyboard comes up)",
+          focus.focused is view.field.text and view.field.text.has_focus())
+    check("step two says what the password is for", "backup key" in view.texts()[1], view.texts()[1])
+    focus.handle(Gdk.KEY_Down)
+    check("step two: Down reaches Not Now / Continue", focus.focused in (view.cancel, view.primary),
+          repr(focus.focused))
+    focus.focus(view.field.text)
     sheet.password = "sign-in-password"
-    focus.focus(view.primary)
-    focus.handle(Gdk.KEY_Return)
+    # The TV keyboard's action key: the field's Enter continues.
+    view.field.text.emit("activate")
     spin(lambda: view.shown()["primary"] == "Done", 5)
     spin(lambda: focus.focused is view.primary, 2)
     check("when it can't unlock automatically, Done has the focus", focus.focused is view.primary

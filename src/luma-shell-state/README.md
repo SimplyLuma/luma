@@ -54,3 +54,51 @@ names. Grid positions remain in `home-layouts`, keyed by presentation and grid
 size, so switching density can return to a saved arrangement. Resetting Home
 preferences never clears saved layouts. Desktop presentation does not consume
 these keys.
+
+## Posture (TV Mode)
+
+`posture` (`automatic` or `tv`, default `automatic`) is the experience above
+the presentation. It never changes the presentation: `presentation.effective`
+stays desktop, tablet or mobile, so every existing reader is unaffected, and
+the presentation choice underneath returns unchanged when TV is turned off.
+
+The resolved posture is published three ways, all from the same rule
+(`posture_state`):
+
+- the snapshot's additive `posture` object: `selected`, `effective` (one of
+  `desktop`, `tablet`, `mobile` or `tv`), `reason` (`user`, `device` or
+  `presentation`) and `tv`;
+- the `Posture` D-Bus property beside `Presentation`, with the same
+  `PropertiesChanged` notification, which LumaUI's session context follows
+  live;
+- the `posture` key itself, for readers without the session bus.
+
+Automatic resolves to TV when the device declares itself a television:
+`tv` in `/run/luma/experience` or `/etc/luma-device-class` (the install-time
+default). Its presentation underneath is Desktop.
+
+Ways in and out: `luma-shell-statectl set posture tv|auto` (or
+`luma-shell-statectl posture tv|automatic`), the `SetPosture` method, and the
+TV choice in the shell's Experience options. The switch is live: the shell
+and LumaUI follow the property change without a log-out.
+
+`tv-idle-delay` (seconds, default `-1`) is the person's choice of when a TV
+app shows its idle view (Settings › Idle & Sleep). `-1` leaves it to each app
+(LumaUI `TvIdle`'s own delay), `0` never shows it; any other value overrides
+every app's delay and is followed live.
+
+`tv-screen-edges` (0–10, default 0) is the share of the screen given back at
+each edge in TV posture, for a TV that overscans (Settings › Display › Fit ›
+Screen edges). The shell's TV presentation scales its UI group, which holds
+the TV home and every window, about the centre, live.
+
+## HDMI-CEC
+
+`luma-tv-cec` (`/usr/libexec`, started by `70-luma-tv-cec.rules` as
+`luma-tv-cec@cecN.service` for every CEC adapter) puts the adapter on the CEC
+bus as a playback device named Luma with remote-control passthrough, so the
+kernel turns the TV remote's buttons into key events on its `rc-cec` input
+device; the Shell maps them in TV posture
+(docs/developer-platform/tv-mode.md, "Remotes and gamepads"). An adapter that
+another CEC client already configured is left alone. `luma-tv-cec --status`
+prints every adapter's physical and logical addresses.
