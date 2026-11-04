@@ -16,6 +16,7 @@
 gnome-control-center-50.4-1.luma.60.home20261031.1.fc44.x86_64
 gnome-control-center-filesystem-50.4-1.luma.60.home20261031.1.fc44.noarch
 gnome-shell-50.3-1.luma.158.fc44.x86_64
+gdm-50.3-1.luma.1.fc44.x86_64
 gnome-shell-common-50.3-1.luma.158.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.3.fc44.x86_64
 gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.15.fc44.noarch
