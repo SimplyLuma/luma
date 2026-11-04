@@ -30,25 +30,31 @@ class Platform(unittest.TestCase):
         # V3D blit work, so the Pi keeps the stock Shell defaults.
         self.assertEqual(sorted(p.name for p in HERE.glob("*.gschema.override")), [])
 
-    def test_update_stream_is_the_pi5_target(self):
-        import configparser
-        conf = configparser.ConfigParser()
-        conf.read(HERE / "update.conf")
-        update = conf["update"]
-        self.assertEqual(update["hardware_target"], "raspberrypi,rpi5")
-        self.assertEqual(update["ref_template"], "luma/1/{arch}/raspberrypi-rpi5/{channel}")
-        self.assertTrue(update["graph_url"].endswith("/os/graph/aarch64/raspberrypi-rpi5/{channel}.json"))
+    def test_no_update_stream_of_its_own(self):
+        # The Pi follows the generic ARM commit; its kernel is a client-side
+        # override, which rpm-ostree reapplies on every update.
+        self.assertFalse((HERE / "update.conf").exists())
+        spec = HERE.parents[1] / "packaging/rpm/luma-rpi5-platform.spec"
+        if spec.is_file():  # not in the RPM's own %check
+            self.assertNotIn("%config(noreplace) %{_sysconfdir}/luma/update.conf", spec.read_text())
 
-    def test_system_sleep_is_off(self):
+    def test_system_sleep_is_off_on_pi5_boards_only(self):
         import configparser
         conf = configparser.ConfigParser()
         conf.optionxform = str
         conf.read(HERE / "50-luma-rpi5-no-sleep.conf")
         self.assertEqual(dict(conf["Sleep"]), {"AllowSuspend": "no", "AllowHibernation": "no",
                                                "AllowHybridSleep": "no", "AllowSuspendThenHibernate": "no"})
+        unit = (HERE / "luma-rpi5-no-sleep.service").read_text()
+        conditions = re.findall(r"^ConditionFirmware=\|device-tree-compatible\((.*)\)$", unit, re.M)
+        self.assertTrue(set(PI5) <= set(conditions), conditions)
+        self.assertIn("/run/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf", unit)
+        self.assertIn("Before=sysinit.target systemd-logind.service", unit)
         spec = HERE.parents[1] / "packaging/rpm/luma-rpi5-platform.spec"
         if spec.is_file():  # not in the RPM's own %check
-            self.assertIn("%{_prefix}/lib/systemd/sleep.conf.d/50-luma-rpi5-no-sleep.conf", spec.read_text())
+            text = spec.read_text().split("%changelog")[0]
+            self.assertNotIn("%{_prefix}/lib/systemd/sleep.conf.d/", text.replace("test ! -e %{buildroot}%{_prefix}/lib/systemd/sleep.conf.d", ""))
+            self.assertIn("%{_unitdir}/sysinit.target.wants/luma-rpi5-no-sleep.service", text)
 
     def test_firmware_sync_runs_only_on_pi5_boards(self):
         unit = (HERE / "luma-rpi5-firmware-sync.service").read_text()
