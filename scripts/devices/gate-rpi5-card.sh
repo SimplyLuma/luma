@@ -223,8 +223,9 @@ s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); f = s.makefile("rw");
 for cmd in ({"execute": "qmp_capabilities"}, {"execute": "screendump", "arguments": {"filename": sys.argv[2], "format": "png"}}):
     f.write(json.dumps(cmd) + "\n"); f.flush(); f.readline()
 PY
-[[ "$account" == PASS* ]] || fail_now no-account "${account#FAIL }"
-stage no-account pass "${account#PASS } (screen: $work/first-boot.png)"
+# A failed no-account stage fails the gate but does not stop the update stage.
+if [[ "$account" == PASS* ]]; then stage no-account pass "${account#PASS } (screen: $work/first-boot.png)"
+else stage no-account fail "${account#FAIL } (screen: $work/first-boot.png)"; fi
 
 # override-update: a newer commit (a local child of the generic commit with
 # the same tree; the remote ref moves to it), the device repository served by
