@@ -62,6 +62,7 @@ card=$(field image)
 override=$(field override)
 locals=$(awk '$1 == "local_package" {print $2}' "$manifest" | sed -E 's/-[^-]+-[^-]+\.(noarch|aarch64)\.rpm$//' | tr '\n' ' ')
 locals="$locals $(printf '%s\n' "$override" | sed -n 's/.*requested=\([^ ]*\).*/\1/p' | tr ';' ' ')"
+locals="$locals $(printf '%s\n' "$override" | sed -n 's/.*replaced=\([^ ]*\).*/\1/p' | tr ';' ' ')"
 ref=${origin#*:}
 [[ "$candidate" =~ ^[0-9a-f]{64}$ ]] || { echo "no commit in $manifest" >&2; exit 1; }
 [ -z "$expect_commit" ] || [ "$candidate" = "$expect_commit" ] || { echo "the card carries $candidate, not $expect_commit" >&2; exit 1; }

@@ -26,7 +26,7 @@
 # starts Luma's first-boot setup. A medium carrying a preview credential is
 # refused.
 #
-# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--release] [--payload REPO REF] [--device-repo DIR --device-key FILE [--device-repo-url URL]] [--device-package NAME]... [--local-package RPM]... [--replace-local RPM]... [--uboot-rpm FILE] [--size GIB] [--no-xz] [--first-boot-overlay DIR] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
+# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--release] [--payload REPO REF] [--device-repo DIR --device-key FILE [--device-repo-url URL]] [--device-package NAME]... [--device-replace NAME]... [--local-package RPM]... [--replace-local RPM]... [--uboot-rpm FILE] [--size GIB] [--no-xz] [--first-boot-overlay DIR] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
 #
 # --payload deploys REF (the generic ARM channel ref luma/<major>/aarch64/
 # <channel>, the medium's own) from the signed OSTree repository REPO (the
@@ -50,7 +50,8 @@
 # (scripts/devices/rpm-ostree-offline.sh; under qemu-user on an x86_64 host,
 # about 10 minutes for the initramfs). --local-package layers an RPM file
 # (a new package); --replace-local replaces a base package with an RPM file
-# (same name). --device-package NAME layers a package from the device
+# (same name). --device-replace NAME replaces a base package with the device
+# repository's build (override replace --from repo). --device-package NAME layers a package from the device
 # repository by name (it stays in the repository file's includepkgs, so
 # updates follow the repository until the OS commit carries it). All need
 # --device-repo and go into the same transaction; use
@@ -109,7 +110,7 @@ usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 iso="" output="" uboot_rpm="" size_gib=14 compress=1 test_repo="" test_commit="" test_key=""
 payload_src="" payload_ref="" first_boot_overlay="" release=0
 device_repo="" device_key="" device_repo_url=https://dl.simplyluma.com/os/devices/aarch64/raspberrypi-rpi5/
-local_packages=() replace_local=() device_packages=()
+local_packages=() replace_local=() device_packages=() device_replace=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --iso) iso=${2:?}; shift 2 ;;
@@ -124,6 +125,7 @@ while [ "$#" -gt 0 ]; do
     --device-key) device_key=$(realpath -e "${2:?}"); shift 2 ;;
     --device-repo-url) device_repo_url=${2:?}; shift 2 ;;
     --device-package) device_packages+=("${2:?}"); shift 2 ;;
+    --device-replace) device_replace+=("${2:?}"); shift 2 ;;
     --local-package) local_packages+=("$(realpath -e "${2:?}")"); shift 2 ;;
     --replace-local) replace_local+=("$(realpath -e "${2:?}")"); shift 2 ;;
     --test-payload) test_repo=$(realpath -e "${2:?}"); test_commit=${3:?}; shift 3 ;;
@@ -146,7 +148,7 @@ if [ -n "$device_repo" ]; then
   grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$device_key" || fail "--device-key is not an armored public key"
   [[ "$device_repo_url" =~ ^https://[^[:space:]]+/$ ]] || fail "--device-repo-url must be an https:// URL ending in /"
 else
-  [ "${#local_packages[@]}" = 0 ] && [ "${#replace_local[@]}" = 0 ] && [ "${#device_packages[@]}" = 0 ] ||
+  [ "${#local_packages[@]}" = 0 ] && [ "${#replace_local[@]}" = 0 ] && [ "${#device_packages[@]}" = 0 ] && [ "${#device_replace[@]}" = 0 ] ||
     fail "--device-package, --local-package and --replace-local need --device-repo"
 fi
 for rpm_file in "${local_packages[@]+"${local_packages[@]}"}" "${replace_local[@]+"${replace_local[@]}"}"; do
@@ -380,7 +382,7 @@ write_device_repo() {  # DEPLOYMENT BASEURL REPO_GPGCHECK
     echo "gpgcheck=1"
     echo "repo_gpgcheck=$3"
     echo "gpgkey=file://$device_key_path"
-    echo "includepkgs=$(IFS=,; echo "kernel-luma-rpi${device_packages[*]+,${device_packages[*]}}")"
+    echo "includepkgs=$(IFS=,; echo "kernel-luma-rpi${device_packages[*]+,${device_packages[*]}}${device_replace[*]+,${device_replace[*]}}")"
     [ -z "$excludes" ] || echo "# Luma: packages the Luma image owns never come from this repository"
     [ -z "$excludes" ] || echo "excludepkgs=$excludes"
   } >"$1$device_repo_file"
@@ -433,6 +435,26 @@ if [ -n "$device_repo" ]; then
   deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
   [ "${#deploys[@]}" = 1 ] && [ "${deploys[0]}" != "$generic" ] || fail "expected only the override deployment"
   deploy=${deploys[0]}
+  # Base packages replaced from the device repository (rpm-ostree override
+  # replace --from repo=...): a second transaction on the override deployment,
+  # recorded in the origin so updates take them from the repository.
+  if [ "${#device_replace[@]}" -gt 0 ]; then
+    echo "Override: override replace --experimental --from repo=luma-raspberrypi-rpi5 ${device_replace[*]}"
+    umount "$sysroot/boot/efi"
+    TMPDIR="$work" bash "$repo_root/scripts/devices/rpm-ostree-offline.sh" --sysroot "$sysroot" --stateroot "$stateroot" \
+      --deployment "$deploy" "${binds[@]}" -- override replace --experimental --from repo=luma-raspberrypi-rpi5 "${device_replace[@]}"
+    mount -o umask=0077,shortname=winnt "${loop}p1" "$sysroot/boot/efi"
+    first=$deploy
+    deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
+    [ "${#deploys[@]}" = 2 ] || fail "rpm-ostree did not write the replacement deployment"
+    ostree admin undeploy --sysroot="$sysroot" 1 >/dev/null
+    deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
+    [ "${#deploys[@]}" = 1 ] && [ "${deploys[0]}" != "$first" ] || fail "expected only the replacement deployment"
+    deploy=${deploys[0]}
+    for name in "${device_replace[@]}"; do
+      grep -q "$name" "$deploy.origin" || fail "the origin does not replace $name from the device repository"
+    done
+  fi
   rm -f "$deploy$device_repo_file"
   cp -a "$work/repos-aside/." "$deploy/etc/yum.repos.d/"
   write_device_repo "$deploy" "$device_repo_url" 1
@@ -446,7 +468,7 @@ if [ -n "$device_repo" ]; then
   done
 fi
 grep -Eq "^(base)?refspec=$remote:$ref\$" "$deploy.origin" || fail "the deployment does not follow $remote:$ref"
-! grep -q 'raspberrypi-rpi5' "$deploy.origin" || fail "the deployment names the Raspberry Pi hardware ref"
+! grep -Eq '^(base)?refspec=.*raspberrypi-rpi5' "$deploy.origin" || fail "the deployment follows the Raspberry Pi hardware ref"
 # The Pi follows the generic ARM stream: no hardware-targeted update.conf.
 if [ -e "$deploy/etc/luma/update.conf" ] &&
    grep -Eq '^\s*(hardware_target\s*=\s*\S|ref_template\s*=.*raspberrypi)' "$deploy/etc/luma/update.conf"; then
@@ -675,7 +697,7 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "grub $grub_sha256 ${grub_efi#"$deploy"}"
   echo "device_trees $dt_layout"
   if [ -n "$device_repo" ]; then
-    echo "override remove=$override_removed requested=$override_layered"
+    echo "override remove=$override_removed requested=$override_layered${device_replace[*]+ replaced=$(IFS=';'; echo "${device_replace[*]}");}"
     echo "device_repo $device_repo_url ($device_repo, key $(gpg --show-keys --with-colons "$device_key" 2>/dev/null | awk -F: '$1 == "fpr" {print $10; exit}'))"
     for rpm_file in "${local_packages[@]+"${local_packages[@]}"}" "${replace_local[@]+"${replace_local[@]}"}"; do
       echo "local_package $(basename "$rpm_file") $(sha256sum "$rpm_file" | cut -d' ' -f1)"
