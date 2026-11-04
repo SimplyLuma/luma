@@ -101,3 +101,21 @@ cleanup-append: |
   assert not Path('/usr/libexec/evolution-data-server').exists()
   print('EDS client ABI and native-only factory ownership PASS')
   PY_EDS
+
+  # LumaUI ships once, here: TV posture needs the pinned platform's kit (API
+  # level 10: the C TV frame and keyboard, luma_appkit's TV parts,
+  # their sheets and lumaui glyphs). A runtime assembled from an older platform
+  # fails here instead of shipping apps a kit without TV.
+  python3 - <<'PY_TV'
+  import gi
+  from pathlib import Path
+  gi.require_version('LumaUI', '1')
+  from gi.repository import LumaUI
+  from luma_appkit import lumaui
+  from luma_appkit import tv_focus, tv_frame, tv_input, tv_keyboard, tv_media, tv_menu, tv_stage, tv_tiles  # noqa: F401
+  assert lumaui.LUMAUI_API_LEVEL >= 10, lumaui.LUMAUI_API_LEVEL
+  assert all(hasattr(LumaUI, name) for name in ('window_set_tv_frame', 'window_set_tv_active', 'ui_tv_unit'))
+  assert lumaui.find_asset('luma-appkit-base.css'), 'luma-appkit sheets missing'
+  assert Path('/usr/share/icons/hicolor/scalable/actions/lumaui-tv-minimal-symbolic.svg').is_file()
+  print('LumaUI TV kit (API level %d) PASS' % lumaui.LUMAUI_API_LEVEL)
+  PY_TV
