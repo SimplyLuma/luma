@@ -97,6 +97,7 @@ def main() -> None:
             return future
         app.remote = SimpleNamespace(connected=lambda _source_id: True,
                                      sources=lambda: [],
+                                     keyring_locked=lambda _source_id: False,
                                      artist_artwork=no_artwork)
         app.can_make_offline = lambda ids: False
         app.has_offline = lambda ids: False
