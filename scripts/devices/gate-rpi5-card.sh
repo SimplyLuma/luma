@@ -122,7 +122,7 @@ import json, sys
 rows = json.load(sys.stdin)["deployments"]
 d = rows[0] if sys.argv[1] == "0" else [x for x in rows if x.get(sys.argv[1])][0]
 print(d.get("base-checksum") or d["checksum"], d["origin"], ",".join(d.get("requested-packages") or []) or "-",
-      ",".join(sorted(d.get("base-removals") or [])) or "-", d["checksum"])' "$1"
+      ",".join(sorted(x if isinstance(x, str) else str(x[0]) for x in d.get("base-removals") or [])) or "-", d["checksum"])' "$1"
 }
 override_ok() {  # ORIGIN REQUESTED REMOVALS
   [ "$1" = "$origin" ] && [[ "$1" != *raspberrypi-rpi5* ]] && [[ ",$2," == *,kernel-luma-rpi,* ]] && [[ "$3" == *kernel-core* ]]
