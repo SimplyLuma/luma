@@ -48,7 +48,7 @@ because U-Boot stores them on the card and an entry would bypass the card menu.
 This installer card boots Fedora's kernel with upstream device trees: no
 Bluetooth, HDMI audio, fan, RTC or HEVC. The Luma Pi image (the preinstalled
 card, `scripts/devices/build-rpi5-disk-image.sh`) runs `kernel-luma-rpi` on the
-firmware's device tree; see `SUPPORT.md` and `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
+firmware's device tree, as an override of the generic ARM commit; see `SUPPORT.md` and `src/luma-rpi5-platform/README.md`. 4K at 60 Hz
 needs a TV input in HDMI 2.0 (enhanced) mode.
 
 ## Hardware results
@@ -61,70 +61,70 @@ This profile is unqualified: an install from a built card image, an update
 across a kernel change and a rollback on real hardware must be recorded before
 a tier change.
 
-## Test card: Luma Pi kernel (spare microSD only)
+## Preinstalled card: one ARM OS, Pi kernel override
 
-A preinstalled card built from a test payload proves the firmware-tree boot
-chain before it touches any card in use. It is not for publication (its
-manifest says `test_payload`). A test payload composed for the
-`raspberrypi,rpi5` hardware target (`build-image.sh --hardware-target`) keeps
-the Pi ref `luma/1/aarch64/raspberrypi-rpi5/<channel>`; any other test payload
-keeps the medium's generic ref, and `rpm-ostree upgrade` there would return to
-Fedora's kernel, which does not boot on the firmware tree.
+The preinstalled card (`scripts/devices/build-rpi5-disk-image.sh`) carries the
+same signed OS commit as every other ARM computer (`luma/1/aarch64/<channel>`)
+and runs `kernel-luma-rpi` as a client-side rpm-ostree override (Fedora's
+kernel packages removed), applied when the card is built, so the first boot
+needs no network. There is no Raspberry Pi OS ref, graph or Depot entry. The
+card keeps `/etc/yum.repos.d/luma-raspberrypi-rpi5.repo` (the signed Raspberry
+Pi 5 device repository, only `kernel-luma-rpi`) and its key
+`/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5`; every update
+(luma-update or `rpm-ostree upgrade`) rebuilds the override on the new commit
+and takes newer Pi kernels from that repository. `rpm-ostree status` shows the
+override.
 
 The first boot imports the offline apps and needs several GB free after the
-root grows: a 12 GiB image needs a card (or a VM disk) of 16 GB or more.
+root grows: the 14 GiB image (the override adds a second tree while the card is built) needs a card (or a VM disk) of 16 GB or more.
 
-Build (luma-build, as root, under the heavy-job lock, unconfined: a system
-service may not write SELinux types the host's policy lacks):
+Inputs: the night's aarch64 ISO (release key, update URL), the signed OSTree
+repository holding the generic commit, and the signed device repository
+(rpm-md with `repomd.xml.asc`, signed RPMs) with its armored public key.
 
-    P=/srv/dev-storage/projects/luma-pi5
-    systemd-run --scope luma-heavy bash scripts/devices/build-rpi5-disk-image.sh \
-      --iso $P/inputs/luma-nightly-<version>-aarch64.iso \
-      --uboot-rpm $P/inputs/uboot-images-armv8-2026.10-1.fc45.noarch.rpm \
-      --output $P/images/spare-pi-kernel --size 16 \
-      --test-payload <ostree repo> <commit with kernel-luma-rpi> \
-      --test-ssh-key <public key>
+1. Gate card (luma-build, as root, unconfined: a system service may not write
+   SELinux types the host's policy lacks; about 25 minutes, 10 of them the
+   override's initramfs under qemu-user):
 
-Flash on a Mac (never the Pi's own card):
+       systemd-run --scope luma-heavy bash scripts/devices/build-rpi5-disk-image.sh \
+         --iso <aarch64 ISO> --output <dir>/gate --no-xz \
+         --test-payload <signed repo> <commit> --test-ssh-key <key.pub> \
+         --device-repo <device repo> --device-key <key.asc> \
+         [--local-package <new package>.rpm]... [--replace-local <base package>.rpm]...
+
+2. Gate (an aarch64 host with qemu; the Mac uses HVF): boots the card, checks
+   the generic commit and origin, the override, greenboot, the image contract
+   and first-boot setup, then runs an rpm-ostree upgrade that must reapply the
+   override and boot the Pi kernel again:
+
+       scripts/devices/gate-rpi5-card.sh --image <gate card>.img --key <key> \
+         --manifest <gate card>.manifest.txt --device-repo <device repo> \
+         --expect-commit <commit> --output gate-result.json
+
+3. Release card, from the same inputs with the signed ref instead of the test
+   payload: `--release --payload <signed repo> luma/1/aarch64/<channel>`.
+   `--release` requires the override, refuses test payloads and keys, and
+   checks that the card gives no root SSH access.
+
+`--local-package` and `--replace-local` layer RPM files the commit does not
+carry yet (the Pi platform, Bluetooth firmware, GStreamer with the HEVC
+fix); once a nightly ships them, build without them. Every card refuses a
+hardware-targeted commit and an `/etc/luma/update.conf` that names a hardware
+target (luma-rpi5-platform before 0.4.0).
+
+Flash on a Mac (never a card in use):
 
 1. `scp` the `.img.xz` and its `.sha256` from luma-build and check it:
    `shasum -a 256 -c luma-rpi5-*.img.xz.sha256`.
 2. Raspberry Pi Imager: Choose OS > Use custom > the `.img.xz`; Choose Storage >
-   the spare card; no OS customisation. Or in a terminal:
+   the card; no OS customisation. Or in a terminal:
    `diskutil list` (find the card, e.g. `/dev/disk6`), then
    `diskutil unmountDisk /dev/disk6` and
    `xz -dc luma-rpi5-*.img.xz | sudo dd of=/dev/rdisk6 bs=4m && diskutil eject /dev/disk6`.
-3. Power the Pi off, take its card out and keep it safe, insert the spare card,
-   power on. The first boot grows the root partition and is slower.
+3. Insert the card and power on. The first boot grows the root partition,
+   imports the apps and opens Luma's setup.
 
 Expected: U-Boot and GRUB pass the firmware's tree (model "Raspberry Pi 5
 Model B Rev …", the board's MAC and Bluetooth address), `uname -r` is the Luma
 Pi kernel, HDMI audio, Bluetooth and `/dev/video19` (HEVC) are present, and
-`luma-rpi5-firmware-sync`
-reports the trees in place. To go back, power off and put the original card in.
-
-## Nightly gate for the Pi ref
-
-`publish-channel.sh` publishes `luma/1/aarch64/raspberrypi-rpi5/<channel>`
-only with a passing `gate-result.json` in the build directory. Produce it from
-the exported candidate:
-
-1. Test card of the candidate (luma-build, unconfined):
-   `systemd-run --scope luma-heavy bash scripts/devices/build-rpi5-disk-image.sh --iso <aarch64 ISO> --output <dir> --test-payload <root>/ostree/candidate-repo <candidate> --test-ssh-key <key.pub>`
-2. On an aarch64 host with qemu (the Mac: HVF), with the card, the private key
-   and the build's `build.env` and `export.env` (or `export-prepared.env`):
-   `scripts/devices/gate-rpi5-card.sh --image <card>.img.xz --key <key> --build-env build.env --export-env export.env --output gate-result.json`
-3. Copy `gate-result.json` into `<root>/builds/<id>/`.
-
-The published card is a separate build from the same signed candidate:
-`build-rpi5-disk-image.sh --release --iso <ISO> --payload <candidate repo> luma/1/aarch64/raspberrypi-rpi5/<channel> --output <dir>`.
-`--release` refuses test payloads and test keys, and checks that the card gives
-no root SSH access.
-
-Stages: the card boots on a 32 GiB disk, the candidate is booted from the Pi
-ref, greenboot passes (`boot_success=1`), and the image contract holds (Luma
-Pi kernel, no Fedora kernel, CanSuspend=no, Pi update stream, offline apps,
-no failed units). The no-account stage requires that no account exists and
-Luma's setup is on screen with GNOME Initial Setup absent. Update and rollback
-are `not-applicable` only while the ref has no release. The script refuses
-once it has one, until those stages exist.
+`luma-rpi5-firmware-sync` reports the trees in place.
