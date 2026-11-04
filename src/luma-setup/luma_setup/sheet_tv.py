@@ -30,7 +30,7 @@ from luma_appkit.tv_stage import TvStage, add_tv_style, tv_material  # noqa: E40
 
 from . import catalog, system  # noqa: E402
 from .model import Setup, host_name, mismatch, strength, username_problem  # noqa: E402
-from .sheet import HEAD, OWNER, Posture, Turn, _taken, after_frames, hand_over, last_frame, prefers_light, wallpaper_for  # noqa: E402
+from .sheet import HEAD, OWNER, Posture, StepGate, Turn, _taken, after_frames, hand_over, last_frame, prefers_light, wallpaper_for  # noqa: E402
 
 __all__ = ("SetupTVWindow", "SetupTV")
 
@@ -149,6 +149,7 @@ class SetupTV(TvStage):
         self._zone_asked = False
         self._finishing = False
         self._keyboard_up = False
+        self._gate = StepGate(self)   # one OK, one step (desktop sheet: the same gate)
 
         self.room = TvRoom()
         self.light = bool(frame["light"]) if frame else prefers_light()
@@ -551,16 +552,21 @@ class SetupTV(TvStage):
         self.sheet.append(foot)
 
     def _press_key(self) -> None:
+        if not self._gate.open():
+            return
         if self.page == "device":
             self.finish()
         else:
             self.go(1)
 
     def go(self, step: int) -> None:
+        if not self._gate.open():
+            return
         self.index = max(0, min(len(self.pages) - 1, self.index + step))
         self.open_network = ""
         self.zone_open = False
         self.draw()
+        self._gate.shown()
 
     def _back(self) -> bool:
         if self._finishing:
