@@ -400,7 +400,7 @@ if [ -n "$device_repo" ]; then
     done
   fi
   echo "Override: ${args[*]}"
-  TMPDIR="$work" "$repo_root/scripts/devices/rpm-ostree-offline.sh" --sysroot "$sysroot" --stateroot "$stateroot" \
+  TMPDIR="$work" bash "$repo_root/scripts/devices/rpm-ostree-offline.sh" --sysroot "$sysroot" --stateroot "$stateroot" \
     --deployment "$generic" "${binds[@]}" -- "${args[@]}"
   deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
   [ "${#deploys[@]}" = 2 ] || fail "rpm-ostree did not write the override deployment"

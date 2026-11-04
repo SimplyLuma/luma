@@ -1,59 +1,72 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Gate a Raspberry Pi 5 hardware-target candidate: boot its preinstalled card
-# image in an aarch64 VM (HVF on Apple silicon, KVM on an aarch64 Linux host)
-# and write the gate-result.json that publish-channel.sh checks
-# (org.projectluma.os-gate/v1).
+# Gate a Raspberry Pi 5 card: boot the preinstalled card image in an aarch64
+# VM (HVF on Apple silicon, KVM on an aarch64 Linux host) and write
+# gate-result.json (org.projectluma.device-card-gate/v1).
 #
-#   gate-rpi5-card.sh (--image CARD.img.xz | --disk-url nbd://HOST:PORT) --key SSH_PRIVATE_KEY
-#                     --build-env build.env --export-env export.env --output gate-result.json [--work DIR]
+#   gate-rpi5-card.sh (--image CARD.img[.xz] | --disk-url nbd://HOST:PORT) --key SSH_PRIVATE_KEY
+#                     --manifest CARD.manifest.txt --device-repo DIR --output gate-result.json
+#                     [--expect-commit COMMIT] [--work DIR]
 #
-# --disk-url boots a disk served elsewhere (the expanded card, raw, 32 GiB, e.g.
-# qemu-nbd on the build host behind an SSH tunnel) so the gate host needs no
-# local disk space.
+# --disk-url boots a disk served elsewhere (the expanded card, raw or a qcow2
+# overlay, 32 GiB, e.g. qemu-nbd on the build host behind an SSH tunnel) so
+# the gate host needs no local disk space.
 #
-# CARD is the card build-rpi5-disk-image.sh made from the candidate with
-# --test-payload <candidate repo> <candidate> --test-ssh-key <KEY.pub>: the
-# same commit, plus root SSH for the checks. The card is the Pi's fresh install
-# (there is no installer), so the stages are:
+# CARD is a card build-rpi5-disk-image.sh made with --device-repo and
+# --test-payload <repo> <commit> --test-ssh-key <KEY.pub>: the commit and
+# override the release card carries, plus root SSH for the checks. --manifest
+# is that card's manifest; --expect-commit is the signed generic commit the
+# release card is built from. --device-repo is the signed Raspberry Pi 5
+# device repository the card was built against; the gate serves it to the VM
+# for the update stage. The stages:
 #   fresh-install       the card image expands to a 32 GiB disk and boots
-#   fresh-first-boot    SSH answers; the deployment is the candidate on the Pi ref
+#   fresh-first-boot    SSH answers; the deployment is the generic commit on
+#                       the generic ARM ref with the kernel override, and
+#                       names no Raspberry Pi hardware ref
 #   fresh-greenboot     greenboot's required checks pass, boot_success=1
-#   fresh-image-contract  Luma Pi kernel, firmware-sync and no-sleep policy,
-#                       update stream, offline apps imported, no failed units
+#   fresh-image-contract  Luma Pi kernel, no Fedora kernel, the card's Pi
+#                       packages, no hardware-targeted update.conf, the device
+#                       repository and key, offline apps, no failed units
 #   no-account          no user account; Luma's first-boot setup is on screen
 #                       and GNOME Initial Setup is not installed
-# update and rollback are not-applicable only while the Pi ref has no release:
-# publish-channel.sh refuses once it does, until those stages are added here.
+#   override-update     an rpm-ostree upgrade to a newer commit (a local child
+#                       of the generic commit with the same tree) reapplies the
+#                       override from the device repository; the VM reboots
+#                       into it on the Luma Pi kernel and greenboot passes
 set -euo pipefail
 
-image="" disk_url="" key="" build_env="" export_env="" output="" work=""
+image="" disk_url="" key="" manifest="" device_repo="" expect_commit="" output="" work=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --image) image=$(realpath "${2:?}"); shift 2 ;;
     --disk-url) disk_url=${2:?}; shift 2 ;;
     --key) key=$(realpath "${2:?}"); shift 2 ;;
-    --build-env) build_env=$(realpath "${2:?}"); shift 2 ;;
-    --export-env) export_env=$(realpath "${2:?}"); shift 2 ;;
+    --manifest) manifest=$(realpath "${2:?}"); shift 2 ;;
+    --device-repo) device_repo=$(realpath "${2:?}"); shift 2 ;;
+    --expect-commit) expect_commit=${2:?}; shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
     --work) work=${2:?}; shift 2 ;;
     *) sed -n 's/^#   gate-rpi5-card.sh /usage: gate-rpi5-card.sh /p' "$0" >&2; exit 2 ;;
   esac
 done
-{ [ -n "$image" ] || [ -n "$disk_url" ]; } && [ -n "$key" ] && [ -n "$build_env" ] && [ -n "$export_env" ] && [ -n "$output" ] || {
+{ [ -n "$image" ] || [ -n "$disk_url" ]; } && [ -n "$key" ] && [ -n "$manifest" ] && [ -n "$device_repo" ] && [ -n "$output" ] || {
   sed -n 's/^#   gate-rpi5-card.sh /usage: gate-rpi5-card.sh /p' "$0" >&2; exit 2; }
-value() { sed -n "s/^$2=//p" "$1" | head -n 1; }
-candidate=$(value "$export_env" LUMA_EXPORT_CANDIDATE)
-ref=$(value "$export_env" LUMA_EXPORT_REF)
-kernel=$(value "$export_env" LUMA_EXPORT_KERNEL)
-previous=$(value "$export_env" LUMA_EXPORT_PARENT)
-build_id=$(value "$build_env" LUMA_BUILD_ID)
-channel=$(value "$build_env" LUMA_OS_CHANNEL)
-source_revision=$(value "$build_env" LUMA_SOURCE_REVISION)
-[[ "$candidate" =~ ^[0-9a-f]{64}$ ]] || { echo "no candidate in $export_env" >&2; exit 1; }
-[[ "$ref" == */raspberrypi-rpi5/* ]] || { echo "$ref is not a Raspberry Pi 5 ref" >&2; exit 1; }
-[ -z "$previous" ] || { echo "the Pi ref has a release ($previous): update and rollback stages are required and not implemented" >&2; exit 1; }
+field() { awk -v k="$1" '$1 == k { sub(/^[^ ]+ /, ""); print; exit }' "$manifest"; }
+candidate=$(field commit)
+origin=$(field origin)
+kernel=$(field kernel)
+channel=$(field channel)
+version=$(field version)
+card=$(field image)
+override=$(field override)
+locals=$(awk '$1 == "local_package" {print $2}' "$manifest" | sed -E 's/-[^-]+-[^-]+\.(noarch|aarch64)\.rpm$//' | tr '\n' ' ')
+ref=${origin#*:}
+[[ "$candidate" =~ ^[0-9a-f]{64}$ ]] || { echo "no commit in $manifest" >&2; exit 1; }
+[ -z "$expect_commit" ] || [ "$candidate" = "$expect_commit" ] || { echo "the card carries $candidate, not $expect_commit" >&2; exit 1; }
+[[ "$ref" =~ ^luma/[0-9]+/aarch64/$channel$ ]] || { echo "$origin is not the generic ARM $channel ref" >&2; exit 1; }
+[ -n "$override" ] || { echo "the card has no kernel override" >&2; exit 1; }
+[ -f "$device_repo/repodata/repomd.xml" ] || { echo "$device_repo is not an rpm-md repository" >&2; exit 1; }
 
 case "$(uname -s)" in
   Darwin) accel=hvf; firmware=$(brew --prefix qemu 2>/dev/null || echo /opt/homebrew)/share/qemu/edk2-aarch64-code.fd ;;
@@ -63,8 +76,13 @@ esac
 work=${work:-$(mktemp -d "${TMPDIR:-/tmp}/luma-rpi5-gate.XXXXXX")}
 mkdir -p "$work"
 port=$((22000 + RANDOM % 2000))
-qemu_pid=""
-cleanup() { [ -z "$qemu_pid" ] || kill "$qemu_pid" 2>/dev/null || true; rm -f "$work/disk.img" "$work/vars.fd"; }
+repo_port=$((24000 + RANDOM % 2000))
+qemu_pid="" http_pid=""
+cleanup() {
+  [ -z "$qemu_pid" ] || kill "$qemu_pid" 2>/dev/null || true
+  [ -z "$http_pid" ] || kill "$http_pid" 2>/dev/null || true
+  rm -f "$work/disk.img" "$work/vars.fd"
+}
 trap cleanup EXIT INT TERM
 
 stages="$work/stages.jsonl"; : >"$stages"
@@ -75,38 +93,51 @@ stage() {  # NAME RESULT DETAIL
 vm() { ssh -i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   -o LogLevel=ERROR -o ConnectTimeout=10 -p "$port" root@127.0.0.1 "$@"; }
 finish() {
-  python3 - "$stages" "$output" "$build_id" "$channel" "$source_revision" "$candidate" "$ref" "$previous" "$port" <<'PY'
+  python3 - "$stages" "$output" "$card" "$channel" "$candidate" "$origin" "$kernel" "$version" <<'PY'
 import json, sys, datetime
-stages_file, out, build_id, channel, revision, commit, ref, previous, _ = sys.argv[1:]
+stages_file, out, card, channel, commit, origin, kernel, version = sys.argv[1:]
 stages = [json.loads(line) for line in open(stages_file)]
 ok = lambda *names: "pass" if names and all(any(s["stage"] == n and s["result"] == "pass" for s in stages) for n in names) else "fail"
 fresh = ok("fresh-install", "fresh-first-boot", "fresh-greenboot", "fresh-image-contract")
 no_account = ok("no-account")
+update = ok("override-update")
 now = datetime.datetime.now(datetime.timezone.utc)
-gate = {"schema": "org.projectluma.os-gate/v1", "build_id": build_id, "channel": channel,
-        "checks_revision": revision, "source_revision": revision, "commit": commit, "ref": ref,
-        "previous_commit": previous, "hardware_target": "raspberrypi,rpi5",
+gate = {"schema": "org.projectluma.device-card-gate/v1", "device": "raspberrypi,rpi5", "card": card,
+        "channel": channel, "commit": commit, "version": version, "origin": origin, "kernel": kernel,
         "run_id": now.strftime("%Y%m%dT%H%M%SZ"), "completed_utc": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "fresh": fresh, "no_account": no_account, "update": "not-applicable", "rollback": "not-applicable",
-        "result": "pass" if fresh == no_account == "pass" else "fail", "stages": stages}
+        "fresh": fresh, "no_account": no_account, "override_update": update,
+        "result": "pass" if fresh == no_account == update == "pass" else "fail", "stages": stages}
 json.dump(gate, open(out, "w"), indent=2, sort_keys=True)
 print(f"gate {gate['result']}: {out}")
 sys.exit(0 if gate["result"] == "pass" else 1)
 PY
 }
 fail_now() { stage "$1" fail "$2"; finish || true; exit 1; }
+# One deployment's base commit, origin, requested packages, removed base
+# packages and checksum (WHICH: booted, or 0 for the default deployment).
+deployment() {
+  vm "rpm-ostree status --json" | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)["deployments"]
+d = rows[0] if sys.argv[1] == "0" else [x for x in rows if x.get(sys.argv[1])][0]
+print(d.get("base-checksum") or d["checksum"], d["origin"], ",".join(d.get("requested-packages") or []) or "-",
+      ",".join(sorted(d.get("base-removals") or [])) or "-", d["checksum"])' "$1"
+}
+override_ok() {  # ORIGIN REQUESTED REMOVALS
+  [ "$1" = "$origin" ] && [[ "$1" != *raspberrypi-rpi5* ]] && [[ ",$2," == *,kernel-luma-rpi,* ]] && [[ "$3" == *kernel-core* ]]
+}
 
 # fresh-install: the card image on a 32 GiB sparse disk (the first boot grows
 # the root partition and imports the offline apps).
 if [ -n "$disk_url" ]; then
-  drive="file=$disk_url,format=raw,if=virtio,cache=writeback"
+  drive="file=$disk_url,if=virtio,cache=writeback"
   disk_detail="served disk $disk_url"
 else
 python3 - "$image" "$work/disk.img" <<'PY'
 import lzma, sys
 src, dst = sys.argv[1:]
 block = 1 << 20
-with lzma.open(src) as i, open(dst, "wb") as o:
+with (lzma.open(src) if src.endswith(".xz") else open(src, "rb")) as i, open(dst, "wb") as o:
     while chunk := i.read(block):
         if chunk.count(0) == len(chunk):
             o.seek(len(chunk), 1)
@@ -128,9 +159,10 @@ stage fresh-install pass "$disk_detail, UEFI boot"
 
 for _ in $(seq 1 90); do vm true 2>/dev/null && break; sleep 10; done
 vm true 2>/dev/null || fail_now fresh-first-boot "no SSH within 15 minutes (serial: $work/serial.log)"
-booted=$(vm "rpm-ostree status --booted --json" | python3 -c 'import json,sys; d=[x for x in json.load(sys.stdin)["deployments"] if x.get("booted")][0]; print(d["checksum"], d["origin"])')
-[ "$booted" = "$candidate luma:$ref" ] || fail_now fresh-first-boot "booted $booted, expected $candidate luma:$ref"
-stage fresh-first-boot pass "booted $candidate from luma:$ref"
+read -r base got_origin requested removals _ <<<"$(deployment booted)"
+[ "$base" = "$candidate" ] && override_ok "$got_origin" "$requested" "$removals" ||
+  fail_now fresh-first-boot "booted base $base origin $got_origin requested $requested removed $removals; expected $candidate on $origin with kernel-luma-rpi replacing Fedora's kernel"
+stage fresh-first-boot pass "booted $candidate from $origin; override: kernel-luma-rpi, removed ${removals//,/ }"
 
 for _ in $(seq 1 60); do
   [ "$(vm systemctl is-active greenboot-healthcheck 2>/dev/null)" = activating ] || break; sleep 10
@@ -144,15 +176,21 @@ stage fresh-greenboot pass "greenboot judged the first boot healthy (boot_succes
 for _ in $(seq 1 60); do
   [ "$(vm systemctl is-active luma-app-baseline 2>/dev/null)" = activating ] || break; sleep 10
 done
-contract=$(vm "kernel='$kernel'" 'bash -s' <<'EOF'
+contract=$(vm "kernel='$kernel' locals='$locals'" 'bash -s' <<'EOF'
 problems=()
 [ "$(uname -r)" = "$kernel" ] || problems+=("kernel $(uname -r), expected $kernel")
-rpm -q kernel-luma-rpi luma-rpi5-platform luma-rpi-bluetooth-firmware >/dev/null || problems+=("Pi packages missing")
+for name in kernel-luma-rpi $locals; do rpm -q "$name" >/dev/null || problems+=("$name is not installed"); done
 ! rpm -q kernel-core >/dev/null 2>&1 || problems+=("Fedora kernel-core is installed")
-[ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
-  problems+=("logind still offers suspend")
-grep -qx 'hardware_target = raspberrypi,rpi5' /etc/luma/update.conf || problems+=("no Pi update stream")
-[ -f /usr/lib/systemd/system/luma-rpi5-firmware-sync.service ] || problems+=("no firmware-sync unit")
+if [ -e /etc/luma/update.conf ] && grep -Eq '^\s*(hardware_target\s*=\s*\S|ref_template\s*=.*raspberrypi)' /etc/luma/update.conf; then
+  problems+=("update.conf names a hardware target")
+fi
+grep -q '^baseurl=https://' /etc/yum.repos.d/luma-raspberrypi-rpi5.repo 2>/dev/null || problems+=("no Raspberry Pi 5 device repository")
+[ -s /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5 ] || problems+=("no device repository key")
+if rpm -q luma-rpi5-platform >/dev/null 2>&1; then
+  [ "$(busctl call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager CanSuspend)" = 's "no"' ] ||
+    problems+=("logind still offers suspend")
+  [ -f /usr/lib/systemd/system/luma-rpi5-firmware-sync.service ] || problems+=("no firmware-sync unit")
+fi
 for unit in luma-app-baseline gdm; do
   [ "$(systemctl is-active $unit)" = active ] || problems+=("$unit is $(systemctl is-active $unit)")
 done
@@ -185,4 +223,41 @@ for cmd in ({"execute": "qmp_capabilities"}, {"execute": "screendump", "argument
 PY
 [[ "$account" == PASS* ]] || fail_now no-account "${account#FAIL }"
 stage no-account pass "${account#PASS } (screen: $work/first-boot.png)"
+
+# override-update: a newer commit (a local child of the generic commit with
+# the same tree; the remote ref moves to it), the device repository served by
+# this host, then the rpm-ostree upgrade a Pi runs. The override must be
+# reapplied and the Pi kernel must boot.
+python3 -m http.server --bind 127.0.0.1 --directory "$device_repo" "$repo_port" >"$work/http.log" 2>&1 &
+http_pid=$!
+staged=$(vm "candidate='$candidate' ref='$ref' repo_port='$repo_port'" 'bash -s' <<'EOF' 2>&1
+set -e
+sed -i "s|^baseurl=.*|baseurl=http://10.0.2.2:$repo_port/|" /etc/yum.repos.d/luma-raspberrypi-rpi5.repo
+new=$(unshare -m sh -c 'mount -o remount,rw /sysroot && ostree commit --repo=/ostree/repo --orphan \
+  --tree=ref="$1" --parent="$1" -s "card gate update" --add-metadata-string=version=gate-update' _ "$candidate")
+unshare -m sh -c 'mount -o remount,rw /sysroot && ostree refs --repo=/ostree/repo --delete "luma:$1" &&
+  ostree refs --repo=/ostree/repo --create="luma:$1" "$2"' _ "$ref" "$new"
+rpm-ostree refresh-md >/dev/null
+rpm-ostree upgrade --cache-only >/tmp/upgrade.log 2>&1 || { tail -n 5 /tmp/upgrade.log; exit 1; }
+echo "$new"
+EOF
+) || true
+new_commit=$(printf '%s\n' "$staged" | tail -n 1)
+[[ "$new_commit" =~ ^[0-9a-f]{64}$ ]] || fail_now override-update "upgrade failed: $(printf '%s' "$staged" | tr '\n' ' ')"
+read -r base got_origin requested removals staged_checksum <<<"$(deployment 0)"
+[ "$base" = "$new_commit" ] && override_ok "$got_origin" "$requested" "$removals" ||
+  fail_now override-update "staged base $base origin $got_origin requested $requested removed $removals"
+vm 'systemctl reboot' >/dev/null 2>&1 || true
+sleep 30
+for _ in $(seq 1 60); do vm true 2>/dev/null && break; sleep 10; done
+read -r base _ _ _ booted_checksum <<<"$(deployment booted)"
+[ "$booted_checksum" = "$staged_checksum" ] && [ "$base" = "$new_commit" ] ||
+  fail_now override-update "after the reboot the booted deployment is $booted_checksum (base $base), not the update"
+for _ in $(seq 1 60); do
+  [ "$(vm systemctl is-active greenboot-healthcheck 2>/dev/null)" = activating ] || break; sleep 10
+done
+after=$(vm 'uname -r; systemctl is-active greenboot-healthcheck; rpm -q kernel-core >/dev/null 2>&1 && echo fedora-kernel || echo no-fedora-kernel' | tr '\n' ' ')
+[ "$after" = "$kernel active no-fedora-kernel " ] ||
+  fail_now override-update "after the update: $after (expected $kernel, greenboot active, no Fedora kernel)"
+stage override-update pass "rpm-ostree upgrade to $new_commit reapplied the override; rebooted on $kernel, greenboot passed"
 finish
