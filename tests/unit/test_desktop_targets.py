@@ -18,8 +18,11 @@ class DesktopTargets(unittest.TestCase):
     def test_existing_x86_selection_is_unchanged(self):
         # Hardware-target packages (desktop-targets.json) are never in a generic image.
         owned = target.device_package_names(ROOT)
+        scoped = target.target(ROOT, 'x86_64')[1]
         self.assertEqual(target.packages(ROOT, 'x86_64'),
-                         [p for p in target.lines(ROOT / 'config/desktop/packages.txt') if target.package_name(p) not in owned])
+                         [p for p in target.lines(ROOT / 'config/desktop/packages.txt')
+                          if target.package_name(p) not in owned
+                          and 'x86_64' in scoped.get(target.package_name(p), ['x86_64'])])
         self.assertEqual(target.packages(ROOT, 'x86_64', fedora=True), target.lines(ROOT / 'config/os/fedora-packages.txt'))
         old = dict(line.split('=', 1) for line in target.lines(ROOT / 'config/os/release.env'))
         # New installations use the arch URL; every other x86 contract field stays identical.
@@ -29,8 +32,15 @@ class DesktopTargets(unittest.TestCase):
     def test_arm_uses_same_releases_and_noarch_packages(self):
         original = target.packages(ROOT, 'x86_64')
         actual = target.packages(ROOT, 'aarch64')
-        self.assertEqual(actual, [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p
-                                  for p in original if target.package_name(p) != 'intel-crashlog'])
+        # Only arch-scoped hardware packages differ (intel-crashlog; the Pi 5's userspace).
+        scoped = target.target(ROOT, 'aarch64')[1]
+        arm_only = {name for name, arches in scoped.items() if 'x86_64' not in arches}
+        x86_only = {name for name, arches in scoped.items() if 'aarch64' not in arches}
+        self.assertEqual([p for p in actual if target.package_name(p) not in arm_only],
+                         [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p
+                          for p in original if target.package_name(p) not in x86_only])
+        self.assertEqual({target.package_name(p) for p in actual} & arm_only,
+                         arm_only - target.device_package_names(ROOT))
         self.assertFalse(any(p.endswith('.x86_64') for p in actual))
         self.assertFalse(any('surfacepreview' in p for p in actual))
 
