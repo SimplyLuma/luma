@@ -110,8 +110,7 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if [ -z "$BASE" ] || git diff --name-only "$BASE" HEAD -- scripts/packages/build-kernel-luma-rpi.sh \
-               packaging/rpm/kernel-luma-rpi.spec config/kernel scripts/kernel scripts/packages/run-in-rpm-builder.sh \
-               .github/workflows/device-packages.yml | grep -q .; then
+               packaging/rpm/kernel-luma-rpi.spec config/kernel scripts/kernel | grep -q .; then
             echo build=1 >>"$GITHUB_OUTPUT"
           else
             echo "No kernel input changed; kernel-luma-rpi comes from the pull request that pinned it."
