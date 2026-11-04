@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Project Luma contributors
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * Step 3 · Where should Luma live?
+ * Step 2 · Where should Luma live?
  * Drive facts come from Anaconda's Storage module (blivet/udev) and its
  * existing-system scan. Disk selection, the scenario availability checks and
  * partitioning creation are anaconda-webui 68's (InstallationDestination.jsx,
