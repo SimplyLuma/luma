@@ -67,8 +67,9 @@ import_repo="$LUMA_OS_ROOT/ostree/import"
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
 published_repo=$(luma_os_channel_repo "$channel")
 install -d -m 0700 "$LUMA_OS_ROOT/ostree"
-# Refuse shared/inherited staging metadata before an importer can cache it.
-python3 "$luma_os_repo_root/scripts/os/lib/private_import_repo.py" "$import_repo"
+# Refuse shared/inherited staging metadata before an importer can cache it; a
+# refused cache is moved aside unread and replaced by a fresh one.
+python3 "$luma_os_repo_root/scripts/os/lib/private_import_repo.py" --quarantine-refused "$import_repo"
 [ -f "$import_repo/config" ] || ostree init --repo="$import_repo" --mode=bare-user
 [ "$(ostree config --repo="$import_repo" get core.mode)" = bare-user ] ||\
   luma_os_die 'import cache has the wrong repository mode; quarantine it and use a fresh private path'
