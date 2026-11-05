@@ -44,10 +44,22 @@ Unset or `0` (desktop) keeps the previous behaviour. SystemUI reads
 the height at start and on configuration or `policy_control` changes; the
 property persists, so a changed value applies from the next Android start.
 
+## Handheld app orientation
+
+`0003-luma-handheld-app-orientation.patch` lets handheld (`persist.luma.device_class=handheld`)
+freeform tasks provide and specify orientation the way fullscreen tasks do on a phone,
+and releases the PC default that fixes the display to the user rotation, so an app
+that requests landscape rotates the Android display while it is focused and the
+display returns when it leaves. Desktop and tablet keep the fixed rotation. A handheld task the host sized to the unrotated
+display is fitted to the rotated display. The host window stays portrait: the
+hardware composer carries the layer rotation as the Wayland buffer transform, and
+touch reaches Android in physical display coordinates, which InputReader rotates.
+
 ## Patch order
 
 1. `0001-prairie-host-owned-window-chrome.patch`
 2. `0002-luma-host-status-bar-inset.patch`
+3. `0003-luma-handheld-app-orientation.patch`
 
 This patch changes both the boot framework and WindowManager Shell. Deploy it
 only in a system image built from the same resolved manifest as SystemUI and

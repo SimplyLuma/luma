@@ -1,0 +1,67 @@
+diff --git a/services/core/java/com/android/server/wm/DisplayRotation.java b/services/core/java/com/android/server/wm/DisplayRotation.java
+index eae4ffa..31a637e 100644
+--- a/services/core/java/com/android/server/wm/DisplayRotation.java
++++ b/services/core/java/com/android/server/wm/DisplayRotation.java
+@@ -954,7 +954,8 @@ public class DisplayRotation {
+             case IWindowManager.FIXED_TO_USER_ROTATION_ENABLED:
+                 return true;
+             default:
+-                return mDefaultFixedToUserRotation;
++                // A Luma handheld is a phone: apps that request an orientation rotate it.
++                return mDefaultFixedToUserRotation && !TaskFragment.isLumaHandheld();
+         }
+     }
+ 
+diff --git a/services/core/java/com/android/server/wm/Task.java b/services/core/java/com/android/server/wm/Task.java
+index e105f89..4db2b4d 100644
+--- a/services/core/java/com/android/server/wm/Task.java
++++ b/services/core/java/com/android/server/wm/Task.java
+@@ -2142,6 +2142,15 @@ class Task extends TaskFragment {
+             if (outBounds.isEmpty() || parentBounds.isEmpty()) {
+                 return;
+             }
++            // A handheld task fills the display. After an orientation request rotates the
++            // display the host still sizes it to the unrotated display: follow the rotation.
++            if (TaskFragment.isLumaHandheld()
++                    && outBounds.left == parentBounds.left && outBounds.top == parentBounds.top
++                    && outBounds.width() == parentBounds.height()
++                    && outBounds.height() == parentBounds.width()) {
++                outBounds.set(parentBounds);
++                return;
++            }
+             final int width = Math.min(outBounds.width(), parentBounds.width());
+             final int height = Math.min(outBounds.height(), parentBounds.height());
+             final int left = Math.max(parentBounds.left,
+diff --git a/services/core/java/com/android/server/wm/TaskFragment.java b/services/core/java/com/android/server/wm/TaskFragment.java
+index f428d3e..8b770b8 100644
+--- a/services/core/java/com/android/server/wm/TaskFragment.java
++++ b/services/core/java/com/android/server/wm/TaskFragment.java
+@@ -1851,7 +1851,17 @@ class TaskFragment extends WindowContainer<WindowContainer> {
+         return windowingMode == WINDOWING_MODE_FULLSCREEN
+                 || activityType == ACTIVITY_TYPE_HOME
+                 || activityType == ACTIVITY_TYPE_RECENTS
+-                || activityType == ACTIVITY_TYPE_ASSISTANT;
++                || activityType == ACTIVITY_TYPE_ASSISTANT
++                || (windowingMode == WINDOWING_MODE_FREEFORM && isLumaHandheld());
++    }
++
++    /**
++     * Luma handheld tasks are freeform host windows that fill the display, the way
++     * fullscreen tasks do on a phone, so their orientation requests rotate the display.
++     */
++    static boolean isLumaHandheld() {
++        return "handheld".equals(
++                android.os.SystemProperties.get("persist.luma.device_class"));
+     }
+ 
+     /**
+@@ -1860,7 +1870,8 @@ class TaskFragment extends WindowContainer<WindowContainer> {
+      */
+     @Override
+     boolean providesOrientation() {
+-        return super.providesOrientation() || shouldReportOrientationUnspecified();
++        return super.providesOrientation() || shouldReportOrientationUnspecified()
++                || (getWindowingMode() == WINDOWING_MODE_FREEFORM && isLumaHandheld());
+     }
+ 
+     private boolean shouldReportOrientationUnspecified() {

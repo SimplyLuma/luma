@@ -36,6 +36,12 @@ grep -Fq 'SystemBarUtils.getLumaHostStatusBarHeight() == 0' "$status_bar_patch"
 grep -Fq '"$framework_status_bar_patch"' "$builder"
 grep -Fq 'FRAMEWORK_STATUS_BAR_PATCH_SHA' "$prepare"
 
+# Handheld tasks honour app orientation requests and follow the rotated display.
+orientation_patch="$repo_root/patches/android-frameworks-base/0003-luma-handheld-app-orientation.patch"
+grep -Fq 'windowingMode == WINDOWING_MODE_FREEFORM && isLumaHandheld()' "$orientation_patch"
+grep -Fq '"$framework_orientation_patch"' "$builder"
+grep -Fq 'FRAMEWORK_ORIENTATION_PATCH_SHA' "$prepare"
+
 # Prairie retains one real Back action and one outer task-resize bridge.
 grep -Fq 'TitlebarTarget::Back' "$hardware_patch"
 grep -Fq 'KEY_BACK' "$hardware_patch"
