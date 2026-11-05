@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // A dock folder's count badge paints above the folder's mark: the tile builds
 // mark, badge, bar in that order, and the desktop folder stack swaps its mark
-// in (and the original back) below the badge, never on top of it.
+// in (and the original back) below the badge, never on top of it. The stack
+// sizes the badge from the dock badge model, so one digit is a circle.
 // Run: gjs -m dock-folder-badge-policy.js js/ui/lumaDockFolders.js \
 //        js/ui/lumaPresentation/launcherFolders.js
 // (node dock-folder-badge-policy.js ... works too).
@@ -31,4 +32,9 @@ for (const swap of swaps)
     assert(/^tile\.child\.insert_child_below\(\w+, tile\._badge\)$/.test(swap),
         `a swapped-in mark goes below the badge: ${swap}`);
 
-print('dock folder badge order: ok');
+assert(/BadgeModel\.badgeBox\(\{kind: 'pill'\}/.test(stack),
+    'the stack sizes the badge from the dock badge model (a digit is a circle)');
+assert(!/tile\._badge\.get_preferred_width/.test(stack),
+    'the stack does not size the badge from its label alone');
+
+print('dock folder badge order and size: ok');
