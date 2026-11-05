@@ -1,0 +1,21 @@
+[Unit]
+Description=Luma Fairphone 6 call audio route adapter
+After=sound.target
+ConditionPathExists=/proc/device-tree/model
+
+[Service]
+Type=dbus
+BusName=org.projectluma.AudioRoute1
+ExecStart=/usr/libexec/luma-fp6-audio-route-service
+Restart=on-failure
+RestartSec=1
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/lock
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

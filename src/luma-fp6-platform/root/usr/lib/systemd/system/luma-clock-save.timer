@@ -1,0 +1,10 @@
+[Unit]
+Description=Record the wall clock every few minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
