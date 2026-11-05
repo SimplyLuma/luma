@@ -31,7 +31,13 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 fail() { printf 'build-phone-userdata: %s\n' "$*" >&2; exit 1; }
-repo="" ref="" output="" device="" device_repo="" device_key="" size=10G
+# The image's filesystems are mounted in a private mount namespace: a mount
+# namespace another build creates meanwhile (rpm-ostree-offline.sh) would
+# otherwise copy them and keep LumaRoot busy after this script unmounts it.
+if [ -z "${LUMA_PHONE_USERDATA_NS:-}" ]; then
+  LUMA_PHONE_USERDATA_NS=1 exec unshare --mount --propagation private bash "$0" "$@"
+fi
+repo="" ref="" output="" device="" device_repo="" device_key="" size=12G
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo) repo=$(realpath -e "${2:?}"); shift 2 ;;
@@ -210,7 +216,16 @@ setfiles -r "$mnt/ostree/deploy/luma" "$fc" "$var/home" 2>/dev/null || true
 
 sync
 umount -R "$mnt"
-e2fsck -fy "${loop}p2" >/dev/null || [ $? -le 1 ] || fail "e2fsck failed"
+# A namespace rpm-ostree-offline.sh made can hold LumaRoot for a moment after it exits.
+for _ in $(seq 1 60); do
+  grep -qs -- "${loop}p2 " /proc/[0-9]*/mountinfo || break
+  sleep 1
+done
+held=$(grep -ls -- "${loop}p2 " /proc/[0-9]*/mountinfo | cut -d/ -f3 | paste -sd' ')
+[ -z "$held" ] || fail "LumaRoot is still mounted by: $held"
+rc=0
+e2fsck -fy "${loop}p2" >"$work/fsck.log" 2>&1 || rc=$?
+[ "$rc" -le 1 ] || { cat "$work/fsck.log" >&2; fail "e2fsck failed ($rc)"; }
 losetup -d "$loop"; loop=""
 mkdir -p "$(dirname "$output")"
 python3 "$repo_root/scripts/mobile/img2simg.py" "$disk" "$output"
