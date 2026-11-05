@@ -60,6 +60,25 @@ assert(outputs.find(row => row.kind === 'output' && row.current).output.name ===
 assert(!M.panelRows({...full, level: {...full.level, outputs: [{id: 1}]}, open: {outputs: true}})
     .some(row => row.kind === 'output'), 'one output has no list');
 
+// Leave TV Mode (Dell, 4 Nov: TV turned on from Quick Options, and no way back in TV posture):
+// only when TV was chosen, its own section right under the toggles, one Down from them.
+{
+    const leaving = M.panelRows({...full, leave: true});
+    assert(kinds(leaving).startsWith('me chips sep leave sep level'), 'Leave TV Mode sits right under the toggles');
+    const at = leaving.findIndex(row => row.kind === 'leave');
+    assert(M.focusable(leaving[at]), 'Leave TV Mode is a stop for the remote, keyboard and pad');
+    assert(M.stepRow(leaving, leaving.findIndex(row => row.kind === 'chips'), 'down') === at, 'one Down from the toggles');
+    assert(M.keepRow(leaving, 'leave', 0) === at, 'a rebuild keeps it');
+    assert(!M.panelRows(full).some(row => row.kind === 'leave'), 'not offered when TV was not chosen');
+    assert(kinds(M.panelRows({...bare, leave: true})) === 'me leave sep sleep', 'and with nothing else, under you');
+}
+assert(/case 'leave': return this\._line\(\{icon: '[a-z-]+', title: _\('Leave TV Mode'\)\}\)/.test(panel), 'the row reads Leave TV Mode');
+assert(/case 'leave':\s*\/\/[^\n]*\n\s*this\.close\(\(\) => this\._leaveTv\?\.run\(\)\);\s*return false;/.test(panel),
+    'OK on it closes the panel, then leaves');
+assert(/leave: Boolean\(this\._leaveTv\?\.available\(\)\)/.test(panel), 'shown from the posture');
+assert(/leave: \{available: \(\) => this\._presentation\._state\?\.posture\?\.selected === 'tv',\s*run: \(\) => this\._presentation\._call\('SetPosture', new GLib\.Variant\('\(s\)', \['automatic'\]\)/.test(home),
+    "leaving is Quick Options' own SetPosture('automatic'), so the saved presentation comes back");
+
 // The remote: Up/Down over the rows it can stop on; never onto a separator.
 const rows = M.panelRows(full);
 assert(M.firstStop(rows) === 0, 'it opens on you');

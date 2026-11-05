@@ -446,7 +446,7 @@ when the shell-state snapshot's `posture.effective` is `tv`; its handheld
 machinery stays on Desktop underneath, and a snapshot without a posture (an
 older shell-state) behaves exactly as before. In TV posture the TV home
 (Home, Apps, Search) replaces the Dash, panel, overview and sticky stack;
-applications run full screen, and minimising the last one returns to Apps.
+applications run full screen, and minimising the last one returns to Apps. Flatpak's export keeps only allowlisted desktop keys, so for an entry with `X-Flatpak` and no TV keys the TV home reads `X-Luma-TV*` from the app's own deployed desktop file (system or user installation only, `tvModel.js` `flatpakTv`; cached until the installed apps change) and its tile from the deploy's `share/luma-tv/`. Test: `tv-flatpak-policy.js` in %check. Shell .160.
 
 `0323-tv-keyboard.patch`: the TV posture of the Keycap keyboard. While
 `TvPresentation` holds TV posture (`Main.keyboard.setTvPosture()`) every field
@@ -522,7 +522,7 @@ screensaver's blank where logind cannot suspend) and Power (Restart… and
 Power Off… through SystemActions, confirmed by the TV dialog). Rows without
 a backend are not drawn. Back or Left off the island closes it and the focus
 returns to the cluster. docs/developer-platform/tv-mode.md "The quick panel".
-Test: `tv-quick-panel-policy.js` in %check.
+Test: `tv-quick-panel-policy.js` in %check. Leave TV Mode (a row of its own right under the toggles, shown while TV was chosen in Quick Options) closes the panel and calls the shell state's `SetPosture('automatic')`, as Quick Options' mode picker does, so the saved presentation returns. Shell .160.
 
 `0328-tv-app-switcher.patch`: registers `lumaPresentation/tvAppSwitcher.js`
 and its pure rules `tvAppSwitcherModel.js` in the JS resource. In TV posture,
