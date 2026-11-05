@@ -23,7 +23,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {State} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import {tv as TOKENS} from './tvTokens.js';
-import {backButton, dialogKey, keyboardHeight, labelRole, panelShift, panelWidth} from './tvDialogsModel.js';
+import {backButton, dialogKey, keyboardHeight, labelRole, panelShift, panelWidth, foreignWidth, sameValue} from './tvDialogsModel.js';
 import {repeatAllowed} from './tvModel.js';
 
 const DIRECTIONS = {
@@ -233,7 +233,7 @@ export class TvDialogs {
         // A width the actor never fixed goes back to its natural width.
         if (key === 'width' && !(key in saved) && !actor.natural_width_set) saved.width = -1;
         if (!(key in saved)) saved[key] = actor[key];
-        if (actor[key] !== value) actor[key] = value;
+        if (!sameValue(actor[key], value)) actor[key] = value;
     }
 
     // ── the look ──────────────────────────────────────────────────────────
@@ -521,7 +521,12 @@ export class TvDialogs {
         const {mover} = record;
         if (!mover.fixed_position_set) return false;
         // Its own placement balanced the labels for its desktop width.
-        if (mover.width !== width) this._queueRestyle(record);
+        // One restyle per width its own placement gives it; never one for the sheet's own width.
+        const foreign = foreignWidth(mover.width, width);
+        if (foreign !== null && foreign !== record.foreignWidth) {
+            record.foreignWidth = foreign;
+            this._queueRestyle(record);
+        }
         this._set(record, mover, 'width', width);
         this._set(record, mover, 'x', monitor.x + Math.round((monitor.width - width) / 2));
         return true;

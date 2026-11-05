@@ -497,7 +497,7 @@ grab), and Back acts in the capture phase on the Escape button or a lone
 button even if the focus was lost. Dialogs without buttons (Luma Search) and
 every dialog outside TV posture are unchanged; `polkitAgent.js`,
 `dialog.js` and `modalDialog.js` are not patched. docs/developer-platform/
-tv-mode.md "System dialogs". Test: `tv-dialogs-policy.js` in %check.
+tv-mode.md "System dialogs". Test: `tv-dialogs-policy.js` in %check. The sheet width is whole pixels and a card its dialog placed itself is restyled once per width of its own, so restyle and placement converge at a unit that is not whole (1280x800). Shell .161.
 
 `0326-tv-screen-edges.patch`: registers `lumaPresentation/tvScreenEdges.js`.
 In TV posture `TvPresentation` scales `Main.uiGroup` (the TV home and every
