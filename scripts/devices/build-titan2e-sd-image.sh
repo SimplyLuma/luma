@@ -5,7 +5,9 @@
 # (luma-titan2e-<channel>-<build>-aarch64.img.zst) from the generic Luma ARM
 # commit plus the Titan device repository. The phone's boot_a holds the Titan
 # kernel (built-in device tree and initramfs); the initramfs mounts partition 1
-# of the card and boots the newest OSTree deployment in /boot/loader/entries.
+# of the card and boots ostree's default deployment from /boot/loader/entries,
+# with greenboot's boot counting (the shared phone resolver,
+# scripts/mobile/common/initramfs/luma-ostree-boot.sh).
 #
 #   GPT, 512-byte sectors
 #   p1  ext4 "LumaRoot" from 1 MiB to the end: the OSTree physical root with
@@ -216,13 +218,17 @@ krel=$(find "$deploy/usr/lib/modules" -mindepth 1 -maxdepth 1 -name '*-luma-tita
 echo "Titan modules: $krel ($(find "$deploy/usr/lib/modules/$krel" -name '*.ko*' | wc -l))"
 
 # Platform units by their preset (a layer's scriptlets may not have applied it),
-# and the health check the boot marks wait for.
-systemctl --root="$deploy" preset $(cd "$deploy/usr/lib/systemd/system" && ls luma-titan2e-*.service) greenboot-healthcheck.service >/dev/null 2>&1 || true
+# the health check the boot marks wait for, and greenboot's rollback trigger,
+# which arms the boot counter the initramfs follows.
+systemctl --root="$deploy" preset $(cd "$deploy/usr/lib/systemd/system" && ls luma-titan2e-*.service) \
+  greenboot-healthcheck.service greenboot-set-rollback-trigger.service >/dev/null 2>&1 || true
 for unit in "$deploy"/usr/lib/systemd/system/luma-titan2e-*.service; do
   grep -Eq '^WantedBy=(multi-user|greenboot-success)\.target' "$unit" || continue
   systemctl --root="$deploy" -q is-enabled "${unit##*/}" || fail "${unit##*/} is not enabled"
 done
-systemctl --root="$deploy" -q is-enabled greenboot-healthcheck.service || fail "greenboot-healthcheck.service is not enabled"
+for unit in greenboot-healthcheck.service greenboot-set-rollback-trigger.service; do
+  systemctl --root="$deploy" -q is-enabled "$unit" || fail "$unit is not enabled"
+done
 
 # The Titan follows the generic ARM stream: no hardware-targeted update.conf.
 if [ -e "$deploy/etc/luma/update.conf" ] &&
