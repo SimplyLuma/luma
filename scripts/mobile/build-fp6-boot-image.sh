@@ -80,7 +80,7 @@ install -D -m 0644 "$shared/luma-ostree-boot.sh" "$o/usr/lib/luma/ostree-boot.sh
 install -D -m 0755 "$shared/hooks-extra/50-luma-ostree-default.sh" "$o/hooks-extra/50-luma-ostree-default.sh"
 find "$o" -type d -exec chmod 0755 {} +
 find "$o" -exec touch -h -d @0 {} +
-(cd "$o" && find . -mindepth 1 | LC_ALL=C sort | cpio --quiet -o -H newc -R 0:0) | gzip -9n >"$work/overlay.cpio.gz"
+(cd "$o" && find . -mindepth 1 | LC_ALL=C sort | cpio --quiet --reproducible -o -H newc -R 0:0) | gzip -9n >"$work/overlay.cpio.gz"
 cat "$work/in/ramdisk" "$work/overlay.cpio.gz" >"$work/ramdisk"
 
 cmdline="$cmdline_fixed pmos_root_uuid=$root_uuid pmos_boot_uuid=$boot_uuid ostree=/ostree/root.a"
