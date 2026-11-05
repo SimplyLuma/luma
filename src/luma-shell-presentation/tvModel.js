@@ -20,6 +20,53 @@ export function tvEntry(id, name, get) {
     return {id, name, tile: /^[A-Za-z0-9._-]{1,255}$/.test(tile) ? tile : '', presentation};
 }
 
+// A Flatpak's TV keys. Flatpak exports a desktop file with only the keys on its own allowlist
+// (flatpak-dir.c allowed_desktop_entry_keys), so X-Luma-TV* never reach the export that the shell
+// reads (Dell, 5 Nov: Connect, Tide and Weather missing from the TV home). The keys are read from
+// the app's own deployed desktop file instead, in the installation whose export the shell found:
+//   roots     [{exports, deploy}]: an installation's exports/share/applications/ folder, and its
+//             deploy root (<installation>/app); the system's and the user's, nothing else
+//   read      path => text or null
+// Returns {keys, files} (files: the deploy's files/ folder, for the tile) or null: not a Flatpak,
+// not one of those installations, a name that is not a plain app ID, or no TV keys.
+const FLATPAK_ID = /^[A-Za-z_][A-Za-z0-9_-]*(\.[A-Za-z_][A-Za-z0-9_-]*){2,}$/;
+const DESKTOP_ID = /^[A-Za-z_][A-Za-z0-9_.-]{0,240}\.desktop$/;
+export function flatpakTv(desktopId, flatpakId, exportPath, roots, read) {
+    if (typeof flatpakId !== 'string' || flatpakId.length > 255 || !FLATPAK_ID.test(flatpakId)) return null;
+    if (typeof desktopId !== 'string' || !DESKTOP_ID.test(desktopId) || desktopId.includes('..')) return null;
+    const root = roots.find(({exports}) => exports && exportPath === `${exports}${desktopId}`);
+    if (!root) return null;
+    const files = `${root.deploy}/${flatpakId}/current/active/files`;
+    const text = read(`${files}/share/applications/${desktopId}`);
+    if (typeof text !== 'string' || text.length > 65536) return null;
+    const keys = desktopTvKeys(text);
+    return keys['X-Luma-TV'] === undefined ? null : {keys, files};
+}
+
+// The X-Luma-TV* keys of a desktop file's [Desktop Entry] group (unlocalised, first wins).
+export function desktopTvKeys(text) {
+    const keys = {};
+    let entry = false;
+    for (const raw of text.split('\n')) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        if (line.startsWith('[')) {
+            entry = line === '[Desktop Entry]';
+            continue;
+        }
+        const eq = line.indexOf('=');
+        if (!entry || eq <= 0) continue;
+        const key = line.slice(0, eq).trim();
+        if (/^X-Luma-TV(-Tile|-Presentation)?$/.test(key) && !(key in keys)) keys[key] = line.slice(eq + 1).trim();
+    }
+    return keys;
+}
+
+// A Flatpak's wide tile: share/luma-tv/<tile>.svg in its deploy (the export carries no such folder).
+export function flatpakTile(files, tile) {
+    return files && /^[A-Za-z0-9._-]{1,255}$/.test(tile ?? '') && !tile.includes('..') ? `${files}/share/luma-tv/${tile}.svg` : null;
+}
+
 // The TV home's Apps page: opted-in apps by name, as the desktop's catalogue
 // sorts them, with duplicates by ID removed.
 export function tvApps(entries) {

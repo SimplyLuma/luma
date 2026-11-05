@@ -10,6 +10,7 @@ const PASSIVE = new Set(['sep', 'label']);
 // The panel, top to bottom. `state` holds only what the shell really has:
 //   me        {name, focusable}: the account (its picture and name)
 //   toggles   [{key, visible, ...}]: Quick Options toggles; hidden ones drop out
+//   leave     true when TV was chosen (Quick Options' TV): the way back, right under the toggles
 //   level     {visible, outputs: [{id, name}], current}: the output volume
 //   notes     [notification records], newest first
 //   settings  true when Settings can be opened
@@ -28,6 +29,10 @@ export function panelRows(state) {
     if (toggles.length) {
         section();
         rows.push({kind: 'chips', key: 'chips', chips: toggles});
+    }
+    if (state.leave) {
+        section();
+        rows.push({kind: 'leave', key: 'leave'});
     }
     if (state.level?.visible) {
         section();

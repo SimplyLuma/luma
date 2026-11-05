@@ -58,7 +58,9 @@ export class TvQuickPanel {
     // after the panel shuts, so the bar can take its focus back.
     // `cluster` lends the bar's weather | time cluster while the panel is open: take() hands
     // the actor over, give(actor) puts it back on the bar.
-    constructor({unit, opaque, opened = null, closed, cluster = null}) {
+    constructor({unit, opaque, opened = null, closed, cluster = null, leave = null}) {
+        // {available(), run()}: Leave TV Mode, the posture's way back to the saved presentation.
+        this._leaveTv = leave;
         this._cluster = cluster;
         this._unit = unit;
         this._opaque = opaque;
@@ -248,6 +250,7 @@ export class TvQuickPanel {
         return {
             me: {name: this._userState.name, focusable: Boolean(accounts) && Main.sessionMode.allowSettings},
             toggles: this._toggles(),
+            leave: Boolean(this._leaveTv?.available()),
             level: this._levelState,
             notes: this._noteList,
             settings: Boolean(settings) && Main.sessionMode.allowSettings,
@@ -514,6 +517,7 @@ export class TvQuickPanel {
                 endIcon: row.current ? 'lumaui-check-symbolic' : null});
         case 'note': return this._makeNote(row.note);
         case 'clear': return this._line({icon: 'lumaui-x-symbolic', title: _('Clear all')});
+        case 'leave': return this._line({icon: 'lumaui-log-out-symbolic', title: _('Leave TV Mode')});
         case 'settings':
             return this._line({icon: 'lumaui-cog-symbolic', title: _('All Settings'), endIcon: 'lumaui-chevron-right-symbolic'});
         case 'sleep': return this._line({icon: 'lumaui-moon-symbolic', title: _('Sleep')});
@@ -815,6 +819,10 @@ export class TvQuickPanel {
             // The focus goes to the row that takes the list's place.
             this._row = keepRow(this._rows, 'settings', this._row);
             return true;
+        case 'leave':
+            // Back to Automatic: the saved presentation (desktop, tablet or mobile) returns unchanged.
+            this.close(() => this._leaveTv?.run());
+            return false;
         case 'settings':
             this.close(() => this._appSystem.lookup_app(SETTINGS_APP)?.activate());
             return false;
