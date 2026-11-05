@@ -33,6 +33,7 @@ modules:
       - mv /app/bin/org.projectluma.Tide /app/bin/luma-tide-real
       - printf '#!/bin/sh\nexec python3 -m luma_appkit.migration_startup luma-tide-real "$@"\n' > /app/bin/org.projectluma.Tide
       - chmod 755 /app/bin/org.projectluma.Tide
+      - install -d /app/share/luma-tv && mv /app/share/icons/hicolor/scalable/apps/org.projectluma.Tide-tv.svg /app/share/luma-tv/
       - install -Dm644 "$FLATPAK_BUILDER_BUILDDIR/depot.metainfo.xml" /app/share/metainfo/org.projectluma.Tide.metainfo.xml
       - install -Dm644 "$FLATPAK_BUILDER_BUILDDIR/depot-media/54e8384883b98ef609ad5a5361c7981928becd95ced88bc5080946a6c8d85611.png" /app/share/luma-app-media/54e8384883b98ef609ad5a5361c7981928becd95ced88bc5080946a6c8d85611.png
       - install -Dm644 "$FLATPAK_BUILDER_BUILDDIR/LICENSE.md" /app/share/licenses/org.projectluma.Tide/LICENSE.md
