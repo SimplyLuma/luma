@@ -552,3 +552,8 @@ pad input so Mutter's idle time sees a pad. Test: `tv-input-policy.js` (with
 tile's mark in, and the original back, below the tile's count badge, so the
 badge paints above the folder art. Test: `dock-folder-badge-policy.js` in
 %check. Shell .162.
+
+`launcherFolders.js` (0285): the folder stack sizes the count badge with the
+dock badge model's `badgeBox`, so a single digit is a circle and longer counts
+a pill, the same as every other dock badge. Test: `dock-folder-badge-policy.js`
+in %check. Shell .163.

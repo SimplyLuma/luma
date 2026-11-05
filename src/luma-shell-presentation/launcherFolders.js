@@ -8,6 +8,7 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as BadgeModel from 'resource:///org/gnome/shell/ui/lumaDockBadgeModel.js';
 import {FolderModel} from 'resource:///org/gnome/shell/ui/lumaDockFolders.js';
 import {AppDrawer} from './appDrawer.js';
 import {FileFace, makeFileCard} from './fileFaces.js';
@@ -93,7 +94,10 @@ class StackTileLayout extends Clutter.LayoutManager {
         const tile = this.tile;
         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
         tile._mark.allocate(new Clutter.ActorBox({x1: 0, y1: 0, x2: box.get_width(), y2: box.get_height()}));
-        const [, bw] = tile._badge.get_preferred_width(-1), [, bh] = tile._badge.get_preferred_height(bw);
+        // The dock's badge geometry: a single digit is a circle, longer counts a pill.
+        const [, textWidth] = tile._badge.child.clutter_text.get_preferred_width(-1);
+        const {width: bw, height: bh} = BadgeModel.badgeBox({kind: 'pill'},
+            {x: 0, y: 0, width: 0, height: 0}, textWidth, scale);
         tile._badge.allocate(new Clutter.ActorBox({x1: box.get_width() - bw + 5 * scale,
             y1: -4 * scale, x2: box.get_width() + 5 * scale, y2: bh - 4 * scale}));
         const edge = tile._controller.edge;
