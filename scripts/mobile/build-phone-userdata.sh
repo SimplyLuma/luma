@@ -221,7 +221,7 @@ for _ in $(seq 1 60); do
   grep -qs -- "${loop}p2 " /proc/[0-9]*/mountinfo || break
   sleep 1
 done
-held=$(grep -ls -- "${loop}p2 " /proc/[0-9]*/mountinfo | cut -d/ -f3 | paste -sd' ')
+held=$({ grep -ls -- "${loop}p2 " /proc/[0-9]*/mountinfo || true; } | cut -d/ -f3 | paste -sd' ')
 [ -z "$held" ] || fail "LumaRoot is still mounted by: $held"
 rc=0
 e2fsck -fy "${loop}p2" >"$work/fsck.log" 2>&1 || rc=$?
