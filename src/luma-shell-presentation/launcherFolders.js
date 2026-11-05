@@ -213,7 +213,7 @@ export class LauncherFolders {
                 const original = tile._mark, layout = tile.child.layout_manager;
                 tile.child.remove_child(original);
                 const mark = new StackMark(this._controller, tile);
-                tile._mark = mark; tile.child.add_child(mark);
+                tile._mark = mark; tile.child.insert_child_below(mark, tile._badge);
                 const replacement = new StackTileLayout(); replacement.tile = tile; tile.child.layout_manager = replacement;
                 const destroyId = tile.connect('destroy', () => {
                     original.destroy(); this._marks.delete(tile);
@@ -252,7 +252,7 @@ export class LauncherFolders {
     _restoreMarks() {
         for (const [tile, {original, layout, mark, destroyId, width, height, barOpacity}] of this._marks) {
             tile.disconnect(destroyId); tile.set_size(width, height); tile._bar.opacity = barOpacity;
-            tile.child.remove_child(mark); mark.destroy(); tile._mark = original; tile.child.add_child(original); tile.child.layout_manager = layout;
+            tile.child.remove_child(mark); mark.destroy(); tile._mark = original; tile.child.insert_child_below(original, tile._badge); tile.child.layout_manager = layout;
         }
         this._marks.clear();
     }

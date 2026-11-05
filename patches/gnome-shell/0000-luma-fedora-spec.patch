@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.161%{?dist}
++Release:        1.luma.162%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,373 @@
+@@ -32,6 +32,374 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -385,10 +385,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9054:     tv-app-switcher-policy.js
 +Source9055:     tvPointer.js
 +Source9056:     tv-flatpak-policy.js
++Source9057:     dock-folder-badge-policy.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +438,9 @@
+@@ -71,6 +439,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -398,7 +399,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +460,16 @@
+@@ -90,6 +461,16 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -415,7 +416,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +569,58 @@
+@@ -189,8 +570,58 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -474,7 +475,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -207,10 +637,33 @@
+@@ -207,10 +638,34 @@
  # Create empty directories where other packages can drop extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
@@ -505,10 +506,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9051} js/ui/lumaPresentation/tvQuickPanelModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvQuickPanel.js js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvInput.js
 +gjs -m %{SOURCE9054} js/ui/lumaPresentation/tvAppSwitcherModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvAppSwitcher.js js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvInput.js
 +gjs -m %{SOURCE9056} js/ui/lumaPresentation/tvModel.js js/ui/lumaPresentation/tv.js
++gjs -m %{SOURCE9057} js/ui/lumaDockFolders.js js/ui/lumaPresentation/launcherFolders.js
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +671,7 @@
+@@ -218,7 +673,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -517,7 +519,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +703,11 @@
+@@ -250,6 +705,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

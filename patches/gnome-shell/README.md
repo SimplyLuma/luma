@@ -547,3 +547,8 @@ claimed the pads keeps it), adds `Remote1.ShowQuickPanel` for an app's bar
 clock, and taps a Shell-held accelerator (XF86Launch9, at most every 5 s) on
 pad input so Mutter's idle time sees a pad. Test: `tv-input-policy.js` (with
 `tvPointer.js`) in %check.
+
+`launcherFolders.js` (0285): the desktop folder stack swaps a dock folder
+tile's mark in, and the original back, below the tile's count badge, so the
+badge paints above the folder art. Test: `dock-folder-badge-policy.js` in
+%check. Shell .162.
