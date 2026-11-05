@@ -1,0 +1,12 @@
+enable luma-clock-restore.service
+enable luma-clock-save.timer
+enable luma-fp6-audio-route.service
+enable luma-fp6-bluetooth-address.service
+enable luma-fp6-boot-success.service
+enable luma-fp6-camera-gpu-guard.service
+enable luma-fp6-cellular-link.service
+enable luma-fp6-modem-quiesce.service
+enable luma-fp6-primary-gw-session.service
+enable luma-fp6-imsd.service
+enable rmtfs.service
+enable tqftpserv.service
