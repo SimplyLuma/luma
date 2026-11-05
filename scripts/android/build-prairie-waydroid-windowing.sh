@@ -16,6 +16,7 @@ lumaui_frame_patch="$repo_root/patches/android-hardware-waydroid/0007-lumaui-cur
 window_behavior_patch="$repo_root/patches/android-hardware-waydroid/0008-luma-desktop-window-behavior-recovery.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 framework_status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma-host-status-bar-inset.patch"
+framework_orientation_patch="$repo_root/patches/android-frameworks-base/0003-luma-handheld-app-orientation.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 native_density_patch="$repo_root/patches/android-frameworks-native/0002-luma-read-display-density-when-queried.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
@@ -220,6 +221,7 @@ if [ "$incremental" = 0 ]; then
   done
   git -C "$framework_root" apply "$framework_patch"
   git -C "$framework_root" apply "$framework_status_bar_patch"
+  git -C "$framework_root" apply "$framework_orientation_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_task_lifetime_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_notification_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_admission_patch"
@@ -248,6 +250,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0002-waydroid-android-formats.patch"
   git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0003-gbm-serialize-shared-context-maps.patch"
+  git -C "$source_root/external/mesa" apply "$repo_root/patches/android-mesa/0004-panfrost-astc-unorm8-decode-is-ldr.patch"
   git -C "$source_root/external/minigbm" apply "$repo_root/patches/android-minigbm/0001-gbm-mesa-describe-yv12-planes.patch"
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
   git -C "$source_root/build/soong" apply "$soong_cpu_patch"
