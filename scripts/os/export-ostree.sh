@@ -20,6 +20,11 @@
 #    candidate repository's ref and signed summary are updated so the VM gate
 #    can install and update from it exactly as a device would.
 #
+# The channel's published repository must be present: a working root whose
+# published repository is missing (an unmounted bind, say) would otherwise
+# export a candidate with no parent. A channel's first release sets
+# LUMA_EXPORT_FIRST_RELEASE=1.
+#
 # Nothing here touches a published repository. A candidate that fails its gate
 # is deleted from the candidate repository by scripts/os/discard-candidate.sh.
 
@@ -155,6 +160,8 @@ ostree pull-local --repo="$candidate_repo" --untrusted "$import_repo" "$merge" >
 parent=
 if [ -f "$published_repo/config" ]; then
   parent=$(ostree rev-parse --repo="$published_repo" "$ref" 2>/dev/null || true)
+elif [ "${LUMA_EXPORT_FIRST_RELEASE:-}" != 1 ]; then
+  luma_os_die "no published repository at $published_repo (not mounted?); set LUMA_EXPORT_FIRST_RELEASE=1 for a first release"
 fi
 if [ -n "$parent" ]; then
   ostree pull-local --repo="$candidate_repo" --commit-metadata-only --untrusted \
