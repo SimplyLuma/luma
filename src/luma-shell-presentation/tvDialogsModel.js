@@ -44,8 +44,25 @@ export function backButton(buttons) {
 }
 
 // The panel's width: the TV sheet's, inside the safe area.
+// In whole pixels: at a unit that is not whole (1280x800) a fractional width came back from
+// Clutter as a float32 that never equalled it, and restyle and placement requeued each other.
 export function panelWidth(monitorWidth, unit, tokens) {
-    return Math.min(tokens.sheet.width * unit, monitorWidth - 2 * tokens.layout.safe_x * unit);
+    return Math.round(Math.min(tokens.sheet.width * unit, monitorWidth - 2 * tokens.layout.safe_x * unit));
+}
+
+// The width a card's own placement gave it (the administrator prompt sizes its holder for the
+// desktop), in whole pixels, or null when it already has the sheet's width (within half a pixel).
+// The card is restyled once for each such width: a width it was set to by the sheet itself, read
+// back as a float32, is never a change.
+export function foreignWidth(moverWidth, width) {
+    return Math.abs(moverWidth - width) >= 0.5 ? Math.round(moverWidth) : null;
+}
+
+// An actor property is set only when it really changes: lengths within a hundredth of a pixel
+// are the same (Clutter keeps them as float32), anything else must be equal.
+export function sameValue(current, value) {
+    if (typeof current === 'number' && typeof value === 'number') return Math.abs(current - value) < 0.01;
+    return current === value;
 }
 
 // The TV keyboard's height, from its own tokens: a key cell is a cap plus

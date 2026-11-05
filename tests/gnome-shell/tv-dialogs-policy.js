@@ -58,6 +58,41 @@ assert(M.panelWidth(1920, 1, tokens) === tokens.sheet.width, 'the sheet width at
 assert(M.panelWidth(3840, 2, tokens) === 2 * tokens.sheet.width, 'scaled at 4K');
 assert(M.panelWidth(900, 1, tokens) === 900 - 2 * tokens.layout.safe_x, 'never past the safe area');
 
+// An administrator prompt at 1280x800 (ARM VM, 5 Nov): a unit that is not whole gave a
+// fractional width; Clutter keeps lengths as float32, so the card's width never equalled it and
+// restyle and placement requeued each other forever. Whole pixels, and one restyle per width the
+// dialog's own placement gives it.
+{
+    const unit = Math.min(1280 / 1920, 800 / 1080);
+    const width = M.panelWidth(1280, unit, tokens);
+    assert(Number.isInteger(width) && width === Math.fround(width), 'the sheet width is whole pixels at 1280x800');
+    // The loop as the shell runs it: a placement reads the card's width back as float32.
+    const record = {foreignWidth: undefined};
+    let mover = Math.fround(452.5);   // the prompt sized its holder for the desktop
+    let restyles = 0;
+    const place = () => {
+        const foreign = M.foreignWidth(mover, width);
+        if (foreign !== null && foreign !== record.foreignWidth) {
+            record.foreignWidth = foreign;
+            restyles++;
+        }
+        if (!M.sameValue(mover, width)) mover = Math.fround(width);
+    };
+    for (let pass = 0; pass < 50; pass++) place();
+    assert(restyles === 1, `placement converges: one restyle, then none (${restyles})`);
+    assert(M.sameValue(mover, width), 'the card keeps the sheet width');
+    mover = Math.fround(452.5);       // the prompt places itself again at the same width
+    place();
+    assert(restyles === 1, 'the same width of its own is not restyled again');
+    assert(M.foreignWidth(Math.fround(width + 0.3), width) === null, 'a float32 read-back is never a change');
+    assert(M.sameValue(Math.fround(573.3333), 573.3333) && !M.sameValue(10, 11) && M.sameValue('a', 'a'),
+        'a property is set only when it really changes');
+}
+assert(/foreign !== null && foreign !== record\.foreignWidth\) \{\s*record\.foreignWidth = foreign;\s*this\._queueRestyle\(record\);/.test(dialogs),
+    'the shell restyles once per width of its own');
+assert(/if \(!sameValue\(actor\[key\], value\)\) actor\[key\] = value;/.test(dialogs), 'and sets only real changes');
+assert(!/mover\.width !== width/.test(dialogs), 'no exact float comparison requeues a restyle');
+
 // Above the TV keyboard: the keyboard's own height; the panel rises only as
 // far as it must and never above the safe line.
 const kb = M.keyboardHeight(tokens.keyboard);
