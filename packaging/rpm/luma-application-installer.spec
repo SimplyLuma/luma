@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.85%{?dist}
+Release:        1.luma.86%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -272,6 +272,11 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Thu Nov 05 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.86
+- Depot installs and updates wait in one first-in, first-out queue instead
+  of being refused while another runs; a waiting job reports Queued and can
+  be cancelled. Refusals are shown as given, not as an unreachable service.
+
 * Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.85
 - Depot on TV: installed apps, updates and the system row as wide tiles
   and app pages in TV posture.

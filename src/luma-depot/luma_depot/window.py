@@ -98,6 +98,13 @@ def megabytes(value: int) -> str:
     return f"{round(value / 1_000_000)} MB"
 
 
+def byte_counts(progress: Progress) -> str:
+    """Nothing until there is a size: a queued job has no bytes to count."""
+    if progress.total_bytes <= 0:
+        return ""
+    return f"{megabytes(progress.transferred_bytes)} of {megabytes(progress.total_bytes)}"
+
+
 #: The screenshot strip's height; each frame's width follows its picture.
 SHOT_HEIGHT = 190
 
@@ -1667,14 +1674,11 @@ class DepotWindow(UpdatesPage, AppWindow):
             self._progress_views.setdefault(app.app_id, []).append(
                 lambda update, target=stage: target.set_label(update.stage))
             if job.kind not in SYSTEM_JOBS:
-                counts = Gtk.Label(label=(
-                    f"{megabytes(job.progress.transferred_bytes)} of {megabytes(job.progress.total_bytes)}"
-                    if job.progress else "Starting"))
+                counts = Gtk.Label(label=byte_counts(job.progress) if job.progress else "Starting")
                 counts.add_css_class("dp-progress-counts")
                 line.append(counts)
                 self._progress_views.setdefault(app.app_id, []).append(
-                    lambda update, target=counts: target.set_label(
-                        f"{megabytes(update.transferred_bytes)} of {megabytes(update.total_bytes)}"))
+                    lambda update, target=counts: target.set_label(byte_counts(update)))
             if job.kind != "remove" and job.kind not in SYSTEM_JOBS and not app.channel_kind:
                 cancel = Gtk.Button(label="Cancel")
                 cancel.add_css_class("luma-button")
@@ -3688,8 +3692,7 @@ class DepotWindow(UpdatesPage, AppWindow):
             track.set_fraction(job.progress.fraction)
             row.append(track)
             counts = Gtk.Label(
-                label=f"{job.progress.stage} · {megabytes(job.progress.transferred_bytes)}"
-                      f" of {megabytes(job.progress.total_bytes)}",
+                label=" · ".join(x for x in (job.progress.stage, byte_counts(job.progress)) if x),
                 xalign=0)
             counts.add_css_class("dp-progress-counts")
             row.append(counts)
