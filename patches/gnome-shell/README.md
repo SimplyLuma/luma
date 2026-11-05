@@ -557,3 +557,10 @@ badge paints above the folder art. Test: `dock-folder-badge-policy.js` in
 dock badge model's `badgeBox`, so a single digit is a circle and longer counts
 a pill, the same as every other dock badge. Test: `dock-folder-badge-policy.js`
 in %check. Shell .163.
+
+`0330-luma-date-menu-calendar-only.patch`: the date menu (the clock in Quick
+Options) is the calendar column alone: today, the calendar, and events with
+world clocks and weather. It builds no notification list; notifications live
+in the notification tray, Do Not Disturb in Quick Options, and media in the
+shelf. `optionsSurface.css` drops the column's side margin. Test:
+`date-menu-calendar-only-policy.js` in %check. Shell .164.

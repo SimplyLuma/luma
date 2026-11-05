@@ -1,0 +1,42 @@
+Date menu: calendar and events only
+
+The date menu's notification column is gone; notifications live in the
+notification tray. The calendar column is the whole menu.
+
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -976,23 +976,8 @@
+             }
+         });
+ 
+-        // Fill up the first column
+-        this._messageList = new Calendar.CalendarMessageList();
+-        hbox.add_child(this._messageList);
+-
+-        // Collapse notification groups when the user clicks outside of the expanded group
+-        this.menu.actor.connectObject(
+-            'captured-event::button', (_, event) => {
+-                return this._messageList.maybeCollapseMessageGroupForEvent(event);
+-            },
+-            'captured-event::touch', (_, event) => {
+-                return this._messageList.maybeCollapseMessageGroupForEvent(event);
+-            },
+-            'captured-event::key', (_, event) => {
+-                return this._messageList.maybeCollapseMessageGroupForEvent(event);
+-            });
+-
+-        // Fill up the second column
++        // The calendar column is the whole menu: calendar and events only.
++        // Notifications live in the notification tray, not here.
+         const boxLayout = new CalendarColumnLayout([this._calendar, this._date]);
+         const vbox = new St.Widget({
+             style_class: 'datemenu-calendar-column',
+@@ -1146,7 +1131,5 @@
+         // but the corresponding app (clocks, weather); however we can consider
+         // that display-specific settings, so re-use "allowSettings" here ...
+         this._displaysSection.visible = Main.sessionMode.allowSettings;
+-
+-        this._messageList.visible = Main.sessionMode.hasNotifications && !Main.sessionMode.isGreeter;
+     }
+ });

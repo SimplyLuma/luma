@@ -402,6 +402,7 @@ install -m 0644 "$repo_root/tests/gnome-shell/tv-quick-panel-policy.js" "$rpmbui
 install -m 0644 "$repo_root/tests/gnome-shell/tv-app-switcher-policy.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/tv-flatpak-policy.js" "$rpmbuild_dir/SOURCES/"
 install -m 0644 "$repo_root/tests/gnome-shell/dock-folder-badge-policy.js" "$rpmbuild_dir/SOURCES/"
+install -m 0644 "$repo_root/tests/gnome-shell/date-menu-calendar-only-policy.js" "$rpmbuild_dir/SOURCES/"
 # Keycap icons are derived from Stevia's outlines; refuse stale copies.
 python3 "$repo_root/scripts/developer/generate-keycap-shell-icons.py" --check
 (

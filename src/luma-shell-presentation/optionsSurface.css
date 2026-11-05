@@ -140,6 +140,8 @@
 .datemenu-popover.lumaui-floating-material.luma-surface-dark,
 .datemenu-popover.lumaui-floating-material.luma-surface-frost { background-color: rgba(32,33,36,.65); }
 .lumaui-floating-material.lumaui-floating-reduced { background-color: #202124; }
+/* The date menu is the calendar column alone (0330): no gap for a notification column. */
+.datemenu-calendar-column:ltr, .datemenu-calendar-column:rtl { margin-left: 0; margin-right: 0; }
 
 /* Content owns row height at large text scales and in narrow viewports. */
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-toggle-row { height: auto; min-height: 70px; }
