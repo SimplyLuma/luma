@@ -47,9 +47,10 @@ property persists, so a changed value applies from the next Android start.
 ## Handheld app orientation
 
 `0003-luma-handheld-app-orientation.patch` lets handheld (`persist.luma.device_class=handheld`)
-freeform tasks specify orientation the way fullscreen tasks do on a phone, so an app
+freeform tasks provide and specify orientation the way fullscreen tasks do on a phone,
+and releases the PC default that fixes the display to the user rotation, so an app
 that requests landscape rotates the Android display while it is focused and the
-display returns when it leaves. A handheld task the host sized to the unrotated
+display returns when it leaves. Desktop and tablet keep the fixed rotation. A handheld task the host sized to the unrotated
 display is fitted to the rotated display. The host window stays portrait: the
 hardware composer carries the layer rotation as the Wayland buffer transform, and
 touch reaches Android in physical display coordinates, which InputReader rotates.
