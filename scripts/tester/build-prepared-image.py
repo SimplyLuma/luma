@@ -161,12 +161,20 @@ WantedBy=multi-user.target
         var_bind.mkdir(exist_ok=True)
         run(['mount', '--rbind', var, var_bind])
         run(['setfiles', '-F', '-c', policy, '-r', deployment, contexts, var_bind / 'lib/dbus'])
-        # Label home as /home/...: newer policies have no /var/home entries
-        # (that path resolves to var_t), older ones map /home onto /var/home.
+        # Label home as /home/... from a copy of the contexts without the
+        # /home -> /var/home substitution: nightly 20261106 policy lists home
+        # contexts only under /home, so the substituted path resolves to var_t.
+        spec = output / 'home-contexts'; shutil.rmtree(spec, ignore_errors=True); spec.mkdir()
+        for item in contexts.parent.glob(contexts.name + '*'):
+            if item.is_file() and not item.name.endswith('.bin'):
+                lines = item.read_text().splitlines(True)
+                if item.name.endswith(('.subs', '.subs_dist')):
+                    lines = [l for l in lines if l.split()[:2] != ['/home', '/var/home']]
+                (spec / item.name).write_text(''.join(lines))
         alias = output / 'home-root'; (alias / 'home').mkdir(parents=True, exist_ok=True)
         run(['mount', '--bind', var / 'home', alias / 'home'])
         try:
-            run(['setfiles', '-F', '-c', policy, '-r', alias, contexts, alias / 'home'])
+            run(['setfiles', '-F', '-c', policy, '-r', alias, spec / contexts.name, alias / 'home'])
         finally:
             run(['umount', alias / 'home'])
         run(['umount', '-R', var_bind]);var_bind = None

@@ -116,13 +116,10 @@ def main():
     temporary.chmod(0o600)
     os.chown(temporary, user.pw_uid, user.pw_gid)
     temporary.replace(authorized)
-    # Label by the /home path: newer policies match only /home/... and resolve
-    # the real /var/home path (what restorecon uses) to var_t, which sshd refuses.
-    try:
-        context = subprocess.check_output(['matchpathcon', '-n', '/home/' + user.pw_name + '/.ssh'], text=True).strip()
-        subprocess.run(['chcon', '-R', context, str(directory)], check=True)
-    except (OSError, subprocess.CalledProcessError):
-        subprocess.run(['restorecon', '-RF', str(directory)], check=True)
+    # Set the type directly: nightly 20261106 policy substitutes /home with
+    # /var/home but lists home contexts only under /home, so restorecon gives
+    # var_t here and sshd cannot read authorized_keys.
+    subprocess.run(['chcon', '-R', '-u', 'unconfined_u', '-t', 'ssh_home_t', str(directory)], check=True)
     Path('/etc/luma-tester-target').write_text(target + '\n')
     # TV posture follows a television device class (luma-shell-state read_device_posture).
     marker = Path('/etc/luma-device-class')
