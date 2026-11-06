@@ -167,7 +167,8 @@ WantedBy=multi-user.target
         run(['fstrim', '-v', mount])
     finally:
         if var_bind is not None:run(['umount', '-R', var_bind])
-        if home_mount is not None:run(['umount', home_mount])
+        # umount -R of the var rbind can take the home submount with it (shared propagation).
+        if home_mount is not None and os.path.ismount(home_mount):run(['umount', home_mount])
         if mounted:run(['umount', mount])
         run(['losetup', '-d', loop])
     image = output / ('try-luma-' + args.arch + '.qcow2')
