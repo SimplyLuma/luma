@@ -222,6 +222,12 @@ rpm -q gnome-initial-setup >/dev/null 2>&1 && problems+=("gnome-initial-setup is
 rpm -q luma-setup >/dev/null || problems+=("luma-setup is not installed")
 for _ in $(seq 1 30); do pgrep -f 'libexec/luma-setup( |$)' >/dev/null && break; sleep 5; done
 pgrep -f 'libexec/luma-setup( |$)' >/dev/null || problems+=("luma-setup is not running")
+# The setup's first frame can take tens of seconds in a software-rendered VM, and the
+# Shell shows the desktop until then: the screenshot waits until it has run 45 s.
+setup=$(pgrep -f 'libexec/luma-setup( |$)' | head -n 1)
+for _ in $(seq 1 18); do
+  [ -n "$setup" ] && [ "$(ps -o etimes= -p "$setup" 2>/dev/null | tr -d ' ')" -ge 45 ] 2>/dev/null && break; sleep 5
+done
 if [ "${#problems[@]}" -eq 0 ]; then echo "PASS no account; luma-setup on screen"; else printf 'FAIL %s; ' "${problems[@]}"; echo; fi
 EOF
 )
