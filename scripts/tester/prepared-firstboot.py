@@ -67,7 +67,7 @@ def seed_values(text):
         if item.get('path') != '/etc/luma-tester-target':
             raise ValueError('Unsupported seed file')
         target = item.get('content', '').strip()
-    if target not in ('desktop', 'tablet', 'mobile'):
+    if target not in ('desktop', 'tablet', 'mobile', 'tv'):
         raise ValueError('Invalid interface')
     return key, target
 
