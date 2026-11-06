@@ -92,6 +92,41 @@ class Apply(unittest.TestCase):
         self.assertTrue(out.getvalue().endswith("done\n"))
         self.assertTrue((self.state / "first-boot.json").exists())
 
+    def test_password_failing_removes_the_account(self):
+        def run(argv, **kwargs):
+            raise subprocess.CalledProcessError(1, argv, "", "chpasswd: (user nick) pam_chauthtok() failed")
+        bus = FakeBus()
+        with mock.patch.object(apply.subprocess, "run", run), \
+                mock.patch.object(apply.pwd, "getpwnam", lambda name: mock.Mock(pw_uid=1000)):
+            with self.assertRaises(subprocess.CalledProcessError):
+                apply.apply(dict(ANSWERS), out=io.StringIO(), bus=bus, state_dir=self.state)
+        self.assertEqual([m for _i, m, _a in bus.calls], ["CreateUser", "DeleteUser"])
+        self.assertEqual(bus.calls[1][2], (1000, True))
+        self.assertFalse((self.state / "first-boot.json").exists())
+
+    def test_create_failing_after_passwd_removes_the_account(self):
+        # useradd writes passwd, then fails on the home folder (an SELinux denial on /var/home)
+        bus = FakeBus(fail="CreateUser")
+        with mock.patch.object(apply.pwd, "getpwnam", lambda name: mock.Mock(pw_uid=1000)):
+            with self.assertRaises(RuntimeError):
+                apply.apply(dict(ANSWERS), out=io.StringIO(), bus=bus, state_dir=self.state)
+        self.assertEqual([m for _i, m, _a in bus.calls], ["CreateUser", "DeleteUser"])
+
+    def test_create_failing_before_anything_is_made(self):
+        def missing(name):
+            raise KeyError(name)
+        bus = FakeBus(fail="CreateUser")
+        with mock.patch.object(apply.pwd, "getpwnam", missing):
+            with self.assertRaises(RuntimeError):
+                apply.apply(dict(ANSWERS), out=io.StringIO(), bus=bus, state_dir=self.state)
+        self.assertEqual([m for _i, m, _a in bus.calls], ["CreateUser"])
+
+    def test_account_language_failing_still_finishes(self):
+        out = io.StringIO()
+        apply.apply(dict(ANSWERS), out=out, bus=FakeBus(fail="SetLanguage"), state_dir=self.state)
+        self.assertTrue(out.getvalue().startswith("step account ok @nick"))
+        self.assertTrue(out.getvalue().endswith("done\n"))
+
     def test_last_frame_is_data_with_the_ticks(self):
         frame = {"posture": "desktop", "light": False, "wallpaper": "/usr/share/backgrounds/luma/prism.png",
                  "first": "Nick", "face": "", "rows": [["account", "Creating your account", "@nick"],

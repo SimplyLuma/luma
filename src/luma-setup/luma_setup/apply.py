@@ -101,17 +101,36 @@ def _create_account(bus, answers: dict) -> str:
         raise Refused(problem)
     if not answers.get("password"):
         raise Refused("An account needs a password.")
-    path = bus.call("org.freedesktop.Accounts", "/org/freedesktop/Accounts", "org.freedesktop.Accounts",
-                    "CreateUser", "(ssi)", (username, answers["full_name"], 1), "(o)")[0]
-    # The password goes to chpasswd on stdin: hashed by the system's own method (yescrypt).
-    subprocess.run(["chpasswd"], input=f"{username}:{answers['password']}\n", text=True, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    accounts = ("org.freedesktop.Accounts", "/org/freedesktop/Accounts", "org.freedesktop.Accounts")
+    try:
+        path = bus.call(*accounts, "CreateUser", "(ssi)", (username, answers["full_name"], 1), "(o)")[0]
+        # The password goes to chpasswd on stdin: hashed by the system's own method (yescrypt).
+        subprocess.run(["chpasswd"], input=f"{username}:{answers['password']}\n", text=True, check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except Exception:
+        # A half-made account (useradd writes passwd before it makes the home folder; or no
+        # password) is one nobody can sign in to, and it would refuse every retry ("already
+        # has an account"): it goes again, so Finish can be pressed again.
+        try:
+            bus.call(*accounts, "DeleteUser", "(xb)", (pwd.getpwnam(username).pw_uid, True))
+        except KeyError:
+            pass  # nothing was made
+        except Exception as error:  # noqa: BLE001 - the creation failure is the one reported
+            print(f"luma-setup-apply: removing the unfinished account: {_reason(error)}", file=sys.stderr)
+        raise
     user = ("org.freedesktop.Accounts", path, "org.freedesktop.Accounts.User")
+    # The account and its password are what matter; its language and picture can be put right later.
     if answers.get("locale"):
-        bus.call(*user, "SetLanguage", "(s)", (answers["locale"],))
+        try:
+            bus.call(*user, "SetLanguage", "(s)", (answers["locale"],))
+        except Exception as error:  # noqa: BLE001
+            print(f"luma-setup-apply: account language: {_reason(error)}", file=sys.stderr)
     face = answers.get("face")
     if face and os.path.isfile(face):
-        bus.call(*user, "SetIconFile", "(s)", (face,))
+        try:
+            bus.call(*user, "SetIconFile", "(s)", (face,))
+        except Exception as error:  # noqa: BLE001
+            print(f"luma-setup-apply: account picture: {_reason(error)}", file=sys.stderr)
     return username
 
 
