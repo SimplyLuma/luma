@@ -72,6 +72,21 @@ def seed_values(text):
     return key, target
 
 
+def boot_experience(default, timeout=5):
+    # The launcher passes this boot's experience in fw_cfg; the seed keeps the
+    # experience the workspace was first prepared with.
+    subprocess.run(['modprobe', 'qemu_fw_cfg'], check=False)
+    path = Path('/sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw')
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            value = path.read_bytes()[:32].decode().strip('\0').strip()
+            return value or default
+        except (OSError, UnicodeError):
+            time.sleep(0.1)
+    return default
+
+
 def wait_seed(directory=Path('/dev/disk/by-label'), timeout=120):
     # local-fs.target does not guarantee that udev has published the separate
     # seed disk yet, especially during a cold software-emulated boot.
@@ -123,7 +138,7 @@ def main():
     Path('/etc/luma-tester-target').write_text(target + '\n')
     # TV posture follows a television device class (luma-shell-state read_device_posture).
     marker = Path('/etc/luma-device-class')
-    if target == 'tv':
+    if boot_experience(target) == 'tv':
         marker.write_text('tv\n')
     elif marker.is_file() and marker.read_text().strip() == 'tv':
         marker.unlink()
