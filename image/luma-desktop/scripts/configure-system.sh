@@ -27,6 +27,10 @@ install -D -m 0644 "$src/config/desktop/dconf/profile/user" /etc/dconf/profile/u
 install -D -m 0644 "$src/config/desktop/dconf/db/luma.d/00-luma-desktop" /etc/dconf/db/luma.d/00-luma-desktop
 install -D -m 0644 "$src/config/desktop/dconf/db/gdm.d/00-prairie-login" /etc/dconf/db/gdm.d/00-prairie-login
 install -D -m 0644 "$src/config/desktop/useradd" /etc/default/useradd
+# A local policy rebuild loses the /var/home home contexts under HOME=/home: put them back at boot.
+install -D -m 0755 "$src/config/desktop/luma-selinux-homedirs" /usr/libexec/luma-selinux-homedirs
+install -D -m 0644 "$src/config/desktop/luma-selinux-homedirs.service" \
+  /usr/lib/systemd/system/luma-selinux-homedirs.service
 install -D -m 0644 "$src/config/desktop/gtk-3.0/settings.ini" /etc/gtk-3.0/settings.ini
 install -D -m 0644 "$src/config/desktop/gtk-4.0/settings.ini" /etc/gtk-4.0/settings.ini
 install -D -m 0644 "$src/config/boot/plymouthd.conf" /etc/plymouth/plymouthd.conf
@@ -93,6 +97,7 @@ python3 "$src/scripts/os/lib/app_baseline.py" /usr/share/luma/app-baseline \
 cmp /tmp/luma-app-input.json /tmp/luma-app-installed-input.json || fail 'the composed application baseline differs'
 install -m 0644 "$baseline/roles.json" /usr/share/luma/first-party-app-roles.json
 systemctl enable luma-app-baseline.service
+systemctl enable luma-selinux-homedirs.service
 
 # The Luma OS Release public key (the only key the luma remote trusts) and the
 # update-graph public key luma-update verifies the graph with.
