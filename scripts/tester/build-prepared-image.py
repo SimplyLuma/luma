@@ -116,6 +116,9 @@ WantedBy=multi-user.target
         write('etc/gdm/custom.conf', '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=luma\n')
         write('etc/machine-id', '', 0o444)
         write('etc/luma-tester-target', 'desktop\n')
+        # luma-presentation-profile reads the launcher's experience from fw_cfg
+        # sysfs before GDM; load it explicitly instead of racing udev modalias.
+        write('etc/modules-load.d/try-luma-fw-cfg.conf', 'qemu_fw_cfg\n')
         # Previews render in software; keep the shell's real blur and
         # translucent materials instead of its no-GPU fallback surfaces.
         write('etc/environment.d/60-try-luma-materials.conf', 'LUMA_MUTTER_ALLOW_SOFTWARE_BLUR=1\n')
@@ -145,7 +148,7 @@ WantedBy=multi-user.target
         # Relabel only paths this exporter changed. Unrelated target-policy
         # types (for example newer snapd types) need not exist in the host policy.
         changed=['etc/try-luma','etc/gdm/custom.conf','etc/machine-id','etc/luma-tester-target',
-            'etc/environment.d/60-try-luma-materials.conf',
+            'etc/environment.d/60-try-luma-materials.conf', 'etc/modules-load.d/try-luma-fw-cfg.conf',
             'etc/systemd/system/try-luma-seed.service',
             'etc/systemd/system/multi-user.target.wants/try-luma-seed.service',
             'etc/systemd/system/multi-user.target.wants/sshd.service',
