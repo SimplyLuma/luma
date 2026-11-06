@@ -118,6 +118,12 @@ def main():
     temporary.replace(authorized)
     subprocess.run(['restorecon', '-RF', str(directory)], check=True)
     Path('/etc/luma-tester-target').write_text(target + '\n')
+    # TV posture follows a television device class (luma-shell-state read_device_posture).
+    marker = Path('/etc/luma-device-class')
+    if target == 'tv':
+        marker.write_text('tv\n')
+    elif marker.is_file() and marker.read_text().strip() == 'tv':
+        marker.unlink()
     receipt.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     receipt.write_text(json.dumps(dict(key=key, target=target,
         fingerprint=hashlib.sha256(key.encode()).hexdigest())) + '\n')
