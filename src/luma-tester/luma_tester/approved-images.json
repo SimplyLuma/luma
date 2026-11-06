@@ -1,31 +1,31 @@
 {
   "schema": 1,
-  "generation": 7,
+  "generation": 8,
   "images": [
     {
-      "artifact_id": "os/nightly/20261027.4/x86_64",
-      "sha256": "9eb954fc858cd3e801f395399e0c833e29791c25eb31de03de05cd9800f24604"
+      "artifact_id": "os/nightly/20261106.3/x86_64",
+      "sha256": "17404bf70b192a7c9241b08a15eecfcc7c34a17b4b7b91ab69870209838a1cf3"
     },
     {
-      "artifact_id": "os/nightly/20261027.1/aarch64",
-      "sha256": "c0a68aeca9c5698f60c2a9b3be29888730b52f9e5eb069785c1859f25d5550b8"
+      "artifact_id": "os/nightly/20261106.4/aarch64",
+      "sha256": "79df25b1e51e4f0ab958260ab314390372b480fe742c011a058b99324ca34b8d"
     }
   ],
   "workspaces": [
     {
-      "artifact_id": "tester/preview/20261028-ready4/x86_64",
+      "artifact_id": "tester/preview/20261106-ready5/x86_64",
       "kind": "tester_image",
       "arch": "x86_64",
       "file": "try-luma-x86_64.qcow2",
-      "url": "https://media.simplyluma.com/tester/20261028-ready4/try-luma-x86_64.qcow2",
-      "sha256": "d02987696cb0bfd692bdc15f6c3e328916731dfac1ff05230fc04f313037d4c2",
-      "size_bytes": 7553089536,
+      "url": "https://media.simplyluma.com/tester/20261106-ready5/try-luma-x86_64.qcow2",
+      "sha256": "7075d1665a5c15b6314ef1a28ade0fd2a652f06563373814469acd69dd047c95",
+      "size_bytes": 8048672768,
       "channel": "preview",
-      "version": "20261028-ready4",
+      "version": "20261106-ready5",
       "label": "Luma \u2014 Ready to try",
       "tester_profile": {
         "schema": 1,
-        "id": "try-luma-ready4-x86-64",
+        "id": "try-luma-ready5-x86-64",
         "target": "desktop",
         "arch": "x86_64",
         "boot": "uefi",
@@ -33,7 +33,7 @@
         "media": "disk",
         "guest_protocol": "luma-unified-v1",
         "user": "luma",
-        "build": "Luma prepared preview 20261028",
+        "build": "Luma prepared preview 20261106",
         "capabilities": {
           "home": false,
           "dynamic_display": false
@@ -41,19 +41,19 @@
       }
     },
     {
-      "artifact_id": "tester/preview/20261028-ready4/aarch64",
+      "artifact_id": "tester/preview/20261106-ready5/aarch64",
       "kind": "tester_image",
       "arch": "aarch64",
       "file": "try-luma-aarch64.qcow2",
-      "url": "https://media.simplyluma.com/tester/20261028-ready4/try-luma-aarch64.qcow2",
-      "sha256": "e182b3e2cef32dc58f0df8a58fa59079bdfa847390bb62372dd5bbf67e2a7ca8",
-      "size_bytes": 5492768768,
+      "url": "https://media.simplyluma.com/tester/20261106-ready5/try-luma-aarch64.qcow2",
+      "sha256": "f9b7829c0be1643b22a8b045b3661e3b535d2540c22623f6c4c0da6cb41d00c9",
+      "size_bytes": 6952452096,
       "channel": "preview",
-      "version": "20261028-ready4",
+      "version": "20261106-ready5",
       "label": "Luma \u2014 Ready to try",
       "tester_profile": {
         "schema": 1,
-        "id": "try-luma-ready4-aarch64",
+        "id": "try-luma-ready5-aarch64",
         "target": "desktop",
         "arch": "aarch64",
         "boot": "uefi",
@@ -61,7 +61,7 @@
         "media": "disk",
         "guest_protocol": "luma-unified-v1",
         "user": "luma",
-        "build": "Luma prepared preview 20261028",
+        "build": "Luma prepared preview 20261106",
         "capabilities": {
           "home": false,
           "dynamic_display": false
