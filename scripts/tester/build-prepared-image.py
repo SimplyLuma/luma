@@ -160,8 +160,15 @@ WantedBy=multi-user.target
         assert not var_bind.is_symlink(), 'Unexpected OSTree var layout'
         var_bind.mkdir(exist_ok=True)
         run(['mount', '--rbind', var, var_bind])
-        run(['setfiles', '-F', '-c', policy, '-r', deployment, contexts,
-             var_bind / 'home', var_bind / 'lib/dbus'])
+        run(['setfiles', '-F', '-c', policy, '-r', deployment, contexts, var_bind / 'lib/dbus'])
+        # Label home as /home/...: newer policies have no /var/home entries
+        # (that path resolves to var_t), older ones map /home onto /var/home.
+        alias = output / 'home-root'; (alias / 'home').mkdir(parents=True, exist_ok=True)
+        run(['mount', '--bind', var / 'home', alias / 'home'])
+        try:
+            run(['setfiles', '-F', '-c', policy, '-r', alias, contexts, alias / 'home'])
+        finally:
+            run(['umount', alias / 'home'])
         run(['umount', '-R', var_bind]);var_bind = None
         run(['sync', '-f', mount])
         run(['fstrim', '-v', mount])
