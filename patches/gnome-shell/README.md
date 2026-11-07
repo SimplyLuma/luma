@@ -446,7 +446,7 @@ when the shell-state snapshot's `posture.effective` is `tv`; its handheld
 machinery stays on Desktop underneath, and a snapshot without a posture (an
 older shell-state) behaves exactly as before. In TV posture the TV home
 (Home, Apps, Search) replaces the Dash, panel, overview and sticky stack;
-applications run full screen, and minimising the last one returns to Apps.
+applications run full screen, and minimising the last one returns to Apps. Flatpak's export keeps only allowlisted desktop keys, so for an entry with `X-Flatpak` and no TV keys the TV home reads `X-Luma-TV*` from the app's own deployed desktop file (system or user installation only, `tvModel.js` `flatpakTv`; cached until the installed apps change) and its tile from the deploy's `share/luma-tv/`. Test: `tv-flatpak-policy.js` in %check. Shell .160.
 
 `0323-tv-keyboard.patch`: the TV posture of the Keycap keyboard. While
 `TvPresentation` holds TV posture (`Main.keyboard.setTvPosture()`) every field
@@ -497,7 +497,7 @@ grab), and Back acts in the capture phase on the Escape button or a lone
 button even if the focus was lost. Dialogs without buttons (Luma Search) and
 every dialog outside TV posture are unchanged; `polkitAgent.js`,
 `dialog.js` and `modalDialog.js` are not patched. docs/developer-platform/
-tv-mode.md "System dialogs". Test: `tv-dialogs-policy.js` in %check.
+tv-mode.md "System dialogs". Test: `tv-dialogs-policy.js` in %check. The sheet width is whole pixels and a card its dialog placed itself is restyled once per width of its own, so restyle and placement converge at a unit that is not whole (1280x800). Shell .161.
 
 `0326-tv-screen-edges.patch`: registers `lumaPresentation/tvScreenEdges.js`.
 In TV posture `TvPresentation` scales `Main.uiGroup` (the TV home and every
@@ -522,7 +522,7 @@ screensaver's blank where logind cannot suspend) and Power (Restart… and
 Power Off… through SystemActions, confirmed by the TV dialog). Rows without
 a backend are not drawn. Back or Left off the island closes it and the focus
 returns to the cluster. docs/developer-platform/tv-mode.md "The quick panel".
-Test: `tv-quick-panel-policy.js` in %check.
+Test: `tv-quick-panel-policy.js` in %check. Leave TV Mode (a row of its own right under the toggles, shown while TV was chosen in Quick Options) closes the panel and calls the shell state's `SetPosture('automatic')`, as Quick Options' mode picker does, so the saved presentation returns. Shell .160.
 
 `0328-tv-app-switcher.patch`: registers `lumaPresentation/tvAppSwitcher.js`
 and its pure rules `tvAppSwitcherModel.js` in the JS resource. In TV posture,
@@ -547,3 +547,34 @@ claimed the pads keeps it), adds `Remote1.ShowQuickPanel` for an app's bar
 clock, and taps a Shell-held accelerator (XF86Launch9, at most every 5 s) on
 pad input so Mutter's idle time sees a pad. Test: `tv-input-policy.js` (with
 `tvPointer.js`) in %check.
+
+`launcherFolders.js` (0285): the desktop folder stack swaps a dock folder
+tile's mark in, and the original back, below the tile's count badge, so the
+badge paints above the folder art. Test: `dock-folder-badge-policy.js` in
+%check. Shell .162.
+
+`launcherFolders.js` (0285): the folder stack sizes the count badge with the
+dock badge model's `badgeBox`, so a single digit is a circle and longer counts
+a pill, the same as every other dock badge. Test: `dock-folder-badge-policy.js`
+in %check. Shell .163.
+
+`0330-luma-date-menu-calendar-only.patch`: the date menu (the clock in Quick
+Options) is the calendar column alone: today, the calendar, and events with
+world clocks and weather. It builds no notification list; notifications live
+in the notification tray, Do Not Disturb in Quick Options, and media in the
+shelf. `optionsSurface.css` drops the column's side margin. Test:
+`date-menu-calendar-only-policy.js` in %check. Shell .164.
+
+`0331-luma-date-menu-calendar-panel.patch`: the date menu's events list shows
+what is coming up from now into next month, grouped by day, at most four rows
+and then "N more this week"; a chosen day lists that day ("Nothing on
+Thursday." when empty), and choosing it again goes back to today. Rows open
+the event in Luma Calendar (`--event-uid` and `--event-day`, as its reminders
+do); "N more" and Open Calendar open Calendar on that day (`--event-day`).
+The month header (with Today when another month is on show) replaces the date
+header; the month on show pages without choosing a day, arrow keys walk the
+days, and each day's accessible name counts its events. Opening Calendar
+closes the menu. The calendar server adds each
+event's location and its calendar's colour to the extras dictionary.
+`optionsSurface.css` styles the panel: today filled, the chosen day a ring,
+hover a tint. Test: `date-menu-panel-policy.js` in %check. Shell .165.

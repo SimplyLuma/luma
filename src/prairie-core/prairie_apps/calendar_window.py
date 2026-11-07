@@ -87,6 +87,7 @@ class CalendarWindow(AppWindow):
         self.events = ()
         self.hidden_sources = set()
         self.loaded = False
+        self._pending_event = None
         self._load_error = ""
         self._pane_requested = False
         self.generation = 0
@@ -335,6 +336,12 @@ class CalendarWindow(AppWindow):
                     self.new_event(text=quick)
                 if self.draft and os.environ.get("LUMA_CALENDAR_INVITEE_QUERY"):
                     self.invite_field.set_text(os.environ["LUMA_CALENDAR_INVITEE_QUERY"])
+        if self._pending_event:
+            uid, day = self._pending_event
+            self._pending_event = None
+            event = next((e for e in self.events if e.uid == uid and day in e.days), None)
+            if event:
+                self.open_event(event)
         return False
 
     def refresh(self):
@@ -530,6 +537,12 @@ class CalendarWindow(AppWindow):
 
     def show_event(self, uid, day):
         self.anchor = day
+        if uid and not self.loaded:
+            # Opened from outside before the first read: open it once the events land.
+            self._pending_event = (uid, day)
+            self.selected_day = day
+            self.reload()
+            return
         event = next((e for e in self.events if e.uid == uid and day in e.days), None)
         if event:
             self.open_event(event)

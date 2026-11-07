@@ -188,6 +188,9 @@ if [ -e /etc/luma/update.conf ] && grep -Eq '^\s*(hardware_target\s*=\s*\S|ref_t
 fi
 grep -q '^baseurl=https://' /etc/yum.repos.d/luma-raspberrypi-rpi5.repo 2>/dev/null || problems+=("no Raspberry Pi 5 device repository")
 [ -s /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release ] || problems+=("no release key for the device repository")
+# useradd creates the first account's home under /var/home: the policy must label it home_root_t.
+[ "$(matchpathcon -n /var/home 2>/dev/null)" = system_u:object_r:home_root_t:s0 ] || problems+=("policy labels /var/home $(matchpathcon -n /var/home 2>/dev/null)")
+[ "$(stat -c %C /var/home)" = system_u:object_r:home_root_t:s0 ] || problems+=("/var/home is $(stat -c %C /var/home)")
 grep -qx repo_gpgcheck=1 /etc/yum.repos.d/luma-raspberrypi-rpi5.repo || problems+=("device repository metadata is not signature-checked")
 if rpm -q luma-rpi5-platform >/dev/null 2>&1; then
   # The no-sleep policy applies on Pi 5 boards only (the VM is linux,dummy-virt).
@@ -222,6 +225,12 @@ rpm -q gnome-initial-setup >/dev/null 2>&1 && problems+=("gnome-initial-setup is
 rpm -q luma-setup >/dev/null || problems+=("luma-setup is not installed")
 for _ in $(seq 1 30); do pgrep -f 'libexec/luma-setup( |$)' >/dev/null && break; sleep 5; done
 pgrep -f 'libexec/luma-setup( |$)' >/dev/null || problems+=("luma-setup is not running")
+# The setup's first frame can take tens of seconds in a software-rendered VM, and the
+# Shell shows the desktop until then: the screenshot waits until it has run 45 s.
+setup=$(pgrep -f 'libexec/luma-setup( |$)' | head -n 1)
+for _ in $(seq 1 18); do
+  [ -n "$setup" ] && [ "$(ps -o etimes= -p "$setup" 2>/dev/null | tr -d ' ')" -ge 45 ] 2>/dev/null && break; sleep 5
+done
 if [ "${#problems[@]}" -eq 0 ]; then echo "PASS no account; luma-setup on screen"; else printf 'FAIL %s; ' "${problems[@]}"; echo; fi
 EOF
 )

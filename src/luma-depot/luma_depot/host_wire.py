@@ -130,6 +130,9 @@ SHAPES = {
 }
 MUTATIONS = frozenset({'Install','Update','SwitchChannel','Revert','Remove',
                       'SystemChange','RemoveSystemTool','FirmwareInstall','SaveReview','DeleteReview'})
+#: Local transactions run one at a time, first come first served. Review
+#: posts are network calls to the reviews service and are not queued with them.
+TRANSACTIONS = MUTATIONS - {'SaveReview','DeleteReview'}
 
 def request(operation, text):
     if operation not in SHAPES or not isinstance(text,str) or len(text.encode('utf-8')) > MAX_REQUEST:

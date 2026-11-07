@@ -803,12 +803,20 @@ class WaydroidEngine:
     ) -> None:
         if not payloads:
             raise RuntimeUnavailableError("The Android package has no installable payloads.")
+        every_split: list[Path] = []
         if member_names:
             if len(member_names) != len(payloads):
                 raise RuntimeUnavailableError("The Android split manifest is inconsistent.")
-            selected_names = select_compatible_splits(
-                member_names, self._android_device_profile()
-            )
+            every_split = list(payloads)
+            try:
+                selected_names = select_compatible_splits(
+                    member_names, self._android_device_profile()
+                )
+            except UncertainSplitSelection as error:
+                # The device configuration cannot be matched from the split
+                # names alone. Android resolves an overcomplete set itself.
+                LOGGER.info("Installing every split: %s", error)
+                selected_names = member_names
             by_name = dict(zip(member_names, payloads, strict=True))
             payloads = [by_name[name] for name in selected_names]
 
@@ -833,15 +841,41 @@ class WaydroidEngine:
         # verifies package identity, signatures, splits, and native-library
         # compatibility. Some current images omit the legacy
         # `install-multiple` alias while retaining this session-backed form.
+        try:
+            self._commit_package_transaction(payloads)
+        except RuntimeUnavailableError as error:
+            # Some bundles declare required split types (for example a
+            # feature's language split) that the uploader's device happened
+            # to supply. When Android names a missing split, retry once with
+            # every split in the bundle; PackageInstaller keeps what matches.
+            if (
+                "INSTALL_FAILED_MISSING_SPLIT" not in str(error)
+                or len(every_split) <= len(payloads)
+            ):
+                raise
+            LOGGER.info("Android requires more splits; installing all %d", len(every_split))
+            self._commit_package_transaction(every_split)
+        self.wait_for_application_registry_stable(timeout=45)
+        self.synchronize_launchers()
+
+    def _commit_package_transaction(self, payloads: list[Path]) -> None:
         transaction = self._waydroid_package_transaction(payloads)
         try:
             paths = [f"/data/waydroid_tmp/{path.name}" for path in transaction]
-            self._run_as_android_package_manager(
-                ["pm", "install", "--user", "0", "-r", *paths],
-                timeout=600,
-            )
-            self.wait_for_application_registry_stable(timeout=45)
-            self.synchronize_launchers()
+            try:
+                self._run_as_android_package_manager(
+                    ["pm", "install", "--user", "0", "-r", *paths],
+                    timeout=900,
+                )
+            except RuntimeUnavailableError as error:
+                if "INSTALL_FAILED_NO_MATCHING_ABIS" in str(error):
+                    available = ", ".join(self._android_device_profile().abis)
+                    raise RuntimeUnavailableError(
+                        "This Android application requires a different processor "
+                        f"architecture. This device currently supports {available}; "
+                        "the application was not installed."
+                    ) from error
+                raise
         finally:
             for path in transaction:
                 path.unlink(missing_ok=True)
@@ -1391,6 +1425,10 @@ _KNOWN_ABIS = {
 }
 
 
+class UncertainSplitSelection(RuntimeUnavailableError):
+    """Split names do not identify one configuration for this device."""
+
+
 def select_compatible_splits(
     member_names: tuple[str, ...], profile: AndroidDeviceProfile
 ) -> tuple[str, ...]:
@@ -1427,7 +1465,7 @@ def select_compatible_splits(
                 # Unknown feature configuration qualifiers are not safe to
                 # guess. Android may require exactly one mutually exclusive
                 # resource for the physical device.
-                raise RuntimeUnavailableError(
+                raise UncertainSplitSelection(
                     f"The Android feature split {name} uses an unsupported "
                     "device qualifier."
                 )
@@ -1450,8 +1488,9 @@ def select_compatible_splits(
         available = ", ".join(sorted(abi_members))
         supported = ", ".join(normalized_abis)
         raise RuntimeUnavailableError(
-            "This Android bundle has no base split for the device processor "
-            f"architecture (bundle: {available}; device: {supported})."
+            "This Android application requires a different processor "
+            f"architecture ({available}). This device currently supports "
+            f"{supported}; the application was not installed."
         )
     if selected_abi is not None:
         required.append(abi_members[selected_abi])
@@ -1462,6 +1501,10 @@ def select_compatible_splits(
         required.append(locale_members[primary_locale])
     elif "en" in locale_members:
         required.append(locale_members["en"])
+    else:
+        # A bundle can carry only the uploader's language. Android may
+        # still require one language split, so keep the ones present.
+        required.extend(locale_members.values())
 
     feature_names = dict.fromkeys(
         (
@@ -1498,5 +1541,7 @@ def select_compatible_splits(
             required.append(feature_locales[primary_locale])
         elif "en" in feature_locales:
             required.append(feature_locales["en"])
+        else:
+            required.extend(feature_locales.values())
 
     return tuple(required)

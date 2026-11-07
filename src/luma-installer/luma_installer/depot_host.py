@@ -9,8 +9,8 @@ Depot to Update1 so polkit continues to see the original sandbox subject.
 import time
 import uuid
 from gi.repository import Gio, GLib
-from luma_depot.host_wire import BUS, OBJECT, TOKEN, MUTATIONS, request, dumps
-from luma_depot.providers import Result, ProviderError, run_async
+from luma_depot.host_wire import BUS, OBJECT, TOKEN, MUTATIONS, TRANSACTIONS, request, dumps
+from luma_depot.providers import Progress, Result, ProviderError, run_async
 from .app_data_broker import authenticate
 
 XML = '''<node><interface name="org.projectluma.DepotHost1">
@@ -22,6 +22,11 @@ XML = '''<node><interface name="org.projectluma.DepotHost1">
 <signal name="FirmwareState"><arg type="s" name="state"/></signal>
 </interface></node>'''
 
+#: Transactions wait their turn in one FIFO queue. A waiting job reports
+#: Progress with stage QUEUED until it starts; it is never refused for being second.
+QUEUED = 'Queued'
+MAX_WAITING = 64
+
 class Broker:
     def __init__(self):
         from luma_depot.native import NativeCatalogue, NativeInstallation
@@ -29,6 +34,7 @@ class Broker:
         self.loop = GLib.MainLoop()
         self.bus = None
         self.jobs = {}
+        self.waiting = []
         self.watches = {}
         self.reviews = {}
         self.lifecycle_ids = {}
@@ -54,7 +60,7 @@ class Broker:
         if sender in self.watches: return
         def gone(*_):
             for key,job in list(self.jobs.items()):
-                if key[0] == sender: job['cancel'].cancel(); job['vanished'] = True
+                if key[0] == sender: job['vanished'] = True; self._abort(key, job)
             self.reviews = {k:v for k,v in self.reviews.items() if v[0] != sender}
             self.firmware_watchers.discard(sender)
             self.lifecycle_ids.pop(sender, None)
@@ -70,7 +76,7 @@ class Broker:
             if job is None:
                 invocation.return_dbus_error(BUS+'.Refused', 'No transaction belongs to this connection.')
             else:
-                job['cancel'].cancel()
+                self._abort((sender,rid), job)
                 invocation.return_value(GLib.Variant('()', ()))
             return
         try:
@@ -81,10 +87,17 @@ class Broker:
             if authenticate(connection, sender) != 'org.projectluma.Depot':
                 raise PermissionError('Only the installed signed Depot application may use this service.')
             if (sender,rid) in self.jobs: raise ValueError('Duplicate request identity.')
-            if len(self.jobs) >= 4 or (operation in MUTATIONS and any(j['mutation'] for j in self.jobs.values())):
-                raise ValueError('Depot is already working. Try again when the current operation finishes.')
-            if operation in MUTATIONS and self.firmware and self.firmware.installing:
-                raise ValueError('A hardware update is already running.')
+            transaction = operation in TRANSACTIONS
+            if transaction:
+                # Installs, updates and removals wait in order behind the one
+                # that is running instead of being refused as failures.
+                if sum(1 for j in self.jobs.values() if j.get('transaction')) >= MAX_WAITING:
+                    raise ValueError('Too many Depot changes are waiting. Try again when some finish.')
+            else:
+                started = [j for j in self.jobs.values() if not j.get('queued')]
+                if len(started) >= 4 or (operation in MUTATIONS and
+                        any(j['mutation'] and not j.get('transaction') for j in started)):
+                    raise ValueError('Depot is already working. Try again when the current operation finishes.')
             if operation == 'Lifecycle':
                 seen = self.lifecycle_ids.setdefault(sender, set())
                 if rid in seen or len(seen) >= 64:
@@ -96,14 +109,15 @@ class Broker:
         self._watch(sender)
         cancel = Gio.Cancellable()
         key = (sender,rid)
-        self.jobs[key] = {'cancel':cancel, 'mutation': operation in MUTATIONS, 'vanished':False,
-                          'progress':None, 'timer':0}
+        wait = transaction and bool(self.waiting or self._busy())
+        job = self.jobs[key] = {'cancel':cancel, 'mutation': operation in MUTATIONS, 'vanished':False,
+                          'progress':None, 'timer':0, 'transaction':transaction, 'queued':False}
         def finish(result):
             job = self.jobs.pop(key, None)
             if job is None: return
             if job['timer']: GLib.source_remove(job['timer'])
-            if job['vanished']: return
             try:
+                if job['vanished']: return
                 if result.error:
                     payload={'ok':False,'error':str(result.error)[:512],
                         'hint':result.error.hint[:512], 'detail':result.error.detail[:4096]}
@@ -111,6 +125,10 @@ class Broker:
                 invocation.return_value(GLib.Variant('(s)', (dumps(payload),)))
             except Exception:
                 invocation.return_dbus_error(BUS+'.Refused', 'Depot could not produce a bounded result. Refresh to inspect the actual installed state.')
+            finally:
+                # The next waiting transaction starts only after this one's
+                # terminal reply, whatever that reply was.
+                if job['transaction']: self._pump()
         # A cancelled provider's actual worker must still release its reservation.
         # Suppressing a UI callback cannot be treated as a terminal transaction.
         finish._deliver_cancelled = True
@@ -126,8 +144,36 @@ class Broker:
                     except Exception: pass
                 return GLib.SOURCE_REMOVE
             job['timer']=GLib.timeout_add(100,flush)
-        try: self._dispatch(sender, operation, values, finish, progress, cancel)
-        except Exception as error: finish(Result(error=ProviderError(str(error))))
+        def start():
+            if job['queued'] and 'app_id' in values:
+                progress(Progress(values['app_id'], 0.0, 0, 0, 'Starting'))
+            job['queued'] = False
+            try: self._dispatch(sender, operation, values, finish, progress, cancel)
+            except Exception as error: finish(Result(error=ProviderError(str(error))))
+        job['start'], job['finish'] = start, finish
+        if wait:
+            job['queued'] = True
+            self.waiting.append(key)
+            if 'app_id' in values: progress(Progress(values['app_id'], 0.0, 0, 0, QUEUED))
+        else: start()
+
+    def _busy(self):
+        if self.firmware and self.firmware.installing: return True
+        return any(j.get('transaction') and not j.get('queued') for j in self.jobs.values())
+
+    def _pump(self):
+        """Start the oldest waiting transaction once none is running."""
+        while self.waiting and not self._busy():
+            job = self.jobs.get(self.waiting.pop(0))
+            if job is not None and job['queued']: job['start']()
+
+    def _abort(self, key, job):
+        job['cancel'].cancel()
+        if job.get('queued'):
+            # Never started, so nothing can have committed: answer now.
+            job['queued'] = False
+            if key in self.waiting: self.waiting.remove(key)
+            job['finish'](Result(error=ProviderError('Cancelled', hint='Cancelled')))
 
     def _app(self, app_id):
         # The card is resolved anew from verified host discovery. A sandbox
@@ -269,6 +315,8 @@ class Broker:
 
     def _firmware_changed(self):
         if not self.firmware: return
+        if self.waiting and not self.firmware.installing:
+            GLib.idle_add(lambda: self._pump() or GLib.SOURCE_REMOVE)
         try: text=dumps(self._firmware_snapshot())
         except Exception: return
         for sender in tuple(self.firmware_watchers):

@@ -1,0 +1,948 @@
+Date menu: the calendar panel
+
+The events list reads the calendar server and lists what is coming up from
+now into next month, grouped by day (Today, Tomorrow, Sun, Nov 8), at most
+four rows and then "N more this week" (or "N more coming up"). Choosing a
+day lists that day ("Nothing on Thursday." when it is empty); choosing it
+again, or today, goes back to what is coming up. Each row is a button that
+opens the event in Luma Calendar (--event-uid=<uid> --event-day=<day>, the
+command line Calendar's reminders use); "N more" and Open Calendar open
+Calendar on that day (--event-day=<day>).
+
+Rows show the calendar's colour (painted as Calendar paints it: the colour's
+hue at the LumaUI mark lightness and chroma), the title, the place under it
+and the time.
+The calendar server sends each event's location and its calendar's colour in
+the extras dictionary it already carried.
+
+The month on show is separate from the chosen day: the arrows page months
+without choosing a day, and Today comes back when another month is on show;
+the month header replaces the date header (the clock shows the date). Arrow
+keys walk the days and page at the month's edge, and the focused day keeps
+focus when events arrive. Opening Calendar closes the menu. While a day is
+chosen the menu keeps its height and the spare room goes below the list. Each day's accessible
+name says how many events it has. The event range asked of the server covers
+the days on show and what the list needs.
+
+diff --git a/src/calendar-server/gnome-shell-calendar-server.c b/src/calendar-server/gnome-shell-calendar-server.c
+--- a/src/calendar-server/gnome-shell-calendar-server.c
++++ b/src/calendar-server/gnome-shell-calendar-server.c
+@@ -108,6 +108,8 @@
+ {
+   gchar  *id;
+   gchar  *summary;
++  gchar  *location;
++  gchar  *color;
+   time_t  start_time;
+   time_t  end_time;
+ } CalendarAppointment;
+@@ -231,6 +233,8 @@
+   ICalTimezone *default_zone;
+   ICalComponent *ical;
+   ECalComponentId *id;
++  ESource *source;
++  const gchar *location;
+ 
+   default_zone = e_cal_client_get_default_timezone (cal);
+   ical = e_cal_component_get_icalcomponent (comp);
+@@ -242,6 +246,14 @@
+                                        id ? e_cal_component_id_get_uid (id) : NULL,
+                                        id ? e_cal_component_id_get_rid (id) : NULL);
+   appt->summary     = g_strdup (i_cal_component_get_summary (ical));
++  location = i_cal_component_get_location (ical);
++  appt->location    = location && *location ? g_strdup (location) : NULL;
++  source = e_client_get_source (E_CLIENT (cal));
++  if (e_source_has_extension (source, E_SOURCE_EXTENSION_CALENDAR))
++    {
++      ESourceSelectable *selectable = e_source_get_extension (source, E_SOURCE_EXTENSION_CALENDAR);
++      appt->color = e_source_selectable_dup_color (selectable);
++    }
+   appt->start_time  = get_ical_start_time (cal, ical, default_zone);
+   appt->end_time    = get_ical_end_time (cal, ical, default_zone);
+ 
+@@ -259,6 +271,8 @@
+     {
+       g_free (appt->id);
+       g_free (appt->summary);
++      g_free (appt->location);
++      g_free (appt->color);
+       g_free (appt);
+     }
+ }
+@@ -373,6 +387,12 @@
+           (end_time - 1) > app->since))
+         {
+           g_variant_builder_init (&extras_builder, G_VARIANT_TYPE ("a{sv}"));
++          if (appt->location)
++            g_variant_builder_add (&extras_builder, "{sv}", "location",
++                                   g_variant_new_string (appt->location));
++          if (appt->color && *appt->color)
++            g_variant_builder_add (&extras_builder, "{sv}", "color",
++                                   g_variant_new_string (appt->color));
+           g_variant_builder_add (&builder,
+                                  "(ssxxa{sv})",
+                                  appt->id,
+diff --git a/js/ui/calendar.js b/js/ui/calendar.js
+--- a/js/ui/calendar.js
++++ b/js/ui/calendar.js
+@@ -44,6 +44,10 @@
+     return ret;
+ }
+ 
++function _getBeginningOfMonth(date) {
++    return new Date(date.getFullYear(), date.getMonth(), 1);
++}
++
+ function _getEndOfDay(date) {
+     const ret = _getBeginningOfDay(date);
+     ret.setDate(ret.getDate() + 1);
+@@ -75,13 +79,18 @@
+ }
+ 
+ // Abstraction for an appointment/event in a calendar
++
++// How far ahead the date menu lists upcoming events
++export const UPCOMING_DAYS = 35;
+ 
+ class CalendarEvent {
+-    constructor(id, date, end, summary) {
++    constructor(id, date, end, summary, location = '', color = '') {
+         this.id = id;
+         this.date = date;
+         this.end = end;
+         this.summary = summary;
++        this.location = location;
++        this.color = color;
+     }
+ }
+ 
+@@ -308,10 +317,12 @@
+         const handledRemovals = new Set();
+ 
+         for (let n = 0; n < appointments.length; n++) {
+-            const [id, summary, startTime, endTime] = appointments[n];
++            const [id, summary, startTime, endTime, extras = {}] = appointments[n];
+             const date = new Date(startTime * 1000);
+             const end = new Date(endTime * 1000);
+-            const event = new CalendarEvent(id, date, end, summary);
++            const location = extras.location?.unpack() ?? '';
++            const color = extras.color?.unpack() ?? '';
++            const event = new CalendarEvent(id, date, end, summary, location, color);
+             /* It's a recurring event */
+             if (!id.endsWith('\n')) {
+                 const parentId = id.substring(0, id.lastIndexOf('\n') + 1);
+@@ -436,6 +447,8 @@
+ 
+         // Start off with the current date
+         this._selectedDate = new Date();
++        // The month on show; paging moves it without choosing a day
++        this._shownMonth = _getBeginningOfMonth(this._selectedDate);
+ 
+         this._shouldDateGrabFocus = false;
+ 
+@@ -454,8 +467,12 @@
+ 
+         this._eventSource = eventSource;
+         this._eventSource.connect('changed', () => {
++            // Events arrive after the days are built; keep the focused day
++            const focused = this._buttons?.find(b => b.has_key_focus())?._date;
+             this._rebuildCalendar();
+             this._update();
++            if (focused)
++                this._buttons.find(b => sameDay(b._date, focused))?.grab_key_focus();
+         });
+         this._rebuildCalendar();
+         this._update();
+@@ -463,8 +480,11 @@
+ 
+     // Sets the calendar to show a specific date
+     setDate(date) {
+-        if (sameDay(date, this._selectedDate))
++        this._shownMonth = _getBeginningOfMonth(date);
++        if (sameDay(date, this._selectedDate)) {
++            this._update();
+             return;
++        }
+ 
+         this._selectedDate = date;
+ 
+@@ -498,6 +518,30 @@
+         // Top line of the calendar '<| September 2009 |>'
+         this._topBox = new St.BoxLayout({style_class: 'calendar-month-header'});
+         layout.attach(this._topBox, 0, 0, offsetCols + 7, 1);
++
++        this._monthLabel = new St.Label({
++            style_class: 'calendar-month-label',
++            can_focus: true,
++            x_align: Clutter.ActorAlign.START,
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._topBox.add_child(this._monthLabel);
++
++        this._todayButton = new St.Button({
++            style_class: 'calendar-show-today',
++            label: _('Today'),
++            accessible_name: _('Show this month'),
++            can_focus: true,
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._topBox.add_child(this._todayButton);
++        this._todayButton.connect('clicked', () => {
++            this._shouldDateGrabFocus = true;
++            this.setDate(new Date());
++            this._shouldDateGrabFocus = false;
++        });
+ 
+         this._backButton = new St.Button({
+             style_class: 'calendar-change-month-back pager-button',
+@@ -508,15 +552,6 @@
+         this._topBox.add_child(this._backButton);
+         this._backButton.connect('clicked', this._onPrevMonthButtonClicked.bind(this));
+ 
+-        this._monthLabel = new St.Label({
+-            style_class: 'calendar-month-label',
+-            can_focus: true,
+-            x_align: Clutter.ActorAlign.CENTER,
+-            x_expand: true,
+-            y_align: Clutter.ActorAlign.CENTER,
+-        });
+-        this._topBox.add_child(this._monthLabel);
+-
+         this._forwardButton = new St.Button({
+             style_class: 'calendar-change-month-forward pager-button',
+             icon_name: 'pan-end-symbolic',
+@@ -571,50 +606,43 @@
+         return Clutter.EVENT_PROPAGATE;
+     }
+ 
+-    _onPrevMonthButtonClicked() {
+-        let newDate = new Date(this._selectedDate);
+-        const oldMonth = newDate.getMonth();
+-        if (oldMonth === 0) {
+-            newDate.setMonth(11);
+-            newDate.setFullYear(newDate.getFullYear() - 1);
+-            if (newDate.getMonth() !== 11) {
+-                const day = 32 - new Date(newDate.getFullYear() - 1, 11, 32).getDate();
+-                newDate = new Date(newDate.getFullYear() - 1, 11, day);
+-            }
+-        } else {
+-            newDate.setMonth(oldMonth - 1);
+-            if (newDate.getMonth() !== oldMonth - 1) {
+-                const day = 32 - new Date(newDate.getFullYear(), oldMonth - 1, 32).getDate();
+-                newDate = new Date(newDate.getFullYear(), oldMonth - 1, day);
+-            }
+-        }
++    _showMonth(delta) {
++        this._shownMonth = new Date(
++            this._shownMonth.getFullYear(), this._shownMonth.getMonth() + delta, 1);
++        this._update();
++    }
+ 
++    _onPrevMonthButtonClicked() {
+         this._backButton.grab_key_focus();
+-
+-        this.setDate(newDate);
++        this._showMonth(-1);
+     }
+ 
+     _onNextMonthButtonClicked() {
+-        let newDate = new Date(this._selectedDate);
+-        const oldMonth = newDate.getMonth();
+-        if (oldMonth === 11) {
+-            newDate.setMonth(0);
+-            newDate.setFullYear(newDate.getFullYear() + 1);
+-            if (newDate.getMonth() !== 0) {
+-                const day = 32 - new Date(newDate.getFullYear() + 1, 0, 32).getDate();
+-                newDate = new Date(newDate.getFullYear() + 1, 0, day);
+-            }
+-        } else {
+-            newDate.setMonth(oldMonth + 1);
+-            if (newDate.getMonth() !== oldMonth + 1) {
+-                const day = 32 - new Date(newDate.getFullYear(), oldMonth + 1, 32).getDate();
+-                newDate = new Date(newDate.getFullYear(), oldMonth + 1, day);
+-            }
+-        }
+-
+         this._forwardButton.grab_key_focus();
++        this._showMonth(1);
++    }
+ 
+-        this.setDate(newDate);
++    // Arrow keys walk the days; leaving the month shows the next one
++    _onDayKeyPress(button, event) {
++        const rtl = button.get_text_direction() === Clutter.TextDirection.RTL;
++        const steps = {
++            [Clutter.KEY_Left]: rtl ? 1 : -1,
++            [Clutter.KEY_Right]: rtl ? -1 : 1,
++            [Clutter.KEY_Up]: -7,
++            [Clutter.KEY_Down]: 7,
++        };
++        const step = steps[event.get_key_symbol()];
++        if (!step)
++            return Clutter.EVENT_PROPAGATE;
++
++        const date = new Date(button._date);
++        date.setDate(date.getDate() + step);
++        if (!sameMonth(date, this._shownMonth)) {
++            this._shownMonth = _getBeginningOfMonth(date);
++            this._update();
++        }
++        this._buttons.find(b => sameDay(b._date, date))?.grab_key_focus();
++        return Clutter.EVENT_STOP;
+     }
+ 
+     _onSettingsChange() {
+@@ -652,8 +680,7 @@
+         // Actually computing the number of weeks is complex, but we know that the
+         // problematic categories (2 and 4) always start on week start, and that
+         // all months at the end have 6 weeks.
+-        const beginDate = new Date(
+-            this._selectedDate.getFullYear(), this._selectedDate.getMonth(), 1);
++        const beginDate = new Date(this._shownMonth);
+ 
+         this._calendarBegin = new Date(beginDate);
+         this._markedAsToday = now;
+@@ -682,12 +709,28 @@
+ 
+             button._date = new Date(iter);
+             button.connect('clicked', () => {
++                // Choosing the chosen day again goes back to today
++                const date = sameDay(button._date, this._selectedDate)
++                    ? new Date() : button._date;
+                 this._shouldDateGrabFocus = true;
+-                this.setDate(button._date);
++                this.setDate(date);
+                 this._shouldDateGrabFocus = false;
+             });
++            button.connect('key-press-event', this._onDayKeyPress.bind(this));
+ 
+-            const hasEvents = this._eventSource.hasEvents(iter);
++            const nEvents = this._eventSource.getEvents(
++                _getBeginningOfDay(iter), _getEndOfDay(iter)).length;
++            const hasEvents = nEvents > 0;
++            /* Translators: The accessible name of a day in the calendar,
++             * e.g. "Thursday November 12" */
++            const dayName = formatDateWithCFormatString(iter, Shell.util_translate_time_string(N_('%A %B %-d')));
++            button.accessible_name = [
++                dayName,
++                sameDay(now, iter) ? _('today') : null,
++                hasEvents
++                    ? ngettext('%d event', '%d events', nEvents).format(nEvents)
++                    : _('nothing planned'),
++            ].filter(Boolean).join(', ');
+             let styleClass = 'calendar-day';
+ 
+             if (_isWorkDay(iter))
+@@ -707,7 +750,7 @@
+ 
+             if (sameDay(now, iter))
+                 styleClass += ' calendar-today';
+-            else if (iter.getMonth() !== this._selectedDate.getMonth())
++            else if (iter.getMonth() !== this._shownMonth.getMonth())
+                 styleClass += ' calendar-other-month';
+ 
+             if (hasEvents)
+@@ -743,20 +786,36 @@
+                 row++;
+         }
+ 
+-        // Signal to the event source that we are interested in events
+-        // only from this date range
+-        this._eventSource.requestRange(beginDate, iter);
++        this._gridBegin = beginDate;
++        this._gridEnd = new Date(iter);
+     }
+ 
++    // Ask for the days on show plus what the event list needs: the chosen
++    // day, or from today through the upcoming days.
++    _requestRange() {
++        let begin = this._gridBegin;
++        let end = this._gridEnd;
++        const day = _getBeginningOfDay(this._selectedDate);
++        const dayEnd = sameDay(day, new Date())
++            ? new Date(day.getFullYear(), day.getMonth(), day.getDate() + UPCOMING_DAYS)
++            : _getEndOfDay(day);
++        if (day < begin)
++            begin = day;
++        if (dayEnd > end)
++            end = dayEnd;
++        this._eventSource.requestRange(begin, end);
++    }
++
+     _update() {
+         const now = new Date();
+ 
+-        if (sameYear(this._selectedDate, now))
+-            this._monthLabel.text = formatDateWithCFormatString(this._selectedDate, this._headerFormatWithoutYear);
++        if (sameYear(this._shownMonth, now))
++            this._monthLabel.text = formatDateWithCFormatString(this._shownMonth, this._headerFormatWithoutYear);
+         else
+-            this._monthLabel.text = formatDateWithCFormatString(this._selectedDate, this._headerFormat);
++            this._monthLabel.text = formatDateWithCFormatString(this._shownMonth, this._headerFormat);
++        this._todayButton.visible = !sameMonth(this._shownMonth, now);
+ 
+-        if (!this._calendarBegin || !sameMonth(this._selectedDate, this._calendarBegin) || !sameDay(now, this._markedAsToday))
++        if (!this._calendarBegin || !sameMonth(this._shownMonth, this._calendarBegin) || !sameDay(now, this._markedAsToday))
+             this._rebuildCalendar();
+ 
+         this._buttons.forEach(button => {
+@@ -768,6 +827,8 @@
+                 button.remove_style_pseudo_class('selected');
+             }
+         });
++
++        this._requestRange();
+     }
+ });
+ 
+diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
+--- a/js/ui/dateMenu.js
++++ b/js/ui/dateMenu.js
+@@ -17,11 +17,9 @@
+ import {formatDateWithCFormatString, formatTime, clearCachedLocalTimeZone} from '../misc/dateUtils.js';
+ import {loadInterfaceXML} from '../misc/fileUtils.js';
+ 
+-const NC_ = (context, str) => `${context}\u0004${str}`;
+ const T_ = Shell.util_translate_time_string;
+ 
+ const MAX_FORECASTS = 5;
+-const EN_CHAR = '\u2013';
+ 
+ const ClocksIntegrationIface = loadInterfaceXML('org.gnome.Shell.ClocksIntegration');
+ const ClocksProxy = Gio.DBusProxy.makeProxyWrapper(ClocksIntegrationIface);
+@@ -109,39 +107,104 @@
+     }
+ });
+ 
+-const EventsSection = GObject.registerClass(
+-class EventsSection extends St.Button {
++const MAX_EVENT_ROWS = 4;
++
++// Calendar paints a calendar's colour as that colour's hue at the LumaUI mark
++// lightness and chroma (luma_appkit rows_mark, MARK tokens); the list matches.
++const MARK_HUE_LIGHTNESS = 0.72;
++const MARK_HUE_CHROMA = 0.13;
++
++function _calendarColor(color) {
++    const hex = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(color ?? '')?.[1];
++    if (!hex)
++        return null;
++    const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
++    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
++    const l = (max + min) / 2;
++    const saturation = d === 0 ? 0 : d / (l <= 0.5 ? max + min : 2 - max - min);
++    if (saturation <= 0.05)
++        return null;
++    let hue = max === r ? (g - b) / d : max === g ? 2 + (b - r) / d : 4 + (r - g) / d;
++    hue = Math.round(((hue / 6) % 1 + 1) % 1 * 360) * Math.PI / 180;
++
++    const A = MARK_HUE_CHROMA * Math.cos(hue), B = MARK_HUE_CHROMA * Math.sin(hue);
++    const L = MARK_HUE_LIGHTNESS;
++    const l3 = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
++    const m3 = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
++    const s3 = (L - 0.0894841775 * A - 1.2914855480 * B) ** 3;
++    const encode = v => {
++        v = Math.max(0, Math.min(1, v));
++        return Math.round((v > 0.0031308 ? 1.055 * v ** (1 / 2.4) - 0.055 : 12.92 * v) * 255);
++    };
++    return `rgb(${encode(4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3)}, ` +
++        `${encode(-1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3)}, ` +
++        `${encode(-0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3)})`;
++}
++
++function _addDays(date, days) {
++    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
++}
++
++const CALENDAR_APP_ID = 'org.projectluma.Calendar.desktop';
++
++// Calendar opens an event by its uid on a day, or a day alone:
++// --event-uid=<uid> --event-day=<YYYY-MM-DD>. The shell's event ids are
++// "source\nuid\nrid".
++function _calendarArgs(eventId, day) {
++    const args = [`--event-day=${formatDateWithCFormatString(day, '%Y-%m-%d')}`];
++    if (eventId)
++        args.unshift(`--event-uid=${eventId.split('\n')[1]}`);
++    return args;
++}
++
++const EventsSection = GObject.registerClass({
++    Signals: {'activated': {}},
++}, class EventsSection extends St.BoxLayout {
+     _init() {
++        // Reactive, or St marks the card insensitive and the theme greys it
+         super._init({
+             style_class: 'events-button',
+-            can_focus: true,
++            reactive: true,
+             x_expand: true,
+-            child: new St.BoxLayout({
+-                style_class: 'events-box',
+-                orientation: Clutter.Orientation.VERTICAL,
+-                x_expand: true,
+-            }),
+         });
+ 
+-        this._startDate = null;
+-        this._endDate = null;
++        // The chosen day; today lists what is coming up
++        this._date = null;
+ 
+         this._eventSource = null;
+         this._calendarApp = null;
+ 
+-        this._title = new St.Label({
+-            style_class: 'events-title',
++        this._box = new St.BoxLayout({
++            style_class: 'events-box',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
+         });
+-        this.child.add_child(this._title);
+-        this.labelActor = this._title;
++        this.add_child(this._box);
+ 
+         this._eventsList = new St.BoxLayout({
+             style_class: 'events-list',
+             orientation: Clutter.Orientation.VERTICAL,
+             x_expand: true,
+         });
+-        this.child.add_child(this._eventsList);
++        this._box.add_child(this._eventsList);
+ 
++        this._openIcon = new St.Icon({style_class: 'events-open-icon'});
++        const openBox = new St.BoxLayout({style_class: 'events-open-box'});
++        openBox.add_child(this._openIcon);
++        openBox.add_child(new St.Label({
++            text: _('Open Calendar'),
++            y_align: Clutter.ActorAlign.CENTER,
++        }));
++        this._openButton = new St.Button({
++            style_class: 'events-open-button',
++            can_focus: true,
++            x_expand: true,
++            child: openBox,
++        });
++        this._openButton.connect('clicked',
++            () => this._openCalendar(_calendarArgs(null, this._date)));
++        this._box.add_child(this._openButton);
++
+         this._appSys = Shell.AppSystem.get_default();
+         this._appSys.connect('installed-changed',
+             this._appInstalledChanged.bind(this));
+@@ -149,12 +212,8 @@
+     }
+ 
+     setDate(date) {
+-        this._startDate =
++        this._date =
+             new Date(date.getFullYear(), date.getMonth(), date.getDate());
+-        this._endDate =
+-            new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+-
+-        this._updateTitle();
+         this._reloadEvents();
+     }
+ 
+@@ -167,152 +226,225 @@
+         this._eventSource.connect('notify::has-calendars',
+             this._sync.bind(this));
+         this._sync();
+-    }
+-
+-    _updateTitle() {
+-        /* Translators: Shown on calendar heading when selected day occurs on current year */
+-        const sameYearFormat = T_(NC_('calendar heading', '%B %-d'));
+-
+-        /* Translators: Shown on calendar heading when selected day occurs on different year */
+-        const otherYearFormat = T_(NC_('calendar heading', '%B %-d %Y'));
+-
+-        const timeSpanDay = GLib.TIME_SPAN_DAY / 1000;
+-        const now = new Date();
+-
+-        if (this._startDate <= now && now < this._endDate)
+-            this._title.text = _('Today');
+-        else if (this._endDate <= now && now - this._endDate < timeSpanDay)
+-            this._title.text = _('Yesterday');
+-        else if (this._startDate > now && this._startDate - now <= timeSpanDay)
+-            this._title.text = _('Tomorrow');
+-        else if (this._startDate.getFullYear() === now.getFullYear())
+-            this._title.text = formatDateWithCFormatString(this._startDate, sameYearFormat);
+-        else
+-            this._title.text = formatDateWithCFormatString(this._startDate, otherYearFormat);
+     }
+ 
+-    _isAtMidnight(eventTime) {
+-        return eventTime.getHours() === 0 && eventTime.getMinutes() === 0 && eventTime.getSeconds() === 0;
++    _dayTitle(day, format) {
++        const today = _addDays(new Date(), 0);
++        if (day.getTime() === today.getTime())
++            return _('Today');
++        if (day.getTime() === _addDays(today, 1).getTime())
++            return _('Tomorrow');
++        return formatDateWithCFormatString(day, T_(format));
+     }
+ 
+-    _formatEventTime(event) {
+-        const eventStart = event.date;
+-        let eventEnd = event.end;
++    _formatEventTime(event, day) {
++        const dayEnd = _addDays(day, 1);
+ 
+-        const allDay =
+-            eventStart.getTime() === this._startDate.getTime() && eventEnd.getTime() === this._endDate.getTime();
++        if (event.date <= day && event.end >= dayEnd)
++            /* Translators: Shown in calendar event list for all day events
++             * Keep it short, best if you can use less then 10 characters
++             */
++            return C_('event list time', 'All day');
+ 
+-        const startsBeforeToday = eventStart < this._startDate;
+-        const endsAfterToday = eventEnd > this._endDate;
++        if (event.date < day)
++            /* Translators: An event that started on an earlier day, e.g. "Until 3:00 PM" */
++            return _('Until %s').format(formatTime(event.end, {timeOnly: true}));
+ 
+-        const startTimeOnly = formatTime(eventStart, {timeOnly: true});
+-        const endTimeOnly = formatTime(eventEnd, {timeOnly: true});
++        return formatTime(event.date, {timeOnly: true});
++    }
+ 
+-        const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
++    _addHeading(day, format) {
++        this._eventsList.add_child(new St.Label({
++            text: this._dayTitle(day, format),
++            style_class: 'events-title',
++        }));
++    }
+ 
+-        let title;
+-        if (allDay) {
+-            /* Translators: Shown in calendar event list for all day events
+-             * Keep it short, best if you can use less then 10 characters
+-             */
+-            title = C_('event list time', 'All Day');
+-        } else if (startsBeforeToday || endsAfterToday) {
+-            const now = new Date();
+-            const thisYear = now.getFullYear();
++    _addEvent(event, day) {
++        const time = this._formatEventTime(event, day);
+ 
+-            const startsAtMidnight = this._isAtMidnight(eventStart);
+-            const endsAtMidnight = this._isAtMidnight(eventEnd);
++        const color = new St.Widget({style_class: 'event-color'});
++        const paint = _calendarColor(event.color);
++        if (paint)
++            color.style = `background-color: ${paint};`;
+ 
+-            const startYear = eventStart.getFullYear();
++        const text = new St.BoxLayout({
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        text.add_child(new St.Label({
++            text: event.summary,
++            style_class: 'event-summary',
++        }));
++        if (event.location) {
++            text.add_child(new St.Label({
++                text: event.location,
++                style_class: 'event-time event-location',
++            }));
++        }
++
++        const box = new St.BoxLayout({x_expand: true});
++        box.add_child(color);
++        box.add_child(text);
++        box.add_child(new St.Label({
++            text: time,
++            style_class: 'event-time',
++            y_align: Clutter.ActorAlign.START,
++        }));
++
++        const button = new St.Button({
++            style_class: 'event-box',
++            can_focus: true,
++            x_expand: true,
++            reactive: this._calendarApp !== null,
++            accessible_name: [event.summary, time, event.location].filter(Boolean).join(', '),
++            child: box,
++        });
++        button.connect('clicked',
++            () => this._openCalendar(_calendarArgs(event.id, day)));
++        this._eventsList.add_child(button);
++    }
+ 
+-            if (endsAtMidnight) {
+-                eventEnd = new Date(eventEnd);
+-                eventEnd.setDate(eventEnd.getDate() - 1);
++    _addMore(text, day) {
++        const button = new St.Button({
++            style_class: 'events-more-button',
++            label: text,
++            can_focus: true,
++            x_align: Clutter.ActorAlign.START,
++            reactive: this._calendarApp !== null,
++        });
++        button.connect('clicked',
++            () => this._openCalendar(_calendarArgs(null, day)));
++        this._eventsList.add_child(button);
++    }
++
++    _addPlaceholder(text) {
++        this._eventsList.add_child(new St.Label({
++            text,
++            style_class: 'event-placeholder',
++        }));
++    }
++
++    // From now into next month, grouped by day
++    _showUpcoming(now) {
++        const today = _addDays(now, 0);
++        const groupDay = event => event.date < today ? today : _addDays(event.date, 0);
++        const events = this._eventSource
++            .getEvents(now, _addDays(today, Calendar.UPCOMING_DAYS))
++            .sort((a, b) => groupDay(a) - groupDay(b) || a.date - b.date);
++
++        if (events.length === 0) {
++            this._addPlaceholder(_('Nothing coming up.'));
++            return;
++        }
++
++        let lastDay = null;
++        for (const event of events.slice(0, MAX_EVENT_ROWS)) {
++            const day = groupDay(event);
++            if (lastDay?.getTime() !== day.getTime()) {
++                /* Translators: Heading for a day of upcoming events, e.g. "Sun, Nov 8" */
++                this._addHeading(day, N_('%a, %b %-d'));
++                lastDay = day;
+             }
++            this._addEvent(event, day);
++        }
+ 
+-            const endYear = eventEnd.getFullYear();
++        const rest = events.slice(MAX_EVENT_ROWS);
++        if (rest.length === 0)
++            return;
+ 
+-            let format;
+-            if (startYear === thisYear && thisYear === endYear)
+-                /* Translators: Shown in calendar event list as the start/end of events
+-                 * that only show day and month
+-                 */
+-                format = T_(N_('%m/%d'));
+-            else
+-                format = '%x';
++        const nextWeek = _addDays(today, 7);
++        const thisWeek = rest.filter(e => e.date < nextWeek).length;
++        this._addMore(thisWeek
++            ? ngettext('%d more this week', '%d more this week', thisWeek).format(thisWeek)
++            : ngettext('%d more coming up', '%d more coming up', rest.length).format(rest.length),
++        today);
++    }
+ 
+-            const startDateOnly = formatDateWithCFormatString(eventStart, format);
+-            const endDateOnly = formatDateWithCFormatString(eventEnd, format);
++    // The chosen day alone
++    _showDay(day) {
++        const events = this._eventSource.getEvents(day, _addDays(day, 1));
++        const weekday = formatDateWithCFormatString(day, '%A');
+ 
+-            if (startsAtMidnight && endsAtMidnight)
+-                title = `${rtl ? endDateOnly : startDateOnly} ${EN_CHAR} ${rtl ? startDateOnly : endDateOnly}`;
+-            else if (rtl)
+-                title = `${endTimeOnly} ${endDateOnly} ${EN_CHAR} ${startTimeOnly} ${startDateOnly}`;
++        if (events.length === 0) {
++            const title = this._dayTitle(day, '%A');
++            if (title === _('Today'))
++                this._addPlaceholder(_('Nothing today.'));
++            else if (title === _('Tomorrow'))
++                this._addPlaceholder(_('Nothing tomorrow.'));
+             else
+-                title = `${startDateOnly} ${startTimeOnly} ${EN_CHAR} ${endDateOnly} ${endTimeOnly}`;
+-        } else if (eventStart === eventEnd) {
+-            title = startTimeOnly;
+-        } else {
+-            title = `${rtl ? endTimeOnly : startTimeOnly} ${EN_CHAR} ${rtl ? startTimeOnly : endTimeOnly}`;
++                /* Translators: No events on a weekday, e.g. "Nothing on Thursday." */
++                this._addPlaceholder(_('Nothing on %s.').format(weekday));
++            return;
+         }
+ 
+-        return title;
++        /* Translators: Heading for the chosen day's events, e.g. "Thursday, November 12" */
++        this._addHeading(day, N_('%A, %B %-d'));
++        for (const event of events.slice(0, MAX_EVENT_ROWS))
++            this._addEvent(event, day);
++
++        const more = events.length - MAX_EVENT_ROWS;
++        if (more > 0) {
++            /* Translators: e.g. "2 more on Thursday" */
++            this._addMore(ngettext('%d more on %s', '%d more on %s', more).format(more, weekday), day);
++        }
+     }
+ 
+     _reloadEvents() {
+-        if (this._eventSource.isLoading || this._reloading)
++        if (!this._eventSource || !this._date ||
++            this._eventSource.isLoading || this._reloading)
+             return;
+ 
+         this._reloading = true;
+ 
+-        [...this._eventsList].forEach(c => c.destroy());
++        this._eventsList.destroy_all_children();
+ 
+-        const events =
+-            this._eventSource.getEvents(this._startDate, this._endDate);
++        const now = new Date();
++        if (_isToday(this._date))
++            this._showUpcoming(now);
++        else
++            this._showDay(this._date);
+ 
+-        for (const event of events) {
+-            const box = new St.BoxLayout({
+-                style_class: 'event-box',
+-                orientation: Clutter.Orientation.VERTICAL,
+-            });
+-            box.add_child(new St.Label({
+-                text: event.summary,
+-                style_class: 'event-summary',
+-            }));
+-            box.add_child(new St.Label({
+-                text: this._formatEventTime(event),
+-                style_class: 'event-time',
+-            }));
+-            this._eventsList.add_child(box);
+-        }
+-
+-        if (this._eventsList.get_n_children() === 0) {
+-            const placeholder = new St.Label({
+-                text: _('No Events'),
+-                style_class: 'event-placeholder',
+-            });
+-            this._eventsList.add_child(placeholder);
+-        }
+-
+         this._reloading = false;
+         this._sync();
+     }
+ 
+-    vfunc_clicked() {
++    _openCalendar(args) {
+         Main.overview.hide();
+-        Main.panel.closeCalendar();
++        this.emit('activated');
+ 
+         const appInfo = this._calendarApp;
+         const context = global.create_app_launch_context(0, -1);
+-        if (appInfo.get_id() === 'org.gnome.Evolution.desktop')
++        if (appInfo.get_id() === 'org.gnome.Evolution.desktop') {
+             appInfo.launch_action('calendar', context);
+-        else
+-            appInfo.launch([], context);
++            return;
++        }
++
++        // Calendar takes the event or day after its own command line
++        const command = appInfo.get_id() === CALENDAR_APP_ID
++            ? appInfo.get_commandline()?.replace(/\s+(@@\w?|%[a-zA-Z])(?=\s|$)/g, '') : null;
++        if (command) {
++            const commandLine = [command, ...args.map(arg => GLib.shell_quote(arg).replaceAll('%', '%%'))]
++                .join(' ');
++            try {
++                Gio.AppInfo.create_from_commandline(commandLine, appInfo.get_name(),
++                    Gio.AppInfoCreateFlags.SUPPORTS_STARTUP_NOTIFICATION)
++                    .launch([], context);
++                return;
++            } catch (e) {
++                logError(e, 'Opening Calendar');
++            }
++        }
++
++        appInfo.launch([], context);
+     }
+ 
+     _appInstalledChanged() {
+         const apps = Gio.AppInfo.get_recommended_for_type('text/calendar');
+-        if (apps && (apps.length > 0)) {
++        const calendarApp = this._appSys.lookup_app(CALENDAR_APP_ID)?.get_app_info();
++        if (calendarApp) {
++            this._calendarApp = calendarApp;
++        } else if (apps && (apps.length > 0)) {
+             const app = Gio.AppInfo.get_default_for_type('text/calendar', false);
+             const defaultInRecommended = apps.some(a => a.equal(app));
+             this._calendarApp = defaultInRecommended ? app : apps[0];
+@@ -320,12 +452,14 @@
+             this._calendarApp = null;
+         }
+ 
++        this._openIcon.gicon = this._calendarApp?.get_icon() ?? null;
++        this._reloadEvents();
+         return this._sync();
+     }
+ 
+     _sync() {
+         this.visible = this._eventSource && this._eventSource.hasCalendars;
+-        this.reactive = this._calendarApp !== null;
++        this._openButton.visible = this._calendarApp !== null;
+     }
+ });
+ 
+@@ -949,13 +1083,19 @@
+         this.add_style_class_name('clock-display');
+ 
+         const layout = new FreezableBinLayout();
+-        const bin = new St.Widget({layout_manager: layout});
++        const bin = new St.Widget({
++            layout_manager: layout,
++            y_expand: true,
++        });
+         // For some minimal compatibility with PopupMenuItem
+         bin._delegate = this;
+         this.menu.box.add_child(bin);
+         this.menu.box.add_style_class_name('datemenu-popover');
+ 
+-        const hbox = new St.BoxLayout({name: 'calendarArea'});
++        const hbox = new St.BoxLayout({
++            name: 'calendarArea',
++            y_expand: true,
++        });
+         bin.add_child(hbox);
+ 
+         this._calendar = new Calendar.Calendar();
+@@ -982,11 +1122,15 @@
+         const vbox = new St.Widget({
+             style_class: 'datemenu-calendar-column',
+             layout_manager: boxLayout,
++            y_expand: true,
+         });
+         boxLayout.hookup_style(vbox);
+         hbox.add_child(vbox);
+ 
+         vbox.add_child(this._date);
++        // The month header names the month and brings back today; the clock
++        // already shows the date.
++        this._date.hide();
+         vbox.add_child(this._calendar);
+ 
+         const displaysBox = new St.BoxLayout({
+@@ -998,6 +1142,7 @@
+         this._displaysSection = new St.ScrollView({
+             style_class: 'datemenu-displays-section vfade',
+             x_expand: true,
++            y_expand: true,
+             overlay_scrollbars: true,
+             vscrollbar_policy: St.PolicyType.EXTERNAL,
+             child: displaysBox,
+@@ -1005,6 +1150,7 @@
+         vbox.add_child(this._displaysSection);
+ 
+         this._eventsItem = new EventsSection();
++        this._eventsItem.connect('activated', () => this.menu.close());
+         displaysBox.add_child(this._eventsItem);
+ 
+         this._clocksItem = new WorldClocksSection();

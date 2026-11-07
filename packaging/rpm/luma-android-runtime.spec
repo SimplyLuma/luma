@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.108%{?dist}
+Release:        1.luma.110%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -222,8 +222,11 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-android-recover@.service
 
 %changelog
-* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.108
+* Fri Nov 06 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.110
 - Retry app launches interrupted by Android recovery once.
+
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.109
+- Install split bundles through one PackageInstaller session; retry with every split when Android reports a missing one
 
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.107
 - Read the top bar and gesture strip heights the Shell publishes

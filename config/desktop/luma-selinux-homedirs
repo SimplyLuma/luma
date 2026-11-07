@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+# Keep the SELinux home-directory contexts for /var/home.
+#
+# Accounts advertise /home/<name> (config/desktop/useradd sets HOME=/home), and
+# the policy aliases /home to /var/home (file_contexts.subs_dist). A local policy
+# rebuild (an rpm-ostree deploy that changes a module, semodule) generates the
+# home contexts from useradd's HOME, so it writes /home rules only and /var/home
+# is left var_t: useradd is then denied creating a new account's home. This
+# regenerates them with HOME=/var/home, seen only by this semodule.
+set -euo pipefail
+homedirs=/etc/selinux/targeted/contexts/files/file_contexts.homedirs
+grep -q '^/var/home' "$homedirs" && exit 0
+defaults=$(mktemp)
+trap 'rm -f "$defaults"' EXIT
+sed 's|^HOME=.*|HOME=/var/home|' /etc/default/useradd >"$defaults"
+unshare --mount --propagation private sh -c 'mount --bind "$1" /etc/default/useradd && semodule -B' _ "$defaults"
+grep -q '^/var/home' "$homedirs" || { echo "no /var/home contexts after the rebuild" >&2; exit 1; }
+restorecon /var/home
+echo "regenerated the /var/home home-directory contexts"

@@ -2,7 +2,7 @@
 
 Name:           luma-setup
 Version:        0.2.0
-Release:        1.luma.3%{?dist}
+Release:        1.luma.4%{?dist}
 Summary:        Set up this Luma: language, network, your account and the device's name
 License:        Apache-2.0
 URL:            https://projectluma.org/setup
@@ -106,6 +106,14 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/applications/org.projectluma.Setup.desktop
 
 %changelog
+* Fri Nov 06 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.4
+- An account left half-made (useradd failing on the home folder, or no
+  password set) is removed again, so Finish can be pressed again (it refused
+  every retry: "already has an account"); the
+  account's language and picture failing no longer fail the account
+- The setup window refuses to close (Quit from the dash, Alt+F4): closing it
+  ended GDM's setup session and left a black screen
+
 * Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.3
 - One press, one step: a page takes Continue, Back or Skip only once it has
   been on screen for the double-click time, and a held Return or space acts once
