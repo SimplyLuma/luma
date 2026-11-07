@@ -193,11 +193,12 @@ class FramedPicture(Gtk.Widget):
     def do_measure(self, orientation: Gtk.Orientation, for_size: int) -> tuple[int, int, int, int]:
         aw, ah = self.aspect
         if orientation == Gtk.Orientation.HORIZONTAL:
-            return 0, 640, -1, -1
-        if for_size <= 0:
-            return 0, round(640 * ah / aw), -1, -1
-        height = round(for_size * ah / aw)
-        return height, height, -1, -1
+            # A thumbnail sized with set_size_request keeps that width as its natural one.
+            requested = self.get_size_request()[0]
+            return 0, requested if requested > 0 else 640, -1, -1
+        # The height follows the width; the minimum stays 0 so GTK's unbounded-width check holds.
+        width = for_size if for_size > 0 else 640
+        return 0, round(width * ah / aw), -1, -1
 
     def _specimen_box(self, width: float, height: float) -> tuple[float, float, float, float]:
         return width * SPEC_INSET_X, height * SPEC_INSET_Y, width * (1 - 2 * SPEC_INSET_X), height * (1 - 2 * SPEC_INSET_Y)
