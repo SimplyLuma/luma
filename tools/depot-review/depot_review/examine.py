@@ -96,14 +96,9 @@ def inspect_flatpak(upload: Path, work: Path) -> dict:
     desktop = [p for p in exported if p.startswith("/export/share/applications/") and p.endswith(".desktop")]
     icons = [p for p in exported if p.startswith("/export/share/icons/") and f"/apps/{app_id}" in p]
     metainfo = [p for p in exported if p.startswith("/files/share/metainfo/") and p.endswith(".xml")]
-    show = run(["ostree", "show", f"--repo={repo}", "--print-metadata-key=xa.installed-size", commit],
-               check=False).stdout.strip()
-    installed = None
-    match = re.search(r"(\d+)", show)
-    if match:
-        installed = int(match.group(1))
     checkout = work / "files"
     run(["ostree", "checkout", f"--repo={repo}", "--user-mode", commit, str(checkout)], timeout=900)
+    installed = sum(p.lstat().st_size for p in checkout.rglob("*") if p.is_file() and not p.is_symlink())
     reach = words.flatpak_reach(metadata_text)
     return {
         "format": "flatpak", "app_id": app_id, "arch": arch, "branch": branch, "ref": ref,
