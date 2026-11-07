@@ -138,9 +138,13 @@ Interactive media verification gives libvirt a disposable same-filesystem reflin
 of the ISO. It checks access as `LUMA_OS_QEMU_USER` (default `qemu`) before VM
 startup and verifies that the original inode, ownership, modes and timestamps
 remain unchanged afterward. Libvirt may relabel or chown only the fixture.
-The preflight fails if reflinks or reader traversal are unavailable; it never
-falls back to an unbudgeted full copy or widens ancestor permissions. This is
-a DAC preflight, not a substitute for the normal libvirt/SELinux boot check.
+Where the working root cannot reflink (an ext4 loop image), the fixture is a
+budgeted copy instead: the ISO must be at most `LUMA_OS_MEDIA_COPY_BUDGET_GIB`
+(default 16), the volume and its host disk must have room for it, and the
+copy's sha256 must match the bytes read and the ISO's `.sha256` record. The
+preflight fails if reader traversal is unavailable; it never widens ancestor
+permissions. This is a DAC preflight, not a substitute for the normal
+libvirt/SELinux boot check.
 
 
 For a separately admitted publication phase, use
