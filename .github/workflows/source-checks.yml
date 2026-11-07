@@ -31,6 +31,7 @@ jobs:
         run: |
           gjs -m tests/gnome-shell/presentation/compact-layout.js
           gjs -m tests/gnome-shell/presentation/density.js
+          gjs -m tests/gnome-shell/presentation/home-catalog.js
   public-source-contracts:
     strategy:
       fail-fast: false

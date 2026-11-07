@@ -16,7 +16,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
-import {displayDensity, homeLayout, inkFor, pageProgress, statusGlyph, visiblePageRange} from './layout.js';
+import {displayDensity, hiddenFromHome, homeLayout, inkFor, pageProgress, statusGlyph, visiblePageRange} from './layout.js';
 import {bottomInset} from './keycap.js';
 import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
@@ -1046,10 +1046,8 @@ export class Presentation {
         return this._appSystem.get_installed().filter(info => {
             if (!(info instanceof GioUnix.DesktopAppInfo) || !info.should_show() || info.get_boolean('Terminal'))
                 return false;
-            const id = info.get_id();
             return info.get_string('Type') === 'Application' &&
-                !/^(org\.gnome\.Shell\.Extensions|org\.gnome\.Settings\.|luma-search|search\.)/i.test(id) &&
-                !/^search$/i.test(info.get_display_name().trim());
+                !hiddenFromHome(info.get_id(), info.get_display_name());
         }).sort((a, b) => a.get_display_name().localeCompare(b.get_display_name()));
     }
 
