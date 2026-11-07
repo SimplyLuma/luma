@@ -4,6 +4,9 @@
 
 The resulting NEVRAs are build requirements, not claims that artifacts exist.
 Only explicitly scoped hardware packages may differ between architectures.
+A hardware target (config/os/desktop-targets.json hardware_targets, admitted
+in lib/devices.tsv) is the same desktop plus its device packages, optionally
+on its own kernel, published on its own ref luma/<major>/<arch>/<slug>/.
 """
 import argparse
 import json
@@ -32,6 +35,36 @@ def target(root, architecture):
     if not row['base_tag'].endswith('-' + architecture):
         raise ValueError('Base image architecture does not match target')
     return row, registry['hardware_packages']
+
+
+def hardware(root, architecture, name):
+    """The hardware target's selection, or None for the generic desktop."""
+    registry = json.loads((root / 'config/os/desktop-targets.json').read_text())
+    targets = registry.get('hardware_targets', {})
+    if not name:
+        return None
+    if name not in targets:
+        raise ValueError(f'Unknown desktop hardware target: {name}')
+    row = dict(targets[name])
+    table = {}
+    for line in (root / 'scripts/os/lib/devices.tsv').read_text().splitlines():
+        if line.strip() and not line.startswith('#'):
+            fields = line.split('\t')
+            table[fields[0]] = fields
+    if name not in table:
+        raise ValueError(f'Hardware target is not admitted in devices.tsv: {name}')
+    row['slug'], row['arch'] = table[name][1], table[name][2]
+    if row['arch'] != architecture:
+        raise ValueError(f'Hardware target {name} is {row["arch"]} only')
+    if row.get('kernel') and row['kernel'] not in row['packages']:
+        raise ValueError(f'Hardware target {name} kernel is not one of its packages')
+    return row
+
+
+def device_package_names(root):
+    """Every package name some hardware target owns; generic images never get them."""
+    registry = json.loads((root / 'config/os/desktop-targets.json').read_text())
+    return {name for row in registry.get('hardware_targets', {}).values() for name in row['packages']}
 
 
 def package_name(nevra):
@@ -70,28 +103,40 @@ def roles(root, architecture, name='full'):
     return list(dict.fromkeys(value for value in values if not excluded(value, selection)))
 
 
-def packages(root, architecture, *, fedora=False, profile_name='full'):
+def packages(root, architecture, *, fedora=False, profile_name='full', hardware_target=''):
     selection = profile(root, architecture, profile_name)
     _, scoped = target(root, architecture)
+    device = hardware(root, architecture, hardware_target)
+    owned = device_package_names(root)
+    wanted = set(device['packages']) if device else set()
     path = 'config/os/fedora-packages.txt' if fedora else 'config/desktop/packages.txt'
+    values = lines(root / path)
+    if fedora and selection['capabilities'].get('phone'):
+        values += lines(root / 'config/os/phone-packages.txt')
     result = []
-    for value in lines(root / path):
+    for value in values:
         name = package_name(value) if re.search(r'\.(x86_64|aarch64|noarch)$', value) else value
         if excluded(name, selection):
             continue
         if name in scoped and architecture not in scoped[name]:
             continue
+        if name in owned and name not in wanted:
+            continue
+        wanted.discard(name)
         # Architecture is the only transformation. Never select an older ARM
         # release from the historical handheld/preview pin variables.
         result.append(re.sub(r'\.(x86_64|aarch64)$', '.' + architecture, value))
     if len(set(result)) != len(result):
         raise ValueError('Duplicate resolved desktop packages')
+    if wanted and not fedora:
+        raise ValueError(f'Hardware target packages without a pin: {", ".join(sorted(wanted))}')
     return result
 
 
-def contract(root, architecture, profile_name='full'):
+def contract(root, architecture, profile_name='full', hardware_target=''):
     profile(root, architecture, profile_name)
     row, _ = target(root, architecture)
+    device = hardware(root, architecture, hardware_target)
     values = dict(line.split('=', 1) for line in lines(root / 'config/os/release.env'))
     values.update(LUMA_OS_ARCH=architecture,
                   LUMA_OS_REF_PREFIX=f'luma/{values["LUMA_OS_MAJOR"]}/{architecture}',
@@ -99,6 +144,10 @@ def contract(root, architecture, profile_name='full'):
                   LUMA_OS_BASE_IMAGE_DIGEST=row['base_digest'])
     if profile_name != 'full':
         values['LUMA_OS_PROFILE'] = profile_name
+    if device:
+        values['LUMA_OS_HARDWARE_TARGET'] = hardware_target
+        values['LUMA_OS_KERNEL_PACKAGE'] = device.get('kernel', '')
+        values['LUMA_OS_REF_PREFIX'] += '/' + device['slug']
     values['LUMA_OS_GRAPH_PREFIX'] += '/' + architecture
     values['LUMA_OS_HUB_GRAPH_URL_TEMPLATE'] = re.sub(
         r'arch=(x86_64|aarch64)', 'arch=' + architecture,
@@ -111,12 +160,14 @@ def main():
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--arch', choices=ARCHITECTURES, required=True)
     parser.add_argument('--profile', default=os.environ.get('LUMA_OS_PROFILE', 'full'))
+    parser.add_argument('--hardware-target', default=os.environ.get('LUMA_OS_HARDWARE_TARGET', ''))
     parser.add_argument('output', choices=('pins', 'fedora', 'contract', 'plan', 'roles', 'capabilities'))
     args = parser.parse_args()
     if args.output == 'contract':
-        print('\n'.join(f'{key}={value}' for key, value in contract(args.root, args.arch, args.profile).items()))
+        print('\n'.join(f'{key}={value}' for key, value in contract(args.root, args.arch, args.profile, args.hardware_target).items()))
     elif args.output in ('pins', 'fedora'):
-        print('\n'.join(packages(args.root, args.arch, fedora=args.output == 'fedora', profile_name=args.profile)))
+        print('\n'.join(packages(args.root, args.arch, fedora=args.output == 'fedora', profile_name=args.profile,
+                                 hardware_target=args.hardware_target)))
     elif args.output == 'roles':
         print('\n'.join(roles(args.root, args.arch, args.profile)))
     elif args.output == 'capabilities':
@@ -124,8 +175,10 @@ def main():
     else:
         row, _ = target(args.root, args.arch)
         print(json.dumps({'architecture': args.arch, **row,
-                          'profile': args.profile, 'capability_manifest': capabilities(args.root, args.arch, args.profile),
-                          'packages': packages(args.root, args.arch, profile_name=args.profile),
+                          'profile': args.profile, 'hardware_target': args.hardware_target,
+                          'kernel_package': (hardware(args.root, args.arch, args.hardware_target) or {}).get('kernel', ''), 'capability_manifest': capabilities(args.root, args.arch, args.profile),
+                          'packages': packages(args.root, args.arch, profile_name=args.profile,
+                                               hardware_target=args.hardware_target),
                           'fedora_packages': packages(args.root, args.arch, fedora=True, profile_name=args.profile)}, indent=2))
 
 

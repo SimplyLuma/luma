@@ -29,6 +29,7 @@ libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-
 mesa_build_patch="$repo_root/patches/android-mesa/0001-bound-nested-build-jobs.patch"
 mesa_android_patch="$repo_root/patches/android-mesa/0002-waydroid-android-formats.patch"
 mesa_gbm_patch="$repo_root/patches/android-mesa/0003-gbm-serialize-shared-context-maps.patch"
+mesa_astc_patch="$repo_root/patches/android-mesa/0004-panfrost-astc-unorm8-decode-is-ldr.patch"
 minigbm_yv12_patch="$repo_root/patches/android-minigbm/0001-gbm-mesa-describe-yv12-planes.patch"
 soong_gc_patch="$repo_root/patches/android-soong/0001-pass-build-host-go-gc-budget.patch"
 soong_cpu_patch="$repo_root/patches/android-soong/0002-pass-build-host-go-parallel-budget.patch"
@@ -65,9 +66,12 @@ lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-not
 lineage_icon_patch="$repo_root/patches/android-lineage-sdk/0006-luma-unmasked-adaptive-icons.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 framework_status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma-host-status-bar-inset.patch"
+framework_orientation_patch="$repo_root/patches/android-frameworks-base/0003-luma-handheld-app-orientation.patch"
 device_patch="$repo_root/patches/android-device-waydroid/0001-prairie-host-window-product-property.patch"
 device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services-match-the-image.patch"
 device_input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
+device_forced_density_patch="$repo_root/patches/android-device-waydroid/0004-luma-forced-display-density.patch"
+device_microg_patch="$repo_root/patches/android-device-waydroid/0005-luma-microg.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 native_density_patch="$repo_root/patches/android-frameworks-native/0002-luma-read-display-density-when-queried.patch"
 
@@ -188,6 +192,7 @@ write_state() {
     printf 'MESA_BUILD_PATCH_SHA=%s\n' "$(patch_sha "$mesa_build_patch")"
     printf 'MESA_ANDROID_PATCH_SHA=%s\n' "$(patch_sha "$mesa_android_patch")"
     printf 'MESA_GBM_PATCH_SHA=%s\n' "$(patch_sha "$mesa_gbm_patch")"
+    printf 'MESA_ASTC_PATCH_SHA=%s\n' "$(patch_sha "$mesa_astc_patch")"
     printf 'MINIGBM_YV12_PATCH_SHA=%s\n' "$(patch_sha "$minigbm_yv12_patch")"
     printf 'PROPERTY_ADMISSION_PATCH_SHA=%s\n' "$(patch_sha "$property_admission_patch")"
     printf 'SOONG_GC_PATCH_SHA=%s\n' "$(patch_sha "$soong_gc_patch")"
@@ -196,6 +201,7 @@ write_state() {
     printf 'MAKE_HOST_PATCH_SHA=%s\n' "$(patch_sha "$make_host_patch")"
     printf 'FRAMEWORK_PATCH_SHA=%s\n' "$(patch_sha "$framework_patch")"
     printf 'FRAMEWORK_STATUS_BAR_PATCH_SHA=%s\n' "$(patch_sha "$framework_status_bar_patch")"
+    printf 'FRAMEWORK_ORIENTATION_PATCH_SHA=%s\n' "$(patch_sha "$framework_orientation_patch")"
     printf 'VENDOR_EXTRA_OFFICIAL_HEAD=%s\n' "$vendor_extra_official_head"
     printf 'VENDOR_EXTRA_PATCH_SHA=%s\n' "$(patch_sha "$vendor_extra_patch")"
     printf 'LIBHIDL_OFFICIAL_HEAD=%s\n' "$libhidl_official_head"
@@ -203,6 +209,8 @@ write_state() {
     printf 'DEVICE_PATCH_SHA=%s\n' "$(patch_sha "$device_patch")"
     printf 'DEVICE_CODEC_PATCH_SHA=%s\n' "$(patch_sha "$device_codec_patch")"
     printf 'DEVICE_INPUT_METHOD_PATCH_SHA=%s\n' "$(patch_sha "$device_input_method_patch")"
+    printf 'DEVICE_FORCED_DENSITY_PATCH_SHA=%s\n' "$(patch_sha "$device_forced_density_patch")"
+    printf 'DEVICE_MICROG_PATCH_SHA=%s\n' "$(patch_sha "$device_microg_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
 }
@@ -329,6 +337,7 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$lineage_root" 'Luma authoritative Android task removal'
   git -C "$framework_root" apply "$framework_patch"
   git -C "$framework_root" apply "$framework_status_bar_patch"
+  git -C "$framework_root" apply "$framework_orientation_patch"
   commit_patch "$framework_root" 'Prairie host-owned Android window chrome'
   git -C "$native_root" apply "$native_patch"
   commit_patch "$native_root" 'Luma inherited Android task layer ownership'
@@ -337,6 +346,8 @@ if [ ! -f "$state_file" ]; then
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
   git -C "$device_root" apply "$device_input_method_patch"
+  git -C "$device_root" apply "$device_forced_density_patch"
+  git -C "$device_root" apply "$device_microg_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   git -C "$jelly_root" apply "$jelly_patch"
   commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
@@ -352,6 +363,8 @@ if [ ! -f "$state_file" ]; then
   commit_patch "$source_root/external/mesa" 'Waydroid Android formats and aarch64 radeonsi GTT'
   git -C "$source_root/external/mesa" apply "$mesa_gbm_patch"
   commit_patch "$source_root/external/mesa" 'Serialize gbm maps on the shared context'
+  git -C "$source_root/external/mesa" apply "$mesa_astc_patch"
+  commit_patch "$source_root/external/mesa" 'panfrost: decode ASTC as LDR for UNORM8 precision'
   git -C "$source_root/external/minigbm" apply "$minigbm_yv12_patch"
   commit_patch "$source_root/external/minigbm" 'Describe gbm_mesa YV12 buffers as three planes'
   git -C "$source_root/build/soong" apply "$soong_gc_patch"
@@ -479,6 +492,15 @@ if [ -z "${MESA_GBM_PATCH_SHA:-}" ]; then
   commit_patch "$source_root/external/mesa" 'Serialize gbm maps on the shared context'
   changed=1
 fi
+if [ -n "${MESA_ASTC_PATCH_SHA:-}" ] && [ "$(patch_sha "$mesa_astc_patch")" != "$MESA_ASTC_PATCH_SHA" ]; then
+  printf 'error: Mesa ASTC patch changed; run a clean release build first\n' >&2
+  exit 1
+fi
+if [ -z "${MESA_ASTC_PATCH_SHA:-}" ]; then
+  git -C "$source_root/external/mesa" apply "$mesa_astc_patch"
+  commit_patch "$source_root/external/mesa" 'panfrost: decode ASTC as LDR for UNORM8 precision'
+  changed=1
+fi
 if [ -n "${MINIGBM_YV12_PATCH_SHA:-}" ] && [ "$(patch_sha "$minigbm_yv12_patch")" != "$MINIGBM_YV12_PATCH_SHA" ]; then
   printf 'error: minigbm YV12 patch changed; run a clean release build first\n' >&2
   exit 1
@@ -584,25 +606,33 @@ cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
 cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
   "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/NotificationReplyDispatcher.java"
 if [ "$(patch_sha "$framework_patch")" != "${FRAMEWORK_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$framework_status_bar_patch")" != "${FRAMEWORK_STATUS_BAR_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$framework_status_bar_patch")" != "${FRAMEWORK_STATUS_BAR_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$framework_orientation_patch")" != "${FRAMEWORK_ORIENTATION_PATCH_SHA:-}" ]; then
   git -C "$framework_root" reset --hard -q "$FRAMEWORK_OFFICIAL_HEAD"
   git -C "$framework_root" clean -fdq
   git -C "$framework_root" apply "$framework_patch"
   git -C "$framework_root" apply "$framework_status_bar_patch"
+  git -C "$framework_root" apply "$framework_orientation_patch"
   commit_patch "$framework_root" 'Prairie host-owned Android window chrome'
   changed=1
 fi
 if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$device_codec_patch")" != "${DEVICE_CODEC_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$device_input_method_patch")" != "${DEVICE_INPUT_METHOD_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$device_input_method_patch")" != "${DEVICE_INPUT_METHOD_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$device_forced_density_patch")" != "${DEVICE_FORCED_DENSITY_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$device_microg_patch")" != "${DEVICE_MICROG_PATCH_SHA:-}" ]; then
   git -C "$device_root" reset --hard -q "$DEVICE_OFFICIAL_HEAD"
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
   git -C "$device_root" apply "$device_codec_patch"
   git -C "$device_root" apply "$device_input_method_patch"
+  git -C "$device_root" apply "$device_forced_density_patch"
+  git -C "$device_root" apply "$device_microg_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   changed=1
 fi
+# microG's release APKs are pinned, not committed; place the verified files.
+bash "$repo_root/scripts/android/fetch-microg.sh" "$device_root/microg"
 
 if [ "$(patch_sha "$jelly_patch")" != "${JELLY_PATCH_SHA:-}" ]; then
   git -C "$jelly_root" reset --hard -q "$jelly_official_head"

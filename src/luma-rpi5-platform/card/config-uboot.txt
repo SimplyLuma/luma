@@ -1,0 +1,23 @@
+# Luma for Raspberry Pi 5: installer card (Fedora's kernel, U-Boot's trees)
+# Board firmware -> U-Boot (EFI) -> GRUB (EFI/BOOT/grub.cfg) -> Luma.
+# U-Boot enumerates PCIe and NVMe before GRUB starts, so GRUB and Linux see an
+# NVMe drive on the PCIe connector. Keep this card in after installing: its
+# menu starts the Luma installed on NVMe.
+
+[pi5]
+arm_64bit=1
+kernel=u-boot.bin
+arm_boost=1
+enable_uart=1
+disable_overscan=1
+disable_fw_kms_setup=1
+hdmi_ignore_cec_init=1
+# The device trees are the installer kernel's upstream ones with the CMA pool
+# raised to 256 MB below 1 GB (Fedora's cma=256M@0M-1024M), done in the tree
+# so the installed system gets it without a kernel argument.
+# C1 boards load bcm2712-rpi-5-b.dtb, D0 boards bcm2712d0-rpi-5-b.dtb.
+os_check=0
+# No dtoverlay= here: Fedora's kernel gets the tree U-Boot loads from
+# dtb/broadcom/, not this one (it hangs on the firmware's edited tree).
+
+[all]

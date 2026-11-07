@@ -31,5 +31,13 @@ LumaInputMode luma_context_get_input(LumaContext *self);
 gboolean luma_context_get_decorated(LumaContext *self);
 gboolean luma_context_get_touch_targets(LumaContext *self);
 const char *luma_context_get_experience(LumaContext *self);
+/**
+ * luma_context_get_tv:
+ * @self: a context
+ *
+ * Whether the shell is in TV posture (the `tv` property, live from the
+ * shell-state `Posture`; `LUMA_POSTURE=tv` forces it). Since API level 5.
+ */
+gboolean luma_context_get_tv(LumaContext *self);
 
 G_END_DECLS

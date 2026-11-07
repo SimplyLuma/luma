@@ -133,6 +133,16 @@
       "max_delta": 6
     },
     {
+      "id": "window-shadow-maximized",
+      "doc": "lumaui-deviations.md: The window frame / Maximized and tiled",
+      "reason": "A maximized or tiled GTK surface has no room outside it for the outer shadow.",
+      "states": [
+        "maximized"
+      ],
+      "subject": "^window$",
+      "prop": "shadow"
+    },
+    {
       "id": "frost-backdrop",
       "doc": "lumaui-deviations.md: The window frame / Frost frame",
       "reason": "The Frost frame's blur is the compositor's; a headless capture has neither blur nor wallpaper behind it.",
@@ -242,6 +252,16 @@
       "max_count": 2
     },
     {
+      "id": "tv-page-edge-fade",
+      "doc": "lumaui-deviations.md: tv-page-edge-fade",
+      "reason": "Nick ruled (2026-11-01) that a TV page's edge fades are longer and eased (about 128 at the bottom) instead of the mockup's 40 linear mask, so a glyph in the bottom strip stands on a different ground. Glyph colour only, in that strip.",
+      "apps": ["tv-connect", "tv-settings"],
+      "subject": "^icon ",
+      "prop": "^colour$",
+      "min_y": 952,
+      "max_delta": 8
+    },
+    {
       "id": "hinted-figtree-advance",
       "doc": "lumaui-deviations.md: Hinted glyph advances",
       "reason": "The device hints Figtree (Nick's setting, the real one): GTK rounds each glyph's advance to whole pixels where Chromium keeps fractions, so a run comes out up to about 3% wider. Text-run width only, Figtree runs only; never boxes, positions of other parts, size or weight.",
@@ -281,6 +301,170 @@
       "prop": "^colou?r$",
       "spec_value": "#757575",
       "gtk_value": "#85878b"
+    },
+    {
+      "id": "term-block-button",
+      "doc": "lumaui-deviations.md: Terminal output block",
+      "reason": "v70's selectable output block is a div that takes clicks; in GTK a block a keyboard can select is a button, named for the block.",
+      "apps": ["term"],
+      "subject": "^button \"[^\"]+ block\"$",
+      "prop": "extra"
+    },
+    {
+      "id": "monitor-disclosure-button",
+      "doc": "lumaui-deviations.md: Monitor's process disclosure",
+      "reason": "v70 draws an app row's chevron as a span inside the row; in GTK the control that shows or hides the processes is a button a keyboard reaches.",
+      "apps": ["monitor"],
+      "subject": "^button \"Show its processes\"$",
+      "prop": "extra"
+    },
+    {
+      "id": "column-heading-role",
+      "doc": "lumaui-deviations.md: Table column headings",
+      "reason": "A heading that does not sort is a span in v70; GTK gives it the column-header role so the table reads as a table.",
+      "apps": ["monitor"],
+      "subject": "^button \"(Procs|Threads|PID|User|FD|Type|Object|Address|Flags|Size|File)\"$",
+      "prop": "extra"
+    },
+    {
+      "id": "hinted-figtree-rewrap",
+      "doc": "lumaui-deviations.md: Hinted glyph advances",
+      "reason": "In a centred two-line paragraph whose first line Chromium just fits (299 of 300), the hinted advances carry its last word to the second line, so the first line starts further in.",
+      "apps": ["monitor"],
+      "states": ["process-kill", "force"],
+      "subject": "^text \"It stops at once",
+      "prop": "^(position|width)$",
+      "max_delta": 40
+    },
+    {
+      "id": "app-icon-art-v4",
+      "doc": "lumaui-deviations.md: App icon art",
+      "reason": "v73's phone view draws the v4 app icon art; the icon theme ships v3 until the icon family lands. The 32 box is the same; the artwork's ink differs by a few pixels.",
+      "apps": ["monitor"],
+      "subject": "^icon app-icon$",
+      "prop": "^(size|position)$",
+      "max_delta": 5
+    },
+    {
+      "id": "system-mono-550",
+      "doc": "lumaui-deviations.md: Any text in the mono role",
+      "reason": "v70 sets Monitor's fact values in ui-monospace at 550; IBM Plex Mono, the system monospace, has no 550 face, so Pango draws its Medium (500).",
+      "apps": ["monitor"],
+      "group": "hero",
+      "subject": "^text ",
+      "prop": "^font weight$",
+      "spec_value": "^550$",
+      "gtk_value": "^500$"
+    },
+    {
+      "id": "glyph-fallback-run",
+      "doc": "lumaui-deviations.md: Glyph fallback family",
+      "reason": "A short run that opens on a symbol the mono face lacks (Terminal's \u2303C key) is drawn by Pango from the fallback face, which it reports for the run, at that face's nearest weight; the spec reports the CSS family and weight.",
+      "subject": "^text \"[\u2190-\u23ff\u2700-\u27bf].{0,3}\"$",
+      "prop": "^font (family|weight)$"
+    },
+    {
+      "id": "hinted-figtree-label-small",
+      "doc": "lumaui-deviations.md: hinted-figtree-label-small",
+      "reason": "Ruled 2 November 2026: the field label (LumaUI's label role, 11.5 px semibold) is a fractional size, and the hinted Figtree advances of a short run at that size come out more than 3% wider (the phone sheet's \"Password\": 53.3 against 51.2, 4.1%). Text-run width of that label only, up to 5%; never boxes, positions, size or weight.",
+      "apps": ["keyring-unlock"],
+      "subject": "^text \"Password\"$",
+      "prop": "^width$",
+      "max_ratio": 0.05,
+      "gtk_family": "figtree"
+    },
+    {
+      "id": "rating-stars-fallback",
+      "doc": "lumaui-deviations.md: rating-stars-fallback",
+      "reason": "Figtree has no \u2605/\u2606: both sides draw a rating's five stars from a fallback face; the spec reports the CSS family, GTK the face that drew them, whose advances are a few px wider.",
+      "apps": ["tv-depot"],
+      "subject": "^text \"[\u2605\u2606]{5}\"$",
+      "prop": "^(font family|font weight|width)$",
+      "max_delta": 8
+    },
+    {
+      "id": "first-boot-accessibility",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The sheet's head has an Accessibility button (screen reader, larger text, zoom) that the design asked for but did not draw.",
+      "apps": [
+        "first-boot"
+      ],
+      "group": "head",
+      "subject": "accessibility",
+      "prop": "^extra$"
+    },
+    {
+      "id": "first-boot-wordmark",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The Luma mark is the luma-logos wordmark icon, not a painted box; the comparator sees only symbolic icons and painted boxes.",
+      "apps": [
+        "first-boot"
+      ],
+      "group": "head",
+      "subject": "^box \"Luma\"$",
+      "prop": "^missing$"
+    },
+    {
+      "id": "first-boot-one-session-key",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The one-session redesign moved Finish off Name this Luma: its key is Continue (Make it yours, Luma Connect and Add apps follow in the same sheet), so Back sits beside a wider key.",
+      "apps": [
+        "first-boot"
+      ],
+      "states": [
+        "device-offline"
+      ],
+      "group": "foot",
+      "subject": "\"(Finish|Continue|Back)\"$",
+      "prop": "^(missing|extra|position)$",
+      "max_delta": 30
+    },
+    {
+      "id": "first-boot-placeholder-weight",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The design draws placeholders at 450 (input::placeholder); the spec capture reads the input's own 500.",
+      "apps": [
+        "first-boot"
+      ],
+      "subject": "^text \"(Type here to try it|Full name|nick|Password|Password again|Password for Studio North|Network name|Password \\(leave empty if open\\)|Search for a city)\"$",
+      "prop": "^font weight$",
+      "spec_value": "^500$",
+      "gtk_value": "^450$"
+    },
+    {
+      "id": "first-boot-first-focus",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "Each page puts the keyboard focus in its first field as it opens (typing works at once, Return goes on), so that field shows its focus ring; the design's pages open with nothing focused.",
+      "apps": [
+        "first-boot"
+      ],
+      "subject": "^textbox ",
+      "prop": "^shadow$",
+      "spec_value": "^none$",
+      "gtk_value": "blur ≤0"
+    },
+    {
+      "id": "first-boot-photo-button",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The photo button is exactly its avatar; GTK reports the avatar's gradient and ring under the button as well.",
+      "apps": [
+        "first-boot"
+      ],
+      "subject": "^button \"Choose a photo\"$",
+      "prop": "^(gradient|shadow)$"
+    },
+    {
+      "id": "first-boot-password-bullets",
+      "doc": "lumaui-deviations.md: First-boot setup",
+      "reason": "The spec capture measures a password field's value as its letters; both draw bullets.",
+      "apps": [
+        "first-boot"
+      ],
+      "states": [
+        "you-mismatch"
+      ],
+      "subject": "^text \"(abc|abd)\"$",
+      "prop": "^width$"
     }
   ]
 }

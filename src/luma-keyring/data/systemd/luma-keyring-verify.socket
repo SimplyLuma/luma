@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+[Unit]
+Description=Luma saved passwords (checks the account's own password for the sandboxed service)
+Documentation=https://projectluma.org/saved-passwords
+
+[Socket]
+# One connection per check, private to the account (its runtime directory is 0700 too).
+ListenStream=%t/luma-keyring/verify
+SocketMode=0600
+DirectoryMode=0700
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

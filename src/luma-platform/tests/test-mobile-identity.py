@@ -41,6 +41,14 @@ class MobileIdentity(unittest.TestCase):
                     patch.object(Path, "read_text", read):
                 self.assertEqual(mobile_form_factor(), expected)
 
+    def test_tv_posture_is_never_a_phone(self):
+        for env in ({"LUMA_POSTURE": "tv", "LUMA_DEVICE_CLASS": "handheld"},
+                    {"LUMA_POSTURE": "tv", "LUMA_FORM_FACTOR": "phone"}):
+            with self.subTest(env=env), patch.dict(os.environ, env, clear=True):
+                self.assertFalse(mobile_form_factor())
+        with patch.dict(os.environ, {"LUMA_POSTURE": "desktop", "LUMA_DEVICE_CLASS": "handheld"}, clear=True):
+            self.assertTrue(mobile_form_factor())
+
 
 if __name__ == "__main__":
     unittest.main()

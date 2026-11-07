@@ -1,0 +1,303 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 3 Nov 2026 02:00:00 -0600
+Subject: [PATCH] cogl: Scissor journal draws to what they cover
+
+Tiling GPUs size a render pass by its scissor. A pass that has to load
+and store the framebuffer, such as the one that resumes after a
+background blur copied what lies under a panel mid-frame, loads and
+stores every tile the scissor allows however little is drawn, and with
+no clip the scissor is the whole framebuffer. On a Raspberry Pi 5
+(v3d) at 3840x2160 each of the Shell's five blurred dock islands cost a
+full-screen store and load of about 15 ms per frame.
+
+When the journal draws a batch, narrow the scissor of the batch's clip
+stack to the window-space bounding box of the quads that draw call
+covers (plus a pixel), and put the clip stack's scissor back after the
+clip batch. The clip and the stencil are unchanged, so nothing drawn
+changes; drivers that bound passes by the scissor (v3d, panfrost,
+freedreno) now only touch the tiles that are drawn. Measured on the Pi
+with a headless 3840x2160 Shell: the passes after the blurred islands
+went from 15-19 ms to 0.1-0.7 ms each.
+---
+ cogl/cogl/cogl-driver-private.h                  |   10 ++++++++++
+ cogl/cogl/cogl-journal.c                         |  118 ++++++++++++++++++++++++++++++++++++++++
+ cogl/cogl/driver/gl/cogl-clip-stack-gl-private.h |    6 ++++++
+ cogl/cogl/driver/gl/cogl-clip-stack-gl.c         |   40 ++++++++++++++++++++++++++++++++++++++++
+ cogl/cogl/driver/gl/cogl-driver-gl.c             |    1 +
+ 5 files changed, 175 insertions(+)
+
+diff --git a/cogl/cogl/cogl-driver-private.h b/cogl/cogl/cogl-driver-private.h
+index f1efef5..d85a4fd 100644
+--- a/cogl/cogl/cogl-driver-private.h
++++ b/cogl/cogl/cogl-driver-private.h
+@@ -91,6 +91,16 @@ struct _CoglDriverClass
+                         CoglClipStack   *stack,
+                         CoglFramebuffer *framebuffer);
+ 
++  /* Narrows the scissor of the clip stack last flushed for @framebuffer to
++   * @bounds (x0, y0, x1, y1 in window coordinates, origin top left), or puts
++   * the clip stack's own scissor back when @bounds is NULL.
++   */
++  void
++  (* clip_stack_set_draw_bounds) (CoglDriver      *driver,
++                                  CoglClipStack   *stack,
++                                  CoglFramebuffer *framebuffer,
++                                  const int       *bounds);
++
+   CoglBufferImpl * (* create_buffer_impl) (CoglDriver *driver);
+ 
+   CoglTextureDriver * (* create_texture_driver) (CoglDriver *driver);
+diff --git a/cogl/cogl/cogl-journal.c b/cogl/cogl/cogl-journal.c
+index b31355d..8d929f2 100644
+--- a/cogl/cogl/cogl-journal.c
++++ b/cogl/cogl/cogl-journal.c
+@@ -43,6 +43,7 @@
+ #include "cogl/cogl-point-in-poly-private.h"
+ #include "cogl/cogl-trace.h"
+ #include "cogl/cogl-private.h"
++#include "cogl/cogl-driver-private.h"
+ 
+ #include <string.h>
+ #include <gmodule.h>
+@@ -114,6 +115,11 @@ typedef struct _CoglJournalFlushState
+   size_t indices_type_size;
+ 
+   CoglPipeline *pipeline;
++
++  /* The clip stack of the batch being drawn, and whether a draw narrowed
++   * its scissor (see get_batch_bounds()). */
++  CoglClipStack *clip_stack;
++  gboolean scissor_narrowed;
+ } CoglJournalFlushState;
+ 
+ typedef void (*CoglJournalBatchCallback) (CoglJournalEntry *start,
+@@ -274,6 +280,88 @@ batch_and_call (CoglJournalEntry *entries,
+   batch_callback (batch_start, batch_len, data);
+ }
+ 
++/* The window-space bounding box (x0, y0, x1, y1, origin top left) of the
++ * logged quads one draw call draws, or FALSE when it cannot be worked out
++ * (a quad crossing w <= 0).
++ *
++ * Tiling GPUs size a render pass by its scissor: a pass that has to load
++ * and store the framebuffer (one that resumes after something read from it
++ * mid-frame, such as a backdrop blur copying what lies under a panel) loads
++ * and stores every tile the scissor allows, however little is drawn. With no
++ * clip the scissor is the whole framebuffer. Scissoring each draw to what it
++ * covers keeps such a pass to the tiles actually drawn; the clip stays as it
++ * was, so nothing drawn changes.
++ */
++static gboolean
++get_batch_bounds (CoglJournal      *journal,
++                  CoglFramebuffer  *framebuffer,
++                  CoglJournalEntry *batch_start,
++                  int               batch_len,
++                  int              *bounds)
++{
++  CoglMatrixStack *projection_stack =
++    _cogl_framebuffer_get_projection_stack (framebuffer);
++  CoglMatrixEntry *last_modelview_entry = NULL;
++  graphene_matrix_t projection;
++  graphene_matrix_t modelview;
++  float x_min = G_MAXFLOAT, y_min = G_MAXFLOAT;
++  float x_max = -G_MAXFLOAT, y_max = -G_MAXFLOAT;
++  int i, c;
++
++  cogl_matrix_entry_get (projection_stack->last_entry, &projection);
++
++  for (i = 0; i < batch_len; i++)
++    {
++      CoglJournalEntry *entry = batch_start + i;
++      size_t array_stride =
++        GET_JOURNAL_ARRAY_STRIDE_FOR_N_LAYERS (entry->n_layers);
++      const float *v = &g_array_index (journal->vertices, float,
++                                       entry->array_offset + 1);
++      const float corners[8] = {
++        v[0], v[1],
++        v[array_stride], v[1],
++        v[array_stride], v[array_stride + 1],
++        v[0], v[array_stride + 1],
++      };
++
++      if (entry->modelview_entry != last_modelview_entry)
++        {
++          cogl_matrix_entry_get (entry->modelview_entry, &modelview);
++          last_modelview_entry = entry->modelview_entry;
++        }
++
++      for (c = 0; c < 4; c++)
++        {
++          float x = corners[c * 2];
++          float y = corners[c * 2 + 1];
++          float z = 0.f;
++          float w = 1.f;
++
++          cogl_graphene_matrix_project_point (&modelview, &x, &y, &z, &w);
++          cogl_graphene_matrix_project_point (&projection, &x, &y, &z, &w);
++
++          if (w <= 1e-6f)
++            return FALSE;
++
++          x = ((x / w) + 1.f) * (entry->viewport[2] / 2.f) + entry->viewport[0];
++          y = ((-(y / w)) + 1.f) * (entry->viewport[3] / 2.f) + entry->viewport[1];
++
++          x_min = MIN (x_min, x);
++          y_min = MIN (y_min, y);
++          x_max = MAX (x_max, x);
++          y_max = MAX (y_max, y);
++        }
++    }
++
++  /* A pixel of margin for rounding. */
++  bounds[0] = (int) floorf (x_min) - 1;
++  bounds[1] = (int) floorf (y_min) - 1;
++  bounds[2] = (int) ceilf (x_max) + 1;
++  bounds[3] = (int) ceilf (y_max) + 1;
++
++  return TRUE;
++}
++
+ static void
+ _cogl_journal_flush_modelview_and_entries (CoglJournalEntry *batch_start,
+                                            int               batch_len,
+@@ -282,6 +370,8 @@ _cogl_journal_flush_modelview_and_entries (CoglJournalEntry *batch_start,
+   CoglJournalFlushState *state = data;
+   CoglContext *ctx = state->ctx;
+   CoglFramebuffer *framebuffer = state->journal->framebuffer;
++  CoglDriver *driver = cogl_context_get_driver (ctx);
++  CoglDriverClass *driver_klass = COGL_DRIVER_GET_CLASS (driver);
+   CoglAttribute **attributes;
+   CoglDrawFlags draw_flags = (COGL_DRAW_SKIP_JOURNAL_FLUSH |
+                               COGL_DRAW_SKIP_PIPELINE_VALIDATION |
+@@ -302,6 +392,25 @@ _cogl_journal_flush_modelview_and_entries (CoglJournalEntry *batch_start,
+     _cogl_context_set_current_modelview_entry (ctx,
+                                                batch_start->modelview_entry);
+ 
++  if (driver_klass->clip_stack_set_draw_bounds)
++    {
++      int bounds[4];
++
++      if (get_batch_bounds (state->journal, framebuffer,
++                            batch_start, batch_len, bounds))
++        {
++          driver_klass->clip_stack_set_draw_bounds (driver, state->clip_stack,
++                                                    framebuffer, bounds);
++          state->scissor_narrowed = TRUE;
++        }
++      else if (state->scissor_narrowed)
++        {
++          driver_klass->clip_stack_set_draw_bounds (driver, state->clip_stack,
++                                                    framebuffer, NULL);
++          state->scissor_narrowed = FALSE;
++        }
++    }
++
+   attributes = (CoglAttribute **)state->attributes->data;
+ 
+   if (!_cogl_pipeline_get_real_blend_enabled (state->pipeline))
+@@ -699,6 +808,8 @@ _cogl_journal_flush_clip_stacks_and_entries (CoglJournalEntry *batch_start,
+   CoglJournalFlushState *state = data;
+   CoglFramebuffer *framebuffer = state->journal->framebuffer;
+   CoglContext *ctx = cogl_framebuffer_get_context (framebuffer);
++  CoglDriver *driver = cogl_context_get_driver (ctx);
++  CoglDriverClass *driver_klass = COGL_DRIVER_GET_CLASS (driver);
+   CoglMatrixStack *projection_stack;
+ 
+   COGL_STATIC_TIMER (time_flush_clip_stack_pipeline_entries,
+@@ -738,12 +849,19 @@ _cogl_journal_flush_clip_stacks_and_entries (CoglJournalEntry *batch_start,
+   _cogl_context_set_current_projection_entry (ctx,
+                                               projection_stack->last_entry);
+ 
++  state->clip_stack = batch_start->clip_stack;
++  state->scissor_narrowed = FALSE;
++
+   batch_and_call (batch_start,
+                   batch_len,
+                   compare_entry_strides,
+                   _cogl_journal_flush_vbo_offsets_and_entries, /* callback */
+                   data);
+ 
++  if (state->scissor_narrowed)
++    driver_klass->clip_stack_set_draw_bounds (driver, batch_start->clip_stack,
++                                              framebuffer, NULL);
++
+   COGL_TIMER_STOP (_cogl_uprof_context,
+                    time_flush_clip_stack_pipeline_entries);
+ }
+diff --git a/cogl/cogl/driver/gl/cogl-clip-stack-gl-private.h b/cogl/cogl/driver/gl/cogl-clip-stack-gl-private.h
+index b6bf661..311391e 100644
+--- a/cogl/cogl/driver/gl/cogl-clip-stack-gl-private.h
++++ b/cogl/cogl/driver/gl/cogl-clip-stack-gl-private.h
+@@ -42,3 +42,9 @@ void
+ _cogl_clip_stack_gl_flush (CoglDriver      *driver,
+                            CoglClipStack   *stack,
+                            CoglFramebuffer *framebuffer);
++
++void
++_cogl_clip_stack_gl_set_draw_bounds (CoglDriver      *driver,
++                                     CoglClipStack   *stack,
++                                     CoglFramebuffer *framebuffer,
++                                     const int       *bounds);
+diff --git a/cogl/cogl/driver/gl/cogl-clip-stack-gl.c b/cogl/cogl/driver/gl/cogl-clip-stack-gl.c
+index d778507..faf62a2 100644
+--- a/cogl/cogl/driver/gl/cogl-clip-stack-gl.c
++++ b/cogl/cogl/driver/gl/cogl-clip-stack-gl.c
+@@ -381,3 +381,43 @@ _cogl_clip_stack_gl_flush (CoglDriver      *driver,
+         }
+     }
+ }
++
++void
++_cogl_clip_stack_gl_set_draw_bounds (CoglDriver      *driver,
++                                     CoglClipStack   *stack,
++                                     CoglFramebuffer *framebuffer,
++                                     const int       *bounds)
++{
++  int x0 = 0;
++  int y0 = 0;
++  int x1 = cogl_framebuffer_get_width (framebuffer);
++  int y1 = cogl_framebuffer_get_height (framebuffer);
++  int y_start;
++
++  if (stack)
++    _cogl_clip_stack_get_bounds (stack, &x0, &y0, &x1, &y1);
++  else if (!bounds)
++    {
++      GE (driver, glDisable (GL_SCISSOR_TEST));
++      return;
++    }
++
++  if (bounds)
++    {
++      x0 = MAX (x0, bounds[0]);
++      y0 = MAX (y0, bounds[1]);
++      x1 = MIN (x1, bounds[2]);
++      y1 = MIN (y1, bounds[3]);
++    }
++
++  if (x0 >= x1 || y0 >= y1)
++    x0 = y0 = x1 = y1 = 0;
++
++  if (cogl_framebuffer_is_y_flipped (framebuffer))
++    y_start = y0;
++  else
++    y_start = cogl_framebuffer_get_height (framebuffer) - y1;
++
++  GE (driver, glEnable (GL_SCISSOR_TEST));
++  GE (driver, glScissor (x0, y_start, x1 - x0, y1 - y0));
++}
+diff --git a/cogl/cogl/driver/gl/cogl-driver-gl.c b/cogl/cogl/driver/gl/cogl-driver-gl.c
+index 7e91ff1..7b8204f 100644
+--- a/cogl/cogl/driver/gl/cogl-driver-gl.c
++++ b/cogl/cogl/driver/gl/cogl-driver-gl.c
+@@ -472,6 +472,7 @@ cogl_driver_gl_class_init (CoglDriverGLClass *klass)
+   driver_klass->flush_framebuffer_state = cogl_driver_gl_flush_framebuffer_state;
+   driver_klass->flush_attributes_state = _cogl_gl_flush_attributes_state;
+   driver_klass->clip_stack_flush = _cogl_clip_stack_gl_flush;
++  driver_klass->clip_stack_set_draw_bounds = _cogl_clip_stack_gl_set_draw_bounds;
+   driver_klass->create_buffer_impl = cogl_driver_gl_create_buffer_impl;
+   driver_klass->sampler_init = cogl_driver_gl_sampler_init_init;
+   driver_klass->sampler_free = cogl_driver_gl_sampler_free;
+-- 
+2.56.0

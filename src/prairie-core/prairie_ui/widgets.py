@@ -28,6 +28,7 @@ def _context_for(input_mode: InputMode) -> AppContext:
     context = AppContext.from_environment()
     return context if context.input_mode is input_mode else AppContext(
         presentation=context.presentation, input_mode=input_mode, device_class=context.device_class,
+        posture=context.posture,
     )
 
 

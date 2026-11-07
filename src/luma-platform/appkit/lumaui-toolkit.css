@@ -2466,3 +2466,9 @@ window.luma-app-window.lumaui-phone-device headerbar.luma-titlebar button {
 window.luma-app-window.lumaui-phone-device .luma-window-body, window.luma-app-window.lumaui-phone-device .luma-window-body.lumaui-frame-sidebar { padding: 0; }
 window.luma-app-window.lumaui-phone-device .luma-island { margin: 0; border-radius: 0; box-shadow: none; padding-top: var(--lumaui-phone-frame-status); }
 window.luma-app-window.lumaui-phone-device.lumaui-bleed .luma-island { padding-top: 0; }
+
+/* LumaUI: TV posture (AppWindow adds lumaui-tv): the shell runs the window full screen with no frame, so the body
+ * keeps no gutter and the window no corner or shadow; TV presentations pin themselves in TV units from the screen edge. */
+window.luma-app-window.lumaui-tv { border-radius: 0; box-shadow: none; }
+window.luma-app-window.lumaui-tv .luma-window-body,
+window.luma-app-window.lumaui-tv .luma-window-body.lumaui-frame-sidebar { padding: 0; }

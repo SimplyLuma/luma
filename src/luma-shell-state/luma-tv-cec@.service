@@ -1,0 +1,9 @@
+[Unit]
+Description=Join HDMI-CEC on %I so the TV remote reaches Luma
+Documentation=file:///usr/share/doc/luma-shell-state/README.md
+BindsTo=dev-%i.device
+After=dev-%i.device
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-tv-cec /dev/%I

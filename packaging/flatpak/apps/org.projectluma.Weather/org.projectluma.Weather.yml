@@ -8,6 +8,8 @@
   "sdk": "org.projectluma.Sdk",
   "command": "prairie-weather",
   "finish-args": [
+    "--talk-name=org.projectluma.Shell.Keyboard",
+    "--talk-name=org.projectluma.Shell.Remote",
     "--talk-name=org.project_luma.ShellState1",
     "--env=LUMA_WEATHER_STYLE_PATH=/app/share/prairie-core/weather.css",
     "--metadata=X-Luma=app-data-schema=weather-v1",
@@ -33,6 +35,7 @@
         "chmod 755 /app/bin/prairie-weather",
         "install -Dm644 src/prairie-core/data/org.projectluma.Weather.desktop /app/share/applications/org.projectluma.Weather.desktop",
         "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Weather.svg",
+        "install -Dm644 src/prairie-core/data/org.projectluma.Weather-tv.svg /app/share/luma-tv/org.projectluma.Weather-tv.svg",
         "cp -a --no-preserve=ownership src/prairie-core/style/. /app/share/prairie-core/",
         "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Weather.metainfo.xml",
         "install -Dm644 depot-media/79350b762d9d2c4165e25d0b25710a06ddc6c0ef9855d51a081fa138c2ccbe15.png /app/share/luma-app-media/79350b762d9d2c4165e25d0b25710a06ddc6c0ef9855d51a081fa138c2ccbe15.png",

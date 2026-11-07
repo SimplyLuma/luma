@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 3 Nov 2026 05:00:00 -0600
+Subject: [PATCH] stage-impl: Clip compact damage with the scissor alone
+
+A redraw clip of several rectangles is applied with the stencil buffer,
+which cogl clears and redraws for the region every time painting returns
+to the onscreen framebuffer, after each offscreen effect or blur. When the
+rectangles cover at least half of their bounding box, paint the box
+instead: the clip is then a scissor alone. Tiling GPUs load and store
+every tile of the box either way, and on Mesa versions that draw a
+scissored stencil clear as an unscissored quad the clear made each such
+frame load and store the whole framebuffer (Raspberry Pi 5 at 3840x2160:
+about 14.5 ms per frame on a dock hover).
+---
+ src/backends/meta-stage-impl.c | 36 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/src/backends/meta-stage-impl.c b/src/backends/meta-stage-impl.c
+index e4cd052..d6f4e0e 100644
+--- a/src/backends/meta-stage-impl.c
++++ b/src/backends/meta-stage-impl.c
+@@ -450,6 +450,39 @@ transform_swap_region_to_onscreen (ClutterStageView *stage_view,
+   return transformed_region;
+ }
+ 
++/* A region of several rectangles is clipped with the stencil buffer, which
++ * is cleared and redrawn for the region every time painting returns to the
++ * framebuffer (after each offscreen effect or blur). When the rectangles
++ * cover at least half of their bounding box, repainting the whole box is
++ * cheaper: it is a scissor clip alone. Tiling GPUs load and store every tile
++ * of the box either way.
++ */
++static MtkRegion *
++maybe_simplify_clip_region (MtkRegion *region)
++{
++  MtkRectangle extents;
++  int64_t area = 0;
++  int n_rects, i;
++
++  n_rects = mtk_region_num_rectangles (region);
++  if (n_rects <= 1)
++    return region;
++
++  for (i = 0; i < n_rects; i++)
++    {
++      MtkRectangle rect = mtk_region_get_rectangle (region, i);
++
++      area += (int64_t) rect.width * rect.height;
++    }
++
++  extents = mtk_region_get_extents (region);
++  if (area * 2 < (int64_t) extents.width * extents.height)
++    return region;
++
++  mtk_region_unref (region);
++  return mtk_region_create_rectangle (&extents);
++}
++
+ static gboolean
+ should_use_clipped_redraw (gboolean              is_full_redraw,
+                            gboolean              has_buffer_age,
+@@ -651,6 +684,9 @@ meta_stage_impl_redraw_view_primary (MetaStageImpl    *stage_impl,
+       clutter_damage_history_step (damage_history);
+     }
+ 
++  if (use_clipped_redraw)
++    fb_clip_region = maybe_simplify_clip_region (fb_clip_region);
++
+   if (use_clipped_redraw)
+     {
+       /* Regenerate redraw_clip because:
+-- 
+2.56.0
+

@@ -5,6 +5,8 @@
   "sdk": "org.projectluma.Sdk",
   "command": "luma-connect",
   "finish-args": [
+    "--talk-name=org.projectluma.Shell.Keyboard",
+    "--talk-name=org.projectluma.Shell.Remote",
     "--talk-name=org.project_luma.ShellState1",
     "--metadata=X-Luma=min-host-installer=57",
     "--metadata=X-Luma=app-data-schema=connect-host-v1",
@@ -34,6 +36,7 @@
         "chmod 755 /app/bin/luma-connect",
         "install -Dm644 src/luma-continuity/data/org.projectluma.Connect.desktop /app/share/applications/org.projectluma.Connect.desktop",
         "cp -a src/luma-continuity/data/icons /app/share/",
+        "install -d /app/share/luma-tv && mv /app/share/icons/hicolor/scalable/apps/org.projectluma.Connect-tv.svg /app/share/luma-tv/",
         "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Connect.metainfo.xml",
         "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Connect/LICENSE.md",
         "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Connect.svg",

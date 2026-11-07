@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Raspberry Pi 5 V3D: the driver suspends the GPU 100 ms after the last job,
+# so nearly every input event pays a power-up. Keep it awake for 2 s instead.
+# "bind" runs after the driver has set its own delay during probe.
+ACTION=="bind", SUBSYSTEM=="platform", DRIVER=="v3d", ENV{OF_COMPATIBLE_0}=="brcm,2712-v3d", ATTR{power/autosuspend_delay_ms}="2000"

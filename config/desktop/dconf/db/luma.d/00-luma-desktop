@@ -135,12 +135,12 @@ volume-step=1
 
 [org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari]
 name='Ask Ari'
-command='org.projectluma.Ari --popover'
+command='flatpak run org.projectluma.Ari --popover'
 binding='<Super>j'
 
 [org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/luma-ari-assistant-key]
 name='Ask Ari (assistant key)'
-command='org.projectluma.Ari --popover'
+command='flatpak run org.projectluma.Ari --popover'
 binding='<Shift><Super>F23'
 
 [desktop/ibus/panel/emoji]

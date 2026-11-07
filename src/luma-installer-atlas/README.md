@@ -52,7 +52,7 @@ Luma's own:
 - `src/atlas/` – the room and its components (`install-option`,
   `install-switchrow`, `install-field`, `install-warn`, `install-summary`,
   `install-meter`, `install-phase`, the dots).
-- `src/steps/` – the eight steps, the manual mount point step, the error room.
+- `src/steps/` – the six steps, the manual mount point step, the error room.
 - `src/model/` – plain-language rules with unit tests: the Layout line from
   the real plan, drive sentences, *Detected*, review warnings, field messages,
   progress phases, the clock line, low battery.

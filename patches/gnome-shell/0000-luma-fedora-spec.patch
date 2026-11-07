@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.151%{?dist}
++Release:        1.luma.165%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,333 @@
+@@ -32,6 +32,378 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -310,6 +310,26 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1289:      0307-dark-style-shared-appearance.patch
 +Patch1290:      0308-backdrop-blur-capability.patch
 +Patch1291:      0309-keycap-leave-home-strip.patch
++Patch1292:      0310-a11y-indicator-lucide-and-not-for-screen-keyboard.patch
++Patch1293:      0311-compact-lock-keeps-prompt-between-swipes.patch
++Patch1294:      0312-input-sources-no-password-reload-without-ibus.patch
++Patch1295:      0313-osk-auto-ignores-button-key-devices.patch
++Patch1296:      0316-st-reuse-prerendered-backgrounds.patch
++Patch1297:      0317-blur-bound-pass-after-backdrop-copy.patch
++Patch1298:      0318-st-selector-index.patch
++Patch1299:      0319-blur-keep-pass-textures.patch
++Patch1300:      0320-blur-hold-backgrounds-under-modal.patch
++Patch1301:      0321-luma-setup-welcome-cover.patch
++Patch1302:      0322-tv-home.patch
++Patch1303:      0323-tv-keyboard.patch
++Patch1304:      0324-tv-input.patch
++Patch1305:      0325-tv-dialogs.patch
++Patch1306:      0326-tv-screen-edges.patch
++Patch1307:      0327-tv-quick-panel.patch
++Patch1308:      0328-tv-app-switcher.patch
++Patch1309:      0329-tv-pointer.patch
++Patch1310:      0330-luma-date-menu-calendar-only.patch
++Patch1311:      0331-luma-date-menu-calendar-panel.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -345,10 +365,35 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9032:     keycap.css
 +Source9033:     keycap-policy.js
 +Source9034:     keycap-icons.tar
++Source9035:     incomingCall.js
++Source9036:     tv.js
++Source9037:     tvModel.js
++Source9038:     tvTokens.js
++Source9039:     tv-backdrop.jpg
++Source9040:     tvKeyboard.js
++Source9041:     tv-keyboard-policy.js
++Source9042:     tvInput.js
++Source9043:     tvInputModel.js
++Source9044:     tv-input-policy.js
++Source9045:     tvDialogs.js
++Source9046:     tvDialogsModel.js
++Source9047:     tv-dialogs-policy.js
++Source9048:     tvScreenEdges.js
++Source9049:     tvQuickPanel.js
++Source9050:     tvQuickPanelModel.js
++Source9051:     tv-quick-panel-policy.js
++Source9052:     tvAppSwitcher.js
++Source9053:     tvAppSwitcherModel.js
++Source9054:     tv-app-switcher-policy.js
++Source9055:     tvPointer.js
++Source9056:     tv-flatpak-policy.js
++Source9057:     dock-folder-badge-policy.js
++Source9058:     date-menu-calendar-only-policy.js
++Source9059:     date-menu-panel-policy.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +380,9 @@
+@@ -71,6 +443,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -358,7 +403,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +402,14 @@
+@@ -90,6 +465,16 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -370,10 +415,12 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +# On-screen keyboard words: spelling and frequency ranking.
 +Recommends:     hunspell-en-US
 +Recommends:     python3-pyspellchecker
++# TV posture: gamepads (the Shell reads them through libmanette when present).
++Recommends:     libmanette%{?_isa}
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +509,40 @@
+@@ -189,8 +574,58 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -401,9 +448,27 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +cp %{SOURCE9027} js/ui/lumaPresentation/launcher.svg
 +cp %{SOURCE9028} js/ui/lumaPresentation/safeAreas.js
 +cp %{SOURCE9029} js/ui/lumaPresentation/powerButton.js
++cp %{SOURCE9035} js/ui/lumaPresentation/incomingCall.js
 +cp %{SOURCE9030} js/ui/lumaPresentation/keycap.js
 +cp %{SOURCE9031} js/ui/lumaPresentation/keycapTokens.js
 +cp %{SOURCE9032} js/ui/lumaPresentation/keycap.css
++# TV posture: the TV home (tv.js), its pure model and shared TV tokens, and
++# the pre-blurred backdrop (scripts/developer/render-tv-backdrop.sh).
++cp %{SOURCE9036} js/ui/lumaPresentation/tv.js
++cp %{SOURCE9037} js/ui/lumaPresentation/tvModel.js
++cp %{SOURCE9038} js/ui/lumaPresentation/tvTokens.js
++cp %{SOURCE9039} js/ui/lumaPresentation/tv-backdrop.jpg
++cp %{SOURCE9040} js/ui/lumaPresentation/tvKeyboard.js
++cp %{SOURCE9042} js/ui/lumaPresentation/tvInput.js
++cp %{SOURCE9043} js/ui/lumaPresentation/tvInputModel.js
++cp %{SOURCE9045} js/ui/lumaPresentation/tvDialogs.js
++cp %{SOURCE9046} js/ui/lumaPresentation/tvDialogsModel.js
++cp %{SOURCE9048} js/ui/lumaPresentation/tvScreenEdges.js
++cp %{SOURCE9049} js/ui/lumaPresentation/tvQuickPanel.js
++cp %{SOURCE9050} js/ui/lumaPresentation/tvQuickPanelModel.js
++cp %{SOURCE9052} js/ui/lumaPresentation/tvAppSwitcher.js
++cp %{SOURCE9053} js/ui/lumaPresentation/tvAppSwitcherModel.js
++cp %{SOURCE9055} js/ui/lumaPresentation/tvPointer.js
 +# Keycap icons, derived from Stevia's Lucide outlines (generate-keycap-shell-icons.py).
 +tar -xf %{SOURCE9034} -C data/icons/scalable/status --exclude=LICENSE
 +tar -xOf %{SOURCE9034} LICENSE > LUCIDE-KEYCAP-LICENSE.txt
@@ -414,7 +479,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -207,10 +559,27 @@
+@@ -207,10 +642,36 @@
  # Create empty directories where other packages can drop extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
@@ -439,10 +504,19 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9005} js/ui/lumaAndroidActivation.js
 +gjs -m %{SOURCE9006} js/ui/shellDBus.js
 +gjs -m %{SOURCE9033} js/ui/lumaPresentation/keycap.js js/ui/keyboard.js
++gjs -m %{SOURCE9041} js/ui/lumaPresentation/tvKeyboard.js js/ui/lumaPresentation/tvTokens.js js/ui/keyboard.js
++gjs -m %{SOURCE9044} js/ui/lumaPresentation/tvInputModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvInput.js js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvPointer.js
++gjs -m %{SOURCE9047} js/ui/lumaPresentation/tvDialogsModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvDialogs.js js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvInput.js
++gjs -m %{SOURCE9051} js/ui/lumaPresentation/tvQuickPanelModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvQuickPanel.js js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvInput.js
++gjs -m %{SOURCE9054} js/ui/lumaPresentation/tvAppSwitcherModel.js js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvAppSwitcher.js js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvInput.js
++gjs -m %{SOURCE9056} js/ui/lumaPresentation/tvModel.js js/ui/lumaPresentation/tv.js
++gjs -m %{SOURCE9057} js/ui/lumaDockFolders.js js/ui/lumaPresentation/launcherFolders.js
++gjs -m %{SOURCE9058} js/ui/dateMenu.js
++gjs -m %{SOURCE9059} js/ui/dateMenu.js js/ui/calendar.js src/calendar-server/gnome-shell-calendar-server.c
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +587,7 @@
+@@ -218,7 +679,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -451,7 +525,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +619,11 @@
+@@ -250,6 +711,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg

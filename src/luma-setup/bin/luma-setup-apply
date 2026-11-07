@@ -1,0 +1,9 @@
+#!/usr/bin/python3 -sP
+# SPDX-License-Identifier: Apache-2.0
+# Finish, as root (pkexec, org.projectluma.setup.apply): the first account and the setup.
+import os
+
+os.umask(0o022)
+from luma_setup.apply import main  # noqa: E402
+
+raise SystemExit(main())

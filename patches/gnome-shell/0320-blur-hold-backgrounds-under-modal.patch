@@ -1,0 +1,222 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 3 Nov 2026 02:58:56 -0600
+Subject: [PATCH] blur: hold the blurred backgrounds under a dimming modal
+
+A background blur copies the framebuffer under its actor, which ends a
+tiling GPU's pass over the frame. When a modal dialog opens over a
+lightbox (the search overview, the end session dialog), the dock's
+blurred surfaces are drawn before the full-screen lightbox, so every
+frame of the opening animation became two full-screen passes: on a
+Raspberry Pi 5 at 3840x2160, about 20 ms each, and frames took two
+refreshes instead of one.
+
+Nothing behind those surfaces changes while the modal is up. Add
+shell_blur_effect_hold_backgrounds() and _release_backgrounds(): while
+an owner holds, a background blur outside it draws its last blurred
+background as long as its actor's box on the framebuffer is the one it
+was copied from; blurs inside the owner stay live. ModalDialog holds
+while it has a lightbox and is not closed.
+
+With full redraws at 3840x2160 the headless Shell runs 45% fewer GPU
+jobs while the overview opens and closes; screenshots of the open
+overview match (SSIM 0.99999, dock PSNR 63 dB).
+---
+ js/ui/modalDialog.js    |  13 +++++
+ src/shell-blur-effect.c | 104 ++++++++++++++++++++++++++++++++++++++++
+ src/shell-blur-effect.h |   3 ++
+ 3 files changed, 120 insertions(+)
+
+diff --git a/js/ui/modalDialog.js b/js/ui/modalDialog.js
+index 74fd156..cd37ad1 100644
+--- a/js/ui/modalDialog.js
++++ b/js/ui/modalDialog.js
+@@ -87,6 +87,8 @@ export const ModalDialog = GObject.registerClass({
+                 radialEffect: true,
+             });
+             this._lightbox.highlight(this._backgroundBin);
++            this.connect('destroy',
++                () => Shell.BlurEffect.release_backgrounds(this));
+ 
+             this._eventBlocker = new Clutter.Actor({reactive: true});
+             this.backgroundStack.add_child(this._eventBlocker);
+@@ -107,6 +109,17 @@ export const ModalDialog = GObject.registerClass({
+             return;
+ 
+         this._state = state;
++
++        // Blurred surfaces under the lightbox keep their background while it
++        // is up: nothing behind them changes, and copying it again each frame
++        // would cost a second full-screen GPU pass for the lightbox.
++        if (this._lightbox) {
++            if (state === State.CLOSED)
++                Shell.BlurEffect.release_backgrounds(this);
++            else
++                Shell.BlurEffect.hold_backgrounds(this);
++        }
++
+         this.notify('state');
+     }
+ 
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+index 3b0e287..f1981de 100644
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -156,6 +156,9 @@ struct _ShellBlurEffect
+   int radius;
+   float blur_sigma;
+ 
++  /* Luma: the box the background was last copied from. */
++  ClutterActorBox background_box;
++
+   /* Luma: how many frames in a row the background could have been stale. */
+   int stale_frames;
+   /* Luma: counters a test reads, to see the case happen and stop happening. */
+@@ -165,6 +168,11 @@ struct _ShellBlurEffect
+ 
+ G_DEFINE_TYPE (ShellBlurEffect, shell_blur_effect, CLUTTER_TYPE_EFFECT)
+ 
++/* Luma: actors (dimming modals) whose outside keeps its blurred backgrounds;
++ * see shell_blur_effect_hold_backgrounds().
++ */
++static GPtrArray *hold_owners = NULL;
++
+ enum {
+   PROP_0,
+   PROP_RADIUS,
+@@ -955,6 +963,24 @@ shell_blur_effect_get_background_paint_counts (ShellBlurEffect *self,
+     *reused = self->reused_background_paints;
+ }
+ 
++static gboolean
++background_held (ShellBlurEffect *self)
++{
++  unsigned int i;
++
++  if (!hold_owners)
++    return FALSE;
++
++  for (i = 0; i < hold_owners->len; i++)
++    {
++      if (!clutter_actor_contains (g_ptr_array_index (hold_owners, i),
++                                   self->actor))
++        return TRUE;
++    }
++
++  return FALSE;
++}
++
+ static gboolean
+ needs_repaint (ShellBlurEffect         *self,
+                ClutterEffectPaintFlags  flags)
+@@ -1009,6 +1035,24 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
+           break;
+         }
+ 
++      /* Luma: a held background keeps the last blur while the actor stays
++       * where it was copied from.
++       */
++      if (self->mode == SHELL_BLUR_MODE_BACKGROUND &&
++          (self->cache_flags & BLUR_APPLIED) &&
++          background_held (self))
++        {
++          ClutterActorBox box;
++
++          update_actor_box (self, paint_context, &box);
++          if (clutter_actor_box_equal (&box, &self->background_box))
++            {
++              add_blurred_pipeline (self, node, paint_opacity);
++              add_actor_node (self, node, -1);
++              return;
++            }
++        }
++
+       /* Luma: the background copy would be this surface's own last output,
+        * so keep the blur we have and ask for a frame that repaints what is
+        * behind us. Without a blur to keep, or after MAX_STALE_FRAMES, take
+@@ -1051,6 +1095,8 @@ shell_blur_effect_paint_node (ClutterEffect           *effect,
+           if (!update_framebuffers (self, paint_context, &source_actor_box))
+             goto fail;
+ 
++          self->background_box = source_actor_box;
++
+           blur_node = create_blur_nodes (self, node, paint_opacity);
+ 
+           switch (self->mode)
+@@ -1366,3 +1412,61 @@ shell_blur_effect_set_mode (ShellBlurEffect *self,
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_MODE]);
+ }
++
++static void
++hold_owner_disposed (gpointer  data,
++                     GObject  *owner)
++{
++  g_ptr_array_remove (hold_owners, owner);
++}
++
++/**
++ * shell_blur_effect_hold_backgrounds:
++ * @owner: a full-screen modal, such as a dialog over a lightbox
++ *
++ * Luma: until shell_blur_effect_release_backgrounds() is called with @owner
++ * (or @owner is disposed), background blurs outside @owner keep their last
++ * blurred background, as long as their actor's box on the framebuffer is the
++ * one it was copied from. What lies behind them does not change while a
++ * dimming modal is up, and every copy ends a tiling GPU's pass over the
++ * frame: the modal's full-screen lightbox, drawn after them, then costs a
++ * second full-screen pass each frame (about 20 ms at 3840x2160 on a
++ * Raspberry Pi 5). Background blurs inside @owner stay live.
++ */
++void
++shell_blur_effect_hold_backgrounds (ClutterActor *owner)
++{
++  g_return_if_fail (CLUTTER_IS_ACTOR (owner));
++
++  if (!hold_owners)
++    hold_owners = g_ptr_array_new ();
++
++  if (g_ptr_array_find (hold_owners, owner, NULL))
++    return;
++
++  g_ptr_array_add (hold_owners, owner);
++  g_object_weak_ref (G_OBJECT (owner), hold_owner_disposed, NULL);
++}
++
++/**
++ * shell_blur_effect_release_backgrounds:
++ * @owner: an actor passed to shell_blur_effect_hold_backgrounds()
++ *
++ * Luma: lets background blurs outside @owner copy their background again.
++ */
++void
++shell_blur_effect_release_backgrounds (ClutterActor *owner)
++{
++  ClutterActor *stage;
++
++  g_return_if_fail (CLUTTER_IS_ACTOR (owner));
++
++  if (!hold_owners || !g_ptr_array_remove (hold_owners, owner))
++    return;
++
++  g_object_weak_unref (G_OBJECT (owner), hold_owner_disposed, NULL);
++
++  stage = CLUTTER_ACTOR (clutter_actor_get_stage (owner));
++  if (stage)
++    clutter_actor_queue_redraw (stage);
++}
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+index 90e73de..ce5ec45 100644
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -58,4 +58,7 @@ ShellBlurMode shell_blur_effect_get_mode (ShellBlurEffect *self);
+ void shell_blur_effect_set_mode (ShellBlurEffect *self,
+                                  ShellBlurMode    mode);
+ 
++void shell_blur_effect_hold_backgrounds (ClutterActor *owner);
++void shell_blur_effect_release_backgrounds (ClutterActor *owner);
++
+ G_END_DECLS
+-- 
+2.56.0
+

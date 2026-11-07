@@ -16,10 +16,11 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
-import {homeLayout, pageProgress, visiblePageRange} from './layout.js';
+import {homeLayout, pageProgress, statusGlyph, visiblePageRange} from './layout.js';
 import {bottomInset} from './keycap.js';
 import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
+import {CallTakeover} from './incomingCall.js';
 import {reconcileGrid} from './grid.js';
 import {HomeEditor} from './homeEditor.js';
 import {HomeWidgets} from './widgets.js';
@@ -27,6 +28,7 @@ import {TabletTasks, HandheldMotion, HandheldBackNavigation} from './tabletTasks
 import {SwitcherDrag} from './switcherDrag.js';
 import {HandheldOptions, StatusPulls} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
+import {TvPresentation} from './tv.js';
 import {gettext as _} from 'gettext';
 
 const BUS = 'org.project_luma.ShellState1';
@@ -44,6 +46,52 @@ function button(name, onClick, styleClass = '') {
         reactive: true, track_hover: true, style_class: styleClass});
     result.connect('clicked', onClick);
     return result;
+}
+
+// While the handheld status bar holds GNOME's indicators, each icon is drawn
+// as its LumaUI (Lucide) glyph, following the indicator's state as it changes.
+class StatusGlyphs {
+    constructor() {
+        this._icons = new Map();
+        this._containers = new Map();
+    }
+
+    watch(actor) {
+        if (this._containers.has(actor) || this._icons.has(actor))
+            return;
+        if (actor instanceof St.Icon) {
+            const original = actor.icon_name;
+            // Battery sets a themed gicon rather than an icon name.
+            const ids = ['notify::icon-name', 'notify::gicon']
+                .map(signal => actor.connect(signal, () => this._draw(actor)));
+            this._icons.set(actor, {ids, original});
+            this._draw(actor);
+            return;
+        }
+        this._containers.set(actor, actor.connect('child-added', (_actor, child) => this.watch(child)));
+        for (const child of actor.get_children())
+            this.watch(child);
+    }
+
+    _draw(icon) {
+        const glyph = statusGlyph(icon.icon_name);
+        if (!glyph)
+            return;
+        this._icons.get(icon).original = icon.icon_name;
+        icon.icon_name = glyph;
+    }
+
+    release() {
+        for (const [icon, {ids, original}] of this._icons) {
+            ids.forEach(id => icon.disconnect(id));
+            if (original && icon.icon_name !== original)
+                icon.icon_name = original;
+        }
+        for (const [container, id] of this._containers)
+            container.disconnect(id);
+        this._icons.clear();
+        this._containers.clear();
+    }
 }
 
 export class Presentation {
@@ -64,6 +112,7 @@ export class Presentation {
         this._settings = settings ?? new Gio.Settings({schema_id: 'org.project_luma.shell-state'});
         this._watchHomePreferences();
         this._powerButton = new HandheldPowerButton();
+        this._callTakeover = new CallTakeover(this);
         this._motion = new HandheldMotion(this);
         this._page = 0;
         this._displayProfiles = null;
@@ -277,6 +326,8 @@ export class Presentation {
         this._connect(seat, 'notify::touch-mode', () => this._reportInput());
         this._connect(seat, 'device-added', () => this._reportInput());
         this._connect(seat, 'device-removed', () => this._reportInput());
+        // TV posture owns the screen while it is on; nothing else changes.
+        this._tv = new TvPresentation(this);
         this._addModeOptions();
         this._handheldOptions = new HandheldOptions(this);
         this._statusPulls = new StatusPulls(this);
@@ -353,8 +404,13 @@ export class Presentation {
         const homeChanged = JSON.stringify(snapshot.home_layouts) !== JSON.stringify(this._state?.home_layouts);
         this._state = snapshot;
         this._updateStatusStyle();
-        const mode = snapshot.presentation?.effective ?? 'desktop';
-        const selected = snapshot.presentation?.selected ?? 'automatic';
+        // TV posture sits above the presentation: the handheld machinery stays
+        // on Desktop underneath and TvPresentation draws the screen. Without a
+        // posture in the snapshot (an older service) this is exactly as before.
+        const tv = snapshot.posture?.effective === 'tv';
+        if (!tv) this._tv.setActive(false);
+        const mode = tv ? 'desktop' : snapshot.presentation?.effective ?? 'desktop';
+        const selected = snapshot.posture?.selected === 'tv' ? 'tv' : snapshot.presentation?.selected ?? 'automatic';
         for (const [choice, option] of this._modeButtons) {
             option.checked = selected === choice;
             option.setOrnament(option.checked ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
@@ -366,6 +422,7 @@ export class Presentation {
         this._options.subtitle = null;
         if (this.mode === mode) {
             if ((favoritesChanged || homeChanged) && mode !== 'desktop') this._queueRebuild();
+            this._tv.setActive(tv);
             return;
         }
         const previous = this.mode;
@@ -386,6 +443,7 @@ export class Presentation {
             for (const window of this._windows.keys()) this._queueKeep(window);
         }
         this._tasks.setMode();
+        this._tv.setActive(tv);
     }
 
     // Runs on every monitor change: the primary display's connector picks its
@@ -442,13 +500,19 @@ export class Presentation {
         this._options.connect('clicked', () => this._options.menu.open());
         this._modeButtons = new Map();
         for (const [mode, label] of [['automatic', _('Automatic')], ['desktop', _('Desktop')],
-            ['tablet', _('Tablet')], ['mobile', _('Mobile')]]) {
+            ['tablet', _('Tablet')], ['mobile', _('Mobile')], ['tv', _('TV')]]) {
             const option = new PopupMenu.PopupMenuItem(label);
             option.reactive = false;
             option.can_focus = false;
             option.accessible_role = Atk.Role.RADIO_MENU_ITEM;
             option.connect('activate', () => {
-                this._call('SetPresentation', new GLib.Variant('(s)', [mode]), () => this._refresh());
+                // TV is the posture; any other choice leaves TV for that presentation.
+                if (mode === 'tv') this._call('SetPosture', new GLib.Variant('(s)', ['tv']), () => this._refresh());
+                else this._call('SetPresentation', new GLib.Variant('(s)', [mode]), () => {
+                    if (this._state?.posture?.selected === 'tv')
+                        this._call('SetPosture', new GLib.Variant('(s)', ['automatic']), () => this._refresh());
+                    else this._refresh();
+                });
                 menu.close();
             });
             this._options.menu.addMenuItem(option);
@@ -555,6 +619,7 @@ export class Presentation {
                 }
             }
             move(actor, this._statusRight);
+            (this._statusGlyphs ??= new StatusGlyphs()).watch(actor);
             actor.set_size(-1, -1);
             actor.x_expand = false;
             actor.x_align = Clutter.ActorAlign.END;
@@ -564,6 +629,7 @@ export class Presentation {
     }
 
     _releaseStatus() {
+        this._statusGlyphs?.release();
         for (const click of this._pressRecognizers ?? [])
             click.set_recognize_on_press(true);
         this._pressRecognizers = [];
@@ -1191,8 +1257,10 @@ export class Presentation {
         this._initialWindows.clear();
         global.stage.remove_action(this._homePan);
         this._backNavigation.destroy();
+        this._tv.destroy();
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
+        this._callTakeover.destroy();
         this._motion.destroy();
         this._cancellable.cancel();
         this.mode = 'desktop';

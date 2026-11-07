@@ -47,6 +47,8 @@ cp -R "$repo_root/src/luma-android/luma_android" "$source_dir/tests/dependencies
 install -m0644 "$repo_root/LICENSES/GPL-3.0-or-later.txt" "$source_dir/tests/dependencies/COPYING.GPL-3.0"
 
 cp "$repo_root/src/luma-depot/data/depot.css" "$source_dir/data/depot.css"
+install -D -m 0644 "$repo_root/src/luma-depot/data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg" \
+  "$source_dir/data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg"
 # Depot's code ships inside this package, so Depot's tests have to come with
 # it. They did not, which meant the only package that ships luma_depot could
 # not run a single test of it: tools/check-unreached-tests.py found this.

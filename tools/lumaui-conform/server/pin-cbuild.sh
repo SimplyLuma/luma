@@ -11,9 +11,13 @@ cd /tmp/cbuild
 rpm -qa --qf '%{SOURCERPM} %{VERSION}-%{RELEASE}\n' | sed 's/-[^-]*-[^-]*\.src\.rpm / /' | sort -u > thinkpad-srcvr.txt
 # The patched-upstream apps' runtime dependencies (from their Luma RPMs in rpms-app/: Filer,
 # Settings), so their services' schemas and libraries are there; the capture runs the fresh build.
+# The image's Luma-built runtime packages are off limits to every transaction here.
+exclude=$(grep '\.luma\.' /usr/share/lumaui-conform/rpmqa.txt | awk '{print $1}' | paste -sd, -)
 if ls rpms-app/*.rpm >/dev/null 2>&1; then
-  reqs=$(rpm -qp --nosignature --requires rpms-app/*.rpm | grep -v -E '^(rpmlib\(|/|config\()|luma|nautilus|gnome-control-center' | sed 's/ .*//' | sort -u)
-  dnf -y -q install --setopt=install_weak_deps=False $reqs
+  reqs=$(rpm -qp --nosignature --requires rpms-app/*.rpm | grep -v -E '^(rpmlib\(|/|config\()|luma|nautilus|gnome-control-center|^gnome-shell|^gdm' | sed 's/ .*//' | sort -u)
+  # Only what the image does not already provide (its Luma packages provide gtk4, libadwaita, ...).
+  reqs=$(for r in $reqs; do rpm -q --whatprovides "$r" >/dev/null 2>&1 || echo "$r"; done)
+  [ -z "$reqs" ] || dnf -y -q install --setopt=install_weak_deps=False --exclude="$exclude" $reqs
 fi
 tools="gcc gcc-c++ meson ninja-build vala sassc ccache python3-devel gettext desktop-file-utils itstool
  libappstream-glib appstream blueprint-compiler rpm-build patch git-core xmlto docbook-style-xsl libxslt gi-docgen
@@ -39,11 +43,11 @@ if [ -n "$nodeps" ]; then
   rpm -i --nodeps --excludedocs nd/*.rpm
   echo "headers without dependencies (Luma runtime, Fedora headers):$nodeps"
 fi
-# The ThinkPad's Luma-built runtime packages are off limits to this transaction.
-exclude=$(grep '\.luma\.' /usr/share/lumaui-conform/rpmqa.txt | awk '{print $1}' | paste -sd, -)
 dnf -y -q install --setopt=install_weak_deps=False --exclude="$exclude" $want
 # Put back any runtime package a -devel dependency moved, then check nothing is left moved.
 back=$(join <(rpm -qa --qf '%{NAME} %{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort) /usr/share/lumaui-conform/rpmqa.txt | awk '$2 != $3 {print $3}')
+# (A Luma package goes back from its shipped RPM: the repositories do not have it.)
+back=$(for n in $back; do if [ -f "rpms-luma/$n.rpm" ]; then echo "$PWD/rpms-luma/$n.rpm"; else echo "$n"; fi; done)
 [ -z "$back" ] || dnf -y -q install --allowerasing --setopt=install_weak_deps=False $back
 # The runtime stays the ThinkPad's: nothing above may have moved a library it shares.
 join <(rpm -qa --qf '%{NAME} %{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort) /usr/share/lumaui-conform/rpmqa.txt \

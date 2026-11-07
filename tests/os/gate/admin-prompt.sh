@@ -193,7 +193,7 @@ start)
   as_user_systemctl reset-failed "$(unit "$case_name").service" >/dev/null 2>&1 || true
   case "$case_name" in
     pkexec)
-      cmd=(bash -c 'pkexec true; echo "pkexec exit=$?"') ;;
+      cmd=(bash -c 'pkexec true; rc=$?; echo "pkexec exit=$rc"; exit $rc') ;;
     flatpak-system)
       ref=$(cat "$state/flatpak-ref" 2>/dev/null)
       cmd=(flatpak install --system -y flathub "$ref") ;;
@@ -258,7 +258,9 @@ finish)
   denied=$(journalctl -q --no-pager -o cat --since "@$since" _COMM=polkitd 2>/dev/null | grep -Ei 'not authorized|dismissed|Operator of unix-session' | tail -n 2 | tr '\n' ' ')
   ok=0
   case "$case_name" in
-    pkexec) grep -q 'pkexec exit=0' <<<"$out" && ok=1 ;;
+    # The request unit exits with pkexec's own status, so a successful unit is
+    # the proof even when its journal lines have not been read back yet.
+    pkexec) { grep -q 'pkexec exit=0' <<<"$out" || { [ "$result" = success ] && [ "$status" = 0 ]; }; } && ok=1 ;;
     flatpak-system) [ "$result" = success ] && [ "$status" = 0 ] && flatpak info --system "$(cat "$state/flatpak-ref")" >/dev/null 2>&1 && ok=1 ;;
     udisks-open) [ "$result" = success ] && [ "$status" = 0 ] && grep -q 'for writing through UDisks' <<<"$out" && ok=1 ;;
   esac

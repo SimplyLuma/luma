@@ -11,3 +11,7 @@ StartupNotify=true
 DBusActivatable=false
 X-Purism-FormFactor=Workstation;Mobile;
 X-GNOME-UsesNotifications=true
+# TV home opt-in, from the app's [tv] declaration (docs/developer-platform/tv-mode.md).
+X-Luma-TV=true
+X-Luma-TV-Tile=org.projectluma.Weather-tv
+X-Luma-TV-Presentation=tv

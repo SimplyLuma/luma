@@ -20,6 +20,7 @@ from .apk import native_abis_for_apk
 from .appearance import surface_treatment
 from .config import device_class, load_runtime_config
 from .errors import LumaAndroidError, RuntimeUnavailableError
+from .presentation import current_presentation, presentation_density
 from .kernel import (
     FP6_SOFTWARE_PORT,
     FP6_SOFTWARE_SOCKET,
@@ -147,10 +148,35 @@ def _session_identity() -> str | None:
     return f"{found['session']}/{found['container']}"
 
 
-# Luma's top bar is GNOME Shell's 34 px #panel (patches/gnome-shell/0002); its
-# handheld gesture strip is GESTURE_HEIGHT, 28 px, at the bottom edge.
+# Fallback bar heights for shells that do not publish them: GNOME Shell's
+# 34 px #panel (patches/gnome-shell/0002) and the 28 px handheld gesture strip.
 HOST_TOP_BAR_LOGICAL_PX = 34
 HOST_GESTURE_STRIP_LOGICAL_PX = 28
+
+
+def host_bars_path() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return Path(runtime) / "luma-shell" / "bars.json"
+
+
+def host_bar_logical_px(path: Path | None = None) -> tuple[int, int]:
+    """Return the logical heights of the Shell's top bar and gesture strip.
+
+    The Shell writes the chrome it draws over applications to
+    $XDG_RUNTIME_DIR/luma-shell/bars.json ({"schema": 1, "top": 44,
+    "bottom": 28}, zero on Desktop). A missing or invalid file falls back to
+    the fixed heights.
+    """
+    try:
+        value = json.loads((path or host_bars_path()).read_text(encoding="utf-8"))
+        top, bottom = value["top"], value["bottom"]
+        if (value.get("schema") == 1 and all(
+                isinstance(height, int) and not isinstance(height, bool) and 0 <= height <= 256
+                for height in (top, bottom))):
+            return top, bottom
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return HOST_TOP_BAR_LOGICAL_PX, HOST_GESTURE_STRIP_LOGICAL_PX
 
 
 def host_status_bar_px(runtime_device_class: str, display_scale: str,
@@ -576,6 +602,7 @@ class WaydroidEngine:
             timeout=30,
         )
         self.sync_host_bar_insets(runtime_device_class)
+        self.sync_presentation_density()
         self.sync_host_appearance()
         # Android already exposes its soft keyboard alongside Waydroid's
         # virtual hardware keyboard on touch-first profiles. Only a desktop
@@ -600,14 +627,27 @@ class WaydroidEngine:
         _write_ready_stamp(_ready_key(runtime_config.idle_freeze, multi_window))
         return started_session
 
+    def sync_presentation_density(self, presentation: str | None = None) -> None:
+        # Android takes ro.sf.lcd_density once, from the presentation it boots
+        # into; the image applies this property as WindowManager's forced
+        # density whenever the presentation changes afterwards.
+        presentation = presentation or current_presentation(device_class())
+        touch = self._run("prop", "get", "luma.touch_density", timeout=15, check=False).stdout.strip()
+        scale = self._run("prop", "get", "waydroid.display_scale", timeout=15, check=False).stdout.strip()
+        value = str(presentation_density(presentation, touch, scale))
+        current = self._run("prop", "get", "persist.luma.forced_density", timeout=15, check=False).stdout.strip()
+        if current != value:
+            self._run("prop", "set", "persist.luma.forced_density", value, timeout=30)
+
     def sync_host_bar_insets(self, runtime_device_class: str) -> None:
         # Android uses these as its status and navigation bar heights and keeps
         # SystemUI's bars hidden (patches/android-frameworks-base/0002).
         scale = self._run("prop", "get", "waydroid.display_scale",
                           timeout=15, check=False).stdout.strip()
+        top, bottom = host_bar_logical_px()
         for prop, logical_px in (
-            ("persist.luma.status_bar_px", HOST_TOP_BAR_LOGICAL_PX),
-            ("persist.luma.nav_bar_px", HOST_GESTURE_STRIP_LOGICAL_PX),
+            ("persist.luma.status_bar_px", top),
+            ("persist.luma.nav_bar_px", bottom),
         ):
             value = str(host_status_bar_px(runtime_device_class, scale, logical_px))
             current = self._run("prop", "get", prop, timeout=15, check=False).stdout.strip()
@@ -763,12 +803,20 @@ class WaydroidEngine:
     ) -> None:
         if not payloads:
             raise RuntimeUnavailableError("The Android package has no installable payloads.")
+        every_split: list[Path] = []
         if member_names:
             if len(member_names) != len(payloads):
                 raise RuntimeUnavailableError("The Android split manifest is inconsistent.")
-            selected_names = select_compatible_splits(
-                member_names, self._android_device_profile()
-            )
+            every_split = list(payloads)
+            try:
+                selected_names = select_compatible_splits(
+                    member_names, self._android_device_profile()
+                )
+            except UncertainSplitSelection as error:
+                # The device configuration cannot be matched from the split
+                # names alone. Android resolves an overcomplete set itself.
+                LOGGER.info("Installing every split: %s", error)
+                selected_names = member_names
             by_name = dict(zip(member_names, payloads, strict=True))
             payloads = [by_name[name] for name in selected_names]
 
@@ -793,15 +841,41 @@ class WaydroidEngine:
         # verifies package identity, signatures, splits, and native-library
         # compatibility. Some current images omit the legacy
         # `install-multiple` alias while retaining this session-backed form.
+        try:
+            self._commit_package_transaction(payloads)
+        except RuntimeUnavailableError as error:
+            # Some bundles declare required split types (for example a
+            # feature's language split) that the uploader's device happened
+            # to supply. When Android names a missing split, retry once with
+            # every split in the bundle; PackageInstaller keeps what matches.
+            if (
+                "INSTALL_FAILED_MISSING_SPLIT" not in str(error)
+                or len(every_split) <= len(payloads)
+            ):
+                raise
+            LOGGER.info("Android requires more splits; installing all %d", len(every_split))
+            self._commit_package_transaction(every_split)
+        self.wait_for_application_registry_stable(timeout=45)
+        self.synchronize_launchers()
+
+    def _commit_package_transaction(self, payloads: list[Path]) -> None:
         transaction = self._waydroid_package_transaction(payloads)
         try:
             paths = [f"/data/waydroid_tmp/{path.name}" for path in transaction]
-            self._run_as_android_package_manager(
-                ["pm", "install", "--user", "0", "-r", *paths],
-                timeout=600,
-            )
-            self.wait_for_application_registry_stable(timeout=45)
-            self.synchronize_launchers()
+            try:
+                self._run_as_android_package_manager(
+                    ["pm", "install", "--user", "0", "-r", *paths],
+                    timeout=900,
+                )
+            except RuntimeUnavailableError as error:
+                if "INSTALL_FAILED_NO_MATCHING_ABIS" in str(error):
+                    available = ", ".join(self._android_device_profile().abis)
+                    raise RuntimeUnavailableError(
+                        "This Android application requires a different processor "
+                        f"architecture. This device currently supports {available}; "
+                        "the application was not installed."
+                    ) from error
+                raise
         finally:
             for path in transaction:
                 path.unlink(missing_ok=True)
@@ -1351,6 +1425,10 @@ _KNOWN_ABIS = {
 }
 
 
+class UncertainSplitSelection(RuntimeUnavailableError):
+    """Split names do not identify one configuration for this device."""
+
+
 def select_compatible_splits(
     member_names: tuple[str, ...], profile: AndroidDeviceProfile
 ) -> tuple[str, ...]:
@@ -1387,7 +1465,7 @@ def select_compatible_splits(
                 # Unknown feature configuration qualifiers are not safe to
                 # guess. Android may require exactly one mutually exclusive
                 # resource for the physical device.
-                raise RuntimeUnavailableError(
+                raise UncertainSplitSelection(
                     f"The Android feature split {name} uses an unsupported "
                     "device qualifier."
                 )
@@ -1410,8 +1488,9 @@ def select_compatible_splits(
         available = ", ".join(sorted(abi_members))
         supported = ", ".join(normalized_abis)
         raise RuntimeUnavailableError(
-            "This Android bundle has no base split for the device processor "
-            f"architecture (bundle: {available}; device: {supported})."
+            "This Android application requires a different processor "
+            f"architecture ({available}). This device currently supports "
+            f"{supported}; the application was not installed."
         )
     if selected_abi is not None:
         required.append(abi_members[selected_abi])
@@ -1422,6 +1501,10 @@ def select_compatible_splits(
         required.append(locale_members[primary_locale])
     elif "en" in locale_members:
         required.append(locale_members["en"])
+    else:
+        # A bundle can carry only the uploader's language. Android may
+        # still require one language split, so keep the ones present.
+        required.extend(locale_members.values())
 
     feature_names = dict.fromkeys(
         (
@@ -1458,5 +1541,7 @@ def select_compatible_splits(
             required.append(feature_locales[primary_locale])
         elif "en" in feature_locales:
             required.append(feature_locales["en"])
+        else:
+            required.extend(feature_locales.values())
 
     return tuple(required)

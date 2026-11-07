@@ -1,0 +1,112 @@
+{
+ "app": "keyring-unlock",
+ "title": "Saved passwords, first unlock",
+ "about": "luma-keyring's first-unlock sheet: the dialog window on a computer, LumaUI's drawer dialog on a phone (--phone), against the Design Center's mockup. Synthetic state (tools/lumaui-conform/fixtures/keyring_unlock.py); no keyring is touched.",
+ "spec": {
+  "root": "design-center",
+  "url": "mockups/luma-keyring-unlock.html?posture=desktop",
+  "window": "#stage",
+  "ready": "#stage .lk-sheet",
+  "viewport": {
+   "width": 460,
+   "height": 360
+  },
+  "phone_url": "mockups/luma-keyring-unlock.html?posture=phone",
+  "phone_viewport": {
+   "width": 390,
+   "height": 844
+  }
+ },
+ "phone_states": [
+  "sheet",
+  "wrong",
+  "another",
+  "key"
+ ],
+ "gtk": {
+  "module": "keyring_unlock",
+  "pythonpath": [
+   "src/luma-keyring",
+   "src/luma-platform/appkit",
+   "tools/lumaui-conform/fixtures"
+  ],
+  "app_id": "org.projectluma.Keyring",
+  "build": {},
+  "env": {
+   "GSETTINGS_BACKEND": "memory"
+  },
+  "fixtures": [
+   "assets/icon-theme/Prairie/symbolic/actions/lumaui-lock-symbolic.svg"
+  ]
+ },
+ "states": [
+  {
+   "name": "sheet",
+   "about": "The first unlock: the field focused, automatic unlock on",
+   "spec": [
+    {
+     "eval": "preview((innerWidth < 420 ? 'phone' : 'desktop'), 'sheet')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "sheet"
+     }
+    }
+   ]
+  },
+  {
+   "name": "wrong",
+   "about": "After a wrong password: the error under the field, the field cleared",
+   "spec": [
+    {
+     "eval": "preview((innerWidth < 420 ? 'phone' : 'desktop'), 'wrong')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "wrong"
+     }
+    }
+   ]
+  },
+  {
+   "name": "another",
+   "about": "gnome-keyring asks for another keyring: its words, its remember choice as the switch",
+   "spec": [
+    {
+     "eval": "preview((innerWidth < 420 ? 'phone' : 'desktop'), 'another')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "another"
+     }
+    }
+   ]
+  },
+  {
+   "name": "key",
+   "about": "gnome-keyring asks for a private key's passphrase: its words, no choice",
+   "spec": [
+    {
+     "eval": "preview((innerWidth < 420 ? 'phone' : 'desktop'), 'key')",
+     "wait": 400
+    }
+   ],
+   "gtk": [
+    {
+     "env": {
+      "LUMA_CONFORM_KEYRING_STATE": "key"
+     }
+    }
+   ]
+  }
+ ]
+}

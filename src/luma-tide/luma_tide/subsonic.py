@@ -87,6 +87,10 @@ class StorageFull(SubsonicError):
     pass
 
 
+class NotModified(SubsonicError):
+    """A conditional request: what this device has is still current."""
+
+
 class Throttled(SubsonicError):
     """The server asked Tide to slow down (HTTP 429 or 503)."""
 
@@ -253,14 +257,14 @@ class SubsonicClient:
 
     def _open(
         self, endpoint: str, params: dict[str, object], cancel: threading.Event | None,
-        timeout: float | None = None,
+        timeout: float | None = None, headers: dict[str, str] | None = None,
     ):
         if cancel is not None and cancel.is_set():
             raise Cancelled("Cancelled.")
         self.check_transport()
         request = urllib.request.Request(
             self.url(endpoint, **params),
-            headers={"User-Agent": USER_AGENT, "Accept": "application/json, */*"},
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json, */*", **(headers or {})},
         )
         try:
             return self._opener.open(request, timeout=timeout or self.timeout)
@@ -268,6 +272,8 @@ class SubsonicClient:
             status = error.code
             location = error.headers.get("Location", "") if error.headers else ""
             error.close()
+            if status == 304:
+                raise NotModified("Not modified.") from None
             if 300 <= status < 400:
                 target = urllib.parse.urlsplit(urllib.parse.urljoin(self.address + "/", location))
                 where = f"{target.scheme}://{target.netloc}" if target.netloc else "another address"
@@ -439,6 +445,28 @@ class SubsonicClient:
             limit=MAX_ARTWORK_BYTES, image=True, timeout=ARTWORK_TIMEOUT_SECONDS,
         )
 
+    def cover_art_if_changed(self, cover_id: str, destination: Path, validators: dict[str, str], *,
+                             size: int = 600) -> dict[str, str] | None:
+        """Fetch a cover again only if the server says it changed (ETag / Last-Modified).
+
+        Returns the new validators after replacing `destination`, or None when the
+        copy here is current (HTTP 304)."""
+        headers = {}
+        if validators.get("etag"):
+            headers["If-None-Match"] = validators["etag"]
+        if validators.get("last_modified"):
+            headers["If-Modified-Since"] = validators["last_modified"]
+        seen: dict[str, str] = {}
+        try:
+            self._fetch_file(
+                "getCoverArt", {"id": cover_id, "size": size}, destination,
+                limit=MAX_ARTWORK_BYTES, image=True, timeout=ARTWORK_TIMEOUT_SECONDS,
+                headers=headers, validators=seen,
+            )
+        except NotModified:
+            return None
+        return seen
+
     def download(
         self,
         song_id: str,
@@ -473,9 +501,15 @@ class SubsonicClient:
         cancel: threading.Event | None = None,
         progress: Callable[[int, int], None] | None = None,
         timeout: float | None = None,
+        headers: dict[str, str] | None = None,
+        validators: dict[str, str] | None = None,
     ) -> int:
         destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with self._open(endpoint, params, cancel, timeout) as response:
+        with self._open(endpoint, params, cancel, timeout, headers) as response:
+            if validators is not None:
+                for header, key in (("ETag", "etag"), ("Last-Modified", "last_modified")):
+                    if response.headers.get(header):
+                        validators[key] = response.headers[header]
             content_type = (response.headers.get("Content-Type") or "").casefold()
             if content_type.startswith(("application/json", "text/xml", "application/xml")):
                 body = self._read(response, 1024 * 1024)

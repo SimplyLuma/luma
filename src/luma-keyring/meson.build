@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
-project('luma-keyring', 'c', version: '0.2.0', meson_version: '>= 1.3.0', license: 'MPL-2.0',
+project('luma-keyring', 'c', version: '0.3.0', meson_version: '>= 1.3.0', license: 'MPL-2.0',
         default_options: ['c_std=gnu17', 'warning_level=2'])
 
 python = import('python').find_installation('python3')
@@ -11,10 +11,16 @@ python.install_sources(
   'luma_keyring/__init__.py',
   'luma_keyring/autounlock.py',
   'luma_keyring/cli.py',
+  'luma_keyring/first_unlock.py',
   'luma_keyring/login.py',
+  'luma_keyring/prompt_gate.py',
+  'luma_keyring/prompter.py',
+  'luma_keyring/ready.py',
   'luma_keyring/repair.py',
   'luma_keyring/secrets.py',
   'luma_keyring/service.py',
+  'luma_keyring/sheet.py',
+  'luma_keyring/sheet_tv.py',
   'luma_keyring/state.py',
   'luma_keyring/window.py',
   subdir: 'luma_keyring',
@@ -44,6 +50,7 @@ install_data('tools/luma-keyring-recover-standalone', install_dir: datadir / 'lu
              install_mode: 'rwxr-xr-x')
 
 install_data('data/systemd/luma-keyring.service', 'data/systemd/luma-keyring-autologin.service',
+             'data/systemd/luma-keyring-verify.socket', 'data/systemd/luma-keyring-verify@.service',
              install_dir: prefix / 'lib' / 'systemd' / 'user')
 install_data('data/applications/org.projectluma.Keyring.desktop', install_dir: datadir / 'applications')
 install_data('data/glib-2.0/org.projectluma.keyring.gschema.xml',

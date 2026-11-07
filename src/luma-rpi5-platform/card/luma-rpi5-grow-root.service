@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# Preinstalled card only (build-rpi5-disk-image.sh writes it into /etc): grow
+# the root partition to the card on the first boot, before the first-boot app
+# import fills /var. The script removes this unit when it is done.
+[Unit]
+Description=Grow the Luma root partition to the size of the card
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target shutdown.target display-manager.service
+Conflicts=shutdown.target
+ConditionPathExists=/etc/luma/rpi5-grow-root
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /etc/luma/rpi5-grow-root
+
+[Install]
+WantedBy=multi-user.target

@@ -366,3 +366,215 @@ slides in or sits idle, never in a frame that handles a touch. Shell .137.
 bound to `org.projectluma.MobileMode1` for modems that carry either IMS or
 mobile data at a time; hidden where that service does not run. Quick Options
 gives it a fifth utility slot. Shell .140.
+
+`0316-st-reuse-prerendered-backgrounds.patch`: St drew, blurred and uploaded
+a cairo-prerendered background (gradients, mixed borders) and its box-shadow
+again whenever a paint state changed, so a focus moving between two styles
+and every row of a list of identical rows paid for a CPU draw, a CPU blur and
+a texture upload. Interned theme nodes now keep recently rendered prerendered
+paint states (node, size, resource scale) in a 48 MB LRU that later paint
+states copy from; entries go with their node and when its image files change.
+On a Raspberry Pi 5 at 4K these draws were most of the TV quick panel's shell
+CPU time. Shell .155.
+
+
+`0317-blur-bound-pass-after-backdrop-copy.patch`: a background blur copies the
+framebuffer under its actor, which ends a tiling GPU's pass over the frame;
+the pass after it covered the whole framebuffer however little was drawn
+(Raspberry Pi 5, 3840x2160: about 15 ms per blurred dock island, five per
+frame). The blurred backdrop and the actor are drawn inside a clip of the
+actor's paint box, so the driver can bound that pass (mutter 0027 bounds the
+rest). Surfaces thinner than 256 pixels are downscaled for the blur like larger
+ones (the copy keeps 16 pixels per side), a quarter of the pass work for the
+dock; screenshots match the previous blur (SSIM 0.9996 or more). Shell .156.
+
+`0318-st-selector-index.patch`: each new theme node was tested against every
+selector of every stylesheet, about half of the Shell's CPU time while the
+overview or Quick Options opened on a Raspberry Pi 5. Selectors are indexed per
+stylesheet under their last compound selector's ID, first class or element
+type, and a node is tested only against the selectors filed under its ID,
+classes and type ancestry plus the few with none of those, in stylesheet order,
+so the matched declarations are unchanged (checked on 30000 nodes across the
+presentations). `LUMA_ST_NO_SELECTOR_INDEX=1` restores the full scan. Shell
+.156.
+`0319-blur-keep-pass-textures.patch`: a background blur repaints every frame,
+and each paint built a ClutterBlurNode with three new textures and two
+pipelines, then copied its result into a further texture before drawing it to
+the stage. The effect now runs the two gaussian passes itself (ClutterBlur's
+shader; ClutterBlur is private to mutter) into textures kept while the actor's
+size and downscale stay the same: the vertical pass samples the source copy
+directly, the horizontal pass reads it, and the brightness pipeline draws the
+result. Two fewer GPU passes and no texture allocations per blurred surface
+and frame; on a Raspberry Pi 5 with the dock's four blurs and full redraws,
+29% fewer GPU jobs and 22% less Shell CPU time, screenshots unchanged (SSIM
+0.99997). Shell .157.
+
+`0320-blur-hold-backgrounds-under-modal.patch`: a background blur's copy ends a
+tiling GPU's pass, so the dock's blurred surfaces, drawn before a modal
+dialog's full-screen lightbox, made every frame of the search overview opening
+two full-screen passes (about 20 ms each at 3840x2160 on a Raspberry Pi 5;
+frames took two refreshes). `Shell.BlurEffect.hold_backgrounds(owner)` keeps the
+last blurred background of every background blur outside `owner` while its
+actor stays where it was copied from; `release_backgrounds(owner)` (or
+disposing `owner`) ends it. ModalDialog holds while it has a lightbox and is
+not closed. Headless at 3840x2160 with full redraws: 45% fewer GPU jobs across
+overview open and close; the open overview's screenshot is unchanged (SSIM
+0.99999). Shell .157.
+
+`0321-luma-setup-welcome-cover.patch`: the first session after Luma's
+first-boot setup (`/var/lib/luma-setup/welcome/<user>`, until
+`~/.local/state/luma-setup/welcome-done`) opens on the setup's last frame.
+`luma-setup-cover.service` starts with the Shell and draws that frame again
+from the same data, code, wallpaper, softening and text settings. At the top
+of the startup animation the Shell waits (15 s at most) for that window's
+title to say its first frame is drawn, then shows the stage: a clone of the
+window above everything, `uiGroup` at opacity 0. With Luma's gdm (patches/gdm)
+the setup keeps the screen while this session starts paused; at
+`startup-complete` the Shell writes `/run/luma-setup/session/cover-ready`,
+the setup holds its frame and gdm switches here, and `registerDisplayWithGDM`
+waits for the first frame on screen, since registering ends the setup's
+session. The cover lifts (1.1 s fade) and the window closes. Without the
+setup's frame, the cover is a blurred wallpaper of the Shell's own. The
+cover window never animates in. Shell .158.
+
+`0322-tv-home.patch`: registers the TV posture's sources in the JS resource
+(`lumaPresentation/tv.js`, `tvModel.js`, the generated `tvTokens.js` and the
+pre-blurred `tv-backdrop.jpg`) and lists `tv.js` for translation. The sources
+live in `src/luma-shell-presentation/` and are copied in `%prep` like the rest
+of the presentation. `presentation.js` hands the screen to `TvPresentation`
+when the shell-state snapshot's `posture.effective` is `tv`; its handheld
+machinery stays on Desktop underneath, and a snapshot without a posture (an
+older shell-state) behaves exactly as before. In TV posture the TV home
+(Home, Apps, Search) replaces the Dash, panel, overview and sticky stack;
+applications run full screen, and minimising the last one returns to Apps. Flatpak's export keeps only allowlisted desktop keys, so for an entry with `X-Flatpak` and no TV keys the TV home reads `X-Luma-TV*` from the app's own deployed desktop file (system or user installation only, `tvModel.js` `flatpakTv`; cached until the installed apps change) and its tile from the deploy's `share/luma-tv/`. Test: `tv-flatpak-policy.js` in %check. Shell .160.
+
+`0323-tv-keyboard.patch`: the TV posture of the Keycap keyboard. While
+`TvPresentation` holds TV posture (`Main.keyboard.setTvPosture()`) every field
+gets the keyboard (a remote is a keyboard without letters), opening when a
+field takes the input focus and closing when it leaves; window moves, panel
+toggles and the window-slide/adjustResize paths are skipped. Layout: the
+language model laid out by `tvKeyboard.js` as an aligned 11-column grid
+(Android TV's Leanback keyboard: digits and delete, three letter rows filled
+with @ _ & , . - ?, then 123, shift, space and the action key; Left/Right
+wrap, Up/Down keep their column), number pads kept; look from the
+`tv.keyboard` tokens as inline styles in TV units, dark, no tool strip,
+suggestions or previews. The remote's focus is a key-material actor in the
+layers' parent (the cached layers are never redrawn); arrows, OK, Escape and
+Escape are Mutter accelerators only while the keyboard is open (a remote's
+Back arrives as Escape, see 0324), OK on an
+Enter key acts on release, Back or Up from the top row closes and arms OK to
+reopen. `InputMethod` reports printable keys from real devices
+(`reportPhysicalKeys`, TV only), which close the keyboard. The keyboard
+exports `org.projectluma.Shell.Keyboard1` (`SetActionLabel`, `Visible`,
+`Height` in TV units); docs/developer-platform/tv-mode.md "Typing". Test:
+`tv-keyboard-policy.js` in %check. Outside TV posture nothing changes.
+
+`0324-tv-input.patch`: registers `lumaPresentation/tvInput.js` and its pure
+rules `tvInputModel.js` in the JS resource. `TvPresentation` runs `TvInput`
+only while it holds TV posture: gamepads read through libmanette
+(`gi://Manette?version=0.2`, optional; Recommends libmanette) become TV keys
+from a Clutter virtual keyboard (D-pad and left stick = arrows at the
+`tv.input` repeat pace, South = Return, East and Select = Escape, Start =
+the quick panel (0329), Guide or Select+Start = the TV home), and remote keys that are not TV
+keys (XF86Back, XF86Close, XF86OK, XF86Select, XF86HomePage, XF86RootMenu,
+XF86MenuKB, XF86ContextMenu; CEC keys through rc-cec) are Mutter accelerators
+re-sent as TV keys. A pad reaches only the Shell, the TV keyboard and
+`X-Luma-TV-Presentation=tv` apps, never a window whose process claimed the
+pads (`org.projectluma.Shell.Remote1.ClaimGamepads`); other applications read
+the pad untouched. The pad is never grabbed. docs/developer-platform/tv-mode.md
+"Remotes and gamepads". Test: `tv-input-policy.js` in %check.
+
+`0325-tv-dialogs.patch`: registers `lumaPresentation/tvDialogs.js` and its
+pure rules `tvDialogsModel.js` in the JS resource. While `TvPresentation`
+holds TV posture, `TvDialogs` adapts every `ModalDialog` as it opens (Wi-Fi,
+VPN and keyring secrets, the administrator prompt, end session, mounts, run,
+access): the card takes the `tv.sheet` scale, type and material with its live
+blur off, entries become recessed fields with the TV keyboard's action key
+named after the default button, buttons become TV actions with the focus as
+the one key, and the card rises above the keyboard. The focus is kept inside
+the dialog that holds the grab (the TV home no longer takes it from under a
+grab), and Back acts in the capture phase on the Escape button or a lone
+button even if the focus was lost. Dialogs without buttons (Luma Search) and
+every dialog outside TV posture are unchanged; `polkitAgent.js`,
+`dialog.js` and `modalDialog.js` are not patched. docs/developer-platform/
+tv-mode.md "System dialogs". Test: `tv-dialogs-policy.js` in %check. The sheet width is whole pixels and a card its dialog placed itself is restyled once per width of its own, so restyle and placement converge at a unit that is not whole (1280x800). Shell .161.
+
+`0326-tv-screen-edges.patch`: registers `lumaPresentation/tvScreenEdges.js`.
+In TV posture `TvPresentation` scales `Main.uiGroup` (the TV home and every
+window) about the centre by `1 - tv-screen-edges/100` (shell-state key,
+0–10 %), live, for a TV that overscans; leaving TV posture restores scale 1.
+Settings › Display › Fit › Screen edges writes the key. Without the key (an
+older shell-state) nothing changes. Applies after 0325.
+
+`0327-tv-quick-panel.patch`: registers `lumaPresentation/tvQuickPanel.js` and
+its pure rules `tvQuickPanelModel.js` in the JS resource. In TV posture, OK on
+the TV home bar's weather | time cluster (Right past Search) or a long press
+of Home (`tv.quick_panel.home_hold_ms`; a remote's Home or CEC Root Menu, a
+pad's Guide; Select+Start still goes home at once) opens the quick panel:
+a full-height sheet sliding out from the right screen edge that adopts the bar's
+cluster as its header. It is a view of the
+existing Quick Options and notification list, not a second backend: the
+account (AccountsService), NetworkManager's Wi-Fi toggle, gnome-bluetooth's
+toggle and the Do Not Disturb setting as chips, the output stream slider and
+its devices, MessageTray's notifications (OK runs the default action, Clear
+all dismisses as the tray does), Settings, Sleep (suspend, or the
+screensaver's blank where logind cannot suspend) and Power (Restart… and
+Power Off… through SystemActions, confirmed by the TV dialog). Rows without
+a backend are not drawn. Back or Left off the island closes it and the focus
+returns to the cluster. docs/developer-platform/tv-mode.md "The quick panel".
+Test: `tv-quick-panel-policy.js` in %check. Leave TV Mode (a row of its own right under the toggles, shown while TV was chosen in Quick Options) closes the panel and calls the shell state's `SetPosture('automatic')`, as Quick Options' mode picker does, so the saved presentation returns. Shell .160.
+
+`0328-tv-app-switcher.patch`: registers `lumaPresentation/tvAppSwitcher.js`
+and its pure rules `tvAppSwitcherModel.js` in the JS resource. In TV posture,
+Home pressed twice (`tv.app_switcher.double_ms`) opens the app switcher: the
+running apps (`Shell.AppSystem` and `sessionApplications.js`, newest first in
+Alt+Tab order) as cards of their latest window picture (a `Clutter.Clone`) or
+TV tile over the TV home's scrim, the bar staying. OK switches, Back returns.
+Up, a held OK or Menu on a card offers Close, the desktop's Quit
+(`requestQuit`); an app still running after `force_after_ms` offers Force
+Close (`Meta.Window.kill()`, as the not-responding dialog). The TV home's
+tiles get a running dot and a held-OK menu with Open and Close. A single Home
+now goes home after the double-press window. docs/developer-platform/
+tv-mode.md "Closing apps". Test: `tv-app-switcher-policy.js` in %check.
+
+`0329-tv-pointer.patch`: registers `lumaPresentation/tvPointer.js` in the JS
+resource. In TV posture the pointer hides the moment a remote, pad or keyboard
+key arrives and after `POINTER_IDLE_MS` (3 s) of rest, through Mutter's
+cursor tracker (`inhibit_cursor_visibility`); motion, a click or a scroll
+shows it. The posture's end always shows it again. The same branch makes a
+pad's Start the system pause menu (the quick panel over any app; a game that
+claimed the pads keeps it), adds `Remote1.ShowQuickPanel` for an app's bar
+clock, and taps a Shell-held accelerator (XF86Launch9, at most every 5 s) on
+pad input so Mutter's idle time sees a pad. Test: `tv-input-policy.js` (with
+`tvPointer.js`) in %check.
+
+`launcherFolders.js` (0285): the desktop folder stack swaps a dock folder
+tile's mark in, and the original back, below the tile's count badge, so the
+badge paints above the folder art. Test: `dock-folder-badge-policy.js` in
+%check. Shell .162.
+
+`launcherFolders.js` (0285): the folder stack sizes the count badge with the
+dock badge model's `badgeBox`, so a single digit is a circle and longer counts
+a pill, the same as every other dock badge. Test: `dock-folder-badge-policy.js`
+in %check. Shell .163.
+
+`0330-luma-date-menu-calendar-only.patch`: the date menu (the clock in Quick
+Options) is the calendar column alone: today, the calendar, and events with
+world clocks and weather. It builds no notification list; notifications live
+in the notification tray, Do Not Disturb in Quick Options, and media in the
+shelf. `optionsSurface.css` drops the column's side margin. Test:
+`date-menu-calendar-only-policy.js` in %check. Shell .164.
+
+`0331-luma-date-menu-calendar-panel.patch`: the date menu's events list shows
+what is coming up from now into next month, grouped by day, at most four rows
+and then "N more this week"; a chosen day lists that day ("Nothing on
+Thursday." when empty), and choosing it again goes back to today. Rows open
+the event in Luma Calendar (`--event-uid` and `--event-day`, as its reminders
+do); "N more" and Open Calendar open Calendar on that day (`--event-day`).
+The month header (with Today when another month is on show) replaces the date
+header; the month on show pages without choosing a day, arrow keys walk the
+days, and each day's accessible name counts its events. Opening Calendar
+closes the menu. The calendar server adds each
+event's location and its calendar's colour to the extras dictionary.
+`optionsSurface.css` styles the panel: today filled, the chosen day a ring,
+hover a tint. Test: `date-menu-panel-policy.js` in %check. Shell .165.

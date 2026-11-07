@@ -3,6 +3,7 @@
 #include "luma-toast.h"
 #include "luma-layer-host.h"
 #include "luma-ui-private.h"
+#include "luma-ui-kit.h"
 
 /* What happened -> (Lucide glyph, tone): action_toast.TOAST_KINDS. */
 static const struct {
@@ -210,6 +211,11 @@ static void place(LumaToast *self, GtkWidget *host) {
         height - point.y < BAR_REACH)
       bottom = MAX(bottom, (int)(height - point.y) + LUMA_UI_TOAST_ABOVE_BAR);
   }
+  /* TV posture: the shared TV toast's place, the 56 safe line (the keyboard, when up, has already
+   * lifted the page's bottom edge above it; luma-tv-frame.c). */
+  GtkRoot *root = gtk_widget_get_root(host);
+  if (root != NULL && gtk_widget_has_css_class(GTK_WIDGET(root), "lumaui-tv"))
+    bottom = (int)(56 * luma_ui_tv_unit(gtk_widget_get_width(GTK_WIDGET(root)), gtk_widget_get_height(GTK_WIDGET(root))) + 0.5);
   gtk_widget_set_margin_bottom(GTK_WIDGET(self), bottom);
   if (luma_ui_is_phone(host)) {
     gtk_widget_set_margin_start(GTK_WIDGET(self), LUMA_UI_TOAST_PHONE_MARGIN);

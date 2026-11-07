@@ -1,0 +1,541 @@
+// SPDX-License-Identifier: Apache-2.0
+// TV posture input: one Shell service turns every controller into the TV's
+// keys (arrows, Return = OK, Escape = Back, Menu) and Home into the TV home.
+// Gamepads (USB, 2.4 GHz, Bluetooth) are read through libmanette and their
+// keys injected from a virtual keyboard; remote keys that are not TV keys
+// (XF86Back, XF86OK, CEC's keys through rc-cec, ...) are taken as Mutter
+// accelerators and re-sent as TV keys. The TV home, the TV keyboard and every
+// application therefore read keys only; none of them carries gamepad code.
+// It exists only while the posture is TV. The rules are tvInputModel.js;
+// docs/developer-platform/tv-mode.md ("Remotes and gamepads").
+import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
+
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import {tv as TOKENS} from './tvTokens.js';
+import {tvEntry} from './tvModel.js';
+import {ACTIVITY_KEY, AXIS, BUTTON, DIRECTIONS, REMOTE_KEYS, TV_KEYS, activityDue, buttonAction, confirmButton,
+    hatDirection, holdsHome, padIdentity, repeatDelay, stickDirection, translates} from './tvInputModel.js';
+import {homePress} from './tvQuickPanelModel.js';
+import {homeSecondPress} from './tvAppSwitcherModel.js';
+
+const BUS_NAME = 'org.projectluma.Shell.Remote';
+const OBJECT_PATH = '/org/projectluma/Shell/Remote';
+const IFACE = `<node>
+  <interface name="org.projectluma.Shell.Remote1">
+    <method name="ClaimGamepads">
+      <arg type="b" direction="in" name="claimed"/>
+    </method>
+    <method name="ShowQuickPanel"/>
+    <property name="Gamepads" type="as" access="read"/>
+  </interface>
+</node>`;
+
+const SCHEMA = 'org.project_luma.shell-state';
+const OK_SAFETY_SECONDS = 10;
+// A button that comes back down this soon after it went up is contact bounce, not a press.
+const BOUNCE_MS = 25;
+// LUMA_TV_INPUT_DEBUG=1: every pad button and every key sent, with monotonic milliseconds.
+const DEBUG = Boolean(GLib.getenv('LUMA_TV_INPUT_DEBUG'));
+const now = () => GLib.get_monotonic_time() / 1000;
+const CONFIRM_KEY = 'tv-confirm-button';
+const KEYVALS = Object.fromEntries(Object.entries(TV_KEYS).map(([action, name]) => [action, Clutter[`KEY_${name}`]]));
+
+export class TvInput {
+    // `home` opens the TV home; `quickPanel` (a long press of Home) the quick
+    // panel; `switcher` (Home pressed twice) the app switcher; `pause` (a pad's
+    // Start) toggles the quick panel as the system's pause menu; `showQuickPanel`
+    // opens it for an app's bar (ShowQuickPanel on D-Bus: OK on its clock).
+    constructor({home, quickPanel = null, switcher = null, pause = null, showQuickPanel = null}) {
+        this._home = home;
+        this._quickPanel = quickPanel;
+        this._switcher = switcher;
+        this._pause = pause;
+        this._showQuickPanel = showQuickPanel;
+        this._holdOnly = new Set();     // Guide held in a game: only the long press is the Shell's
+        this._activityAction = 0;       // the accelerator that makes a pad count as input
+        this._activityAt = null;
+        this._homeTap = 0;              // a short Home waiting for a second press
+        this._homeTapAt = null;
+        this._homeSources = new Map();  // what holds Home down -> when it went down
+        this._homeTimer = 0;
+        this._input = TOKENS.input;
+        this._sources = new Map();      // a pad's control -> the action it holds
+        this._repeats = new Map();      // direction -> {steps, id}
+        this._pads = new Map();         // Manette.Device -> {id, signals, stick, buttons}
+        this._claims = new Map();       // bus name -> {pid, watch}
+        this._grabs = new Map();        // accelerator action -> keysym name
+        this._okSources = new Set();    // what holds OK down: a pad's button, a remote key
+        this._released = new Map();     // a pad's control -> its release, held back BOUNCE_MS
+        this._okBurst = [];             // when OK last went down (a stream of presses is logged)
+        this._okSafety = 0;
+        this._nextPad = 0;
+        // Which face button is OK (luma-shell-state); an older schema without
+        // the key behaves as automatic.
+        this._settings = new Gio.Settings({schema_id: SCHEMA});
+        this._hasConfirm = this._settings.settings_schema.has_key(CONFIRM_KEY);
+        this._confirmId = this._hasConfirm
+            ? this._settings.connect(`changed::${CONFIRM_KEY}`, () => this._applyConfirm()) : 0;
+        this._keys = Clutter.get_default_backend().get_default_seat()
+            .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        this._grabRemoteKeys();
+        this._grabActivityKey();
+        this._dbus = Gio.DBusExportedObject.wrapJSObject(IFACE, this);
+        this._dbus.export(Gio.DBus.session, OBJECT_PATH);
+        this._nameId = Gio.bus_own_name_on_connection(Gio.DBus.session, BUS_NAME,
+            Gio.BusNameOwnerFlags.REPLACE, null, null);
+        this._startGamepads();
+    }
+
+    destroy() {
+        this._destroyed = true;
+        for (const id of this._released.values()) GLib.source_remove(id);
+        this._released.clear();
+        if (this._homeTimer) GLib.source_remove(this._homeTimer);
+        this._homeTimer = 0;
+        if (this._homeTap) GLib.source_remove(this._homeTap);
+        this._homeTap = 0;
+        this._homeSources.clear();
+        this._holdOnly.clear();
+        if (this._confirmId) this._settings.disconnect(this._confirmId);
+        for (const action of [...this._sources.values()]) this._release(action);
+        for (const source of [...this._okSources]) this._okUp(source);
+        this._sources.clear();
+        for (const {id} of this._repeats.values()) GLib.source_remove(id);
+        this._repeats.clear();
+        for (const device of [...this._pads.keys()]) this._padRemoved(device);
+        for (const id of this._monitorSignals ?? []) this._monitor.disconnect(id);
+        this._monitor = null;
+        for (const id of this._acceleratorIds ?? []) global.display.disconnect(id);
+        for (const action of [...this._grabs.keys(), this._activityAction].filter(Boolean)) {
+            Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NONE);
+            global.display.ungrab_accelerator(action);
+        }
+        this._grabs.clear();
+        this._activityAction = 0;
+        for (const {watch} of this._claims.values()) Gio.bus_unwatch_name(watch);
+        this._claims.clear();
+        this._dbus.unexport();
+        Gio.bus_unown_name(this._nameId);
+        this._keys = null;
+    }
+
+    // ── keys out ──────────────────────────────────────────────────────────
+
+    _tap(action) {
+        const keyval = KEYVALS[action];
+        if (!keyval || !this._keys) return;
+        const time = GLib.get_monotonic_time();
+        this._keys.notify_keyval(time, keyval, Clutter.KeyState.PRESSED);
+        this._keys.notify_keyval(time, keyval, Clutter.KeyState.RELEASED);
+    }
+
+    _act(action) {
+        if (action === 'home') this._home();
+        else if (action === 'pause') this._pause?.();
+        else this._tap(action);
+    }
+
+    // OK is held, not tapped: Return goes down with the button and up with
+    // it, so a long press (TvFocus opens an item's menu) can be seen. Several
+    // sources share the one key; none repeats it.
+    _okDown(source) {
+        if (this._okSources.has(source)) return;
+        this._okSources.add(source);
+        if (this._okSources.size > 1 || !this._keys) return;
+        if (DEBUG) console.log(`TV input: Return down (${source}) at ${now().toFixed(1)}`);
+        // One held button is one press: more than a few downs a second is something else (a
+        // bouncing contact, a pad that re-sends its state) and is worth seeing in the journal.
+        const t = now();
+        this._okBurst = [...this._okBurst.filter(at => t - at < 1000), t];
+        if (this._okBurst.length === 5) console.warn(`TV input: 5 OK presses within a second (last from ${source})`);
+        this._keys.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.PRESSED);
+        // A release that never comes (a remote out of range) must not leave
+        // Return down.
+        this._okSafety = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, OK_SAFETY_SECONDS, () => {
+            this._okSafety = 0;
+            for (const held of [...this._okSources]) this._okUp(held);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _okUp(source) {
+        if (!this._okSources.delete(source) || this._okSources.size) return;
+        if (this._okSafety) GLib.source_remove(this._okSafety);
+        this._okSafety = 0;
+        if (DEBUG) console.log(`TV input: Return up (${source}) at ${now().toFixed(1)}`);
+        this._keys?.notify_keyval(GLib.get_monotonic_time(), KEYVALS.ok, Clutter.KeyState.RELEASED);
+    }
+
+    // Home is held, not tapped: a short press goes home when it is let go, a
+    // long one (quick_panel.home_hold_ms) opens the quick panel at once. No
+    // other control has a long press of Home.
+    _homeDown(source, holdOnly = false) {
+        if (this._homeSources.has(source)) return;
+        this._homeSources.set(source, GLib.get_monotonic_time());
+        if (holdOnly) this._holdOnly.add(source);
+        if (!this._quickPanel) {
+            if (!holdOnly) this._act('home');
+            return;
+        }
+        // The second press of a double press: the switcher at once; its release does nothing.
+        if (!holdOnly && this._homeTap && homeSecondPress(this._homeTapAt, now(), TOKENS.app_switcher.double_ms)) {
+            GLib.source_remove(this._homeTap);
+            this._homeTap = 0;
+            this._homeTapAt = null;
+            for (const held of this._homeSources.keys()) this._homeSources.set(held, -1);
+            this._switcher();
+            return;
+        }
+        if (this._homeTimer) return;
+        this._homeTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.quick_panel.home_hold_ms, () => {
+            this._homeTimer = 0;
+            if (!this._homeSources.size) return GLib.SOURCE_REMOVE;
+            // Consumed: letting go after this does nothing.
+            for (const held of this._homeSources.keys()) this._homeSources.set(held, -1);
+            this._quickPanel();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _homeUp(source) {
+        if (!this._quickPanel) {
+            this._homeSources.delete(source);
+            return;
+        }
+        // Reported only on release (no press seen): a short press.
+        const down = this._homeSources.has(source) ? this._homeSources.get(source) : GLib.get_monotonic_time();
+        this._homeSources.delete(source);
+        const holdOnly = this._holdOnly.delete(source);
+        if (down < 0 || this._homeSources.size) return;
+        if (this._homeTimer) GLib.source_remove(this._homeTimer);
+        this._homeTimer = 0;
+        // A game's short Guide press was the game's.
+        if (holdOnly) return;
+        const held = (GLib.get_monotonic_time() - down) / 1000;
+        if (homePress(held, TOKENS.quick_panel.home_hold_ms) !== 'home') this._quickPanel();
+        else if (!this._switcher) this._act('home');
+        else {
+            // A short press goes home once a second press has not come.
+            if (this._homeTap) GLib.source_remove(this._homeTap);
+            this._homeTapAt = now();
+            this._homeTap = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TOKENS.app_switcher.double_ms, () => {
+                this._homeTap = 0;
+                this._homeTapAt = null;
+                this._act('home');
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+    }
+
+    // ── a pad is user activity ────────────────────────────────────────────
+
+    // Mutter's idle time never sees a pad: tap the activity key (grabbed here,
+    // so no window gets it) at most once per ACTIVITY_MS while a pad is used.
+    _grabActivityKey() {
+        const action = global.display.grab_accelerator(ACTIVITY_KEY, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT);
+        if (action === Meta.KeyBindingAction.NONE) {
+            console.warn(`TV input: ${ACTIVITY_KEY} is taken; a pad alone will not keep the screen awake`);
+            return;
+        }
+        Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.ALL);
+        this._activityAction = action;
+    }
+
+    _activity() {
+        if (!this._activityAction || !this._keys) return;
+        const t = now();
+        if (!activityDue(this._activityAt, t)) return;
+        this._activityAt = t;
+        const time = GLib.get_monotonic_time();
+        this._keys.notify_keyval(time, Clutter.KEY_Launch9, Clutter.KeyState.PRESSED);
+        this._keys.notify_keyval(time, Clutter.KEY_Launch9, Clutter.KeyState.RELEASED);
+    }
+
+    // ── remotes: keys that are not TV keys become TV keys ─────────────────
+
+    // OK and Home keys are taken with TRIGGER_RELEASE so their release is
+    // reported too (accelerator-deactivated) and they can be held.
+    _grabRemoteKeys() {
+        const held = name => REMOTE_KEYS[name] === 'ok' || REMOTE_KEYS[name] === 'home';
+        for (const name of Object.keys(REMOTE_KEYS)) {
+            const flags = Meta.KeyBindingFlags.IGNORE_AUTOREPEAT |
+                (held(name) ? Meta.KeyBindingFlags.TRIGGER_RELEASE : 0);
+            const action = global.display.grab_accelerator(name, flags);
+            if (action === Meta.KeyBindingAction.NONE) {
+                console.warn(`TV input: ${name} is taken by another accelerator`);
+                continue;
+            }
+            Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.ALL);
+            this._grabs.set(action, name);
+        }
+        this._acceleratorIds = [
+            global.display.connect('accelerator-activated', (_display, action) => {
+                const name = this._grabs.get(action);
+                if (!name) return;
+                if (REMOTE_KEYS[name] === 'ok') this._okDown(`remote:${action}`);
+                else if (REMOTE_KEYS[name] === 'home') this._homeDown(`remote:${action}`);
+                else this._act(REMOTE_KEYS[name]);
+            }),
+            global.display.connect('accelerator-deactivated', (_display, action) => {
+                const name = this._grabs.get(action);
+                if (REMOTE_KEYS[name] === 'home') {
+                    this._homeUp(`remote:${action}`);
+                    return;
+                }
+                if (REMOTE_KEYS[name] !== 'ok') return;
+                // Reported only on release (no press seen): OK as one press.
+                if (!this._okSources.has(`remote:${action}`)) this._okDown(`remote:${action}`);
+                this._okUp(`remote:${action}`);
+            }),
+        ];
+    }
+
+    // ── gamepads ──────────────────────────────────────────────────────────
+
+    async _startGamepads() {
+        let Manette;
+        try {
+            Manette = (await import('gi://Manette?version=0.2')).default;
+        } catch (error) {
+            console.warn(`TV input: no gamepads without libmanette (${error.message})`);
+            return;
+        }
+        if (this._destroyed) return;
+        this._monitor = new Manette.Monitor();
+        this._monitorSignals = [
+            this._monitor.connect('device-connected', (_monitor, device) => this._padAdded(device)),
+            this._monitor.connect('device-disconnected', (_monitor, device) => this._padRemoved(device)),
+        ];
+        const iter = this._monitor.iterate();
+        for (let [ok, device] = iter.next(); ok; [ok, device] = iter.next()) this._padAdded(device);
+    }
+
+    _padAdded(device) {
+        if (this._pads.has(device)) return;
+        const pad = {id: this._nextPad++, stick: null, buttons: new Set(), x: 0, y: 0,
+            identity: padIdentity(device.get_guid?.()), name: device.get_name() ?? ''};
+        pad.confirm = this._confirmFor(pad);
+        pad.signals = [
+            device.connect('button-press-event', (_d, event) => this._button(pad, event, true)),
+            device.connect('button-release-event', (_d, event) => this._button(pad, event, false)),
+            device.connect('hat-axis-event', (_d, event) => this._hat(pad, event)),
+            device.connect('absolute-axis-event', (_d, event) => this._axis(pad, event)),
+        ];
+        this._pads.set(device, pad);
+        this._dbus.emit_property_changed('Gamepads', new GLib.Variant('as', this.Gamepads));
+    }
+
+    _padRemoved(device) {
+        const pad = this._pads.get(device);
+        if (!pad) return;
+        for (const id of pad.signals) device.disconnect(id);
+        for (const source of [...this._sources.keys()]) {
+            if (source.startsWith(`${pad.id}:`)) this._hold(source, null);
+        }
+        for (const source of [...this._okSources]) {
+            if (source.startsWith(`${pad.id}:`)) this._okUp(source);
+        }
+        for (const source of [...this._homeSources.keys()]) {
+            if (source.startsWith(`${pad.id}:`)) {
+                this._homeSources.delete(source);
+                this._holdOnly.delete(source);
+            }
+        }
+        this._pads.delete(device);
+        if (!this._destroyed) this._dbus.emit_property_changed('Gamepads', new GLib.Variant('as', this.Gamepads));
+    }
+
+    _button(pad, event, pressed) {
+        const [ok, code] = event.get_button();
+        if (!ok) return;
+        if (DEBUG) console.log(`TV input: pad ${pad.id} button ${code} ${pressed ? 'down' : 'up'} at ${now().toFixed(1)}`);
+        // A held button is one press: a down while it is down (a pad re-sending its state) is
+        // not another one, and an up followed within BOUNCE_MS by a down (a bouncing contact)
+        // is no release at all: the up is acted on only once the button has stayed up.
+        const control = `${pad.id}:button:${code}`;
+        const pending = this._released.get(control);
+        if (pressed && pending) {
+            GLib.source_remove(pending);
+            this._released.delete(control);
+            return;
+        }
+        if (pressed && pad.buttons.has(code)) return;
+        if (pressed) this._activity();
+        if (!pressed) {
+            if (!pad.buttons.has(code) || pending) return;
+            this._released.set(control, GLib.timeout_add(GLib.PRIORITY_DEFAULT, BOUNCE_MS, () => {
+                this._released.delete(control);
+                this._buttonUp(pad, code);
+                return GLib.SOURCE_REMOVE;
+            }));
+            return;
+        }
+        this._buttonChanged(pad, code, true);
+    }
+
+    // The button went up and stayed up.
+    _buttonUp(pad, code) {
+        if (DEBUG) console.log(`TV input: pad ${pad.id} button ${code} released at ${now().toFixed(1)}`);
+        this._buttonChanged(pad, code, false);
+    }
+
+    _buttonChanged(pad, code, pressed) {
+        if (pressed) pad.buttons.add(code);
+        else pad.buttons.delete(code);
+        // Select+Start together go home: pads without a Guide button.
+        if (pressed && pad.buttons.has(BUTTON.SELECT) && pad.buttons.has(BUTTON.START)) {
+            this._press('home');
+            return;
+        }
+        const action = buttonAction(code, pad.confirm);
+        if (!action) return;
+        const source = `${pad.id}:button:${code}`;
+        if (action === 'home') {
+            // Guide: held like a remote's Home (a long press opens the quick panel).
+            if (!pressed) {
+                if (this._homeSources.has(source)) this._homeUp(source);
+            } else {
+                const context = this._context();
+                if (translates(action, context)) this._homeDown(source);
+                else if (holdsHome(context)) this._homeDown(source, true);
+            }
+        } else if (DIRECTIONS.includes(action)) this._hold(source, pressed ? action : null);
+        else if (action === 'ok' && !pressed) this._okUp(source);
+        else if (action === 'ok') {
+            if (translates(action, this._context())) this._okDown(source);
+        } else if (pressed) this._press(action);
+    }
+
+    _hat(pad, event) {
+        const [ok, axis, value] = event.get_hat();
+        if (!ok || (axis !== AXIS.HAT0X && axis !== AXIS.HAT0Y)) return;
+        const direction = hatDirection(axis, value);
+        if (direction) this._activity();
+        this._hold(`${pad.id}:hat:${axis}`, direction);
+    }
+
+    _axis(pad, event) {
+        const [ok, axis, value] = event.get_absolute();
+        if (!ok || (axis !== AXIS.X && axis !== AXIS.Y)) return;
+        if (axis === AXIS.X) pad.x = value;
+        else pad.y = value;
+        const held = pad.stick;
+        pad.stick = stickDirection(pad.x, pad.y, pad.stick, this._input);
+        // A stick pushed past its press point is activity; drift around the centre is not.
+        if (pad.stick && pad.stick !== held) this._activity();
+        this._hold(`${pad.id}:stick`, pad.stick);
+    }
+
+    _confirmFor(pad) {
+        return confirmButton(this._hasConfirm ? this._settings.get_string(CONFIRM_KEY) : 'automatic',
+            pad.identity, pad.name);
+    }
+
+    _applyConfirm() {
+        for (const pad of this._pads.values()) pad.confirm = this._confirmFor(pad);
+    }
+
+    // Back, Start (the pause menu) and Home: once per press.
+    _press(action) {
+        if (translates(action, this._context())) this._act(action);
+    }
+
+    // Directions: held by a control (a D-pad button, a hat axis, the stick)
+    // and repeated at the TV pace while any control holds them.
+    _hold(source, action) {
+        const previous = this._sources.get(source) ?? null;
+        if (previous === action) return;
+        if (action) this._sources.set(source, action);
+        else this._sources.delete(source);
+        if (previous && ![...this._sources.values()].includes(previous)) this._release(previous);
+        if (action && !this._repeats.has(action) && translates(action, this._context())) this._step(action, 1);
+    }
+
+    _step(action, steps) {
+        this._tap(action);
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, repeatDelay(steps, this._input), () => {
+            this._repeats.delete(action);
+            if ([...this._sources.values()].includes(action) && translates(action, this._context()))
+                this._step(action, steps + 1);
+            return GLib.SOURCE_REMOVE;
+        });
+        this._repeats.set(action, {steps, id});
+    }
+
+    _release(action) {
+        const repeat = this._repeats.get(action);
+        if (repeat) GLib.source_remove(repeat.id);
+        this._repeats.delete(action);
+    }
+
+    // ── who gets the pad ──────────────────────────────────────────────────
+
+    _context() {
+        const focus = global.stage.key_focus;
+        // A Shell grab (a system dialog, a menu) takes every key, wherever the
+        // stage focus is: the pad must reach it, never the window beneath.
+        const shellFocus = (Boolean(focus) && focus !== global.stage) || Main.modalCount > 0;
+        const keyboardVisible = Boolean(Main.keyboard?.visible);
+        const focused = global.display.focus_window;
+        let window = null;
+        if (focused && !shellFocus) {
+            const app = Shell.WindowTracker.get_default().get_window_app(focused);
+            const info = app?.get_app_info?.();
+            const entry = info ? tvEntry(app.get_id(), app.get_name(), key => info.get_string(key)) : null;
+            const pid = focused.get_pid();
+            window = {
+                presentation: entry?.presentation ?? '',
+                claimed: pid > 0 && [...this._claims.values()].some(claim => claim.pid === pid),
+            };
+        }
+        return {shellFocus, keyboardVisible, window};
+    }
+
+    // ── D-Bus: org.projectluma.Shell.Remote1 ──────────────────────────────
+
+    // OK on an app's bar clock (LumaUI's TV bar, C and Python alike): the
+    // quick panel over the app, which stays underneath with its focus.
+    ShowQuickPanel() {
+        this._showQuickPanel?.();
+    }
+
+    get Gamepads() {
+        return [...this._pads.keys()].map(device => device.get_name() ?? '');
+    }
+
+    // An application that reads the gamepads itself (a game, an emulator's
+    // game view) claims them: while its window has the focus no TV keys come
+    // from a pad. The claim ends with false or when the caller leaves the bus.
+    ClaimGamepadsAsync([claimed], invocation) {
+        const sender = invocation.get_sender();
+        const drop = () => {
+            const claim = this._claims.get(sender);
+            if (claim) Gio.bus_unwatch_name(claim.watch);
+            this._claims.delete(sender);
+        };
+        if (!claimed) {
+            drop();
+            invocation.return_value(null);
+            return;
+        }
+        Gio.DBus.session.call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+            'GetConnectionUnixProcessID', new GLib.Variant('(s)', [sender]), new GLib.VariantType('(u)'),
+            Gio.DBusCallFlags.NONE, -1, null, (connection, result) => {
+                try {
+                    const [pid] = connection.call_finish(result).deepUnpack();
+                    if (this._destroyed) throw new Error('TV posture ended');
+                    drop();
+                    const watch = Gio.bus_watch_name_on_connection(Gio.DBus.session, sender,
+                        Gio.BusNameWatcherFlags.NONE, null, () => drop());
+                    this._claims.set(sender, {pid, watch});
+                    invocation.return_value(null);
+                } catch (error) {
+                    invocation.return_error_literal(Gio.DBusError, Gio.DBusError.FAILED, error.message);
+                }
+            });
+    }
+}
