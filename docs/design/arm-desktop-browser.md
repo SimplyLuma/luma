@@ -7,12 +7,14 @@ needed to change the host UI.
 | CPU | Retained engine | Archive SHA-256 |
 | --- | --- | --- |
 | x86_64 | native30 | `2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028` |
-| aarch64 | native32 | `2d10bdd8dc21364ee91cde00abef725fd7e3e13658fd059275057663b129d4b1` |
+| aarch64 | native33 | `a5fbcd7cd80a5c0b08833f92b98193f2d11bc5ccb5fc3350a03cae745ccc2a5b` |
 
 The ARM desktop preview requires native32 or later. Its source-built engine
 includes the native shared-memory frame transport used by the installed
-`desktop-arm-preview` profile. The ARM64 executable has SHA-256
-`0c4829cf130a9490489e2dfb81d9cb1fe156ff3701511e3c94ca4b0af5f53b40`.
+`desktop-arm-preview` profile (engine patch 0002). native33 is native32 with
+engine patches 0003 (one tab in a new private window) and 0004 (a site's
+HTTP sign-in drawn by the host); only `chrome` differs. The ARM64 executable
+has SHA-256 `3697e5d9203302378984e82bab96d65bc2966752aaad1b1329b55d8651f5a1c8`.
 The earlier mobile native31 input remains historical provenance; it cannot
 substitute for the desktop preview's current engine. Upstream notices and license
 files remain inside the admitted archive.

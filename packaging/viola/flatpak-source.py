@@ -14,8 +14,8 @@ import tarfile
 ENGINE_INPUTS = {
     'x86_64': ('viola-native-engine-0.2.10-native30.tar.zst',
                '2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028', 30),
-    'aarch64': ('viola-native-engine-0.2.10-native32.tar.zst',
-                '2d10bdd8dc21364ee91cde00abef725fd7e3e13658fd059275057663b129d4b1', 32),
+    'aarch64': ('viola-native-engine-0.2.10-native33.tar.zst',
+                'a5fbcd7cd80a5c0b08833f92b98193f2d11bc5ccb5fc3350a03cae745ccc2a5b', 33),
 }
 
 

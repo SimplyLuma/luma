@@ -22,13 +22,20 @@ build graph does not establish runtime qualification.
 frame (Linux), a new private window keeps the single new tab Chromium opened and
 the host focuses its address entry, instead of a second about:blank tab.
 
-The optional `0002-native-shared-memory-diagnostic.patch` adds a forced raw
-shared-memory capture experiment, explicitly selected by
-`--viola-native-shm-frame-probe`. Its default DMA path remains unchanged. The
-strict ARM capture translation-unit compile, full Chrome link and complete
-runtime assembly have passed. Native rendering remains unqualified. This
-diagnostic patch is not an automatic fallback policy or a qualified engine
-release.
+`0002-native-shared-memory-diagnostic.patch` adds the raw shared-memory
+capture selected by `--viola-native-shm-frame-probe`. Its default DMA path
+remains unchanged. The installed ARM desktop profile
+(`desktop-arm-preview-frame-profile.json`, `frame_transport: shm`) selects it,
+so every ARM desktop engine (native32 onward) applies it; without it the ARM
+desktop shows no page.
+
+`0004-native-http-auth.patch` applies after `0003`: on Linux, when a Viola
+window owns the tab, Chromium's HTTP authentication request (the site's own
+user name and password, not a page form) goes to the host on the permission
+notice channel as `{type: 'login'}` instead of a tab-modal dialog on the
+undisplayed browser window. The host answers `permission:respond` with
+`decision: 'signin'` and the credentials, or `dismiss`. Requests queue one at
+a time in the product shell.
 Do not replace a released engine merely because these inputs build successfully;
 its native rendering, input, resize and window lifecycle checks must also pass.
 
@@ -116,11 +123,13 @@ missing cross-target tools with a system compiler or a mutable latest download.
 # In an already synchronized exact Chromium checkout:
 git apply --check /path/to/chromium-engine/patches/0001-shared-product.patch
 git apply /path/to/chromium-engine/patches/0001-shared-product.patch
-git apply --check /path/to/chromium-engine/patches/0003-native-incognito-single-tab.patch
-git apply /path/to/chromium-engine/patches/0003-native-incognito-single-tab.patch
-# Only for the explicitly unqualified SHM experiment:
+# The ARM desktop profile's shared-memory frames:
 git apply --check /path/to/chromium-engine/patches/0002-native-shared-memory-diagnostic.patch
 git apply /path/to/chromium-engine/patches/0002-native-shared-memory-diagnostic.patch
+git apply --check /path/to/chromium-engine/patches/0003-native-incognito-single-tab.patch
+git apply /path/to/chromium-engine/patches/0003-native-incognito-single-tab.patch
+git apply --check /path/to/chromium-engine/patches/0004-native-http-auth.patch
+git apply /path/to/chromium-engine/patches/0004-native-http-auth.patch
 # Set the version environment above; choose an admitted output tree and job count.
 cat /path/to/chromium-engine/profiles/common.gn /path/to/chromium-engine/profiles/arm64.gn > "$ENGINE_OUT/args.gn"
 gn gen "$ENGINE_OUT" --root-target=//chrome:chrome --root-pattern=//chrome:chrome
