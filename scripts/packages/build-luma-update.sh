@@ -92,12 +92,20 @@ PY_MODES
     test -f usr/lib/systemd/system/luma-updated.timer
     test -f usr/share/dbus-1/system.d/org.projectluma.Update1.conf
     test -x usr/lib/greenboot/check/required.d/43-luma-updated.sh
+    # 1.0.0-1.luma.29: staged updates arm the boot counter; a counted-out fallback is kept.
+    test -x usr/lib/luma-update/luma-greenboot-counter
+    grep -Fxq "WantedBy=ostree-finalize-staged.service" usr/lib/systemd/system/luma-greenboot-arm.service
+    grep -Fxq "enable luma-greenboot-arm.service" usr/lib/systemd/system-preset/80-luma-update.preset
+    grep -Fxq "enable luma-greenboot-fallback.service" usr/lib/systemd/system-preset/80-luma-update.preset
+    grep -Fxq "ConditionPathExists=!/usr/lib/systemd/system/greenboot-healthcheck.service" \
+      usr/lib/systemd/user/grub-boot-success.timer.d/50-luma-greenboot.conf
     desktop-file-validate usr/share/applications/org.projectluma.Update.desktop
     xmllint --noout usr/share/dbus-1/interfaces/org.projectluma.Update1.xml \
       usr/share/polkit-1/actions/org.projectluma.update.policy \
       usr/share/dbus-1/system.d/org.projectluma.Update1.conf
     for script in usr/lib/greenboot/check/required.d/*.sh usr/lib/greenboot/*/*.sh \
-                  usr/lib/NetworkManager/dispatcher.d/90-luma-update usr/lib/luma-update/luma-greenboot-common.sh; do
+                  usr/lib/NetworkManager/dispatcher.d/90-luma-update usr/lib/luma-update/luma-greenboot-common.sh \
+                  usr/lib/luma-update/luma-greenboot-counter; do
       bash -n "$script"
     done
     PYTHONPATH=$(echo usr/lib/python3*/site-packages) python3 -c "import luma_update.daemon, luma_update.cli, luma_update.notifier, luma_update.boot, luma_update.redact, luma_update.names"
