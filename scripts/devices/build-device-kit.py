@@ -25,7 +25,7 @@ the local copy and restarts once; updates then follow [device_repo] url.
 Usage:
   build-device-kit.py --device VENDOR/CODENAME --boot-image FILE --version V --output DIR
       [--device-repo DIR --key RELEASE_KEY.asc --sign-homedir GNUPGHOME --sign-key FPR]
-      [--manifest FILE] [--userdata-name NAME]
+      [--boot-cmdline FILE] [--manifest FILE] [--userdata-name NAME]
 
 Runs on Linux with gpg, gpgv, rpm, mkfs.vfat and mcopy (mtools).
 """
@@ -166,7 +166,9 @@ def build(args: argparse.Namespace) -> None:
 
     boot = out / f"{prefix}-boot.img"
     data = Path(args.boot_image).read_bytes()
-    check_boot_image(data)
+    # A command line built into a compressed kernel (CONFIG_CMDLINE) is not
+    # readable in the image; --boot-cmdline names the boot build's record of it.
+    check_boot_image(Path(args.boot_cmdline).read_bytes() if args.boot_cmdline else data)
     boot.write_bytes(data)
     files["boot"] = boot.name
 
@@ -219,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--device", required=True, help="VENDOR/CODENAME")
     parser.add_argument("--manifest", type=Path, help="device.toml (default devices/VENDOR/CODENAME/device.toml)")
     parser.add_argument("--boot-image", required=True)
+    parser.add_argument("--boot-cmdline", help="file with the boot image's command line, when the image "
+                        "does not hold it readably (a kernel built with CONFIG_CMDLINE)")
     parser.add_argument("--version", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--device-repo")
