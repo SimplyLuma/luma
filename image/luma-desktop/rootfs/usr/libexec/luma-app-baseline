@@ -128,6 +128,15 @@ def handoff(root,state,architecture,installation,verify,install):
     return 'completed'
 
 
+def trust_remote(key,run=subprocess.run):
+    # The remote can exist without this key: creating the system repository
+    # applies remotes.d and fsyncs the config, but not the keyring, so a reset
+    # during the first handoff keeps the remote and loses the key. Later boots
+    # skip --gpg-import under --if-not-exists, so import the pinned key always.
+    run(['flatpak','remote-add','--system','--if-not-exists','--gpg-import='+str(key),'luma','https://dl.simplyluma.com/repo/'],check=True)
+    run(['flatpak','remote-modify','--system','--gpg-import='+str(key),'luma'],check=True)
+
+
 def main():
     if os.geteuid()!=0:raise PermissionError('The OS baseline handoff requires root.')
     # Retirement runs on every updated boot, including completed baselines.
@@ -143,7 +152,7 @@ def main():
     from luma_installer.native_app_roles import verify_deployed_commit
     from luma_installer.depot_flatpak import validate_remote
     key=BASELINE/'luma-depot.gpg'
-    subprocess.run(['flatpak','remote-add','--system','--if-not-exists','--gpg-import='+str(key),'luma','https://dl.simplyluma.com/repo/'],check=True)
+    trust_remote(key)
     instance=Flatpak.Installation.new_system(None)
     validate_remote(instance.get_remote_by_name('luma',None),'luma')
     def installed():
