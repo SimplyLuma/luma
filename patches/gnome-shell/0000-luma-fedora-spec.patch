@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.164%{?dist}
++Release:        1.luma.165%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,376 @@
+@@ -32,6 +32,378 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -329,6 +329,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1308:      0328-tv-app-switcher.patch
 +Patch1309:      0329-tv-pointer.patch
 +Patch1310:      0330-luma-date-menu-calendar-only.patch
++Patch1311:      0331-luma-date-menu-calendar-panel.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -388,10 +389,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9056:     tv-flatpak-policy.js
 +Source9057:     dock-folder-badge-policy.js
 +Source9058:     date-menu-calendar-only-policy.js
++Source9059:     date-menu-panel-policy.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +441,9 @@
+@@ -71,6 +443,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -401,7 +403,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +463,16 @@
+@@ -90,6 +465,16 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -418,7 +420,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +572,58 @@
+@@ -189,8 +574,58 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -477,7 +479,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -207,10 +640,35 @@
+@@ -207,10 +642,36 @@
  # Create empty directories where other packages can drop extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
@@ -510,10 +512,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9056} js/ui/lumaPresentation/tvModel.js js/ui/lumaPresentation/tv.js
 +gjs -m %{SOURCE9057} js/ui/lumaDockFolders.js js/ui/lumaPresentation/launcherFolders.js
 +gjs -m %{SOURCE9058} js/ui/dateMenu.js
++gjs -m %{SOURCE9059} js/ui/dateMenu.js js/ui/calendar.js src/calendar-server/gnome-shell-calendar-server.c
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +676,7 @@
+@@ -218,7 +679,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -522,7 +525,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +708,11 @@
+@@ -250,6 +711,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
