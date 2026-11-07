@@ -34,9 +34,9 @@ inputdir="$root/build/browser-inputs"
 gtk=${GTK4_NEVRA%.*}.$architecture
 adwaita=${LIBADWAITA_NEVRA%.*}.$architecture
 platform=${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA%.*}.$architecture
+apk_metadata=${LUMA_APK_METADATA_X86_64_NEVRA%.*}.$architecture
 rpms=()
-for identity in "$gtk" "$adwaita" "$platform" \
-  "luma-apk-metadata-0.1.0-1.luma.1~preview.20260910.1.fc44.$architecture" \
+for identity in "$gtk" "$adwaita" "$platform" "$apk_metadata" \
   "luma-appimage-compat-0.1.0-1.luma.1.fc44.$architecture"; do
   mapfile -t matches < <(find "$inputdir" -type f -name "$identity.rpm")
   [ "${#matches[@]}" -ge 1 ] || { printf 'Missing checked browser provider: %s\n' "$identity" >&2; exit 1; }
