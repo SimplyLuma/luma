@@ -9,13 +9,13 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 40
+%global native_release 41
 # The native host is shared. ARM uses the source-built engine; x86 keeps its
 # existing engine and original release identity.
 %ifarch aarch64
-%global engine_release 32
-%global approved_release 20261025-native32-arm-desktop
-%global engine_sha256 0c4829cf130a9490489e2dfb81d9cb1fe156ff3701511e3c94ca4b0af5f53b40
+%global engine_release 33
+%global approved_release 20261107-native33-arm-desktop
+%global engine_sha256 3697e5d9203302378984e82bab96d65bc2966752aaad1b1329b55d8651f5a1c8
 %else
 %global engine_release 30
 %global approved_release 20260921-native-30
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261102.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261107.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -278,6 +278,10 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Sat Nov 07 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native41.creator20261107.1
+- Ask for a site's HTTP sign-in in the bar: the engine hands the login request to the host (ARM engine native33).
+- ARM engine native33: native32 with one tab in a new private window and the host-drawn sign-in.
+
 * Mon Nov 02 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native40.creator20261102.1
 - Tuck the address bar into a notch of the bottom frame, shown only while the bar is hidden.
 - Stop advertising WebAuthn until the host draws the passkey dialog, so sign-in offers other methods.

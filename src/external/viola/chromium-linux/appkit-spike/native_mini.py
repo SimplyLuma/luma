@@ -32,6 +32,8 @@ class NativeMini:
         window.set_identity_subtitle(title[:160])
         window.sidebar.footer.state = state
         prompt = state.get('permissionPrompt')
+        if prompt and prompt.get('type') == 'login':
+            prompt = None  # the bar grows the sign-in (native_signin.py)
         reconcile(self.permission, [window.sidebar.footer.card(prompt)] if prompt else [])
         self.permission.set_visible(bool(prompt))
 

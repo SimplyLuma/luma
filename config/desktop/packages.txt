@@ -86,8 +86,8 @@ luma-install-commands-0.1.0-1.luma.6.fc44.noarch
 luma-search-0.1.0-1.luma.10.fc44.noarch
 luma-home-widgets-0.1.0-1.luma.5.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.41.fc44.noarch
-luma-os-remote-1.0.0-1.luma.28.fc44.noarch
-luma-update-1.0.0-1.luma.28.fc44.noarch
+luma-os-remote-1.0.0-1.luma.29.fc44.noarch
+luma-update-1.0.0-1.luma.29.fc44.noarch
 prairie-core-apps-0.1.0-1.luma.131.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.46.fc44.noarch
@@ -126,7 +126,7 @@ luma-vitals-energy-0.1.0-1.luma.15.nightly20261026.1.fc44.noarch
 luma-vitals-memory-guard-0.1.0-1.luma.15.nightly20261026.1.fc44.noarch
 luma-vitals-crash-evidence-0.1.0-1.luma.15.nightly20261026.1.fc44.noarch
 luma-vitals-power-guard-0.1.0-1.luma.15.nightly20261026.1.fc44.noarch
-viola-browser-stable-151.0.7922.72-15.viola8210.native40.creator20261102.1.fc44.x86_64
+viola-browser-stable-151.0.7922.72-15.viola8210.native41.creator20261107.1.fc44.x86_64
 luma-messages-e2ee-0.1.0-1.luma.2.creator20261007.1.fc44.x86_64
 
 # Raspberry Pi 5. kernel-luma-rpi is published only in the Pi device

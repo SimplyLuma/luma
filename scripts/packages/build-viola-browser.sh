@@ -17,8 +17,8 @@ case "$architecture" in
     engine_sha=2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028 ;;
   aarch64)
     builder=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-    engine_release=32
-    engine_sha=2d10bdd8dc21364ee91cde00abef725fd7e3e13658fd059275057663b129d4b1 ;;
+    engine_release=33
+    engine_sha=a5fbcd7cd80a5c0b08833f92b98193f2d11bc5ccb5fc3350a03cae745ccc2a5b ;;
   *) printf 'error: unsupported Viola architecture: %s\n' "$architecture" >&2; exit 1 ;;
 esac
 if [ "$desktop_profile" = arm-preview ] && [ "$engine_release" -lt 32 ]; then

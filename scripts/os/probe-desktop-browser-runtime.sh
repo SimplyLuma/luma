@@ -38,7 +38,7 @@ for identity in "${GTK4_NEVRA%.*}.aarch64" "${LIBADWAITA_NEVRA%.*}.aarch64" \
   "${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA%.*}.aarch64" \
   'luma-apk-metadata-0.1.0-1.luma.1~preview.20260910.1.fc44.aarch64' \
   'luma-appimage-compat-0.1.0-1.luma.1.fc44.aarch64' \
-  'viola-browser-stable-151.0.7922.72-15.viola8210.native40.creator20261102.1.fc44.aarch64'; do
+  'viola-browser-stable-151.0.7922.72-15.viola8210.native41.creator20261107.1.fc44.aarch64'; do
   mapfile -t found < <(find "$inputs" -type f -name "$identity.rpm")
   printf 'Selecting %s: %s retained copies\n' "$identity" "${#found[@]}"
   [ "${#found[@]}" -ge 1 ]
@@ -54,8 +54,8 @@ for identity in "${GTK4_NEVRA%.*}.aarch64" "${LIBADWAITA_NEVRA%.*}.aarch64" \
   printf '%s  %s\n' "$expected_sha" "${found[0]}" >> "$out/selected-rpms.sha256"
   rpms+=("${found[0]}")
 done
-installer=luma-application-installer-0.1.0-1.luma.71.creator20261021.1.fc44.noarch.rpm
-installer_sha=c26a7e6b68859f9624abf2d73cc62ba1845bff25447e14eafd376c8db2543ad4
+installer=luma-application-installer-0.1.0-1.luma.86.fc44.noarch.rpm
+installer_sha=ef2b347d41b654f7f6788ab254be031a995662402b0000cd2166c86aa939e3bc
 curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
   "https://media.simplyluma.com/inputs/rpm/$installer_sha/$installer" --output "$inputs/$installer"
 printf '%s  %s\n' "$installer_sha" "$inputs/$installer" | sha256sum -c -

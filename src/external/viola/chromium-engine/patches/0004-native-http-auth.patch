@@ -1,0 +1,321 @@
+diff --git a/chrome/browser/ui/views/login_handler_views.cc b/chrome/browser/ui/views/login_handler_views.cc
+--- a/chrome/browser/ui/views/login_handler_views.cc
++++ b/chrome/browser/ui/views/login_handler_views.cc
+@@ -6,6 +6,7 @@
+ 
+ #include "base/memory/raw_ptr.h"
+ #include "base/strings/utf_string_conversions.h"
++#include "build/build_config.h"
+ #include "chrome/browser/ui/blocked_content/popunder_preventer.h"
+ #include "chrome/browser/ui/dialogs/browser_dialogs.h"
+ #include "chrome/browser/ui/login/login_handler.h"
+@@ -22,10 +23,38 @@
+ #include "ui/views/widget/widget.h"
+ #include "ui/views/window/dialog_delegate.h"
+ 
++#if BUILDFLAG(IS_LINUX)
++#include "base/memory/weak_ptr.h"
++#include "base/strings/escape.h"
++#include "base/strings/strcat.h"
++#include "base/unguessable_token.h"
++#include "base/values.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/views/frame/browser_view.h"
++#include "chrome/browser/ui/views/viola/viola_product_shell_view.h"
++#include "components/tabs/public/tab_interface.h"
++#endif
++
+ class LoginHandlerViewsDialog;
+ 
+ namespace {
+ 
++#if BUILDFLAG(IS_LINUX)
++// The Viola window that owns `contents`, when one does. Its browser window is
++// drawn off screen, so a tab-modal dialog there is never seen; the host asks
++// for the user name and password instead.
++viola::ViolaProductShellView* ViolaShellFor(content::WebContents* contents) {
++  tabs::TabInterface* tab =
++      contents ? tabs::TabInterface::MaybeGetFromContents(contents) : nullptr;
++  BrowserWindowInterface* browser =
++      tab ? tab->GetBrowserWindowInterface() : nullptr;
++  BrowserView* browser_view =
++      browser ? BrowserView::GetBrowserViewForBrowser(browser) : nullptr;
++  return browser_view ? browser_view->viola_product_shell_view_for_testing()
++                      : nullptr;
++}
++#endif
++
+ // This class prompts the user for credentials and returns the result to
+ // `auth_required_callback`.
+ class LoginHandlerViews : public LoginHandler {
+@@ -48,8 +77,20 @@
+   void CloseDialog() override;
+ 
+  private:
++#if BUILDFLAG(IS_LINUX)
++  bool ShowInViolaShell(const std::u16string& authority,
++                        const std::u16string& explanation);
++  void OnViolaAnswer(bool supplied,
++                     const std::u16string& username,
++                     const std::u16string& password);
++#endif
++
+   raw_ptr<LoginHandlerViewsDialog> dialog_ = nullptr;
+   std::unique_ptr<PopunderPreventer> popunder_preventer_;
++#if BUILDFLAG(IS_LINUX)
++  std::string viola_prompt_id_;
++  base::WeakPtrFactory<LoginHandlerViews> viola_weak_factory_{this};
++#endif
+ };
+ 
+ }  // namespace
+@@ -118,6 +159,12 @@
+   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+   DCHECK(!dialog_);
+ 
++#if BUILDFLAG(IS_LINUX)
++  if (ShowInViolaShell(authority, explanation)) {
++    return true;
++  }
++#endif
++
+   // A WebContentsModalDialogManager is necessary to show the Dialog. A manager
+   // may not be available during the shutdown process of the WebContents, which
+   // can trigger DidFinishNavigation events. See https://crbug.com/328462789.
+@@ -133,6 +180,15 @@
+ }
+ 
+ void LoginHandlerViews::CloseDialog() {
++#if BUILDFLAG(IS_LINUX)
++  if (!viola_prompt_id_.empty()) {
++    viola_weak_factory_.InvalidateWeakPtrs();
++    if (viola::ViolaProductShellView* shell = ViolaShellFor(web_contents())) {
++      shell->ClearLoginPrompt(viola_prompt_id_);
++    }
++    viola_prompt_id_.clear();
++  }
++#endif
+   // The hosting widget may have been freed.
+   if (dialog_) {
+     dialog_->CloseDialog();
+@@ -141,6 +197,52 @@
+   popunder_preventer_ = nullptr;
+ }
+ 
++#if BUILDFLAG(IS_LINUX)
++bool LoginHandlerViews::ShowInViolaShell(const std::u16string& authority,
++                                         const std::u16string& explanation) {
++  viola::ViolaProductShellView* shell = ViolaShellFor(web_contents());
++  if (!shell) {
++    return false;
++  }
++  const url::SchemeHostPort& challenger = auth_info().challenger;
++  const std::string host = challenger.host();
++  viola_prompt_id_ = base::UnguessableToken::Create().ToString();
++  base::DictValue state;
++  state.Set("id", viola_prompt_id_);
++  state.Set("type", "login");
++  state.Set("title", auth_info().is_proxy
++                         ? base::StrCat({"Sign in to the proxy ", host})
++                         : base::StrCat({"Sign in to ", host}));
++  state.Set("body", explanation.empty() ? authority : explanation);
++  state.Set("host", host);
++  state.Set("proxy", auth_info().is_proxy);
++  state.Set("icon", base::StrCat({
++                        "chrome://favicon2/?size=32&scaleFactor=1x&"
++                        "showFallbackMonogram=&pageUrl=",
++                        base::EscapeQueryParamValue(
++                            challenger.GetURL().spec(), true)}));
++  state.Set("hue", 250);
++  state.Set("important", true);
++  state.Set("kept", true);
++  shell->ShowLoginPrompt(
++      std::move(state),
++      base::BindOnce(&LoginHandlerViews::OnViolaAnswer,
++                     viola_weak_factory_.GetWeakPtr()));
++  return true;
++}
++
++void LoginHandlerViews::OnViolaAnswer(bool supplied,
++                                      const std::u16string& username,
++                                      const std::u16string& password) {
++  viola_prompt_id_.clear();
++  if (supplied) {
++    SetAuth(username, password);
++  } else {
++    CancelAuth(/*notify_others=*/true);
++  }
++}
++#endif
++
+ }  // namespace
+ 
+ LoginHandlerViewsDialog::LoginHandlerViewsDialog(
+diff --git a/chrome/browser/ui/webui/viola/viola_message_handler.cc b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+--- a/chrome/browser/ui/webui/viola/viola_message_handler.cc
++++ b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+@@ -7408,19 +7408,43 @@
+ }
+ 
+ void ViolaMessageHandler::HandlePermissionResponse(const base::Value &payload) {
+-  if (!payload.is_dict() || payload.GetDict().size() != 2) {
++  if (!payload.is_dict()) {
+     return;
+   }
+-  const std::string *id = payload.GetDict().FindString("id");
+-  const std::string *decision = payload.GetDict().FindString("decision");
+-  if (!id || !decision || id->empty() || id->size() > 128 ||
+-      (*decision != "allow" && *decision != "block" &&
+-       *decision != "dismiss")) {
++  const base::DictValue &dict = payload.GetDict();
++  const std::string *id = dict.FindString("id");
++  const std::string *decision = dict.FindString("decision");
++  if (!id || !decision || id->empty() || id->size() > 128) {
+     return;
+   }
+-  if (viola::ViolaProductShellView *shell = GetProductShellView()) {
+-    shell->ResolvePermissionPrompt(*id, *decision);
++  viola::ViolaProductShellView *shell = GetProductShellView();
++  // A sign-in answer: {id, decision: "signin", username, password}.
++  if (*decision == "signin") {
++    const std::string *username = dict.FindString("username");
++    const std::string *password = dict.FindString("password");
++    if (dict.size() != 4 || !username || !password ||
++        username->size() > 1024 || password->size() > 1024 || !shell) {
++      return;
++    }
++    shell->ResolveLoginPrompt(*id, /*supplied=*/true,
++                              base::UTF8ToUTF16(*username),
++                              base::UTF8ToUTF16(*password));
++    return;
+   }
++  if (dict.size() != 2 || (*decision != "allow" && *decision != "block" &&
++                            *decision != "dismiss")) {
++    return;
++  }
++  if (!shell) {
++    return;
++  }
++  // Block or dismiss on a sign-in cancels it.
++  if (*decision != "allow" &&
++      shell->ResolveLoginPrompt(*id, /*supplied=*/false, std::u16string(),
++                                std::u16string())) {
++    return;
++  }
++  shell->ResolvePermissionPrompt(*id, *decision);
+ }
+ 
+ void ViolaMessageHandler::SendRenderState() {
+diff --git a/chrome/browser/ui/views/viola/viola_product_shell_view.h b/chrome/browser/ui/views/viola/viola_product_shell_view.h
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.h
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.h
+@@ -7,12 +7,15 @@
+ 
+ #include "base/timer/timer.h"
+ #include "build/build_config.h"
++#include <deque>
+ #include <memory>
+ #include <optional>
+ #include <string>
+ #include <string_view>
++#include <utility>
+ #include <vector>
+ 
++#include "base/functional/callback.h"
+ #include "base/functional/callback_forward.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
+@@ -110,6 +113,17 @@
+   bool ResolvePermissionPrompt(std::string_view id,
+                                std::string_view decision);
+   base::Value PermissionPromptState() const;
++  // HTTP authentication (login_handler_views.cc) asks the host for a user
++  // name and password on the same notice channel. Requests queue and show one
++  // at a time; an answer runs once, supplied with the credentials or not.
++  using LoginAnswer = base::OnceCallback<void(bool supplied,
++                                              const std::u16string &username,
++                                              const std::u16string &password)>;
++  void ShowLoginPrompt(base::DictValue state, LoginAnswer answer);
++  void ClearLoginPrompt(std::string_view id);
++  bool ResolveLoginPrompt(std::string_view id, bool supplied,
++                          const std::u16string &username,
++                          const std::u16string &password);
+   bool IsPointInDraggableRegion(const gfx::Point &point) const;
+ 
+   // WebUIContentsWrapper::Host:
+@@ -144,6 +158,7 @@
+   base::DictValue permission_prompt_state_;
+   base::OnceCallback<void(bool)> session_restore_callback_;
+   base::DictValue session_restore_state_;
++  std::deque<std::pair<base::DictValue, LoginAnswer>> login_prompts_;
+   int sidebar_width_ = kSidebarWidth;
+   bool sidebar_collapsed_ = false;
+   bool sidebar_modal_visible_ = false;
+diff --git a/chrome/browser/ui/views/viola/viola_product_shell_view.cc b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.cc
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+@@ -982,6 +982,8 @@
+   base::Value state;
+   if (permission_prompt_) {
+     state = base::Value(permission_prompt_state_.Clone());
++  } else if (!login_prompts_.empty()) {
++    state = base::Value(login_prompts_.front().first.Clone());
+   } else if (session_restore_callback_) {
+     state = base::Value(session_restore_state_.Clone());
+   }
+@@ -1038,10 +1040,55 @@
+   return prompt->Resolve(decision, this);
+ }
+ 
++void ViolaProductShellView::ShowLoginPrompt(base::DictValue state,
++                                            LoginAnswer answer) {
++  if (!state.FindString("id") || !answer) {
++    return;
++  }
++  login_prompts_.emplace_back(std::move(state), std::move(answer));
++  if (login_prompts_.size() == 1) {
++    SendAttentionPrompt();
++  }
++}
++
++void ViolaProductShellView::ClearLoginPrompt(std::string_view id) {
++  for (auto it = login_prompts_.begin(); it != login_prompts_.end(); ++it) {
++    const std::string *current = it->first.FindString("id");
++    if (current && id == *current) {
++      const bool shown = it == login_prompts_.begin();
++      login_prompts_.erase(it);
++      if (shown) {
++        SendAttentionPrompt();
++      }
++      return;
++    }
++  }
++}
++
++bool ViolaProductShellView::ResolveLoginPrompt(
++    std::string_view id, bool supplied, const std::u16string &username,
++    const std::u16string &password) {
++  if (login_prompts_.empty()) {
++    return false;
++  }
++  const std::string *current = login_prompts_.front().first.FindString("id");
++  if (!current || id != *current) {
++    return false;
++  }
++  LoginAnswer answer = std::move(login_prompts_.front().second);
++  login_prompts_.pop_front();
++  SendAttentionPrompt();
++  std::move(answer).Run(supplied, username, password);
++  return true;
++}
++
+ base::Value ViolaProductShellView::PermissionPromptState() const {
+   if (permission_prompt_) {
+     return base::Value(permission_prompt_state_.Clone());
+   }
++  if (!login_prompts_.empty()) {
++    return base::Value(login_prompts_.front().first.Clone());
++  }
+   return session_restore_callback_
+              ? base::Value(session_restore_state_.Clone())
+              : base::Value();

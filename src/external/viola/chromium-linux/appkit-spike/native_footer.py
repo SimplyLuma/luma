@@ -198,7 +198,9 @@ class NativeFooter(Gtk.Box):
 
     def render(self, state):
         self.state = state
-        items = ([state['permissionPrompt']] if state.get('permissionPrompt') else []) + state.get('notifications', [])
+        # A site's sign-in grows from the bar (native_signin.py), not a card.
+        prompt = state.get('permissionPrompt')
+        items = ([prompt] if prompt and prompt.get('type') != 'login' else []) + state.get('notifications', [])
         self.count.set_label(str(len(items)))
         self.notices.set_visible(bool(items))
         desired = [self.card(item) for item in items]

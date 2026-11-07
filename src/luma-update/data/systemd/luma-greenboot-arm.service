@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Arm greenboot's boot counter for the staged deployment
+Documentation=file:///usr/lib/luma-update/luma-greenboot-counter
+# Started with ostree-finalize-staged.service (WantedBy, enabled by preset) when a
+# deployment is staged; stopped at shutdown before it finalizes the deployment,
+# when ostree admin status still shows the deployment as staged. Stopped after
+# greenboot-set-rollback-trigger.service, so these values are the last word.
+DefaultDependencies=no
+ConditionPathExists=/run/ostree-booted
+After=ostree-finalize-staged.service
+Before=greenboot-set-rollback-trigger.service
+RequiresMountsFor=/boot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStop=/usr/lib/luma-update/luma-greenboot-counter arm
+PrivateMounts=yes
+
+[Install]
+WantedBy=ostree-finalize-staged.service

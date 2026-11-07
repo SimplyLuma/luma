@@ -4,12 +4,13 @@ from dataclasses import dataclass
 import json
 from urllib.parse import quote
 from urllib.parse import urlsplit
-from gi.repository import Gio, GLib, Gtk
+from gi.repository import Gdk, Gio, GLib, Gtk
 from luma_appkit import ActionCenter, BarAction, BarSearch
 from luma_appkit.action_center import register_item
 from luma_appkit.bar_share import ShareSheet, ShareSubject, ShareTarget
 from luma_appkit.bar_panel import PanelRow, panel_list
 from native_footer import NativeFooter
+from native_signin import SignInPanel, is_signin
 from native_address_focus import AddressEdit
 
 
@@ -52,6 +53,8 @@ class ResponsiveChrome:
         self.bar_hidden = False
         self.scroll_distance = 0
         self.scroll_direction = 0
+        self.signin = None
+        self.signin_answered = None
         self.center = ActionCenter().attach(host.page_layers)
         self.center.set_name('viola-page-bar')
         self.center.bar.add_css_class('viola-page-bar-motion')
@@ -85,6 +88,11 @@ class ResponsiveChrome:
         host.new_tab = host.sidebar.new_tab_row
         self.render(force=True)
         host.add_tick_callback(self.allocated)
+        # The bar folds a grown panel on Esc in its capture phase; on the
+        # window, before it, Esc cancels a sign-in instead of setting it aside.
+        signin_keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        signin_keys.connect('key-pressed', self.signin_key)
+        host.add_controller(signin_keys)
 
     def allocated(self, *_):
         if self.host.mini:
@@ -167,6 +175,51 @@ class ResponsiveChrome:
         return list(unique.values())
 
     def render(self, *, force=False):
+        self.render_bar(force=force)
+        self.sync_signin()
+
+    # A site's sign-in grows from the bar until it is answered: a fold without
+    # an answer (a rebuilt bar, a hidden bar, a click away) grows it again.
+    def sync_signin(self):
+        prompt = (self.host.state or {}).get('permissionPrompt')
+        if not is_signin(prompt) or prompt['id'] == self.signin_answered:
+            if self.signin is not None and self.center.grown == 'signin':
+                self.signin = None
+                self.center.fold()
+            return
+        if self.signin is not None and self.signin.prompt_id == prompt['id'] and self.center.grown == 'signin':
+            return
+        self.reveal_bar()
+        self.signin = SignInPanel(prompt, self.answer_signin)
+        self.center.grow('signin', self.signin, on_fold=self.signin_folded)
+        self.panel = 'signin'
+        GLib.idle_add(lambda: (self.signin is not None and self.signin.grab_focus(), False)[1])
+
+    def signin_key(self, _controller, keyval, _code, _state):
+        if keyval == Gdk.KEY_Escape and self.signin is not None and self.center.grown == 'signin':
+            self.signin.cancel()
+            return True
+        return False
+
+    def signin_folded(self):
+        if self.panel == 'signin':
+            self.panel = None
+        if self.signin is not None and not self.signin.answered:
+            self.signin = None
+            GLib.idle_add(lambda: (self.sync_signin(), False)[1])
+
+    def answer_signin(self, key, supplied, username, password):
+        self.signin_answered = key
+        self.signin = None
+        if supplied:
+            self.host.send('permission:respond', {'id': key, 'decision': 'signin',
+                                                  'username': username, 'password': password})
+        else:
+            self.host.send('permission:respond', {'id': key, 'decision': 'dismiss'})
+        if self.center.grown == 'signin':
+            self.center.fold()
+
+    def render_bar(self, *, force=False):
         state = self.host.state or {}
         self.update_bar_handle()
         active = (state.get('activeTabId'), state.get('activeUrl'))
