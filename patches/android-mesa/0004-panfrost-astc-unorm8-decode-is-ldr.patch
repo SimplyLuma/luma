@@ -1,0 +1,24 @@
+--- a/src/panfrost/lib/pan_texture.c
++++ b/src/panfrost/lib/pan_texture.c
+@@ -477,6 +477,12 @@
+     * precision is set to GL_RGBA8 for that texture.
+     */
+    bool wide = !srgb && !iview->astc.narrow;
++
++   /* UNORM8 decode is LDR only. With HDR decode enabled, narrow output is
++    * RGB9E5 rather than RGBA8, which reads back as noise through the RGBA8
++    * texel format.
++    */
++   bool hdr = iview->astc.hdr && wide;
+ 
+    assert(desc->layout == UTIL_FORMAT_LAYOUT_ASTC && desc->block.depth == 1);
+    assert(props->modifier == DRM_FORMAT_MOD_LINEAR ||
+@@ -489,7 +495,7 @@
+ 
+ #define ASTC_PLANE_SET_COMMON_PROPS()                                          \
+    cfg.clump_ordering = modifier_clump_ordering(props->modifier);              \
+-   cfg.decode_hdr = iview->astc.hdr;                                           \
++   cfg.decode_hdr = hdr;                                                       \
+    cfg.decode_wide = wide;                                                     \
+    PLANE_SET_SIZE(cfg, plane_size);                                            \
+    cfg.pointer = plane_addr;                                                   \

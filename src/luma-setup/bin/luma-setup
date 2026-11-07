@@ -1,0 +1,5 @@
+#!/usr/bin/python3 -sP
+# SPDX-License-Identifier: Apache-2.0
+import runpy
+
+runpy.run_module("luma_setup", run_name="__main__", alter_sys=True)

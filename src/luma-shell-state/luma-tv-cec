@@ -1,0 +1,105 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Join HDMI-CEC as a playback device so the TV's remote reaches Luma.
+
+The kernel's CEC framework does the rest: it answers the core messages
+(physical address, CEC version, OSD name, vendor ID) and, with remote-control
+passthrough allowed, turns <User Control Pressed> into key events on the
+adapter's rc-cec input device. The Shell's TV input service then maps those
+keys onto the TV's keys like any other remote (docs/developer-platform/
+tv-mode.md, "Remotes and gamepads").
+
+  luma-tv-cec [--status] [/dev/cecN ...]   (default: every /dev/cec*)
+
+An adapter that is already configured (by this or by another CEC daemon) is
+left alone. The configuration stays with the adapter until it is removed; the
+framework claims the logical address again whenever the HDMI sink changes.
+"""
+import errno
+import fcntl
+import glob
+import os
+import struct
+import sys
+
+CEC_ADAP_G_CAPS = 0xC04C6100        # _IOWR('a', 0, struct cec_caps)
+CEC_ADAP_G_PHYS_ADDR = 0x80026101   # _IOR('a', 1, __u16)
+CEC_ADAP_G_LOG_ADDRS = 0x805C6103   # _IOR('a', 3, struct cec_log_addrs)
+CEC_ADAP_S_LOG_ADDRS = 0xC05C6104   # _IOWR('a', 4, struct cec_log_addrs)
+CAPS = struct.Struct("=32s32sIII")
+# struct cec_log_addrs: log_addr[4] log_addr_mask cec_version num_log_addrs
+# vendor_id flags osd_name[15] primary_device_type[4] log_addr_type[4]
+# all_device_types[4] features[4][12]
+LOG_ADDRS = struct.Struct("=4sHBBII15s4s4s4s48sx")  # padded to 92
+CEC_CAP_LOG_ADDRS = 1 << 1
+CEC_CAP_RC = 1 << 4
+CEC_OP_CEC_VERSION_2_0 = 6
+CEC_VENDOR_ID_NONE = 0xFFFFFFFF
+CEC_LOG_ADDRS_FL_ALLOW_UNREG_FALLBACK = 1 << 0
+CEC_LOG_ADDRS_FL_ALLOW_RC_PASSTHRU = 1 << 1
+CEC_OP_PRIM_DEVTYPE_PLAYBACK = 4
+CEC_LOG_ADDR_TYPE_PLAYBACK = 3
+CEC_OP_ALL_DEVTYPE_PLAYBACK = 0x10
+OSD_NAME = b"Luma"
+
+
+def physical(value: int) -> str:
+    return ".".join(f"{value >> shift & 15:x}" for shift in (12, 8, 4, 0))
+
+
+def describe(fd: int, path: str) -> tuple[int, int, int]:
+    caps = bytearray(CAPS.size)
+    fcntl.ioctl(fd, CEC_ADAP_G_CAPS, caps)
+    _driver, _name, _available, capabilities, _version = CAPS.unpack(caps)
+    pa = bytearray(2)
+    fcntl.ioctl(fd, CEC_ADAP_G_PHYS_ADDR, pa)
+    las = bytearray(LOG_ADDRS.size)
+    fcntl.ioctl(fd, CEC_ADAP_G_LOG_ADDRS, las)
+    fields = LOG_ADDRS.unpack(las)
+    pa_value = struct.unpack("=H", pa)[0]
+    print(f"{path}: caps {capabilities:#x}, physical address {physical(pa_value)}, "
+          f"logical {list(fields[0][:fields[3]])}, flags {fields[5]:#x}, "
+          f"osd {fields[6].rstrip(bytes(1)).decode(errors='replace')!r}")
+    return capabilities, fields[3], fields[5]
+
+
+def configure(path: str, status_only: bool) -> int:
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+    except OSError as error:
+        print(f"{path}: {error.strerror}", file=sys.stderr)
+        return 1
+    try:
+        capabilities, configured, _flags = describe(fd, path)
+        if status_only or configured:
+            return 0
+        if not capabilities & CEC_CAP_LOG_ADDRS or not capabilities & CEC_CAP_RC:
+            print(f"{path}: no logical addresses or no remote passthrough; left alone")
+            return 0
+        request = bytearray(LOG_ADDRS.pack(
+            bytes(4), 0, CEC_OP_CEC_VERSION_2_0, 1, CEC_VENDOR_ID_NONE,
+            CEC_LOG_ADDRS_FL_ALLOW_RC_PASSTHRU | CEC_LOG_ADDRS_FL_ALLOW_UNREG_FALLBACK,
+            OSD_NAME, bytes([CEC_OP_PRIM_DEVTYPE_PLAYBACK, 0, 0, 0]),
+            bytes([CEC_LOG_ADDR_TYPE_PLAYBACK, 0, 0, 0]),
+            bytes([CEC_OP_ALL_DEVTYPE_PLAYBACK, 0, 0, 0]), bytes(48)))
+        try:
+            fcntl.ioctl(fd, CEC_ADAP_S_LOG_ADDRS, request)
+        except OSError as error:
+            if error.errno != errno.EBUSY:
+                raise
+            print(f"{path}: busy (another CEC client owns it); left alone")
+            return 0
+        print(f"{path}: joined as playback device {OSD_NAME.decode()!r}")
+        return 0
+    finally:
+        os.close(fd)
+
+
+def main(argv: list[str]) -> int:
+    status_only = "--status" in argv
+    paths = [arg for arg in argv if not arg.startswith("--")] or sorted(glob.glob("/dev/cec[0-9]*"))
+    return max([configure(path, status_only) for path in paths] or [0])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

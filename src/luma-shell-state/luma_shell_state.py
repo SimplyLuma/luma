@@ -42,6 +42,11 @@ class InvalidState(ValueError):
 
 
 PRESENTATION_MODES = frozenset({"automatic", "desktop", "tablet", "mobile"})
+# Posture is the experience above the presentation: Automatic follows the
+# presentation (desktop, tablet or mobile) unless the device itself is a
+# television; TV is the couch posture driven by a remote. The presentation
+# choice underneath is kept, so leaving TV returns to exactly what was there.
+POSTURE_VALUES = frozenset({"automatic", "tv"})
 
 
 def normalize_home_layout(profile: str, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -127,6 +132,47 @@ def read_presentation_profile(root: Path = Path("/")) -> str:
         read("sys/firmware/devicetree/base/chassis-type") or read("proc/device-tree/chassis-type"))
 
 
+def read_device_posture(root: Path = Path("/")) -> str | None:
+    """The posture a device declares for itself: "tv" when the boot experience
+    or the device class (/etc/luma-device-class) names a television, else None.
+    The install-time default for a TV is this file; the user setting wins."""
+    for name in ("run/luma/experience", "etc/luma-device-class"):
+        try:
+            with (root / name).open("rb") as stream:
+                value = stream.read(17).decode("utf-8").rstrip("\0").strip().lower()
+        except (OSError, UnicodeError):
+            continue
+        if value == "tv":
+            return "tv"
+    return None
+
+
+def record_device_class(root: Path = Path("/")) -> str:
+    """Record a device tree handset as the image's device class, once.
+
+    One image boots laptops and phones; a phone's device tree says it is a
+    handset. Writing the marker lets every reader agree (LumaUI, Android, the
+    session environment). A marker an image or device layer wrote wins."""
+    marker = root / "etc/luma-device-class"
+    try:
+        current = marker.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        current = ""
+    except (OSError, UnicodeError):
+        return ""
+    if current:
+        return current
+    for name in ("sys/firmware/devicetree/base/chassis-type", "proc/device-tree/chassis-type"):
+        try:
+            if (root / name).read_bytes()[:16].rstrip(b"\0").strip() == b"handset":
+                marker.write_text("handheld\n", encoding="utf-8")
+                marker.chmod(0o644)
+                return "handheld"
+        except OSError:
+            continue
+    return ""
+
+
 FOLD_POSTURES = frozenset({"folded", "unfolded"})
 
 
@@ -145,6 +191,37 @@ def normalize_presentation(value: str) -> str:
     if not isinstance(value, str) or value not in PRESENTATION_MODES:
         raise InvalidState("presentation must be automatic, desktop, tablet or mobile")
     return value
+
+
+def normalize_posture(value: str) -> str:
+    """Accept the stored choices; "auto" is the command-line spelling of automatic."""
+    if value == "auto":
+        value = "automatic"
+    if not isinstance(value, str) or value not in POSTURE_VALUES:
+        raise InvalidState("posture must be automatic or tv")
+    return value
+
+
+def posture_state(selected: str = "automatic", *, presentation: str = "desktop",
+                  device: str | None = None) -> dict[str, Any]:
+    """Resolve the effective posture: tv, or the effective presentation.
+
+    The result's `effective` is one of desktop, tablet, mobile or tv, so a
+    reader of the posture contract sees TV alongside the postures it already
+    knows. `presentation` is the resolved presentation underneath; it is not
+    changed by TV, which is why existing presentation readers see no change.
+    """
+    selected = normalize_posture(selected)
+    if presentation not in {"desktop", "tablet", "mobile"}:
+        presentation = "desktop"
+    if selected == "tv":
+        effective, reason = "tv", "user"
+    elif device == "tv":
+        effective, reason = "tv", "device"
+    else:
+        effective, reason = presentation, "presentation"
+    return {"selected": selected, "effective": effective, "reason": reason,
+            "tv": effective == "tv"}
 
 
 def normalize_capabilities(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -488,6 +565,7 @@ def build_snapshot(
     shelf: Mapping[str, Any] | None = None,
     presentation: Mapping[str, Any] | None = None,
     home_layouts: Mapping[str, Any] | None = None,
+    posture: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     canonical_favorites = normalize_app_ids(favorites)
     canonical_home_apps = normalize_app_ids(home_apps)
@@ -513,6 +591,8 @@ def build_snapshot(
         },
         "shelf": dict(shelf or {}),
         "presentation": dict(presentation or presentation_state()),
+        "posture": dict(posture or posture_state(
+            presentation=(presentation or {}).get("effective", "desktop"))),
         "home_layouts": dict(home_layouts or {}),
     }
 

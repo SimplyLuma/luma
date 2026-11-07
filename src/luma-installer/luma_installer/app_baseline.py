@@ -126,8 +126,8 @@ def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
     ensure_luma_remote(installations=[installation])
     validate_remote(installation.get_remote_by_name('luma',None),'luma')
     # BundleRef is read from the exact hash-admitted file; its embedded identity
-    # cannot select another ref or source. install --gpg-file verifies the actual
-    # commit with the maintained key again before deployment.
+    # cannot select another ref or source. verify_deployed_commit checks the
+    # imported commit's signature against the luma remote before deployment.
     for row in records:
         bundle=Flatpak.BundleRef.new(Gio.File.new_for_path(str(root/row['file'])))
         if bundle.format_ref()!=row['ref'] or bundle.get_commit()!=row['commit']:
@@ -170,8 +170,16 @@ def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
                 verify_deployed_commit(installation,installed[0])
                 result='preserved-existing-deployment'
             else:
-                runner(['flatpak','install','--system','--noninteractive','--assumeyes','--no-related','--bundle',
-                        '--gpg-file='+str(key),str(root/row['file'])],check=True,timeout=600)
+                # A direct first-time bundle installation creates its own *-origin
+                # remote and fetches the bundle's runtime repo, which this
+                # network-less unit can't reach. Import into the luma remote,
+                # authenticate the imported commit, then deploy from it.
+                bundle=Flatpak.BundleRef.new(Gio.File.new_for_path(str(root/row['file'])))
+                runner(['flatpak','build-import-bundle','--no-update-summary','--ref=luma:'+row['ref'],
+                        installation.get_path().get_child('repo').get_path(),str(root/row['file'])],check=True,timeout=600)
+                verify_deployed_commit(installation,bundle,commit=row['commit'],exact_ref=row['ref'])
+                runner(['flatpak','install','--system','--noninteractive','--assumeyes','--no-pull','--no-deps','--no-related',
+                        'luma',row['ref']],check=True,timeout=600)
                 installation.drop_caches(None)
                 installed=[ref for ref in installation.list_installed_refs(None) if ref.format_ref()==row['ref']]
                 if len(installed)!=1 or installed[0].get_origin()!='luma' or installed[0].get_commit()!=row['commit']:

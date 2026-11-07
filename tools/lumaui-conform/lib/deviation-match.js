@@ -13,6 +13,8 @@ function matchesDeviation(deviation, issue, state, app, used = 0, shortcutPairs 
   if (deviation.spec_value && !new RegExp(deviation.spec_value, 'i').test(String(issue.spec ?? ''))) return false;
   if (deviation.gtk_value && !new RegExp(deviation.gtk_value, 'i').test(String(issue.gtk ?? ''))) return false;
   if (deviation.max_delta != null && issue.mag != null && issue.mag > deviation.max_delta) return false;
+  // Where on the window it is: a part whose box starts at or below min_y (a TV page's bottom edge strip).
+  if (deviation.min_y != null && !(issue.box && issue.box.y >= deviation.min_y)) return false;
   // A share of the spec's own size (a text run's width), and the face GTK drew it in.
   if (deviation.max_ratio != null && (issue.ratio == null || issue.ratio > deviation.max_ratio)) return false;
   if (deviation.gtk_family && !new RegExp(deviation.gtk_family, 'i').test(String(issue.family ?? ''))) return false;

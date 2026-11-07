@@ -1,0 +1,127 @@
+name: Device packages
+
+# Packages only hardware-target images carry (config/os/desktop-targets.json
+# hardware_targets), plus luma-update, which selects their update streams.
+# The nightly preflight fetches pinned RPMs from these artifacts.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/device-packages.yml'
+      - 'scripts/packages/run-in-rpm-builder.sh'
+      - 'scripts/packages/build-luma-update.sh'
+      - 'src/luma-update/**'
+      - 'packaging/rpm/luma-update.spec'
+      - 'scripts/packages/build-luma-rpi5-platform.sh'
+      - 'src/luma-rpi5-platform/**'
+      - 'packaging/rpm/luma-rpi5-platform.spec'
+      - 'scripts/packages/build-luma-rpi-bluetooth-firmware.sh'
+      - 'packaging/rpm/luma-rpi-bluetooth-firmware.spec'
+      - 'scripts/packages/build-gstreamer1-plugins-bad-free.sh'
+      - 'packaging/rpm/gstreamer1-plugins-bad-free.spec'
+      - 'patches/gstreamer1-plugins-bad/**'
+      - 'scripts/packages/build-kernel-luma-rpi.sh'
+      - 'packaging/rpm/kernel-luma-rpi.spec'
+      - 'config/kernel/**'
+      - 'scripts/kernel/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A kernel build takes hours: let it finish, and keep only the newest pending run.
+concurrency:
+  group: device-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LUMA_RPM_BUILDER_DIRECT: '1'
+
+jobs:
+  noarch:
+    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:69b1219730fe52d6cbb0874cbc1a36dd43b722354a603f6cdf73acbff8dd7c59
+    env:
+      LUMA_TARGET_ARCHITECTURE: x86_64
+    steps:
+      - name: Prepare Fedora build tools
+        run: dnf5 -y install git podman cpio curl patch rpm-build rpmdevtools dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Mark the checkout safe for git archive
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Build luma-update
+        run: bash scripts/packages/build-luma-update.sh
+      - name: Build luma-rpi5-platform
+        run: bash scripts/packages/build-luma-rpi5-platform.sh
+      - name: Build luma-rpi-bluetooth-firmware
+        run: bash scripts/packages/build-luma-rpi-bluetooth-firmware.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: device-packages-noarch
+          path: |
+            build/packages/luma-update/
+            build/packages/luma-rpi5-platform/
+            build/packages/luma-rpi-bluetooth-firmware/
+          if-no-files-found: error
+          retention-days: 30
+
+  gstreamer-aarch64:
+    timeout-minutes: 90
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
+    env:
+      LUMA_TARGET_ARCHITECTURE: aarch64
+    steps:
+      - name: Prepare Fedora build tools
+        run: dnf5 -y install git cpio curl rpm-build dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build gstreamer1-plugins-bad-free
+        run: bash scripts/packages/build-gstreamer1-plugins-bad-free.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: device-gstreamer-aarch64
+          path: build/packages/gstreamer1-plugins-bad-free/
+          if-no-files-found: error
+          retention-days: 30
+
+  kernel-aarch64:
+    timeout-minutes: 340
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
+    env:
+      LUMA_TARGET_ARCHITECTURE: aarch64
+    steps:
+      - name: Prepare Fedora build tools
+        run: dnf5 -y install git cpio curl rpm-build dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Mark the checkout safe for git archive
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      # A pull request that changes no kernel input reuses the artifacts of the
+      # pull request that set the kernel pin (the nightly preflight fetches
+      # those), so it skips the hours-long build.
+      - name: Decide whether the kernel changed
+        id: kernel
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE" ] || git diff --name-only "$BASE" HEAD -- scripts/packages/build-kernel-luma-rpi.sh \
+               packaging/rpm/kernel-luma-rpi.spec config/kernel scripts/kernel | grep -q .; then
+            echo build=1 >>"$GITHUB_OUTPUT"
+          else
+            echo "No kernel input changed; kernel-luma-rpi comes from the pull request that pinned it."
+          fi
+      - name: Build kernel-luma-rpi (Fedora configuration, a few hours)
+        if: steps.kernel.outputs.build == '1'
+        run: bash scripts/packages/build-kernel-luma-rpi.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.kernel.outputs.build == '1'
+        with:
+          name: device-kernel-luma-rpi-aarch64
+          path: build/packages/kernel-luma-rpi/
+          if-no-files-found: error
+          retention-days: 30

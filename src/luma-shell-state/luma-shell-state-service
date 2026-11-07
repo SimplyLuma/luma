@@ -28,10 +28,13 @@ from luma_shell_state import (
     presentation_idle_default,
     normalize_shelf,
     normalize_wallpaper_uri,
+    normalize_posture,
     normalize_presentation,
     normalize_capabilities,
     normalize_home_layout,
+    posture_state,
     presentation_state,
+    read_device_posture,
     read_fold_posture,
     read_presentation_profile,
 )
@@ -45,6 +48,7 @@ INTROSPECTION_XML = """
 <node>
   <interface name="org.project_luma.ShellState1">
     <property name="Presentation" type="s" access="read"/>
+    <property name="Posture" type="s" access="read"/>
     <property name="InputCapabilities" type="a{sb}" access="read"/>
     <method name="GetSnapshot">
       <arg name="snapshot" type="s" direction="out"/>
@@ -66,6 +70,9 @@ INTROSPECTION_XML = """
     </method>
     <method name="SetPresentation">
       <arg name="mode" type="s" direction="in"/>
+    </method>
+    <method name="SetPosture">
+      <arg name="posture" type="s" direction="in"/>
     </method>
     <method name="SetHomeLayout">
       <arg name="profile" type="s" direction="in"/>
@@ -98,6 +105,7 @@ class ShellStateService:
         self._capabilities = {}
         self._posture_source = 0
         self._profile = read_presentation_profile()
+        self._device_posture = read_device_posture()
         self._fold = read_fold_posture()
         # A foldable's device service replaces this on every hinge change.
         self._fold_monitor = Gio.File.new_for_path("/run/luma/posture").monitor_file(
@@ -129,6 +137,13 @@ class ShellStateService:
     def _presentation(self):
         return presentation_state(self._luma.get_string("presentation-mode"), profile=self._profile,
                                   capabilities=self._capabilities, fold=self._fold)
+
+    def _posture(self, presentation=None):
+        # A schema older than TV Mode has no key: the posture is the presentation.
+        selected = (self._luma.get_string("posture")
+                    if self._luma.props.settings_schema.has_key("posture") else "automatic")
+        effective = (presentation or self._presentation())["effective"]
+        return posture_state(selected, presentation=effective, device=self._device_posture)
 
     def _on_fold_changed(self, *_args) -> None:
         fold = read_fold_posture()
@@ -275,6 +290,7 @@ class ShellStateService:
             restore_app_state=self._luma.get_boolean("restore-app-state"),
             renderer=self._renderer(),
             presentation=self._presentation(),
+            posture=self._posture(),
             home_layouts=self._home_layouts(),
             shelf=normalize_shelf(
                 layout_version=self._luma.get_uint("shelf-layout-version"),
@@ -317,6 +333,7 @@ class ShellStateService:
         state = self._presentation()
         return {
             "Presentation": GLib.Variant("s", state["effective"]),
+            "Posture": GLib.Variant("s", self._posture(state)["effective"]),
             "InputCapabilities": GLib.Variant("a{sb}", {
                 key: value for key, value in state["capabilities"].items() if value is not None}),
         }
@@ -412,6 +429,9 @@ class ShellStateService:
                 invocation.return_value(None)
             elif method_name == "SetPresentation":
                 self._luma.set_string("presentation-mode", normalize_presentation(values[0]))
+                invocation.return_value(None)
+            elif method_name == "SetPosture":
+                self._luma.set_string("posture", normalize_posture(values[0]))
                 invocation.return_value(None)
             elif method_name == "SetHomeLayout":
                 profile, payload = values

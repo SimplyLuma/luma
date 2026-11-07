@@ -22,12 +22,18 @@
     "fastboot_product": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
     "kernel": {
       "type": "object", "additionalProperties": false,
-      "required": ["release", "config", "dtb"],
+      "required": ["release", "dtb"],
       "oneOf": [
-        {"required": ["tag"], "not": {"required": ["source_lock"]}},
-        {"required": ["source_lock"], "not": {"required": ["tag"]}}
+        {"required": ["tag", "config"], "not": {"anyOf": [{"required": ["source_lock"]}, {"required": ["distribution"]}]}},
+        {"required": ["source_lock", "config"], "not": {"anyOf": [{"required": ["tag"]}, {"required": ["distribution"]}]}},
+        {"required": ["distribution", "nevr"], "not": {"anyOf": [
+          {"required": ["tag"]}, {"required": ["source_lock"]}, {"required": ["config"]},
+          {"required": ["branch"]}, {"required": ["rpm_version_release"]}, {"required": ["dtb_overlays"]}
+        ]}}
       ],
       "properties": {
+        "distribution": {"enum": ["fedora"], "description": "Boots the distribution's own kernel package, unmodified; no Luma kernel tag, source lock or .config."},
+        "nevr": {"type": "string", "pattern": "^kernel-[0-9]+\\.[0-9]+(\\.[0-9]+)?-[A-Za-z0-9._+]+$", "description": "The distribution kernel package the device was qualified with, as name-version-release."},
         "branch": {"$ref": "#/$defs/slug", "description": "Overrides the SoC's kernel branch."},
         "source_lock": {"$ref": "#/$defs/relpath"},
         "tag": {"type": "string", "pattern": "^luma-[a-z0-9-]+-[A-Za-z0-9._+-]+$"},

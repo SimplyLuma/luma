@@ -1,0 +1,6 @@
+{
+  "issuer": "https://id.simplyluma.com/realms/luma-connect",
+  "api_origin": "https://hub.simplyluma.com",
+  "client_id": "luma-device",
+  "browser_client_id": "luma-connect-app"
+}

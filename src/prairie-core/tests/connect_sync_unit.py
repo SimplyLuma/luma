@@ -240,6 +240,9 @@ with tempfile.TemporaryDirectory(prefix="luma-connect-sync-test-") as directory:
                   transport=issue, out=report)
     assert enrolments[0][0] == "https://hub.example/api/hub/connect/devices"
     assert enrolments[0][1]["code"] == "ABCD2345" and enrolments[0][1]["name"] == "thinkpad"
+    enrol(code="abcd-0185", hub="https://hub.example/", name="thinkpad", transport=issue,
+          out=io.StringIO(), force=True)
+    assert enrolments[1][1]["code"] == "ABCDOIB5", enrolments[1][1]["code"]
     assert enrolments[0][2] == "", "enrolment is unauthenticated"
     assert fresh.token == "fresh-token" and load_identity().token == "fresh-token"
     assert device_file().stat().st_mode & 0o777 == 0o600
@@ -250,6 +253,15 @@ with tempfile.TemporaryDirectory(prefix="luma-connect-sync-test-") as directory:
         assert "code is required" in str(error)
     else:
         raise AssertionError("an empty enrolment code was accepted")
+
+    def expired(_url, _payload, _token=""):
+        raise HubResponseError(400, "Bad Request", "This enrolment code has expired or was already used.")
+    try:
+        enrol(code="ABCD2345", hub="https://hub.example", transport=expired, out=io.StringIO(), force=True)
+    except ConnectError as error:
+        assert str(error) == "This enrolment code has expired or was already used.", str(error)
+    else:
+        raise AssertionError("a refused enrolment code was accepted")
 
 # An unreachable address book and an empty one both come back as (). Only the
 # second may be pushed: a full snapshot of nothing deletes everything the hub

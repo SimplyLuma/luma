@@ -386,6 +386,13 @@ class CallStore:
         if outcome not in {"completed","missed","failed","rejected","cancelled"}: raise ValueError("Invalid call outcome.")
         record=CallRecord(uid or uuid.uuid4().hex,address,direction,int(time.time() if started is None else started),max(0,int(duration)),outcome)
         self.connection.execute("INSERT OR IGNORE INTO calls VALUES(?,?,?,?,?,?)",(record.uid,record.address,record.direction,record.started,record.duration,record.outcome)); self.connection.commit(); return record
+    def finish(self, uid: str, *, duration: int, outcome: str) -> bool:
+        """Settle a call recorded when it began; False when no row has the uid."""
+        if outcome not in {"completed","missed","failed","rejected","cancelled"}: raise ValueError("Invalid call outcome.")
+        cursor = self.connection.execute("UPDATE calls SET duration=?,outcome=? WHERE uid=?", (max(0, int(duration)), outcome, uid))
+        self.connection.commit()
+        return cursor.rowcount == 1
+
     def delete(self, uid: str) -> bool:
         """Remove one call from the log on this device."""
         cursor = self.connection.execute("DELETE FROM calls WHERE uid=?", (uid,))

@@ -1,0 +1,13 @@
+Luma for Raspberry Pi 5 (@VERSION@, updates from @REF@)
+
+This card is a complete Luma system. Partition 1 (LUMA_PI5, this one) holds
+config.txt, U-Boot, the device trees and GRUB; partition 2 is /boot; partition
+3 is the system, which grows to fill the card on the first boot.
+
+The first boot runs Luma's setup (language, network, your account) and takes a
+few minutes while apps are imported. Update from Settings; the system updates
+itself, and this partition is not rewritten by an update.
+
+Choose the menu entry for the next boot only, from a running Luma:
+  sudo luma-rpi5-boot-next uboot       (U-Boot's next boot device)
+The GRUB menu on HDMI cannot be driven with a USB keyboard.

@@ -1,19 +1,35 @@
 # SPDX-License-Identifier: MPL-2.0
 [Unit]
-Description=Luma saved passwords (the login keyring's state)
+Description=Luma saved passwords (the login keyring's state, and its first unlock)
+Documentation=https://projectluma.org/saved-passwords
 PartOf=graphical-session.target
-After=graphical-session.target gnome-keyring-daemon.service
+# Before the Shell and anything else in the session: when the keyring needs
+# its first unlock, this process takes the keyring prompter's name first, so
+# every keyring prompt is answered by Luma's sheet (the Shell queues for the
+# name and has it back afterwards). The sheet itself waits for the display.
+# Not after luma-keyring-autologin.service: both start at once, so the name is
+# held from the session's first moments, not after that step's few seconds.
+After=dbus.socket gnome-keyring-daemon.socket
+Before=graphical-session-pre.target
+ConditionUser=!@system
 
 [Service]
-Type=simple
+# READY=1 at once when there is nothing to ask, once the sheet is up when
+# there is, and never later than a few seconds either way (see ready.py);
+# the session never waits on a person.
+Type=notify
+NotifyAccess=main
 ExecStart=/usr/libexec/luma-keyring --gapplication-service
+TimeoutStartSec=20
 # It looks once, says its piece and goes; a failure is not worth a loop.
 Restart=no
 Slice=session.slice
 NoNewPrivileges=yes
 LockPersonality=yes
 RestrictRealtime=yes
-MemoryHigh=64M
+# The recovery prompt derives a key with Argon2id (64 MiB).
+LimitCORE=0
+MemoryHigh=256M
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical-session-pre.target

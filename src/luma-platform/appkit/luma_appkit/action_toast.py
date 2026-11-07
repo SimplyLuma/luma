@@ -14,6 +14,13 @@ question (use DestructiveDialog) and never a per-app toast widget. v70
     Toast.show(island, "Added Kansas City, MO", kind="place")
     busy = Toast.show(window, "Preparing export…", busy=True); …; busy.dismiss()
 
+Work that takes a while has one progress toast, on every posture (on a TV
+stage it is `TvToast`'s, in the TV look):
+
+    sync = Toast.progress(window, "Syncing music…", count="120 of 840")
+    sync.update("Syncing album art…", count="40 of 300")    # its one line, in place
+    sync.finish("Music is up to date.")                      # or kind="error", a clear problem line
+
 The toast appears in the nearest `LayerHost` above the widget it was asked
 from (an application may wrap its main island in one, `ToastHost`), or the
 window's own. A bar the toast must clear is registered once with
@@ -33,7 +40,7 @@ from . import icons, lumaui  # noqa: E402
 from . import lumaui_tokens as tokens  # noqa: E402
 from .structure_layers import LayerHost  # noqa: E402
 
-__all__ = ["Toast", "ToastHost", "TOAST_KINDS"]
+__all__ = ["Toast", "ToastHost", "TOAST_KINDS", "ProgressToast"]
 
 #: What happened → (Lucide glyph, tone). Tones: good (the default green),
 #: accent, love, muted (routine: copied, deleted, archived …), warning, danger.
@@ -112,6 +119,7 @@ class Toast(Gtk.Box):
         text = Gtk.Label(label=message, xalign=0, ellipsize=Pango.EllipsizeMode.END, hexpand=True)
         text.add_css_class("lumaui-toast-text")
         self.append(text)
+        self._text = text
         if action is not None:
             # A failure's one fix ("Sign in again", "Update password"), drawn as Undo is, and kept as long.
             word, undo = action
@@ -137,6 +145,18 @@ class Toast(Gtk.Box):
         toast = cls(message, kind=kind, undo=undo, busy=busy, action=action)
         toast._present(LayerHost.for_widget(where))
         return toast
+
+    @classmethod
+    def progress(cls, where: Gtk.Widget, message: str, *, count: str = "") -> "ProgressToast":
+        """A toast that stays while work runs (see the module docstring)."""
+        return ProgressToast(where, message, count=count)
+
+    def set_message(self, message: str) -> None:
+        """Change a showing toast's line in place."""
+        if self._text.get_label() != message:
+            self.message = message
+            self._text.set_label(message)
+            self.update_property([Gtk.AccessibleProperty.LABEL], [message])
 
     def dismiss(self) -> None:
         """Take the toast away now (a busy toast stays until this is called)."""
@@ -217,3 +237,54 @@ class Toast(Gtk.Box):
         self.dismiss()
         if callback is not None:
             callback()
+
+
+def _tv_stage(widget: Gtk.Widget | None):
+    from .tv_stage import TvStage
+    while widget is not None and not isinstance(widget, TvStage):
+        widget = widget.get_parent()
+    return widget
+
+
+class ProgressToast:
+    """The one progress toast (`Toast.progress`): stays while work runs, one line that
+    updates in place, a quiet activity mark; `finish()` ends it with a plain toast.
+    On a TV stage it is the TV toast; elsewhere the window's."""
+
+    def __init__(self, where: Gtk.Widget, message: str, *, count: str = "") -> None:
+        self._where = where
+        self._stage = _tv_stage(where)
+        self._toast = None
+        self.update(message, count=count)
+
+    @staticmethod
+    def _line(message: str, count: str) -> str:
+        return f"{message} · {count}" if count else message
+
+    def update(self, message: str, *, count: str = "") -> None:
+        if self._stage is not None:
+            from .tv_toast import TvToast
+            self._toast = TvToast.progress(self._stage, message, count=count)
+        elif self._toast is None or self._toast._host is None:
+            self._toast = Toast.show(self._where, self._line(message, count), busy=True)
+        else:
+            self._toast.set_message(self._line(message, count))
+
+    def finish(self, message: str | None = None, *, kind: str = "done",
+               action: tuple[str, Callable[[], None]] | None = None) -> None:
+        """End it: `message` as a plain toast (`kind="error"` for a problem), or just take it away."""
+        if self._stage is not None:
+            from .tv_toast import TvToast
+            toast = getattr(self._stage, "_tv_toast", None)
+            if message:
+                TvToast.show(self._stage, message, lead=TOAST_KINDS.get(kind, TOAST_KINDS["done"])[0])
+            elif toast is not None and toast.working:
+                toast.hide()
+            return
+        if self._toast is not None:
+            self._toast.dismiss()
+            self._toast = None
+        if message:
+            Toast.show(self._where, message, kind=kind, action=action)
+
+    dismiss = finish

@@ -105,6 +105,13 @@ class MediaMemory(unittest.TestCase):
         self.assertGreater(green, blue)
 
     def test_cache_is_bounded_by_decoded_bytes(self):
+        # The default budget scales with the device's memory (memory_budget),
+        # and an opaque picture is kept as RGB (3 bytes a pixel): a fixed 32 MB
+        # budget makes 20 decoded 1024x1024 pictures (60 MB) overflow it.
+        budget = 32 * 1024 * 1024
+        close_loader(self.loader)
+        self.loader = CountedLoader(byte_budget=budget)
+        TextureLoader._shared = self.loader
         base = self.root / 'square.png'
         image(base, 1024, 1024)
         for n in range(20):
@@ -114,9 +121,9 @@ class MediaMemory(unittest.TestCase):
             self.loader.request(str(path), 1024, result.append)
             self.assertTrue(until(lambda: len(result) == 1))
             self.assertIsInstance(result[0], Gdk.Texture)
-        retained = sum(t.get_width() * t.get_height() * 4 for t in self.loader._cache.values())
-        self.assertLessEqual(retained, 64 * 1024 * 1024)
-        self.assertGreater(retained, 0, 'no decoded result reached the cache')
+        self.assertLessEqual(self.loader._cache_bytes, budget)
+        self.assertLess(len(self.loader._cache), 20, 'nothing was evicted over the budget')
+        self.assertGreater(len(self.loader._cache), 0, 'no decoded result reached the cache')
 
     def test_same_pending_image_is_decoded_once(self):
         path = self.root / 'one.png'

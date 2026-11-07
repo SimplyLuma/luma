@@ -122,15 +122,16 @@ class CalendarApplication(Adw.Application):
         (self.props.active_window or CalendarWindow(self)).present()
 
     def do_command_line(self, command_line) -> int:
-        # A reminder from the Calendar agent opens its event:
-        # --event-uid=<uid> --event-day=<YYYY-MM-DD>
+        # A reminder from the Calendar agent, or an event in the shell's
+        # calendar, opens its event: --event-uid=<uid> --event-day=<YYYY-MM-DD>.
+        # A day alone (--event-day) opens that day.
         options = dict(item[2:].split("=", 1) for item in command_line.get_arguments()[1:]
                        if item.startswith("--event-") and "=" in item)
         self.activate()
         window = self.props.active_window
-        if options.get("event-uid") and options.get("event-day") and isinstance(window, CalendarWindow):
+        if options.get("event-day") and isinstance(window, CalendarWindow):
             try:
-                window.show_event(options["event-uid"], date.fromisoformat(options["event-day"]))
+                window.show_event(options.get("event-uid", ""), date.fromisoformat(options["event-day"]))
             except ValueError:
                 pass
         return 0

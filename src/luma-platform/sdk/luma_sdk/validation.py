@@ -11,6 +11,7 @@ from typing import Any, Iterable
 from xml.etree import ElementTree
 
 from .background import background_errors, background_project_errors
+from .tv import tv_errors, tv_project_errors
 
 
 APP_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+){2,}$")
@@ -400,6 +401,12 @@ def validate_manifest(manifest: dict[str, Any], root: Path | None = None) -> lis
     errors: list[str] = []
     _validate_base(manifest, root, errors)
     errors.extend(background_errors(manifest))
+    errors.extend(tv_errors(manifest))
+    if root is not None:
+        distribution = manifest.get("distribution", {})
+        desktop = distribution.get("desktop_file") if isinstance(distribution, dict) else None
+        desktop_path = _project_path(root, desktop, "distribution.desktop_file", []) if desktop else None
+        errors.extend(tv_project_errors(manifest, root, desktop_path))
     if manifest.get("schema_version") == "0.2":
         if root is None:
             errors.append("schema 0.2 validation requires the project root")

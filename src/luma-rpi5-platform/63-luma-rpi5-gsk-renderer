@@ -1,0 +1,10 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# systemd user environment generator: GTK's GL renderer on the Raspberry Pi 5.
+# On V3D the Vulkan renderer (v3dv) takes ~30 ms per 4K frame where GL takes
+# ~16 ms. Pi 5 only; a GSK_RENDERER the person set still wins.
+[ -z "$GSK_RENDERER" ] || exit 0
+compat=${LUMA_RPI5_DT_COMPATIBLE:-/proc/device-tree/compatible}
+[ -r "$compat" ] || exit 0
+tr '\0' '\n' <"$compat" | grep -Eqx 'raspberrypi,5-model-b(-d0)?' || exit 0
+echo "GSK_RENDERER=gl"

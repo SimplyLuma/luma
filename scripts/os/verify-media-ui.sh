@@ -38,7 +38,7 @@ done
 [ -f "$iso" ] && [ -f "$iso.release" ] || { printf 'ISO or its .release record is missing: %s\n' "$iso" >&2; exit 2; }
 # Use the medium's recorded payload target, including retained x86 records
 # that predate the explicit architecture field. Never choose the host CPU.
-luma_os_load_env /dev/stdin <<<"$(sed 's/^\([a-z_]*\)=/MEDIA_\U\1=/' "$iso.release")"
+luma_os_load_env /dev/stdin <<<"$(sed 's/^\([a-z_][a-z0-9_]*\)=/MEDIA_\U\1=/' "$iso.release")"
 media_architecture=${MEDIA_ARCHITECTURE:-$(printf '%s' "$MEDIA_REF" | cut -d/ -f3)}
 luma_os_select_architecture "$media_architecture"
 [ "$MEDIA_REF" = "$(luma_os_channel_ref "$MEDIA_CHANNEL")" ] ||

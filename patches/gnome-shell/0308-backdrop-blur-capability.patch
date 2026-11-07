@@ -1,0 +1,114 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] shell: separate backdrop blur from reduce transparency
+
+Backdrop blur samples the framebuffer behind each blurred surface on
+every repaint. On devices where that is costly, the backdrop-blur
+shell-state key turns the blur off while surfaces keep their
+translucent fill. reduce-transparency still makes surfaces opaque.
+
+--- a/js/ui/components/polkitAgent.js
++++ b/js/ui/components/polkitAgent.js
+@@ -182,7 +182,7 @@
+             source: this,
+             coordinate: Clutter.BindCoordinate.SIZE,
+         }));
+-        if (blurAllowed()) {
++        if (blurAllowed() && SurfaceMaterials.backdropBlurEnabled()) {
+             this._scrim.add_effect_with_name('luma-seal-blur', new Shell.BlurEffect({
+                 mode: Shell.BlurMode.BACKGROUND,
+                 radius: SCRIM_BLUR * scale,
+--- a/js/ui/lumaCapture.js
++++ b/js/ui/lumaCapture.js
+@@ -954,6 +954,7 @@
+         });
+         this.add_child(this._disc);
+         this._blur = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius: 16, brightness: 1});
++        this._blur.enabled = SurfaceMaterials.backdropBlurEnabled();
+         this._disc.add_effect_with_name('luma-capture-countdown-blur', this._blur);
+         this._label = new St.Label({
+             style_class: 'luma-capture-countdown-label',
+--- a/js/ui/lumaShare.js
++++ b/js/ui/lumaShare.js
+@@ -489,7 +489,7 @@
+             source: this,
+             coordinate: Clutter.BindCoordinate.SIZE,
+         }));
+-        if (blurAllowed()) {
++        if (blurAllowed() && SurfaceMaterials.backdropBlurEnabled()) {
+             this._scrim.add_effect_with_name('luma-share-blur', new Shell.BlurEffect({
+                 mode: Shell.BlurMode.BACKGROUND,
+                 radius: SCRIM_BLUR * scale,
+--- a/js/ui/lumaSurfaceMaterials.js
++++ b/js/ui/lumaSurfaceMaterials.js
+@@ -145,6 +145,25 @@
+     return new Gio.Settings({settings_schema: schema});
+ }
+ 
++let blurSettings;
++
++/**
++ * Whether the device renders live backdrop blur behind Shell surfaces.
++ *
++ * This is a device capability, not an accessibility choice. Where sampling
++ * the framebuffer behind every blurred surface on each repaint is costly
++ * (for example linear scanout with CPU tile conversion), the device turns it
++ * off: surfaces keep their translucent fill and only lose the blur.
++ * Reduce transparency still decides whether surfaces are opaque.
++ *
++ * @returns {boolean}
++ */
++export function backdropBlurEnabled() {
++    blurSettings ??= optionalSettings(
++        'org.project_luma.shell-state', 'backdrop-blur') ?? false;
++    return blurSettings ? blurSettings.get_boolean('backdrop-blur') : true;
++}
++
+ function isDark(settings) {
+     return settings?.get_string('color-scheme') === 'prefer-dark';
+ }
+@@ -389,7 +408,7 @@
+             if (floating && allowed) recipe = this._floatingRecipe;
+             this._effect.radius = recipe.radius;
+             this._effect.saturation = recipe.saturation;
+-            this._effect.enabled = active;
++            this._effect.enabled = active && backdropBlurEnabled();
+             this._setEffectGeometry();
+         }
+     }
+--- a/js/ui/messageTray.js
++++ b/js/ui/messageTray.js
+@@ -1246,7 +1246,7 @@
+         const syncBlur = treatment => {
+             const translucent = rounded && blurAvailable() &&
+                 !reduceTransparency() && !highContrast();
+-            blur.enabled = translucent;
++            blur.enabled = translucent && SurfaceMaterials.backdropBlurEnabled();
+             // Without a real backdrop the card is its opaque equivalent,
+             // never a low-opacity rectangle over unreadable content.
+             if (translucent)
+--- a/js/ui/prairieLogin.js
++++ b/js/ui/prairieLogin.js
+@@ -376,6 +376,10 @@
+             this._surfaceSettings = new Gio.Settings({settings_schema: schema});
+             this._surfaceSettings.connectObject('changed::reduce-transparency',
+                 this._syncTransparency.bind(this), this);
++            if (schema.has_key('backdrop-blur')) {
++                this._surfaceSettings.connectObject('changed::backdrop-blur',
++                    this._syncTransparency.bind(this), this);
++            }
+         }
+         this._blur = new Shell.BlurEffect({
+             mode: Shell.BlurMode.BACKGROUND,
+@@ -528,7 +532,11 @@
+     _syncTransparency() {
+         const reduced = (this._surfaceSettings?.get_boolean('reduce-transparency') ?? false) ||
+             this._a11ySettings.get_boolean('high-contrast');
+-        this._blur.enabled = !reduced;
++        // Backdrop blur is a device capability: without it the card keeps
++        // its translucent fill and only loses the blur.
++        const blur = !this._surfaceSettings?.settings_schema.has_key('backdrop-blur') ||
++            this._surfaceSettings.get_boolean('backdrop-blur');
++        this._blur.enabled = !reduced && blur;
+         if (reduced)
+             this.add_style_class_name('poster-card-opaque');
+         else

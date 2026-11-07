@@ -19,6 +19,7 @@ python.install_sources(
   'luma_tide/ui.py',
   'luma_tide/ui_parts.py',
   'luma_tide/ui_phone.py',
+  'luma_tide/ui_tv.py',
   'luma_tide/credentials.py',
   'luma_tide/credit_markup.py',
   'luma_tide/indexer.py',
@@ -55,6 +56,8 @@ install_data(
 )
 install_data(
   'data/org.projectluma.Tide.svg',
+  # The wide TV tile, named by X-Luma-TV-Tile in the desktop entry.
+  'data/org.projectluma.Tide-tv.svg',
   install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps',
 )
 install_data(

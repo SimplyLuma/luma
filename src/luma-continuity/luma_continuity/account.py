@@ -34,6 +34,9 @@ class AccountConfig:
     api_origin: str
     client_id: str
     scope: str = 'openid profile email offline_access'
+    # The public client of the first-boot device authorization grant (RFC 8628);
+    # its tokens are adopted by login.DeviceHandoff. Empty: no device sign-in.
+    device_client_id: str = ''
 
     def __post_init__(self):
         for value in (self.issuer, self.api_origin):
@@ -41,8 +44,34 @@ class AccountConfig:
             if (url.scheme != 'https' or not url.hostname or url.username or url.password
                     or url.query or url.fragment or value.endswith('/')):
                 raise ValueError('exact HTTPS account endpoint required')
-        if urlsplit(self.api_origin).path or not self.client_id or len(self.client_id) > 128:
+        if (urlsplit(self.api_origin).path or not self.client_id or len(self.client_id) > 128
+                or len(self.device_client_id) > 128):
             raise ValueError('invalid native account configuration')
+
+    @classmethod
+    def from_settings(cls, data):
+        """/etc/luma-connect/client.json.
+
+        `client_id` is the client this device signs in with: luma-setup's device
+        grant reads it, and the browser PKCE sign-in uses it too unless
+        `browser_client_id` names a separate client.
+        """
+        known = {'issuer', 'api_origin', 'client_id', 'browser_client_id', 'scope'}
+        if (not isinstance(data, dict) or set(data) - known
+                or not all(isinstance(value, str) for value in data.values())):
+            raise ValueError('invalid native account configuration')
+        values = dict(issuer=data.get('issuer', ''), api_origin=data.get('api_origin', ''),
+                      client_id=data.get('browser_client_id') or data.get('client_id', ''),
+                      device_client_id=data.get('client_id', ''))
+        if data.get('scope'): values['scope'] = data['scope']
+        return cls(**values)
+
+    def token_client(self, token):
+        """The client a stored token was issued to; renewal must use the same one."""
+        client = token.get('_client_id') or self.client_id
+        if client not in {self.client_id, self.device_client_id}:
+            raise AccountError('invalid_keyring_record')
+        return client
 
 
 class SecretTokens:
@@ -170,8 +199,10 @@ class AccountAPI:
 
 
 class AccountModel:
-    def __init__(self, api=None, tokens=None, *, handlers=None, pause_account=lambda: None, now=time.time, monotonic=time.monotonic):
+    def __init__(self, api=None, tokens=None, *, handlers=None, pause_account=lambda: None, now=time.time, monotonic=time.monotonic,
+                 handoff=None):
         self.api, self.tokens = api, tokens
+        self.handoff = handoff  # login.DeviceHandoff: the first-boot setup's sign-in
         self.handlers = dict(handlers or {})
         self.pause_account = pause_account
         self.now = now
@@ -210,6 +241,13 @@ class AccountModel:
         self.state['account_failure']=None
         try:
             token = self.tokens.get()
+            if self.handoff is not None and self.handoff.pending():
+                if token is None:
+                    stage='device_handoff'
+                    token=self.handoff.adopt()
+                else:
+                    # Already signed in here: the setup's sign-in is not needed.
+                    self.handoff.discard()
             if token is None:
                 if self.state.get('identity'):
                     self.pause_account()

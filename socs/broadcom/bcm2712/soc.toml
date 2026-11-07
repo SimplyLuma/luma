@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "broadcom"
+family = "bcm2712"
+name = "Broadcom BCM2712"
+arch = "aarch64"
+part_numbers = ["BCM2712"]
+
+[kernel]
+# Devices on this family boot the distribution kernel; no Luma kernel branch.
+repository = "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+branch = "master"
+upstream = "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+dts_directory = "arch/arm64/boot/dts/broadcom"
+
+[boot]
+# Board firmware (EEPROM) -> U-Boot (EFI) -> GRUB.
+format = "uefi"
+page_size = 4096
+dtb_in_boot_image = false
+
+[firmware]
+directory = "brcm"

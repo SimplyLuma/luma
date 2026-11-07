@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import pickle
 import threading
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -16,10 +19,20 @@ from urllib.parse import urlsplit
 
 from .model import RepeatMode, SourceState
 from .playback import PlaybackState
-from .presentation import Album, Library, MusicSource, Player, Song
+from .presentation import Album, Library, MusicSource, Player, Playlist, Song
 from .subsonic import CertificateError, Unreachable, has_scheme, is_encrypted, normalize_address
 from .remote import accepts_plaintext
 from .recency import AlbumRecency
+
+
+# The last library view, kept so a start draws it at once (metadata only, never audio).
+SNAPSHOT_VERSION = 1
+SNAPSHOT_SPACING = 30.0
+
+
+def snapshot_path():
+    cache = os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache')
+    return os.path.join(cache, 'luma-tide', 'library-view.pickle')
 
 
 def album_id(title, artist):
@@ -28,6 +41,7 @@ def album_id(title, artist):
 
 class LiveLibrary:
     fixture = False
+    keep_snapshots = False  # the window turns this on; tests and tools never write the cache
     view = 'albums'
     album_id = None
 
@@ -44,6 +58,7 @@ class LiveLibrary:
         self._last_playing_track = None
         self._history_lock = threading.RLock()
         self._closed = False
+        self._played_input, self._played_output = None, ()
 
     @property
     def player(self):
@@ -59,34 +74,43 @@ class LiveLibrary:
     def load(self):
         sources = self.store.sources()
         signed_out = {s.id for s in sources if s.state == SourceState.AUTH_REQUIRED}
-        tracks = self.store.tracks()
+        rows, pairs = self.store.library_listing()
+        names = {source.id: source.name for source in sources}
+        counts = defaultdict(int)
+        track_sources = defaultdict(list)
+        for track_id, source_id in pairs:
+            counts[source_id] += 1
+            name = names.get(source_id)
+            if name is not None and name not in track_sources[track_id]:
+                track_sources[track_id].append(name)
         if signed_out:
-            tracks = [track for track in tracks if any(
-                copy.source_id not in signed_out or copy.offline_ready
-                for copy in self.store.copies_for_track(track.id))]
+            # A signed-out source's songs show only where another copy plays: a signed-in
+            # source's or a finished download (one query, not one per song).
+            playable = {track_id for track_id, source_id in pairs if source_id not in signed_out}
+            playable |= self.store.offline_ready_tracks()
+            rows = [row for row in rows if row['id'] in playable]
         groups = defaultdict(list)
-        for track in tracks:
-            groups[track.album, track.album_artist].append(track)
+        for row in rows:
+            groups[row['album'], row['album_artist']].append(row)
         artwork = {(title, artist): uri for title, artist, _year, _count, uri in self.store.albums()}
         albums = []
         for (title, artist), items in groups.items():
             identifier = album_id(title, artist)
-            songs = tuple(Song(track.id, track.title, identifier, track.duration_ns // 1_000_000_000,
-                               track.track_number or index + 1, track.favorite)
-                          for index, track in enumerate(items))
-            albums.append(Album(identifier, title, artist, max(t.year for t in items), songs,
+            songs = tuple(Song(row['id'], row['title'], identifier, row['duration_ns'] // 1_000_000_000,
+                               row['track_number'] or index + 1, bool(row['favorite']),
+                               tuple(track_sources.get(row['id'], ())))
+                          for index, row in enumerate(items))
+            albums.append(Album(identifier, title, artist, max(row['year'] for row in items), songs,
                                 artwork.get((title, artist))))
         rows = []
-        track_sources = defaultdict(list)
         for source in sources:
-            source_tracks = self.store.tracks(source_id=source.id, shown_only=False)
-            count = len(source_tracks)
-            for track in source_tracks:
-                if source.name not in track_sources[track.id]:
-                    track_sources[track.id].append(source.name)
+            count = counts[source.id]
             remote = source.kind == 'subsonic'
             state = 'ok' if source.state == SourceState.ONLINE else 'busy' if source.state == SourceState.SYNCING else 'bad'
+            remote_sources = getattr(self.app, 'remote', None)
+            locked = remote and remote_sources is not None and remote_sources.keyring_locked(source.id)
             subtitle = ('Signed out' if source.state == SourceState.AUTH_REQUIRED else
+                        f'Keyring locked · {count:,} songs' if locked else
                         f'Syncing · {count:,} songs' if source.state == SourceState.SYNCING else
                         f'Up to date · {count:,} songs' if source.state == SourceState.ONLINE else
                         f'Out of reach · {count:,} songs')
@@ -101,10 +125,8 @@ class LiveLibrary:
             else:
                 facts = [('Folder', source.uri), ('Songs', f'{count:,}'), ('Last sync', 'Watching for changes')]
             rows.append(MusicSource(source.id, source.name, 'server' if remote else 'monitor', state,
-                                    subtitle, tuple(facts), remote))
-        albums = [replace(album, songs=tuple(
-            replace(song, library_sources=tuple(track_sources[song.id]))
-            for song in album.songs)) for album in albums]
+                                    subtitle, tuple(facts), remote,
+                                    signed_out=source.state == SourceState.AUTH_REQUIRED))
         offline = self.store.offline_summary()
         if offline.complete or offline.pending or offline.failed:
             subtitle = f'Downloading {offline.pending} songs' if offline.pending else f'Kept offline · {offline.complete} songs'
@@ -115,12 +137,49 @@ class LiveLibrary:
             self._recency.load()
         except (OSError, ValueError):
             logging.getLogger(__name__).exception('Cannot read Tide album playback history')
-        self._library = Library(self._recency.order(albums), tuple(rows))
+        playlists = tuple(Playlist(identifier, name, tuple(track.id for track in self.store.playlist_tracks(identifier)))
+                          for identifier, name, _count in self.store.playlists())
+        known = {album.id for album in albums}
+        self._library = Library(self._recency.order(albums), tuple(rows), playlists,
+                                tuple(identifier for identifier in self._recency.played() if identifier in known))
+        self._keep_snapshot(self._library)
         return self._library
+
+    def snapshot(self):
+        """The library view the last run read, for the first frame (about 0.1 s for 19k songs
+        on a Raspberry Pi 5), or None. The real read follows and replaces it in place."""
+        try:
+            with open(snapshot_path(), 'rb') as handle:
+                version, library = pickle.load(handle)  # Tide's own cache file, written below
+        except Exception:  # noqa: BLE001 - absent, old or damaged: read the library as usual
+            return None
+        return library if version == SNAPSHOT_VERSION and isinstance(library, Library) else None
+
+    def _keep_snapshot(self, library):
+        """Write the view at most every SNAPSHOT_SPACING seconds (a sync reads often), atomically."""
+        now = time.monotonic()
+        if not self.keep_snapshots or now - getattr(self, '_snapshot_at', -SNAPSHOT_SPACING) < SNAPSHOT_SPACING:
+            return
+        self._snapshot_at = now
+        path = snapshot_path()
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            partial = f'{path}.{os.getpid()}.part'
+            with open(partial, 'wb') as handle:
+                pickle.dump((SNAPSHOT_VERSION, library), handle, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(partial, path)
+        except OSError:
+            logging.getLogger(__name__).warning('Cannot keep Tide library snapshot', exc_info=True)
 
     def order_albums(self, library):
         albums = self._recency.order(library.albums)
-        return replace(library, albums=albums) if albums != library.albums else library
+        played = self._recency.played()
+        if played != self._played_input:
+            known = {album.id for album in library.albums}
+            self._played_input, self._played_output = played, tuple(i for i in played if i in known)
+        if albums != library.albums or self._played_output != library.played:
+            return replace(library, albums=albums, played=self._played_output)
+        return library
 
     def source_address(self, identifier):
         """Edit the saved URI, including its scheme/path, not the display host."""
@@ -164,6 +223,17 @@ class LiveLibrary:
         ids = [s.id for s in album.songs]
         self.controller.set_shuffle(shuffle)
         self.controller.replace_queue(ids, start=ids.index(song.id), play=True)
+
+    def play_ids(self, track_ids, start=0, shuffle=False):
+        """Play a list of songs (a playlist, an artist's songs) from `start`."""
+        ids = list(track_ids)
+        if not ids:
+            return
+        if shuffle:
+            import random
+            start = random.randrange(len(ids))
+        self.controller.set_shuffle(shuffle)
+        self.controller.replace_queue(ids, start=max(0, min(start, len(ids) - 1)), play=True)
 
     def toggle(self):
         self.controller.toggle()

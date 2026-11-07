@@ -63,8 +63,20 @@ uses a centered identity followed by grouped touch controls. The same daemon
 snapshot supplies both. `luma-connect-daemon` is activated on the user session
 bus as `org.projectluma.Connect1`. Without root-owned immutable
 `/etc/luma-connect/client.json`, it remains signed out. Configuration keys are
-`issuer`, `api_origin`, and `client_id`, all using the reviewed native client;
-both endpoints require HTTPS. No production endpoint is bundled.
+`issuer`, `api_origin`, `client_id`, optional `browser_client_id` and `scope`;
+both endpoints require HTTPS. `client_id` is the public client with the OAuth 2.0
+device authorization grant (RFC 8628) that luma-setup signs in with; the browser
+PKCE sign-in uses `browser_client_id` when set, else `client_id`. The package
+ships the luma-connect realm (`%config(noreplace)`; edit to point elsewhere).
+
+At first login the daemon adopts the token luma-setup sealed at Finish
+(`~/.local/state/luma-setup/connect.cred`, luma-keyring/systemd-creds):
+`login.DeviceHandoff` rotates the refresh token with the device client,
+validates the new ID token (issuer, audience, signature), stores it pending and
+completes on `/v1/me` agreement. The seal is removed once stored, or when it is
+unusable (revoked, wrong audience, sealed elsewhere); an unreachable provider
+keeps it for the next refresh. Tests: `tests/test_device_handoff.py` against
+`tests/mock_device_idp.py`.
 
 Account authorization uses external-browser Authlib S256 PKCE, validated
 joserfc ID tokens plus API identity agreement, and libsecret only. Token

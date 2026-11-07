@@ -132,9 +132,16 @@ def app_command(run_dir: str, plan: dict, base_env: dict) -> tuple[list[str], di
         return [binary, *plan.get("args", [])], env
     run = os.path.join(run_dir, "preview", "bin", "run")
     paths = [os.path.join(run_dir, "src", p) for p in plan.get("pythonpath", [])]
+    env = {}
+    # A Python fixture over a LumaUI-1 built from the worktree (scenario gtk.build {}): its library
+    # and typelib, not the image's packaged platform.
+    lumaui = f"{C_ROOT}/lumaui/lib64"
+    if os.path.isdir(os.path.join(lumaui, "girepository-1.0")):
+        env.update({"LD_LIBRARY_PATH": lumaui, "GI_TYPELIB_PATH": f"{lumaui}/girepository-1.0",
+                    "XDG_DATA_DIRS": f"{C_ROOT}/lumaui/share:{base_env['XDG_DATA_DIRS']}"})
     if paths or "." in plan["module"]:
-        return [run, "--module", plan["module"]], {"LUMAUI_EXTRA_PYTHONPATH": ":".join(paths)}
-    return [run, plan["module"]], {}
+        return [run, "--module", plan["module"]], {**env, "LUMAUI_EXTRA_PYTHONPATH": ":".join(paths)}
+    return [run, plan["module"]], env
 
 
 def set_form_factor(env: dict, plan: dict) -> None:
@@ -223,13 +230,17 @@ def main() -> int:
         mutter = subprocess.Popen(["mutter", "--headless", "--wayland", "--no-x11", f"--wayland-display={display}",
                                    "--virtual-monitor", monitor], env=base_env, stdout=log, stderr=log, start_new_session=True)
         sock = os.path.join(runtime, display)
-        for _ in range(100):
-            if os.path.exists(sock):
-                break
+        # The service runs niced with idle I/O from container storage on a data disk: a cold
+        # first start can take far longer than on a desktop. Wait for the socket, or for mutter to exit.
+        limit = float(os.environ.get("LUMAUI_CONFORM_MUTTER_WAIT", "90"))
+        started = time.monotonic()
+        while not os.path.exists(sock) and mutter.poll() is None and time.monotonic() - started < limit:
             time.sleep(0.1)
-        else:
-            print("lumaui-conform: headless mutter did not start (see remote.log)", file=sys.stderr)
+        if not os.path.exists(sock):
+            why = f"exited ({mutter.returncode})" if mutter.poll() is not None else f"no socket after {limit:.0f} s"
+            print(f"lumaui-conform: headless mutter did not start: {why} (see remote.log)", file=sys.stderr)
             return 4
+        print(f"mutter: up in {time.monotonic() - started:.1f} s", file=log, flush=True)
         command, launch_env = app_command(run_dir, plan, base_env)
         timeouts = 0
         for state in plan["states"]:

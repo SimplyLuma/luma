@@ -98,6 +98,13 @@ def megabytes(value: int) -> str:
     return f"{round(value / 1_000_000)} MB"
 
 
+def byte_counts(progress: Progress) -> str:
+    """Nothing until there is a size: a queued job has no bytes to count."""
+    if progress.total_bytes <= 0:
+        return ""
+    return f"{megabytes(progress.transferred_bytes)} of {megabytes(progress.total_bytes)}"
+
+
 #: The screenshot strip's height; each frame's width follows its picture.
 SHOT_HEIGHT = 190
 
@@ -286,9 +293,26 @@ class DepotWindow(UpdatesPage, AppWindow):
         self.connect('unmap', lambda *_args: self._cancel_pending_open())
         self._watch_for_app_metadata()
         self._ask_for_app_metadata()
+        # TV posture shows Depot's TV presentation (tv_views) in this same
+        # window, over the same catalogue, installation and update agent.
+        self.tv = None
+        self.connect("notify::tv-posture", lambda *_args: self._apply_posture())
+        self._apply_posture()
         self.reload()
         if self.fixture and self.view == "search":
             self.catalogue_provider.search(self.view_argument, self._search_done)
+
+    def _apply_posture(self) -> None:
+        if self.tv_posture and self.tv is None:
+            from .tv_views import DepotTV
+            self.tv = DepotTV(self)
+            self._desktop_body = self.body.get_first_child()
+            self.set_body(self.tv.stage)
+        elif not self.tv_posture and self.tv is not None:
+            self.tv.close()
+            self.tv = None
+            self.set_body(self._desktop_body)
+            self.render()
 
     def _close_requested(self, *_args):
         updates = getattr(self.get_application(), "app_updates", None)
@@ -745,6 +769,10 @@ class DepotWindow(UpdatesPage, AppWindow):
     # ── Rendering ────────────────────────────────────────────────────────
 
     def render(self, *, restore=None) -> None:
+        if getattr(self, "tv", None) is not None:
+            # In TV posture the TV presentation draws the same state.
+            self.tv.changed()
+            return
         position = self.content_scroll.get_vadjustment().get_value() if restore is None else restore
         self._render_serial += 1
         serial = self._render_serial
@@ -1646,14 +1674,11 @@ class DepotWindow(UpdatesPage, AppWindow):
             self._progress_views.setdefault(app.app_id, []).append(
                 lambda update, target=stage: target.set_label(update.stage))
             if job.kind not in SYSTEM_JOBS:
-                counts = Gtk.Label(label=(
-                    f"{megabytes(job.progress.transferred_bytes)} of {megabytes(job.progress.total_bytes)}"
-                    if job.progress else "Starting"))
+                counts = Gtk.Label(label=byte_counts(job.progress) if job.progress else "Starting")
                 counts.add_css_class("dp-progress-counts")
                 line.append(counts)
                 self._progress_views.setdefault(app.app_id, []).append(
-                    lambda update, target=counts: target.set_label(
-                        f"{megabytes(update.transferred_bytes)} of {megabytes(update.total_bytes)}"))
+                    lambda update, target=counts: target.set_label(byte_counts(update)))
             if job.kind != "remove" and job.kind not in SYSTEM_JOBS and not app.channel_kind:
                 cancel = Gtk.Button(label="Cancel")
                 cancel.add_css_class("luma-button")
@@ -2101,6 +2126,8 @@ class DepotWindow(UpdatesPage, AppWindow):
         job.progress = progress
         for update in tuple(self._progress_views.get(progress.app_id, ())):
             update(progress)
+        if getattr(self, "tv", None) is not None:
+            self.tv.progress(progress)
         # Progress changes the existing controls, never the page's widget tree,
         # image loaders, measured height, or current scroll position.
         self._refresh_sidebar_counts()
@@ -2286,17 +2313,7 @@ class DepotWindow(UpdatesPage, AppWindow):
                 self._report("Could not review removal", "Refresh My apps and try again.")
             return
         def confirm(also_remove_data: bool) -> None:
-            if app.app_id in self.jobs and not self.jobs[app.app_id].failed: return
-            job = self.jobs[app.app_id] = Job(app_id=app.app_id, kind="remove",
-                                        cancellable=Gio.Cancellable(),
-                                        progress=Progress(app.app_id, 0.0, 0, 0, "Removing"))
-            self.render()
-            def removed(result, key=app.app_id):
-                if not self._current_transaction(job,result): return
-                self.jobs.pop(key, None)
-                self._removed(result, app.name, also_remove_data)
-            self.installer.remove(app.app_id, keep_data=not also_remove_data, callback=removed,
-                                  cancellable=job.cancellable)
+            self._remove_app(app, also_remove_data)
         kind = self.fixture_listings[app.app_id].kind if self.fixture else (
             "layered" if app.system_state else app.channel_kind or "flatpak")
         body = {
@@ -2310,7 +2327,27 @@ class DepotWindow(UpdatesPage, AppWindow):
             option="Also remove its data" if not app.channel_kind else None,
             on_confirm=confirm)
 
+    def _remove_app(self, app: App, also_remove_data: bool) -> None:
+        """Remove `app`; `also_remove_data` is the person's answer, never assumed."""
+        if app.app_id in self.jobs and not self.jobs[app.app_id].failed: return
+        job = self.jobs[app.app_id] = Job(app_id=app.app_id, kind="remove",
+                                    cancellable=Gio.Cancellable(),
+                                    progress=Progress(app.app_id, 0.0, 0, 0, "Removing"))
+        self.render()
+        def removed(result, key=app.app_id):
+            if not self._current_transaction(job,result): return
+            self.jobs.pop(key, None)
+            self._removed(result, app.name, also_remove_data)
+        self.installer.remove(app.app_id, keep_data=not also_remove_data, callback=removed,
+                              cancellable=job.cancellable)
+
     def _removed(self, result: Result, name: str = "App", removed_data: bool = False) -> None:
+        if getattr(self, "tv", None) is not None and result.ok and not (
+                isinstance(result.value, dict) and result.value.get("data_removal_error")):
+            self.tv.toast(f"{name} uninstalled" + (" with its data" if removed_data else ". Its data is kept"),
+                          lead="trash-2")
+            self.installer.installed(self._installed_loaded)
+            return
         if not result.ok:
             self._report("That app was not removed", result.error.hint or str(result.error))
         elif isinstance(result.value, dict) and result.value.get("data_removal_error"):
@@ -3655,8 +3692,7 @@ class DepotWindow(UpdatesPage, AppWindow):
             track.set_fraction(job.progress.fraction)
             row.append(track)
             counts = Gtk.Label(
-                label=f"{job.progress.stage} · {megabytes(job.progress.transferred_bytes)}"
-                      f" of {megabytes(job.progress.total_bytes)}",
+                label=" · ".join(x for x in (job.progress.stage, byte_counts(job.progress)) if x),
                 xalign=0)
             counts.add_css_class("dp-progress-counts")
             row.append(counts)
@@ -3721,6 +3757,10 @@ class DepotWindow(UpdatesPage, AppWindow):
             if self.installed else "Nothing installed")
 
     def _report(self, heading: str, body: str) -> None:
+        if getattr(self, "tv", None) is not None:
+            # On a TV the shared toast says it; the desktop alert has no remote path.
+            self.tv.toast(heading, lead="circle-alert")
+            return
         dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.add_response("close", "Close")
         dialog.present(self)

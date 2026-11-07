@@ -9,7 +9,7 @@ import unittest
 import urllib.parse
 from pathlib import Path
 
-from luma_tide.credentials import MemoryCredentialStore
+from luma_tide.credentials import CredentialUnavailable, MemoryCredentialStore
 from luma_tide.model import LibraryStore, MediaMetadata, OfflineState, SourceState
 from luma_tide.playback import PlaybackController, PlaybackState, PlaybackUnavailable
 from luma_tide.model import Source
@@ -198,6 +198,64 @@ class RemoteSourceTests(unittest.TestCase):
             self.remote.connect(source.id).result(10)
         self.assertIs(self.store.source(source.id).state, SourceState.AUTH_REQUIRED)
 
+    def _fresh_remote(self) -> None:
+        self.remote.close()
+        self.remote = RemoteSources(
+            self.store, lambda: self.keyring,
+            offline_root=self.root / "offline", artwork_root=self.root / "artwork",
+        )
+
+    def test_a_locked_keyring_waits_and_never_signs_out(self) -> None:
+        source = self.add()
+        self.remote.sync(source.id).result(10)
+        songs = len(self.store.tracks())
+        self._fresh_remote()
+        self.keyring.locked = True
+        with self.assertRaises(CredentialUnavailable):
+            self.remote.sync(source.id).result(10)
+        self.assertIs(self.store.source(source.id).state, SourceState.OFFLINE)
+        self.assertTrue(self.remote.keyring_locked(source.id))
+        self.assertEqual(len(self.store.tracks()), songs)
+        self.assertIsNotNone(self.keyring.secrets.get(source.auth_ref), "the sign-in is kept")
+        # Playing asks for the keyring then (the unlock prompt), and says why it can't play yet.
+        copy = self.store.copies_for_track(self.store.tracks()[0].id)[0]
+        with self.assertRaisesRegex(PlaybackUnavailable, "Unlock your keyring"):
+            self.remote.resolve(copy)
+        self.keyring.locked = False
+        self.assertIs(self.remote.connect(source.id).result(10), SourceState.ONLINE)
+        self.assertFalse(self.remote.keyring_locked(source.id))
+        self.assertTrue(self.remote.resolve(self.store.select_copy(self.store.tracks()[0].id)).startswith("http"))
+
+    def test_a_locked_keyring_keeps_a_signed_out_source_signed_out(self) -> None:
+        source = self.add()
+        self.remote.sign_out(source.id).result(10)
+        self._fresh_remote()
+        self.keyring.locked = True
+        self.keyring.secrets[source.auth_ref] = "a sign-in from another device"  # unknown while locked
+        with self.assertRaises(CredentialUnavailable):
+            self.remote.sync(source.id).result(10)
+        self.assertIs(self.store.source(source.id).state, SourceState.AUTH_REQUIRED)
+
+    def test_a_missing_sign_in_is_signed_out(self) -> None:
+        source = self.add()
+        self.remote.sync(source.id).result(10)
+        self._fresh_remote()
+        self.keyring.clear(source.auth_ref)
+        with self.assertRaises(AuthenticationFailed):
+            self.remote.sync(source.id).result(10)
+        self.assertIs(self.store.source(source.id).state, SourceState.AUTH_REQUIRED)
+        self.assertFalse(self.remote.keyring_locked(source.id))
+
+    def test_a_server_that_rejects_the_password_is_signed_out(self) -> None:
+        source = self.add()
+        self.remote.sync(source.id).result(10)
+        self._fresh_remote()
+        self.server.password = "changed on the server"
+        with self.assertRaises(AuthenticationFailed):
+            self.remote.sync(source.id).result(10)
+        self.assertIs(self.store.source(source.id).state, SourceState.AUTH_REQUIRED)
+        self.assertFalse(self.remote.keyring_locked(source.id))
+
     def test_an_unreachable_server_is_out_of_reach_not_broken(self) -> None:
         source = self.add()
         self.remote.mark_offline(source.id)
@@ -299,6 +357,42 @@ class RemoteSourceTests(unittest.TestCase):
         connection = sqlite3.connect(path)
         self.addCleanup(connection.close)
         self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+
+
+class CoverRevalidationTests(unittest.TestCase):
+    def test_old_covers_are_asked_about_conditionally_and_changed_ones_replaced(self):
+        import json
+        import os
+        from luma_tide import remote
+
+        with tempfile.TemporaryDirectory() as folder:
+            sources = RemoteSources.__new__(RemoteSources)
+            sources.artwork_root = Path(folder)
+            covers = Path(folder) / "s1"
+            covers.mkdir()
+            old, new = covers / "old.image", covers / "new.image"
+            old.write_bytes(b"old"), new.write_bytes(b"new")
+            stale = time.time() - remote.REVALIDATE_SECONDS - 60
+            os.utime(old, (stale, stale))
+            asked = []
+
+            class Client:
+                def cover_art_if_changed(self, cover_id, destination, validators):
+                    asked.append((cover_id, dict(validators)))
+                    destination.write_bytes(b"changed")
+                    return {"etag": '"v2"'}
+
+            changed = sources._revalidate_artwork(Client(), "s1", {"old.image": "c-old", "new.image": "c-new"},
+                                                  threading.Event())
+            self.assertEqual(changed, 1)
+            self.assertEqual([cover for cover, _ in asked], ["c-old"])     # a recent cover is left alone
+            self.assertIn("last_modified", asked[0][1])                     # asked as of the copy here
+            self.assertEqual(old.read_bytes(), b"changed")
+            record = json.loads((covers / remote.VALIDATORS_FILE).read_text())["old.image"]
+            self.assertEqual(record["etag"], '"v2"')
+            asked.clear()
+            sources._revalidate_artwork(Client(), "s1", {"old.image": "c-old"}, threading.Event())
+            self.assertEqual(asked, [])                                     # checked now: not asked again
 
 
 class ResolverPlaybackTests(unittest.TestCase):

@@ -1,0 +1,62 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] unlockDialog: keep the compact lock prompt between swipes
+
+A compact lock screen built and started its password prompt when a swipe
+began and destroyed it when the swipe went back to the clock, so every
+swipe up waited for a new prompt and authentication start before it moved.
+The prompt is now built while the clock shows and kept; going back to the
+clock only takes its focus away, which closes the screen keyboard.
+
+--- a/js/ui/unlockDialog.js
++++ b/js/ui/unlockDialog.js
+@@ -402,6 +402,12 @@ export const UnlockDialog = GObject.registerClass({
+         if (this._compactLogin) {
+             this._swipeTracker.enabled = true;
+             this._showClock();
++            // Build the prompt while the clock shows, not when a swipe starts.
++            GLib.idle_add(GLib.PRIORITY_LOW, () => {
++                if (!this._authPrompt && this._activePage === this._clock)
++                    this._ensureAuthPrompt();
++                return GLib.SOURCE_REMOVE;
++            });
+         } else {
+             this._showPrompt();
+         }
+@@ -496,6 +502,19 @@ export const UnlockDialog = GObject.registerClass({
+         this._updateAuthBlocked();
+     }
+ 
++    // A compact lock screen keeps its prompt between swipes, so a swipe never
++    // waits for one to be built and started: only its focus is given up,
++    // which closes the screen keyboard.
++    _parkAuthPrompt() {
++        if (!this._compactLogin) {
++            this._maybeDestroyAuthPrompt();
++            return;
++        }
++        const focus = global.stage.key_focus;
++        if (focus === null || (this._authPrompt && this._authPrompt.contains(focus)))
++            this.grab_key_focus();
++    }
++
+     _maybeDestroyAuthPrompt() {
+         const focus = global.stage.key_focus;
+         if (focus === null ||
+@@ -518,7 +537,7 @@ export const UnlockDialog = GObject.registerClass({
+         this._adjustment.ease(0, {
+             duration: CROSSFADE_TIME,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+-            onComplete: () => this._maybeDestroyAuthPrompt(),
++            onComplete: () => this._parkAuthPrompt(),
+         });
+     }
+ 
+@@ -624,7 +643,7 @@ export const UnlockDialog = GObject.registerClass({
+             duration,
+             onComplete: () => {
+                 if (this._activePage === this._clock)
+-                    this._maybeDestroyAuthPrompt();
++                    this._parkAuthPrompt();
+                 else
+                     this._authPrompt?._entry.grab_key_focus();
+             },

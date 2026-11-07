@@ -29,7 +29,7 @@ Attribution for MET's data belongs in About and nowhere else (§11).
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 import json
 import math
@@ -47,7 +47,7 @@ import uuid
 from .weather_observation_cache import current_observation
 
 from .weather_model import (
-    CityForecast, Current, DayPoint, HourPoint, Place, cache_directory,
+    CityForecast, Current, DayPoint, HourPoint, Place, TimelinePoint, cache_directory,
     forget_cache, parse_time, pressure_trend, read_cache, write_cache,
 )
 
@@ -404,6 +404,7 @@ def parse_forecast(payload: dict, place: Place, *, now: datetime | None = None,
         ))
 
     days = _daily(points, zone)
+    timeline = _timeline(points[current_index:], zone)
 
     head_moment, head = points[current_index]
     instant = _entry_details(head, "instant")
@@ -446,7 +447,34 @@ def parse_forecast(payload: dict, place: Place, *, now: datetime | None = None,
         current=current,
         hours=tuple(hours),
         days=tuple(days),
+        timeline=timeline,
     )
+
+
+def _timeline(points: Sequence[tuple[datetime, dict]], zone) -> tuple[TimelinePoint, ...]:
+    """Every step from the current hour to the end of the series, in local time."""
+    steps: list[TimelinePoint] = []
+    for moment, entry in points:
+        instant = _entry_details(entry, "instant")
+        temperature = _number(instant, "air_temperature")
+        if temperature is None:
+            continue
+        hourly = bool(entry.get("data", {}).get("next_1_hours"))
+        block = _entry_details(entry, "next_1_hours" if hourly else "next_6_hours")
+        steps.append(TimelinePoint(
+            time=moment.astimezone(zone).isoformat(),
+            temperature_c=temperature,
+            symbol=_entry_symbol(entry),
+            span_hours=1 if hourly else 6,
+            precipitation_probability=_number(block, "probability_of_precipitation"),
+            precipitation_mm=_number(block, "precipitation_amount"),
+            apparent_c=_number(instant, "apparent_air_temperature"),
+            humidity=_number(instant, "relative_humidity"),
+            wind_mps=_number(instant, "wind_speed"),
+            wind_degrees=_number(instant, "wind_from_direction"),
+            uv_index=_number(instant, "ultraviolet_index_clear_sky"),
+        ))
+    return tuple(steps)
 
 
 def _daily(points: Sequence[tuple[datetime, dict]], zone) -> list[DayPoint]:
@@ -538,7 +566,7 @@ def fetch_forecast(place: Place, *, cache_root: Path | None = None,
     })
     payload, _modified = _request(f"{FORECAST_ENDPOINT}?{query}")
     if on_forecast is not None:
-        essential = parse_forecast(payload, place, now=now)
+        essential = keep_today_range(parse_forecast(payload, place, now=now), read_cache(place.uid, root))
         try:
             write_cache(essential, root)
         except OSError:
@@ -551,12 +579,32 @@ def fetch_forecast(place: Place, *, cache_root: Path | None = None,
         # Sunrise is one of nine rows. Losing it drops two rows; it does not
         # lose the forecast.
         sun = None
-    forecast = parse_forecast(payload, place, now=now, sun=sun)
+    forecast = keep_today_range(parse_forecast(payload, place, now=now, sun=sun), read_cache(place.uid, root))
     try:
         write_cache(forecast, root)
     except OSError:
         pass
     return forecast
+
+
+def keep_today_range(forecast: CityForecast, previous: CityForecast | None) -> CityForecast:
+    """Keep the hours of today that have already gone out of MET's series.
+
+    MET's series starts at the current hour, so a refresh in the evening
+    would forget the afternoon's high. The previous payload's range for the
+    same local date widens today's, so the day keeps its real high and low.
+    """
+    if previous is None or not forecast.days or not previous.days:
+        return forecast
+    today = forecast.days[0]
+    earlier = next((day for day in previous.days if day.date == today.date), None)
+    if earlier is None:
+        return forecast
+    widened = replace(today, high_c=max(today.high_c, earlier.high_c), low_c=min(today.low_c, earlier.low_c))
+    current = forecast.current
+    if current.high_c is not None and current.low_c is not None:
+        current = replace(current, high_c=max(current.high_c, widened.high_c), low_c=min(current.low_c, widened.low_c))
+    return replace(forecast, days=(widened,) + forecast.days[1:], current=current)
 
 
 def cached_forecast(place: Place, *, cache_root: Path | None = None) -> CityForecast | None:
@@ -568,7 +616,7 @@ def cached_forecast(place: Place, *, cache_root: Path | None = None) -> CityFore
     # the weather, not the identity.
     return CityForecast(place=place, fetched_at=forecast.fetched_at,
                         current=forecast.current, hours=forecast.hours,
-                        days=forecast.days)
+                        days=forecast.days, timeline=forecast.timeline)
 
 
 def drop_cached(place: Place, *, cache_root: Path | None = None) -> None:

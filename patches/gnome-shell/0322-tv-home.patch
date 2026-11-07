@@ -1,0 +1,25 @@
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -173,6 +173,10 @@
+     <file>ui/lumaPresentation/keycapTokens.js</file>
+     <file>ui/lumaPresentation/keycap.css</file>
+     <file>ui/lumaPresentation/switcherDrag.js</file>
++    <file>ui/lumaPresentation/tv.js</file>
++    <file>ui/lumaPresentation/tvModel.js</file>
++    <file>ui/lumaPresentation/tvTokens.js</file>
++    <file>ui/lumaPresentation/tv-backdrop.jpg</file>
+     <file>ui/shelfMetrics.js</file>
+     <file>ui/shelfArrangement.js</file>
+     <file>ui/shelfArrange.js</file>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -47,6 +47,7 @@
+ js/ui/lumaPresentation/homeEditor.js
+ js/ui/lumaPresentation/tabletTasks.js
+ js/ui/lumaPresentation/handheldOptions.js
++js/ui/lumaPresentation/tv.js
+ js/ui/main.js
+ js/ui/messageList.js
+ js/ui/messageTray.js

@@ -159,8 +159,10 @@ class Layout(unittest.TestCase):
 
     def test_applications_do_not_restyle_kit_parts(self):
         # A design change must reach every app: no app sheet selects a LumaUI part. The kit's own sheets
-        # are the shared ones (appkit) and LumaUI-1's (C), which draws the C kit's own layer-host drawers.
-        kit_sheets = ("luma-platform/appkit", "luma-platform/ui/luma-ui.css")
+        # are the shared ones (appkit), LumaUI-1's (C), which draws the C kit's own layer-host drawers,
+        # and the Shell's (luma-shell-presentation): LumaUI's St parts for the Shell's own surfaces, a
+        # gnome-shell theme no GTK app can load.
+        kit_sheets = ("luma-platform/appkit", "luma-platform/ui/luma-ui.css", "luma-shell-presentation/")
         sheets = list((ROOT / "src").rglob("*.css"))
         offenders = []
         for path in sheets:

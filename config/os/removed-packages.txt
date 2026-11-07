@@ -11,6 +11,9 @@ gnome-software-rpm-ostree
 # Fedora's first-login Tour is not part of the Luma desktop contract.
 gnome-tour
 
+# Luma's first-boot setup (luma-setup) owns GDM's initial-setup session.
+gnome-initial-setup
+
 # Characters is removed (owner decision 2026-09-22); the Super+. emoji and
 # symbol picker replaces it.
 gnome-characters

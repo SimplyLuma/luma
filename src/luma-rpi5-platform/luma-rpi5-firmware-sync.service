@@ -1,0 +1,20 @@
+[Unit]
+Description=Copy the Raspberry Pi kernel's device trees to the boot partition
+Documentation=file:///usr/share/doc/luma-rpi5-platform/README.md
+ConditionFirmware=|device-tree-compatible(raspberrypi,5-model-b)
+ConditionFirmware=|device-tree-compatible(raspberrypi,5-model-b-d0)
+ConditionFirmware=|device-tree-compatible(raspberrypi,500)
+ConditionFirmware=|device-tree-compatible(raspberrypi,5-compute-module)
+ConditionPathExists=/boot/efi/config.txt
+# After a good boot: greenboot reaches boot-complete.target only once its
+# checks pass.
+Wants=boot-complete.target
+After=boot-complete.target
+RequiresMountsFor=/boot/efi
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-rpi5-firmware-sync
+
+[Install]
+WantedBy=multi-user.target

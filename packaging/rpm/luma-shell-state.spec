@@ -2,7 +2,7 @@
 
 Name:           luma-shell-state
 Version:        0.2.0
-Release:        1.luma.38.home20261031.1%{?dist}
+Release:        1.luma.41%{?dist}
 Summary:        Shared Project Luma shell-state contract
 License:        Apache-2.0
 URL:            https://project-luma.local/
@@ -26,9 +26,14 @@ Source16:       gtk4-translucent.css
 Source17:       index-translucent.theme
 Source18:       luma-presentation-profile
 Source19:       luma-presentation-profile.service
+Source20:       luma-device-class-environment
+Source21:       luma-tv-cec
+Source22:       luma-tv-cec@.service
+Source23:       70-luma-tv-cec.rules
 BuildArch:      noarch
 BuildRequires:  glib2
 BuildRequires:  python3
+BuildRequires:  systemd-rpm-macros
 Requires:       glib2
 Requires:       python3-gobject-base
 
@@ -55,6 +60,13 @@ install -D -m 0644 %{SOURCE19} \
 install -d %{buildroot}%{_unitdir}/graphical.target.wants
 ln -s ../luma-presentation-profile.service \
   %{buildroot}%{_unitdir}/graphical.target.wants/luma-presentation-profile.service
+install -D -m 0755 %{SOURCE20} \
+  %{buildroot}%{_prefix}/lib/systemd/user-environment-generators/20-luma-device-class
+# HDMI-CEC: every adapter joins as a playback device so the TV remote arrives
+# as keys (the Shell's TV input maps them).
+install -D -m 0755 %{SOURCE21} %{buildroot}%{_libexecdir}/luma-tv-cec
+install -D -m 0644 %{SOURCE22} %{buildroot}%{_unitdir}/luma-tv-cec@.service
+install -D -m 0644 %{SOURCE23} %{buildroot}%{_udevrulesdir}/70-luma-tv-cec.rules
 install -D -m 0644 %{SOURCE3} \
   %{buildroot}%{_datadir}/glib-2.0/schemas/org.project_luma.shell-state.gschema.xml
 install -D -m 0644 %{SOURCE4} \
@@ -134,7 +146,8 @@ for entry in gtk-3.0/gtk.css gtk-3.0/luma-base.css gtk-3.0/luma-common.css \
     { echo "Luma-translucent is missing $entry"; exit 1; }
 done
 PYTHONPYCACHEPREFIX=%{_builddir}/luma-state-check-pycache python3 -m py_compile %{buildroot}%{_libexecdir}/luma-shell-state/luma_shell_state.py \
-  %{buildroot}%{_libexecdir}/luma-shell-state-service %{buildroot}%{_bindir}/luma-shell-statectl
+  %{buildroot}%{_libexecdir}/luma-shell-state-service %{buildroot}%{_bindir}/luma-shell-statectl \
+  %{buildroot}%{_libexecdir}/luma-tv-cec
 
 %files
 %license LICENSE
@@ -145,6 +158,10 @@ PYTHONPYCACHEPREFIX=%{_builddir}/luma-state-check-pycache python3 -m py_compile 
 %{_libexecdir}/luma-presentation-profile
 %{_unitdir}/luma-presentation-profile.service
 %{_unitdir}/graphical.target.wants/luma-presentation-profile.service
+%{_prefix}/lib/systemd/user-environment-generators/20-luma-device-class
+%{_libexecdir}/luma-tv-cec
+%{_unitdir}/luma-tv-cec@.service
+%{_udevrulesdir}/70-luma-tv-cec.rules
 %{_datadir}/glib-2.0/schemas/org.project_luma.shell-state.gschema.xml
 %{_userunitdir}/luma-shell-state.service
 %{_userunitdir}/graphical-session.target.wants/luma-shell-state.service
@@ -157,6 +174,19 @@ PYTHONPYCACHEPREFIX=%{_builddir}/luma-state-check-pycache python3 -m py_compile 
 glib-compile-schemas %{_datadir}/glib-2.0/schemas &>/dev/null || :
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.41
+- TV posture, TV input, idle delay and screen-edge keys; HDMI-CEC: every
+  adapter joins the bus as a playback device with remote passthrough
+  (luma-tv-cec), so the TV's remote arrives as keys.
+
+* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.40
+- Record a device tree handset as the handheld device class at boot and pass
+  the device class to the session, so one ARM image starts phones in Mobile.
+
+* Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.39
+- Add the backdrop-blur device capability key, separate from
+  reduce-transparency.
+
 * Sun Nov 01 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.38
 - Skip a stored favorite or Home entry the snapshot cannot accept instead of
   failing the snapshot.

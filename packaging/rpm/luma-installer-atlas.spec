@@ -2,7 +2,7 @@
 
 Name:           luma-installer-atlas
 Version:        0.1.0
-Release:        1.luma.20.creator20261021.1%{?dist}
+Release:        1.luma.21%{?dist}
 Summary:        Atlas, Luma's installer front end for Anaconda
 # Atlas and the reused anaconda-webui 68 code: LGPL-2.1-or-later.
 # Bundled React and React DOM: MIT. Bundled Figtree font: OFL-1.1.
@@ -108,6 +108,11 @@ install -D -m 0644 %{SOURCE9} %{buildroot}%{_datadir}/%{name}/app-collections.js
 %{_datadir}/%{name}/app-collections.json
 
 %changelog
+* Tue Nov 03 2026 Project Luma contributors - 0.1.0-1.luma.21
+- Ask only what an installer must: six steps. Date and time and the account
+  move to first boot (luma-setup), which reads /var/lib/luma-setup/installer.json
+  for what the installer already answered. "Sign me in automatically" is gone.
+
 * Thu Sep 17 2026 Project Luma contributors - 0.1.0-1.luma.8
 - Name the release being installed exactly as the medium's payload os-release
   PRETTY_NAME says, on the review step ("Luma (Prairie, Beta 0, Nightly

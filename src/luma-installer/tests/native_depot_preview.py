@@ -77,6 +77,14 @@ legacy.mkdir()
 (legacy / 'luma-v3-browser.svg').write_text(
     '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" '
     'viewBox="0 0 32 32"><rect width="32" height="32" fill="red"/></svg>')
+
+
+def paintable_path(paintable):
+    """The file an icon paintable draws: a GtkIconPaintable's, or the kit's own SVG paintable's."""
+    path = getattr(paintable, 'path', None)
+    return path if isinstance(path, str) else paintable.get_file().get_path()
+
+
 theme = Gtk.IconTheme.get_for_display(window.get_display())
 Gio.Settings.new('org.gnome.desktop.interface').set_string('icon-theme', 'Adwaita')
 pump(.2)
@@ -84,7 +92,7 @@ assert theme.has_icon('folder'), 'real installed Adwaita folder icon missing'
 with patch.dict(os.environ, {'LUMA_DEPOT_ICON_ROOT': str(legacy)}):
     owner_icon = _icon(window, Listing(identity, 'Identity test', '', 'work', icon='browser'), 28)
 assert owner_icon.paintable is not None
-owner_path = owner_icon.paintable.get_file().get_path()
+owner_path = paintable_path(owner_icon.paintable)
 assert '/Adwaita/' in owner_path and not owner_path.startswith(str(legacy)), owner_path
 print('PASS actual installed desktop icon wins over conflicting legacy catalogue artwork', owner_path)
 curated = 'catalog:identity-test'
@@ -93,7 +101,7 @@ with patch.dict(window.installed, {curated: InstalledApp(curated, '1', 1000, app
      patch.dict(os.environ, {'LUMA_DEPOT_ICON_ROOT': str(legacy)}):
     curated_icon = _icon(window, Listing(curated, 'Identity test', '', 'work', icon='browser'), 28)
 assert curated_icon.paintable is not None
-curated_path = curated_icon.paintable.get_file().get_path()
+curated_path = paintable_path(curated_icon.paintable)
 assert '/Adwaita/' in curated_path and not curated_path.startswith(str(legacy)), curated_path
 print('PASS curated catalogue identity keeps its installed provider-owned GIcon', curated_path)
 # Enough actual provider records to prove vertical overflow, without user files.
@@ -274,6 +282,7 @@ pump()
 
 # The shared rounded Card, not its square inner Overlay, clips Valet artwork.
 from luma_installer.installer import InstallerWindow
+
 with patch('luma_installer.installer.iter_records', return_value=[]), \
      patch.object(InstallerWindow, '_start_inspection'):
     valet = InstallerWindow(app)

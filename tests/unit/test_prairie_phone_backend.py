@@ -97,6 +97,19 @@ class PhoneCapabilityTests(unittest.TestCase):
         self.assertEqual(format_phone_number("*123#"), "*123#")
         self.assertEqual(format_call_duration(3723), "1:02:03")
 
+    def test_call_logged_at_start_is_settled_by_finish(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = CallStore(Path(temporary) / "calls.db")
+            store.add("+19135550100", direction="incoming", started=100,
+                      outcome="missed", uid="mm-call-1@100")
+            self.assertTrue(store.finish("mm-call-1@100", duration=54, outcome="completed"))
+            self.assertFalse(store.finish("mm-call-1@200", duration=1, outcome="completed"))
+            (record,) = store.list()
+            self.assertEqual((record.duration, record.outcome), (54, "completed"))
+            store.add("+19135550100", direction="incoming", started=200,
+                      outcome="missed", uid="mm-call-1@200")
+            self.assertEqual(len(store.list()), 2)
+
     def test_call_history_is_idempotent_by_native_call_id(self):
         with tempfile.TemporaryDirectory() as temporary:
             store = CallStore(Path(temporary) / "calls.db")

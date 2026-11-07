@@ -83,6 +83,15 @@ composer drops frames instead of queueing them. Every five seconds with video on
 the composer logs `frame stats:` (compositions, new buffers, skipped, dmabuf
 or shm), since Android's timestats does not track video layers.
 
+`0024` derives Android's density from the output in touch presentations
+(Luma reserves its bars: `persist.luma.status_bar_px` or `nav_bar_px` > 0):
+the output's physical pixel density, snapped to an Android bucket, published
+as `ro.sf.lcd_density` when the composer starts instead of when the first
+window calibrates (420 on a Pixel 9). The desktop, and outputs reporting no
+physical size, keep 180 per scale step. The value is also published as
+`luma.touch_density`, for the host to switch presentations at runtime through
+WindowManager's forced density, since `ro.sf.lcd_density` is set only once.
+
 1. `0001-prairie-native-android-window-chrome.patch`
 2. `0002-prairie-host-pointer-policy.patch`
 3. `0003-luma-appkit-content-island.patch`

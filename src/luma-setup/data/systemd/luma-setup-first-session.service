@@ -1,0 +1,13 @@
+[Unit]
+Description=Luma setup: the choices made at first boot, before the desktop's first frame
+ConditionPathExists=/var/lib/luma-setup/welcome/%u
+ConditionPathExists=!%S/luma-setup/welcome-done
+Before=graphical-session-pre.target org.gnome.Shell@wayland.service
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-setup --first-session settings
+
+[Install]
+WantedBy=graphical-session-pre.target
