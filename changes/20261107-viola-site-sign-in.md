@@ -1,8 +1,8 @@
 ---
-type: fix
+type: improvement
 component: Viola
 packages: [viola-browser-stable]
 highlight: false
 ---
-Summary: Sites that ask for a user name and password can sign you in
-Details: When a site asks for its own user name and password, Viola now asks you in the bar instead of showing a blank page. On ARM now; x86 follows with its next engine.
+Summary: Updated Viola to 151.0.7922.72
+Details: Sites that ask for their own user name and password now ask in the bar instead of showing a blank page. On ARM now; x86 follows with its next engine.
