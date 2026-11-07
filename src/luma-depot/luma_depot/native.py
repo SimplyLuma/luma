@@ -760,7 +760,8 @@ class NativeInstallation:
     def install(self, app, on_progress, callback, cancellable=None):
         def work():
             from luma_installer.depot_flatpak import (
-                SourceUnavailable, installation_for, installed_ref, resolve, transaction)
+                SourceUnavailable, installation_for, installed_ref, resolve, transaction,
+                verify_installed)
             import gi
             gi.require_version('Flatpak', '1.0')
             # Source mapping is resolved from validated local identity, never a
@@ -786,6 +787,7 @@ class NativeInstallation:
                 done = installed_ref(installation, source, cancellable)
                 if done is None:
                     raise SourceUnavailable('Installation did not produce an installed application.')
+                verify_installed(installation, source, cancellable)
             except (SourceUnavailable, GLib.Error) as error:
                 raise failure(error, app.app_id, entry.name, 'install') from error
             if tx is not None:
@@ -795,7 +797,8 @@ class NativeInstallation:
 
     def update(self, app_id, on_progress, callback, cancellable=None, *, expected_commit="", expected_installed_commit=""):
         def work():
-            from luma_installer.depot_flatpak import SourceUnavailable, resolve, transaction, require_reviewed_update
+            from luma_installer.depot_flatpak import (
+                SourceUnavailable, require_reviewed_update, resolve, transaction, verify_installed)
             channel = self._channel_entry(app_id)
             if channel is not None:
                 if channel_apps.kind(channel) == 'deb':
@@ -816,6 +819,9 @@ class NativeInstallation:
                 tx = transaction(installation, source, cancellable, update=True,
                                  expected_installed_commit=expected_installed_commit)
                 self._run(tx, app_id, on_progress, cancellable, 'Updating')
+                if tx is not None:
+                    installation.drop_caches(cancellable)
+                    verify_installed(installation, source, cancellable)
             except (SourceUnavailable, GLib.Error) as error:
                 raise failure(error, app_id, entry.name, 'update') from error
             if tx is not None:

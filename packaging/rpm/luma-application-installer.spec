@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.86%{?dist}
+Release:        1.luma.88%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -101,7 +101,10 @@ install -D -m 0755 bin/luma-depot %{buildroot}%{_bindir}/luma-depot
 install -D -m 0644 data/org.projectluma.Depot.desktop %{buildroot}%{_datadir}/applications/org.projectluma.Depot.desktop
 install -D -m 0644 data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg
 install -D -m 0644 data/depot-catalog.json %{buildroot}%{_datadir}/luma/installer/depot-catalog.json
+%{_datadir}/luma/installer/depot-catalogue-v1.pub
 install -D -m 0644 data/depot-catalog-4.json %{buildroot}%{_datadir}/luma/installer/depot-catalog-4.json
+# Pinned minisign key of the signed Depot catalogue v1 (third-party apps).
+install -D -m 0644 data/depot-catalogue-v1.pub %{buildroot}%{_datadir}/luma/installer/depot-catalogue-v1.pub
 # The catalogue key and the Luma remote's .flatpakrepo come from the
 # distribution workstream. Until they are committed Depot reads its seed and
 # reports the Luma remote as not set up; it never ships a stand-in key.
@@ -272,6 +275,14 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.88
+- Depot installs, updates and removes third-party apps listed in the signed
+  Depot catalogue v1 from the Luma remote. The catalogue is verified against
+  the pinned depot-catalogue-v1 key and the last good copy is kept. Its apps
+  can never take a Luma app id, and each deployed commit must carry Luma's
+  signature and ref binding or it is removed again. Without a valid catalogue
+  Depot behaves as before.
+
 * Thu Nov 05 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.86
 - Depot installs and updates wait in one first-in, first-out queue instead
   of being refused while another runs; a waiting job reports Queued and can
