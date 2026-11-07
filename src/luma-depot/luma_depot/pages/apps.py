@@ -117,6 +117,12 @@ class AppsPage(Page):
     def demo_category(self) -> None:
         self.category_button.emit("clicked")
 
+    def demo_create(self) -> None:
+        self.narrowing.category = "create"
+        if getattr(self, "category_button", None) is not None:
+            self.category_button.set_label_text("Create")
+        self.shell.refresh_body()
+
     def demo_filters(self) -> None:
         self.filters_button.emit("clicked")
         self.narrowing.works.append("phone")

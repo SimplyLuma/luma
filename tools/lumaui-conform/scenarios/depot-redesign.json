@@ -1,0 +1,284 @@
+{
+  "app": "depot-redesign",
+  "title": "Depot (redesign, 7 Nov 2026)",
+  "about": "The redesigned Depot (luma_depot.shell, LUMA_DEPOT_REDESIGN=1) against the approved mockup (Design Center mockups/apps/depot, current.html?app=depot) with the same sample data (tests/fixtures/depot-redesign). The old v70 Depot keeps scenarios/depot.json until it is removed.",
+  "spec": {
+    "url": "mockups/current.html?desktop=1&app=depot&status=panel&mode=dark",
+    "window": "#w-depot",
+    "exclude": [
+      ".grip",
+      ".pop.toast-gone"
+    ],
+    "ready": "#w-depot",
+    "before": [
+      {
+        "eval": "(() => { document.querySelector('#lshell')?.style.setProperty('display','none','important'); const w=document.querySelector('#w-depot'), phone=w.classList.contains('phone'); w.style.cssText += `left:0px;top:0px;width:${phone ? 390 : 1180}px;height:${phone ? 844 : 740}px;transform:none`; })()"
+      }
+    ],
+    "viewport": {
+      "width": 1180,
+      "height": 740
+    },
+    "phone_url": "mockups/current.html?phone=1&app=depot&mode=dark",
+    "phone_viewport": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  "gtk": {
+    "pythonpath": [
+      "src/luma-platform/appkit",
+      "src/luma-installer",
+      "src/luma-depot"
+    ],
+    "module": "luma_depot.window",
+    "fixtures": [
+      "tests/fixtures/depot-redesign",
+      "assets/icon-theme/Prairie/scalable/apps"
+    ],
+    "env": {
+      "LUMA_DEPOT_REDESIGN": "1",
+      "LUMA_DEPOT_FIXTURE": "{run}/fixtures/depot-redesign/world.json"
+    }
+  },
+  "states": [
+    {
+      "name": "today",
+      "about": "Today at the top (screen 01)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"today\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "place:today"
+          }
+        }
+      ]
+    },
+    {
+      "name": "apps",
+      "about": "Apps: categories and Top apps (04)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"apps\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "place:apps"
+          }
+        }
+      ]
+    },
+    {
+      "name": "apps-category",
+      "about": "A category, Create (06)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"apps\"]"
+        },
+        {
+          "click": "[data-dq-chip=\"create\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "place:apps;demo:create"
+          }
+        }
+      ]
+    },
+    {
+      "name": "looks",
+      "about": "Looks, Themes first (09)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"looks\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "place:looks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tweaks",
+      "about": "Tweaks cards (16)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"tweaks\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "place:tweaks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "library",
+      "about": "Library grid (30)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"library\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "place:library"
+          }
+        }
+      ]
+    },
+    {
+      "name": "updates",
+      "about": "Updates: summary, Luma card, app cards (32)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"updates\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "place:updates"
+          }
+        }
+      ]
+    },
+    {
+      "name": "item-tide",
+      "about": "Tide's item page (19)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"today\"]"
+        },
+        {
+          "click": "[data-dq-item=\"app:tide\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "item:app:tide"
+          }
+        }
+      ]
+    },
+    {
+      "name": "item-bitwarden",
+      "about": "A sparse third-party page (29)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"apps\"]"
+        },
+        {
+          "click": "[data-dq-item=\"app:bitwarden\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "item:app:bitwarden"
+          }
+        }
+      ]
+    },
+    {
+      "name": "look-95",
+      "about": "The 95 theme's page (12)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"looks\"]"
+        },
+        {
+          "click": "[data-dq-item=\"look:theme-95\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "item:look:theme-95"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tweak-battery",
+      "about": "Battery Care, Off and On (17)",
+      "spec": [
+        {
+          "click": "[data-dq-place=\"tweaks\"]"
+        },
+        {
+          "click": "[data-dq-item=\"tweak:battery-care\"]"
+        }
+      ],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_DEPOT_STATE": "item:tweak:battery-care"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "today",
+    "apps",
+    "updates",
+    "library",
+    "item-tide"
+  ],
+  "groups": [
+    {
+      "name": "sidebar",
+      "spec": "#dp-side"
+    },
+    {
+      "name": "bar",
+      "spec": "#dq-bar"
+    },
+    {
+      "name": "content",
+      "spec": "#dq-body"
+    },
+    {
+      "name": "main",
+      "spec": "#dq-main"
+    }
+  ],
+  "pairs": [
+    {
+      "spec": "#dp-side",
+      "gtk": "dq-side",
+      "name": "sidebar"
+    },
+    {
+      "spec": "#dq-main",
+      "gtk": "dq-main",
+      "name": "main island"
+    },
+    {
+      "spec": "#dq-body",
+      "gtk": "dq-body",
+      "name": "content"
+    },
+    {
+      "spec": "#dq-bar",
+      "gtk": "dq-bar",
+      "name": "action bar"
+    }
+  ]
+}

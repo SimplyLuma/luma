@@ -113,6 +113,27 @@ class DepotShell(AppWindow):
         keys.connect("key-pressed", self._key)
         self.add_controller(keys)
         self.show_place("today")
+        if os.environ.get("LUMA_DEPOT_STATE"):
+            GLib.idle_add(self._stage_state, os.environ["LUMA_DEPOT_STATE"])
+
+    def _stage_state(self, spec: str) -> bool:
+        """A measured state for tools/lumaui-conform: "place:apps;item:app:tide;demo:filters;query:photo"."""
+        for step in filter(None, (part.strip() for part in spec.split(";"))):
+            kind, _sep, value = step.partition(":")
+            if kind == "place":
+                self.go(value)
+            elif kind == "item":
+                item_kind, _s, item_id = value.partition(":")
+                self.open_item(item_kind, item_id)
+            elif kind == "query":
+                self._search_changed(value)
+            elif kind == "scroll":
+                GLib.timeout_add(300, lambda v=float(value): (self.scroller.get_vadjustment().set_value(v), False)[1])
+            elif kind == "demo":
+                demo = getattr(self.current_page, f"demo_{value.replace('-', '_')}", None)
+                if demo is not None:
+                    demo()
+        return False
 
     # ── building ──────────────────────────────────────────────────────────
 
