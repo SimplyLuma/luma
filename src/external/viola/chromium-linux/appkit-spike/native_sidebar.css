@@ -118,3 +118,12 @@
 .viola-download-progress trough { min-height: 6px; border-radius: 3px; background: @luma_fill; }
 .viola-download-progress progress { min-height: 6px; border-radius: 3px; background: @luma_accent; }
 .viola-download-progress.paused progress { background: @luma_muted; }
+
+/* A site's sign-in grown from the bar (native_signin.py): LumaUI's panel
+   confirm, with the primary key's fill on Sign in instead of the red action. */
+box.viola-signin { border-spacing: 8px; }
+button.viola-signin-action {
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  color: @luma_key_ink; box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring;
+}
+button.viola-signin-action:hover { filter: brightness(1.08); }

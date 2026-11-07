@@ -10,7 +10,7 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 architecture=${LUMA_TARGET_ARCHITECTURE:?select the target CPU}
 case "$architecture" in
   x86_64) engine_release=30; engine_sha=2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028 ;;
-  aarch64) engine_release=32; engine_sha=2d10bdd8dc21364ee91cde00abef725fd7e3e13658fd059275057663b129d4b1 ;;
+  aarch64) engine_release=33; engine_sha=a5fbcd7cd80a5c0b08833f92b98193f2d11bc5ccb5fc3350a03cae745ccc2a5b ;;
   *) exit 2 ;;
 esac
 [ "$(rpm --eval '%{_arch}')" = "$architecture" ]
@@ -34,9 +34,9 @@ inputdir="$root/build/browser-inputs"
 gtk=${GTK4_NEVRA%.*}.$architecture
 adwaita=${LIBADWAITA_NEVRA%.*}.$architecture
 platform=${LUMA_DEVELOPER_PLATFORM_X86_64_NEVRA%.*}.$architecture
+apk_metadata=${LUMA_APK_METADATA_X86_64_NEVRA%.*}.$architecture
 rpms=()
-for identity in "$gtk" "$adwaita" "$platform" \
-  "luma-apk-metadata-0.1.0-1.luma.1~preview.20260910.1.fc44.$architecture" \
+for identity in "$gtk" "$adwaita" "$platform" "$apk_metadata" \
   "luma-appimage-compat-0.1.0-1.luma.1.fc44.$architecture"; do
   mapfile -t matches < <(find "$inputdir" -type f -name "$identity.rpm")
   [ "${#matches[@]}" -ge 1 ] || { printf 'Missing checked browser provider: %s\n' "$identity" >&2; exit 1; }
@@ -52,8 +52,8 @@ for identity in "$gtk" "$adwaita" "$platform" \
   printf 'Checked browser provider: %s (%s identical retained copies)\n' "$identity" "${#matches[@]}"
   rpms+=("${matches[0]}")
 done
-installer=luma-application-installer-0.1.0-1.luma.71.creator20261021.1.fc44.noarch.rpm
-installer_sha=c26a7e6b68859f9624abf2d73cc62ba1845bff25447e14eafd376c8db2543ad4
+installer=luma-application-installer-0.1.0-1.luma.86.fc44.noarch.rpm
+installer_sha=ef2b347d41b654f7f6788ab254be031a995662402b0000cd2166c86aa939e3bc
 mkdir -p "$inputdir/mirrored"
 curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
   "https://media.simplyluma.com/inputs/rpm/$installer_sha/$installer" --output "$inputdir/mirrored/$installer"

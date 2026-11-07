@@ -45,13 +45,13 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: desktop-apk-metadata-aarch64
-          run-id: 39860196045
+          run-id: 42392703019
           github-token: ${{ github.token }}
           path: build/runtime-inputs/apk-metadata
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: desktop-appimage-aarch64
-          run-id: 39860196045
+          run-id: 42392703019
           github-token: ${{ github.token }}
           path: build/runtime-inputs/appimage
       - name: Probe the unchanged native RPM or selected signed Flatpak
