@@ -93,7 +93,7 @@ luma_os_check_host
 luma_os_vm_lock
 luma_os_check_space 25
 [ -f "$iso" ] && [ -f "$iso.release" ] || luma_os_die "ISO or its .release record is missing: $iso"
-luma_os_load_env /dev/stdin <<<"$(sed 's/^\([a-z_]*\)=/MEDIA_\U\1=/' "$iso.release")"
+luma_os_load_env /dev/stdin <<<"$(sed 's/^\([a-z_][a-z0-9_]*\)=/MEDIA_\U\1=/' "$iso.release")"
 # Select the metadata namespace before looking up an already published release.
 media_architecture=${MEDIA_ARCHITECTURE:-$(printf '%s' "$MEDIA_REF" | cut -d/ -f3)}
 luma_os_select_architecture "$media_architecture"

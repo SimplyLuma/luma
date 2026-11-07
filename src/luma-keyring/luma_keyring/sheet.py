@@ -304,6 +304,19 @@ class UnlockSheet(Adw.ApplicationWindow):
         if self._modal is None and not self._finished:
             self._modal = BarFrame.present(self._screen, self.view.body, kind="sheet", title=self.get_title(),
                                            on_cancel=self._on_cancel, initial_focus=self.view.field.entry)
+            # The frame's height cap follows the window: a phone window can still be taking
+            # its size when the sheet rises, and the keyboard shortens it later.
+            self._capped = 0
+
+            def follow(widget, _clock) -> bool:
+                height = widget.get_height()
+                if self._modal is None or self._finished:
+                    return GLib.SOURCE_REMOVE
+                if height > 0 and height != self._capped:
+                    self._capped = height
+                    self._modal.cap(height)
+                return GLib.SOURCE_CONTINUE
+            self._screen.add_tick_callback(follow)
         return GLib.SOURCE_REMOVE
 
     # -- gnome-keyring's own questions ---------------------------------------
@@ -444,8 +457,8 @@ class UnlockSheet(Adw.ApplicationWindow):
         if result.kind is Kind.NEEDS_LOGIN_PASSWORD:
             # The keyring opened with an older password: one more step, in place.
             self._keyring_password = password
-            self.view.set_texts("One more step", "Enter the password you sign in with. "
-                                "It unlocks your saved passwords on other hardware.")
+            self.view.set_texts("One more step", f"Enter the password you sign in to {self._noun} with. "
+                                "It becomes the backup key for your saved passwords.")
             self.view.set_shown(field=True, switch=False, buttons=True, cancel=True, primary="Continue")
             self.view.set_labels(self.view.texts()[2], "Continue", "Not Now")
             self.view.say("", False)

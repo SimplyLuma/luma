@@ -315,8 +315,15 @@ class LayerHost(Gtk.Overlay):
         from gi.repository import Gdk
         if handle.closed:
             return False
-        if keyval == Gdk.KEY_Escape:
-            handle.cancel()
+        root = self.get_root()
+        tv = bool(getattr(root, "tv_posture", False))
+        if keyval == Gdk.KEY_Escape or (tv and keyval == Gdk.KEY_Back):
+            # On a TV a card with steps is a page: Back goes to the step before (its back part).
+            back = _back_part(handle.card) if tv else None
+            if back is not None:
+                back.activate()
+            else:
+                handle.cancel()
             return True
         if keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab, Gdk.KEY_KP_Tab):
             items = _focusables(handle.card)
@@ -378,3 +385,16 @@ def _focusables(widget: Gtk.Widget) -> list[Gtk.Widget]:
 
     walk(widget)
     return found
+
+
+def _back_part(widget: Gtk.Widget) -> Gtk.Widget | None:
+    """The drawn, sensitive way back of a card's current step (LumaUI page part "back")."""
+    if widget.has_css_class("lumaui-part-back") and widget.is_drawable() and widget.is_sensitive():
+        return widget
+    child = widget.get_first_child()
+    while child is not None:
+        found = _back_part(child)
+        if found is not None:
+            return found
+        child = child.get_next_sibling()
+    return None

@@ -26,7 +26,7 @@
 # starts Luma's first-boot setup. A medium carrying a preview credential is
 # refused.
 #
-# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--release] [--payload REPO REF] [--device-repo DIR --device-key FILE [--device-repo-url URL]] [--local-package RPM]... [--replace-local RPM]... [--uboot-rpm FILE] [--size GIB] [--no-xz] [--first-boot-overlay DIR] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
+# usage: build-rpi5-disk-image.sh --iso FILE --output DIR [--release] [--payload REPO REF] [--device-repo DIR --device-key FILE [--device-repo-url URL]] [--device-package NAME]... [--device-replace NAME]... [--local-package RPM]... [--replace-local RPM]... [--uboot-rpm FILE] [--size GIB] [--no-xz] [--first-boot-overlay DIR] [--test-payload REPO COMMIT] [--test-ssh-key FILE]
 #
 # --payload deploys REF (the generic ARM channel ref luma/<major>/aarch64/
 # <channel>, the medium's own) from the signed OSTree repository REPO (the
@@ -38,17 +38,23 @@
 # --device-repo applies the Pi's kernel at build time, as a client-side
 # rpm-ostree override of that commit: Fedora's kernel packages removed,
 # kernel-luma-rpi installed from DIR, the rpm-md repository the Raspberry Pi 5
-# device repository publishes (package signatures checked against
-# --device-key, an armored public key: gpgcheck=1). The card
+# device repository publishes, signed with the Luma OS release key
+# (repomd.xml.asc and package signatures: repo_gpgcheck=1, gpgcheck=1).
+# --device-key is that key, armored (rpm cannot read the image's binary
+# /etc/pki/ostree copy); it must be the medium's release key. The card
 # keeps that repository (/etc/yum.repos.d/luma-raspberrypi-rpi5.repo at
 # --device-repo-url, only kernel-luma-rpi, excluding every Luma-owned name)
-# and key (/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5), so every
+# and the armored release key (/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release), so every
 # rpm-ostree update reapplies the override and follows new Pi kernels. The
 # first boot needs no network. The payload's own rpm-ostree does the work
 # (scripts/devices/rpm-ostree-offline.sh; under qemu-user on an x86_64 host,
 # about 10 minutes for the initramfs). --local-package layers an RPM file
 # (a new package); --replace-local replaces a base package with an RPM file
-# (same name). Both need --device-repo and go into the same transaction; use
+# (same name). --device-replace NAME replaces a base package with the device
+# repository's build (override replace --from repo). --device-package NAME layers a package from the device
+# repository by name (it stays in the repository file's includepkgs, so
+# updates follow the repository until the OS commit carries it). All need
+# --device-repo and go into the same transaction; use
 # them only for packages the payload does not carry yet. Without
 # --device-repo the card boots Fedora's kernel on the U-Boot device trees.
 #
@@ -104,7 +110,7 @@ usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 iso="" output="" uboot_rpm="" size_gib=14 compress=1 test_repo="" test_commit="" test_key=""
 payload_src="" payload_ref="" first_boot_overlay="" release=0
 device_repo="" device_key="" device_repo_url=https://dl.simplyluma.com/os/devices/aarch64/raspberrypi-rpi5/
-local_packages=() replace_local=()
+local_packages=() replace_local=() device_packages=() device_replace=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --iso) iso=${2:?}; shift 2 ;;
@@ -118,6 +124,8 @@ while [ "$#" -gt 0 ]; do
     --device-repo) device_repo=$(realpath -e "${2:?}"); shift 2 ;;
     --device-key) device_key=$(realpath -e "${2:?}"); shift 2 ;;
     --device-repo-url) device_repo_url=${2:?}; shift 2 ;;
+    --device-package) device_packages+=("${2:?}"); shift 2 ;;
+    --device-replace) device_replace+=("${2:?}"); shift 2 ;;
     --local-package) local_packages+=("$(realpath -e "${2:?}")"); shift 2 ;;
     --replace-local) replace_local+=("$(realpath -e "${2:?}")"); shift 2 ;;
     --test-payload) test_repo=$(realpath -e "${2:?}"); test_commit=${3:?}; shift 3 ;;
@@ -135,11 +143,13 @@ fi
 [ -z "$first_boot_overlay" ] || [ -d "$first_boot_overlay" ] || fail "--first-boot-overlay must be a directory"
 if [ -n "$device_repo" ]; then
   [ -n "$device_key" ] || fail "--device-repo needs --device-key (the repository's armored public key)"
-  [ -f "$device_repo/repodata/repomd.xml" ] || fail "--device-repo is not an rpm-md repository (repodata/repomd.xml)"
+  [ -f "$device_repo/repodata/repomd.xml" ] && [ -f "$device_repo/repodata/repomd.xml.asc" ] ||
+    fail "--device-repo is not a signed rpm-md repository (repodata/repomd.xml and repomd.xml.asc)"
   grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$device_key" || fail "--device-key is not an armored public key"
   [[ "$device_repo_url" =~ ^https://[^[:space:]]+/$ ]] || fail "--device-repo-url must be an https:// URL ending in /"
 else
-  [ "${#local_packages[@]}" = 0 ] && [ "${#replace_local[@]}" = 0 ] || fail "--local-package and --replace-local need --device-repo"
+  [ "${#local_packages[@]}" = 0 ] && [ "${#replace_local[@]}" = 0 ] && [ "${#device_packages[@]}" = 0 ] && [ "${#device_replace[@]}" = 0 ] ||
+    fail "--device-package, --local-package and --replace-local need --device-repo"
 fi
 for rpm_file in "${local_packages[@]+"${local_packages[@]}"}" "${replace_local[@]+"${replace_local[@]}"}"; do
   case "$rpm_file" in *.aarch64.rpm|*.noarch.rpm) ;; *) fail "not an aarch64 or noarch RPM: $rpm_file" ;; esac
@@ -205,6 +215,11 @@ channel=${media[channel]} remote=${media[remote]} ref=${media[ref]} stateroot=${
 [[ "${media[mirrorlist]}" =~ ^/etc/luma/[A-Za-z0-9._-]+$ ]] || fail "invalid mirror list path"
 [[ "${media[target_key]}" =~ ^/etc/[A-Za-z0-9._/-]+$ ]] || fail "invalid release key path"
 key="$work/stage2/$atlas/luma-release.gpg"
+if [ -n "$device_key" ]; then
+  fpr() { gpg --show-keys --with-colons "$1" 2>/dev/null | awk -F: '$1 == "fpr" {print $10; exit}'; }
+  [ -n "$(fpr "$key")" ] && [ "$(fpr "$device_key")" = "$(fpr "$key")" ] ||
+    fail "--device-key is not the medium's release key ($(fpr "$key"))"
+fi
 medium="$work/iso/${media[medium_repo]}"
 commit=$(ostree --repo="$medium" rev-parse "$ref") || fail "the medium does not carry $ref"
 payload_repo=$medium
@@ -351,10 +366,10 @@ grep -Fxq "refspec=$remote:$ref" "$deploy.origin" || fail "the deployment's orig
 # header), made now by the payload's own rpm-ostree so the first boot needs no
 # network. rpm-ostree writes a second deployment; the generic one (Fedora's
 # kernel, which does not boot on the firmware device tree) is then removed.
-device_key_path=/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-raspberrypi-rpi5
+device_key_path=/etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release
 device_repo_file=/etc/yum.repos.d/luma-raspberrypi-rpi5.repo
 override_removed="" override_layered=""
-write_device_repo() {  # DEPLOYMENT BASEURL
+write_device_repo() {  # DEPLOYMENT BASEURL REPO_GPGCHECK
   local excludes=""
   [ ! -s "$1/usr/share/luma/luma-owned-packages.txt" ] || excludes=$(paste -sd, "$1/usr/share/luma/luma-owned-packages.txt")
   {
@@ -365,8 +380,9 @@ write_device_repo() {  # DEPLOYMENT BASEURL
     echo "baseurl=$2"
     echo "enabled=1"
     echo "gpgcheck=1"
+    echo "repo_gpgcheck=$3"
     echo "gpgkey=file://$device_key_path"
-    echo "includepkgs=kernel-luma-rpi"
+    echo "includepkgs=$(IFS=,; echo "kernel-luma-rpi${device_packages[*]+,${device_packages[*]}}${device_replace[*]+,${device_replace[*]}}")"
     [ -z "$excludes" ] || echo "# Luma: packages the Luma image owns never come from this repository"
     [ -z "$excludes" ] || echo "excludepkgs=$excludes"
   } >"$1$device_repo_file"
@@ -384,8 +400,18 @@ if [ -n "$device_repo" ]; then
   mkdir "$work/repos-aside"
   find "$generic/etc/yum.repos.d" -maxdepth 1 -name '*.repo' -exec mv -t "$work/repos-aside" {} +
   install -D -m 0644 "$device_key" "$generic$device_key_path"
-  write_device_repo "$generic" file:///run/luma-device-repo
+  # rpm-ostree cannot check repomd.xml.asc on the unbooted sysroot ("Signing
+  # key not found"; package signatures do work), so the build checks it here
+  # with the host's gpg and the build-time file sets repo_gpgcheck=0. The
+  # card's own file keeps repo_gpgcheck=1; the gate's update stage runs it.
+  gpg_home=$(mktemp -d "$work/gpg.XXXXXX")
+  gpg --homedir "$gpg_home" --batch --quiet --import "$device_key" 2>/dev/null
+  gpg --homedir "$gpg_home" --batch --quiet --verify "$device_repo/repodata/repomd.xml.asc" \
+    "$device_repo/repodata/repomd.xml" 2>/dev/null || fail "the device repository's repomd.xml.asc does not verify with --device-key"
+  gpgconf --homedir "$gpg_home" --kill all 2>/dev/null || true
+  write_device_repo "$generic" file:///run/luma-device-repo 0
   args=(override remove "${fedora_kernel[@]}" --install=kernel-luma-rpi)
+  for name in "${device_packages[@]+"${device_packages[@]}"}"; do args+=(--install="$name"); done
   binds=(--bind "$device_repo:/run/luma-device-repo")
   if [ "${#local_packages[@]}" -gt 0 ] || [ "${#replace_local[@]}" -gt 0 ]; then
     mkdir "$work/rpms"
@@ -398,17 +424,40 @@ if [ -n "$device_repo" ]; then
     done
   fi
   echo "Override: ${args[*]}"
+  # The boot partition stays out of rpm-ostree's reach (and its namespace).
+  umount "$sysroot/boot/efi"
   TMPDIR="$work" bash "$repo_root/scripts/devices/rpm-ostree-offline.sh" --sysroot "$sysroot" --stateroot "$stateroot" \
     --deployment "$generic" "${binds[@]}" -- "${args[@]}"
+  mount -o umask=0077,shortname=winnt "${loop}p1" "$sysroot/boot/efi"
   deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
   [ "${#deploys[@]}" = 2 ] || fail "rpm-ostree did not write the override deployment"
   ostree admin undeploy --sysroot="$sysroot" 1 >/dev/null
   deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
   [ "${#deploys[@]}" = 1 ] && [ "${deploys[0]}" != "$generic" ] || fail "expected only the override deployment"
   deploy=${deploys[0]}
+  # Base packages replaced from the device repository (rpm-ostree override
+  # replace --from repo=...): a second transaction on the override deployment,
+  # recorded in the origin so updates take them from the repository.
+  if [ "${#device_replace[@]}" -gt 0 ]; then
+    echo "Override: override replace --experimental --from repo=luma-raspberrypi-rpi5 ${device_replace[*]}"
+    umount "$sysroot/boot/efi"
+    TMPDIR="$work" bash "$repo_root/scripts/devices/rpm-ostree-offline.sh" --sysroot "$sysroot" --stateroot "$stateroot" \
+      --deployment "$deploy" "${binds[@]}" -- override replace --experimental --from repo=luma-raspberrypi-rpi5 "${device_replace[@]}"
+    mount -o umask=0077,shortname=winnt "${loop}p1" "$sysroot/boot/efi"
+    first=$deploy
+    deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
+    [ "${#deploys[@]}" = 2 ] || fail "rpm-ostree did not write the replacement deployment"
+    ostree admin undeploy --sysroot="$sysroot" 1 >/dev/null
+    deploys=("$sysroot/ostree/deploy/$stateroot/deploy/"*.0)
+    [ "${#deploys[@]}" = 1 ] && [ "${deploys[0]}" != "$first" ] || fail "expected only the replacement deployment"
+    deploy=${deploys[0]}
+    for name in "${device_replace[@]}"; do
+      grep -q "$name" "$deploy.origin" || fail "the origin does not replace $name from the device repository"
+    done
+  fi
   rm -f "$deploy$device_repo_file"
   cp -a "$work/repos-aside/." "$deploy/etc/yum.repos.d/"
-  write_device_repo "$deploy" "$device_repo_url"
+  write_device_repo "$deploy" "$device_repo_url" 1
   origin=$deploy.origin
   grep -Fxq "baserefspec=$remote:$ref" "$origin" || fail "the override's origin is not based on $remote:$ref"
   grep -Eq '^requested=(.*;)?kernel-luma-rpi;' "$origin" || fail "the override does not request kernel-luma-rpi"
@@ -418,8 +467,18 @@ if [ -n "$device_repo" ]; then
     [[ ";$override_removed" == *";$name;"* ]] || fail "the override does not remove $name"
   done
 fi
+# rpm-ostree's local policy rebuild regenerates the home-directory contexts from
+# useradd's HOME=/home and loses the image's /var/home rules: /var/home stays
+# var_t and useradd cannot create the first account's home. The override
+# changes no SELinux policy, so the deployment keeps the image's own store.
+(cd "$deploy/usr/etc" && find selinux -type f) | while read -r f; do
+  cmp -s "$deploy/usr/etc/$f" "$deploy/etc/$f" || cp -a "$deploy/usr/etc/$f" "$deploy/etc/$f"
+done
+rm -f "$deploy"/etc/selinux/targeted/semanage.*.LOCK
+grep -q '^/var/home' "$deploy/etc/selinux/targeted/contexts/files/file_contexts.homedirs" ||
+  fail "the deployment's SELinux policy has no /var/home home-directory contexts"
 grep -Eq "^(base)?refspec=$remote:$ref\$" "$deploy.origin" || fail "the deployment does not follow $remote:$ref"
-! grep -q 'raspberrypi-rpi5' "$deploy.origin" || fail "the deployment names the Raspberry Pi hardware ref"
+! grep -Eq '^(base)?refspec=.*raspberrypi-rpi5' "$deploy.origin" || fail "the deployment follows the Raspberry Pi hardware ref"
 # The Pi follows the generic ARM stream: no hardware-targeted update.conf.
 if [ -e "$deploy/etc/luma/update.conf" ] &&
    grep -Eq '^\s*(hardware_target\s*=\s*\S|ref_template\s*=.*raspberrypi)' "$deploy/etc/luma/update.conf"; then
@@ -613,7 +672,7 @@ fi
 used_mib=$(df -BM --output=used "$sysroot" | tail -n 1 | tr -dc 0-9)
 sync
 umount "$sysroot/boot/efi" "$sysroot/boot" "$sysroot"
-fsck.fat -n "${loop}p1" >/dev/null || fail "the boot partition failed fsck"
+fsck.fat -n "${loop}p1" >"$work/fsck.log" 2>&1 || { cat "$work/fsck.log" >&2; fail "the boot partition failed fsck"; }
 e2fsck -fn "${loop}p2" >/dev/null || fail "/boot failed fsck"
 btrfs check --readonly "${loop}p3" >/dev/null 2>&1 || fail "the root filesystem failed btrfs check"
 losetup -d "$loop"
@@ -648,7 +707,7 @@ install -m 0644 "$fat/README.txt" "$output/$image_name.README.txt"
   echo "grub $grub_sha256 ${grub_efi#"$deploy"}"
   echo "device_trees $dt_layout"
   if [ -n "$device_repo" ]; then
-    echo "override remove=$override_removed requested=$override_layered"
+    echo "override remove=$override_removed requested=$override_layered${device_replace[*]+ replaced=$(IFS=';'; echo "${device_replace[*]}");}"
     echo "device_repo $device_repo_url ($device_repo, key $(gpg --show-keys --with-colons "$device_key" 2>/dev/null | awk -F: '$1 == "fpr" {print $10; exit}'))"
     for rpm_file in "${local_packages[@]+"${local_packages[@]}"}" "${replace_local[@]+"${replace_local[@]}"}"; do
       echo "local_package $(basename "$rpm_file") $(sha256sum "$rpm_file" | cut -d' ' -f1)"

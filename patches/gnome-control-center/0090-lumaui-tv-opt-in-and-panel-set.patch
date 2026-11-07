@@ -1,0 +1,671 @@
+diff --git a/data/icons/hicolor/scalable/apps/org.gnome.Settings-tv.svg b/data/icons/hicolor/scalable/apps/org.gnome.Settings-tv.svg
+new file mode 100644
+index 0000000..ae2d5aa
+--- /dev/null
++++ b/data/icons/hicolor/scalable/apps/org.gnome.Settings-tv.svg
+@@ -0,0 +1,7 @@
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
++<!-- Wide TV tile of the v4 Settings icon (design-center icons/luma-v4-settings.svg) (tools/wide-tile.py): same plate, art and rim, art centred at 1.15x. -->
++<defs><linearGradient id="sta-pl" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#98a2b5"/><stop offset="1" stop-color="#5d6780"/></linearGradient><radialGradient id="sta-plh" cx="0.26" cy="0.12" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.2"/><stop offset="0.55" stop-color="#fff" stop-opacity="0.05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><linearGradient id="sta-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.42"/><stop offset="0.1" stop-color="#fff" stop-opacity="0"/><stop offset="0.86" stop-color="#1a2133" stop-opacity="0"/><stop offset="1" stop-color="#1a2133" stop-opacity="0.35"/></linearGradient><clipPath id="sta-clip"><rect width="1600" height="900" rx="190"/></clipPath><filter id="sta-amb" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="56"/></filter><mask id="sta-hl" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="translate(9 10.799999999999999) " fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask><mask id="sta-lo" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="translate(-9 -10.799999999999999) " fill="#000" stroke="#000" stroke-width="2" stroke-linejoin="round"/></mask><mask id="sta-in" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></mask><filter id="sta-hsoft" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="2.25"/></filter><filter id="sta-sh" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="24"/></filter><filter id="sta-hs" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="8"/></filter><linearGradient id="sta-body" x1="0.1" y1="0.05" x2="0.9" y2="0.95"><stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#f1f3f7"/><stop offset="1" stop-color="#dde1e9"/></linearGradient><linearGradient id="sta-hub" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a9b1c0"/><stop offset="1" stop-color="#e9ecf2"/></linearGradient><clipPath id="sta-hc"><circle cx="512" cy="506" r="104"/></clipPath></defs>
++<g id="plate"><rect width="1600" height="900" rx="190" fill="url(#sta-pl)"/><rect width="1600" height="900" rx="190" fill="url(#sta-plh)"/></g>
++<g id="art" transform="translate(211.2 -138.8) scale(1.15)"><g id="ambient-shadow" ><ellipse cx="520" cy="680" rx="320" ry="180" fill="#1a2133" opacity="0.35" filter="url(#sta-amb)"/></g><g opacity="0.4" filter="url(#sta-sh)"><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="translate(12 28) " fill="#1a2133" stroke="#1a2133" stroke-width="2" stroke-linejoin="round"/></g><g id="object-main"><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="translate(0 14) " fill="#9aa3b4" stroke="#9aa3b4" stroke-width="2" stroke-linejoin="round"/><path d="M738 506A226 226 0 1 1 286 506A226 226 0 1 1 738 506ZM595.6 231.1L647.3 252.5A26 26 0 0 1 661.4 286.5L633.1 354.8L533.3 313.5L561.6 245.1A26 26 0 0 1 595.6 231.1ZM765.5 370.7L786.9 422.4A26 26 0 0 1 772.9 456.4L704.5 484.7L663.2 384.9L731.5 356.6A26 26 0 0 1 765.5 370.7ZM786.9 589.6L765.5 641.3A26 26 0 0 1 731.5 655.4L663.2 627.1L704.5 527.3L772.9 555.6A26 26 0 0 1 786.9 589.6ZM647.3 759.5L595.6 780.9A26 26 0 0 1 561.6 766.9L533.3 698.5L633.1 657.2L661.4 725.5A26 26 0 0 1 647.3 759.5ZM428.4 780.9L376.7 759.5A26 26 0 0 1 362.6 725.5L390.9 657.2L490.7 698.5L462.4 766.9A26 26 0 0 1 428.4 780.9ZM258.5 641.3L237.1 589.6A26 26 0 0 1 251.1 555.6L319.5 527.3L360.8 627.1L292.5 655.4A26 26 0 0 1 258.5 641.3ZM237.1 422.4L258.5 370.7A26 26 0 0 1 292.5 356.6L360.8 384.9L319.5 484.7L251.1 456.4A26 26 0 0 1 237.1 422.4ZM376.7 252.5L428.4 231.1A26 26 0 0 1 462.4 245.1L490.7 313.5L390.9 354.8L362.6 286.5A26 26 0 0 1 376.7 252.5Z" transform="" fill="url(#sta-body)" stroke="url(#sta-body)" stroke-width="2" stroke-linejoin="round"/><g filter="url(#sta-hsoft)"><rect x="0" y="0" width="1024" height="1024" fill="#6b7488" opacity="0.25" mask="url(#sta-lo)"/><rect x="0" y="0" width="1024" height="1024" fill="#fff" opacity="1" mask="url(#sta-hl)"/></g><g id="hub"><circle cx="512" cy="506" r="104" fill="url(#sta-hub)"/><g clip-path="url(#sta-hc)"><circle cx="512" cy="490" r="112" fill="none" stroke="#3a4256" stroke-opacity="0.35" stroke-width="22" filter="url(#sta-hs)"/></g><circle cx="512" cy="506" r="104" fill="none" stroke="#fff" stroke-opacity="0.7" stroke-width="3" transform="translate(0 3)"/></g></g></g>
++<g id="plate-rim" clip-path="url(#sta-clip)"><rect width="1600" height="900" rx="190" fill="none" stroke="url(#sta-rim)" stroke-width="8"/></g>
++</svg>
+diff --git a/shell/cc-luma-live-network.c b/shell/cc-luma-live-network.c
+index b668692..5ce292e 100644
+--- a/shell/cc-luma-live-network.c
++++ b/shell/cc-luma-live-network.c
+@@ -9,6 +9,7 @@
+ #include <gio/gio.h>
+ #include <string.h>
+ #include "panels/network/qrcodegen.h"
++#include <luma-ui.h>
+ 
+ #define ADAPTER "network"
+ static const char * const pages[] = { "wifi", "wifi-net", "wifi-known", "hotspot", "network", NULL };
+@@ -35,6 +36,10 @@ typedef struct {
+   /* The person's hotspot edits, saved to the hotspot connection when valid. */
+   char *hs_name, *hs_pass, *hs_band;
+   guint hs_save;
++  /* A join in progress: its outcome is published (joinDone, joinFailed). */
++  char *trying;
++  NMDevice *trying_device;
++  gulong trying_id;
+ } Net;
+ 
+ static void queue_refresh (Net *n);
+@@ -48,6 +53,48 @@ static void notice (Net *n, const char *message, gboolean error)
+   cc_luma_fixture_publish_string (n->model, "netError", error ? message : "");
+   cc_luma_fixture_publish_string (n->model, "netStatus", error ? "" : message);
+ }
++static char *ssid_text (GBytes *ssid);
++/* The outcome of a join: connected, or refused. In TV posture a refused password does not leave the
++ * shell's password dialog over the TV: the attempt is stopped and the page asks again in place. */
++static void join_settled (Net *n, gboolean connected, const char *why)
++{
++  g_autofree char *name = g_steal_pointer (&n->trying);
++  if (!name || n->stopped) return;
++  g_autofree char *serial = g_strdup_printf ("%s\n%" G_GINT64_FORMAT, name, g_get_monotonic_time ());
++  cc_luma_fixture_publish_string (n->model, connected ? "joinDone" : "joinFailed", serial);
++  g_autofree char *message = connected ? g_strdup_printf ("Connected to %s", name) : g_strdup (why);
++  notice (n, message, !connected);
++}
++static void trying_state (NMDevice *device, guint state, guint old, guint reason, Net *n)
++{
++  if (!n->trying) return;
++  if (state == NM_DEVICE_STATE_ACTIVATED)
++    {
++      NMAccessPoint *ap = NM_IS_DEVICE_WIFI (device) ? nm_device_wifi_get_active_access_point (NM_DEVICE_WIFI (device)) : NULL;
++      g_autofree char *ssid = ap ? ssid_text (nm_access_point_get_ssid (ap)) : NULL;
++      if (g_strcmp0 (ssid, n->trying) == 0) join_settled (n, TRUE, NULL);
++    }
++  else if (state == NM_DEVICE_STATE_NEED_AUTH && old > NM_DEVICE_STATE_PREPARE && luma_ui_tv_posture ())
++    {
++      nm_device_disconnect_async (device, NULL, NULL, NULL);
++      join_settled (n, FALSE, "Wrong password");
++    }
++  else if (state == NM_DEVICE_STATE_FAILED)
++    join_settled (n, FALSE, reason == NM_DEVICE_STATE_REASON_NO_SECRETS || reason == NM_DEVICE_STATE_REASON_SUPPLICANT_DISCONNECT
++                              ? "Wrong password" : reason == NM_DEVICE_STATE_REASON_SUPPLICANT_TIMEOUT
++                              ? "The network didn’t answer" : "Couldn’t join the network");
++}
++static void watch_join (Net *n, NMDevice *device, const char *name)
++{
++  g_free (n->trying);
++  n->trying = g_strdup (name);
++  if (n->trying_device == device) return;
++  if (n->trying_device) g_clear_signal_handler (&n->trying_id, n->trying_device);
++  g_clear_object (&n->trying_device);
++  n->trying_device = g_object_ref (device);
++  n->trying_id = g_signal_connect (device, "state-changed", G_CALLBACK (trying_state), n);
++}
++
+ /* These writes are exercised against the native NM owner and UI by %check. */
+ void cc_luma_live_verify_network_keys (CcLumaFixture *model)
+ {
+@@ -735,6 +782,39 @@ strongest_ap (NMDeviceWifi *dev, const char *name)
+     }
+   return best;
+ }
++/* TV posture: a network joined on the TV is saved for the whole TV where the session may (the
++ * connection editor's "All users"), its password always kept by NetworkManager in the connection
++ * (psk-flags 0). Nothing is left to a user's secret agent, whose keyring is locked under automatic sign-in and
++ * would put a prompt over the TV. */
++static void system_wide (NMClient *client, NMConnection *connection, const char *password)
++{
++  NMSettingConnection *owner = nm_connection_get_setting_connection (connection);
++  if (owner && nm_client_get_permission_result (client, NM_CLIENT_PERMISSION_SETTINGS_MODIFY_SYSTEM) == NM_CLIENT_PERMISSION_RESULT_YES)
++    g_object_set (owner, NM_SETTING_CONNECTION_PERMISSIONS, NULL, NULL);
++  NMSettingConnection *s = nm_connection_get_setting_connection (connection);
++  if (s) g_object_set (s, NM_SETTING_CONNECTION_AUTOCONNECT, TRUE, NULL);
++  NMSettingWirelessSecurity *sec = nm_connection_get_setting_wireless_security (connection);
++  if (sec && password && *password)
++    g_object_set (sec, NM_SETTING_WIRELESS_SECURITY_PSK, password,
++                  NM_SETTING_WIRELESS_SECURITY_PSK_FLAGS, NM_SETTING_SECRET_FLAG_NONE, NULL);
++}
++typedef struct { Net *net; NMDevice *device; char *ap; } Resave;
++static void
++resaved (GObject *source, GAsyncResult *result, gpointer data)
++{
++  Resave *r = data;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) out = nm_remote_connection_update2_finish (NM_REMOTE_CONNECTION (source), result, &error);
++  if (error) report (r->net, error);
++  else if (!r->net->stopped)
++    nm_client_activate_connection_async (r->net->client, NM_CONNECTION (source), r->device, r->ap,
++                                         r->net->cancel, activated, net_ref (r->net));
++  net_unref (r->net);
++  g_object_unref (r->device);
++  g_free (r->ap);
++  g_free (r);
++}
++
+ /* net-device-wifi.c wireless_try_to_connect, with the password the person
+  * typed on the page handed to NetworkManager in the new connection. If it is
+  * wrong NetworkManager asks again through its agent (the shell's prompt),
+@@ -742,6 +822,7 @@ strongest_ap (NMDeviceWifi *dev, const char *name)
+ static gboolean
+ join (Net *n, const char *name, const char *password, gboolean hidden, GError **error)
+ {
++  gboolean tv = luma_ui_tv_posture ();
+   NMDeviceWifi *dev = wifi_device (n);
+   NMAccessPoint *ap = dev && name ? strongest_ap (dev, name) : NULL;
+   if (!dev) return fail (error, "This computer has no Wi‑Fi");
+@@ -749,10 +830,29 @@ join (Net *n, const char *name, const char *password, gboolean hidden, GError **
+     return fail (error, "Turn on Wi‑Fi to join a network");
+   if (!name || !*name) return fail (error, "Type the network’s name");
+   if (!ap && !hidden) return fail (error, "That network is out of range");
++  watch_join (n, NM_DEVICE (dev), name);
+   if (ap)
+     {
+       g_autoptr (GPtrArray) saved = saved_networks (n);
+       g_autoptr (GPtrArray) usable = nm_access_point_filter_connections (ap, saved);
++      if (usable && usable->len && tv && password && *password)
++        {
++          /* The saved network with a new password: that profile, updated system-wide, never a second one. */
++          NMRemoteConnection *remote = g_ptr_array_index (usable, 0);
++          g_autoptr (NMConnection) copy = nm_simple_connection_new_clone (NM_CONNECTION (remote));
++          if (!nm_connection_get_setting_wireless_security (copy))
++            nm_connection_add_setting (copy, nm_setting_wireless_security_new ());
++          NMSettingWirelessSecurity *sec = nm_connection_get_setting_wireless_security (copy);
++          if (!nm_setting_wireless_security_get_key_mgmt (sec))
++            g_object_set (sec, NM_SETTING_WIRELESS_SECURITY_KEY_MGMT, "wpa-psk", NULL);
++          system_wide (n->client, copy, password);
++          Resave *r = g_new0 (Resave, 1);
++          r->net = net_ref (n);
++          r->device = g_object_ref (NM_DEVICE (dev));
++          r->ap = g_strdup (nm_object_get_path (NM_OBJECT (ap)));
++          update (n, remote, copy, resaved, r);
++          return TRUE;
++        }
+       if (usable && usable->len)
+         {
+           nm_client_activate_connection_async (n->client, g_ptr_array_index (usable, 0), NM_DEVICE (dev),
+@@ -766,6 +866,8 @@ join (Net *n, const char *name, const char *password, gboolean hidden, GError **
+   gsize length = password ? strlen (password) : 0;
+   g_autoptr (NMConnection) partial = nm_simple_connection_new ();
+   NMSettingConnection *s_con = NM_SETTING_CONNECTION (nm_setting_connection_new ());
++  /* The TV saves it for everyone where the session may (no polkit prompt either); where it may not,
++   * it stays this person's, its password still kept by NetworkManager (psk-flags 0, below). */
+   if (nm_client_get_permission_result (n->client, NM_CLIENT_PERMISSION_SETTINGS_MODIFY_SYSTEM) != NM_CLIENT_PERMISSION_RESULT_YES)
+     nm_setting_connection_add_permission (s_con, "user", g_get_user_name (), NULL);
+   nm_connection_add_setting (partial, NM_SETTING (s_con));
+@@ -799,6 +901,7 @@ join (Net *n, const char *name, const char *password, gboolean hidden, GError **
+           g_object_set (sec, NM_SETTING_WIRELESS_SECURITY_KEY_MGMT,
+                         (rsn & NM_802_11_AP_SEC_KEY_MGMT_SAE) && !(rsn & NM_802_11_AP_SEC_KEY_MGMT_PSK) ? "sae" : "wpa-psk",
+                         NM_SETTING_WIRELESS_SECURITY_PSK, password, NULL);
++          if (tv) g_object_set (sec, NM_SETTING_WIRELESS_SECURITY_PSK_FLAGS, NM_SETTING_SECRET_FLAG_NONE, NULL);
+         }
+       nm_connection_add_setting (partial, sec);
+     }
+@@ -1101,6 +1204,9 @@ net_stop (gpointer state)
+ {
+   Net *n = state;
+   n->stopped = TRUE;
++  if (n->trying_device) g_clear_signal_handler (&n->trying_id, n->trying_device);
++  g_clear_object (&n->trying_device);
++  g_clear_pointer (&n->trying, g_free);
+   g_cancellable_cancel (n->cancel);
+   g_clear_object (&n->cancel);
+   g_clear_handle_id (&n->refresh, g_source_remove);
+diff --git a/shell/cc-luma-rows.c b/shell/cc-luma-rows.c
+index 9ca07d1..fb844f9 100644
+--- a/shell/cc-luma-rows.c
++++ b/shell/cc-luma-rows.c
+@@ -450,6 +450,29 @@ static void wrap_walk (GtkWidget *w)
+   for (GtkWidget *c = gtk_widget_get_first_child (w); c; c = gtk_widget_get_next_sibling (c))
+     wrap_walk (c);
+ }
++/* Settings anatomy as LumaUI page parts (luma_ui_set_part): the header, the way back, the hero,
++ * groups, their cards and rows. Nothing changes on a desktop or phone; a TV draws them at TV size. */
++static void parts_walk (GtkWidget *w)
++{
++  static const struct { const char *cls, *part; } map[] = {
++    { "cf-head", "header" }, { "cf-back", "back" }, { "cf-hero", "hero" },
++    { "cf-group", "group" }, { "cf-card", "card" }, { "cf-row", "row" },
++  };
++  for (guint i = 0; i < G_N_ELEMENTS (map); i++)
++    if (gtk_widget_has_css_class (w, map[i].cls))
++      {
++        luma_ui_set_part (w, map[i].part);
++        break;
++      }
++  for (GtkWidget *c = gtk_widget_get_first_child (w); c; c = gtk_widget_get_next_sibling (c))
++    parts_walk (c);
++}
++
++void cf_rows_parts (View *v)
++{
++  parts_walk (GTK_WIDGET (v->body));
++}
++
+ void cf_rows_wrap (View *v)
+ {
+   if (v->phone) wrap_walk (GTK_WIDGET (v->body));
+diff --git a/shell/cc-luma-rows.h b/shell/cc-luma-rows.h
+index b62e09c..9b5a880 100644
+--- a/shell/cc-luma-rows.h
++++ b/shell/cc-luma-rows.h
+@@ -57,6 +57,8 @@ GtkWidget *cf_signal_bars (int strength, gboolean big);
+ GtkWidget *cf_seg_new (void);
+ void cf_seg_add (GtkWidget *seg, const char *key, const char *label);
+ /* v70 .cfoff: a centred icon, title, line and a Turn on button. */
++/* Name every part of the drawn page for LumaUI (header, back, hero, group, card, row). */
++void cf_rows_parts (View *v);
+ GtkWidget *cf_off_hero (View *v, const char *icon, const char *title, const char *subtitle, const char *key, GCallback turn_on);
+ /* On a phone, rows whose control doesn't fit beside their words put it on its own line. */
+ void cf_rows_wrap (View *v);
+diff --git a/shell/cc-luma-shell.c b/shell/cc-luma-shell.c
+index f8b5646..0144897 100644
+--- a/shell/cc-luma-shell.c
++++ b/shell/cc-luma-shell.c
+@@ -389,6 +391,12 @@ cc_luma_shell_get_page (CcLumaShell *self)
+   return self->page;
+ }
+ 
++void
++cc_luma_shell_redraw (CcLumaShell *self)
++{
++  if (self->view) cc_luma_view_refresh (self->view);
++}
++
+ void
+ cc_luma_shell_set_page_handler (CcLumaShell *self, CcLumaShellPageFunc handler, gpointer data)
+ {
+diff --git a/shell/cc-luma-shell.h b/shell/cc-luma-shell.h
+index 7cac26f..4d59a2d 100644
+--- a/shell/cc-luma-shell.h
++++ b/shell/cc-luma-shell.h
+@@ -16,6 +16,8 @@ GtkWidget *cc_luma_shell_new (CcLumaFixture *model, GtkWidget *view);
+ /* Show a Settings page (v70 id: "wifi", "displays", "app:filer" …). */
+ void cc_luma_shell_go (CcLumaShell *self, const char *page);
+ const char *cc_luma_shell_get_page (CcLumaShell *self);
++/* Draw the shown LumaUI page again. */
++void cc_luma_shell_redraw (CcLumaShell *self);
+ typedef void (*CcLumaShellPageFunc) (CcLumaShell *shell, const char *page, gpointer data);
+ void cc_luma_shell_set_page_handler (CcLumaShell *self, CcLumaShellPageFunc handler, gpointer data);
+ /* v71 phone: the title island's ‹ on a top-level page goes back to the list of pages. */
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 3b3085e..b624acb 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -25,6 +25,9 @@ typedef struct {
+   guint refresh;
+   guint connection;
+   char *joining;
++  char *join_seen;   /* the last join outcome acted on (joinDone / joinFailed serials) */
++  char *join_last;   /* the password last tried, offered again selected after a refusal */
++  gboolean join_select;
+   char *connecting;
+   char *variant;
+   guint variant_tick;
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 46fd1ea..b6435cc 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -27,6 +27,16 @@ static gboolean refresh_view (gpointer data)
+   if (v->display_dragging ||
+       (v->open_menu && luma_floating_menu_get_is_open (LUMA_FLOATING_MENU (v->open_menu))))
+     { v->refresh = g_timeout_add (150, refresh_view, v); return G_SOURCE_REMOVE; }
++  /* Someone typing a network's password: a scan's report waits, so the field (and the keyboard
++   * that belongs to it) is never rebuilt under the typing. */
++  if (v->joining && g_str_equal (v->page, "wifi"))
++    {
++      GtkRoot *native = gtk_widget_get_root (v->root);
++      GtkWidget *focus = native ? gtk_root_get_focus (native) : NULL;
++      GtkWidget *field = focus ? gtk_widget_get_ancestor (focus, GTK_TYPE_PASSWORD_ENTRY) : NULL;
++      if (field && g_strcmp0 (gtk_widget_get_name (field), "cf-join-password") == 0)
++        { v->refresh = g_timeout_add (400, refresh_view, v); return G_SOURCE_REMOVE; }
++    }
+   if (!g_str_equal (v->page, "windows") || !cc_luma_view_windows_sync (v))
+     render (v);
+   return G_SOURCE_REMOVE;
+@@ -724,7 +735,10 @@ static void nearby_clicked (LumaDetailsItem *item, GtkWidget *root)
+   gboolean password_required = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (item), "cf-password-required"));
+   if (!cc_luma_view_flag (v, "wifi")) return;
+   if (!cc_luma_fixture_key_verified (v->model, "CFNETS.join") && cc_luma_view_delegated (v)) return;
+-  if (!password_required) { connect_network (v, name); return; }
++  /* TV posture: a saved secured network opens in place too (Connect with what is saved, a new
++   * password, or Forget), so a stale password never loops through NetworkManager's prompts. */
++  gboolean saved_here = luma_ui_tv_posture () && GPOINTER_TO_INT (g_object_get_data (G_OBJECT (item), "cf-saved"));
++  if (!password_required && !saved_here) { connect_network (v, name); return; }
+   char *next = g_strcmp0 (v->joining, name) ? g_strdup (name) : NULL;
+   g_free (v->joining); v->joining = next;
+   cc_luma_view_queue_refresh (v);
+@@ -734,6 +748,12 @@ static void join_cancelled (GtkButton *button, View *v)
+   g_clear_pointer (&v->joining, g_free);
+   cc_luma_view_queue_refresh (v);
+ }
++static void join_clicked (GtkButton *button, View *v);
++static void join_activated (GtkWidget *password, GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v) join_clicked (NULL, v);
++}
+ static void join_clicked (GtkButton *button, View *v)
+ {
+   if (v->joining && cc_luma_fixture_is_live (v->model))
+@@ -741,7 +761,11 @@ static void join_clicked (GtkButton *button, View *v)
+       GtkWidget *password = named_widget (v->root, "cf-join-password");
+       if (!GTK_IS_EDITABLE (password)) return;
+       const char *text = gtk_editable_get_text (GTK_EDITABLE (password));
++      if (!*text && g_strcmp0 (gtk_widget_get_name (password), "cf-join-password") == 0 &&
++          g_object_get_data (G_OBJECT (password), "cf-saved"))
++        { if (live_join (v, v->joining, NULL, FALSE)) { g_clear_pointer (&v->joining, g_free); cc_luma_view_queue_refresh (v); } return; }
+       if (!*text) { luma_toast_show (v->root, "Type the password", "error"); return; }
++      g_free (v->join_last); v->join_last = g_strdup (text);
+       if (live_join (v, v->joining, text, FALSE)) { g_clear_pointer (&v->joining, g_free); cc_luma_view_queue_refresh (v); }
+       return;
+     }
+@@ -794,6 +818,7 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+   /* Enterprise networks (live) sign in through NetworkManager's own prompt. */
+   gboolean enterprise = json_object_has_member (network, "ent") && json_object_get_boolean_member (network, "ent");
+   g_object_set_data (G_OBJECT (item), "cf-password-required", GINT_TO_POINTER (locked && !saved && !enterprise));
++  g_object_set_data (G_OBJECT (item), "cf-saved", GINT_TO_POINTER (saved && locked && !enterprise));
+   g_signal_connect_object (item, "clicked", G_CALLBACK (nearby_clicked), v->root, 0);
+   gtk_box_append (GTK_BOX (wrap), item);
+   gtk_box_append (rows, wrap);
+@@ -808,11 +833,15 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+       gtk_widget_set_name (password, "cf-join-password");
+       g_object_set_data_full (G_OBJECT (password), "cf-network", g_strdup (name), g_free);
+       gtk_widget_add_css_class (password, "cf-field");
+-      g_object_set (password, "placeholder-text", "Password", NULL);
++      g_object_set (password, "placeholder-text", saved ? "New password, or Join with the saved one" : "Password", NULL);
++      if (saved) g_object_set_data (G_OBJECT (password), "cf-saved", GINT_TO_POINTER (TRUE));
+       g_autofree char *accessible = g_strdup_printf ("Password for %s", name);
+       gtk_accessible_update_property (GTK_ACCESSIBLE (password), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+       gtk_widget_set_tooltip_text (password, accessible);
+       gtk_widget_set_hexpand (password, TRUE);
++      /* The keyboard's action key joins (TV posture); Enter in the field does the same. */
++      luma_ui_set_keyboard_action (password, "Join");
++      g_signal_connect_object (password, "activate", G_CALLBACK (join_activated), v->root, 0);
+       gtk_widget_add_css_class (cancel, "cf-bt");
+       gtk_widget_add_css_class (join, "cf-bt");
+       gtk_box_append (GTK_BOX (form), password);
+@@ -826,6 +855,7 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+       }
+       gtk_box_append (GTK_BOX (actions), cancel);
+       gtk_box_append (GTK_BOX (actions), join);
++      if (saved) gtk_box_append (GTK_BOX (actions), forget_button (v, name));
+       gtk_box_append (GTK_BOX (wrap), form);
+     }
+ }
+@@ -868,8 +898,32 @@ static void wifi_disconnected (GtkButton *button, View *v)
+   if (!cc_luma_fixture_write (v->model, "CFNETS.disconnect", value, &error))
+     luma_toast_show (v->root, error->message, "error");
+ }
++/* A join's outcome, once: refused reopens the row's password field with what was tried, selected;
++ * connected says so. In TV posture each is the shared toast (the TV has no notice row to read). */
++static void join_outcome (View *v)
++{
++  const char *failed = cc_luma_view_text (v, "joinFailed"), *done = cc_luma_view_text (v, "joinDone");
++  const char *serial = *failed && g_strcmp0 (failed, v->join_seen) != 0 ? failed
++                     : *done && g_strcmp0 (done, v->join_seen) != 0 ? done : NULL;
++  if (!serial) return;
++  gboolean refused = serial == failed;
++  g_free (v->join_seen); v->join_seen = g_strdup (serial);
++  g_autofree char *name = g_strndup (serial, strcspn (serial, "\n"));
++  if (refused)
++    {
++      g_free (v->joining); v->joining = g_strdup (name);
++      v->join_select = TRUE;
++    }
++  if (luma_ui_tv_posture ())
++    {
++      const char *why = cc_luma_view_text (v, "netError");
++      g_autofree char *said = refused ? g_strdup (*why ? why : "Couldn’t join the network") : g_strdup_printf ("Connected to %s", name);
++      luma_toast_show (v->root, said, refused ? "error" : "done");
++    }
++}
+ static void wifi (View *v)
+ {
++  join_outcome (v);
+   gboolean enabled = cc_luma_view_flag (v, "wifi");
+   JsonObject *wifi_data = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFWIFI");
+   gboolean present = !cc_luma_fixture_is_live (v->model) || (wifi_data && json_object_get_boolean_member_with_default (wifi_data, "present", FALSE));
+@@ -1198,6 +1253,7 @@ static void render (View *v)
+   if (v->query && *v->query) search_render (v);
+   else render_page (v);
+   cf_rows_wrap (v);
++  cf_rows_parts (v);
+   if (join_text) {
+     GtkWidget *field = named_widget (v->root, "cf-join-password");
+     if (field) {
+@@ -1208,6 +1264,17 @@ static void render (View *v)
+     }
+   }
+   if (bluetooth_focus && gtk_widget_is_ancestor (bluetooth_focus, v->root)) gtk_widget_grab_focus (bluetooth_focus);
++  if (v->join_select)
++    {
++      GtkWidget *field = named_widget (v->root, "cf-join-password");
++      v->join_select = FALSE;
++      if (field)
++        {
++          if (v->join_last) gtk_editable_set_text (GTK_EDITABLE (field), v->join_last);
++          gtk_widget_grab_focus (field);
++          gtk_editable_select_region (GTK_EDITABLE (field), 0, -1);
++        }
++    }
+   island_drawn (v);
+   v->rendering = FALSE;
+   g_free (v->drawn_page);
+@@ -1264,6 +1331,8 @@ static void view_free (View *v)
+     g_source_remove (v->refresh);
+   if (v->connection) g_source_remove (v->connection);
+   g_free (v->joining);
++  g_free (v->join_seen);
++  g_free (v->join_last);
+   g_free (v->connecting);
+   g_free (v->variant);
+   g_clear_pointer (&v->drafts, g_hash_table_unref);
+@@ -1396,6 +1466,8 @@ static int page_hue (View *v)
+ static void draw_wash (GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data)
+ {
+   View *v = data;
++  GtkRoot *native = gtk_widget_get_root (GTK_WIDGET (area));
++  if (native && gtk_widget_has_css_class (GTK_WIDGET (native), "lumaui-tv")) return; /* TV: the page is open to the room */
+   gboolean dark = adw_style_manager_get_dark (adw_style_manager_get_default ());
+   GdkRGBA top;
+   cairo_pattern_t *gradient = cairo_pattern_create_linear (0, 0, 0, 300);
+@@ -1782,6 +1854,16 @@ const char *cc_luma_view_get_page (GtkWidget *root)
+   View *v = g_object_get_data (G_OBJECT (root), "cf-view");
+   return v ? v->page : NULL;
+ }
++void cc_luma_view_refresh (GtkWidget *root)
++{
++  View *v = g_object_get_data (G_OBJECT (root), "cf-view");
++  if (v) cc_luma_view_queue_refresh (v);
++}
++gboolean cc_luma_view_page_offered (CcLumaFixture *model, const char *page)
++{
++  (void) model;
++  return page && page_supported (page);
++}
+ 
+ /* Hooks for the row builders (cc-luma-rows.c). */
+ GtkWidget *cc_luma_view_entry (View *v, const char *key, const char *caption)
+diff --git a/shell/cc-luma-view.h b/shell/cc-luma-view.h
+index 2d45087..eef9324 100644
+--- a/shell/cc-luma-view.h
++++ b/shell/cc-luma-view.h
+@@ -17,6 +17,10 @@ typedef void (*CcLumaViewPageFunc) (GtkWidget *view, const char *page, gpointer
+ void cc_luma_view_set_page_handler (GtkWidget *view, CcLumaViewPageFunc handler, gpointer data);
+ void cc_luma_view_go (GtkWidget *view, const char *page);
+ const char *cc_luma_view_get_page (GtkWidget *view);
++/* Draw the page again (the posture changed under it). */
++void cc_luma_view_refresh (GtkWidget *view);
++/* A page this build can draw (TV posture lists only these). */
++gboolean cc_luma_view_page_offered (CcLumaFixture *model, const char *page);
+ /* Asked before the view draws a page; TRUE means someone else shows it. */
+ typedef gboolean (*CcLumaViewRouteFunc) (GtkWidget *view, const char *page, gpointer data);
+ void cc_luma_view_set_router (GtkWidget *view, CcLumaViewRouteFunc router, gpointer data);
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index 0e0bd73..3c54bc0 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -46,6 +46,24 @@ static const Destination destinations[] = {
+   { "about", "About", "info" },
+ };
+ 
++/* TV posture (docs/developer-platform/tv-mode.md): the same pages, the ones a TV needs, in the
++ * order of the TV mockup (luma-tv-settings.html), under their TV names; a section heading becomes
++ * the island's separator. Every other page stays: hidden from the island, still open by deep link. */
++static const Destination tv_destinations[] = {
++  { "wifi", "Wi‑Fi", "wifi" },
++  { "bluetooth", "Bluetooth", "bluetooth" },
++  { "displays", "Display", "monitor" },
++  { "sound", "Sound", "volume-2" },
++  { "appearance", "Appearance", "palette" },
++  { "tv-idle", "Idle & Sleep", "moon" },
++  { "apps", "Apps", "layout-grid" },
++  { "tv-remotes", "Remotes", "smartphone" },
++  { NULL, "System", NULL },
++  { "a11y", "Accessibility", "accessibility" },
++  { "me", "Account", "user" },
++  { "about", "About", "info" },
++};
++
+ typedef struct {
+   CcLumaFixture *model;
+   GtkWidget *shell;
+@@ -55,9 +73,12 @@ typedef struct {
+   LumaBarItem *search_item;
+   GtkListBox *list;
+   GHashTable *rows; /* id → LumaNavigationRow */
++  JsonArray *groups; /* CFGRPS: the desktop's sections */
+   GtkWidget *stack;  /* a phone: the list first (LumaListFirst) */
+   char *shown;       /* the page last shown, so only a new page pushes */
+   gboolean following;
++  gboolean tv;       /* the island carries the TV destinations */
++  GtkWidget *sidebar;
+ } Frame;
+ 
+ static void frame_free (Frame *f)
+@@ -66,9 +87,15 @@ static void frame_free (Frame *f)
+   g_clear_object (&f->search_item);
+   g_free (f->shown);
+   g_hash_table_unref (f->rows);
++  g_clear_pointer (&f->groups, json_array_unref);
+   g_free (f);
+ }
+ 
++static gboolean tv_posture (void)
++{
++  return luma_ui_tv_posture ();
++}
++
+ static const Destination *destination (const char *id)
+ {
+   for (guint i = 0; i < G_N_ELEMENTS (destinations); i++)
+@@ -183,7 +210,7 @@ static void follow_page (CcLumaShell *shell, const char *page, gpointer data)
+   /* v71 phone ("Settings (polish)"): the list shows no selected row, and the account card is a card,
+    * never the raised selected chip. */
+   gboolean phone = phone_form_factor ();
+-  luma_account_card_set_selected (LUMA_ACCOUNT_CARD (f->account), !phone && g_str_equal (root, "me"));
++  luma_account_card_set_selected (LUMA_ACCOUNT_CARD (f->account), !phone && !f->tv && g_str_equal (root, "me"));
+   row = phone ? NULL : g_hash_table_lookup (f->rows, root);
+   if (row)
+     {
+@@ -291,6 +318,65 @@ static void page_island (GtkWidget *view, GtkWidget *island, gboolean back, gpoi
+   if (!back) luma_list_first_attach_island (LUMA_LIST_FIRST (f->stack), LUMA_TITLE_ISLAND (island));
+ }
+ 
++static void add_destinations (Frame *f)
++{
++  JsonArray *groups = f->groups;
++  GtkWidget *sidebar = f->sidebar;
++  f->tv = tv_posture () && !phone_form_factor ();
++  if (f->tv)
++    {
++      for (guint i = 0; i < G_N_ELEMENTS (tv_destinations); i++)
++        {
++          const Destination *d = &tv_destinations[i];
++          GtkWidget *row;
++          if (!d->id)
++            {
++              luma_navigation_sidebar_append_section (LUMA_NAVIGATION_SIDEBAR (sidebar), d->title);
++              continue;
++            }
++          if (!cc_luma_view_page_offered (f->model, d->id)) continue; /* hide rather than fake */
++          row = luma_navigation_row_new (d->title, NULL);
++          luma_navigation_row_set_lead (LUMA_NAVIGATION_ROW (row), luma_ui_icon_new (d->icon));
++          g_object_set_data (G_OBJECT (row), "cf-page", (gpointer) d->id);
++          luma_navigation_sidebar_append_row (LUMA_NAVIGATION_SIDEBAR (sidebar), GTK_LIST_BOX_ROW (row));
++          g_hash_table_insert (f->rows, (gpointer) d->id, row);
++        }
++      return;
++    }
++  for (guint g = 0; groups && g < json_array_get_length (groups); g++)
++    {
++      JsonArray *group = json_array_get_array_element (groups, g);
++      const char *heading = json_array_get_string_element (group, 0);
++      JsonArray *ids = json_array_get_array_element (group, 1);
++      if (heading && *heading)
++        luma_navigation_sidebar_append_section (LUMA_NAVIGATION_SIDEBAR (sidebar), heading);
++      for (guint i = 0; i < json_array_get_length (ids); i++)
++        {
++          const Destination *d = destination (json_array_get_string_element (ids, i));
++          GtkWidget *row;
++          if (!d) continue;
++          row = luma_navigation_row_new (d->title, NULL);
++          luma_navigation_row_set_lead (LUMA_NAVIGATION_ROW (row), luma_ui_icon_new (d->icon));
++          g_object_set_data (G_OBJECT (row), "cf-page", (gpointer) d->id);
++          luma_navigation_sidebar_append_row (LUMA_NAVIGATION_SIDEBAR (sidebar), GTK_LIST_BOX_ROW (row));
++          g_hash_table_insert (f->rows, (gpointer) d->id, row);
++        }
++    }
++}
++
++/* TV posture turned on or off: the island's destinations follow; the page draws again. */
++static void posture_changed (GObject *context, GParamSpec *pspec, Frame *f)
++{
++  if (f->tv == (tv_posture () && !phone_form_factor ())) return;
++  f->following = TRUE;
++  luma_navigation_sidebar_clear (LUMA_NAVIGATION_SIDEBAR (f->sidebar));
++  g_hash_table_remove_all (f->rows);
++  add_destinations (f);
++  f->following = FALSE;
++  cc_luma_shell_redraw (CC_LUMA_SHELL (f->shell));
++  follow_page (CC_LUMA_SHELL (f->shell), cc_luma_shell_get_page (CC_LUMA_SHELL (f->shell)), f);
++}
++
+ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model, GtkWidget *view)
+ {
+   Frame *f = g_new0 (Frame, 1);
+@@ -331,25 +417,9 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+   g_signal_connect (f->account, "clicked", G_CALLBACK (account_clicked), f);
+   luma_navigation_sidebar_append_header (LUMA_NAVIGATION_SIDEBAR (sidebar), f->account);
+ 
+-  for (guint g = 0; groups && g < json_array_get_length (groups); g++)
+-    {
+-      JsonArray *group = json_array_get_array_element (groups, g);
+-      const char *heading = json_array_get_string_element (group, 0);
+-      JsonArray *ids = json_array_get_array_element (group, 1);
+-      if (heading && *heading)
+-        luma_navigation_sidebar_append_section (LUMA_NAVIGATION_SIDEBAR (sidebar), heading);
+-      for (guint i = 0; i < json_array_get_length (ids); i++)
+-        {
+-          const Destination *d = destination (json_array_get_string_element (ids, i));
+-          GtkWidget *row;
+-          if (!d) continue;
+-          row = luma_navigation_row_new (d->title, NULL);
+-          luma_navigation_row_set_lead (LUMA_NAVIGATION_ROW (row), luma_ui_icon_new (d->icon));
+-          g_object_set_data (G_OBJECT (row), "cf-page", (gpointer) d->id);
+-          luma_navigation_sidebar_append_row (LUMA_NAVIGATION_SIDEBAR (sidebar), GTK_LIST_BOX_ROW (row));
+-          g_hash_table_insert (f->rows, (gpointer) d->id, row);
+-        }
+-    }
++  f->sidebar = sidebar;
++  f->groups = groups ? json_array_ref (groups) : NULL;
++  add_destinations (f);
+   g_signal_connect (f->list, "row-activated", G_CALLBACK (row_activated), f);
+   g_signal_connect (f->list, "row-selected", G_CALLBACK (row_selected), f);
+ 
+@@ -394,6 +464,15 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+   /* Opening on a page with a text field put a blinking caret in it (About, Sharing): the window starts
+    * with its focus on the page's destination in the sidebar instead. */
+   g_signal_connect (window, "map", G_CALLBACK (focus_destination), f);
++  {
++    LumaContext *context = NULL;
++    g_object_get (window, "context", &context, NULL);
++    if (context)
++      {
++        g_signal_connect_object (context, "notify::tv", G_CALLBACK (posture_changed), f->shell, G_CONNECT_DEFAULT);
++        g_object_unref (context);
++      }
++  }
+   g_object_set_data (G_OBJECT (window), "cf-shell", f->shell);
+   if (model)
+     g_signal_connect_object (model, "changed", G_CALLBACK (refresh_meta), f->shell, G_CONNECT_SWAPPED);
+diff --git a/shell/org.gnome.Settings.desktop.in b/shell/org.gnome.Settings.desktop.in
+index bbb2fa0..1984fee 100644
+--- a/shell/org.gnome.Settings.desktop.in
++++ b/shell/org.gnome.Settings.desktop.in
+@@ -12,3 +12,7 @@ Categories=GNOME;GTK;Settings;
+ Keywords=Preferences;Settings;
+ # Translators: Do NOT translate or transliterate this text (these are enum types)!
+ X-Purism-FormFactor=Workstation;Mobile;
++# Luma TV Mode: Settings appears on the TV home (docs/developer-platform/tv-mode.md).
++X-Luma-TV=true
++X-Luma-TV-Tile=org.gnome.Settings-tv
++X-Luma-TV-Presentation=tv

@@ -20,6 +20,11 @@
 #    candidate repository's ref and signed summary are updated so the VM gate
 #    can install and update from it exactly as a device would.
 #
+# The channel's published repository must be present: a working root whose
+# published repository is missing (an unmounted bind, say) would otherwise
+# export a candidate with no parent. A channel's first release sets
+# LUMA_EXPORT_FIRST_RELEASE=1.
+#
 # Nothing here touches a published repository. A candidate that fails its gate
 # is deleted from the candidate repository by scripts/os/discard-candidate.sh.
 
@@ -67,8 +72,9 @@ import_repo="$LUMA_OS_ROOT/ostree/import"
 candidate_repo="$LUMA_OS_ROOT/ostree/candidate-repo"
 published_repo=$(luma_os_channel_repo "$channel")
 install -d -m 0700 "$LUMA_OS_ROOT/ostree"
-# Refuse shared/inherited staging metadata before an importer can cache it.
-python3 "$luma_os_repo_root/scripts/os/lib/private_import_repo.py" "$import_repo"
+# Refuse shared/inherited staging metadata before an importer can cache it; a
+# refused cache is moved aside unread and replaced by a fresh one.
+python3 "$luma_os_repo_root/scripts/os/lib/private_import_repo.py" --quarantine-refused "$import_repo"
 [ -f "$import_repo/config" ] || ostree init --repo="$import_repo" --mode=bare-user
 [ "$(ostree config --repo="$import_repo" get core.mode)" = bare-user ] ||\
   luma_os_die 'import cache has the wrong repository mode; quarantine it and use a fresh private path'
@@ -154,6 +160,8 @@ ostree pull-local --repo="$candidate_repo" --untrusted "$import_repo" "$merge" >
 parent=
 if [ -f "$published_repo/config" ]; then
   parent=$(ostree rev-parse --repo="$published_repo" "$ref" 2>/dev/null || true)
+elif [ "${LUMA_EXPORT_FIRST_RELEASE:-}" != 1 ]; then
+  luma_os_die "no published repository at $published_repo (not mounted?); set LUMA_EXPORT_FIRST_RELEASE=1 for a first release"
 fi
 if [ -n "$parent" ]; then
   ostree pull-local --repo="$candidate_repo" --commit-metadata-only --untrusted \

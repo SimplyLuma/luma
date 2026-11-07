@@ -48,7 +48,7 @@ class WeatherGlyphTest(unittest.TestCase):
                 WeatherGlyph('sun', size=bad)
 
     def test_all_shapes_parse_and_stay_in_the_viewbox(self):
-        self.assertEqual(len(WEATHER_CONDITIONS), 6)
+        self.assertEqual(len(WEATHER_CONDITIONS), 7)
         for parts in _GEOMETRY.values():
             for data, _color, stroke in parts:
                 ok, bounds = _path(data).get_bounds()

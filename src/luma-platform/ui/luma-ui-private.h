@@ -48,6 +48,9 @@ G_BEGIN_DECLS
 
 /* Classes */
 void luma_ui_set_css_class(GtkWidget *widget, const char *name, gboolean on);
+/* The floating island's sidebar (luma-tv-frame.c): destinations only, folded to leads in the rail. */
+typedef struct _LumaNavigationSidebar LumaNavigationSidebar;
+void luma_navigation_sidebar_set_tv(LumaNavigationSidebar *self, gboolean tv, gboolean rail);
 /* The accessible label (and nothing else). */
 void luma_ui_set_accessible_label(GtkWidget *widget, const char *label);
 

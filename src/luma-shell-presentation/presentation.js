@@ -16,7 +16,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {peekNotificationLip} from 'resource:///org/gnome/shell/ui/lumaNotificationBeacon.js';
 import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
-import {homeLayout, pageProgress, statusGlyph, visiblePageRange} from './layout.js';
+import {displayDensity, hiddenFromHome, homeLayout, inkFor, pageProgress, statusGlyph, visiblePageRange} from './layout.js';
 import {bottomInset} from './keycap.js';
 import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
@@ -28,12 +28,27 @@ import {TabletTasks, HandheldMotion, HandheldBackNavigation} from './tabletTasks
 import {SwitcherDrag} from './switcherDrag.js';
 import {HandheldOptions, StatusPulls} from './handheldOptions.js';
 import {tabletFrame} from './frameTokens.js';
+import {TvPresentation} from './tv.js';
 import {gettext as _} from 'gettext';
 
 const BUS = 'org.project_luma.ShellState1';
 const PATH = '/org/project_luma/ShellState1';
 // Logical height of the home gesture zone at the bottom of a handheld screen.
 const GESTURE_HEIGHT = 28;
+// Logical height of the handheld status bar drawn over applications.
+const STATUS_HEIGHT = 44;
+// Interval between status-ink samples while the screen repaints.
+const INK_SAMPLE_MS = 400;
+
+// Pick one stage pixel; GJS returns the colour alone or after the boolean.
+function pickColor(screenshot, x, y) {
+    return new Promise((resolve, reject) => screenshot.pick_color(x, y, (source, result) => {
+        try {
+            const value = source.pick_color_finish(result);
+            resolve(Array.isArray(value) ? value[value.length - 1] : value);
+        } catch (error) { reject(error); }
+    }));
+}
 
 function move(actor, parent) {
     actor.get_parent()?.remove_child(actor);
@@ -117,6 +132,11 @@ export class Presentation {
         this._displayProfiles = null;
         this._displayGeometry = null;
         this._displayGeometrySerial = 0;
+        this._density = null;
+        this._densitySerial = 0;
+        this._sampledInk = null;
+        this._inkSampleSource = 0;
+        this._publishedBars = null;
         for (const path of ['/etc/luma/display-geometry.json', '/usr/share/luma/display-geometry.json']) {
             try {
                 const [ok, bytes] = GLib.file_get_contents(path);
@@ -125,6 +145,7 @@ export class Presentation {
             } catch { /* Displays without exclusions retain their normal insets. */ }
         }
         this._refreshDisplayGeometry();
+        this._refreshDensity();
         this._liveWidgets = widgets === null ? new HomeWidgets(this) : null;
         this._widgetHosts = new Map((widgets ?? this._liveWidgets.definitions()).map(widget => [widget.id, widget]));
         this._appSystem = Shell.AppSystem.get_default();
@@ -250,6 +271,9 @@ export class Presentation {
             this._tasks?.sync();
             if (!this._home.visible) this._editor.setEditing(false);
         });
+        // Ink follows what the screen paints under the bar; sampling stops
+        // when nothing repaints.
+        this._connect(global.stage, 'after-paint', () => this._queueInkSample());
         this._connect(this._settings, 'changed::surface-treatment', () => this._updateStatusStyle());
         this._connect(this._settings, 'changed::reduce-transparency', () => this._syncAccessibilityStyles());
         this._connect(St.Settings.get(), 'notify::high-contrast', () => this._syncAccessibilityStyles());
@@ -261,6 +285,7 @@ export class Presentation {
         this._connect(Main.layoutManager, 'monitors-changed', () => {
             this._editor.cancel();
             this._refreshDisplayGeometry();
+            this._refreshDensity();
             this._tasks.layout();
             this._queueRebuild();
         });
@@ -325,6 +350,8 @@ export class Presentation {
         this._connect(seat, 'notify::touch-mode', () => this._reportInput());
         this._connect(seat, 'device-added', () => this._reportInput());
         this._connect(seat, 'device-removed', () => this._reportInput());
+        // TV posture owns the screen while it is on; nothing else changes.
+        this._tv = new TvPresentation(this);
         this._addModeOptions();
         this._handheldOptions = new HandheldOptions(this);
         this._statusPulls = new StatusPulls(this);
@@ -401,8 +428,13 @@ export class Presentation {
         const homeChanged = JSON.stringify(snapshot.home_layouts) !== JSON.stringify(this._state?.home_layouts);
         this._state = snapshot;
         this._updateStatusStyle();
-        const mode = snapshot.presentation?.effective ?? 'desktop';
-        const selected = snapshot.presentation?.selected ?? 'automatic';
+        // TV posture sits above the presentation: the handheld machinery stays
+        // on Desktop underneath and TvPresentation draws the screen. Without a
+        // posture in the snapshot (an older service) this is exactly as before.
+        const tv = snapshot.posture?.effective === 'tv';
+        if (!tv) this._tv.setActive(false);
+        const mode = tv ? 'desktop' : snapshot.presentation?.effective ?? 'desktop';
+        const selected = snapshot.posture?.selected === 'tv' ? 'tv' : snapshot.presentation?.selected ?? 'automatic';
         for (const [choice, option] of this._modeButtons) {
             option.checked = selected === choice;
             option.setOrnament(option.checked ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
@@ -414,6 +446,7 @@ export class Presentation {
         this._options.subtitle = null;
         if (this.mode === mode) {
             if ((favoritesChanged || homeChanged) && mode !== 'desktop') this._queueRebuild();
+            this._tv.setActive(tv);
             return;
         }
         const previous = this.mode;
@@ -423,6 +456,7 @@ export class Presentation {
         if (mode === 'desktop') {
             // Return borrowed status actors before measuring/showing the Dash.
             this._leaveHandheld();
+            this._publishBars(0, 0);
             Main.shelf?.setPresentationMode?.(mode);
         } else {
             Main.shelf?.setPresentationMode?.(mode);
@@ -434,6 +468,7 @@ export class Presentation {
             for (const window of this._windows.keys()) this._queueKeep(window);
         }
         this._tasks.setMode();
+        this._tv.setActive(tv);
     }
 
     // Runs on every monitor change: the primary display's connector picks its
@@ -460,6 +495,28 @@ export class Presentation {
                     if (!this._destroyed) console.warn(`Display exclusion transform unavailable: ${error.message}`);
                 }
             });
+    }
+
+    // Home's density follows the primary panel's physical size and the user's
+    // zoom; a panel without a plausible size keeps the logical-pixel rules.
+    _refreshDensity() {
+        const serial = ++this._densitySerial;
+        const call = method => new Promise((resolve, reject) => Gio.DBus.session.call(
+            'org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
+            'org.gnome.Mutter.DisplayConfig', method, null, null, Gio.DBusCallFlags.NONE, 3000,
+            this._cancellable, (bus, result) => {
+                try { resolve(bus.call_finish(result).deep_unpack()); } catch (error) { reject(error); }
+            }));
+        Promise.all([call('GetCurrentState'), call('GetResources')]).then(([state, resources]) => {
+            if (this._destroyed || serial !== this._densitySerial) return;
+            const monitor = Main.layoutManager.primaryMonitor;
+            const density = monitor ? displayDensity(state, resources, monitor.x, monitor.y) : null;
+            if (JSON.stringify(density) === JSON.stringify(this._density)) return;
+            this._density = density;
+            this._queueRebuild();
+        }).catch(error => {
+            if (!this._destroyed) console.warn(`Display density unavailable: ${error.message}`);
+        });
     }
 
     _reportInput() {
@@ -490,13 +547,19 @@ export class Presentation {
         this._options.connect('clicked', () => this._options.menu.open());
         this._modeButtons = new Map();
         for (const [mode, label] of [['automatic', _('Automatic')], ['desktop', _('Desktop')],
-            ['tablet', _('Tablet')], ['mobile', _('Mobile')]]) {
+            ['tablet', _('Tablet')], ['mobile', _('Mobile')], ['tv', _('TV')]]) {
             const option = new PopupMenu.PopupMenuItem(label);
             option.reactive = false;
             option.can_focus = false;
             option.accessible_role = Atk.Role.RADIO_MENU_ITEM;
             option.connect('activate', () => {
-                this._call('SetPresentation', new GLib.Variant('(s)', [mode]), () => this._refresh());
+                // TV is the posture; any other choice leaves TV for that presentation.
+                if (mode === 'tv') this._call('SetPosture', new GLib.Variant('(s)', ['tv']), () => this._refresh());
+                else this._call('SetPresentation', new GLib.Variant('(s)', [mode]), () => {
+                    if (this._state?.posture?.selected === 'tv')
+                        this._call('SetPosture', new GLib.Variant('(s)', ['automatic']), () => this._refresh());
+                    else this._refresh();
+                });
                 menu.close();
             });
             this._options.menu.addMenuItem(option);
@@ -877,10 +940,66 @@ export class Presentation {
         const treatment = this._settings.get_user_value('surface-treatment')?.deep_unpack();
         const darkSurface = treatment ? treatment === 'dark' : this._state?.appearance === 'prefer-dark';
         this._statusInk = this._home.visible ? 'light' :
-            ['light', 'dark'].includes(hint) ? hint : darkSurface ? 'light' : 'dark';
+            ['light', 'dark'].includes(hint) ? hint : this._sampledInk?.all ?? (darkSurface ? 'light' : 'dark');
         this._status.set_style(`padding: 0 ${this._safeStatus?.right ?? this._statusInset ?? 24}px 0 ${this._safeStatus?.left ?? this._statusInset ?? 24}px;` +
             `color: ${this._statusInk === 'light' ? '#ffffff' : '#191b1f'};`);
         this._tasks?.updateInk();
+    }
+
+    _queueInkSample() {
+        if (this._inkSampleSource || this._inkSampling || this._home.visible || !this._statusWindow ||
+            this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
+            return;
+        this._inkSampleSource = GLib.timeout_add(GLib.PRIORITY_LOW, INK_SAMPLE_MS, () => {
+            this._inkSampleSource = 0;
+            this._sampleInk();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // Applications without an explicit hint (Android, X11, other toolkits)
+    // get ink for the colour under the bar: its top pixel row, clear of the
+    // clock, indicators and the centred island. The gesture handle follows
+    // the bottom row beside it.
+    async _sampleInk() {
+        const display = Main.layoutManager.primaryMonitor;
+        if (!display || this._home.visible || !this._statusWindow || this.mode === 'desktop') return;
+        this._inkSampling = true;
+        try {
+            this._screenshot ??= new Shell.Screenshot();
+            const edge = Math.round(this._scale ?? 1);
+            const pick = (fraction, y) => pickColor(this._screenshot, display.x + Math.round(display.width * fraction), y);
+            const colors = [], bottom = [];
+            for (const fraction of [0.06, 0.3, 0.7, 0.94])
+                colors.push(await pick(fraction, display.y + edge));
+            for (const fraction of [0.06, 0.94])
+                bottom.push(await pick(fraction, display.y + display.height - 1 - edge));
+            const sampled = {all: inkFor(colors), left: inkFor(colors.slice(0, 2)),
+                right: inkFor(colors.slice(2)), bottom: inkFor(bottom)};
+            if (!this._destroyed && JSON.stringify(sampled) !== JSON.stringify(this._sampledInk)) {
+                this._sampledInk = sampled;
+                this._updateStatusStyle();
+            }
+        } catch (error) {
+            if (!this._destroyed) console.warn(`Status ink sample failed: ${error.message}`);
+        } finally {
+            this._inkSampling = false;
+        }
+    }
+
+    // Applications that draw under Shell chrome (Android's status and
+    // navigation bar insets) read the chrome's logical heights here.
+    _publishBars(top, bottom) {
+        const text = `${JSON.stringify({schema: 1, mode: this.mode, top, bottom})}\n`;
+        if (text === this._publishedBars) return;
+        try {
+            const directory = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'luma-shell']);
+            GLib.mkdir_with_parents(directory, 0o700);
+            GLib.file_set_contents(GLib.build_filenamev([directory, 'bars.json']), text);
+            this._publishedBars = text;
+        } catch (error) {
+            console.warn(`Unable to publish bar heights: ${error.message}`);
+        }
     }
 
     _syncAccessibilityStyles() {
@@ -927,10 +1046,8 @@ export class Presentation {
         return this._appSystem.get_installed().filter(info => {
             if (!(info instanceof GioUnix.DesktopAppInfo) || !info.should_show() || info.get_boolean('Terminal'))
                 return false;
-            const id = info.get_id();
             return info.get_string('Type') === 'Application' &&
-                !/^(org\.gnome\.Shell\.Extensions|org\.gnome\.Settings\.|luma-search|search\.)/i.test(id) &&
-                !/^search$/i.test(info.get_display_name().trim());
+                !hiddenFromHome(info.get_id(), info.get_display_name());
         }).sort((a, b) => a.get_display_name().localeCompare(b.get_display_name()));
     }
 
@@ -967,7 +1084,7 @@ export class Presentation {
             box.set_style('spacing: 3px;');
             box.x_align = Clutter.ActorAlign.FILL;
             for (const child of box.get_children()) {
-                if (child instanceof St.Label) child.set_style('font-size: 10px;');
+                if (child instanceof St.Label) child.set_style(`font-size: ${this._layout.labelSize ?? 10}px;`);
             }
             result.set_style('padding: 2px; min-width: 0; min-height: 0;');
             result.clip_to_allocation = true;
@@ -1001,7 +1118,9 @@ export class Presentation {
         this._home.set_position(monitor.x, monitor.y);
         this._home.set_size(monitor.width, monitor.height);
         this._status.set_position(display.x, display.y);
-        this._status.set_size(display.width, 44 * scale);
+        this._status.set_size(display.width, STATUS_HEIGHT * scale);
+        if (display.width / scale < 360) this._status.add_style_class_name('narrow');
+        else this._status.remove_style_class_name('narrow');
         const lip = peekNotificationLip();
         if (lip && lip !== this._gestureLip) {
             this._gestureLip = lip;
@@ -1014,9 +1133,10 @@ export class Presentation {
         this._setHandheldQuickOptions(true);
         this._gestureBar.set_position(display.x, display.y + display.height - GESTURE_HEIGHT * scale);
         this._gestureBar.set_size(display.width, GESTURE_HEIGHT * scale);
+        this._publishBars(STATUS_HEIGHT, GESTURE_HEIGHT);
         this._apps = this._catalog();
         this._layout = homeLayout(monitor.width / scale, monitor.height / scale,
-            this.mode, this._apps.length, {}, this._homePreferences());
+            this.mode, this._apps.length, {}, this._homePreferences(), this._density);
         this._homeIconSize = this._layout.iconSize ?? 60;
         if (this._layout.compact) this._home.add_style_class_name('compact-home');
         else this._home.remove_style_class_name('compact-home');
@@ -1029,12 +1149,13 @@ export class Presentation {
             probe.destroy();
         }
         this._statusInset = this.mode === 'tablet' ? tabletFrame.edge :
-            homeLayout(display.width / scale, display.height / scale, this.mode, this._apps.length, metrics, this._homePreferences()).inset;
+            homeLayout(display.width / scale, display.height / scale, this.mode, this._apps.length, metrics,
+                this._homePreferences(), this._density).inset;
         const layout = homeLayout(monitor.width / scale, monitor.height / scale,
-            this.mode, this._apps.length, metrics, this._homePreferences());
+            this.mode, this._apps.length, metrics, this._homePreferences(), this._density);
         this._layout = layout;
         this._homeIconSize = layout.iconSize ?? 60;
-        const safe = statusInsets(this._displayGeometry, display, 44 * scale,
+        const safe = statusInsets(this._displayGeometry, display, STATUS_HEIGHT * scale,
             (layout.compact ? 12 : this._statusInset) * scale, 8 * scale);
         this._safeStatus = {left: safe.left / scale, right: safe.right / scale};
         this._status.set_style(`padding: 0 ${safe.right / scale}px 0 ${safe.left / scale}px;` +
@@ -1241,6 +1362,7 @@ export class Presentation {
         this._initialWindows.clear();
         global.stage.remove_action(this._homePan);
         this._backNavigation.destroy();
+        this._tv.destroy();
         this._liveWidgets?.destroy();
         this._powerButton.destroy();
         this._callTakeover.destroy();
@@ -1255,6 +1377,7 @@ export class Presentation {
         this._tasks.destroy();
         this._tasks = null;
         if (this._rebuildSource) GLib.source_remove(this._rebuildSource);
+        if (this._inkSampleSource) GLib.source_remove(this._inkSampleSource);
         if (this._visibilitySource) GLib.source_remove(this._visibilitySource);
         for (const [object, id] of this._signals) object.disconnect(id);
         this._editor.destroy();

@@ -245,6 +245,18 @@ class DebRepositorySource:
 
 
 @dataclass(frozen=True)
+class TvFacts:
+    """Schema 4 ``tv`` (optional): Luma's word on a TV, overriding or filling in the app's own
+    AppStream ``<control>`` and ``<display_length>``. ``runs``: it is usable on a TV;
+    ``input``: how it is driven there (remote | controller | keyboard), empty when not said."""
+    runs: bool
+    input: str = ''
+
+
+TV_INPUTS = ('remote', 'controller', 'keyboard')
+
+
+@dataclass(frozen=True)
 class Channel:
     """Where a listing installs from, as a person reads it. Display only."""
     kind: str               # luma | flathub | snap | rpm-repository | fedora | publisher
@@ -312,6 +324,11 @@ class CatalogEntry:
     sandbox: str = ''
     #: A system tool: exempt from the screenshot requirement.
     system_tool: bool = False
+    #: Schema 4 ``tv`` (optional): see TvFacts. None when the catalogue does not say.
+    tv: TvFacts | None = None
+    #: Schema 4 ``keywords`` (optional): words people search for it by, AppStream
+    #: ``<keywords>`` and the names people arrive with ("iTunes" for a music player).
+    keywords: tuple[str, ...] = ()
 
     @property
     def installable(self) -> bool:
@@ -677,7 +694,25 @@ def _v4_entry(row, ids, sources):
         preinstalled_on_luma=preinstalled and luma_system is not None,
         snap=snap, rpm_repository=rpm_repository, deb_repository=deb_repository, channel=_channel(row),
         sandbox=row.get('sandbox') if row.get('sandbox') in SANDBOXES else '',
-        system_tool=row.get('system_tool') is True)
+        system_tool=row.get('system_tool') is True,
+        tv=_tv_facts(row.get('tv')), keywords=_keywords(row.get('keywords')))
+
+
+def _tv_facts(value):
+    """Schema 4 ``tv``: {"runs": bool, "input": "remote" | "controller" | "keyboard"}; optional.
+    A malformed value is ignored (the app's own AppStream then decides), never fatal."""
+    if not isinstance(value, dict) or type(value.get('runs')) is not bool:
+        return None
+    given = value.get('input', '')
+    return TvFacts(value['runs'], given if given in TV_INPUTS else '')
+
+
+def _keywords(value):
+    """Schema 4 ``keywords``: up to 32 short words; optional, malformed ones are skipped."""
+    if not isinstance(value, list):
+        return ()
+    return tuple(word.strip() for word in value[:32]
+                 if isinstance(word, str) and 0 < len(word.strip()) <= 64)
 
 
 def _sources(row):

@@ -1,0 +1,52 @@
+From a34b70cd7cc2803a238c13704dd81b028a5d3a91 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 3 Nov 2026 00:12:12 -0600
+Subject: [PATCH] LumaUI Settings: the page wash is 300 px tall, and hidden on
+ TV
+
+The wash (the page hue down the top of the island) was a GtkDrawingArea
+as large as the page, so each redraw rasterized and uploaded a cairo
+surface of the whole page, though the gradient covers its top 300 px. On
+TV the draw function returned early, but the empty page-sized surface
+was still cleared and uploaded: on a Raspberry Pi 5 at 4K, a tenth of
+Settings' frame time. The wash is now 300 px tall, and hidden on TV.
+---
+ shell/cc-luma-view.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index 73585cb..8ca2b67 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -1375,7 +1375,15 @@ static void render (View *v)
+   v->generation++;
+   v->tiles_host = NULL;
+   v->subtitle = NULL;
+-  if (v->wash) gtk_widget_queue_draw (v->wash);
++  if (v->wash)
++    {
++      /* TV: the page is open to the room, so no wash; hidden rather than
++       * drawn empty, which still rasterized and uploaded a page-sized
++       * cairo surface whenever the page redrew. */
++      GtkRoot *native = gtk_widget_get_root (v->wash);
++      gtk_widget_set_visible (v->wash, !(native && gtk_widget_has_css_class (GTK_WIDGET (native), "lumaui-tv")));
++      gtk_widget_queue_draw (v->wash);
++    }
+   /* A redraw of the same page (an owner's report) keeps where the person had scrolled; the viewport
+    * would otherwise jump to whatever gets focus in the rebuilt page. */
+   GtkWidget *sw = gtk_widget_get_ancestor (GTK_WIDGET (v->body), GTK_TYPE_SCROLLED_WINDOW);
+@@ -1825,7 +1833,10 @@ static GtkWidget *new_view (CcLumaFixture *model, const char *page, CcLumaLiveLo
+     gtk_widget_set_name (wash, "cf-wash");
+     gtk_widget_set_can_target (wash, FALSE);
+     gtk_widget_set_hexpand (wash, TRUE);
+-    gtk_widget_set_vexpand (wash, TRUE);
++    /* The wash is the top 300 px of the island: a surface of that size,
++     * not of the whole page. */
++    gtk_widget_set_valign (wash, GTK_ALIGN_START);
++    gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (wash), 300);
+     gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (wash), draw_wash, v, NULL);
+     gtk_overlay_set_child (GTK_OVERLAY (overlay), wash);
+     gtk_overlay_add_overlay (GTK_OVERLAY (overlay), scroll);
+-- 
+2.56.0
+

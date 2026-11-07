@@ -1,0 +1,196 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// TV posture input: remotes and gamepads onto the TV's keys, the game-input
+// policy, and the wiring that keeps the service to TV posture.
+// Run: gjs -m tv-input-policy.js js/ui/lumaPresentation/tvInputModel.js \
+//        js/ui/lumaPresentation/tvTokens.js js/ui/lumaPresentation/tvInput.js \
+//        js/ui/lumaPresentation/tv.js js/ui/lumaPresentation/tvPointer.js
+// (node tv-input-policy.js ... works too).
+const gjs = typeof globalThis.ARGV !== 'undefined';
+const args = gjs ? globalThis.ARGV : process.argv.slice(2);
+const GLib = gjs ? (await import('gi://GLib')).default : null;
+const fs = gjs ? null : await import('node:fs');
+const cwd = gjs ? GLib.get_current_dir() : process.cwd();
+const absolute = path => (path.startsWith('/') ? path : `${cwd}/${path}`);
+const read = path => (gjs ? new TextDecoder().decode(GLib.file_get_contents(path)[1])
+    : fs.readFileSync(path, 'utf8'));
+
+function assert(value, message) {
+    if (!value)
+        throw new Error(`FAIL: ${message}`);
+}
+
+const M = await import(`file://${absolute(args[0])}`);
+const {tv: tokens} = await import(`file://${absolute(args[1])}`);
+const service = read(args[2]);
+const home = read(args[3]);
+const pointer = args[4] ? read(args[4]) : null;
+const input = tokens.input;
+
+// The TV's keys: arrows, Return = OK, Escape = Back, Menu.
+assert(M.TV_KEYS.ok === 'Return' && M.TV_KEYS.back === 'Escape' && M.TV_KEYS.menu === 'Menu', 'TV keys');
+assert(M.DIRECTIONS.every(d => M.TV_KEYS[d]), 'every direction is a key');
+
+// Remote keys that are not TV keys become them; CEC's through rc-cec.
+const remote = {XF86Back: 'back', XF86Close: 'back', XF86OK: 'ok', XF86Select: 'ok',
+    XF86HomePage: 'home', XF86RootMenu: 'home', XF86MenuKB: 'menu', XF86ContextMenu: 'menu'};
+for (const [name, action] of Object.entries(remote))
+    assert(M.REMOTE_KEYS[name] === action, `${name} is ${action}`);
+assert(!Object.keys(M.REMOTE_KEYS).some(name => Object.values(M.TV_KEYS).includes(name)),
+    'TV keys are never re-sent (no loop through the virtual keyboard)');
+
+// Gamepad buttons.
+const B = M.BUTTON;
+assert(M.buttonAction(B.SOUTH) === 'ok', 'South is OK by default');
+assert(M.buttonAction(B.EAST) === 'back' && M.buttonAction(B.SELECT) === 'back', 'East and Select are Back');
+assert(M.buttonAction(B.EAST, 'east') === 'ok' && M.buttonAction(B.SOUTH, 'east') === 'back',
+    'Nintendo layout: East is OK, South is Back');
+assert(M.buttonAction(B.SELECT, 'east') === 'back' && M.buttonAction(B.START, 'east') === 'pause', 'the rest stays');
+
+// Which face button is OK: the setting wins; automatic follows the layout.
+const xbox = M.padIdentity('030000005e0400008e02000014010000');
+assert(xbox.vendor === 0x045e && xbox.product === 0x028e, 'vendor and product from the GUID');
+assert(M.padIdentity('nope') === null, 'a malformed GUID');
+const pro = M.padIdentity('050000007e0500000920000001800000');
+assert(pro.vendor === 0x057e && pro.product === 0x2009, 'Switch Pro Controller');
+assert(M.confirmButton('automatic', xbox, 'Microsoft X-Box 360 pad') === 'south', 'Xbox pads: South');
+assert(M.confirmButton('automatic', pro, 'Pro Controller') === 'east', 'Nintendo pads: East');
+assert(M.confirmButton('automatic', {vendor: 0x0810, product: 0xe501}, 'usb gamepad') === 'east', 'known SNES USB pad');
+assert(M.confirmButton('automatic', null, '8BitDo SN30 Pro (Switch)') === 'east', 'by name');
+assert(M.confirmButton('east', xbox, 'Microsoft X-Box 360 pad') === 'east', 'the setting wins over a misreported pad');
+assert(M.confirmButton('south', pro, 'Pro Controller') === 'south', 'and over a Nintendo pad');
+assert(M.buttonAction(B.START) === 'pause', "Start is the system's pause menu (the quick panel)");
+assert(M.buttonAction(B.MODE) === 'home', 'Guide is Home');
+assert(M.buttonAction(B.DPAD_UP) === 'up' && M.buttonAction(B.DPAD_RIGHT) === 'right', 'D-pad buttons move');
+for (const code of [B.NORTH, B.WEST, B.TL, B.TR, B.THUMBL, B.THUMBR])
+    assert(M.buttonAction(code) === null, `button ${code} is unassigned`);
+assert(M.hatDirection(M.AXIS.HAT0X, -1) === 'left' && M.hatDirection(M.AXIS.HAT0Y, 1) === 'down', 'hat D-pad');
+assert(M.hatDirection(M.AXIS.HAT0X, 0) === null && M.hatDirection(M.AXIS.X, 1) === null, 'hat centre and other axes');
+
+// The stick: dominant axis past press, held until inside release.
+assert(input.stick_release < input.stick_press && input.stick_press < 1, 'stick thresholds');
+assert(M.stickDirection(0.2, 0.1, null, input) === null, 'dead zone');
+assert(M.stickDirection(0.9, 0.3, null, input) === 'right', 'dominant axis');
+assert(M.stickDirection(-0.3, -0.8, null, input) === 'up', 'up is negative y');
+const between = (input.stick_press + input.stick_release) / 2;
+assert(M.stickDirection(between, 0, 'right', input) === 'right', 'held past release');
+assert(M.stickDirection(between, 0, null, input) === null, 'not taken before press');
+assert(M.stickDirection(input.stick_release / 2, 0, 'right', input) === null, 'let go inside release');
+assert(M.stickDirection(-0.9, 0, 'right', input) === 'left', 'flipped across');
+
+// TV-paced repeat.
+assert(M.repeatDelay(1, input) === input.repeat_delay_ms && M.repeatDelay(5, input) === input.repeat_interval_ms,
+    'one step, a delay, then the interval');
+assert(input.repeat_interval_ms >= 80 && input.repeat_delay_ms > input.repeat_interval_ms, 'a TV pace');
+
+// Who gets the pad.
+const tvApp = {presentation: 'tv', claimed: false};
+const game = {presentation: '', claimed: false};
+const claimed = {presentation: 'tv', claimed: true};
+const ctx = (window, extra = {}) => ({shellFocus: false, keyboardVisible: false, window, ...extra});
+assert(M.translates('ok', ctx(null)), 'nothing focused: the Shell');
+assert(M.translates('ok', ctx(game, {shellFocus: true})), 'a Shell surface');
+assert(M.translates('up', ctx(tvApp)), 'a TV app');
+assert(!M.translates('up', ctx(game)) && !M.translates('ok', ctx(game)), 'any other app reads the pad itself');
+assert(M.translates('home', ctx(game)), 'Home leaves a game');
+assert(!M.translates('up', ctx(claimed)) && !M.translates('home', ctx(claimed)), 'a claim keeps the whole pad');
+assert(M.translates('up', ctx(claimed, {keyboardVisible: true})), 'the TV keyboard always takes the pad');
+// Start is the pause menu in every app (a desktop app, a TV app, the TV home); a game keeps it,
+// and there only a held Guide opens the quick panel.
+assert(M.translates('pause', ctx(game)) && M.translates('pause', ctx(tvApp)) && M.translates('pause', ctx(null)),
+    'Start opens the quick panel over any app or the TV home');
+assert(!M.translates('pause', ctx(claimed)), 'a game that claimed the pads keeps Start');
+assert(M.holdsHome(ctx(claimed)) && !M.holdsHome(ctx(game)) && !M.holdsHome(ctx(tvApp)),
+    'in a game only a held Guide is the Shell\'s');
+assert(/else if \(holdsHome\(context\)\) this\._homeDown\(source, true\)/.test(service) &&
+    /const holdOnly = this\._holdOnly\.delete\(source\);[\s\S]*?if \(holdOnly\) return;/.test(service),
+    "a game's short Guide press stays the game's; its long press opens the quick panel");
+assert(/if \(action === 'home'\) this\._home\(\);\s*else if \(action === 'pause'\) this\._pause\?\.\(\);/.test(service),
+    'Start toggles the quick panel');
+assert(/pause: \(\) => this\._quick\?\.toggle\('start'\)/.test(home) &&
+    /showQuickPanel: \(\) => this\._quick\?\.open\('app'\)/.test(home), 'the TV home wires both');
+assert(/<method name="ShowQuickPanel"\/>/.test(service) && /ShowQuickPanel\(\) \{\s*this\._showQuickPanel\?\.\(\);/.test(service),
+    "an app's bar clock opens the quick panel over the app (D-Bus)");
+
+
+// A pad is user activity: Mutter's idle time never sees a pad, so the service taps a key only it
+// holds as an accelerator (no window gets it), at most once per ACTIVITY_MS, while a pad is used.
+assert(M.ACTIVITY_KEY === 'XF86Launch9' && M.ACTIVITY_MS >= 1000 && M.ACTIVITY_MS <= 30000, 'the activity key');
+assert(M.activityDue(null, 0) && !M.activityDue(1000, 1000 + M.ACTIVITY_MS - 1) && M.activityDue(1000, 1000 + M.ACTIVITY_MS),
+    'at most once per ACTIVITY_MS');
+assert(/_grabActivityKey\(\) \{[\s\S]*?grab_accelerator\(ACTIVITY_KEY/.test(service) && /this\._grabActivityKey\(\);/.test(service),
+    'the activity key is the service\'s own accelerator');
+assert(/const name = this\._grabs\.get\(action\);\s*if \(!name\) return;/.test(service) && !/_grabs\.set\(this\._activityAction/.test(service),
+    'it does nothing when it fires');
+assert(/_activity\(\) \{[\s\S]*?activityDue\(this\._activityAt, t\)[\s\S]*?notify_keyval\(time, Clutter\.KEY_Launch9, Clutter\.KeyState\.PRESSED\)/.test(service),
+    'a tap of it, throttled');
+assert(/if \(pressed && pad\.buttons\.has\(code\)\) return;\s*if \(pressed\) this\._activity\(\);/.test(service) &&
+    /if \(direction\) this\._activity\(\);/.test(service) && /if \(pad\.stick && pad\.stick !== held\) this\._activity\(\);/.test(service),
+    'every press, hat push and stick push; never a resting stick or a held button');
+assert(/\[\.\.\.this\._grabs\.keys\(\), this\._activityAction\][\s\S]*?ungrab_accelerator\(action\)/.test(service), 'and given back');
+// The pointer on a TV: hidden by the remote, a pad or a keyboard and after resting; shown by the hand.
+assert(M.POINTER_IDLE_MS === 3000, 'three seconds of rest');
+assert(M.pointerAction('KEY_PRESS') === 'hide' && M.pointerAction('MOTION') === 'show' &&
+    M.pointerAction('BUTTON_PRESS') === 'show' && M.pointerAction('SCROLL') === 'show' &&
+    M.pointerAction('KEY_RELEASE') === null && M.pointerAction('TOUCH_BEGIN') === null, 'what hides and shows it');
+assert(/this\._pointer = new TvPointer\(\)/.test(home) && /_leave\(\) \{[\s\S]*?this\._pointer\?\.destroy\(\)/.test(home),
+    'only in TV posture');
+if (pointer) {
+    assert(/global\.backend\.get_cursor_tracker\(\)/.test(pointer) && /inhibit_cursor_visibility\(\)/.test(pointer) &&
+        /uninhibit_cursor_visibility\(\)/.test(pointer), "Mutter's cursor tracker hides it, nothing fakes it");
+    assert(/destroy\(\) \{[\s\S]*?if \(this\._hidden\) this\._tracker\.uninhibit_cursor_visibility\(\)/.test(pointer),
+        'never left hidden after the posture');
+    assert(/if \(!this\._hidden\) this\._tracker\.inhibit_cursor_visibility\(\)/.test(pointer) &&
+        /if \(this\._hidden\) this\._tracker\.uninhibit_cursor_visibility\(\);\s*this\._hidden = false;/.test(pointer),
+        'inhibits paired: one in, one out');
+    assert(/event_add_filter\(global\.stage[\s\S]*?return Clutter\.EVENT_PROPAGATE;/.test(pointer), 'it watches every event and takes none');
+    assert(/FLAG_SYNTHETIC\) return Clutter\.EVENT_PROPAGATE/.test(pointer), "Mutter's made-up motion is no hand");
+    assert(/timeout_add\(GLib\.PRIORITY_DEFAULT, POINTER_IDLE_MS/.test(pointer), 'hidden after resting');
+}
+
+// The service: only in TV posture, every remote key taken, keys from a
+// virtual keyboard, libmanette optional.
+assert(/_enter\(\) \{[\s\S]*?this\._input = new TvInput\(/.test(home), 'TV posture starts the service');
+assert(/_leave\(\) \{[\s\S]*?this\._input\?\.destroy\(\)/.test(home), 'leaving TV posture ends it');
+assert(/for \(const name of Object\.keys\(REMOTE_KEYS\)\)[\s\S]*?Meta\.KeyBindingFlags\.IGNORE_AUTOREPEAT[\s\S]*?grab_accelerator\(name, flags\)/
+    .test(service), 'every remote key is taken, without autorepeat');
+assert(/destroy\(\) \{[\s\S]*?ungrab_accelerator/.test(service), 'and given back');
+// OK is held, not tapped (TvFocus's long press opens a menu): Return down with
+// the pad's button or the remote key and up with it; everything else taps.
+assert(/const held = name => REMOTE_KEYS\[name\] === 'ok' \|\| REMOTE_KEYS\[name\] === 'home'/.test(service) &&
+    /held\(name\) \? Meta\.KeyBindingFlags\.TRIGGER_RELEASE/.test(service),
+    'remote OK and Home keys report their release');
+assert(/'accelerator-deactivated'[\s\S]*?this\._okUp\(/.test(service), 'remote OK goes up on release');
+assert(/action === 'ok' && !pressed\) this\._okUp\(source\)/.test(service) &&
+    /if \(translates\(action, this\._context\(\)\)\) this\._okDown\(source\)/.test(service),
+    "the pad's OK goes down with the button and up with it");
+assert(/_okDown\(source\) \{[\s\S]*?KeyState\.PRESSED[\s\S]*?_okUp\(source\) \{[\s\S]*?KeyState\.RELEASED/.test(service),
+    'one Return for every source holding OK');
+assert(/destroy\(\) \{[\s\S]*?this\._okUp\(source\)/.test(service), 'never left down');
+assert(/_tap\(action\) \{[\s\S]*?PRESSED\);\s*this\._keys\.notify_keyval\(time, keyval, Clutter\.KeyState\.RELEASED/.test(service),
+    'Back, Menu and the arrows stay whole presses');
+assert(/action === 'ok' && \(event\.get_flags\(\) & Clutter\.EventFlags\.FLAG_REPEATED\)/.test(home),
+    "the TV home takes a held OK once");
+assert(/create_virtual_device\(Clutter\.InputDeviceType\.KEYBOARD_DEVICE\)/.test(service), 'a virtual keyboard');
+assert(/await import\('gi:\/\/Manette\?version=0\.2'\)[\s\S]*?catch/.test(service), 'libmanette is optional');
+assert(/translates\(action, this\._context\(\)\)/.test(service), 'every pad key asks the policy');
+assert(service.includes('org.projectluma.Shell.Remote1') && service.includes('ClaimGamepadsAsync'),
+    'the claim contract');
+assert(!/EVIOCGRAB|grab_device/.test(service), 'the pad is never grabbed from games');
+assert(/settings_schema\.has_key\(CONFIRM_KEY\)/.test(service) && /changed::\$\{CONFIRM_KEY\}/.test(service),
+    'the confirm setting is optional and applied live');
+assert(/buttonAction\(code, pad\.confirm\)/.test(service), 'per pad');
+
+// A held pad button is one press and one release: a down while down is dropped, and an up is
+// held back BOUNCE_MS so a bouncing contact is no release (Pi, 1 Nov: a stream of OKs).
+assert(/if \(pressed && pad\.buttons\.has\(code\)\) return;/.test(service), 'a down while down is not a press');
+assert(/const BOUNCE_MS = \d+;/.test(service) && /this\._released\.set\(control, GLib\.timeout_add\(GLib\.PRIORITY_DEFAULT, BOUNCE_MS/.test(service) &&
+    /if \(pressed && pending\) \{\s*GLib\.source_remove\(pending\);/.test(service), 'a bounce is no release and no new press');
+assert(/LUMA_TV_INPUT_DEBUG/.test(service) && /5 OK presses within a second/.test(service), 'a stream of OKs shows in the journal');
+print('tv-input-policy: ok');
+
+function print(message) {
+    if (gjs)
+        globalThis.print(message);
+    else
+        console.log(message);
+}

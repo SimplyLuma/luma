@@ -18,6 +18,10 @@ The x64 profile retains upstream's official CFI/ThinLTO defaults. Both retain th
 upstream PGO default. These are explicit producer profiles, and a generated
 build graph does not establish runtime qualification.
 
+`0003-native-incognito-single-tab.patch` applies after `0001`: with the native
+frame (Linux), a new private window keeps the single new tab Chromium opened and
+the host focuses its address entry, instead of a second about:blank tab.
+
 The optional `0002-native-shared-memory-diagnostic.patch` adds a forced raw
 shared-memory capture experiment, explicitly selected by
 `--viola-native-shm-frame-probe`. Its default DMA path remains unchanged. The
@@ -112,6 +116,8 @@ missing cross-target tools with a system compiler or a mutable latest download.
 # In an already synchronized exact Chromium checkout:
 git apply --check /path/to/chromium-engine/patches/0001-shared-product.patch
 git apply /path/to/chromium-engine/patches/0001-shared-product.patch
+git apply --check /path/to/chromium-engine/patches/0003-native-incognito-single-tab.patch
+git apply /path/to/chromium-engine/patches/0003-native-incognito-single-tab.patch
 # Only for the explicitly unqualified SHM experiment:
 git apply --check /path/to/chromium-engine/patches/0002-native-shared-memory-diagnostic.patch
 git apply /path/to/chromium-engine/patches/0002-native-shared-memory-diagnostic.patch

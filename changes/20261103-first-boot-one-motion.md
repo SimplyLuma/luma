@@ -1,7 +1,7 @@
 ---
 type: improvement
 component: Setup
-packages: [gnome-shell, luma-setup]
+packages: [gnome-shell, gnome-shell-common, luma-setup]
 highlight: false
 ---
 Summary: Setup flows straight into your desktop

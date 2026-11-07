@@ -10,6 +10,18 @@ stack (`/etc/pam.d/luma-keyring`).
 A user's process can do this because pam_unix asks the setuid unix_chkpwd
 helper on its behalf. When PAM cannot be used at all, the caller is told so
 rather than being allowed to assume the password was right.
+
+The session service runs with NoNewPrivileges, under which unix_chkpwd
+cannot gain the privilege it needs to read /etc/shadow, so every check
+would fail. Rather than loosen the service, it asks a separate, minimal
+helper: luma-keyring-verify.socket (a user unit, %t/luma-keyring/verify,
+0600, one connection per check) starts luma-keyring-verify@.service, which
+runs `luma-keyring --verify-login`: it reads one password from the socket,
+runs this same PAM check for the account it runs as, writes yes, no or
+unavailable, and exits. It can do nothing the person could not do from a
+terminal (unix_chkpwd checks only the calling account's own password, with
+PAM's delay after a failure); the password crosses a socket only that
+account and root can open, and is never logged or kept.
 """
 
 from __future__ import annotations
@@ -19,7 +31,7 @@ import ctypes.util
 import getpass
 import logging
 
-__all__ = ("PamUnavailable", "check_login_password")
+__all__ = ("PamUnavailable", "check_login_password", "verify_socket_path")
 
 log = logging.getLogger("luma-keyring")
 
@@ -60,8 +72,54 @@ def _library() -> ctypes.CDLL:
         raise PamUnavailable(str(error)) from None
 
 
+def verify_socket_path():
+    import os
+    from pathlib import Path
+
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return Path(runtime) / "luma-keyring" / "verify"
+
+
+def _no_new_privileges() -> bool:
+    try:
+        with open("/proc/self/status", encoding="ascii") as status:
+            for line in status:
+                if line.startswith("NoNewPrivs:"):
+                    return line.split()[1] == "1"
+    except OSError:
+        pass
+    return False
+
+
+def _check_with_helper(password: str) -> bool:
+    """Ask luma-keyring-verify (see the module docstring); fail closed."""
+    import socket
+
+    path = verify_socket_path()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM | socket.SOCK_CLOEXEC) as sock:
+            sock.settimeout(30)  # PAM waits after a wrong password
+            sock.connect(str(path))
+            sock.sendall(password.encode("utf-8"))
+            sock.shutdown(socket.SHUT_WR)
+            reply = sock.recv(64).decode("ascii", "replace").strip()
+    except OSError as error:
+        raise PamUnavailable(f"the password helper could not be asked: {error}") from None
+    if reply == "yes":
+        return True
+    if reply == "no":
+        return False
+    raise PamUnavailable(f"the password helper answered {reply or 'nothing'}")
+
+
 def check_login_password(password: str, username: str | None = None) -> bool:
     """Whether this is the person's current login password."""
+    if username is None and _no_new_privileges():
+        return _check_with_helper(password)
+    return _check_with_pam(password, username)
+
+
+def _check_with_pam(password: str, username: str | None = None) -> bool:
     pam = _library()
     libc = ctypes.CDLL(ctypes.util.find_library("c"))
     libc.calloc.restype = ctypes.c_void_p

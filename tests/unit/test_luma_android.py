@@ -1171,7 +1171,7 @@ class EngineTests(unittest.TestCase):
         run.assert_called_once_with([
             "pm", "install", "--user", "0", "-r",
             "/data/waydroid_tmp/luma-one.apk",
-        ], timeout=600)
+        ], timeout=900)
         stable.assert_called_once_with(timeout=45)
         synchronize.assert_called_once_with()
 
@@ -1206,7 +1206,7 @@ class EngineTests(unittest.TestCase):
                 "/data/waydroid_tmp/luma-one.apk",
                 "/data/waydroid_tmp/luma-two.apk",
             ],
-            timeout=600,
+            timeout=900,
         )
         stable.assert_called_once_with(timeout=45)
         synchronize.assert_called_once_with()
@@ -1294,6 +1294,85 @@ class EngineTests(unittest.TestCase):
                 members,
                 AndroidDeviceProfile(("arm64-v8a",), 420, "en-US"),
             )
+
+    def test_package_set_keeps_uploader_only_feature_languages(self) -> None:
+        members = (
+            "base.apk",
+            "split_config.arm64_v8a.apk",
+            "split_config.en.apk",
+            "split_df_ship.apk",
+            "split_df_ship.config.arm64_v8a.apk",
+            "split_df_ship.config.th.apk",
+        )
+        selected = select_compatible_splits(
+            members, AndroidDeviceProfile(("arm64-v8a",), 420, "en-US")
+        )
+        self.assertIn("split_df_ship.config.th.apk", selected)
+
+    def test_unknown_feature_qualifier_installs_every_split(self) -> None:
+        engine = WaydroidEngine("waydroid")
+        members = ("base.apk", "split_df_a.apk", "split_df_a.config.night.apk")
+        payloads = [Path(f"/tmp/{name}") for name in members]
+        profile = AndroidDeviceProfile(("arm64-v8a",), 420, "en-US")
+        with mock.patch.object(
+            engine, "_android_device_profile", return_value=profile
+        ), mock.patch.object(engine, "_commit_package_transaction") as commit, \
+                mock.patch.object(engine, "wait_for_application_registry_stable"), \
+                mock.patch.object(engine, "synchronize_launchers"):
+            engine.install_package(payloads, members)
+        commit.assert_called_once_with(payloads)
+
+    def test_missing_split_retries_with_every_split(self) -> None:
+        engine = WaydroidEngine("waydroid")
+        members = (
+            "base.apk",
+            "split_config.arm64_v8a.apk",
+            "split_config.x86_64.apk",
+        )
+        payloads = [Path(f"/tmp/{name}") for name in members]
+        profile = AndroidDeviceProfile(("arm64-v8a",), 420, "en-US")
+        failure = RuntimeUnavailableError(
+            "Failure [INSTALL_FAILED_MISSING_SPLIT: Missing split for app]"
+        )
+        with mock.patch.object(
+            engine, "_android_device_profile", return_value=profile
+        ), mock.patch.object(
+            engine, "_commit_package_transaction", side_effect=[failure, None]
+        ) as commit, mock.patch.object(
+            engine, "wait_for_application_registry_stable"
+        ), mock.patch.object(engine, "synchronize_launchers"):
+            engine.install_package(payloads, members)
+        self.assertEqual(
+            commit.call_args_list,
+            [mock.call(payloads[:2]), mock.call(payloads)],
+        )
+
+    def test_bundle_for_another_architecture_has_friendly_error(self) -> None:
+        with self.assertRaisesRegex(
+            RuntimeUnavailableError, "requires a different processor architecture"
+        ):
+            select_compatible_splits(
+                ("base.apk", "split_config.x86_64.apk"),
+                AndroidDeviceProfile(("arm64-v8a",), 420, "en-US"),
+            )
+
+    def test_android_abi_rejection_is_reported_as_architecture(self) -> None:
+        engine = WaydroidEngine("waydroid")
+        profile = AndroidDeviceProfile(("arm64-v8a",), 420, "en-US")
+        with mock.patch.object(
+            engine, "_waydroid_package_transaction", return_value=[Path("/tmp/luma-a.apk")]
+        ), mock.patch.object(
+            engine, "_run_as_android_package_manager",
+            side_effect=RuntimeUnavailableError(
+                "Failure [INSTALL_FAILED_NO_MATCHING_ABIS: no native code]"
+            ),
+        ), mock.patch.object(
+            engine, "_android_device_profile", return_value=profile
+        ), mock.patch.object(Path, "unlink"):
+            with self.assertRaisesRegex(
+                RuntimeUnavailableError, "different processor architecture"
+            ):
+                engine._commit_package_transaction([Path("/tmp/a.apk")])
 
     def test_registry_stability_requires_repeated_identical_results(self) -> None:
         engine = WaydroidEngine("waydroid")

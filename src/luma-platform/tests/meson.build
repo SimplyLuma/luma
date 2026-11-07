@@ -139,3 +139,7 @@ if python3.found()
           'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'],
     timeout: 300)
 endif
+
+# The floating island (TV posture) with a second sidebar app built from libadwaita rows.
+tv_island_test = executable('test-tv-island', 'test-tv-island.c', dependencies: ui_dep)
+test('tv-island', tv_island_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory', 'GTK_A11Y=none'], timeout: 60)

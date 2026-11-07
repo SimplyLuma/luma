@@ -439,6 +439,7 @@ def render_lumaui_python(document: dict | None = None) -> str:
         f"HUE = {_plain(t['hue'])!r}",
         f"CARD = {_plain(t['card'])!r}",
         f"MESSAGE_BUBBLE = {_plain(t['message_bubble'])!r}",
+        f"TV = {tv_tokens()!r}",
     ]
     # Family fragments: each new group as its own constant, e.g. ROWS, BAR, CREATIVE.
     lines += [f"{name.upper()} = {_plain_deep(t[name])!r}" for name in fragment_groups()
@@ -924,6 +925,50 @@ def render_keycap_shell_css() -> str:
     return "\n".join(lines) + "\n"
 
 
+TV_JS_OUTPUT = ROOT / "src/luma-shell-presentation/tvTokens.js"
+
+
+def _oklch_rgba(lightness: float, chroma: float, hue: float, alpha: float = 1.0) -> str:
+    """OKLCH as a CSS rgba(), clipped into sRGB (the same maths as lumaui.oklch_rgba)."""
+    import math
+    radians = math.radians(hue)
+    a, b = chroma * math.cos(radians), chroma * math.sin(radians)
+    l_ = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m_ = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    linear = (4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+              -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+              -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_)
+
+    def encode(value: float) -> int:
+        value = max(0.0, min(1.0, value))
+        value = 1.055 * value ** (1 / 2.4) - 0.055 if value > 0.0031308 else 12.92 * value
+        return round(value * 255)
+
+    red, green, blue = (encode(value) for value in linear)
+    return f"rgba({red}, {green}, {blue}, {alpha:g})"
+
+
+def tv_tokens() -> dict:
+    """The `tv` block with comments dropped and OKLCH materials as rgba()."""
+    tokens = load_document()["tv"]
+    value = {key: group for key, group in tokens.items() if not key.startswith("_")}
+    value["materials"] = {name: colour if isinstance(colour, str) else _oklch_rgba(*colour)
+                          for name, colour in tokens["materials"].items()}
+    if "keyboard" in tokens:
+        keyboard = {key: group for key, group in tokens["keyboard"].items() if not key.startswith("_")}
+        keyboard["colours"] = {name: colour if isinstance(colour, str) else _oklch_rgba(*colour)
+                               for name, colour in keyboard.get("colours", {}).items()}
+        value["keyboard"] = keyboard
+    return value
+
+
+def render_tv_js() -> str:
+    return ("// SPDX-License-Identifier: Apache-2.0\n"
+            "// Generated from config/shared/design-tokens.json `tv`; do not edit.\n"
+            "export const tv = Object.freeze(" + json.dumps(tv_tokens(), sort_keys=True) + ");\n")
+
+
 def render_keycap_js() -> str:
     tokens = load_document()["keycap"]
     value = {key: {k: v for k, v in tokens[key].items() if not k.startswith("_")}
@@ -962,6 +1007,7 @@ def main() -> int:
     expected_frame = render_frame_tokens()
     expected_keycap_css = render_keycap_shell_css()
     expected_keycap_js = render_keycap_js()
+    expected_tv_js = render_tv_js()
     expected_icons = render_icon_tokens()
     expected = render("light")
     expected_dark = render("dark")
@@ -981,6 +1027,7 @@ def main() -> int:
                     (frame_js, expected_frame_js),
                     (KEYCAP_CSS_OUTPUT, expected_keycap_css),
                     (KEYCAP_JS_OUTPUT, expected_keycap_js),
+                    (TV_JS_OUTPUT, expected_tv_js),
                     (ICON_OUTPUT, expected_icons),
                     (OUTPUT, expected),
                     (DARK_OUTPUT, expected_dark),
@@ -1010,6 +1057,7 @@ def main() -> int:
     frame_js.write_text(expected_frame_js, encoding="utf-8")
     KEYCAP_CSS_OUTPUT.write_text(expected_keycap_css, encoding="utf-8")
     KEYCAP_JS_OUTPUT.write_text(expected_keycap_js, encoding="utf-8")
+    TV_JS_OUTPUT.write_text(expected_tv_js, encoding="utf-8")
     ICON_OUTPUT.write_text(expected_icons, encoding="utf-8")
     OUTPUT.write_text(expected, encoding="utf-8")
     DARK_OUTPUT.write_text(expected_dark, encoding="utf-8")

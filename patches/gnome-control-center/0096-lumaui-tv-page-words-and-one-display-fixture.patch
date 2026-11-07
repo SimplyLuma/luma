@@ -1,0 +1,169 @@
+diff --git a/shell/cc-luma-displays.c b/shell/cc-luma-displays.c
+index 81d33ae..985f305 100644
+--- a/shell/cc-luma-displays.c
++++ b/shell/cc-luma-displays.c
+@@ -81,9 +81,20 @@ static gboolean live_validate (CcLumaFixture *model)
+   }
+   return primary >= 1;
+ }
++/* Displays as the live reader reports them (each with its logical rectangle): the live model, or a
++ * fixture that describes a machine that way (one TV on HDMI, say), not v70's fixed pair. */
++gboolean cc_luma_displays_live_shape (CcLumaFixture *model)
++{
++  if (cc_luma_fixture_is_live (model)) return TRUE;
++  JsonNode *catalog = json_object_get_member (cc_luma_fixture_get_data (model), "CFDISP");
++  if (!catalog || !JSON_NODE_HOLDS_OBJECT (catalog)) return FALSE;
++  g_autoptr (GList) ids = json_object_get_members (json_node_get_object (catalog));
++  JsonNode *first = ids ? json_object_get_member (json_node_get_object (catalog), ids->data) : NULL;
++  return first && JSON_NODE_HOLDS_OBJECT (first) && number_member (json_node_get_object (first), "lw");
++}
+ gboolean cc_luma_displays_validate (CcLumaFixture *model)
+ {
+-  if (cc_luma_fixture_is_live (model)) return live_validate (model);
++  if (cc_luma_displays_live_shape (model)) return live_validate (model);
+   const char *join[] = { "join", "mirror", NULL }, *ids[] = { "int", "ext", NULL };
+   const char *scales[] = { "100", "125", "150", "175", "200", NULL };
+   const char *rotations[] = { "Landscape", "Portrait right", "Portrait left", "Landscape, flipped", NULL };
+@@ -181,7 +192,7 @@ CcLumaDisplayDraft *cc_luma_display_draft_new (CcLumaFixture *model)
+ }
+ gboolean cc_luma_display_draft_set (CcLumaDisplayDraft *draft, const char *key, JsonNode *value, GError **error)
+ {
+-  gboolean live = cc_luma_fixture_is_live (draft->model);
++  gboolean live = cc_luma_displays_live_shape (draft->model);
+   if (!cc_luma_displays_validate (draft->model) || !key || !value ||
+       !(g_str_equal (key, "join") || g_str_equal (key, "arr.side") || g_str_equal (key, "arr.off") || g_str_has_prefix (key, "d.int.") || g_str_has_prefix (key, "d.ext.") ||
+         (live && g_str_has_prefix (key, "d.") && strchr (key + 2, '.')))) return invalid (error);
+diff --git a/shell/cc-luma-displays.h b/shell/cc-luma-displays.h
+index 990315a..758c067 100644
+--- a/shell/cc-luma-displays.h
++++ b/shell/cc-luma-displays.h
+@@ -3,6 +3,7 @@
+ #include "cc-luma-desktop.h"
+ G_BEGIN_DECLS
+ gboolean cc_luma_displays_validate (CcLumaFixture *model);
++gboolean cc_luma_displays_live_shape (CcLumaFixture *model);
+ gboolean cc_luma_displays_rects (CcLumaFixture *model, CcLumaPreviewRect rects[2], GError **error);
+ /* Live: every display's diagram rectangle, in CFDISP order; @ids borrow the
+  * model's. Returns how many. */
+diff --git a/shell/cc-luma-rows.c b/shell/cc-luma-rows.c
+index 86114cf..332b120 100644
+--- a/shell/cc-luma-rows.c
++++ b/shell/cc-luma-rows.c
+@@ -108,10 +108,31 @@ static void spill_allocate (GtkWidget *w, int width, int height, int baseline)
+     }
+ }
+ 
++/* TV posture: a page the island lists takes the TV mockup's title and one line
++ * (luma-tv-settings.html); a desktop, tablet or phone keeps the page's own words. */
++static const struct { const char *page, *title, *meta; } tv_heads[] = {
++  { "wifi", "Wi‑Fi", "The network this TV is on." },
++  { "bluetooth", "Bluetooth", "Remotes, controllers and headphones." },
++  { "displays", "Display", "The picture on this TV." },
++  { "sound", "Sound", "Where sound goes, and how loud." },
++  { "appearance", "Appearance", "Wallpaper, accent and text." },
++  { "apps", "Apps", "What’s installed on this TV." },
++  { "a11y", "Accessibility", "Make the TV easier to see, hear and use." },
++  { "about", "About", "This TV." },
++};
++
+ GtkLabel *cf_header (View *v, const char *title, const char *meta, GtkWidget *top)
+ {
+   const char *parent_title;
+   const char *parent = parent_of (v, &parent_title);
++  gboolean tv_words = FALSE;
++  for (guint i = 0; !parent && v->page && luma_ui_tv_posture () && i < G_N_ELEMENTS (tv_heads); i++)
++    if (g_str_equal (v->page, tv_heads[i].page))
++      {
++        title = tv_heads[i].title;
++        meta = tv_heads[i].meta;
++        tv_words = TRUE;
++      }
+   GtkWidget *head = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
+   GtkWidget *titles = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+   GtkWidget *meta_label = wrapping (meta ? meta : "", "cf-meta");
+@@ -163,7 +184,8 @@ GtkLabel *cf_header (View *v, const char *title, const char *meta, GtkWidget *to
+       gtk_box_append (v->body, back);
+     }
+   gtk_widget_add_css_class (head, "cf-head");
+-  if (top) gtk_widget_set_layout_manager (titles, gtk_custom_layout_new (NULL, spill_measure, spill_allocate));
++  /* TV posture: the same stacking without a top control (a wrapping line measured unconstrained grew the head). */
++  if (top || luma_ui_tv_posture ()) gtk_widget_set_layout_manager (titles, gtk_custom_layout_new (NULL, spill_measure, spill_allocate));
+   gtk_widget_set_hexpand (titles, TRUE);
+   gtk_widget_set_valign (titles, GTK_ALIGN_CENTER);
+   GtkWidget *h1 = wrapping (title, "cf-h1");
+@@ -187,7 +209,8 @@ GtkLabel *cf_header (View *v, const char *title, const char *meta, GtkWidget *to
+       gtk_widget_set_layout_manager (titles, gtk_box_layout_new (GTK_ORIENTATION_VERTICAL));
+     }
+   gtk_box_append (v->body, head);
+-  v->subtitle = GTK_LABEL (meta_label);
++  /* The TV's line is fixed: the page's live summary (a network, a volume) does not replace it. */
++  v->subtitle = tv_words ? NULL : GTK_LABEL (meta_label);
+   return GTK_LABEL (meta_label);
+ }
+ 
+diff --git a/shell/cc-luma-view-displays.c b/shell/cc-luma-view-displays.c
+index aca6cfb..5df4035 100644
+--- a/shell/cc-luma-view-displays.c
++++ b/shell/cc-luma-view-displays.c
+@@ -129,7 +129,7 @@ static GtkWidget *arrangement_new (View *v)
+   Arrangement *self = g_object_new (cc_luma_arrangement_get_type (), NULL);
+   self->model = g_object_ref (v->model);
+   g_set_weak_pointer (&self->view_root, v->root);
+-  gboolean live = cc_luma_fixture_is_live (v->model);
++  gboolean live = cc_luma_displays_live_shape (v->model);
+   const char *ids[MAX_DISPLAYS] = { "int", "ext" };
+   JsonObject *catalog = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFDISP");
+   self->mirror = g_str_equal (cc_luma_view_text (v, "join"), "mirror");
+@@ -313,7 +313,7 @@ static GtkWidget *proven (View *v, GtkWidget *control, const char *key)
+ void cc_luma_view_displays_render (View *v)
+ {
+   gtk_widget_set_sensitive (GTK_WIDGET (v->body), TRUE);
+-  gboolean mirror = g_str_equal (cc_luma_view_text (v, "join"), "mirror"), live = cc_luma_fixture_is_live (v->model);
++  gboolean mirror = g_str_equal (cc_luma_view_text (v, "join"), "mirror"), live = cc_luma_displays_live_shape (v->model);
+   JsonObject *displays = json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFDISP");
+   guint count = live ? json_object_get_size (displays) : 2;
+   g_autoptr (GList) members = live ? json_object_get_members (displays) : NULL;
+@@ -403,7 +403,7 @@ void cc_luma_view_displays_render (View *v)
+   cf_nv (v, card, "nightlight", "Night Light", "Warmer colors at night, easier on the eyes", cc_luma_view_flag (v, "night") ? "On" : "Off", cf_lead_icon ("moon"));
+   cc_luma_view_tv_display_rows (v);
+   cc_luma_dev_prune (v);
+-  if (live) {
++  if (cc_luma_fixture_is_live (v->model)) {
+     if (cc_luma_view_flag (v, "display.preview")) gtk_widget_set_sensitive (GTK_WIDGET (v->body), FALSE);
+     live_display_bar (v);
+   }
+diff --git a/shell/cc-luma-view-system.c b/shell/cc-luma-view-system.c
+index 9688815..99ad590 100644
+--- a/shell/cc-luma-view-system.c
++++ b/shell/cc-luma-view-system.c
+@@ -1151,6 +1151,13 @@ static GtkWidget *luma_mark (View *v)
+   return mark;
+ }
+ 
++/* A fixture's own machine (sys.* keys, a TV's board), else v70's ThinkPad. */
++static const char *fixture_fact (View *v, const char *key, const char *v70)
++{
++  const char *text = cc_luma_view_text (v, key);
++  return *text ? text : v70;
++}
++
+ static void about (View *v)
+ {
+   if (live (v)) { live_about (v); return; }
+@@ -1175,11 +1182,11 @@ static void about (View *v)
+   GtkBox *g = cf_group (v, NULL, NULL);
+   tx (v, g, "devName", "Computer name", NULL);
+   g = cf_group (v, "Hardware", NULL);
+-  cf_vl (v, g, "Model", "ThinkPad X1 Carbon Gen 12", NULL, FALSE, NULL, NULL);
+-  cf_vl (v, g, "Memory", "32 GB", NULL, FALSE, NULL, NULL);
+-  cf_vl (v, g, "Processor", "Intel Core Ultra 7 155U", NULL, FALSE, NULL, NULL);
+-  cf_vl (v, g, "Graphics", "Intel Arc", NULL, FALSE, NULL, NULL);
+-  app_row (v, g, "Disks", "Storage", "215 GB used of 512 GB", "Open Disks");
++  cf_vl (v, g, "Model", fixture_fact (v, "sys.model", "ThinkPad X1 Carbon Gen 12"), NULL, FALSE, NULL, NULL);
++  cf_vl (v, g, "Memory", fixture_fact (v, "sys.mem", "32 GB"), NULL, FALSE, NULL, NULL);
++  cf_vl (v, g, "Processor", fixture_fact (v, "sys.cpu", "Intel Core Ultra 7 155U"), NULL, FALSE, NULL, NULL);
++  cf_vl (v, g, "Graphics", fixture_fact (v, "sys.gpu", "Intel Arc"), NULL, FALSE, NULL, NULL);
++  app_row (v, g, "Disks", "Storage", fixture_fact (v, "sys.disk", "215 GB used of 512 GB"), "Open Disks");
+   g = cf_group (v, "Software", NULL);
+   cf_vl (v, g, "Updates", "Nightly channel", "Change it in Depot", FALSE, NULL, NULL);
+   cf_nv (v, g, "about-sys", "System details", "For support and bug reports", NULL, NULL);

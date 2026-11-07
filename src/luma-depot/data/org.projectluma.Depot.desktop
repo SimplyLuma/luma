@@ -12,6 +12,9 @@ StartupNotify=true
 DBusActivatable=true
 Actions=updates;
 X-Purism-FormFactor=Workstation;Mobile;
+X-Luma-TV=true
+X-Luma-TV-Tile=org.projectluma.Depot-tv
+X-Luma-TV-Presentation=tv
 
 [Desktop Action updates]
 Name=Software Update

@@ -1,0 +1,1025 @@
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -176,6 +176,7 @@
+     <file>ui/lumaPresentation/tv.js</file>
+     <file>ui/lumaPresentation/tvModel.js</file>
+     <file>ui/lumaPresentation/tvTokens.js</file>
++    <file>ui/lumaPresentation/tvKeyboard.js</file>
+     <file>ui/lumaPresentation/tv-backdrop.jpg</file>
+     <file>ui/shelfMetrics.js</file>
+     <file>ui/shelfArrangement.js</file>
+diff --git a/js/misc/inputMethod.js b/js/misc/inputMethod.js
+--- a/js/misc/inputMethod.js
++++ b/js/misc/inputMethod.js
+@@ -20,6 +20,11 @@ const HAVE_REQUIRE_SURROUNDING_TEXT = GObject.signal_lookup('require-surrounding
+ export const InputMethod = GObject.registerClass({
+     Signals: {
+         'surrounding-text-set': {},
++        // A field gained or lost the input focus.
++        'focus-changed': {},
++        // A character typed on a real keyboard (a device node, not the
++        // on-screen keyboard's virtual device) went to the focused field.
++        'physical-key': {},
+     },
+ }, class InputMethod extends Clutter.InputMethod {
+     _init() {
+@@ -27,6 +32,8 @@ export const InputMethod = GObject.registerClass({
+         this._hints = 0;
+         this._purpose = 0;
+         this._currentFocus = null;
++        // Set by the on-screen keyboard in TV posture ('physical-key').
++        this.reportPhysicalKeys = false;
+         this._preeditStr = '';
+         this._preeditPos = 0;
+         this._preeditAnchor = 0;
+@@ -216,6 +223,7 @@ export const InputMethod = GObject.registerClass({
+ 
+     vfunc_focus_in(focus) {
+         this._currentFocus = focus;
++        this.emit('focus-changed');
+         if (this._context) {
+             this.update();
+             this._context.focus_in();
+@@ -230,6 +238,7 @@ export const InputMethod = GObject.registerClass({
+ 
+     vfunc_focus_out() {
+         this._currentFocus = null;
++        this.emit('focus-changed');
+         if (this._context) {
+             this._fullReset();
+             this._context.focus_out();
+@@ -349,6 +358,10 @@ export const InputMethod = GObject.registerClass({
+     }
+ 
+     vfunc_filter_key_event(event) {
++        if (this.reportPhysicalKeys && event.type() === Clutter.EventType.KEY_PRESS &&
++            !!event.get_source_device()?.get_device_node() &&
++            /^[^\p{C}]$/u.test(event.get_key_unicode() || '\0'))
++            this.emit('physical-key');
+         if (!this._context)
+             return false;
+         if (!this._currentSource)
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -18,6 +18,8 @@ import * as PageIndicators from './pageIndicators.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as SwipeTracker from './swipeTracker.js';
+ import * as Keycap from './lumaPresentation/keycap.js';
++import * as TvKeyboard from './lumaPresentation/tvKeyboard.js';
++import {tv as TV_TOKENS} from './lumaPresentation/tvTokens.js';
+ 
+ export const KEYBOARD_ANIMATION_TIME = 150;
+ const KEYBOARD_REST_TIME = KEYBOARD_ANIMATION_TIME * 2;
+@@ -1428,11 +1430,86 @@ class WordSuggestions {
+     }
+ }
+ 
++// TV posture: the keyboard's contract with applications. Applications use
++// ordinary text fields; LumaUI asks for the action key's label (Search, Add)
++// and reads the keyboard's height to lift its action bar and toast above it.
++// docs/developer-platform/tv-mode.md ("Typing").
++const TV_KEYBOARD_BUS_NAME = 'org.projectluma.Shell.Keyboard';
++const TV_KEYBOARD_PATH = '/org/projectluma/Shell/Keyboard';
++// How long after a Shell surface lets go the field's focus counts as coming back to it.
++const TV_RESUME_US = 1500 * 1000;
++const TV_KEYBOARD_IFACE = `<node>
++  <interface name="org.projectluma.Shell.Keyboard1">
++    <method name="SetActionLabel">
++      <arg type="s" direction="in" name="label"/>
++    </method>
++    <property name="Visible" type="b" access="read"/>
++    <property name="Height" type="u" access="read"/>
++  </interface>
++</node>`;
++
++class TvKeyboardService {
++    constructor(onLabel) {
++        this._onLabel = onLabel;
++        this._labels = new WeakMap();
++        this._visible = false;
++        this._height = 0;
++        this._dbus = Gio.DBusExportedObject.wrapJSObject(TV_KEYBOARD_IFACE, this);
++        this._dbus.export(Gio.DBus.session, TV_KEYBOARD_PATH);
++        this._nameId = Gio.bus_own_name_on_connection(Gio.DBus.session, TV_KEYBOARD_BUS_NAME,
++            Gio.BusNameOwnerFlags.REPLACE, null, null);
++    }
++
++    get Visible() {
++        return this._visible;
++    }
++
++    get Height() {
++        return this._height;
++    }
++
++    // The label is the focused window's: an application asks as one of its
++    // fields takes the focus, and an empty label gives the field's own back.
++    SetActionLabel(label) {
++        const window = global.display.focus_window;
++        if (!window)
++            return;
++        if (label)
++            this._labels.set(window, String(label));
++        else
++            this._labels.delete(window);
++        this._onLabel();
++    }
++
++    labelFor(window) {
++        return window ? this._labels.get(window) ?? '' : '';
++    }
++
++    // Shown in TV units (one pixel of a 1920x1080 layout), 0 while hidden.
++    setShown(visible, height) {
++        height = visible ? Math.round(height) : 0;
++        if (visible === this._visible && height === this._height)
++            return;
++        this._visible = visible;
++        this._height = height;
++        this._dbus.emit_property_changed('Visible', new GLib.Variant('b', visible));
++        this._dbus.emit_property_changed('Height', new GLib.Variant('u', height));
++    }
++
++    destroy() {
++        this._dbus.unexport();
++        Gio.bus_unown_name(this._nameId);
++    }
++}
++
+ export class KeyboardManager extends Signals.EventEmitter {
+     constructor() {
+         super();
+ 
+         this._keyboard = null;
++        this._tv = false;
++        this._fieldActions = new WeakMap();
++        this._tvService = new TvKeyboardService(() => this._keyboard?._tvSyncAction());
+         this._a11yApplicationsSettings = new Gio.Settings({schema_id: A11Y_APPLICATIONS_SCHEMA});
+         this._a11yApplicationsSettings.connect('changed', this._syncEnabled.bind(this));
+ 
+@@ -1456,7 +1533,7 @@ export class KeyboardManager extends Signals.EventEmitter {
+             side: St.Side.BOTTOM,
+         });
+         bottomDragGesture.connect('may-recognize', () => {
+-            return allowedModes & Main.actionMode;
++            return !this._tv && allowedModes & Main.actionMode;
+         });
+         bottomDragGesture.connect('progress', (_action, progress) => {
+             this._keyboard?.gestureProgress(progress);
+@@ -1490,8 +1567,10 @@ export class KeyboardManager extends Signals.EventEmitter {
+                     ?.get_property_as_boolean('ID_INPUT_KEYBOARD');
+         });
+         const autoEnabled = !physicalKeyboard && this._seat.get_touch_mode() &&
+             this._lastDeviceIsTouchscreen();
+-        const enabled = enableKeyboard || autoEnabled;
++        // A TV is driven by a remote, which is a keyboard without letters:
++        // every field gets the on-screen keyboard.
++        const enabled = enableKeyboard || autoEnabled || this._tv;
+ 
+         if (!enabled && !this._keyboard)
+             return;
+@@ -1500,8 +1579,11 @@ export class KeyboardManager extends Signals.EventEmitter {
+             this._keyboard.connect('visibility-changed', () => {
+                 this.emit('visibility-changed');
+                 this._bottomDragGesture.enabled = !this._keyboard.visible;
++                this._tvService.setShown(this._tv && this._keyboard.visible, this._keyboard.tvHeight);
+             });
++            this._keyboard.setTvPosture(this._tv);
+         } else if (!enabled && this._keyboard) {
++            this._tvService.setShown(false, 0);
+             this._keyboard.setCursorLocation(null);
+             this._keyboard.destroy();
+             this._keyboard = null;
+@@ -1513,6 +1595,52 @@ export class KeyboardManager extends Signals.EventEmitter {
+         return this._keyboard;
+     }
+ 
++    // TV posture (TvPresentation calls this as it enters and leaves): the
++    // Keycap keyboard docks to the bottom in its TV look and the remote
++    // moves over its keys. Nothing changes outside TV posture.
++    setTvPosture(tv) {
++        tv = !!tv;
++        if (tv === this._tv)
++            return;
++        this._tv = tv;
++        this._keyboard?.setTvPosture(tv);
++        this._syncEnabled();
++        if (!tv)
++            this._tvService.setShown(false, 0);
++    }
++
++    get tvPosture() {
++        return this._tv;
++    }
++
++    // A Shell surface over a window (the quick panel, the app switcher)
++    // takes the keys for a while: tvSuspend() puts the keyboard out of its
++    // way and returns how it was; tvResume(state) gives the window back its
++    // keyboard as it was (open, or put away for OK to open again).
++    tvSuspend() {
++        return this._tv ? this._keyboard?.tvSuspend() ?? null : null;
++    }
++
++    tvResume(state) {
++        this._keyboard?.tvResume(state);
++    }
++
++    // The action key's label for one of the Shell's own entries (the TV
++    // home's Search field); applications ask through LumaUI instead.
++    setFieldAction(text, label) {
++        if (label)
++            this._fieldActions.set(text, label);
++        else
++            this._fieldActions.delete(text);
++    }
++
++    tvActionLabel() {
++        const focus = global.stage.key_focus;
++        if (focus && this._fieldActions.has(focus))
++            return this._fieldActions.get(focus);
++        return focus instanceof Clutter.Text ? '' : this._tvService.labelFor(global.display.focus_window);
++    }
++
+     get visible() {
+         return this._keyboard && this._keyboard.visible;
+     }
+@@ -1642,6 +1770,12 @@ export const Keyboard = GObject.registerClass({
+         this._deleteSelected = 0;
+         this._clipboardGeneration = 0;
+         this._wasSensitive = false;
++        this._tv = false;
++        this._tvKeys = [];
++        this._tvActionKeys = [];
++        this._tvFocus = 0;
++        this._tvGrabs = new Map();
++        this._tvReopenArmed = false;
+         this._initPointers();
+         this._setupKeyboard();
+ 
+@@ -1680,6 +1814,12 @@ export const Keyboard = GObject.registerClass({
+         this._reserve = null;
+         this._pressLayer?.destroy();
+         this._pressLayer = this._pressCover = this._pressClone = this._tint = null;
++        this._tvReleaseKeys();
++        if (this._tvPendingOkId)
++            GLib.source_remove(this._tvPendingOkId);
++        global.display.disconnectObject(this);
++        this._tvFocusActor?.destroy();
++        this._tvFocusActor = null;
+         if (this._hapticPaintId)
+             global.stage.disconnect(this._hapticPaintId);
+         if (this._warmTimeoutId)
+@@ -2089,6 +2229,11 @@ export const Keyboard = GObject.registerClass({
+         this._keyboardController.onText = (count, text) => this._mirror.apply(count, text);
+         Main.inputMethod.connectObject('surrounding-text-set',
+             this._onSurroundingText.bind(this), this);
++        Main.inputMethod.connectObject('physical-key', () => this._tvPhysicalKey(), this);
++        Main.inputMethod.connectObject('focus-changed', () => this._tvFieldFocus(), this);
++        global.display.connectObject(
++            'accelerator-activated', (_display, action) => this._tvAccelerator(action),
++            'accelerator-deactivated', (_display, action) => this._tvAcceleratorUp(action), this);
+ 
+         this._currentPage = null;
+ 
+@@ -2124,6 +2269,10 @@ export const Keyboard = GObject.registerClass({
+             'group-changed', this._onGroupChanged.bind(this),
+             'panel-state', this._onKeyboardStateChanged.bind(this),
+             'purpose-changed', () => {
++                // A field re-sends its purpose with every commit; on a TV an
++                // unchanged purpose keeps the keys (and the remote's focus).
++                if (this._tv && this._keyboardController.purpose === this._tvBuiltPurpose)
++                    return;
+                 this._updateKeys();
+                 this._syncPrivacy();
+             },
+@@ -2146,8 +2295,9 @@ export const Keyboard = GObject.registerClass({
+     // keyboard's colours with Keycap's structure. Theme reloads keep the
+     // sheet (custom sheets carry over).
+     _syncKeycapTheme() {
++        // A TV is always dark (the room is the picture).
+         const variant = St.Settings.get().high_contrast ? null
+-            : Main.getStyleVariant?.() === 'dark' ? 'dark' : 'light';
++            : this._tv || Main.getStyleVariant?.() === 'dark' ? 'dark' : 'light';
+         const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
+         if (!theme.get_custom_stylesheets().some(file => file.get_uri() === KEYCAP_STYLESHEET))
+             theme.load_stylesheet(Gio.File.new_for_uri(KEYCAP_STYLESHEET));
+@@ -2169,7 +2319,8 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _completionAllowed() {
+-        return !this._isSensitive() && this._prefs.suggestions;
++        // No suggestion strip on a TV: the remote types letter by letter.
++        return !this._tv && !this._isSensitive() && this._prefs.suggestions;
+     }
+ 
+     // Sensitive fields get no suggestions, clipboard history, automatic case
+@@ -2293,9 +2444,17 @@ export const Keyboard = GObject.registerClass({
+         this._resetWord?.();
+         this._cancelPointers?.();
+         this._forgetText?.();
++        this._tvDisarmReopen?.();
+         this._watchedFocus?.disconnectObject(this);
+         this._watchedFocus = null;
+         if (!(focus instanceof Clutter.Text)) {
++            // On a TV the keyboard belongs to the field with the input focus:
++            // a window taking the focus while its field holds it is that
++            // field asking to type. It closes when the field loses it.
++            if (this._tv && Main.inputMethod.currentFocus) {
++                this._tvFieldFocus();
++                return;
++            }
+             this.close(this._lockedWithoutEntry());
+             return;
+         }
+@@ -2385,12 +2544,27 @@ export const Keyboard = GObject.registerClass({
+                 return;
+         }
+ 
+-        const emojiVisible = purpose === Clutter.InputContentPurpose.NORMAL ||
++        const pad = purpose === Clutter.InputContentPurpose.DIGITS ||
++            purpose === Clutter.InputContentPurpose.NUMBER ||
++            purpose === Clutter.InputContentPurpose.PHONE;
++        const emojiVisible = !this._tv && (purpose === Clutter.InputContentPurpose.NORMAL ||
+             purpose === Clutter.InputContentPurpose.ALPHA ||
+             purpose === Clutter.InputContentPurpose.PASSWORD ||
+-            purpose === Clutter.InputContentPurpose.TERMINAL;
+-
+-        keyboardModel.getLevels().forEach(currentLevel => {
++            purpose === Clutter.InputContentPurpose.TERMINAL);
++
++        // TV posture: the same model in the TV arrangement (QWERTY rows,
++        // then 123 / space / the action key); number pads stay pads.
++        this._tvKeys = [];
++        this._tvActionKeys = [];
++        this._tvBuiltPurpose = purpose;
++        const levels = this._tv && !pad
++            ? TvKeyboard.tvLevels(keyboardModel.getLevels(), {
++                keepExtras: purpose === Clutter.InputContentPurpose.EMAIL ||
++                    purpose === Clutter.InputContentPurpose.URL,
++            })
++            : keyboardModel.getLevels();
++
++        levels.forEach(currentLevel => {
+             const levelLayout = new KeyContainer();
+             levelLayout.shiftKeys = [];
+             levelLayout.mode = currentLevel.mode;
+@@ -2417,6 +2591,8 @@ export const Keyboard = GObject.registerClass({
+         });
+ 
+         this._aspectContainer.add_child(layout);
++        if (this._tv)
++            this._tvStyleKeys();
+         this._stopLayerWarm();
+         this._currentLayout?.destroy();
+         this._currentLayout = layout;
+@@ -2431,6 +2607,8 @@ export const Keyboard = GObject.registerClass({
+         const inputSourceManager = InputSourceManager.getInputSourceManager();
+         const sources = Object.keys(inputSourceManager.inputSources).length;
+         let keys = row.map(key => ({...key, strings: key.strings ? [...key.strings] : key.strings}));
++        if (this._tv)
++            return keys;
+         const space = keys.find(key => key.strings?.[0] === ' ');
+         if (space) {
+             let freed = 0;
+@@ -2491,6 +2669,13 @@ export const Keyboard = GObject.registerClass({
+                 if (purpose === Clutter.InputContentPurpose.URL)
+                     button.setDisplayIcon('luma-keycap-arrow-right-symbolic');
+             }
++            if (this._tv) {
++                const kind = key.tvAction || parseInt(key.keyval, 16) === Clutter.KEY_Return ? 'action'
++                    : commitString === ' ' ? 'space' : key.action || key.keyval ? 'fn' : 'char';
++                this._tvKeys.push({button, kind});
++                if (kind === 'action' && key.tvAction)
++                    this._tvActionKeys.push(button);
++            }
+ 
+             if (commitString === ' ')
+                 this._setupSpaceKey(button);
+@@ -2537,6 +2722,11 @@ export const Keyboard = GObject.registerClass({
+                 });
+             } else if (key.keyval) {
+                 button.connect('keyval', (_actor, keyval) => {
++                    // The TV action key is done with the keyboard: it goes
++                    // away (giving the remote's keys back) and Enter reaches
++                    // the field, which submits.
++                    if (this._tv && keyval === Clutter.KEY_Return)
++                        this.close(true);
+                     this._resetWord();
+                     this._lastLearned = null;
+                     // Enter starts a new line or submits; arrows move the
+@@ -2893,7 +3083,7 @@ export const Keyboard = GObject.registerClass({
+     // the Keycap travel), and the pressed tint lies on it. Only this group is
+     // moved and shown; it is laid out again only when the cap size changes.
+     _showPressedCap(cell, cap) {
+-        if (!keycapVariant)
++        if (!keycapVariant || this._tv)
+             return;
+         this._ensurePressLayer();
+         const {travel, edge} = Keycap.keycap.geometry;
+@@ -2962,7 +3152,7 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _showPreview(cap, text) {
+-        if (!keycapVariant || !this._prefs.key_preview)
++        if (!keycapVariant || !this._prefs.key_preview || this._tv)
+             return;
+         const label = this._previewLabel(text);
+         const uiGroup = Main.layoutManager.uiGroup;
+@@ -3059,6 +3249,11 @@ export const Keyboard = GObject.registerClass({
+     _syncTools() {
+         if (!this._tools)
+             return;
++        if (this._tv) {
++            this._tools.visible = false;
++            this._suggestions.visible = false;
++            return;
++        }
+         const numeric = this._keycapPolicy.isNumeric(this._keyboardController.purpose);
+         this._toolButtons.forEach((button, i) => (button.visible = i === 4 || !numeric));
+         this._stripEnter.visible = numeric;
+@@ -3294,6 +3489,8 @@ export const Keyboard = GObject.registerClass({
+         }
+         this._latched = latched;
+         this._setCurrentLevelLatched(this._currentPage, this._latched);
++        if (this._tv)
++            this._tvStyleKeys();
+     }
+ 
+     // A layer change asked for while a key is down waits until no key is
+@@ -3390,6 +3587,10 @@ export const Keyboard = GObject.registerClass({
+         // inset (the home gesture) below; computed in logical pixels.
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const [columns, rows] = this._currentPage?.getRatio() ?? [10, 4];
++        if (this._tv) {
++            this._tvRelayout(monitor, rows || 5);
++            return;
++        }
+         const inset = Main.presentation?.keyboardInset?.() ?? 0;
+         const height = Keycap.keyboardHeight({width: monitor.width / scale, height: monitor.height / scale},
+             rows || 4, columns || 10, inset) * scale;
+@@ -3435,6 +3636,18 @@ export const Keyboard = GObject.registerClass({
+     }
+ 
+     _onKeyboardStateChanged(controller, state) {
++        // On a TV the keyboard follows the input focus alone: it opens when a
++        // field takes it (_tvFieldFocus) and closes when the field loses it;
++        // panel requests while a field has the focus do not close it.
++        if (this._tv) {
++            if (this._tvSuspended)
++                return;
++            if (state === Clutter.InputPanelState.ON)
++                this.open(Main.layoutManager.focusIndex);
++            else if (!Main.inputMethod.currentFocus)
++                this.close();
++            return;
++        }
+         let enabled;
+         if (state === Clutter.InputPanelState.OFF)
+             enabled = false;
+@@ -3492,9 +3705,12 @@ export const Keyboard = GObject.registerClass({
+             this._gridRatioLayout !== this._currentLayout) {
+             this._gridRatio = [columns, rows];
+             this._gridRatioLayout = this._currentLayout;
+-            this._aspectContainer.setRatio(columns, rows);
++            const cell = this._tv ? TvKeyboard.tvCell(TV_TOKENS) : {width: 1, height: 1};
++            this._aspectContainer.setRatio(columns * cell.width, rows * cell.height);
+             this._emojiSelection.setRatio(columns, rows);
+         }
++        if (this._tv && this._keyboardVisible)
++            this._tvFollowLevel(previous);
+     }
+ 
+     _clearKeyboardRestTimer() {
+@@ -3586,7 +3802,9 @@ export const Keyboard = GObject.registerClass({
+     // application's own bottom bar lands right above the keys. Desktop, and
+     // the Shell's own entries, keep sliding the focused window instead.
+     _resizesWindows() {
+-        return typeof global.display.set_input_panel_inset === 'function' &&
++        // A TV application keeps its whole screen (its room) and lifts its
++        // action bar by the keyboard's published height instead.
++        return !this._tv && typeof global.display.set_input_panel_inset === 'function' &&
+             !(global.stage.key_focus instanceof Clutter.Text) &&
+             !!Main.presentation?.keyboardResizesWindows?.();
+     }
+@@ -3657,10 +3875,12 @@ export const Keyboard = GObject.registerClass({
+         }
+ 
+         Main.layoutManager.keyboardBox.show();
++        if (this._tv)
++            this._tvShown();
+         this.ease({
+             translation_y: -this.height,
+             opacity: 255,
+-            duration: Keycap.keycap.timing.show,
++            duration: this._tv ? TV_TOKENS.motion.keyboard_ms : Keycap.keycap.timing.show,
+             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+             onComplete: () => {
+                 this._animateShowComplete();
+@@ -3673,9 +3893,14 @@ export const Keyboard = GObject.registerClass({
+         // stop it, and then its onComplete never runs).
+         if (this._warmTimeoutId)
+             GLib.source_remove(this._warmTimeoutId);
+-        this._warmTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Keycap.keycap.timing.show + 50, () => {
++        this._warmTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
++            (this._tv ? TV_TOKENS.motion.keyboard_ms : Keycap.keycap.timing.show) + 50, () => {
+             this._warmTimeoutId = 0;
+             this._warmLayers();
++            // As for the press visuals: the focus shows even when another
++            // animation cut the show short.
++            if (this._tv)
++                this._tvDrawFocus(false);
+             return GLib.SOURCE_REMOVE;
+         });
+     }
+@@ -3820,6 +4045,9 @@ export const Keyboard = GObject.registerClass({
+ 
+     _animateShowComplete() {
+         this._warmLayers();
++        // The keys are laid out in place now; the remote's focus shows on them.
++        if (this._tv)
++            this._tvDrawFocus(false);
+         if (this._windowsResized)
+             this._showReserve(false);
+         const keyboardBox = Main.layoutManager.keyboardBox;
+@@ -3830,6 +4058,7 @@ export const Keyboard = GObject.registerClass({
+ 
+     _animateHide() {
+         this._cancelPointers();
++        this._tvHidden();
+         if (this._windowsResized) {
+             this._windowsResized = false;
+             this._showReserve(true);
+@@ -3960,6 +4189,10 @@ export const Keyboard = GObject.registerClass({
+             this._focusWindowStartY = null;
+         }
+ 
++        // TV windows are full screen and never dragged; one placed as it
++        // opens keeps its field's keyboard.
++        if (this._tv)
++            return;
+         this.close(true);
+     }
+ 
+@@ -3980,9 +4213,460 @@ export const Keyboard = GObject.registerClass({
+         this._focusWindow = window;
+     }
+ 
++    // ── TV posture ────────────────────────────────────────────────────────
++    // The Keycap keyboard in TV posture: docked to the bottom in the TV look
++    // (tvTokens.js `keyboard`), QWERTY / 123 / space / delete / shift and a
++    // blue action key labelled for the field. The remote moves a focus over
++    // the keys (arrows), OK types the focused key, Back or Up from the top
++    // row puts the keyboard away. Those keys are taken from every window
++    // only while the keyboard is open (Mutter accelerators, so the field
++    // keeps its focus); letters from a real keyboard go straight to the field
++    // and put the on-screen keyboard away.
++
++    setTvPosture(tv) {
++        tv = !!tv;
++        if (tv === this._tv)
++            return;
++        this.close(true);
++        this._tvDisarmReopen();
++        this._tvReleaseKeys();
++        this._tvFocusActor?.hide();
++        this._tv = tv;
++        // Only TV posture asks which keys came from a real keyboard.
++        Main.inputMethod.reportPhysicalKeys = tv;
++        this._relayoutSize = null;
++        this._gridRatio = null;
++        this._tvUnit = 0;
++        this._syncKeycapTheme();
++        if (tv)
++            this.add_style_class_name('luma-keycap-tv');
++        else
++            this.remove_style_class_name('luma-keycap-tv');
++        this.set_style(null);
++        this._updateKeys();
++        this._syncTools();
++        this._syncPrivacy();
++        this._relayout();
++    }
++
++    get tvHeight() {
++        return this._tv ? TvKeyboard.tvKeyboardHeight(TV_TOKENS, this._currentPage?.getRatio()[1] || 5) : 0;
++    }
++
++    _tvUnitFor(monitor) {
++        const {base_width: width, base_height: height} = TV_TOKENS.layout;
++        return Math.min(monitor.width / width, monitor.height / height);
++    }
++
++    // CSS length of `value` TV units, in the theme's pixels.
++    _tvPx(value) {
++        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor || 1;
++        return `${(value * this._tvUnit / scale).toFixed(2)}px`;
++    }
++
++    _tvRelayout(monitor, rows) {
++        const unit = this._tvUnitFor(monitor);
++        const k = TV_TOKENS.keyboard;
++        const c = k.colours;
++        const height = Math.round(TvKeyboard.tvKeyboardHeight(TV_TOKENS, rows) * unit);
++        if (unit !== this._tvUnit) {
++            this._tvUnit = unit;
++            this._tvStyleKeys();
++        }
++        const style = `padding: ${this._tvPx(k.padding_top - k.row_gap / 2)} 0 ${this._tvPx(k.padding_bottom - k.row_gap / 2)} 0;
++            background-gradient-direction: vertical; background-gradient-start: ${c.tray_top};
++            background-gradient-end: ${c.tray_bottom}; border: 0;
++            box-shadow: 0 -${this._tvPx(20)} ${this._tvPx(60)} 0 ${c.tray_shade};`;
++        if (this.get_style() !== style)
++            this.set_style(style);
++        if (this._relayoutSize?.[0] !== monitor.width || this._relayoutSize?.[1] !== height) {
++            this._relayoutSize = [monitor.width, height];
++            this.width = monitor.width;
++            this.height = height;
++        }
++    }
++
++    // Every cap's TV look, as inline style in TV units (the keys are drawn
++    // into the layers' cached textures; this runs when a layout is built,
++    // the screen changes or shift locks, never per remote press).
++    _tvStyleKeys() {
++        if (!this._tv || !this._tvUnit)
++            return;
++        const k = TV_TOKENS.keyboard;
++        const c = k.colours;
++        const px = value => this._tvPx(value);
++        for (const {button, kind} of this._tvKeys) {
++            const fn = kind === 'fn';
++            const action = kind === 'action';
++            const [top, bottom] = action ? [c.action_top, c.action_bottom] : fn ? [c.fn_top, c.fn_bottom]
++                : [c.cap_top, c.cap_bottom];
++            const locked = this._latched && button.action === 'levelSwitch' &&
++                button.keyButton.get_child() instanceof St.Icon;
++            button.set_style(`padding: ${px(k.row_gap / 2)} ${px(k.key_gap / 2)}; spacing: 0;`);
++            button.keyButton.set_style(`border-radius: ${px(k.key_radius)}; padding: 0; border: 0;
++                font-family: Figtree, sans-serif; font-size: ${px(fn ? k.function_size : k.key_size)};
++                font-weight: ${k.key_weight}; color: ${action ? c.action_ink : c.ink};
++                background-gradient-direction: vertical; background-gradient-start: ${top};
++                background-gradient-end: ${bottom}; text-shadow: none;
++                box-shadow: ${locked ? `inset 0 -${px(4)} 0 0 ${c.lock}` : `0 ${px(k.travel)} 0 0 ${c.edge}`};`);
++            const child = button.keyButton.get_child();
++            if (child instanceof St.Icon)
++                child.set_style(`icon-size: ${px(k.icon)};`);
++        }
++        this._tvSyncAction();
++    }
++
++    // The action key says what Enter does in this field.
++    _tvSyncAction() {
++        if (!this._tv)
++            return;
++        const requested = Main.keyboard?.tvActionLabel?.() ?? '';
++        const id = TvKeyboard.tvActionLabel(requested, this._keyboardController.purpose,
++            Clutter.InputContentPurpose);
++        const label = requested ? id : id === 'Go' ? _('Go') : _('Done');
++        for (const button of this._tvActionKeys) {
++            if (button.keyButton.label !== label)
++                button.keyButton.label = label;
++        }
++        if (this._keyboardVisible)
++            this._tvDrawFocus(false);
++    }
++
++    _tvCells() {
++        return this._currentPage ? this._cellsFor(this._currentPage) : [];
++    }
++
++    _tvShown() {
++        this._tvDisarmReopen();
++        this._tvSyncAction();
++        // The focus starts on the first letter once the keys are measured,
++        // unless this is the same field coming straight back (an app that
++        // re-focuses its entry, a flap of the text input): then it stays.
++        const field = Main.inputMethod.currentFocus ?? global.stage.key_focus;
++        const flap = this._tvBoundField === field && this._tvHiddenAt &&
++            GLib.get_monotonic_time() - this._tvHiddenAt < 1500000;
++        this._tvBoundField = field;
++        if (!flap) {
++            this._tvFocus = -1;
++            this._tvAnchor = null;
++        }
++        this._tvGrabKeys(TvKeyboard.TV_REMOTE_KEYS);
++        // The cells are measured once the keys are laid out in place.
++        global.compositor.get_laters().add(Meta.LaterType.BEFORE_REDRAW, () => {
++            this._tvDrawFocus(false);
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _tvHidden() {
++        this._tvHiddenAt = GLib.get_monotonic_time();
++        this._tvReleaseKeys();
++        this._tvFocusActor?.hide();
++    }
++
++    _tvGrabKeys(names) {
++        for (const name of names) {
++            if ([...this._tvGrabs.values()].includes(name))
++                continue;
++            const action = global.display.grab_accelerator(name, Meta.KeyBindingFlags.NONE);
++            if (action === Meta.KeyBindingAction.NONE)
++                continue;
++            Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.ALL);
++            this._tvGrabs.set(action, name);
++        }
++    }
++
++    _tvReleaseKeys() {
++        for (const action of this._tvGrabs.keys()) {
++            Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NONE);
++            global.display.ungrab_accelerator(action);
++        }
++        this._tvGrabs.clear();
++    }
++
++    // Back (or Up from the top row) puts the keyboard away and leaves the
++    // field focused; OK on it then opens the keyboard again.
++    _tvArmReopen() {
++        this._tvReopenArmed = true;
++        this._tvGrabKeys(['Return', 'KP_Enter']);
++    }
++
++    _tvDisarmReopen() {
++        if (!this._tvReopenArmed)
++            return;
++        this._tvReopenArmed = false;
++        if (!this._keyboardVisible)
++            this._tvReleaseKeys();
++    }
++
++    // A Shell surface takes the keys from the window (KeyboardManager.tvSuspend):
++    // the keyboard closes and lets go of every key, OK included, until tvResume.
++    tvSuspend() {
++        const state = {open: this._keyboardVisible || Boolean(this._showIdleId),
++            armed: this._tvReopenArmed, window: global.display.focus_window};
++        if (this._showIdleId)
++            GLib.source_remove(this._showIdleId);
++        this._showIdleId = 0;
++        this._tvSuspended = true;
++        this._tvResumeState = null;
++        this._tvReopenArmed = false;
++        this.close(true);
++        this._tvReleaseKeys();
++        return state;
++    }
++
++    tvResume(state) {
++        this._tvSuspended = false;
++        if (!state)
++            return;
++        this._tvResumeState = {...state, until: GLib.get_monotonic_time() + TV_RESUME_US};
++        // The field may have kept the input focus all along: no focus change will come.
++        if (Main.inputMethod.currentFocus)
++            this._tvFieldFocus();
++    }
++
++    // The window's field taking the focus back right after a Shell surface
++    // let go is no request to type: the keyboard comes back as it was. True
++    // when it stays put away (OK opens it again, as before).
++    _tvResumed() {
++        const state = this._tvResumeState;
++        this._tvResumeState = null;
++        if (!state || GLib.get_monotonic_time() > state.until || global.display.focus_window !== state.window)
++            return false;
++        if (state.open)
++            return false;
++        if (state.armed)
++            this._tvArmReopen();
++        return true;
++    }
++
++    // A field took the input focus. On a TV the remote moving onto a field
++    // is the request to type there (GTK asks for the on-screen keyboard only
++    // after a click or touch), so the keyboard opens for it.
++    _tvFieldFocus() {
++        if (this._tvSuspended)
++            return;
++        if (Main.inputMethod.currentFocus && this._tvResumed())
++            return;
++        this._tvDisarmReopen();
++        // Open even while a close is pending (the window taking the focus
++        // can momentarily take it from the field): opening cancels it.
++        if (!this._tv || !Main.inputMethod.currentFocus || this._showIdleId)
++            return;
++        this._showIdleId = GLib.idle_add_once(GLib.PRIORITY_DEFAULT_IDLE, () => {
++            this._showIdleId = 0;
++            if (this._tv && Main.inputMethod.currentFocus)
++                this.open(true);
++        });
++    }
++
++    // A letter typed on a real keyboard went straight to the field: the
++    // on-screen keyboard is not needed then.
++    _tvPhysicalKey() {
++        if (!this._tv)
++            return;
++        this._tvDisarmReopen();
++        if (this._keyboardVisible)
++            this.close(true);
++    }
++
++    _tvAccelerator(action) {
++        const name = this._tvGrabs.get(action);
++        if (!name)
++            return;
++        const what = TvKeyboard.tvRemoteKey(name === 'XF86Back' ? 'Back' : name);
++        if (!this._keyboardVisible) {
++            if (this._tvReopenArmed && what === 'ok') {
++                this._tvReopenArmed = false;
++                this._tvReleaseKeys();
++                this.open(true);
++            }
++            return;
++        }
++        if (what === 'back') {
++            this.close(true);
++            this._tvArmReopen();
++        } else if (what === 'ok') {
++            // Enter keys (the action key) go to the field once the remote's
++            // OK is up: the field must not see Enter pressed twice.
++            const cell = this._tvCells()[this._tvFocus];
++            if (cell?.key._keyval && !cell.key.character)
++                this._tvDeferPress(action);
++            else
++                this._tvPress();
++        } else if (what) {
++            // An aligned grid: Left and Right wrap in the row, Up and Down
++            // keep the column they started from.
++            const {index, anchor} = TvKeyboard.tvMove(this._tvCells(), this._tvFocus, what, this._tvAnchor);
++            if (index < 0) {
++                this.close(true);
++                this._tvArmReopen();
++            } else {
++                this._tvAnchor = anchor;
++                if (index !== this._tvFocus) {
++                    this._tvFocus = index;
++                    this._tvDrawFocus(true);
++                }
++            }
++        }
++    }
++
++    _tvDeferPress(action) {
++        this._tvPendingOk = action;
++        if (this._tvPendingOkId)
++            GLib.source_remove(this._tvPendingOkId);
++        this._tvPendingOkId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
++            this._tvPendingOkId = 0;
++            this._tvAcceleratorUp(this._tvPendingOk);
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    _tvAcceleratorUp(action) {
++        if (!action || action !== this._tvPendingOk)
++            return;
++        this._tvPendingOk = 0;
++        if (this._tvPendingOkId) {
++            GLib.source_remove(this._tvPendingOkId);
++            this._tvPendingOkId = 0;
++        }
++        if (this._keyboardVisible)
++            this._tvPress();
++    }
++
++    // OK types the focused key, as a tap on it would.
++    _tvPress() {
++        const cell = this._tvCells()[this._tvFocus];
++        if (!cell)
++            return;
++        const k = TV_TOKENS.keyboard;
++        const actor = this._tvFocusActor;
++        if (actor?.visible) {
++            actor.remove_transition('translation-y');
++            actor.translation_y = k.press_travel * this._tvUnit;
++            actor.ease({translation_y: -k.focus_lift * this._tvUnit, duration: k.press_ms,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        }
++        this._keyEvent = {downMs: monotonicMs(), upMs: monotonicMs()};
++        cell.key.press();
++        cell.key.release();
++        this._applyPendingLevel();
++    }
++
++    // After a level switch (shift, 123) the focus stays where it was.
++    _tvFollowLevel(previous) {
++        const before = previous && previous._cells?.[this._tvFocus];
++        const cells = this._tvCells();
++        if (before && cells.length) {
++            const x = (before.x1 + before.x2) / 2, y = (before.y1 + before.y2) / 2;
++            let best = 0, distance = Infinity;
++            cells.forEach((cell, index) => {
++                const d = Math.hypot((cell.x1 + cell.x2) / 2 - x, (cell.y1 + cell.y2) / 2 - y);
++                if (d < distance) {
++                    best = index;
++                    distance = d;
++                }
++            });
++            this._tvFocus = best;
++        }
++        this._tvDrawFocus(false);
++    }
++
++    // The focused key in the key material (the one bright thing), lifted and
++    // scaled over the grid; the grid's cached texture is never redrawn.
++    _tvDrawFocus(animate) {
++        const cells = this._tvCells();
++        if (this._tvFocus < 0 && cells.length)
++            this._tvFocus = TvKeyboard.tvStart(cells);
++        const cell = cells[Math.min(this._tvFocus, cells.length - 1)];
++        const ready = cell && cell.x2 > cell.x1;
++        if (!ready || !this._keyboardVisible) {
++            this._tvFocusActor?.hide();
++            // A layout just rebuilt (another field's purpose) has no cells
++            // until it is laid out: draw again once it is.
++            const page = this._currentPage;
++            if (this._keyboardVisible && page && !page._tvAwaitLayout) {
++                page._tvAwaitLayout = page.connect('notify::allocation', () => {
++                    page.disconnect(page._tvAwaitLayout);
++                    page._tvAwaitLayout = 0;
++                    page._cells = null;
++                    if (page === this._currentPage)
++                        this._tvDrawFocus(false);
++                });
++            }
++            return;
++        }
++        const k = TV_TOKENS.keyboard;
++        const c = k.colours;
++        const m = TV_TOKENS.materials;
++        const px = value => this._tvPx(value);
++        // It lives in the key layers' parent (never in a cached layer), so it
++        // slides with the keyboard and costs the grid nothing.
++        if (this._tvFocusActor?.get_parent() !== this._currentLayout) {
++            this._tvFocusActor?.destroy();
++            this._tvFocusActor = new St.Bin({reactive: false, x_expand: false, y_expand: false,
++                pivot_point: new Graphene.Point({x: 0.5, y: 0.5})});
++            this._currentLayout.add_child(this._tvFocusActor);
++            this._tvFocusActor.connect('destroy', actor => {
++                if (this._tvFocusActor === actor)
++                    this._tvFocusActor = null;
++            });
++        }
++        const actor = this._tvFocusActor;
++        const button = cell.key.keyButton;
++        const action = cell.key._keyval === Clutter.KEY_Return;
++        const fn = !action && (cell.key.action || cell.key._keyval);
++        const icon = button.get_child() instanceof St.Icon ? button.get_child() : null;
++        const [top, bottom] = action ? [c.action_focus_top, c.action_focus_bottom] : [m.key_top, m.key_bottom];
++        actor.set_style(`border-radius: ${px(k.key_radius)};
++            background-gradient-direction: vertical; background-gradient-start: ${top};
++            background-gradient-end: ${bottom}; box-shadow: 0 ${px(14)} ${px(26)} 0 ${c.focus_drop};`);
++        const ink = action ? c.action_ink : m.key_ink;
++        const font = `font-family: Figtree, sans-serif; font-weight: ${k.key_weight};
++            font-size: ${px(fn ? k.function_size : k.key_size)}; color: ${ink};`;
++        let child = actor.get_child();
++        if (icon) {
++            if (!(child instanceof St.Icon)) {
++                child = new St.Icon({x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++                actor.set_child(child);
++            }
++            child.icon_name = icon.icon_name;
++            child.set_style(`icon-size: ${px(k.icon)}; color: ${ink};`);
++        } else {
++            if (!(child instanceof St.Label)) {
++                child = new St.Label({x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
++                actor.set_child(child);
++            }
++            child.text = button.label ?? '';
++            child.set_style(font);
++        }
++        const page = this._currentPage.get_allocation_box();
++        const x = page.x1 + cell.cap.x, y = page.y1 + cell.cap.y;
++        actor.set_size(cell.cap.width, cell.cap.height);
++        const lift = -k.focus_lift * this._tvUnit;
++        actor.remove_all_transitions();
++        // A new actor (a rebuilt layout) is placed, never slid in from 0,0.
++        if (animate && actor.visible && actor._tvPlaced) {
++            actor.ease({x, y, translation_y: lift, duration: k.move_ms,
++                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++        } else {
++            actor.set_position(x, y);
++            actor.translation_y = lift;
++        }
++        actor.set_scale(k.focus_scale, k.focus_scale);
++        actor._tvPlaced = true;
++        actor.show();
++    }
++
+     setCursorLocation(window, x, y, w, h) {
+         const monitor = Main.layoutManager.keyboardMonitor;
+ 
++        // A TV application is never slid up; it lifts its own action bar.
++        if (this._tv) {
++            this._setFocusWindow(null);
++            return;
++        }
++
+         // Resized applications are already above the keyboard.
+         if (this._windowsResized || (this._resizesWindows() && !this._keyboardVisible)) {
+             this._setFocusWindow(null);

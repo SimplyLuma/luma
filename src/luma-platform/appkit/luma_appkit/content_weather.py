@@ -33,6 +33,13 @@ _GEOMETRY = {
         ("M12 2.5v2M3.5 12h2M5.8 5.8l1.4 1.4M18.2 5.8l-1.4 1.4", "sun", 2),
         (_CLOUD, "cloud", 0),
     ),
+    # Partly cloudy with the whole sun behind the cloud (v73 GL `part`, the TV glyph).
+    "part-whole": (
+        ("M17.5 12a5.5 5.5 0 1 0-11 0a5.5 5.5 0 1 0 11 0Z", "sun", 0),
+        ("M12 1.4v2.6M12 20v2.6M1.4 12h2.6M20 12h2.6M4.5 4.5l1.84 1.84M19.5 4.5l-1.84 1.84"
+         "M4.5 19.5l1.84-1.84M17.66 17.66l1.84 1.84", "sun", 2),
+        ("M12 27h11.8a4.8 4.8 0 0 0 .7-9.5 7 7 0 0 0-13.3 1.7A3.9 3.9 0 0 0 12 27Z", "cloud", 0),
+    ),
     "ncloud": (
         ("M17 8.5a6.5 6.5 0 0 1-6.3 8.2A7 7 0 0 0 16.5 12Z", "moon", 0),
         (_CLOUD, "cloud", 0),
@@ -40,7 +47,8 @@ _GEOMETRY = {
 }
 WEATHER_CONDITIONS = tuple(_GEOMETRY)
 _ALIASES = {"clear": "sun", "partly": "part", "cloud-sun": "part", "cloud-moon": "ncloud", "cloud-rain": "rain"}
-_LABELS = {"sun": "Clear", "moon": "Clear night", "cloud": "Cloudy", "rain": "Rain", "part": "Partly cloudy", "ncloud": "Partly cloudy night"}
+_LABELS = {"sun": "Clear", "moon": "Clear night", "cloud": "Cloudy", "rain": "Rain", "part": "Partly cloudy",
+           "part-whole": "Partly cloudy", "ncloud": "Partly cloudy night"}
 
 
 @lru_cache(maxsize=None)
@@ -79,7 +87,7 @@ class WeatherGlyph(Gtk.Widget):
         if kind not in _GEOMETRY:
             raise ValueError(f"unknown weather condition: {condition!r}")
         if night:
-            kind = {"sun": "moon", "part": "ncloud"}.get(kind, kind)
+            kind = {"sun": "moon", "part": "ncloud", "part-whole": "ncloud"}.get(kind, kind)
         self.condition = kind
         self.description = label if label is not None else _LABELS[kind]
         self.update_property([Gtk.AccessibleProperty.LABEL], [self.description])

@@ -163,6 +163,8 @@ class PhotosWindow(AppWindow):
         self._monitors=[]
         self._monitor_timeout=0
         self._initial_scan_timer=0
+        # Until this run's first scan ends, an empty catalog means "not indexed yet", not "no photos".
+        self._scanned=False
         self._fixture_actions_applied=False
         self._edit_session=0
         self._slider_rows=[]
@@ -416,10 +418,16 @@ class PhotosWindow(AppWindow):
         _clear(self.photo_body)
         state=self.state
         empty_library=not state.records and state.view=='library' and not state.query and not state.library_count
+        indexing=empty_library and not state.fixture and not self._scanned
+        if indexing:empty_library=False
         self.scroll.set_visible(not empty_library)
         self.library_empty.set_visible(empty_library)
         title=self._collection_label(state.view)
         self.title.set_label(title)
+        if indexing:
+            self.photo_body.append(ListEmptyState('Loading photos…'))
+            self._library_bar()
+            return
         if state.total:
             self.meta.set_meta([f'{state.total} photos',f'{state.place_count} places',state.month])
         else:
@@ -2122,7 +2130,10 @@ class PhotosWindow(AppWindow):
         if self._closed or generation!=self._scan_generation:return GLib.SOURCE_REMOVE
         if self._initial_scan_timer:
             GLib.source_remove(self._initial_scan_timer);self._initial_scan_timer=0
-        if error:Toast.show(self.host,error,kind='error')
+        self._scanned=True
+        if error:
+            Toast.show(self.host,error,kind='error')
+            self._load()
         else:
             _results,sources=result
             self._install_source_monitors(sources)

@@ -14,6 +14,9 @@ from gi.repository import Gio, GLib
 BUS_NAME = "org.project_luma.ShellState1"
 OBJECT_PATH = "/org/project_luma/ShellState1"
 INTERFACE = BUS_NAME
+# "auto" is accepted as the short spelling of automatic.
+POSTURES = ("automatic", "auto", "tv")
+PRESENTATIONS = ("automatic", "auto", "desktop", "tablet", "mobile")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -31,6 +34,11 @@ def parser() -> argparse.ArgumentParser:
     idle.add_argument("seconds", type=int)
     mode = commands.add_parser("presentation")
     mode.add_argument("value", choices=("automatic", "desktop", "tablet", "mobile"))
+    posture = commands.add_parser("posture")
+    posture.add_argument("value", choices=POSTURES)
+    setter = commands.add_parser("set", help="set one contract value: posture or presentation")
+    setter.add_argument("key", choices=("posture", "presentation"))
+    setter.add_argument("value")
     return result
 
 
@@ -64,6 +72,15 @@ def main() -> int:
         call(proxy, "SetIdleDelay", GLib.Variant("(u)", (args.seconds,)))
     elif args.command == "presentation":
         call(proxy, "SetPresentation", GLib.Variant("(s)", (args.value,)))
+    elif args.command == "posture":
+        call(proxy, "SetPosture", GLib.Variant("(s)", (args.value,)))
+    elif args.command == "set":
+        choices = POSTURES if args.key == "posture" else PRESENTATIONS
+        if args.value not in choices:
+            raise SystemExit(f"luma-shell-statectl: {args.key} must be one of: {', '.join(choices)}")
+        value = "automatic" if args.value == "auto" else args.value
+        method = "SetPosture" if args.key == "posture" else "SetPresentation"
+        call(proxy, method, GLib.Variant("(s)", (value,)))
     return 0
 
 

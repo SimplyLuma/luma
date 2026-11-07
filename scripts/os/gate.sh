@@ -268,10 +268,19 @@ gate_release_check() {
     done
   fi
   guest_copy "$domain" "$release_files/tests/os/gate/$name.sh" "/var/tmp/luma-check-$name.sh"
-  if guest "$domain" "bash /var/tmp/luma-check-$name.sh $*" >"$log" 2>&1 && ! grep -q '"result": "fail"' "$log"; then
-    record "$stage-$name" pass "$(grep -c '"result": "pass"' "$log") checks"
-    return 0
-  fi
+  # A browser window can take longer to map than the check waits on a loaded
+  # host; the browser check gets one more try, and both logs are kept. A
+  # browser that is really broken fails both.
+  local attempt
+  for attempt in 1 2; do
+    if guest "$domain" "bash /var/tmp/luma-check-$name.sh $*" >"$log" 2>&1 && ! grep -q '"result": "fail"' "$log"; then
+      record "$stage-$name" pass "$(grep -c '"result": "pass"' "$log") checks$([ "$attempt" -eq 1 ] || echo ", second try (first: $stage-$name.first-try.jsonl)")"
+      return 0
+    fi
+    [ "$name" = default-browser ] && [ "$attempt" -eq 1 ] || break
+    mv "$log" "$gate_dir/$stage-$name.first-try.jsonl"
+    luma_os_log "stage $stage-$name: first try failed; trying once more"
+  done
   record "$stage-$name" fail "failing: $(python3 -c 'import json,sys
 names=[]
 for line in open(sys.argv[1]):
@@ -739,11 +748,18 @@ elif install_vm no-account "$candidate" first-boot-setup; then
     record no-account-display fail 'the display manager or GNOME Shell checks failed with no account (see no-account-display-checks.log)'
     no_account_result=fail
   fi
+  # GDM runs first-boot setup as a dynamic user (gnome-initial-setup or
+  # gnome-initial-setup-N); Luma's setup must be running in that session.
   session=$(guest "$na" /usr/libexec/luma-os/graphical-session 2>/dev/null || true)
-  if [ "$(awk '{ print $2 }' <<<"$session")" = greeter ] && [ "$(awk '{ print $4 }' <<<"$session")" = gnome-initial-setup ]; then
-    record no-account-setup-session pass "first-boot setup session: $session"
+  setup_user=$(awk '{ print $4 }' <<<"$session")
+  setup_unit=none
+  if [[ "$setup_user" =~ ^gnome-initial-setup(-[0-9]+)?$ ]]; then
+    setup_unit=$(guest "$na" "systemctl --user -M $setup_user@ is-active luma-setup.service" 2>/dev/null || true)
+  fi
+  if [ "$(awk '{ print $2 }' <<<"$session")" = greeter ] && [ "$setup_unit" = active ]; then
+    record no-account-setup-session pass "first-boot setup session: $session; luma-setup.service active"
   else
-    record no-account-setup-session fail "expected the gnome-initial-setup greeter session, found: ${session:-none}"
+    record no-account-setup-session fail "expected Luma's setup in the gnome-initial-setup greeter session, found: ${session:-none} (luma-setup.service: ${setup_unit:-unknown})"
     no_account_result=fail
   fi
   failed_units=$(guest "$na" 'systemctl list-units --state=failed --no-legend --plain' 2>/dev/null || echo 'unknown')

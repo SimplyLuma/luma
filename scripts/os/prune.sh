@@ -19,7 +19,8 @@
 #     (default 1; never a running gate; scripts/os/prune-gate-vms.sh);
 #   * candidate commits older than 3 days that were never published;
 #   * nightly history in the preview repository beyond the newest N releases
-#     (default 14); beta and stable history is never pruned automatically;
+#     (default 7: a rolling week; each publication drops the oldest); beta and
+#     stable history is never pruned automatically;
 #   * pipeline logs older than 30 days;
 # and trims the volume so freed blocks return to the shared disk.
 
@@ -29,7 +30,7 @@ set -euo pipefail
 apply=0
 keep_builds=5
 keep_images=1
-keep_nightlies=5
+keep_nightlies=7
 keep_failed_gates=1
 trim=0
 while [ "$#" -gt 0 ]; do
@@ -92,7 +93,8 @@ for id in "${builds[@]}"; do
     do_or_say rm -rf -- "$LUMA_OS_ROOT/builds/$id/oci"
   fi
 done
-mapfile -t dangling < <(luma_os_podman images --quiet --filter dangling=true 2>/dev/null | sort -u)
+# Only this store's own images: an additional (read-only) image store's are not ours to remove.
+mapfile -t dangling < <(luma_os_podman images --quiet --filter dangling=true --filter readonly=false 2>/dev/null | sort -u)
 for image in "${dangling[@]}"; do
   do_or_say luma_os_podman rmi "$image"
 done

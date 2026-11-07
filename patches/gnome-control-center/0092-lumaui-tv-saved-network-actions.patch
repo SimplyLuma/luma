@@ -1,0 +1,90 @@
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index b624acb..a162b30 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -28,6 +28,7 @@ typedef struct {
+   char *join_seen;   /* the last join outcome acted on (joinDone / joinFailed serials) */
+   char *join_last;   /* the password last tried, offered again selected after a refusal */
+   gboolean join_select;
++  gboolean join_change; /* TV: a saved network's row shows its password field (Change password) */
+   char *connecting;
+   char *variant;
+   guint variant_tick;
+diff --git a/shell/cc-luma-view.c b/shell/cc-luma-view.c
+index b6435cc..d4dd40b 100644
+--- a/shell/cc-luma-view.c
++++ b/shell/cc-luma-view.c
+@@ -741,11 +741,26 @@ static void nearby_clicked (LumaDetailsItem *item, GtkWidget *root)
+   if (!password_required && !saved_here) { connect_network (v, name); return; }
+   char *next = g_strcmp0 (v->joining, name) ? g_strdup (name) : NULL;
+   g_free (v->joining); v->joining = next;
++  v->join_change = FALSE;
++  cc_luma_view_queue_refresh (v);
++}
++/* TV posture, a saved network's actions (its row grown in place): Connect with what is saved,
++ * Change password (the field, focused, with the TV keyboard's Join), Forget (asks first). */
++static void saved_connect (GtkButton *button, View *v)
++{
++  if (v->joining && live_join (v, v->joining, NULL, FALSE))
++    { g_clear_pointer (&v->joining, g_free); v->join_change = FALSE; cc_luma_view_queue_refresh (v); }
++}
++static void saved_change (GtkButton *button, View *v)
++{
++  v->join_change = TRUE;
++  v->join_select = TRUE; /* the field takes the focus once drawn */
+   cc_luma_view_queue_refresh (v);
+ }
+ static void join_cancelled (GtkButton *button, View *v)
+ {
+   g_clear_pointer (&v->joining, g_free);
++  v->join_change = FALSE;
+   cc_luma_view_queue_refresh (v);
+ }
+ static void join_clicked (GtkButton *button, View *v);
+@@ -822,7 +837,24 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+   g_signal_connect_object (item, "clicked", G_CALLBACK (nearby_clicked), v->root, 0);
+   gtk_box_append (GTK_BOX (wrap), item);
+   gtk_box_append (rows, wrap);
+-  if (g_strcmp0 (v->joining, name) == 0)
++  if (g_strcmp0 (v->joining, name) == 0 && saved && locked && luma_ui_tv_posture () && !v->join_change)
++    {
++      GtkWidget *actions = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
++      GtkWidget *connect = cc_luma_view_command_style (v, "Connect", G_CALLBACK (saved_connect), "key");
++      GtkWidget *change = cc_luma_view_command (v, "Change password", G_CALLBACK (saved_change));
++      GtkWidget *forget = forget_button (v, name);
++      gtk_widget_add_css_class (actions, "cf-joinf");
++      gtk_widget_set_name (actions, "cf-saved-actions");
++      gtk_widget_set_name (connect, "cf-saved-connect");
++      gtk_widget_set_name (change, "cf-saved-change");
++      gtk_widget_add_css_class (connect, "cf-bt");
++      gtk_widget_add_css_class (change, "cf-bt");
++      gtk_box_append (GTK_BOX (actions), connect);
++      gtk_box_append (GTK_BOX (actions), change);
++      gtk_box_append (GTK_BOX (actions), forget);
++      gtk_box_append (GTK_BOX (wrap), actions);
++    }
++  else if (g_strcmp0 (v->joining, name) == 0)
+     {
+       GtkWidget *form = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 8);
+       GtkWidget *password = gtk_password_entry_new ();
+@@ -833,8 +865,9 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+       gtk_widget_set_name (password, "cf-join-password");
+       g_object_set_data_full (G_OBJECT (password), "cf-network", g_strdup (name), g_free);
+       gtk_widget_add_css_class (password, "cf-field");
+-      g_object_set (password, "placeholder-text", saved ? "New password, or Join with the saved one" : "Password", NULL);
+-      if (saved) g_object_set_data (G_OBJECT (password), "cf-saved", GINT_TO_POINTER (TRUE));
++      gboolean tv_change = saved && luma_ui_tv_posture () && v->join_change;
++      g_object_set (password, "placeholder-text", tv_change ? "New password" : saved ? "New password, or Join with the saved one" : "Password", NULL);
++      if (saved && !tv_change) g_object_set_data (G_OBJECT (password), "cf-saved", GINT_TO_POINTER (TRUE));
+       g_autofree char *accessible = g_strdup_printf ("Password for %s", name);
+       gtk_accessible_update_property (GTK_ACCESSIBLE (password), GTK_ACCESSIBLE_PROPERTY_LABEL, accessible, -1);
+       gtk_widget_set_tooltip_text (password, accessible);
+@@ -855,7 +888,7 @@ static void nearby_row (View *v, GtkBox *rows, JsonObject *network)
+       }
+       gtk_box_append (GTK_BOX (actions), cancel);
+       gtk_box_append (GTK_BOX (actions), join);
+-      if (saved) gtk_box_append (GTK_BOX (actions), forget_button (v, name));
++      if (saved && !tv_change) gtk_box_append (GTK_BOX (actions), forget_button (v, name));
+       gtk_box_append (GTK_BOX (wrap), form);
+     }
+ }

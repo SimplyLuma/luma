@@ -2,7 +2,7 @@
 
 Name:           luma-ari
 Version:        0.1.0
-Release:        1.luma.21.creator20261029.1%{?dist}
+Release:        1.luma.22%{?dist}
 Summary:        Luma's assistant with local and connected models
 License:        Apache-2.0
 URL:            https://projectluma.org/apps/ari
@@ -17,8 +17,6 @@ BuildRequires:  python3-cryptography
 BuildRequires:  meson >= 1.3
 BuildRequires:  ninja-build
 BuildRequires:  python3-devel >= 3.11
-BuildRequires:  desktop-file-utils
-BuildRequires:  libappstream-glib
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  glib2-devel
 BuildRequires:  xorg-x11-server-Xvfb
@@ -30,8 +28,6 @@ Requires:       python3-jwt
 Requires:       python3-cryptography
 Requires:       libsecret
 Requires:       at-spi2-core
-Requires:       gtk4 >= 4.18
-Requires:       libadwaita >= 1.7
 Requires:       luma-developer-platform >= 0.1.0-1.luma.100.creator20261007.1
 Requires:       luma-ari-runtime >= 0.4.0
 Requires:       luma-display-config
@@ -52,22 +48,24 @@ connects to your ChatGPT plan or OpenRouter. It keeps
 conversations and an append-only activity log in the person's own data folder,
 and decides in code which tools may run.
 
+This package is the host side: the ari command, the daemon and its
+org.projectluma.Ari1 service. The interface ships as the org.projectluma.Ari
+Flatpak.
+
 %prep
 %autosetup -n luma-ari/src/luma-ari
 cp %{SOURCE1} LICENSE.md
 
 %build
-%meson
+%meson -Dui=false
 %meson_build
 
 %install
 %meson_install
-desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Ari.desktop
 
 %check
 PYTHONPATH=$PWD GSETTINGS_BACKEND=memory %{python3} -m unittest discover -s ../../tests/luma-ari -p "test_*.py" -v
 PYTHONPATH=$PWD dbus-run-session -- %{python3} ../../tests/luma-ari/native_host_identity.py
-appstream-util validate-relax --nonet data/org.projectluma.Ari.metainfo.xml
 %{python3} -m py_compile ari/*.py ari/tools/*.py ari_ui/*.py eval/run.py
 # Every module the daemon imports must be installed, not only present in the tree.
 PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -P -c "import jwt, cryptography, ari.chatgpt, ari.chatgpt_provider, ari.cloud, ari.service"
@@ -75,26 +73,25 @@ glib-compile-schemas --strict --dry-run data
 %{python3} -c "import json; json.load(open('eval/cases.json'))"
 native_home=$(mktemp -d)
 trap 'rm -rf "$native_home"' EXIT
-PYTHONPATH=%{buildroot}%{python3_sitelib} XDG_CONFIG_HOME="$native_home/config" XDG_DATA_HOME="$native_home/data" GSETTINGS_BACKEND=memory GSK_RENDERER=cairo dbus-run-session -- xvfb-run -a -s "-screen 0 1920x1080x24" %{python3} ../../tests/luma-ari/native_sidebar_controls.py
+# The interface is not installed here; its native check runs from the source tree.
+PYTHONPATH=$PWD XDG_CONFIG_HOME="$native_home/config" XDG_DATA_HOME="$native_home/data" GSETTINGS_BACKEND=memory GSK_RENDERER=cairo dbus-run-session -- xvfb-run -a -s "-screen 0 1920x1080x24" %{python3} ../../tests/luma-ari/native_sidebar_controls.py
 
 %files
 %license LICENSE.md
 %doc README.md
 %{_bindir}/ari
-%{_bindir}/org.projectluma.Ari
 %{_libexecdir}/luma-ari/ari-daemon
 %{python3_sitelib}/ari/
-%{python3_sitelib}/ari_ui/
 %{_datadir}/luma-ari/
-%{_datadir}/applications/org.projectluma.Ari.desktop
-%{_datadir}/metainfo/org.projectluma.Ari.metainfo.xml
 %{_datadir}/glib-2.0/schemas/org.projectluma.Ari.gschema.xml
-%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Ari.svg
 %{_datadir}/dbus-1/services/org.projectluma.Ari1.service
-%{_datadir}/dbus-1/services/org.projectluma.Ari.service
 %{_userunitdir}/ari-daemon.service
 
 %changelog
+* Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.22
+- Ship the host only: the ari command, the daemon and org.projectluma.Ari1.
+  The interface comes from the org.projectluma.Ari Flatpak.
+
 * Thu Oct 29 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.21.creator20261029.1
 - Add ChatGPT plan sign-in, account management and model selection.
 - Add hosted search requests, linked sources, effort controls and model family pages.

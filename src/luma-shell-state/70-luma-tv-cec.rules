@@ -1,0 +1,3 @@
+# Every HDMI-CEC adapter joins the bus as a playback device with remote-control
+# passthrough, so the TV's remote arrives as keys (luma-tv-cec).
+ACTION=="add", SUBSYSTEM=="cec", KERNEL=="cec[0-9]*", TAG+="systemd", ENV{SYSTEMD_WANTS}+="luma-tv-cec@%k.service"

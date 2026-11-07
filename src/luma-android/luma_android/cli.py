@@ -163,9 +163,9 @@ def main(argv: list[str] | None = None) -> int:
             finally:
                 shutil.rmtree(staged_package_root(staged_payloads), ignore_errors=True)
         elif arguments.command == "launch":
-            engine.launch(arguments.package)
             from .activation import request_existing_restore
-            request_existing_restore(arguments.package)
+            from .recovery import launch_with_recovery
+            launch_with_recovery(engine, arguments.package, request_existing_restore)
         elif arguments.command == "permissions":
             engine.open_permissions(arguments.package)
         elif arguments.command == "remove":

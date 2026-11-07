@@ -280,7 +280,123 @@ int luma_ui_window_width(GtkWidget *widget) {
 /* Device identity, independent of window width. Keep the precedence aligned
  * with Python's lumaui.mobile_form_factor: explicit override, Luma device
  * class (environment then image marker), legacy systemd chassis. */
+gboolean luma_ui_tv_posture(void) {
+  const char *forced = g_getenv("LUMA_POSTURE");
+  if (forced != NULL && *forced != '\0') {
+    g_autofree char *value = g_strstrip(g_ascii_strdown(forced, -1));
+    return g_str_equal(value, "tv");
+  }
+  /* One settings object for the process: the key is read live, the schema looked up once. */
+  static GSettings *state = NULL;
+  static gsize looked_up = 0;
+  if (g_once_init_enter(&looked_up)) {
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default();
+    g_autoptr(GSettingsSchema) schema = source != NULL
+        ? g_settings_schema_source_lookup(source, "org.project_luma.shell-state", TRUE) : NULL;
+    if (schema != NULL && g_settings_schema_has_key(schema, "posture"))
+      state = g_settings_new("org.project_luma.shell-state");
+    g_once_init_leave(&looked_up, 1);
+  }
+  g_autofree char *selected = state != NULL ? g_settings_get_string(state, "posture") : g_strdup("automatic");
+  if (g_str_equal(selected, "tv"))
+    return TRUE;
+  if (!g_str_equal(selected, "automatic"))
+    return FALSE;
+  g_autofree char *device = NULL;
+  if (!g_file_get_contents("/etc/luma-device-class", &device, NULL, NULL))
+    return FALSE;
+  g_strstrip(device);
+  return g_ascii_strcasecmp(device, "tv") == 0;
+}
+
+double luma_ui_tv_unit(int width, int height) {
+  if (width <= 0 || height <= 0)
+    return 0.0;
+  return MIN((double)width / LUMA_UI_TV_LAYOUT_BASE_WIDTH, (double)height / LUMA_UI_TV_LAYOUT_BASE_HEIGHT);
+}
+
+/* A box's orientation lives in its layout manager; a box given another layout (luma-cards.c's
+ * capped layout) has none to ask. */
+static int orientation_of(GtkWidget *widget) {
+  if (widget == NULL || !GTK_IS_ORIENTABLE(widget))
+    return -1;
+  GtkLayoutManager *layout = GTK_IS_BOX(widget) ? gtk_widget_get_layout_manager(widget) : NULL;
+  if (GTK_IS_BOX(widget) && (layout == NULL || !GTK_IS_ORIENTABLE(layout)))
+    return -1;
+  return (int)gtk_orientable_get_orientation(GTK_ORIENTABLE(widget));
+}
+
+static const char *const page_parts[] = { "header", "back", "hero", "group", "card", "row",
+                                           "title", "lede", "emblem", "buttons", "footnote", "ways", "way",
+                                           "chips", "chip", "swatch", "subject", NULL };
+
+/* An image that is not a symbolic icon: a logo, an app's icon, a photo. */
+static gboolean full_colour(GtkWidget *w) {
+  if (GTK_IS_PICTURE(w))
+    return TRUE;
+  if (!GTK_IS_IMAGE(w))
+    return FALSE;
+  switch (gtk_image_get_storage_type(GTK_IMAGE(w))) {
+  case GTK_IMAGE_ICON_NAME:
+    return !g_str_has_suffix(gtk_image_get_icon_name(GTK_IMAGE(w)), "-symbolic");
+  case GTK_IMAGE_GICON: {
+    GIcon *icon = gtk_image_get_gicon(GTK_IMAGE(w));
+    const char *const *names = G_IS_THEMED_ICON(icon) ? g_themed_icon_get_names(G_THEMED_ICON(icon)) : NULL;
+    return names == NULL || names[0] == NULL || !g_str_has_suffix(names[0], "-symbolic");
+  }
+  case GTK_IMAGE_PAINTABLE:
+    return TRUE;
+  default:
+    return FALSE;
+  }
+}
+
+void luma_ui_set_part(GtkWidget *widget, const char *part) {
+  g_return_if_fail(GTK_IS_WIDGET(widget));
+  if (part != NULL && !g_strv_contains(page_parts, part)) {
+    g_critical("unknown LumaUI page part '%s'", part);
+    return;
+  }
+  for (guint i = 0; page_parts[i] != NULL; i++) {
+    g_autofree char *name = g_strconcat("lumaui-part-", page_parts[i], NULL);
+    luma_ui_set_css_class(widget, name, g_strcmp0(page_parts[i], part) == 0);
+  }
+  /* A subject (the thing a card is about, heading it: a phone) is a row drawn larger; the class
+   * lumaui-away on it says the thing is out of reach. */
+  if (g_strcmp0(part, "subject") == 0)
+    gtk_widget_add_css_class(widget, "lumaui-part-row");
+  /* A row that starts with a lead (an icon or picture before its text): its divider insets past it. */
+  /* The row's line: the row itself, a button's child, or the first line of a row that grows
+   * (a vertical row whose first child is the line, e.g. a network with its join form below). */
+  GtkWidget *line = widget;
+  for (int depth = 0; line != NULL && depth < 3; depth++) {
+    if (GTK_IS_BUTTON(line))
+      line = gtk_button_get_child(GTK_BUTTON(line));
+    else if (GTK_IS_BOX(line) && orientation_of(line) == GTK_ORIENTATION_VERTICAL &&
+             gtk_widget_get_first_child(line) != NULL && !GTK_IS_LABEL(gtk_widget_get_first_child(line)))
+      line = gtk_widget_get_first_child(line);
+    else
+      break;
+  }
+  GtkWidget *first = line != NULL && GTK_IS_BOX(line) && orientation_of(line) == GTK_ORIENTATION_HORIZONTAL
+                     ? gtk_widget_get_first_child(line) : NULL;
+  gboolean leads = (g_strcmp0(part, "row") == 0 || g_strcmp0(part, "subject") == 0 || g_strcmp0(part, "hero") == 0) && first != NULL && gtk_widget_get_next_sibling(first) != NULL &&
+                   !gtk_widget_get_hexpand(first) && !GTK_IS_LABEL(first);
+  luma_ui_set_css_class(widget, "lumaui-part-leads", leads);
+  /* An icon lead (an image, or a box holding one) sits on the TV's lead tile; other leads
+   * (a drawn mark such as signal bars) keep their own shape. */
+  GtkWidget *inner = leads && GTK_IS_BOX(first) ? gtk_widget_get_first_child(first) : NULL;
+  if (leads && (GTK_IS_IMAGE(first) || GTK_IS_PICTURE(first) || GTK_IS_IMAGE(inner) || GTK_IS_PICTURE(inner))) {
+    gtk_widget_add_css_class(first, "lumaui-part-lead");
+    /* a picture in full colour (a logo, an app's icon, a photo) stands on its own, never on a tile */
+    luma_ui_set_css_class(first, "lumaui-part-picture", full_colour(GTK_IS_BOX(first) ? inner : first));
+  } else if (leads)
+    gtk_widget_add_css_class(first, "lumaui-part-mark");
+}
+
 gboolean luma_ui_mobile_form_factor(void) {
+  if (luma_ui_tv_posture())
+    return FALSE;
   const char *value = g_getenv("LUMA_FORM_FACTOR");
   g_autofree char *override = g_ascii_strdown(value != NULL ? value : "", -1);
   g_strstrip(override);

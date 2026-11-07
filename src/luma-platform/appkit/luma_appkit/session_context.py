@@ -10,10 +10,15 @@ _broker = None
 
 
 def _apply_window_context(window, context):
-    """Apply the shared window frame policy without replacing app content."""
+    """Apply the shared window frame policy without replacing app content.
+
+    TV posture drops the title row (the shell runs the window full screen,
+    without chrome) but is not a phone: presentation still decides that.
+    """
     window.context = context
-    decorated = context.presentation is PresentationMode.WINDOWED
-    window.phone_device = not decorated
+    phone = context.presentation is not PresentationMode.WINDOWED
+    decorated = not phone and not context.tv
+    window.phone_device = phone
     window.set_decorated(decorated)
     window.title_bar.set_visible(decorated)
     window.title_bar.set_can_target(decorated)
@@ -21,7 +26,8 @@ def _apply_window_context(window, context):
     if window.window_controls is not None:
         window.window_controls.set_visible(decorated)
     window._toolbar_view.set_extend_content_to_top_edge(not decorated)
-    for name, enabled in (("lumaui-phone-device", not decorated),
+    for name, enabled in (("lumaui-phone-device", phone),
+                          ("lumaui-tv", context.tv),
                           ("lumaui-tablet-mode", context.device_class == "tablet"),
                           ("luma-touch", context.input_mode is InputMode.TOUCH)):
         (window.add_css_class if enabled else window.remove_css_class)(name)
@@ -56,10 +62,12 @@ class SessionContext:
     def _changed(self, *_args):
         mode = self._proxy.get_cached_property("Presentation")
         capabilities = self._proxy.get_cached_property("InputCapabilities")
+        posture = self._proxy.get_cached_property("Posture")
         if mode is None:
             return
         context = context_from_session(self.context, mode.unpack(),
-            capabilities.unpack() if capabilities is not None else {})
+            capabilities.unpack() if capabilities is not None else {},
+            posture.unpack() if posture is not None else None)
         if context == self.context:
             return
         self.context = context

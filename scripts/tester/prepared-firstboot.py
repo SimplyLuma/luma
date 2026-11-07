@@ -67,9 +67,24 @@ def seed_values(text):
         if item.get('path') != '/etc/luma-tester-target':
             raise ValueError('Unsupported seed file')
         target = item.get('content', '').strip()
-    if target not in ('desktop', 'tablet', 'mobile'):
+    if target not in ('desktop', 'tablet', 'mobile', 'tv'):
         raise ValueError('Invalid interface')
     return key, target
+
+
+def boot_experience(default, timeout=5):
+    # The launcher passes this boot's experience in fw_cfg; the seed keeps the
+    # experience the workspace was first prepared with.
+    subprocess.run(['modprobe', 'qemu_fw_cfg'], check=False)
+    path = Path('/sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw')
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            value = path.read_bytes()[:32].decode().strip('\0').strip()
+            return value or default
+        except (OSError, UnicodeError):
+            time.sleep(0.1)
+    return default
 
 
 def wait_seed(directory=Path('/dev/disk/by-label'), timeout=120):
@@ -116,8 +131,17 @@ def main():
     temporary.chmod(0o600)
     os.chown(temporary, user.pw_uid, user.pw_gid)
     temporary.replace(authorized)
-    subprocess.run(['restorecon', '-RF', str(directory)], check=True)
+    # Set the type directly: nightly 20261106 policy substitutes /home with
+    # /var/home but lists home contexts only under /home, so restorecon gives
+    # var_t here and sshd cannot read authorized_keys.
+    subprocess.run(['chcon', '-R', '-u', 'unconfined_u', '-t', 'ssh_home_t', str(directory)], check=True)
     Path('/etc/luma-tester-target').write_text(target + '\n')
+    # TV posture follows a television device class (luma-shell-state read_device_posture).
+    marker = Path('/etc/luma-device-class')
+    if boot_experience(target) == 'tv':
+        marker.write_text('tv\n')
+    elif marker.is_file() and marker.read_text().strip() == 'tv':
+        marker.unlink()
     receipt.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     receipt.write_text(json.dumps(dict(key=key, target=target,
         fingerprint=hashlib.sha256(key.encode()).hexdigest())) + '\n')

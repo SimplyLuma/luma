@@ -19,6 +19,8 @@ log = logging.getLogger("luma-keyring")
 
 READY_BOUND_SECONDS = 8
 DECIDE_TIMEOUT_MS = 3000
+# How long, at the session's start, the keyring daemon gets to come onto the bus.
+DAEMON_WAIT_SECONDS = 8
 # How long the service waits, before the Shell, for the display the sheet needs.
 DISPLAY_WAIT_SECONDS = 120
 
@@ -79,11 +81,17 @@ def decide(argv: list[str]):
     try:
         # The session waits for this: a keyring daemon that does not answer
         # is "nothing to ask" after a few seconds, not a stalled login.
-        ask = should_ask(Keyring(timeout_ms=DECIDE_TIMEOUT_MS))
+        keyring = Keyring(timeout_ms=DECIDE_TIMEOUT_MS)
+        if prompter is not None:
+            # This early the keyring daemon may not be on the bus yet: start it and give it a
+            # moment, rather than read "no daemon" as "nothing to ask" and let the name go.
+            _wait_for_keyring(keyring, DAEMON_WAIT_SECONDS)
+        ask = should_ask(keyring)
     except Exception as error:  # noqa: BLE001 - never hold the session up over this
         log.info("could not tell whether to ask: %s", error)
         ask = False
     if not ask and prompter is not None:
+        log.info("nothing to ask; keyring prompts go to the Shell")
         prompter.release()
         prompter = None
     notify_ready()
@@ -93,6 +101,28 @@ def decide(argv: list[str]):
             prompter.release()
         return False, None
     return ask, prompter
+
+
+def _wait_for_keyring(keyring, seconds: float) -> bool:
+    """Until the daemon is on the bus and has the login keyring (its file exists)."""
+    import time
+
+    from .state import keyring_path
+
+    def ready() -> bool:
+        return keyring.running() and (keyring.collection() is not None or not keyring_path().exists())
+
+    if ready():
+        return True
+    if not keyring.running():
+        keyring.activate()
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if ready():
+            return True
+        time.sleep(0.1)
+    log.info("the keyring daemon was not ready in %d s", seconds)
+    return ready()
 
 
 def wait_for_display(seconds: float = DISPLAY_WAIT_SECONDS) -> bool:

@@ -15,6 +15,7 @@ from luma_appkit import (
     LayerHost, Menu, ModeSwitch, NavigationTrailBar, PageHeader, PersonAvatar, ScrollView, StackedButton,
     StackedButtons, TableHeader, TextButton, TextField, Toast, ToastHost, FileRequest, ShareSheet,
     ShareSubject, ShareTarget, ShareResult, installed_targets, ask_for_file, apply_type, icons,
+    EmptyState,
 )
 from luma_appkit.navigation import NavigationTrail, Place, bind_navigation_input
 from luma_appkit.action_bubble import FloatingMenu
@@ -31,11 +32,16 @@ from .ui_parts import AlbumCover, AlbumTile, CoverSlot, Deck, FeatureCard, Queue
 from .ui_phone import SECTIONS, NowPlayingPhone, PhoneBar
 
 
+# While a sync streams songs in, the library is read again at most this often (seconds).
+REFRESH_SPACING = 4.0
+
+
 class TideWindow(AppWindow):
     def __init__(self, application, source=None):
         if source is None:
             from .live import LiveLibrary
             source = LiveLibrary(application)
+            source.keep_snapshots = True
         self.app, self.source = application, source
         self.controller = getattr(application, 'controller', None)
         self.library = Library()
@@ -65,6 +71,15 @@ class TideWindow(AppWindow):
         self._status_toast = None
         self._loader = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='tide-view-read')
         self._load_future = None
+        self._load_again = False      # a change arrived while a read ran: read once more after it
+        self._refresh_timer = 0
+        self._last_load = 0.0
+        # True once the library has been read: until then views show nothing, never an empty state
+        self.library_loaded = bool(getattr(source, 'fixture', False))
+        # Start from the last run's view (instant); the read below replaces it in place.
+        start = source.snapshot() if hasattr(source, 'snapshot') else None
+        if start is not None and start.albums:
+            self.library, self.library_loaded = start, True
         self._removals = DeferredRemovals(GLib.timeout_add, GLib.source_remove, self.source.remove_source)
         commands = CommandRegistry((CommandGroup('', (
             Command('tide.add-folder', 'Add music folder…', self._add_folder, 'folder-plus', shortcut=('Ctrl', 'O')),
@@ -146,8 +161,28 @@ class TideWindow(AppWindow):
         self.add_controller(keys)
         self.connect('close-request', lambda *_: self._on_close())
         self.page.append(text('Loading music…', 'caption', margin_start=30, margin_top=72))
+        # TV posture shows Tide's TV presentation (ui_tv) in this same window,
+        # over the same library and player; it follows the posture live.
+        self.tv = None
+        self.connect('notify::tv-posture', lambda *_: self._apply_posture())
+        self._apply_posture()
+        if self.library_loaded and self.tv is None and self.library.albums:
+            self._show_library()
         self._unsubscribe = self.source.subscribe(lambda player: GLib.idle_add(self._player_changed, player))
         self.refresh_library()
+
+    def _apply_posture(self):
+        if self.tv_posture and self.tv is None and not self._closed:
+            from .ui_tv import TideTV
+            self.tv = TideTV(self)
+            self.deck.set_visible(False)
+            self.set_body(self.tv.stage)
+        elif not self.tv_posture and self.tv is not None:
+            self.tv.close()
+            self.tv = None
+            self.set_body(self.root)
+            self._render()
+            self.deck.update(self.library, self.player)
 
     def _breakpoints(self):
         phone = Adw.Breakpoint.new(Adw.BreakpointCondition.parse('max-width: 559px'))
@@ -178,6 +213,8 @@ class TideWindow(AppWindow):
         self._render()
 
     def _size_deck(self, *_):
+        if self.tv is not None:
+            return not self._closed
         width = self.layer.get_width()
         # A drawer is detached from this row; reserve the gutter only for
         # an attached side sheet, including during desktop/phone resizing.
@@ -231,16 +268,29 @@ class TideWindow(AppWindow):
                 cover.queue_resize()
         return not self._closed
 
-    def refresh_library(self):
+    def refresh_library(self, throttle=False):
+        """Read the library again in the worker. One read at a time: a change
+        during a read schedules exactly one more after it. `throttle` (a sync's
+        progress) spaces reads at least REFRESH_SPACING apart, so a long sync
+        never keeps the worker, and the interpreter, busy reading."""
         if self._closed:
             return
+        import time
+        running = self._load_future is not None and not self._load_future.done()
+        if running:
+            # an asked-for change reads straight after; a sync's progress keeps its spacing
+            self._load_again = 'now' if not throttle or self._load_again == 'now' else 'soon'
+            return
+        wait = self._last_load + REFRESH_SPACING - time.monotonic() if throttle else 0
+        if wait > 0:
+            if not self._refresh_timer:
+                self._refresh_timer = GLib.timeout_add(int(wait * 1000) + 1, self._refresh_due)
+            return
+        if self._refresh_timer:
+            GLib.source_remove(self._refresh_timer)
+            self._refresh_timer = 0
         self._generation += 1
         generation = self._generation
-        # A sync can publish many batches while one read is running. Retain
-        # that read and only the latest pending one, rather than queueing a
-        # full-library query for every obsolete batch.
-        if self._load_future is not None:
-            self._load_future.cancel()
         future = self._loader.submit(self.source.load)
         self._load_future = future
         def finished(done):
@@ -251,9 +301,20 @@ class TideWindow(AppWindow):
             GLib.idle_add(self._loaded, generation, library, error)
         future.add_done_callback(finished)
 
+    def _refresh_due(self):
+        self._refresh_timer = 0
+        self.refresh_library()
+        return False
+
     def _loaded(self, generation, library, error):
+        import time
+        self._last_load = time.monotonic()
+        if self._load_again and not self._closed:
+            again, self._load_again = self._load_again, False
+            self.refresh_library(throttle=again == 'soon')
         if self._closed or generation != self._generation:
             return False
+        self.library_loaded = True
         if error:
             clear(self.page)
             self.page.append(text(error, 'body', wrap=True, margin_start=30, margin_top=72))
@@ -277,14 +338,21 @@ class TideWindow(AppWindow):
             self.library = replace(library, sources=tuple(s for s in library.sources if s.id not in self._removals.pending))
         if self.album_id and not any(a.id == self.album_id for a in library.albums):
             self.view, self.album_id = 'albums', None
+        if self.tv is not None:
+            self.tv.library_changed()
+            return False
+        self._show_library()
+        return False
+
+    def _show_library(self):
         self._render()
         self.deck.update(self.library, self.player)
         self.phone_bar.update()
         self._fill_pane()
         return False
 
-    def library_changed(self, **_kwargs):
-        self.refresh_library()
+    def library_changed(self, throttle=False, **_kwargs):
+        self.refresh_library(throttle=throttle)
 
     def _populate_sources(self):
         self.refresh_library()
@@ -292,12 +360,28 @@ class TideWindow(AppWindow):
     def refresh_offline_state(self):
         self.refresh_library()
 
-    def set_status(self, value):
-        if self._status_toast is not None:
-            self._status_toast.dismiss()
-            self._status_toast = None
+    def set_status(self, value, count=''):
+        """The one progress toast (LumaUI's, in this posture's look): `value` and an
+        optional `count` while work runs; None takes it away."""
         if value:
-            self._status_toast = Toast.show(self.layer, value, busy=True)
+            if self._status_toast is None:
+                where = self.tv.stage if self.tv is not None else self.layer
+                self._status_toast = Toast.progress(where, value, count=count)
+            else:
+                self._status_toast.update(value, count=count)
+        elif self._status_toast is not None:
+            self._status_toast.finish()
+            self._status_toast = None
+
+    def finish_status(self, message, kind='done'):
+        """End a progress toast with how it went; nothing if none was showing."""
+        if self._status_toast is not None:
+            self._status_toast.finish(message, kind=kind)
+            self._status_toast = None
+
+    @property
+    def status_showing(self):
+        return self._status_toast is not None
 
     def show_view(self, view):
         if view == 'sources':
@@ -336,6 +420,8 @@ class TideWindow(AppWindow):
         self.scroll.get_vadjustment().set_value(0)
 
     def go_back(self):
+        if self.tv is not None:
+            return self.tv.back()
         if self.pane.shown:
             if self.pane_kind != 'sources' or not self.pane_trail.back():
                 self.pane.close()
@@ -752,6 +838,8 @@ class TideWindow(AppWindow):
         pad = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_start=margin, margin_end=margin)
         self._library_pad = pad
         self.page.append(pad)
+        if self._sign_in_note(pad):
+            return
         features = Gtk.Box(orientation=Gtk.Orientation.VERTICAL if self.phone else Gtk.Orientation.HORIZONTAL,
                            spacing=14, homogeneous=not self.phone)
         features.set_name('td-features')
@@ -772,6 +860,24 @@ class TideWindow(AppWindow):
         recent.append(text('Recently played', 'hero_title', margin_bottom=12))
         recent.append(self._album_strip(self.library.albums[:8], name='td-recent'))
         pad.append(recent)
+
+    def _sign_in_note(self, pad):
+        """When a signed-out server is what leaves the library empty, say so where its music
+        would be, with the way back in (never a blank page). True when shown."""
+        if self.library.albums or self.query:
+            return False
+        source = next((s for s in self.library.sources if s.remote and s.signed_out), None)
+        if source is None:
+            return False
+        songs = dict(source.facts).get('Songs', '')
+        note = EmptyState(f'Sign in to {source.name}',
+                          f'{songs} songs wait in your library until you sign in again.' if songs not in ('', '0')
+                          else 'Its songs come back when you sign in again.',
+                          'lumaui-key-round-symbolic', primary=('Sign In…', lambda: self._open_source(source.id, True)))
+        note.set_name('td-sign-in')
+        note.set_margin_top(48)
+        pad.append(note)
+        return True
 
     def _album_artwork_light(self, album, texture):
         if self.view == 'album' and self.album_id == album.id and not self.now_tab:
@@ -1087,6 +1193,8 @@ class TideWindow(AppWindow):
         pad = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_start=margin, margin_end=margin)
         self._library_pad = pad
         self.page.append(pad)
+        if self._sign_in_note(pad):
+            return
         if self.view == 'albums':
             grid = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                                min_children_per_line=1, max_children_per_line=16,
@@ -1151,6 +1259,8 @@ class TideWindow(AppWindow):
         pad = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_start=16, margin_end=16)
         self._library_pad = pad
         self.page.append(pad)
+        if self._sign_in_note(pad):
+            return
         if self.view == 'albums':
             pad.append(self._phone_grid('td-album-grid', self.library.albums,
                                         lambda album: AlbumTile(album, self.open_album, year=True, size=178,
@@ -1320,6 +1430,9 @@ class TideWindow(AppWindow):
         ordered = self.source.order_albums(self.library) if not self.source.fixture else self.library
         reordered = ordered is not self.library
         self.library = ordered
+        if self.tv is not None:
+            self.tv.player_changed(player, previous)
+            return False
         self.deck.update(self.library, player)
         self.phone_bar.update()
         if self.now_tab and self.phone and (player.song_id, player.playing, player.shuffle, player.repeat) == (
@@ -1398,6 +1511,8 @@ class TideWindow(AppWindow):
         return GLib.SOURCE_REMOVE
 
     def _key(self, _controller, key, _code, state):
+        if self.tv is not None:
+            return False
         if key == Gdk.KEY_Escape:
             if self.phone and self.phone_bar.center.searching:
                 self.phone_bar.center.close_search()
