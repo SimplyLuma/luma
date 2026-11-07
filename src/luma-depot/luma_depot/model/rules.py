@@ -98,6 +98,8 @@ def bar_for(item: Item, world: World, *, trying: bool = False) -> BarPlan:
         key = BarButton("open", word, None, "key")
     elif not can_here:
         key = BarButton("none", f"No {form(world.this_device.form).name.lower()} version", variant="quiet")
+    elif item.app is not None and not item.app.installable:
+        key = BarButton("none", "Not available yet", variant="quiet")
     else:
         key = BarButton("install", "Install", "download" if item.kind == "app" else None, "key")
     tries = ()
@@ -114,6 +116,8 @@ def row_action(item: Item, world: World) -> tuple[str, str]:
         return "none", f"Not for {form(world.this_device.form).name}"
     if world.here in world.on_devices(item):
         return "open", {"tweak": "Installed", "look": "In use"}.get(item.kind, "Open")
+    if item.app is not None and not item.app.installable:
+        return "none", "Not available yet"
     return "install", "Install"
 
 

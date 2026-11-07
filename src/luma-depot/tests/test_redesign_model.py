@@ -189,6 +189,52 @@ class LiveWorld(unittest.TestCase):
         self.assertEqual(world.looks, ())  # no Looks are invented
 
 
+class SignedCatalogue(unittest.TestCase):
+    """The v1 catalogue is read only once the pinned key's signature holds (model/catalogue_v1.py)."""
+
+    def test_pinned_key_refuses_another_signer(self) -> None:
+        import json as _json
+        sys.path.insert(0, str(ROOT / "src/luma-installer/tests"))
+        try:
+            import minisign_signer
+        except ImportError:
+            self.skipTest("the test signer is not here")
+        from luma_depot.model import catalogue_v1
+        from luma_installer.depot_signature import SignatureError
+        document = _json.dumps({"items": []}).encode()
+        with self.assertRaises(SignatureError):
+            catalogue_v1.verify(document, minisign_signer.signature_file(document).encode()
+                                if isinstance(minisign_signer.signature_file(document), str)
+                                else minisign_signer.signature_file(document))
+
+    def test_parse_listing_kinds_and_permissions(self) -> None:
+        from luma_depot.model import catalogue_v1
+        apps, looks, tweaks, _story = catalogue_v1.parse({"items": [
+            {"id": "org.example.Paint", "kind": "app", "name": "Paint", "summary": "Draw", "category": "Create",
+             "developer": {"name": "Example", "verified": True, "site": "example.org"},
+             "permissions": [{"word": "Files", "reason": "Opens your pictures"}, {"word": "Sound", "reason": "x"}],
+             "releases": [{"version": "2.0", "date": "Nov 7, 2026", "ref": "app/org.example.Paint/x86_64/stable",
+                           "notes": ["Faster brushes"]}], "runs": ["desktop"]},
+            {"id": "ember", "kind": "look", "name": "Ember", "type": "Wallpaper", "developer": {"name": "Luma"}},
+            {"id": "battery-care", "kind": "tweak", "name": "Battery Care", "glyph": "power"},
+            {"name": "no id"}]})
+        self.assertEqual([a.app_id for a in apps], ["org.example.Paint"])
+        paint = apps[0]
+        self.assertEqual((paint.category_key, paint.developer, paint.developer_verified), ("create", "Example", "organization"))
+        self.assertEqual(paint.version, "2.0")
+        self.assertEqual(paint.reach, (("folder-open", "Files", "Opens your pictures"),))
+        self.assertEqual((looks[0].kind, looks[0].seal), ("Wallpaper", "luma"))
+        self.assertEqual(tweaks[0].icon, "power")
+
+    def test_listing_only_apps_are_never_installed_from_a_ref(self) -> None:
+        from luma_depot.model.live import world_from
+        from luma_depot.providers import App
+        listing = App("org.example.New", "New", "x")
+        world = world_from(None, {}, listings=([listing], [], [], {}))
+        item = world.item("app", "org.example.New")
+        self.assertEqual(rules.bar_for(item, world).buttons[0].label, "Not available yet")
+
+
 class World(unittest.TestCase):
     def test_updates_badge_counts_every_device_and_luma(self) -> None:
         self.assertEqual(load_fixture(FIXTURE).update_count(), 11)

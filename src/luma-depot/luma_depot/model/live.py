@@ -107,10 +107,32 @@ def _system(state) -> SystemUpdate | None:
                         up_to_date=not waiting)
 
 
-def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], system_state=None) -> World:
+def _merge(provider: App, listing: App) -> App:
+    """The v1 listing's words and pictures over the provider's entry, whose install identity stays."""
+    keep = {"app_id": provider.app_id, "flatpak_id": provider.flatpak_id or listing.flatpak_id,
+            "system_state": provider.system_state, "channel_kind": provider.channel_kind, "sandbox": provider.sandbox,
+            "installable": provider.installable, "removable": provider.removable, "permissions": provider.permissions,
+            "icon_name": provider.icon_name}
+    return replace(listing, **keep)
+
+
+def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], system_state=None,
+               listings=None, media=None) -> World:
     here = Device("here", device_name(), _form())
     apps = []
-    for app in (catalogue.apps if catalogue else ()):
+    v1_apps, v1_looks, v1_tweaks, _story = listings or ([], [], [], {})
+    by_id = {a.app_id: a for a in v1_apps}
+    seen = set()
+    provided = list(catalogue.apps if catalogue else ())
+    merged = []
+    for app in provided:
+        listing = by_id.get(app.app_id) or by_id.get(app.flatpak_id) or by_id.get(app.slug)
+        merged.append(_merge(app, listing) if listing is not None else app)
+        if listing is not None:
+            seen.add(listing.app_id)
+    # listed in v1 but unknown to the installer's catalogue: shown, never installed from a ref
+    merged += [replace(a, installable=False) for a in v1_apps if a.app_id not in seen]
+    for app in merged:
         if app.unlisted:
             continue
         apps.append(replace(app, category_key=_category(app), package_kind=_package_kind(app),
@@ -125,6 +147,7 @@ def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], 
     if system_state is not None and getattr(system_state, "rollback_available", False):
         rollback.append(DoneRow("luma", system_state.booted_name or "Luma", "", device_name()))
     return World(forms=FORMS, devices=(here,), here="here", categories=CATEGORIES, apps=tuple(apps),
+                 looks=tuple(v1_looks), tweaks=tuple(v1_tweaks), media=media,
                  popular=popular, installed={"here": tuple(installed)}, pending=pending, done=tuple(rollback),
                  auto={"apps": True, "luma": bool(getattr(system_state, "automatic_download", True)), "matched": False},
                  system=_system(system_state), kept=tuple(a.app_id for a in apps if a.app_id in installed))
@@ -140,6 +163,10 @@ class LiveStore(Store):
         self.catalogue: Catalogue | None = None
         self.installed: dict[str, InstalledApp] = {}
         self.busy: set[str] = set()
+        self.listings = None
+        from .catalogue_v1 import MediaCache
+        self.media = MediaCache(on_ready=self._rebuild)
+        self._load_listings()
         try:
             from ..system_updates import SystemUpdates
             self.system = SystemUpdates(self._rebuild)
@@ -164,8 +191,31 @@ class LiveStore(Store):
             self.installed = {record.app_id: record for record in result.value}
             self._rebuild()
 
+    def _load_listings(self) -> None:
+        """The signed v1 catalogue in the background; without it the AppStream data stands alone."""
+        import threading
+        from . import catalogue_v1
+
+        def work() -> None:
+            document = catalogue_v1.load()
+            if document is None:
+                return
+            listings = catalogue_v1.parse(document)
+            GLib.idle_add(lambda: (self._listed(listings), False)[1])
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _listed(self, listings) -> None:
+        self.listings = listings
+        apps, looks, tweaks, _story = listings
+        urls = [a.icon_url for a in apps] + [s for a in apps for s in a.shot_keys] + [a.mark for a in apps]
+        urls += [x.art for x in looks]
+        self.media.prefetch(urls)
+        self._rebuild()
+
     def _rebuild(self) -> None:
-        self.world = world_from(self.catalogue, self.installed, self.system.state if self.system else None)
+        self.world = world_from(self.catalogue, self.installed, self.system.state if self.system else None,
+                                listings=self.listings, media=self.media.path)
         self.on_world(self.world)
 
     # ── apps ──────────────────────────────────────────────────────────────

@@ -231,10 +231,19 @@ class World:
     removed: dict[str, tuple[str, ...]] = field(default_factory=dict)
     #: Luma's own apps the Library lists (all of Luma's apps come with Luma; these are the ones kept in view).
     kept: tuple[str, ...] = ()
+    #: Where a catalogue's media URL is on disk once fetched (None: not yet, so not drawn).
+    media: object = None
     #: Names people know that aren't on Luma, and the apps that do the same job (search, 12).
     switching: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     # ── lookups ───────────────────────────────────────────────────────────
+
+    def media_path(self, url: str) -> str | None:
+        if not url:
+            return None
+        if self.media is not None:
+            return self.media(url)
+        return url if Path(url).is_file() else None
 
     def device(self, device_id: str) -> Device:
         return next(device for device in self.devices if device.id == device_id)

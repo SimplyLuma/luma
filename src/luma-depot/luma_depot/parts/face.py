@@ -74,7 +74,11 @@ _LOOK_GLYPHS = {"Sounds": "volume-2", "Font": "type", "Cursor": "mouse-pointer-2
 def icon_path(world: World, item: Item) -> str | None:
     """The file of an app's own icon (a Luma icon), when the world has one."""
     app = item.app
-    if app is None or not app.icon_name or world.assets is None:
+    if app is None:
+        return None
+    if app.icon_url:
+        return world.media_path(app.icon_url)
+    if not app.icon_name or world.assets is None:
         return None
     path = world.assets / "icons" / f"{app.icon_name}.svg"
     return str(path) if path.is_file() else None
@@ -151,6 +155,14 @@ def paint_gradient(widget: Gtk.Widget, start: tuple[float, float, float], end: t
             _provider[0].load_from_string("\n".join(_gradients.values()))
 
 
+def _mark_path(world: World, mark: str) -> str | None:
+    if "://" in mark:
+        return world.media_path(mark)
+    if world.assets is not None and (world.assets / "marks" / f"{mark}.svg").is_file():
+        return str(world.assets / "marks" / f"{mark}.svg")
+    return None
+
+
 def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
     pixels, radius = SIZES[size]
     box = Gtk.Box(halign=Gtk.Align.START, valign=Gtk.Align.CENTER, overflow=Gtk.Overflow.HIDDEN,
@@ -166,8 +178,8 @@ def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
             picture = Gtk.Image.new_from_file(path)
             picture.set_pixel_size(pixels)
             box.add_css_class("pic")
-        elif app.mark and world.assets is not None and (world.assets / "marks" / f"{app.mark}.svg").is_file():
-            image = Gtk.Image.new_from_file(str(world.assets / "marks" / f"{app.mark}.svg"))
+        elif app.mark and _mark_path(world, app.mark):
+            image = Gtk.Image.new_from_file(_mark_path(world, app.mark))
             image.set_pixel_size(round(pixels * 0.58))
             picture = image
             box.add_css_class("mark")
