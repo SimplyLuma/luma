@@ -40,9 +40,13 @@ assert(/style_class: 'event-box',\s*can_focus: true/.test(events),
     'each row is a focusable button');
 assert(/accessible_name: \[event\.summary, time, event\.location\]/.test(events),
     'a row says its title, time and place');
-assert(/Gio\.DesktopAppInfo\.new\(CALENDAR_APP_ID\)/.test(events) &&
+assert(/lookup_app\(CALENDAR_APP_ID\)/.test(events) &&
     /const CALENDAR_APP_ID = 'org\.projectluma\.Calendar\.desktop';/.test(menu),
     'Calendar is Luma Calendar');
+assert(/this\.emit\('activated'\)/.test(events) &&
+    /_eventsItem\.connect\('activated', \(\) => this\.menu\.close\(\)\)/.test(menu),
+    'opening Calendar closes the menu');
+assert(/this\._date\.hide\(\)/.test(menu), 'the month header stands in for the date header');
 
 // Calendar's command line: --event-uid=<uid> --event-day=<day>, or the day alone
 const argsStart = menu.indexOf('function _calendarArgs');
@@ -72,6 +76,8 @@ assert(/ngettext\('%d event', '%d events'/.test(grid) && /'nothing planned'/.tes
     'each day says how many events it has');
 assert(/this\._todayButton\.visible = !sameMonth\(this\._shownMonth, now\)/.test(grid),
     'Today shows when another month is on show');
+assert(/const focused = this\._buttons\?\.find\(b => b\.has_key_focus\(\)\)/.test(grid),
+    'the focused day keeps focus when events arrive');
 assert(/_requestRange\(\) \{/.test(grid) && !/this\._eventSource\.requestRange\(beginDate, iter\)/.test(grid),
     'the range asked for covers the days on show and the list');
 assert(/extras\.location\?\.unpack\(\)/.test(calendar) && /extras\.color\?\.unpack\(\)/.test(calendar),

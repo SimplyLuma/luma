@@ -14,8 +14,11 @@ The calendar server sends each event's location and its calendar's colour in
 the extras dictionary it already carried.
 
 The month on show is separate from the chosen day: the arrows page months
-without choosing a day, and Today comes back when another month is on show.
-Arrow keys walk the days and page at the month's edge. Each day's accessible
+without choosing a day, and Today comes back when another month is on show;
+the month header replaces the date header (the clock shows the date). Arrow
+keys walk the days and page at the month's edge, and the focused day keeps
+focus when events arrive. Opening Calendar closes the menu. While a day is
+chosen the menu keeps its height and the spare room goes below the list. Each day's accessible
 name says how many events it has. The event range asked of the server covers
 the days on show and what the list needs.
 
@@ -91,13 +94,14 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
  function _getEndOfDay(date) {
      const ret = _getBeginningOfDay(date);
      ret.setDate(ret.getDate() + 1);
-@@ -76,12 +80,17 @@
+@@ -75,13 +79,18 @@
+ }
  
  // Abstraction for an appointment/event in a calendar
- 
++
 +// How far ahead the date menu lists upcoming events
 +export const UPCOMING_DAYS = 35;
-+
+ 
  class CalendarEvent {
 -    constructor(id, date, end, summary) {
 +    constructor(id, date, end, summary, location = '', color = '') {
@@ -134,7 +138,20 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
  
          this._shouldDateGrabFocus = false;
  
-@@ -463,8 +476,11 @@
+@@ -454,8 +467,12 @@
+ 
+         this._eventSource = eventSource;
+         this._eventSource.connect('changed', () => {
++            // Events arrive after the days are built; keep the focused day
++            const focused = this._buttons?.find(b => b.has_key_focus())?._date;
+             this._rebuildCalendar();
+             this._update();
++            if (focused)
++                this._buttons.find(b => sameDay(b._date, focused))?.grab_key_focus();
+         });
+         this._rebuildCalendar();
+         this._update();
+@@ -463,8 +480,11 @@
  
      // Sets the calendar to show a specific date
      setDate(date) {
@@ -147,7 +164,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
  
          this._selectedDate = date;
  
-@@ -498,6 +514,30 @@
+@@ -498,6 +518,30 @@
          // Top line of the calendar '<| September 2009 |>'
          this._topBox = new St.BoxLayout({style_class: 'calendar-month-header'});
          layout.attach(this._topBox, 0, 0, offsetCols + 7, 1);
@@ -178,7 +195,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
  
          this._backButton = new St.Button({
              style_class: 'calendar-change-month-back pager-button',
-@@ -508,15 +548,6 @@
+@@ -508,15 +552,6 @@
          this._topBox.add_child(this._backButton);
          this._backButton.connect('clicked', this._onPrevMonthButtonClicked.bind(this));
  
@@ -194,7 +211,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
          this._forwardButton = new St.Button({
              style_class: 'calendar-change-month-forward pager-button',
              icon_name: 'pan-end-symbolic',
-@@ -571,50 +602,43 @@
+@@ -571,50 +606,43 @@
          return Clutter.EVENT_PROPAGATE;
      }
  
@@ -275,7 +292,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
      }
  
      _onSettingsChange() {
-@@ -652,8 +676,7 @@
+@@ -652,8 +680,7 @@
          // Actually computing the number of weeks is complex, but we know that the
          // problematic categories (2 and 4) always start on week start, and that
          // all months at the end have 6 weeks.
@@ -285,7 +302,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
  
          this._calendarBegin = new Date(beginDate);
          this._markedAsToday = now;
-@@ -682,12 +705,28 @@
+@@ -682,12 +709,28 @@
  
              button._date = new Date(iter);
              button.connect('clicked', () => {
@@ -316,7 +333,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
              let styleClass = 'calendar-day';
  
              if (_isWorkDay(iter))
-@@ -707,7 +746,7 @@
+@@ -707,7 +750,7 @@
  
              if (sameDay(now, iter))
                  styleClass += ' calendar-today';
@@ -325,7 +342,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
                  styleClass += ' calendar-other-month';
  
              if (hasEvents)
-@@ -743,20 +782,36 @@
+@@ -743,20 +786,36 @@
                  row++;
          }
  
@@ -369,7 +386,7 @@ diff --git a/js/ui/calendar.js b/js/ui/calendar.js
              this._rebuildCalendar();
  
          this._buttons.forEach(button => {
-@@ -768,6 +823,8 @@
+@@ -768,6 +827,8 @@
                  button.remove_style_pseudo_class('selected');
              }
          });
@@ -393,10 +410,12 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
  
  const ClocksIntegrationIface = loadInterfaceXML('org.gnome.Shell.ClocksIntegration');
  const ClocksProxy = Gio.DBusProxy.makeProxyWrapper(ClocksIntegrationIface);
-@@ -109,39 +107,70 @@
+@@ -109,39 +107,73 @@
      }
  });
  
+-const EventsSection = GObject.registerClass(
+-class EventsSection extends St.Button {
 +const MAX_EVENT_ROWS = 4;
 +const EVENT_COLOR = /^#[0-9a-fA-F]{3,8}$/;
 +
@@ -416,13 +435,15 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 +    return args;
 +}
 +
- const EventsSection = GObject.registerClass(
--class EventsSection extends St.Button {
-+class EventsSection extends St.BoxLayout {
++const EventsSection = GObject.registerClass({
++    Signals: {'activated': {}},
++}, class EventsSection extends St.BoxLayout {
      _init() {
++        // Reactive, or St marks the card insensitive and the theme greys it
          super._init({
              style_class: 'events-button',
 -            can_focus: true,
++            reactive: true,
              x_expand: true,
 -            child: new St.BoxLayout({
 -                style_class: 'events-box',
@@ -478,7 +499,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
          this._appSys = Shell.AppSystem.get_default();
          this._appSys.connect('installed-changed',
              this._appInstalledChanged.bind(this));
-@@ -149,12 +178,8 @@
+@@ -149,12 +181,8 @@
      }
  
      setDate(date) {
@@ -492,7 +513,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
          this._reloadEvents();
      }
  
-@@ -169,150 +194,225 @@
+@@ -169,150 +197,222 @@
          this._sync();
      }
  
@@ -555,10 +576,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
  
 -        const allDay =
 -            eventStart.getTime() === this._startDate.getTime() && eventEnd.getTime() === this._endDate.getTime();
-+        const color = new St.Widget({
-+            style_class: 'event-color',
-+            y_expand: true,
-+        });
++        const color = new St.Widget({style_class: 'event-color'});
 +        if (EVENT_COLOR.test(event.color))
 +            color.style = `background-color: ${event.color};`;
  
@@ -613,11 +631,6 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 -        } else if (startsBeforeToday || endsAfterToday) {
 -            const now = new Date();
 -            const thisYear = now.getFullYear();
--
--            const startsAtMidnight = this._isAtMidnight(eventStart);
--            const endsAtMidnight = this._isAtMidnight(eventEnd);
--
--            const startYear = eventStart.getFullYear();
 +    _addMore(text, day) {
 +        const button = new St.Button({
 +            style_class: 'events-more-button',
@@ -631,16 +644,20 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 +        this._eventsList.add_child(button);
 +    }
  
--            if (endsAtMidnight) {
--                eventEnd = new Date(eventEnd);
--                eventEnd.setDate(eventEnd.getDate() - 1);
+-            const startsAtMidnight = this._isAtMidnight(eventStart);
+-            const endsAtMidnight = this._isAtMidnight(eventEnd);
+-
+-            const startYear = eventStart.getFullYear();
 +    _addPlaceholder(text) {
 +        this._eventsList.add_child(new St.Label({
 +            text,
 +            style_class: 'event-placeholder',
 +        }));
 +    }
-+
+ 
+-            if (endsAtMidnight) {
+-                eventEnd = new Date(eventEnd);
+-                eventEnd.setDate(eventEnd.getDate() - 1);
 +    // From now into next month, grouped by day
 +    _showUpcoming(now) {
 +        const today = _addDays(now, 0);
@@ -740,7 +757,12 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
  
 -        const events =
 -            this._eventSource.getEvents(this._startDate, this._endDate);
--
++        const now = new Date();
++        if (_isToday(this._date))
++            this._showUpcoming(now);
++        else
++            this._showDay(this._date);
+ 
 -        for (const event of events) {
 -            const box = new St.BoxLayout({
 -                style_class: 'event-box',
@@ -764,12 +786,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 -            });
 -            this._eventsList.add_child(placeholder);
 -        }
-+        const now = new Date();
-+        if (_isToday(this._date))
-+            this._showUpcoming(now);
-+        else
-+            this._showDay(this._date);
- 
+-
          this._reloading = false;
          this._sync();
      }
@@ -777,7 +794,8 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 -    vfunc_clicked() {
 +    _openCalendar(args) {
          Main.overview.hide();
-         Main.panel.closeCalendar();
+-        Main.panel.closeCalendar();
++        this.emit('activated');
  
          const appInfo = this._calendarApp;
          const context = global.create_app_launch_context(0, -1);
@@ -811,7 +829,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
      _appInstalledChanged() {
          const apps = Gio.AppInfo.get_recommended_for_type('text/calendar');
 -        if (apps && (apps.length > 0)) {
-+        const calendarApp = Gio.DesktopAppInfo.new(CALENDAR_APP_ID);
++        const calendarApp = this._appSys.lookup_app(CALENDAR_APP_ID)?.get_app_info();
 +        if (calendarApp) {
 +            this._calendarApp = calendarApp;
 +        } else if (apps && (apps.length > 0)) {
@@ -834,3 +852,57 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
      }
  });
  
+@@ -949,13 +1051,19 @@
+         this.add_style_class_name('clock-display');
+ 
+         const layout = new FreezableBinLayout();
+-        const bin = new St.Widget({layout_manager: layout});
++        const bin = new St.Widget({
++            layout_manager: layout,
++            y_expand: true,
++        });
+         // For some minimal compatibility with PopupMenuItem
+         bin._delegate = this;
+         this.menu.box.add_child(bin);
+         this.menu.box.add_style_class_name('datemenu-popover');
+ 
+-        const hbox = new St.BoxLayout({name: 'calendarArea'});
++        const hbox = new St.BoxLayout({
++            name: 'calendarArea',
++            y_expand: true,
++        });
+         bin.add_child(hbox);
+ 
+         this._calendar = new Calendar.Calendar();
+@@ -982,11 +1090,15 @@
+         const vbox = new St.Widget({
+             style_class: 'datemenu-calendar-column',
+             layout_manager: boxLayout,
++            y_expand: true,
+         });
+         boxLayout.hookup_style(vbox);
+         hbox.add_child(vbox);
+ 
+         vbox.add_child(this._date);
++        // The month header names the month and brings back today; the clock
++        // already shows the date.
++        this._date.hide();
+         vbox.add_child(this._calendar);
+ 
+         const displaysBox = new St.BoxLayout({
+@@ -998,6 +1110,7 @@
+         this._displaysSection = new St.ScrollView({
+             style_class: 'datemenu-displays-section vfade',
+             x_expand: true,
++            y_expand: true,
+             overlay_scrollbars: true,
+             vscrollbar_policy: St.PolicyType.EXTERNAL,
+             child: displaysBox,
+@@ -1005,6 +1118,7 @@
+         vbox.add_child(this._displaysSection);
+ 
+         this._eventsItem = new EventsSection();
++        this._eventsItem.connect('activated', () => this.menu.close());
+         displaysBox.add_child(this._eventsItem);
+ 
+         this._clocksItem = new WorldClocksSection();
