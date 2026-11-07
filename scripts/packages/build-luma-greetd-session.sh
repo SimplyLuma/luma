@@ -42,6 +42,7 @@ top="$work/rpmbuild"
 mkdir -p "$top"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 install -m 0755 "$src/target/release/greetd" "$top/SOURCES/luma-greetd"
 install -m 0644 "$repo_root/packaging/systemd/40-luma-persistent-greetd.conf" "$top/SOURCES/"
+install -m 0644 "$repo_root/packaging/selinux/luma_greetd.cil" "$top/SOURCES/"
 install -m 0644 "$repo_root/packaging/rpm/luma-greetd-session.spec" "$top/SPECS/"
 rpmbuild -bb --define "_topdir $top" "$top/SPECS/luma-greetd-session.spec"
 out="$repo_root/build/packages/greetd-session/aarch64"

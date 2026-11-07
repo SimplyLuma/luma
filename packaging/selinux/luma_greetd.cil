@@ -1,0 +1,8 @@
+; SPDX-License-Identifier: Apache-2.0
+; greetd.service runs /usr/libexec/luma-greetd in place of greetd, so it needs
+; greetd's xdm_exec_t; the base policy labels only /usr/bin/greetd. As bin_t,
+; greetd stays unconfined_service_t: under enforcing, pam_gnome_keyring cannot
+; start gnome-keyring-daemon, the autologin session closes and the greeter
+; appears. The rule has to be in the policy itself, which labels the OSTree
+; commit; a file_contexts.local in /etc never reaches the commit or an update.
+(filecon "/usr/libexec/luma-greetd" file (system_u object_r xdm_exec_t ((s0) (s0))))
