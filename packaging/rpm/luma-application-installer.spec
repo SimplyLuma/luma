@@ -101,7 +101,6 @@ install -D -m 0755 bin/luma-depot %{buildroot}%{_bindir}/luma-depot
 install -D -m 0644 data/org.projectluma.Depot.desktop %{buildroot}%{_datadir}/applications/org.projectluma.Depot.desktop
 install -D -m 0644 data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg
 install -D -m 0644 data/depot-catalog.json %{buildroot}%{_datadir}/luma/installer/depot-catalog.json
-%{_datadir}/luma/installer/depot-catalogue-v1.pub
 install -D -m 0644 data/depot-catalog-4.json %{buildroot}%{_datadir}/luma/installer/depot-catalog-4.json
 # Pinned minisign key of the signed Depot catalogue v1 (third-party apps).
 install -D -m 0644 data/depot-catalogue-v1.pub %{buildroot}%{_datadir}/luma/installer/depot-catalogue-v1.pub
@@ -226,6 +225,7 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_datadir}/applications/org.projectluma.Depot.desktop
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg
 %{_datadir}/luma/installer/depot-catalog.json
+%{_datadir}/luma/installer/depot-catalogue-v1.pub
 %dir %{_datadir}/luma/firmware
 %{_datadir}/luma/energy-flag-exceptions.txt
 %{_datadir}/luma/firmware/blocklist.json
