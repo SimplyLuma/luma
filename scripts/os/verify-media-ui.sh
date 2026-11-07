@@ -81,8 +81,21 @@ trap cleanup EXIT
 luma_os_gate_vm_preflight "$out/libvirt-capabilities.xml"
 # libvirt may chown/relabel even a failed launch. Isolate those changes on a
 # disposable inode and fail before VM startup if the real reader cannot reach it.
+# The inode is a reflink; a working root without reflinks (an ext4 loop image)
+# gets a sha256-verified copy instead, once the volume and the disk under it
+# have room for the ISO on top of this run's own budget
+# (LUMA_OS_MEDIA_COPY_BUDGET_GIB caps the ISO size, default 16).
+prepare_status=0
 python3 "$fixture_helper" prepare "$iso" "$fixture" "$fixture_proof" \
-  --reader "${LUMA_OS_QEMU_USER:-qemu}"
+  --reader "${LUMA_OS_QEMU_USER:-qemu}" || prepare_status=$?
+if [ "$prepare_status" -eq 3 ]; then
+  luma_os_check_space $((10 + ($(stat -c %s "$iso") + 1073741823) / 1073741824))
+  luma_os_log "no reflink under $out; using a verified copy of the ISO"
+  python3 "$fixture_helper" prepare "$iso" "$fixture" "$fixture_proof" \
+    --reader "${LUMA_OS_QEMU_USER:-qemu}" --copy-budget-gib "${LUMA_OS_MEDIA_COPY_BUDGET_GIB:-16}"
+elif [ "$prepare_status" -ne 0 ]; then
+  exit "$prepare_status"
+fi
 qemu-img create -q -f qcow2 "$vm/disk.qcow2" 48G
 luma_os_log "booting $(basename "$iso") interactively (no kickstart)"
 virt-install --connect qemu:///system --name "$domain" \
