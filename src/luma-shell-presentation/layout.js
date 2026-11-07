@@ -162,6 +162,14 @@ export function inkFor(colors) {
     return median > 0.203 ? 'dark' : 'light';
 }
 
+// Desktop entries Home leaves out although they show elsewhere: the Shell's
+// own Extensions app, Settings' per-panel entries (org.gnome.Settings.<panel>,
+// not Settings itself) and search providers.
+export function hiddenFromHome(id, name) {
+    return /^(org\.gnome\.Shell\.Extensions\.|org\.gnome\.Settings\.(?!desktop$)|luma-search|search\.)/i.test(id) ||
+        /^search$/i.test(name.trim());
+}
+
 export function pageRange(layout, page, count) {
     const start = page === 0 ? 0 : layout.firstCapacity + (page - 1) * layout.laterCapacity;
     const capacity = page === 0 ? layout.firstCapacity : layout.laterCapacity;
