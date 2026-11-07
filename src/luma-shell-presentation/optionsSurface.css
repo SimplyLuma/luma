@@ -142,6 +142,42 @@
 .lumaui-floating-material.lumaui-floating-reduced { background-color: #202124; }
 /* The date menu is the calendar column alone (0330): no gap for a notification column. */
 .datemenu-calendar-column:ltr, .datemenu-calendar-column:rtl { margin-left: 0; margin-right: 0; }
+/* The calendar panel (0331): the month and Today when another month is on show; today is the filled
+   accent, the chosen day a ring, hover the tint alone, a focused day is outlined outside the cell.
+   Below it, what is coming up (or the chosen day), then Open Calendar. */
+.datemenu-popover #calendarArea .calendar .calendar-month-header .calendar-month-label { width: auto; padding: 8px 10px; text-align: left; }
+.datemenu-popover #calendarArea .calendar .calendar-show-today { height: 2.2em; padding: 0 12px; border-radius: 999px; font-weight: bold; color: -st-accent-color; }
+.datemenu-popover #calendarArea .calendar .calendar-day:hover,
+.datemenu-popover #calendarArea .calendar .calendar-day:selected:hover,
+.datemenu-popover #calendarArea .calendar .calendar-show-today:hover,
+.datemenu-popover #calendarArea .events-button .event-box:hover,
+.datemenu-popover #calendarArea .events-button .events-more-button:hover,
+.datemenu-popover #calendarArea .events-button .events-open-button:hover { background-color: rgba(255,255,255,.12); }
+.datemenu-popover.luma-surface-light #calendarArea .calendar .calendar-day:hover,
+.datemenu-popover.luma-surface-light #calendarArea .calendar .calendar-day:selected:hover,
+.datemenu-popover.luma-surface-light #calendarArea .calendar .calendar-show-today:hover,
+.datemenu-popover.luma-surface-light #calendarArea .events-button .event-box:hover,
+.datemenu-popover.luma-surface-light #calendarArea .events-button .events-more-button:hover,
+.datemenu-popover.luma-surface-light #calendarArea .events-button .events-open-button:hover { background-color: rgba(20,22,26,.07); }
+.datemenu-popover #calendarArea .calendar .calendar-day:selected { background-color: transparent; box-shadow: inset 0 0 0 1.5px -st-accent-color; }
+.datemenu-popover #calendarArea .calendar .calendar-day:focus { box-shadow: 0 0 0 2px st-transparentize(-st-accent-color, 0.4) !important; }
+.datemenu-popover #calendarArea .calendar .calendar-day:selected:focus { box-shadow: inset 0 0 0 2.5px -st-accent-color !important; }
+.datemenu-popover #calendarArea .calendar .calendar-day.calendar-today,
+.datemenu-popover #calendarArea .calendar .calendar-day.calendar-today:selected { background-color: -st-accent-color; color: -st-accent-fg-color; box-shadow: none; }
+.datemenu-popover #calendarArea .calendar .calendar-day.calendar-today:hover { background-color: st-lighten(-st-accent-color, 4%); }
+.datemenu-popover #calendarArea .calendar .calendar-day.calendar-today:focus { box-shadow: 0 0 0 2px st-transparentize(-st-accent-color, 0.4) !important; }
+.datemenu-popover #calendarArea .events-button .events-box,
+.datemenu-popover #calendarArea .events-button .events-box .events-list { spacing: 2px; }
+.datemenu-popover #calendarArea .events-button .events-box .events-title { padding: 6px 8px 2px; font-size: 0.85em; font-weight: bold; }
+.datemenu-popover #calendarArea .events-button .events-box .events-list .event-box { padding: 6px 8px; border-radius: 10px; }
+.datemenu-popover #calendarArea .events-button .event-box > StBoxLayout { spacing: 10px; }
+.datemenu-popover #calendarArea .events-button .event-color { width: 3px; border-radius: 2px; background-color: -st-accent-color; }
+.datemenu-popover #calendarArea .events-button .event-location { font-size: 0.85em; }
+.datemenu-popover #calendarArea .events-button .events-box .events-list .event-placeholder { padding: 6px 8px; font-style: normal; }
+.datemenu-popover #calendarArea .events-button .events-more-button { padding: 6px 8px; border-radius: 10px; font-weight: bold; color: -st-accent-color; }
+.datemenu-popover #calendarArea .events-button .events-open-button { margin-top: 4px; padding: 8px; border-radius: 10px; font-weight: bold; }
+.datemenu-popover #calendarArea .events-button .events-open-box { spacing: 8px; }
+.datemenu-popover #calendarArea .events-button .events-open-icon { icon-size: 16px; }
 
 /* Content owns row height at large text scales and in narrow viewports. */
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-toggle-row { height: auto; min-height: 70px; }

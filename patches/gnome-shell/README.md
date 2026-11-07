@@ -564,3 +564,15 @@ world clocks and weather. It builds no notification list; notifications live
 in the notification tray, Do Not Disturb in Quick Options, and media in the
 shelf. `optionsSurface.css` drops the column's side margin. Test:
 `date-menu-calendar-only-policy.js` in %check. Shell .164.
+
+`0331-luma-date-menu-calendar-panel.patch`: the date menu's events list shows
+what is coming up from now into next month, grouped by day, at most four rows
+and then "N more this week"; a chosen day lists that day ("Nothing on
+Thursday." when empty), and choosing it again goes back to today. Rows open
+the event in Luma Calendar (`--event-uid` and `--event-day`, as its reminders
+do); "N more" and Open Calendar open Calendar on that day (`--event-day`).
+The month on show pages without choosing a day, arrow keys walk the days, and
+each day's accessible name counts its events. The calendar server adds each
+event's location and its calendar's colour to the extras dictionary.
+`optionsSurface.css` styles the panel: today filled, the chosen day a ring,
+hover a tint. Test: `date-menu-panel-policy.js` in %check. Shell .165.
