@@ -33,3 +33,120 @@ window.dq button.dq-link { padding: 0; min-height: 0; border: none; background: 
   font-size: 13px; font-weight: 600; color: @luma_ink; }
 window.dq button.dq-link box { border-spacing: 4px; }
 window.dq button.dq-link image { -gtk-icon-size: 15px; }
+
+/* faces (the mockup's .dq-face sizes) */
+window.dq box.dq-face { border-radius: 12px; }
+window.dq box.dq-face.f-xs { border-radius: 7px; } window.dq box.dq-face.f-sm { border-radius: 11px; }
+window.dq box.dq-face.f-md { border-radius: 15px; } window.dq box.dq-face.f-lg { border-radius: 19px; }
+window.dq box.dq-face.mono label.dq-mono { color: white; font-weight: 750; font-size: 18px; }
+window.dq box.dq-face.glyph { color: white; }
+window.dq box.dq-face.glyph image { -gtk-icon-size: 22px; }
+window.dq box.dq-face.f-lg.glyph image { -gtk-icon-size: 38px; }
+window.dq box.dq-face.ink { background: #fbfaf6; color: #0e1013; box-shadow: inset 0 0 0 2px #0e1013; font-weight: 700; font-size: 22px; }
+window.dq box.dq-face.lifted { box-shadow: 0 14px 30px -14px alpha(black, 0.6); }
+
+/* the item page (8) */
+window.dq box.dq-top { margin: -8px -32px 0; padding: 58px 32px 6px; }
+window.dq box.dq-ihead { border-spacing: 18px; }
+window.dq label.dq-iname { font-size: 40px; font-weight: 780; letter-spacing: -0.8px; line-height: 42px; }
+window.dq label.dq-iline { margin-top: 3px; font-size: 15px; color: @luma_ink_secondary; }
+window.dq box.dq-icols, window.dq box.dq-icol { margin-top: 24px; }
+window.dq box.dq-icol { border-spacing: 12px; }
+window.dq box.dq-iside { border-spacing: 12px; }
+window.dq box.dq-gallery { border-spacing: 10px; }
+window.dq button.dq-galv { padding: 0; border: none; border-radius: 18px; background: none;
+  box-shadow: inset 0 0 0 1px @luma_line_faint, 0 18px 40px -26px alpha(black, 0.7); }
+window.dq button.dq-galv .dq-picx { margin: 12px; opacity: 0; color: white; -gtk-icon-size: 16px;
+  transition: opacity 200ms ease; }
+window.dq button.dq-galv:hover .dq-picx, window.dq button.dq-galv:focus-visible .dq-picx { opacity: 1; }
+window.dq box.dq-thumbs { border-spacing: 10px; }
+window.dq button.dq-th2 { padding: 0; border: none; border-radius: 10px; background: none; opacity: 0.5; box-shadow: none; }
+window.dq button.dq-th2:hover { opacity: 0.85; }
+window.dq button.dq-th2.on { opacity: 1; box-shadow: 0 0 0 2px @luma_focus_ring; }
+window.dq box.dq-isec { margin-top: 32px; }
+window.dq box.dq-isec.ruled { margin-top: 30px; padding-top: 28px; box-shadow: inset 0 1px 0 @luma_line_faint; }
+window.dq box.dq-isec-head { margin-bottom: 12px; border-spacing: 8px; }
+window.dq label.dq-isec-title { font-size: 18px; font-weight: 700; letter-spacing: -0.08px; }
+window.dq label.dq-isec-note { font-size: 13px; font-weight: 500; color: @luma_ink_secondary; }
+window.dq label.dq-para { font-size: 14.5px; line-height: 22px; color: @luma_ink_secondary; margin-bottom: 10px; }
+
+/* the side column: facts (8.4), Installed on (8.5), Technical info (8.10) */
+window.dq box.dq-facts { padding: 14px 16px; }
+window.dq box.dq-fact { padding: 2px 0 8px; border-spacing: 12px; min-height: 19px; }
+window.dq box.dq-fact + box.dq-fact { padding-top: 10px; box-shadow: inset 0 1px 0 @luma_line_faint; }
+window.dq label.dq-fact-name { font-size: 13px; color: @luma_ink_secondary; }
+window.dq label.dq-fact-value { font-size: 13px; font-weight: 600; }
+window.dq label.dq-fact-count { font-size: 11px; color: @luma_muted; margin-left: 4px; }
+window.dq image.dq-star { -gtk-icon-size: 13px; margin-left: 3px; }
+window.dq button.dq-bysite { padding: 0; min-width: 20px; min-height: 20px; border: none; background: none; color: @luma_muted; margin-left: 4px; }
+window.dq button.dq-bysite image { -gtk-icon-size: 14px; }
+window.dq box.dq-seal { margin-left: 6px; border-spacing: 3px; font-size: 11.5px; font-weight: 600; color: @luma_accent; }
+window.dq box.dq-seal image { -gtk-icon-size: 13px; }
+window.dq box.dq-ri { min-width: 24px; min-height: 24px; border-radius: 7px; color: @luma_ink_secondary; }
+window.dq box.dq-ri image { -gtk-icon-size: 14px; }
+window.dq box.dq-ri:hover { background: @luma_control_fill_hover; color: @luma_ink; }
+window.dq label.dq-aside-heading { font-size: 12px; font-weight: 650; color: @luma_muted; margin-bottom: 8px; }
+window.dq box.dq-mydevs { padding: 14px 16px; }
+window.dq box.dq-md { padding: 7px 4px; border-radius: 10px; border-spacing: 10px; min-height: 33px; }
+window.dq box.dq-md image.dq-md-glyph { -gtk-icon-size: 18px; color: @luma_ink_secondary; }
+window.dq box.dq-md.m-has image.dq-md-glyph { color: oklch(0.72 0.14 150); }
+window.dq box.dq-md.m-no { opacity: 0.5; }
+window.dq label.dq-md-name { font-size: 13px; font-weight: 650; }
+window.dq label.dq-md-state { font-size: 11.5px; color: @luma_ink_secondary; }
+window.dq box.dq-md .dq-md-act { opacity: 0; transition: opacity 120ms ease; }
+window.dq box.dq-md:hover .dq-md-act, window.dq box.dq-md .dq-md-act:focus-visible,
+window.dq box.dq-md.touch .dq-md-act { opacity: 1; }
+window.dq box.dq-md button.dq-md-act.lumaui-text-button { min-height: 28px; }
+window.dq box.dq-tech button.lumaui-disclosure-summary { margin-top: 2px; }
+window.dq box.dq-techb label.dq-tech-heading { margin: 14px 0 2px; font-size: 12px; font-weight: 600; color: @luma_muted; }
+window.dq box.dq-techb button.dq-link label { font-size: 13px; font-weight: 600; }
+
+/* ratings (8.6) */
+window.dq box.dq-rgrid { border-spacing: 36px; }
+window.dq box.dq-rate { min-width: 180px; }
+window.dq box.dq-ravg { border-spacing: 10px; }
+window.dq label.dq-ravg-score { font-size: 52px; font-weight: 780; letter-spacing: -1.56px; line-height: 52px; }
+window.dq label.dq-ravg-count { font-size: 12px; color: @luma_muted; }
+window.dq box.dq-rbars { border-spacing: 4px; margin-top: 14px; }
+window.dq box.dq-rbars > box { border-spacing: 8px; min-height: 16px; }
+window.dq label.dq-rbar-digit { font-size: 11px; color: @luma_muted; min-width: 10px; }
+window.dq progressbar.dq-rbar > trough { min-height: 5px; border-radius: 3px; background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip; }
+window.dq progressbar.dq-rbar > trough > progress { min-height: 5px; border-radius: 3px; background: @luma_ink_secondary; }
+window.dq box.dq-reviews { border-spacing: 10px; }
+window.dq box.dq-rev { padding: 14px 16px; border-radius: 16px; background: @luma_control_fill;
+  box-shadow: inset 0 0 0 1px @luma_line_faint; border-spacing: 8px; }
+window.dq box.dq-rev-head { border-spacing: 10px; }
+window.dq label.dq-rav { min-width: 30px; min-height: 30px; border-radius: 999px; font-size: 11px; font-weight: 700; color: white; }
+window.dq label.dq-rev-name { font-size: 13px; font-weight: 650; }
+window.dq label.dq-stars { font-size: 11px; letter-spacing: 1px; color: oklch(0.8 0.14 85); }
+window.dq label.dq-rev-date { font-size: 11.5px; color: @luma_muted; }
+window.dq label.dq-rev-text { font-size: 13px; line-height: 20px; color: @luma_ink_secondary; }
+
+/* the grown bar (8.8, 8.9) */
+window.dq box.dq-gh { padding: 0 2px 0 6px; }
+window.dq label.dq-gh-title { font-size: 14px; font-weight: 650; }
+window.dq box.dq-gdevs { border-spacing: 2px; margin: 4px 0; }
+window.dq button.dq-gdev { padding: 8px; border-radius: 12px; border: none; background: none; box-shadow: none; }
+window.dq button.dq-gdev:hover { background: @luma_hover; }
+window.dq button.dq-gdev > box { border-spacing: 10px; }
+window.dq button.dq-gdev:disabled { opacity: 0.45; }
+window.dq button.dq-gdev.has { opacity: 0.7; }
+window.dq image.dq-gdev-glyph { -gtk-icon-size: 17px; color: @luma_ink_secondary; }
+window.dq label.dq-gdev-name { font-size: 13px; font-weight: 600; }
+window.dq label.dq-gdev-note { font-size: 11.5px; color: @luma_muted; }
+window.dq box.dq-keep { padding: 8px; border-spacing: 10px; }
+window.dq button.dq-gok { margin-top: 4px; }
+window.dq box.dq-gunin { padding: 8px 6px 2px; border-spacing: 4px; }
+window.dq label.dq-gunin-title { font-size: 14px; font-weight: 650; }
+window.dq label.dq-gunin-body { font-size: 13px; color: @luma_ink_secondary; }
+window.dq box.dq-gunin-buttons { margin-top: 12px; border-spacing: 8px; }
+window.dq box.dq-gunin-buttons button { border-radius: 14px; }
+
+/* the lightbox (8.3) */
+window.dq box.dq-lightbox { background: alpha(black, 0.62); padding: 28px; }
+window.dq box.dq-lb-bar { margin-top: 14px; padding: 4px; border-radius: 14px; border-spacing: 2px;
+  background: alpha(@luma_hover, 1); box-shadow: inset 0 0 0 1px alpha(white, 0.12); color: white; }
+window.dq button.dq-lb-btn { min-width: 32px; min-height: 32px; padding: 0; border-radius: 10px; border: none; background: none; color: white; }
+window.dq button.dq-lb-btn:hover { background: alpha(white, 0.12); }
+window.dq label.dq-lb-count { margin: 0 10px; font-size: 12.5px; font-weight: 600; }

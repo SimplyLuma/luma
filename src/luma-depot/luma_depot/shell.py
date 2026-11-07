@@ -150,6 +150,7 @@ class DepotShell(AppWindow):
         island.set_name("dq-main")
         island.set_hexpand(True)
         overlay = Gtk.Overlay(vexpand=True, hexpand=True)
+        self.overlay = overlay
         self.scroller = ScrollView()
         self.scroller.set_name("dq-body")
         self.frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)

@@ -227,6 +227,8 @@ class World:
     looks_in_use: dict[str, tuple[str, ...]] = field(default_factory=dict)
     #: Where files the fixture names live (icons, marks, shots, art).
     assets: Path | None = None
+    #: Luma's own apps a person removed from a device (they otherwise come with Luma).
+    removed: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     # ── lookups ───────────────────────────────────────────────────────────
 
@@ -271,8 +273,9 @@ class World:
         """The devices it is installed on (or, for a Look, in use on; a Tweak, on)."""
         if item.kind == "app":
             if item.app is not None and item.app.developer == "Luma":
-                # Luma's own apps come with Luma: on every device that can run them.
-                return tuple(d.id for d in self.devices if d.form in item.runs)
+                # Luma's own apps come with Luma: on every device that can run them, unless removed.
+                gone = self.removed.get(item.id, ())
+                return tuple(d.id for d in self.devices if d.form in item.runs and d.id not in gone)
             return tuple(d.id for d in self.devices if item.id in self.installed.get(d.id, ()))
         if item.kind == "look":
             return self.looks_in_use.get(item.id, ())
@@ -288,6 +291,36 @@ class World:
         """The sidebar's Updates badge: pending updates across all devices, plus one for Luma itself."""
         apps = sum(len(p.devices) for p in self.pending)
         return apps + (1 if self.system is not None and not self.system.up_to_date else 0)
+
+    def with_on(self, item: Item, device_id: str, on: bool) -> "World":
+        """The world after installing (or uninstalling) `item` on a device."""
+        if item.kind == "app":
+            if item.app is not None and item.app.developer == "Luma":
+                # Luma's own apps follow `runs`; removing one records it as gone from that device.
+                gone = dict(self.removed)
+                gone[item.id] = tuple(d for d in gone.get(item.id, ()) if d != device_id) + (() if on else (device_id,))
+                return replace(self, removed=gone)
+            return self.with_installed(device_id, item.id, on)
+        if item.kind == "look":
+            uses = dict(self.looks_in_use)
+            if on:  # one Look of a kind is in use on a device at a time
+                same = {x.id for x in self.looks if item.look is not None and x.kind == item.look.kind}
+                for look_id in same:
+                    uses[look_id] = tuple(d for d in uses.get(look_id, ()) if d != device_id)
+            uses[item.id] = tuple(d for d in uses.get(item.id, ()) if d != device_id) + ((device_id,) if on else ())
+            return replace(self, looks_in_use=uses)
+        tweaks = tuple(replace(t, on=tuple(d for d in t.on if d != device_id) + ((device_id,) if on else ()))
+                       if t.id == item.id else t for t in self.tweaks)
+        return replace(self, tweaks=tweaks)
+
+    def with_updated(self, app_id: str, devices: tuple[str, ...]) -> "World":
+        pending = tuple(replace(p, devices=tuple(d for d in p.devices if d not in devices)) if p.app == app_id else p
+                        for p in self.pending)
+        return replace(self, pending=tuple(p for p in pending if p.devices))
+
+    def with_matched(self, app_id: str, keep: bool) -> "World":
+        matched = tuple(x for x in self.matched if x != app_id) + ((app_id,) if keep else ())
+        return replace(self, matched=matched)
 
     def with_installed(self, device_id: str, app_id: str, on: bool) -> "World":
         installed = dict(self.installed)
