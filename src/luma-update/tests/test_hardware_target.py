@@ -60,10 +60,15 @@ class DeviceIdentity(unittest.TestCase):
     def test_titan_requires_its_target_and_arm_architecture(self):
         self.paths.device_tree_compatible.write_bytes(b"unihertz,titan2-elite\0mediatek,mt6878\0")
         require_device_target(self.paths, TITAN2E, "aarch64")
-        for target, arch in (("", "aarch64"), (TITAN2E, "x86_64"), (FP6, "aarch64"),
+        for target, arch in ((TITAN2E, "x86_64"), (FP6, "aarch64"),
                              ("unihertz,titan2-elite", "aarch64")):
             with self.subTest(target=target, arch=arch), self.assertRaises(ValueError):
                 require_device_target(self.paths, target, arch)
+
+    def test_titan_may_follow_the_generic_arm_image(self):
+        # The generic ARM commit plus the Titan device repository layer.
+        self.paths.device_tree_compatible.write_bytes(b"unihertz,titan2-elite\0mediatek,mt6878\0")
+        require_device_target(self.paths, "", "aarch64")
 
     def test_pi5_target_matches_every_pi5_family_board(self):
         for board in (b"raspberrypi,5-model-b", b"raspberrypi,5-model-b-d0", b"raspberrypi,500",
