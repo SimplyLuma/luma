@@ -8,11 +8,12 @@ RPI5 = "raspberrypi,rpi5"
 # Hardware targets with their own update stream: the board compatible strings
 # the kernel's device tree must list (any one), the only architecture it runs,
 # the stream's slug, and whether that board may only follow its own stream.
-# A Raspberry Pi 5 may also run the generic ARM desktop (installed from the
-# installer card on Fedora's kernel), so its stream is not exclusive.
+# A Raspberry Pi 5 and a Titan 2 Elite run the generic ARM image (the device's
+# kernel and platform come from its device repository), so their streams are
+# not exclusive.
 DEVICES = {
     FP6: (("fairphone,fp6",), "aarch64", "fairphone-fp6", True),
-    TITAN2E: (("unihertz,titan2-elite",), "aarch64", "unihertz-titan2e", True),
+    TITAN2E: (("unihertz,titan2-elite",), "aarch64", "unihertz-titan2e", False),
     RPI5: (("raspberrypi,5-model-b", "raspberrypi,5-model-b-d0", "raspberrypi,500",
             "raspberrypi,5-compute-module"), "aarch64", "raspberrypi-rpi5", False),
 }

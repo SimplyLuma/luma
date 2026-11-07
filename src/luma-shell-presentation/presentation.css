@@ -14,6 +14,11 @@
 .system-status-icon.luma-camera-privacy-indicator { icon-size: 16px; }
 .luma-converged-status .system-status-icon.luma-camera-privacy-indicator { icon-size: 16px; }
 .luma-converged-clock { padding: 0; min-width: 44px; min-height: 44px; font-size: 1.1em; font-weight: 600; border-radius: 12px; }
+/* Below 360 logical px (large display scales) the row must still clear the island. */
+.luma-converged-status.narrow { spacing: 6px; }
+.luma-converged-status.narrow .system-status-icon { icon-size: 16px; }
+.luma-converged-status.narrow .panel-button > .panel-status-indicators-box { spacing: 3px; }
+.luma-converged-status.narrow .luma-converged-clock { font-size: 1em; }
 .luma-converged-app { border-radius: 16px; padding: 4px; }
 .luma-converged-app:hover, .luma-converged-app:focus { background: rgba(255,255,255,0.14); }
 .luma-converged-app.editing { background: rgba(255,255,255,0.08); }
