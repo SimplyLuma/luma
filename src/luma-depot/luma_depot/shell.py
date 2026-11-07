@@ -96,6 +96,12 @@ class DepotShell(AppWindow):
         self.sidebar_toggle = SidebarToggle(self.sidebar)
         self.title_bar.pack_start(self.sidebar_toggle)
 
+        # Phone and compact (16.1): the sidebar becomes the places sheet behind a menu button,
+        # Back moves into the bar, grids narrow; each tier change redraws the page.
+        from luma_appkit.structure_adapt import WidthWatch
+        self.width_tier = "regular"
+        self._width_watch = WidthWatch(self.host, on_tier=self._tier_changed)
+
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self._key)
         self.add_controller(keys)
@@ -164,6 +170,12 @@ class DepotShell(AppWindow):
         Tooltip.attach(self.back_button, "Back")
         self.back_button.connect("clicked", lambda _b: self.back())
         overlay.add_overlay(self.back_button)
+        self.places_button = Gtk.Button(halign=Gtk.Align.START, valign=Gtk.Align.START, visible=False)
+        self.places_button.add_css_class("dq-places")
+        self.places_button.set_child(icons.image("menu"))
+        self.places_button.update_property([Gtk.AccessibleProperty.LABEL], ["Places"])
+        self.places_button.connect("clicked", lambda _b: self.open_places())
+        overlay.add_overlay(self.places_button)
         island.append(overlay)
         self.host = ToastHost(island)
         self.center = ActionCenter().attach(self.host)
@@ -225,6 +237,7 @@ class DepotShell(AppWindow):
                 self.sidebar.list.select_row(row)
         self._set_body(page.build())
         self.back_button.set_visible(self.item is not None and not self.is_phone())
+        self.places_button.set_visible(self.is_phone())
         if not (keep_search and self._bar_page is not None and self._search is not None):
             self.refresh_bar()
         GLib.idle_add(lambda: (self.scroller.get_vadjustment().set_value(scroll), False)[1])
@@ -256,7 +269,8 @@ class DepotShell(AppWindow):
             self._search.on_escape_empty = self._search_escaped
             items.append(self._search)
             items += page.bar_items()
-        self.center.show_bar(items)
+        # On a phone the bar spans the width, keeping the same buttons (16.1).
+        self.center.show_bar(items, fill=self.is_phone())
 
     # ── search (12) ───────────────────────────────────────────────────────
 
@@ -314,12 +328,39 @@ class DepotShell(AppWindow):
             self.add_css_class(f"dq-trying-{look.theme or look.kind.lower()}")
 
     def is_compact(self) -> bool:
-        width = self.get_width()
-        return 0 < width < 720
+        return self.is_phone() or self.width_tier == "compact"
 
     def is_phone(self) -> bool:
         from luma_appkit import lumaui
-        return lumaui.mobile_form_factor() or (0 < self.get_width() < 560)
+        return lumaui.mobile_form_factor() or self.width_tier == "phone"
+
+    def _tier_changed(self, tier: str) -> None:
+        if tier == self.width_tier:
+            return
+        self.width_tier = tier
+        phone = self.is_phone()
+        self.sidebar.set_visible(not phone)
+        self.places_button.set_visible(phone)
+        lumaui_set = __import__("luma_appkit").lumaui.set_css_class
+        lumaui_set(self, "dq-phone", phone)
+        lumaui_set(self, "dq-compact", self.is_compact())
+        self._render(scroll=self.scroller.get_vadjustment().get_value())
+
+    def open_places(self) -> None:
+        """The places sheet (2.2 on a phone): the same rows and headings as the sidebar, from the bottom."""
+        from luma_appkit import RadioMenuItem
+        from luma_appkit.menus import bar_menu
+        current = self.place if self.item is None and self.place != "search" else (
+            self.history[0].place if self.history else "today")
+        rows: list = []
+        heading = ""
+        for key, title, glyph, group in PLACES:
+            if group != heading:
+                rows.append(group)
+                heading = group
+            rows.append(RadioMenuItem(title, icon=glyph, group="place", checked=key == current,
+                                      on_activate=lambda k=key: self.go(k)))
+        bar_menu(self.places_button, rows, label="Places")
 
     def toast(self, message: str, kind: str = "done") -> None:
         Toast.show(self.host, message, kind=kind)

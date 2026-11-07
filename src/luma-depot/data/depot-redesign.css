@@ -383,3 +383,19 @@ window.dq box.dq-donerow { padding: 10px 8px; border-spacing: 12px; }
 window.dq box.dq-donerow + box.dq-donerow { box-shadow: inset 0 1px 0 @luma_line_faint; }
 window.dq label.dq-done-name { font-size: 13.5px; font-weight: 600; }
 window.dq label.dq-done-line, window.dq label.dq-done-when { font-size: 12.5px; color: @luma_muted; }
+
+/* phone and compact (16.1) */
+window.dq button.dq-places { margin: 14px 0 0 14px; min-width: 44px; min-height: 44px; padding: 0; border-radius: 14px; border: none;
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 6px 18px -8px alpha(black, 0.5); }
+window.dq button.dq-places image { -gtk-icon-size: 20px; }
+window.dq.dq-phone box.dq-page { margin: 66px 16px 120px; }
+window.dq.dq-phone label.dq-title { font-size: 30px; line-height: 33px; }
+window.dq.dq-phone box.dq-hello { margin: 14px 0 12px; }
+window.dq.dq-phone box.dq-intro { margin-top: 14px; }
+window.dq.dq-phone box.dq-htx { padding: 28px 24px 28px; }
+window.dq.dq-phone label.dq-htitle { font-size: 34px; line-height: 37px; }
+window.dq.dq-phone box.dq-hfoot { min-width: 0; }
+window.dq.dq-phone label.dq-iname { font-size: 30px; line-height: 33px; }
+window.dq.dq-phone box.dq-md .dq-md-act { opacity: 1; }
+window.dq.dq-phone button.dq-chan { margin-top: 0; }

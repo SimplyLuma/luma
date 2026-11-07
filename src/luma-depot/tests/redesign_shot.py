@@ -79,7 +79,12 @@ def main() -> int:
     parser.add_argument("--demo", default="")
     parser.add_argument("--query", default="")
     parser.add_argument("--settle", type=int, default=1500)
+    parser.add_argument("--phone", action="store_true", help="a phone: 390x844, Fairphone 6, phone posture")
     options = parser.parse_args()
+    if options.phone:
+        os.environ["LUMA_FORM_FACTOR"] = "phone"
+        os.environ.setdefault("LUMA_DEPOT_HERE", "fp6")
+        options.size = "390x844"
     os.environ.setdefault("LUMA_DEPOT_FIXTURE", str(ROOT / "tests/fixtures/depot-redesign/world.json"))
     os.environ["LUMA_APPEARANCE"] = options.appearance
     width, height = (int(v) for v in options.size.split("x"))
