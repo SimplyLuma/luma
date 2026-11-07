@@ -29,6 +29,7 @@
 # on Linux; nothing runs inside the payload, so any host architecture works.
 # Work files go to TMPDIR.
 set -euo pipefail
+umask 022
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 fail() { printf 'build-phone-userdata: %s\n' "$*" >&2; exit 1; }
