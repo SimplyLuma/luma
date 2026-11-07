@@ -3,7 +3,7 @@
 #
 # Sign a built app into the Luma remote.
 #
-#   publish-app.sh APP_ID [--approve-permission-changes]
+#   publish-app.sh APP_ID [--approve-permission-changes] [--third-party]
 #
 # The app must have been built by build-app.sh (out/apps/APP_ID/repo). Before
 # anything is written, its permissions are compared with the commit currently
@@ -12,16 +12,31 @@
 # and prints the changes unless --approve-permission-changes is given (the
 # reviewer's decision, recorded in release.json).
 #
+# --third-party publishes a developer's app from a Depot submission
+# (tools/depot-review). Third-party apps live on the stable branch, can never
+# use an id Luma owns (reserved prefixes, packaging/flatpak/apps/titles.json, or
+# any id with a Luma beta/nightly ref), and bring their listing media through
+# the signed Depot catalogue instead of share/luma-app-media. A Luma publish
+# refuses an id that a third-party release already holds, so neither side can
+# shadow the other.
+#
 # Writes out/apps/APP_ID/release.json (commit, branch, permissions, changes,
 # sources) which update-remote.sh folds into the public apps/index.json.
 set -euo pipefail
 . "$(dirname -- "$0")/lib.sh"
 depot_require_signing_control
 
-app_id=${1:?usage: publish-app.sh APP_ID [--approve-permission-changes]}
+app_id=${1:?usage: publish-app.sh APP_ID [--approve-permission-changes] [--third-party]}
 [[ "$app_id" =~ ^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*){2,}$ ]] || depot_die "invalid app identity"
 approve=0
-[ "${2:-}" = --approve-permission-changes ] && approve=1
+third_party=0
+for option in "${@:2}"; do
+  case "$option" in
+    --approve-permission-changes) approve=1 ;;
+    --third-party) third_party=1 ;;
+    *) depot_die "unknown option $option" ;;
+  esac
+done
 out="$depot_out/apps/$app_id"
 release_out="$DEPOT_ROOT/releases/$app_id"
 install -d -m 0700 "$release_out"
@@ -37,11 +52,27 @@ source_commit=$(depot_in_signer python3 -B -c 'import json,sys; print(json.load(
 # Permissions are taken from the immutable object that will be signed.
 depot_in_signer ostree cat --repo="$out/repo" "$source_commit" /metadata >"$release_out/metadata"
 cmp "$out/metadata" "$release_out/metadata" || depot_die "build metadata differs from actual source commit"
-depot_in_signer python3 scripts/depot/stage-app-media.py --repo "$out/repo" \
-  --commit "$source_commit" --app-id "$app_id" --site "$DEPOT_ROOT/site" \
-  --base-url "$DEPOT_PUBLIC_URL" >"$release_out/media-stage.json"
-depot_in_signer python3 scripts/depot/flatpak-permissions.py "$release_out/metadata" >"$release_out/permissions.json"
 branch=${ref##*/}
+owner_mark="$release_out/THIRD-PARTY"
+if [ "$third_party" = 1 ]; then
+  [ "$branch" = stable ] || depot_die "third-party apps publish to the stable branch, not $branch"
+  case "${app_id,,}" in
+    org.projectluma.*|io.luma.*|com.simplyluma.*|org.simplyluma.*|com.projectluma.*)
+      depot_die "$app_id uses an id prefix reserved for Luma" ;;
+  esac
+  depot_in_signer python3 -B -c 'import json,sys; sys.exit(sys.argv[2] in json.load(open(sys.argv[1])))' \
+    packaging/flatpak/apps/titles.json "$app_id" || depot_die "$app_id is one of Luma's own apps"
+  if depot_in_signer ostree refs --repo="$depot_repo" | grep -Eq "^(app/$app_id/[^/]+/(beta|nightly)|runtime/$app_id\.[^/]+/)"; then
+    depot_die "$app_id already has a Luma release; a third-party app cannot shadow it"
+  fi
+  printf '%s\n' "$app_id" >"$owner_mark"
+else
+  [ ! -e "$owner_mark" ] || depot_die "$app_id is a third-party app; publish it through Depot review"
+  depot_in_signer python3 scripts/depot/stage-app-media.py --repo "$out/repo" \
+    --commit "$source_commit" --app-id "$app_id" --site "$DEPOT_ROOT/site" \
+    --base-url "$DEPOT_PUBLIC_URL" >"$release_out/media-stage.json"
+fi
+depot_in_signer python3 scripts/depot/flatpak-permissions.py "$release_out/metadata" >"$release_out/permissions.json"
 
 changes='[]'
 if depot_in_signer ostree rev-parse --repo="$depot_repo" "$ref" >/dev/null 2>&1; then
