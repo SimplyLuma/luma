@@ -36,15 +36,13 @@
       "aarch64"
     ]
   },
-  "hardware_targets": {
-    "raspberrypi,rpi5": {
-      "kernel": "kernel-luma-rpi",
+  "hardware_targets": {},
+  "device_repositories": {
+    "raspberrypi-rpi5": {
+      "architecture": "aarch64",
+      "url": "https://dl.simplyluma.com/os/devices/aarch64/raspberrypi-rpi5/",
       "packages": [
-        "kernel-luma-rpi",
-        "luma-rpi5-platform",
-        "luma-rpi-bluetooth-firmware",
-        "gstreamer1-plugins-bad-free",
-        "gstreamer1-plugins-bad-free-libs"
+        "kernel-luma-rpi"
       ]
     }
   }

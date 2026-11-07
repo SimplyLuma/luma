@@ -45,7 +45,12 @@ def pins(root, sha):
         tarfile.open(fileobj=BytesIO(archive)).extractall(tmp, filter='data')
         result = set()
         # Hardware targets (desktop-targets.json) are ARM desktops with their own packages.
-        targets = json.loads(Path(tmp, 'config/os/desktop-targets.json').read_text()).get('hardware_targets', {})
+        registry = json.loads(Path(tmp, 'config/os/desktop-targets.json').read_text())
+        targets = registry.get('hardware_targets', {})
+        # Device repositories (the Pi kernel) are published beside the images.
+        for name in registry.get('device_repositories', {}):
+            result |= set(run(sys.executable, '-I', f'{tmp}/scripts/os/lib/desktop_target.py', '--root', tmp,
+                              '--arch', 'aarch64', '--device-repository', name, 'device-repository').split())
         for arch, profile, target in (('x86_64', 'full', ''), ('aarch64', 'arm-preview', ''),
                                       *(('aarch64', 'arm-preview', name) for name in targets)):
             result |= set(run(sys.executable, '-I', f'{tmp}/scripts/os/lib/desktop_target.py',

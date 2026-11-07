@@ -76,36 +76,88 @@ class DesktopProfiles(unittest.TestCase):
         env['LUMA_TARGET_ARCHITECTURE'] = 'x86_64'
         self.assertNotEqual(subprocess.run(['bash', '-ec', '. scripts/os/lib/common.sh'], cwd=ROOT, env=env, capture_output=True).returncode, 0)
 
+    def test_pi_userspace_is_in_every_arm_image_and_its_kernel_in_none(self):
+        arm = {t.package_name(p) for p in t.packages(ROOT, 'aarch64', profile_name='arm-preview')}
+        x86 = {t.package_name(p) for p in t.packages(ROOT, 'x86_64')}
+        pi = {'luma-rpi5-platform', 'luma-rpi-bluetooth-firmware',
+              'gstreamer1-plugins-bad-free', 'gstreamer1-plugins-bad-free-libs'}
+        self.assertTrue(pi <= arm, pi - arm)
+        self.assertFalse(pi & x86)
+        for names in (arm, x86):
+            self.assertNotIn('kernel-luma-rpi', names)
+        self.assertIn('kernel-luma-rpi', t.device_package_names(ROOT))
+
+    def test_pi_kernel_is_a_device_repository_package_not_a_target(self):
+        row, pins = t.device_repository(ROOT, 'raspberrypi-rpi5')
+        self.assertEqual(row['architecture'], 'aarch64')
+        self.assertEqual(row['url'], 'https://dl.simplyluma.com/os/devices/aarch64/raspberrypi-rpi5/')
+        self.assertEqual([t.package_name(p) for p in pins], ['kernel-luma-rpi'])
+        self.assertTrue(pins[0].endswith('.aarch64'))
+        with self.assertRaises(ValueError):
+            t.hardware(ROOT, 'aarch64', 'raspberrypi,rpi5')
+        devices = (ROOT / 'scripts/os/lib/devices.tsv').read_text()
+        self.assertNotIn('raspberrypi,rpi5\t', devices)
+        result = subprocess.run(['python3', '-I', str(ROOT / 'scripts/os/lib/desktop_target.py'), '--arch', 'aarch64',
+                                 '--device-repository', 'raspberrypi-rpi5', 'device-repository'],
+                                text=True, capture_output=True, check=True)
+        self.assertEqual(result.stdout.split(), pins)
+
+    def _target_root(self, tmp):
+        """A copy of the inputs with one synthetic hardware target that owns a
+        pinned noarch package and the Pi kernel (the hardware-target machinery
+        has no real desktop target today)."""
+        import json, shutil
+        root = Path(tmp)
+        shutil.copytree(ROOT / 'config', root / 'config')
+        shutil.copytree(ROOT / 'scripts/os/lib', root / 'scripts/os/lib')
+        registry = json.loads((root / 'config/os/desktop-targets.json').read_text())
+        registry['device_repositories'] = {}
+        registry['hardware_targets'] = {'example,board': {
+            'kernel': 'kernel-luma-rpi', 'packages': ['kernel-luma-rpi', 'luma-rpi5-platform']}}
+        (root / 'config/os/desktop-targets.json').write_text(json.dumps(registry))
+        with (root / 'scripts/os/lib/devices.tsv').open('a') as stream:
+            stream.write('example,board\texample-board\taarch64\toci\tdesktop\t-\tluma-desktop\n')
+        return root
+
     def test_hardware_target_adds_only_its_packages_and_kernel(self):
-        generic = t.packages(ROOT, 'aarch64', profile_name='arm-preview')
-        pi = t.packages(ROOT, 'aarch64', profile_name='arm-preview', hardware_target='raspberrypi,rpi5')
-        device = t.hardware(ROOT, 'aarch64', 'raspberrypi,rpi5')
-        added = {t.package_name(p) for p in pi} - {t.package_name(p) for p in generic}
-        self.assertEqual(added, set(device['packages']))
-        self.assertTrue(set(generic) < set(pi))
-        self.assertEqual(device['kernel'], 'kernel-luma-rpi')
-        for arch in t.ARCHITECTURES:
-            names = {t.package_name(p) for p in t.packages(ROOT, arch)}
-            self.assertFalse(names & t.device_package_names(ROOT), arch)
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._target_root(tmp)
+            generic = t.packages(root, 'aarch64', profile_name='arm-preview')
+            board = t.packages(root, 'aarch64', profile_name='arm-preview', hardware_target='example,board')
+            device = t.hardware(root, 'aarch64', 'example,board')
+            added = {t.package_name(p) for p in board} - {t.package_name(p) for p in generic}
+            self.assertEqual(added, set(device['packages']))
+            self.assertTrue(set(generic) < set(board))
+            self.assertEqual(device['kernel'], 'kernel-luma-rpi')
+            for arch in t.ARCHITECTURES:
+                names = {t.package_name(p) for p in t.packages(root, arch)}
+                self.assertFalse(names & t.device_package_names(root), arch)
 
     def test_hardware_target_has_its_own_ref_and_architecture(self):
-        values = t.contract(ROOT, 'aarch64', 'arm-preview', 'raspberrypi,rpi5')
-        self.assertEqual(values['LUMA_OS_REF_PREFIX'], 'luma/1/aarch64/raspberrypi-rpi5')
-        self.assertEqual(values['LUMA_OS_HARDWARE_TARGET'], 'raspberrypi,rpi5')
-        self.assertEqual(values['LUMA_OS_KERNEL_PACKAGE'], 'kernel-luma-rpi')
-        self.assertNotIn('LUMA_OS_HARDWARE_TARGET', t.contract(ROOT, 'aarch64', 'arm-preview'))
-        for arch, target in (('x86_64', 'raspberrypi,rpi5'), ('aarch64', 'fairphone,fp6'), ('aarch64', 'unknown')):
-            with self.subTest(arch=arch, target=target), self.assertRaises(ValueError):
-                t.packages(ROOT, arch, hardware_target=target)
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._target_root(tmp)
+            values = t.contract(root, 'aarch64', 'arm-preview', 'example,board')
+            self.assertEqual(values['LUMA_OS_REF_PREFIX'], 'luma/1/aarch64/example-board')
+            self.assertEqual(values['LUMA_OS_HARDWARE_TARGET'], 'example,board')
+            self.assertEqual(values['LUMA_OS_KERNEL_PACKAGE'], 'kernel-luma-rpi')
+            self.assertNotIn('LUMA_OS_HARDWARE_TARGET', t.contract(root, 'aarch64', 'arm-preview'))
+            for arch, target in (('x86_64', 'example,board'), ('aarch64', 'fairphone,fp6'), ('aarch64', 'unknown')):
+                with self.subTest(arch=arch, target=target), self.assertRaises(ValueError):
+                    t.packages(root, arch, hardware_target=target)
 
     def test_shell_environment_passes_the_hardware_target(self):
-        env = {**os.environ, 'LUMA_TARGET_ARCHITECTURE': 'aarch64', 'LUMA_OS_PROFILE': 'arm-preview',
-               'LUMA_OS_HARDWARE_TARGET': 'raspberrypi,rpi5'}
-        result = subprocess.run(['bash', '-ec', '. scripts/os/lib/common.sh; echo "$LUMA_OS_REF_PREFIX"; luma_os_desktop_packages'],
-                                cwd=ROOT, env=env, text=True, capture_output=True, check=True)
-        lines = result.stdout.splitlines()
-        self.assertEqual(lines[0], 'luma/1/aarch64/raspberrypi-rpi5')
-        self.assertEqual(lines[1:], t.packages(ROOT, 'aarch64', profile_name='arm-preview', hardware_target='raspberrypi,rpi5'))
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._target_root(tmp)
+            env = {**os.environ, 'LUMA_TARGET_ARCHITECTURE': 'aarch64', 'LUMA_OS_PROFILE': 'arm-preview',
+                   'LUMA_OS_HARDWARE_TARGET': 'example,board'}
+            result = subprocess.run(['bash', '-ec', '. scripts/os/lib/common.sh; echo "$LUMA_OS_REF_PREFIX"; luma_os_desktop_packages'],
+                                    cwd=root, env=env, text=True, capture_output=True, check=True)
+            lines = result.stdout.splitlines()
+            self.assertEqual(lines[0], 'luma/1/aarch64/example-board')
+            self.assertEqual(lines[1:], t.packages(root, 'aarch64', profile_name='arm-preview', hardware_target='example,board'))
 
 if __name__ == '__main__':
     unittest.main()
