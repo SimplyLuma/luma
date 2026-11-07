@@ -30,7 +30,8 @@ CATALOGUE_URL = "https://dl.simplyluma.com/depot/catalogue/v1/catalogue.json"
 SIGNATURE_URL = CATALOGUE_URL + ".minisig"
 PUBLIC_KEY = ("untrusted comment: minisign public key E6B75A79572BD6E8\n"
               "RWTo1itXeVq35sW2kLxnao46f1WNno7vQPromWZaEibbFV5cAUxkScXw\n")
-MEDIA_HOST = "https://media.simplyluma.com/"
+#: Luma's own hosts; media is named by its sha256, which is checked on arrival.
+MEDIA_HOSTS = ("https://media.simplyluma.com/", "https://dl.simplyluma.com/media/", "https://hub.simplyluma.com/api/depot/media/")
 _LIMIT = 16 * 1024 * 1024
 
 #: The eleven words back to the publisher-glyph form the pages' mapping reads (8.11).
@@ -98,13 +99,15 @@ class MediaCache:
     def path(self, url: str) -> str | None:
         if not url:
             return None
-        if not url.startswith(MEDIA_HOST):
+        url = url.split("#", 1)[0]
+        if not url.startswith(MEDIA_HOSTS):
             return url if Path(url).is_file() else None
         local = self._local(url)
         return str(local) if local.is_file() else None
 
     def prefetch(self, urls) -> None:
-        wanted = [u for u in urls if u and u.startswith(MEDIA_HOST) and self.path(u) is None and u not in self._pending]
+        urls = [u.split("#", 1)[0] for u in urls if u]
+        wanted = [u for u in urls if u.startswith(MEDIA_HOSTS) and self.path(u) is None and u not in self._pending]
         if not wanted:
             return
         self._pending.update(wanted)
@@ -154,38 +157,74 @@ def _media(value) -> str:
     return _text(value)
 
 
+def _date(value) -> str:
+    """"2026-11-07" → "Nov 7, 2026" (rows say "Nov 7")."""
+    from datetime import datetime
+    text = _text(value)
+    try:
+        moment = datetime.strptime(text[:10], "%Y-%m-%d")
+    except ValueError:
+        return text
+    return f"{moment.strftime('%b')} {moment.day}, {moment.year}"
+
+
+def _size(value) -> str:
+    if isinstance(value, (int, float)) and value > 0:
+        return f"{value / 1e9:.1f} GB" if value >= 1e9 else f"{max(1, round(value / 1e6))} MB"
+    return _text(value)
+
+
+def _note(line) -> object:
+    """"**Adjustable scroll speed.** Set how fast…" → {title, text}; typed ["New", "…"] → {type, …}."""
+    if isinstance(line, (list, tuple)) and len(line) == 2:
+        note = _note(line[1])
+        return dict(note, type=_text(line[0])) if isinstance(note, dict) else {"type": _text(line[0]), "text": _text(note)}
+    text = _text(line)
+    match = re.match(r"\*\*(.+?)\.?\*\*\s*(.*)", text)
+    return {"title": match.group(1), "text": match.group(2)} if match else text
+
+
+def _shot(value) -> str:
+    """A screenshot as its URL with its form and theme after "#" (frames read them)."""
+    if isinstance(value, dict):
+        url = _text(value.get("url"))
+        return f"{url}#{_text(value.get('form') or 'desktop')}-{_text(value.get('theme') or 'dark')}" if url else ""
+    return _text(value)
+
+
 def _app(entry: dict) -> App:
     developer = entry.get("developer") or {}
     releases = [r for r in entry.get("releases") or [] if isinstance(r, dict)]
     latest = releases[0] if releases else {}
     news = entry.get("news") or {}
     rating = entry.get("rating") or {}
-    shots = [_media(s) for s in entry.get("screenshots") or entry.get("shots") or []]
+    shots = [_shot(s) for s in entry.get("shots") or entry.get("screenshots") or []]
     reach = tuple((_WORD_GLYPH.get(p.get("word", ""), "globe"), p.get("word", ""), _text(p.get("reason")))
                   for p in entry.get("permissions") or [] if isinstance(p, dict) and p.get("word") in _WORD_GLYPH)
     version = _text(latest.get("version")) or _text(entry.get("version")) or _text(news.get("v"))
-    notes = latest.get("notes") or news.get("items") or []
+    notes = [_note(n) for n in (news.get("typed") or news.get("items") or latest.get("notes") or [])]
     mark = entry.get("mark") or {}
     return App(
         app_id=_text(entry["id"]), name=_text(entry.get("name")), summary=_text(entry.get("summary")),
         description="\n\n".join(p for p in (entry.get("description") or entry.get("desc") or []) if isinstance(p, str))
         if isinstance(entry.get("description") or entry.get("desc"), list) else _text(entry.get("description")),
         developer=_text(developer.get("name") if isinstance(developer, dict) else developer) or _text(entry.get("dev")),
-        developer_verified="organization" if (developer.get("verified") if isinstance(developer, dict) else entry.get("verified")) else "",
+        developer_verified="organization" if ((developer.get("verified") if isinstance(developer, dict) and developer else None)
+                                              or entry.get("verified") or entry.get("first_party")) else "",
         categories=(_text(_get(entry, "category", "cat", default="tools")).casefold(),),
         category_key=_text(_get(entry, "category", "cat", default="tools")).casefold(),
         icon_name="", icon_url=_media(entry.get("icon")), licence=_text(_get(entry, "license", "licence", default="")),
         rating=float(rating.get("avg", 0) or 0), rating_count=int(rating.get("n", 0) or 0),
         rating_distribution=tuple(rating.get("dist") or ()),
         screenshots=tuple(Screenshot(url=s) for s in shots if s), shot_keys=tuple(s for s in shots if s),
-        releases=(Release(version=version, date=_text(_get(latest, "date", default="") or entry.get("updated", "")),
-                          notes=tuple(n for n in notes if isinstance(n, str))),) if version else (),
+        releases=(Release(version=version, date=_date(entry.get("updated") or latest.get("date") or news.get("date")),
+                          notes=tuple(n for n in notes if n)),) if version else (),
         homepage=_text(_get(developer if isinstance(developer, dict) else {}, "site", default="") or entry.get("site", "")),
         flatpak_id=_text(entry["id"]), slug=_text(entry["id"]),
-        tier="luma" if _text(developer.get("name") if isinstance(developer, dict) else "") == "Luma" else "listed",
+        tier="luma" if entry.get("first_party") or _text(developer.get("name") if isinstance(developer, dict) else entry.get("dev")) == "Luma" else "listed",
         runs=tuple(entry.get("runs") or ()), mark=_media(mark.get("file") if isinstance(mark, dict) else ""),
         mark_colour=_text(mark.get("bg") if isinstance(mark, dict) else ""),
-        package_kind=_text(_get(entry, "format", "pk", default="flatpak")), size_label=_text(entry.get("size")),
+        package_kind=_text(_get(entry, "format", "pk", default="flatpak")).casefold(), size_label=_size(entry.get("size")),
         reviews=tuple(tuple(r) for r in entry.get("reviews") or [] if isinstance(r, (list, tuple)) and len(r) == 5),
         reach=reach, alternatives=tuple(entry.get("alt") or ()), installs_total=int(entry.get("downloads", 0) or 0),
     )
@@ -224,10 +263,13 @@ def parse(document: dict) -> tuple[list[App], list[Look], list[Tweak], dict]:
     looks: list[Look] = []
     tweaks: list[Tweak] = []
     items = document.get("items") or document.get("apps") or []
-    for entry in items + [dict(x, kind="look") for x in document.get("looks") or []] \
-            + [dict(x, kind="tweak") for x in document.get("tweaks") or []]:
+    for entry in items + [dict(x, kind="look") for x in document.get("looks") or [] if isinstance(x, dict)] \
+            + [dict(x, kind="tweak") for x in document.get("tweaks") or [] if isinstance(x, dict)]:
         if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
             continue
+        for extra in ("look", "tweak"):  # a Look's or a Tweak's own fields ride in the listing (§13.2, §13.3)
+            if isinstance(entry.get(extra), dict):
+                entry = {**entry, **entry[extra]}
         try:
             kind = entry.get("kind", "app")
             if kind == "look":
@@ -238,5 +280,6 @@ def parse(document: dict) -> tuple[list[App], list[Look], list[Tweak], dict]:
                 apps.append(_app(entry))
         except (KeyError, TypeError, ValueError):
             continue
-    story = document.get("today") or document.get("story") or {}
-    return apps, looks, tweaks, story if isinstance(story, dict) else {}
+    today = document.get("today") or {}
+    story = today.get("story") if isinstance(today, dict) and isinstance(today.get("story"), dict) else {}
+    return apps, looks, tweaks, story

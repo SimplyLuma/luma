@@ -18,7 +18,7 @@ from gi.repository import GLib
 
 from ..providers import App, Catalogue, InstalledApp, Result
 from .store import Done, Store
-from .world import FORMS, CategoryInfo, Device, Done as DoneRow, Item, PendingUpdate, SystemUpdate, World
+from .world import FORMS, CategoryInfo, Device, Done as DoneRow, Item, PendingUpdate, Story, SystemUpdate, World
 
 __all__ = ["LiveStore", "device_name", "world_from"]
 
@@ -146,8 +146,12 @@ def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], 
     rollback = []
     if system_state is not None and getattr(system_state, "rollback_available", False):
         rollback.append(DoneRow("luma", system_state.booted_name or "Luma", "", device_name()))
+    story = None
+    if _story and _story.get("app") and any(a.app_id == _story["app"] for a in apps):
+        story = Story(_story.get("kick", ""), _story.get("title", ""), _story.get("blurb", ""), _story["app"],
+                      _story.get("art", ""), int(_story.get("hue", 0) or 0))
     return World(forms=FORMS, devices=(here,), here="here", categories=CATEGORIES, apps=tuple(apps),
-                 looks=tuple(v1_looks), tweaks=tuple(v1_tweaks), media=media,
+                 looks=tuple(v1_looks), tweaks=tuple(v1_tweaks), media=media, story=story,
                  popular=popular, installed={"here": tuple(installed)}, pending=pending, done=tuple(rollback),
                  auto={"apps": True, "luma": bool(getattr(system_state, "automatic_download", True)), "matched": False},
                  system=_system(system_state), kept=tuple(a.app_id for a in apps if a.app_id in installed))
@@ -209,7 +213,7 @@ class LiveStore(Store):
         self.listings = listings
         apps, looks, tweaks, _story = listings
         urls = [a.icon_url for a in apps] + [s for a in apps for s in a.shot_keys] + [a.mark for a in apps]
-        urls += [x.art for x in looks]
+        urls += [x.art for x in looks] + [listings[3].get("art", "")]
         self.media.prefetch(urls)
         self._rebuild()
 

@@ -34,7 +34,8 @@ class TodayPage(Page):
         if story is not None and world.item("app", story.app) is not None:
             item = world.item("app", story.app)
             here = world.here in world.on_devices(item)
-            art = str(world.assets / "art" / f"{story.art}.webp") if world.assets and story.art else None
+            art = (world.media_path(story.art) if "://" in story.art else
+                   str(world.assets / "art" / f"{story.art}.webp") if world.assets and story.art else None)
             shot = next((shot_file(world, k) for k in item.app.shot_keys if "desktop-dark" in k), None)
             page.append(story_card(world, story, art=art, shot=shot, here=here, compact=compact,
                                    on_open=opener(shell, "app", item.id),

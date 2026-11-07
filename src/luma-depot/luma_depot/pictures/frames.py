@@ -78,7 +78,7 @@ def app_pictures(world: World, item: Item) -> list[Picture]:
         shot = shot_file(world, key)
         if shot is None:
             continue  # missing stays missing: no stand-in screenshot
-        if "-phone-" in key or (shot and _tall(shot)):
+        if "-phone-" in key or "#phone" in key or (shot and _tall(shot)):
             room = room_for(item.id)
             pictures.append(Picture(key, f"{item.name} on a phone",
                                     lambda r, s=shot, b=room: FramedPicture.phone(s, backdrop=b, radius=r,
