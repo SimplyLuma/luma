@@ -75,11 +75,15 @@ def facts_card(world: World, item: Item, on_site=None) -> Gtk.Widget:
         if on_site is not None:
             link.connect("clicked", lambda _b: on_site(site))
         made.append(link)
-    if item.seal == "verified":
+    # The seal, unless it only repeats the maker's name (Luma's own): Verified, or Community.
+    seal_words = {"luma": ("badge-check", "Luma"), "verified": ("shield-check", "Verified"),
+                  "community": ("users", "Community")}[item.seal]
+    if seal_words[1] != item.by:
         seal = Gtk.Box()
         seal.add_css_class("dq-seal")
-        seal.append(icons.image("badge-check"))
-        seal.append(Gtk.Label(label="Verified"))
+        seal.add_css_class(item.seal)
+        seal.append(icons.image(seal_words[0]))
+        seal.append(Gtk.Label(label=seal_words[1]))
         made.append(seal)
     card.append(_row("Made by", made))
     card.append(_row("Runs on", runs_on(item)))

@@ -50,8 +50,13 @@ def face_colour(world: World, item: Item) -> str | None:
         return app.mark_colour
     path = icon_path(world, item)
     if path is not None:
-        return _sample(path)
-    return None
+        sampled = _sample(path)
+        if sampled:
+            return sampled
+    # a monogram, a Look's or a Tweak's glyph: the hue it is drawn in
+    import re
+    channels = [int(v) for v in re.findall(r"\d+", lumaui.oklch_rgba(0.62, 0.13, item.hue))[:3]]
+    return "#%02x%02x%02x" % tuple(channels)
 
 
 def _sample(path: str) -> str | None:
@@ -82,6 +87,31 @@ def _sample(path: str) -> str | None:
     if weight < 1:
         return None
     return "#%02x%02x%02x" % tuple(round(v / weight) for v in total)
+
+
+_gradients: dict[str, str] = {}
+_provider: list = []
+
+
+def paint_gradient(widget: Gtk.Widget, start: tuple[float, float, float], end: tuple[float, float, float],
+                   degrees: int = 160) -> None:
+    """Paint `widget` a linear gradient between two OKLCH colours from data (a glyph face's hue)."""
+    import re
+    from gi.repository import Gdk
+    a = [int(v) for v in re.findall(r"\d+", lumaui.oklch_rgba(*start))[:3]]
+    b = [int(v) for v in re.findall(r"\d+", lumaui.oklch_rgba(*end))[:3]]
+    name = "dq-grad-%d-%02x%02x%02x-%02x%02x%02x" % (degrees, *a, *b)
+    widget.add_css_class(name)
+    if name not in _gradients:
+        _gradients[name] = (f".{name} {{ background: linear-gradient({degrees}deg, rgb({a[0]},{a[1]},{a[2]}), "
+                            f"rgb({b[0]},{b[1]},{b[2]})); }}")
+        display = Gdk.Display.get_default()
+        if display is not None:
+            if not _provider:
+                provider = Gtk.CssProvider()
+                Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2)
+                _provider.append(provider)
+            _provider[0].load_from_string("\n".join(_gradients.values()))
 
 
 def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
@@ -140,11 +170,11 @@ def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
         else:
             picture = icons.image(_LOOK_GLYPHS.get(look.kind, "palette"))
             box.add_css_class("glyph")
-            lumaui.hue_class(box, look.hue)
+            paint_gradient(box, (0.72, 0.13, look.hue), (0.5, 0.13, look.hue + 30))
     elif tweak is not None:
         picture = icons.image(tweak.icon)
         box.add_css_class("glyph")
-        lumaui.hue_class(box, tweak.hue)
+        paint_gradient(box, (0.72, 0.13, tweak.hue), (0.5, 0.13, tweak.hue + 30))
     if picture is not None:
         picture.set_hexpand(True)
         picture.set_vexpand(True)

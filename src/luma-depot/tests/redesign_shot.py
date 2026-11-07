@@ -100,6 +100,15 @@ def main() -> int:
         window.present()
 
         def stage() -> bool:
+            try:
+                staged()
+            except Exception:  # noqa: BLE001 - a failing state must not hang the run
+                import traceback
+                traceback.print_exc()
+                app.quit()
+            return False
+
+        def staged() -> None:
             if options.place != "today":
                 window.go(options.place)
             if options.item:
@@ -114,7 +123,6 @@ def main() -> int:
                 else:
                     demo()
             GLib.timeout_add(options.settle, shoot)
-            return False
 
         def shoot() -> bool:
             if options.scroll:

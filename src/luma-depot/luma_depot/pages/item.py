@@ -285,14 +285,19 @@ class ItemPage(Page):
     def open_lightbox(self, index: int) -> None:
         if self._lightbox is not None:
             return
-        self._lightbox = Lightbox(self.pictures, index, self.close_lightbox)
+        room = (self.shell.overlay.get_width() or 952, self.shell.overlay.get_height() or 686)
+        self._lightbox = Lightbox(self.pictures, index, self.close_lightbox, room=room)
         self.shell.overlay.add_overlay(self._lightbox)
+        self.shell.center.hide_bar()
+        self.shell.back_button.set_visible(False)
         self._lightbox.grab_focus()
 
     def close_lightbox(self) -> None:
         if self._lightbox is not None:
             self.shell.overlay.remove_overlay(self._lightbox)
             self._lightbox = None
+            self.shell.refresh_bar()
+            self.shell.back_button.set_visible(not self.shell.is_phone())
 
     def lightbox_open(self) -> bool:
         return self._lightbox is not None

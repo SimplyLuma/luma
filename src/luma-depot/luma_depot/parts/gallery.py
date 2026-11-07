@@ -77,11 +77,15 @@ class Lightbox(Gtk.Box):
     """The picture large over a darkened window; a small frosted bar: ‹ · "1 of 3" · › · ×.
     Arrow keys page, Escape or a click outside closes (8.3)."""
 
-    def __init__(self, pictures: Sequence[Picture], index: int, on_close: Callable[[], None]) -> None:
+    def __init__(self, pictures: Sequence[Picture], index: int, on_close: Callable[[], None],
+                 room: tuple[int, int] = (952, 686)) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True, focusable=True,
                          accessible_role=Gtk.AccessibleRole.DIALOG)
         self.add_css_class("dq-lightbox")
         self.pictures, self.index, self.on_close = list(pictures), index, on_close
+        # The largest 16:9 picture that leaves the frosted bar (and 28 a side) on screen.
+        width, height = room
+        self.picture_width = int(min(width - 56, (height - 56 - 54) * 16 / 9))
         self.update_property([Gtk.AccessibleProperty.LABEL], ["Pictures"])
         self.stage = Gtk.Box(vexpand=True, hexpand=True, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
         self.stage.add_css_class("dq-lb-stage")
@@ -119,7 +123,7 @@ class Lightbox(Gtk.Box):
         while (child := self.stage.get_first_child()) is not None:
             self.stage.remove(child)
         frame = self.pictures[self.index].make(18)
-        frame.set_size_request(880, -1)
+        frame.set_size_request(self.picture_width, -1)
         self.stage.append(frame)
         self.count.set_label(f"{self.index + 1} of {count}")
         self.prev.set_sensitive(count > 1)
