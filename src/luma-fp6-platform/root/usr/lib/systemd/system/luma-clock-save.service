@@ -1,0 +1,10 @@
+[Unit]
+Description=Record the wall clock for the next boot
+Documentation=man:hwclock(8)
+
+[Service]
+Type=oneshot
+# This device exposes no writable RTC (hwclock -w fails with ENODEV), so the
+# clock is lost on every power cycle and the system comes back weeks in the
+# past. Keep a timestamp on disk instead and restore it early next boot.
+ExecStart=/bin/sh -c 'date -u +%%s > /var/lib/luma/clock'

@@ -804,13 +804,20 @@ luma_prepare_ostree_root() {
 	[ ! -L /run/ostree/initramfs-mount-var ] || return 1
 	: > /run/ostree/initramfs-mount-var || return 1
 	/usr/lib/ostree/ostree-prepare-root /sysroot "$cmdline" || return 1
-	# Recipient-local firmware lives outside the public deployment tree.
-	# Both namespaces expose the same /var path before and after switch_root.
-	luma_verify_firmware_store || return 1
-	mkdir -p /var/lib/luma/device-firmware || return 1
-	mount --bind /sysroot/var/lib/luma/device-firmware /var/lib/luma/device-firmware || return 1
 	[ -w /sys/module/firmware_class/parameters/path ] || return 1
-	printf '%s' /var/lib/luma/device-firmware > /sys/module/firmware_class/parameters/path || return 1
+	if [ -e /sysroot/var/lib/luma/device-firmware ] || [ -L /sysroot/var/lib/luma/device-firmware ]; then
+		# Alpha images: recipient-local firmware outside the deployment tree.
+		# Both namespaces expose the same /var path before and after switch_root.
+		luma_verify_firmware_store || return 1
+		mkdir -p /var/lib/luma/device-firmware || return 1
+		mount --bind /sysroot/var/lib/luma/device-firmware /var/lib/luma/device-firmware || return 1
+		printf '%s' /var/lib/luma/device-firmware > /sys/module/firmware_class/parameters/path || return 1
+	else
+		# Shared ARM image: luma-fp6-firmware in the deployment's
+		# /usr/lib/firmware. This path serves loads until switch_root; it does
+		# not exist on the real root, so later loads use /usr/lib/firmware.
+		printf '%s' /sysroot/usr/lib/firmware > /sys/module/firmware_class/parameters/path || return 1
+	fi
 	[ -f /sysroot/etc/os-release ] || return 1
 	# prepare-root consumed the early /var request. Let the real-root generator
 	# create the boot bind mount and required OSTree units after switch_root.

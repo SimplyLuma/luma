@@ -90,7 +90,23 @@
     },
     "updates": {
       "type": "object", "additionalProperties": false, "required": ["ostree_ref"],
-      "properties": {"ostree_ref": {"type": "string", "pattern": "^luma/[0-9]+/[a-z0-9_]+/[a-z0-9-]+/[a-z0-9-]+$"}}
+      "properties": {"ostree_ref": {"type": "string", "pattern": "^luma/[0-9]+/[a-z0-9_]+(/[a-z0-9-]+)?/[a-z0-9-]+$"}}
+    },
+    "image": {
+      "type": "object", "additionalProperties": false, "required": ["root_uuid", "boot_uuid"],
+      "properties": {
+        "root_uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+        "boot_uuid": {"type": "string", "pattern": "^[0-9A-F]{4}-[0-9A-F]{4}$"}
+      }
+    },
+    "device_repo": {
+      "type": "object", "additionalProperties": false, "required": ["id", "url", "install"],
+      "properties": {
+        "id": {"$ref": "#/$defs/slug"},
+        "url": {"$ref": "#/$defs/url"},
+        "replace": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"}},
+        "install": {"type": "array", "uniqueItems": true, "minItems": 1, "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$"}}
+      }
     },
     "releases": {
       "type": "array",

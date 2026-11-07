@@ -1,0 +1,117 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+
+"""Narrow system-bus adapter for the Fairphone 6 call-output endpoint.
+
+The shared Phone application talks to this presentation-neutral interface.
+Only the two physically accepted internal call routes are exposed; the root
+process never accepts paths, commands, mixer controls, or arbitrary values.
+"""
+
+from __future__ import annotations
+
+import signal
+import subprocess
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+
+BUS_NAME = "org.projectluma.AudioRoute1"
+OBJECT_PATH = "/org/projectluma/AudioRoute1"
+INTERFACE = BUS_NAME
+ROUTE_HELPER = "/usr/libexec/luma-fp6-audio-route"
+ROUTES = frozenset({"speaker", "earpiece"})
+XML = """
+<node>
+  <interface name="org.projectluma.AudioRoute1">
+    <method name="GetRoute">
+      <arg name="route" type="s" direction="out"/>
+    </method>
+    <method name="SetRoute">
+      <arg name="route" type="s" direction="in"/>
+    </method>
+  </interface>
+</node>
+"""
+
+
+def run_helper(route: str) -> str:
+    if route not in ROUTES and route != "status":
+        raise ValueError("unsupported audio route")
+    result = subprocess.run(
+        [ROUTE_HELPER, route],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=4,
+    )
+    return result.stdout
+
+
+def current_route() -> str:
+    for line in run_helper("status").splitlines():
+        if line.startswith("route="):
+            route = line.partition("=")[2].strip()
+            return route if route in ROUTES else "unknown"
+    return "unknown"
+
+
+class AudioRouteService:
+    def __init__(self) -> None:
+        self.loop = GLib.MainLoop()
+        self.registration = 0
+        self.owner = Gio.bus_own_name(
+            Gio.BusType.SYSTEM,
+            BUS_NAME,
+            Gio.BusNameOwnerFlags.NONE,
+            self._bus_acquired,
+            None,
+            lambda *_args: self.loop.quit(),
+        )
+
+    def _bus_acquired(self, connection, _name) -> None:
+        interface = Gio.DBusNodeInfo.new_for_xml(XML).interfaces[0]
+        self.registration = connection.register_object(
+            OBJECT_PATH, interface, self._method_call, None, None
+        )
+
+    def _method_call(
+        self,
+        _connection,
+        _sender,
+        _object_path,
+        _interface_name,
+        method_name,
+        parameters,
+        invocation,
+    ) -> None:
+        try:
+            if method_name == "GetRoute":
+                invocation.return_value(GLib.Variant("(s)", (current_route(),)))
+                return
+            if method_name == "SetRoute":
+                route = str(parameters.unpack()[0])
+                if route not in ROUTES:
+                    raise ValueError("unsupported audio route")
+                run_helper(route)
+                invocation.return_value(None)
+                return
+            raise ValueError("unknown method")
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            invocation.return_dbus_error(
+                "org.projectluma.AudioRoute1.Error.Failed", str(error)
+            )
+
+    def run(self) -> None:
+        signal.signal(signal.SIGTERM, lambda *_args: self.loop.quit())
+        signal.signal(signal.SIGINT, lambda *_args: self.loop.quit())
+        self.loop.run()
+        if self.owner:
+            Gio.bus_unown_name(self.owner)
+
+
+if __name__ == "__main__":
+    AudioRouteService().run()

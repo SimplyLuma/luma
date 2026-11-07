@@ -1,0 +1,79 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Promote the FP6 WCN6750 controller out of Linux's unconfigured state using
+# the phone's factory address. Android keeps that identity in the dedicated
+# persist partition; Linux must not invent a replacement or modify persist.
+
+set -euo pipefail
+
+model_path=/proc/device-tree/model
+persist_device=/dev/disk/by-partlabel/persist
+address_path=trace_info/bt_macaddr
+mount_point=
+
+cleanup() {
+  if [[ -n "$mount_point" ]]; then
+    /usr/bin/umount "$mount_point" 2>/dev/null || true
+    /usr/bin/rmdir "$mount_point" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+[[ -r "$model_path" ]] || exit 0
+model=$(tr -d '\0' <"$model_path")
+[[ "$model" == 'The Fairphone (Gen. 6)' ]] || exit 0
+[[ -b "$persist_device" ]] || {
+  printf 'FP6 Bluetooth persist device is unavailable\n' >&2
+  exit 1
+}
+
+# A configured controller already has its authoritative identity. Never
+# replace it, even if persist contains a different value.
+if /usr/bin/timeout 5 /usr/bin/btmgmt info 2>/dev/null \
+    | /usr/bin/grep -Eq '^hci[0-9]+:[[:space:]]+Primary controller$'; then
+  exit 0
+fi
+
+configuration=
+for _attempt in {1..20}; do
+  configuration=$(/usr/bin/timeout 5 /usr/bin/btmgmt config 2>/dev/null || true)
+  if /usr/bin/grep -q '^hci0:.*Unconfigured controller$' <<<"$configuration"; then
+    break
+  fi
+  /usr/bin/sleep 0.25
+done
+/usr/bin/grep -q '^hci0:.*Unconfigured controller$' <<<"$configuration" || {
+  printf 'FP6 Bluetooth controller did not enter the expected unconfigured state\n' >&2
+  exit 1
+}
+/usr/bin/grep -q 'missing options:.*public-address' <<<"$configuration" || {
+  printf 'FP6 Bluetooth controller is missing an unexpected configuration option\n' >&2
+  exit 1
+}
+
+mount_point=$(/usr/bin/mktemp -d /run/luma-fp6-bluetooth.XXXXXX)
+/usr/bin/mount -t ext4 -o ro,noload "$persist_device" "$mount_point"
+factory_address=$(tr '[:upper:]' '[:lower:]' <"$mount_point/$address_path")
+if ! /usr/bin/grep -Eq '^([0-9a-f]{2}:){5}[0-9a-f]{2}$' <<<"$factory_address"; then
+  printf 'FP6 factory Bluetooth address is invalid\n' >&2
+  exit 1
+fi
+
+# Release persist before issuing the controller command. The only state
+# mutation below is the volatile WCN6750 public address.
+cleanup
+mount_point=
+/usr/bin/btmgmt --index hci0 public-addr "$factory_address" >/dev/null
+
+for _attempt in {1..20}; do
+  controller=$(/usr/bin/timeout 5 /usr/bin/btmgmt info 2>/dev/null || true)
+  if /usr/bin/grep -q '^hci0:.*Primary controller$' <<<"$controller" \
+      && /usr/bin/grep -Fqi "addr $factory_address " <<<"$controller"; then
+    exit 0
+  fi
+  /usr/bin/sleep 0.25
+done
+
+printf 'FP6 Bluetooth controller rejected its factory address\n' >&2
+exit 1

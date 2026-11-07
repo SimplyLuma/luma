@@ -27,10 +27,13 @@ config = "boot.toml"
 #  1-2: postmarketOS edge initramfs (postmarketos-initramfs 3.12.0-r0), unmodified.
 #  3:   Luma overlay: init_functions.sh, Luma kernel modules, ostree-prepare-root
 #       with its Fedora 44 libraries, and the boot theme.
+# ramdisk_sha256 is those three, from Alpha 1. Boot images for the shared ARM
+# image add a fourth (scripts/mobile/build-fp6-boot-image.sh): init_functions.sh
+# and the shared OSTree boot resolver (scripts/mobile/common/initramfs).
 ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"
 base = "postmarketos-initramfs 3.12.0-r0"
 init_functions = "scripts/mobile/fp6-native-init-functions.sh"
-init_functions_sha256 = "64bbcd91dbdc0c6956cf79e40ad580ed089494b646acf824138ba57b6f997f4c"
+init_functions_sha256 = "357c081ffa5e1e9b5ebbcb1e358338e70380118d9bcf615983e1f411d7acdc52"
 ostree_package = "ostree-2026.5-1.luma.2.fc44"
 ostree_source = "config/mobile/fp6-ostree-source.json"
 
@@ -38,8 +41,16 @@ ostree_source = "config/mobile/fp6-ostree-source.json"
 manifest = "firmware.manifest"
 manifest_sha256 = "79a3c9b336f43dc341953426f1e8fc1ebf6c07d24a997dfe5c04370f31c80d7b"
 files = 267
-# Where the OS keeps it on the phone: shared /var, outside the signed /usr.
-store = "/var/lib/luma/device-firmware"
+# luma-fp6-firmware from the device repository, in the deployment's
+# /usr/lib/firmware. Alpha 1 kept it in shared /var/lib/luma/device-firmware;
+# the initramfs still verifies and uses that store when it exists.
+store = "/usr/lib/firmware"
+
+[image]
+# The shared phone userdata image: a GPT (4096-byte sectors) with LumaBoot
+# (FAT) and LumaRoot (ext4); the boot image's command line names both.
+root_uuid = "03797c05-cf87-4eda-adc4-6ce111baf2d3"
+boot_uuid = "032D-57AD"
 
 [install]
 guide = "INSTALL.md"
@@ -49,7 +60,20 @@ method = "fastboot"
 preserve = ["modemst1", "modemst2", "fsg", "fsc", "persist"]
 
 [updates]
-ostree_ref = "luma/1/aarch64/fairphone-fp6/nightly"
+# The one ARM OS commit, plus the device repository as a client-side layer.
+ostree_ref = "luma/1/aarch64/nightly"
+
+[device_repo]
+# Signed rpm-md repository (Luma OS Release key) with the Fairphone 6 platform:
+# kernel modules, firmware, platform services, IMS, eSIM and the modem stack.
+# The image builder layers it onto the generic commit; rpm-ostree upgrades
+# keep the layer and follow the repository.
+id = "luma-fairphone-fp6"
+url = "https://dl.simplyluma.com/os/devices/aarch64/fairphone-fp6/"
+# Base packages replaced by the repository's builds (override replace --from repo).
+replace = ["ModemManager", "ModemManager-glib", "libqmi", "libqmi-utils", "libcamera", "libcamera-ipa", "libcamera-gstreamer"]
+# Packages layered on top.
+install = ["kernel-modules-luma-fp6", "luma-fp6-firmware", "luma-fp6-platform", "luma-fp6-carrier-adapter", "luma-imsd", "luma-esim-broker", "lpac-fp6", "qbootctl", "tqftpserv"]
 
 [[releases]]
 name = "alpha1"
