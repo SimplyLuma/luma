@@ -138,8 +138,102 @@ def build_base(iso: Path, out: Path, arch: str = "x86_64", disk_gib: int = 40) -
     (out / f"base-{arch}.json").write_text(json.dumps({"iso": str(iso), "label": label,
                                                        "built": time.strftime("%FT%TZ", time.gmtime())}) + "\n")
     shutil.rmtree(work)
+    prepare_base(final, arch)
     log(f"base ready: {final}")
     return final
+
+
+# Jobs that only matter on a real computer and hold the desktop back in a
+# throwaway VM: update checks, caches, Snap seeding, network-online waits.
+REVIEW_MASKS = ("luma-update-check.service", "luma-update-check.timer",
+                "fedora-atomic-desktop-appstream-cache-refresh.service",
+                "fedora-atomic-desktop-mandb-update.service", "snapd.seeded.service", "snapd.service",
+                "snapd.socket", "NetworkManager-wait-online.service")
+
+
+def boot(disk: Path, arch: str, work: Path, port: int, memory: str = "4096", cpus: str = "2"):
+    display = (["-device", f"virtio-vga,xres={WIDTH},yres={HEIGHT}"] if arch == "x86_64"
+               else ["-device", f"virtio-gpu-pci,xres={WIDTH},yres={HEIGHT}"])
+    command = qemu_base(arch) + [
+        "-m", memory, "-smp", cpus, "-display", "none", *display,
+        "-drive", f"file={disk},if=virtio,format=qcow2,cache=unsafe,discard=unmap",
+        "-nic", f"user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:{port}-:22",
+        "-qmp", f"unix:{work / 'qmp.sock'},server=on,wait=off", "-serial", f"file:{work / 'serial.log'}",
+        "-monitor", "none",
+        "-object", "rng-random,filename=/dev/urandom,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
+    ]
+    return subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=open(work / "qemu.log", "w"))
+
+
+def wait_ssh(guest: "Guest", process, timeout: int) -> bool:
+    started = time.time()
+    while time.time() - started < timeout:
+        if process.poll() is not None:
+            return False
+        if guest.run("true", timeout=30).returncode == 0:
+            return True
+        time.sleep(5)
+    return False
+
+
+def wait_session(guest: "Guest", timeout: int) -> str:
+    started = time.time()
+    while time.time() - started < timeout:
+        probe = guest.run(f"id -u {USER} && pgrep -u {USER} -x gnome-shell >/dev/null && "
+                          f"test -S /run/user/$(id -u {USER})/wayland-0 && "
+                          f"loginctl show-user {USER} -p State --value", timeout=20)
+        lines = probe.stdout.split()
+        if probe.returncode == 0 and len(lines) >= 2 and lines[-1] == "active":
+            return lines[0]
+        time.sleep(5)
+    return ""
+
+
+def prepare_base(disk: Path, arch: str = "x86_64") -> None:
+    """Make an installed base boot straight to a stable logged-in desktop."""
+    key = disk.parent / "review-key"
+    work = Path(tempfile.mkdtemp(prefix="prepare-", dir=disk.parent))
+    try:
+        for attempt in ("configure", "verify"):
+            port = free_port()
+            process = boot(disk, arch, work, port, memory="6144", cpus="4")
+            guest = Guest(port, key)
+            started = time.time()
+            try:
+                if not wait_ssh(guest, process, 1500):
+                    raise RuntimeError(f"{attempt}: no SSH after {int(time.time() - started)} s")
+                log(f"{attempt}: SSH after {int(time.time() - started)} s")
+                if attempt == "configure":
+                    guest.run("systemctl mask " + " ".join(REVIEW_MASKS), timeout=60, check=True)
+                    guest.run("rpm-ostree kargs --append-if-missing=plymouth.enable=0 "
+                              "--delete-if-present=rhgb --delete-if-present=quiet", timeout=600, check=True)
+                    jobs = guest.run("systemctl list-jobs --no-legend | head -20", timeout=30).stdout
+                    log("pending jobs at configure:\n" + jobs)
+                else:
+                    uid = wait_session(guest, 900)
+                    if not uid:
+                        jobs = guest.run("systemctl list-jobs --no-legend | head; loginctl list-sessions", timeout=30)
+                        raise RuntimeError("verify: no logged-in desktop:\n" + jobs.stdout)
+                    log(f"verify: desktop session after {int(time.time() - started)} s")
+                    time.sleep(45)
+                    again = wait_session(guest, 10)
+                    if again != uid:
+                        raise RuntimeError("verify: the desktop session did not stay logged in")
+                    qmp = QMP(work / "qmp.sock")
+                    qmp.command("screendump", filename=str(work / "desktop.ppm"))
+                    width, height, rgb = read_ppm(work / "desktop.ppm")
+                    write_png(disk.parent / f"base-{arch}-desktop.png", width, height, rgb)
+                    log(f"verify: desktop stayed up; boot to desktop took {int(time.time() - started)} s")
+                guest.run("systemctl poweroff", timeout=30)
+                process.wait(timeout=300)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+                shutil.copy(work / "serial.log", disk.parent / f"prepare-{attempt}-serial.log")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 # -- QMP and screenshots -----------------------------------------------------------
@@ -215,8 +309,15 @@ class Guest:
                 "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
 
     def run(self, command: str, timeout: int = 120, check: bool = False) -> subprocess.CompletedProcess:
-        result = subprocess.run(["ssh", "-p", str(self.port), *self.ssh_args(), "root@127.0.0.1", command],
-                                capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        try:
+            result = subprocess.run(["ssh", "-p", str(self.port), *self.ssh_args(), "root@127.0.0.1", command],
+                                    capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired as expired:
+            # While the guest boots, user networking accepts the connection
+            # before sshd answers; that is "not yet", not an error.
+            result = subprocess.CompletedProcess(expired.cmd, 124, expired.stdout or "", "timed out")
+            if isinstance(result.stdout, bytes):
+                result.stdout = result.stdout.decode(errors="replace")
         if check and result.returncode != 0:
             raise RuntimeError(f"guest command failed ({result.returncode}): {command}\n{result.stderr[-800:]}")
         return result
@@ -258,40 +359,15 @@ def run_app(base: Path, key: Path, package: Path, app_id: str, fmt: str, out: Pa
     subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", "-b", str(base), "-F", "qcow2", str(overlay)],
                    check=True)
     port = free_port()
-    qmp_path = work / "qmp.sock"
-    serial = work / "serial.log"
-    display = (["-device", f"virtio-vga,xres={WIDTH},yres={HEIGHT}"] if arch == "x86_64"
-               else ["-device", f"virtio-gpu-pci,xres={WIDTH},yres={HEIGHT}"])
-    command = qemu_base(arch) + [
-        "-m", "4096", "-smp", "2", "-display", "none", *display,
-        "-drive", f"file={overlay},if=virtio,format=qcow2,cache=unsafe,discard=unmap",
-        "-nic", f"user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:{port}-:22",
-        "-qmp", f"unix:{qmp_path},server=on,wait=off", "-serial", f"file:{serial}", "-monitor", "none",
-        "-object", "rng-random,filename=/dev/urandom,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
-    ]
-    process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                               stderr=open(work / "qemu.log", "w"))
+    process = boot(overlay, arch, work, port, memory="6144", cpus="4")
     guest = Guest(port, key)
     try:
-        qmp = QMP(qmp_path)
+        qmp = QMP(work / "qmp.sock")
         started = time.time()
-        while time.time() - started < boot_timeout:
-            if process.poll() is not None:
-                raise RuntimeError("the VM stopped while starting")
-            if guest.run("true", timeout=15).returncode == 0:
-                break
-            time.sleep(5)
-        else:
+        if not wait_ssh(guest, process, boot_timeout):
             step("boot", False, "The test VM didn't start in time.", internal=True)
             return result
-        uid = ""
-        while time.time() - started < boot_timeout:
-            probe = guest.run(f"id -u {USER} && pgrep -u {USER} -x gnome-shell >/dev/null && "
-                              f"test -S /run/user/$(id -u {USER})/wayland-0 && echo ready", timeout=20)
-            if probe.stdout.strip().endswith("ready"):
-                uid = probe.stdout.split()[0]
-                break
-            time.sleep(5)
+        uid = wait_session(guest, max(60, boot_timeout - int(time.time() - started)))
         if not uid:
             step("boot", False, "The test VM's desktop didn't start.", internal=True)
             return result
@@ -318,7 +394,10 @@ def run_app(base: Path, key: Path, package: Path, app_id: str, fmt: str, out: Pa
             return result
         alive, fraction = False, 0.0
         shot = work / "after.ppm"
-        for _ in range(12):  # up to a minute for the window to appear
+        launched = time.time()
+        # A first start builds Flatpak's library cache for the runtime, which
+        # on the VM's cold disk can take over a minute; allow three.
+        for _ in range(36):
             time.sleep(5)
             state = guest.run(f"runuser -u {USER} -- env {session_env(uid)} systemctl --user is-active "
                               f"depot-review-app", timeout=20).stdout.strip()
@@ -327,6 +406,7 @@ def run_app(base: Path, key: Path, package: Path, app_id: str, fmt: str, out: Pa
             fraction = changed_fraction(read_ppm(before)[2], read_ppm(shot)[2])
             if not alive or fraction > 0.02:
                 break
+        seconds = int(time.time() - launched)
         time.sleep(3)
         qmp.command("screendump", filename=str(shot))
         width, height, rgb = read_ppm(shot)
@@ -340,10 +420,10 @@ def run_app(base: Path, key: Path, package: Path, app_id: str, fmt: str, out: Pa
                  detail=journal.stdout[-1500:])
             return result
         if fraction <= 0.02:
-            step("launch", False, "Your app started but no window appeared within a minute.",
+            step("launch", False, "Your app started but no window appeared within three minutes.",
                  detail=journal.stdout[-1500:])
             return result
-        step("launch", True, "Your app opened a window.")
+        step("launch", True, f"Your app opened a window ({seconds} s).")
         guest.run(f"runuser -u {USER} -- env {session_env(uid)} systemctl --user stop depot-review-app", timeout=30)
         guest.run(f"flatpak kill {app_id}", timeout=20)
         remove = guest.run(f"flatpak uninstall --system --noninteractive -y --delete-data {app_id} 2>&1", timeout=300)
@@ -385,6 +465,9 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--iso", type=Path, required=True)
     b.add_argument("--out", type=Path, required=True)
     b.add_argument("--arch", default="x86_64")
+    pb = sub.add_parser("prepare-base")
+    pb.add_argument("--disk", type=Path, required=True)
+    pb.add_argument("--arch", default="x86_64")
     r = sub.add_parser("run")
     r.add_argument("--base", type=Path, required=True)
     r.add_argument("--key", type=Path, required=True)
@@ -394,6 +477,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--arch", default="x86_64")
     r.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command == "prepare-base":
+        prepare_base(args.disk, args.arch)
+        return 0
     if args.command == "build-base":
         build_base(args.iso, args.out, args.arch)
         return 0

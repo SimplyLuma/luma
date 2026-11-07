@@ -49,6 +49,8 @@ class Config:
     r2_credentials: Path = Path("/root/.config/luma-maintainer-publisher")
     poll_seconds: int = 20
     catalogue_seconds: int = 60
+    # False skips catalogue publishing (rehearsals against a stand-in Hub).
+    publish_catalogue: bool = True
     max_upload_bytes: int = 4 * 1024 ** 3
     vm_arches: list = field(default_factory=lambda: ["x86_64"])
 

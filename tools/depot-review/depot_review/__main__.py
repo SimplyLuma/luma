@@ -28,7 +28,8 @@ def main(argv: list[str] | None = None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("serve")
+    sv = sub.add_parser("serve")
+    sv.add_argument("--once", action="store_true", help="stop when the Hub has no more work")
     c = sub.add_parser("check")
     c.add_argument("file", type=Path)
     c.add_argument("--arch", default="x86_64")
@@ -54,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     config = Config.load(args.config)
 
     if args.command == "serve":
-        service.serve(config)
+        service.serve(config, once=args.once)
         return 0
     if args.command == "check":
         job = config.work / "jobs" / f"local-{time.strftime('%Y%m%dT%H%M%S')}"

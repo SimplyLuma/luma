@@ -56,7 +56,7 @@ def inspect_upload(config: Config, package: Path, fmt: str, work: Path) -> dict:
                "--volume", f"{config.source}:/src:ro", "--volume", f"{package}:/in/package:ro",
                "--volume", f"{work}:/work:rw", "--volume", f"{config.clamav_db}:/clamav:ro",
                "--workdir", "/src/tools/depot-review", config.review_image,
-               "python3", "-B", "-m", "depot_review.inspect", "--upload", "/in/package", "--format", fmt,
+               "python3", "-B", "-m", "depot_review.examine", "--upload", "/in/package", "--format", fmt,
                "--work", "/work/x", "--clamav-db", "/clamav"]
     result = subprocess.run(command, env=podman_env(config), capture_output=True, text=True, timeout=5400)
     if result.returncode != 0 or not result.stdout.strip():
@@ -254,7 +254,7 @@ def prune_jobs(config: Config, keep_days: int = 14) -> None:
 catalogue_due = [0.0]
 
 
-def serve(config: Config) -> None:
+def serve(config: Config, once: bool = False) -> None:
     from .r2 import R2
     hub = Hub(config.hub, config.token_file, config.paths)
     r2 = R2(config.r2_account, config.r2_bucket, config.r2_credentials)
@@ -278,16 +278,20 @@ def serve(config: Config) -> None:
                     handler(config, hub, item)
                     busy = True
                     break
-            if time.time() >= catalogue_due[0]:
+            if config.publish_catalogue and time.time() >= catalogue_due[0]:
                 try:
                     catalogue.publish(config, hub, r2)
                 except Exception as error:  # the next round retries
                     log(f"catalogue: {error}")
                 catalogue_due[0] = time.time() + config.catalogue_seconds
             if not busy:
+                if once:
+                    return
                 time.sleep(config.poll_seconds)
         except HubError as error:
             log(f"hub: {error}")
+            if once:
+                raise
             time.sleep(config.poll_seconds * 3)
         except KeyboardInterrupt:
             return

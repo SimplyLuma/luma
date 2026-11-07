@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Look inside one uploaded package. Runs in the networkless review container.
 
-  python3 -m depot_review.inspect --upload FILE --format FORMAT --work DIR \
+  python3 -m depot_review.examine --upload FILE --format FORMAT --work DIR \
       [--clamav-db DIR] > facts.json
 
 Every package is opened with the tools its own format uses (flatpak and

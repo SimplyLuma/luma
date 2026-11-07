@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Depot submission review: checks, VM launch test, publishing, signed catalogue
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/luma-build/depot-review/source/tools/depot-review
+ExecStart=/usr/bin/python3 -B -m depot_review serve
+Environment=PYTHONUNBUFFERED=1
+# Publishing runs rsync over ssh to the dl.simplyluma.com origin. Python
+# services run as unconfined_service_t, which may do that; a unit that execs
+# rsync or a shell script directly is confined and denied.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+CPUWeight=40
+IOWeight=40
+Restart=always
+RestartSec=30
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

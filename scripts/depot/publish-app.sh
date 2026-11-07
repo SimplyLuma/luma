@@ -62,7 +62,8 @@ if [ "$third_party" = 1 ]; then
   esac
   depot_in_signer python3 -B -c 'import json,sys; sys.exit(sys.argv[2] in json.load(open(sys.argv[1])))' \
     packaging/flatpak/apps/titles.json "$app_id" || depot_die "$app_id is one of Luma's own apps"
-  if depot_in_signer ostree refs --repo="$depot_repo" | grep -Eq "^(app/$app_id/[^/]+/(beta|nightly)|runtime/$app_id\.[^/]+/)"; then
+  remote_refs=$(depot_in_signer ostree refs --repo="$depot_repo")
+  if grep -Eq "^(app/${app_id//./\\.}/[^/]+/(beta|nightly)|runtime/${app_id//./\\.}\.[^/]+/)" <<<"$remote_refs"; then
     depot_die "$app_id already has a Luma release; a third-party app cannot shadow it"
   fi
   printf '%s\n' "$app_id" >"$owner_mark"
