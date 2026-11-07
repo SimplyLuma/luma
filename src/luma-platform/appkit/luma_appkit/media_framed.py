@@ -20,7 +20,9 @@ a fraction of the frame (the mockup's `cqw`/`cqh`), so the big picture, a
     FramedPicture.desktop("tide-desktop-dark.png", backdrop="prism.png",
                           dock=["filer.svg", "tide.svg", …], running=1)
     FramedPicture.phone("tide-phone-dark.png", backdrop="terrace.jpg")
-    FramedPicture.specimen(theme_window, backdrop="prism.png")
+    FramedPicture.specimen_of(theme_window, backdrop="prism.png")
+    FramedPicture.phone("ember.jpg", backdrop="ember.jpg", screen=lock_screen)   # a widget over the screen
+    FramedPicture.desktop(shot, backdrop=wall, dock=icons, banner=chip)           # a frosted banner near the foot
     picture.set_aspect(4, 3)           # compact widths
     picture.set_radius(10)             # a thumbnail
 """
@@ -143,8 +145,12 @@ class FramedPicture(Gtk.Widget):
 
     __gtype_name__ = "LumaUIFramedPicture"
 
+    #: The frame width a banner's own CSS sizes are written for; it scales with the frame.
+    BANNER_REFERENCE = 572
+
     def __init__(self, spec: FrameSpec, *, specimen: Gtk.Widget | None = None, radius: float = 18,
-                 specimen_width: int = 360, label: str | None = None) -> None:
+                 specimen_width: int = 360, label: str | None = None, screen: Gtk.Widget | None = None,
+                 banner: Gtk.Widget | None = None) -> None:
         super().__init__(overflow=Gtk.Overflow.HIDDEN, accessible_role=Gtk.AccessibleRole.IMG)
         self.add_css_class("lumaui-framed-picture")
         self.add_css_class(spec.kind)
@@ -157,6 +163,12 @@ class FramedPicture(Gtk.Widget):
             self.specimen = specimen
             specimen.set_parent(self)
             specimen.set_can_target(False)
+        # `screen` lies over a phone's screen at its own 390×844 points; `banner` sits centred near the foot.
+        self.screen, self.banner = screen, banner
+        for extra in (screen, banner):
+            if extra is not None:
+                extra.set_parent(self)
+                extra.set_can_target(False)
         if label:
             self.update_property([Gtk.AccessibleProperty.LABEL], [label])
 
@@ -168,8 +180,8 @@ class FramedPicture(Gtk.Widget):
         return cls(FrameSpec("desktop", window, backdrop, tuple(dock), running), **kwargs)
 
     @classmethod
-    def phone(cls, screen: str | None, *, backdrop: str | None, **kwargs) -> "FramedPicture":
-        return cls(FrameSpec("phone", screen, backdrop), **kwargs)
+    def phone(cls, picture: str | None, *, backdrop: str | None, **kwargs) -> "FramedPicture":
+        return cls(FrameSpec("phone", picture, backdrop), **kwargs)
 
     @classmethod
     def specimen_of(cls, widget: Gtk.Widget, *, backdrop: str | None, **kwargs) -> "FramedPicture":
@@ -204,6 +216,18 @@ class FramedPicture(Gtk.Widget):
         return width * SPEC_INSET_X, height * SPEC_INSET_Y, width * (1 - 2 * SPEC_INSET_X), height * (1 - 2 * SPEC_INSET_Y)
 
     def do_size_allocate(self, width: int, height: int, _baseline: int) -> None:
+        if self.screen is not None:
+            px, py, pw, ph, s = phone_rect(width, height)
+            screen_w, screen_h = PHONE_W - 2 * BEZEL, PHONE_H - 2 * BEZEL
+            self.screen.allocate(screen_w, screen_h, -1, Gsk.Transform().translate(
+                Graphene.Point().init(px + BEZEL * s, py + BEZEL * s)).scale(s, s))
+        if self.banner is not None:
+            scale = width / self.BANNER_REFERENCE
+            bw, bh = (max(1, v) for v in (self.banner.measure(Gtk.Orientation.HORIZONTAL, -1)[1],
+                                          self.banner.measure(Gtk.Orientation.VERTICAL, -1)[1]))
+            foot = height * (0.12 if self.spec.kind == "phone" else 0.18)
+            self.banner.allocate(bw, bh, -1, Gsk.Transform().translate(
+                Graphene.Point().init((width - bw * scale) / 2, height - foot - bh * scale)).scale(scale, scale))
         if self.specimen is None:
             return
         x, y, w, h = self._specimen_box(width, height)
@@ -229,6 +253,8 @@ class FramedPicture(Gtk.Widget):
             self._phone(snapshot, width, height)
         else:
             self._specimen(snapshot, width, height)
+        if self.banner is not None:
+            self.snapshot_child(self.banner, snapshot)
         snapshot.pop()
 
     def _backdrop(self, snapshot: Gtk.Snapshot, width: float, height: float) -> None:
@@ -327,6 +353,8 @@ class FramedPicture(Gtk.Widget):
         tex = texture(self.spec.picture)
         if tex is not None:
             _cover(snapshot, tex, bounds.get_x(), bounds.get_y(), bounds.get_width(), bounds.get_height())
+        if self.screen is not None:
+            self.snapshot_child(self.screen, snapshot)
         snapshot.pop()
         hole = 12 * s
         hx, hy = x + w / 2 - hole / 2, y + 24 * s
@@ -351,6 +379,7 @@ class FramedPicture(Gtk.Widget):
         snapshot.append_outset_shadow(panel, _rgba(1, 1, 1, 0.1), 0, 0, 1, 0)
 
     def do_dispose(self) -> None:
-        if self.specimen is not None and self.specimen.get_parent() is self:
-            self.specimen.unparent()
+        for child in (self.specimen, self.screen, self.banner):
+            if child is not None and child.get_parent() is self:
+                child.unparent()
         Gtk.Widget.do_dispose(self)
