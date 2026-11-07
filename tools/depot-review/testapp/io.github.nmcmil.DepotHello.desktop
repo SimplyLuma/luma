@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Depot Hello
+Comment=The smallest app that goes through Depot review
+Exec=depot-hello
+Icon=io.github.nmcmil.DepotHello
+Categories=Utility;
+Terminal=false

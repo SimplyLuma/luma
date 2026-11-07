@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Review tools: everything needed to open and scan an uploaded package.
+# Uploads are inspected in this image with no network and no capabilities.
+FROM registry.fedoraproject.org/fedora:44
+RUN dnf -y install --setopt=install_weak_deps=False \
+      flatpak ostree clamav clamav-update rpm cpio dpkg squashfs-tools \
+      python3 minisign file binutils && \
+    dnf clean all && \
+    sed -i -e 's/^Example/#Example/' /etc/freshclam.conf && \
+    useradd -r -u 990 -M -d /nonexistent review
