@@ -32,6 +32,7 @@ from .config import Config
 from .hub import Hub
 
 APP_ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z][A-Za-z0-9_-]*){2,}\Z")
+VOLATILE = ("generated", "generated_at", "signed")
 TYPES = {"png": "image/png", "webp": "image/webp", "svg": "image/svg+xml"}
 
 
@@ -146,9 +147,10 @@ def publish(config: Config, hub: Hub, r2, force: bool = False) -> dict | None:
     validate(document)
     mirror = Mirror(config, hub, r2, state.get("media", {}))
     document = mirror.walk(document)
-    document.setdefault("signed", {})
+    # The Hub stamps each response; only a change in content earns a new signature.
+    stable = {k: v for k, v in document.items() if k not in VOLATILE}
     document["signed"] = {"by": "Luma Depot", "key": config.catalogue_pub.name,
-                          "source_sha256": hashlib.sha256(json.dumps(document, sort_keys=True).encode()).hexdigest()}
+                          "source_sha256": hashlib.sha256(json.dumps(stable, sort_keys=True).encode()).hexdigest()}
     source = document["signed"]["source_sha256"]
     if not force and state.get("source_sha256") == source:
         return None

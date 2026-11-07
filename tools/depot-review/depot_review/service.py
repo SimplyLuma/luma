@@ -137,7 +137,8 @@ def review(config: Config, hub: Hub | None, submission: dict, job: Path, package
         facts = inspect_upload(config, Path(package["path"]), package.get("format", ""), job / f"work-{package['arch']}")
         (job / f"facts-{package['arch']}.json").write_text(json.dumps(facts, indent=1))
         all_facts.append(facts)
-        report_checks += checks.package_checks(facts, package, submission, policy, luma_ids(config))
+        reserved_ids = luma_ids(config) | set(submission.get("reserved_ids") or [])
+        report_checks += checks.package_checks(facts, package, submission, policy, reserved_ids)
     holder = owners(config).get(submission.get("app_id") or "")
     if holder and developer_of(submission) and holder != developer_of(submission):
         report_checks.append(checks.check("identity", False, "This app id belongs to another developer's app. "
