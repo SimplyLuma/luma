@@ -293,7 +293,7 @@ Use the app's own development watcher or restart its preview service after edits
     try:
         requested=json.loads((session.directory/'experience.json').read_text())['experience']
     except (OSError,ValueError,KeyError,TypeError):requested=session.manifest['target']
-    if requested in ('tablet','tv','smart-device'):
+    if requested == 'smart-device':
         from .experiences import LABELS
         text+='\nRequested interface: '+LABELS[requested]+'. The OS may still use its current Desktop interface while mode support is developed.\nThe request is available in /sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw when fw_cfg sysfs is enabled.\n'
     if session.manifest['target']=='mobile':
