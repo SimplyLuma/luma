@@ -9,7 +9,9 @@ opens the event in Luma Calendar (--event-uid=<uid> --event-day=<day>, the
 command line Calendar's reminders use); "N more" and Open Calendar open
 Calendar on that day (--event-day=<day>).
 
-Rows show the calendar's colour, the title, the place under it and the time.
+Rows show the calendar's colour (painted as Calendar paints it: the colour's
+hue at the LumaUI mark lightness and chroma), the title, the place under it
+and the time.
 The calendar server sends each event's location and its calendar's colour in
 the extras dictionary it already carried.
 
@@ -410,14 +412,45 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
  
  const ClocksIntegrationIface = loadInterfaceXML('org.gnome.Shell.ClocksIntegration');
  const ClocksProxy = Gio.DBusProxy.makeProxyWrapper(ClocksIntegrationIface);
-@@ -109,39 +107,73 @@
+@@ -109,39 +107,104 @@
      }
  });
  
 -const EventsSection = GObject.registerClass(
 -class EventsSection extends St.Button {
 +const MAX_EVENT_ROWS = 4;
-+const EVENT_COLOR = /^#[0-9a-fA-F]{3,8}$/;
++
++// Calendar paints a calendar's colour as that colour's hue at the LumaUI mark
++// lightness and chroma (luma_appkit rows_mark, MARK tokens); the list matches.
++const MARK_HUE_LIGHTNESS = 0.72;
++const MARK_HUE_CHROMA = 0.13;
++
++function _calendarColor(color) {
++    const hex = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i.exec(color ?? '')?.[1];
++    if (!hex)
++        return null;
++    const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
++    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
++    const l = (max + min) / 2;
++    const saturation = d === 0 ? 0 : d / (l <= 0.5 ? max + min : 2 - max - min);
++    if (saturation <= 0.05)
++        return null;
++    let hue = max === r ? (g - b) / d : max === g ? 2 + (b - r) / d : 4 + (r - g) / d;
++    hue = Math.round(((hue / 6) % 1 + 1) % 1 * 360) * Math.PI / 180;
++
++    const A = MARK_HUE_CHROMA * Math.cos(hue), B = MARK_HUE_CHROMA * Math.sin(hue);
++    const L = MARK_HUE_LIGHTNESS;
++    const l3 = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
++    const m3 = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
++    const s3 = (L - 0.0894841775 * A - 1.2914855480 * B) ** 3;
++    const encode = v => {
++        v = Math.max(0, Math.min(1, v));
++        return Math.round((v > 0.0031308 ? 1.055 * v ** (1 / 2.4) - 0.055 : 12.92 * v) * 255);
++    };
++    return `rgb(${encode(4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3)}, ` +
++        `${encode(-1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3)}, ` +
++        `${encode(-0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3)})`;
++}
 +
 +function _addDays(date, days) {
 +    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
@@ -499,7 +532,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
          this._appSys = Shell.AppSystem.get_default();
          this._appSys.connect('installed-changed',
              this._appInstalledChanged.bind(this));
-@@ -149,12 +181,8 @@
+@@ -149,12 +212,8 @@
      }
  
      setDate(date) {
@@ -513,35 +546,22 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
          this._reloadEvents();
      }
  
-@@ -169,150 +197,222 @@
+@@ -167,152 +226,225 @@
+         this._eventSource.connect('notify::has-calendars',
+             this._sync.bind(this));
          this._sync();
-     }
- 
+-    }
+-
 -    _updateTitle() {
 -        /* Translators: Shown on calendar heading when selected day occurs on current year */
 -        const sameYearFormat = T_(NC_('calendar heading', '%B %-d'));
-+    _dayTitle(day, format) {
-+        const today = _addDays(new Date(), 0);
-+        if (day.getTime() === today.getTime())
-+            return _('Today');
-+        if (day.getTime() === _addDays(today, 1).getTime())
-+            return _('Tomorrow');
-+        return formatDateWithCFormatString(day, T_(format));
-+    }
- 
+-
 -        /* Translators: Shown on calendar heading when selected day occurs on different year */
 -        const otherYearFormat = T_(NC_('calendar heading', '%B %-d %Y'));
-+    _formatEventTime(event, day) {
-+        const dayEnd = _addDays(day, 1);
- 
+-
 -        const timeSpanDay = GLib.TIME_SPAN_DAY / 1000;
 -        const now = new Date();
-+        if (event.date <= day && event.end >= dayEnd)
-+            /* Translators: Shown in calendar event list for all day events
-+             * Keep it short, best if you can use less then 10 characters
-+             */
-+            return C_('event list time', 'All day');
- 
+-
 -        if (this._startDate <= now && now < this._endDate)
 -            this._title.text = _('Today');
 -        else if (this._endDate <= now && now - this._endDate < timeSpanDay)
@@ -552,36 +572,72 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 -            this._title.text = formatDateWithCFormatString(this._startDate, sameYearFormat);
 -        else
 -            this._title.text = formatDateWithCFormatString(this._startDate, otherYearFormat);
-+        if (event.date < day)
-+            /* Translators: An event that started on an earlier day, e.g. "Until 3:00 PM" */
-+            return _('Until %s').format(formatTime(event.end, {timeOnly: true}));
-+
-+        return formatTime(event.date, {timeOnly: true});
      }
  
 -    _isAtMidnight(eventTime) {
 -        return eventTime.getHours() === 0 && eventTime.getMinutes() === 0 && eventTime.getSeconds() === 0;
-+    _addHeading(day, format) {
-+        this._eventsList.add_child(new St.Label({
-+            text: this._dayTitle(day, format),
-+            style_class: 'events-title',
-+        }));
++    _dayTitle(day, format) {
++        const today = _addDays(new Date(), 0);
++        if (day.getTime() === today.getTime())
++            return _('Today');
++        if (day.getTime() === _addDays(today, 1).getTime())
++            return _('Tomorrow');
++        return formatDateWithCFormatString(day, T_(format));
      }
  
 -    _formatEventTime(event) {
 -        const eventStart = event.date;
 -        let eventEnd = event.end;
-+    _addEvent(event, day) {
-+        const time = this._formatEventTime(event, day);
++    _formatEventTime(event, day) {
++        const dayEnd = _addDays(day, 1);
  
 -        const allDay =
 -            eventStart.getTime() === this._startDate.getTime() && eventEnd.getTime() === this._endDate.getTime();
-+        const color = new St.Widget({style_class: 'event-color'});
-+        if (EVENT_COLOR.test(event.color))
-+            color.style = `background-color: ${event.color};`;
++        if (event.date <= day && event.end >= dayEnd)
++            /* Translators: Shown in calendar event list for all day events
++             * Keep it short, best if you can use less then 10 characters
++             */
++            return C_('event list time', 'All day');
  
 -        const startsBeforeToday = eventStart < this._startDate;
 -        const endsAfterToday = eventEnd > this._endDate;
++        if (event.date < day)
++            /* Translators: An event that started on an earlier day, e.g. "Until 3:00 PM" */
++            return _('Until %s').format(formatTime(event.end, {timeOnly: true}));
+ 
+-        const startTimeOnly = formatTime(eventStart, {timeOnly: true});
+-        const endTimeOnly = formatTime(eventEnd, {timeOnly: true});
++        return formatTime(event.date, {timeOnly: true});
++    }
+ 
+-        const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
++    _addHeading(day, format) {
++        this._eventsList.add_child(new St.Label({
++            text: this._dayTitle(day, format),
++            style_class: 'events-title',
++        }));
++    }
+ 
+-        let title;
+-        if (allDay) {
+-            /* Translators: Shown in calendar event list for all day events
+-             * Keep it short, best if you can use less then 10 characters
+-             */
+-            title = C_('event list time', 'All Day');
+-        } else if (startsBeforeToday || endsAfterToday) {
+-            const now = new Date();
+-            const thisYear = now.getFullYear();
++    _addEvent(event, day) {
++        const time = this._formatEventTime(event, day);
+ 
+-            const startsAtMidnight = this._isAtMidnight(eventStart);
+-            const endsAtMidnight = this._isAtMidnight(eventEnd);
++        const color = new St.Widget({style_class: 'event-color'});
++        const paint = _calendarColor(event.color);
++        if (paint)
++            color.style = `background-color: ${paint};`;
+ 
+-            const startYear = eventStart.getFullYear();
 +        const text = new St.BoxLayout({
 +            orientation: Clutter.Orientation.VERTICAL,
 +            x_expand: true,
@@ -596,9 +652,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 +                style_class: 'event-time event-location',
 +            }));
 +        }
- 
--        const startTimeOnly = formatTime(eventStart, {timeOnly: true});
--        const endTimeOnly = formatTime(eventEnd, {timeOnly: true});
++
 +        const box = new St.BoxLayout({x_expand: true});
 +        box.add_child(color);
 +        box.add_child(text);
@@ -607,8 +661,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 +            style_class: 'event-time',
 +            y_align: Clutter.ActorAlign.START,
 +        }));
- 
--        const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
++
 +        const button = new St.Button({
 +            style_class: 'event-box',
 +            can_focus: true,
@@ -622,15 +675,9 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 +        this._eventsList.add_child(button);
 +    }
  
--        let title;
--        if (allDay) {
--            /* Translators: Shown in calendar event list for all day events
--             * Keep it short, best if you can use less then 10 characters
--             */
--            title = C_('event list time', 'All Day');
--        } else if (startsBeforeToday || endsAfterToday) {
--            const now = new Date();
--            const thisYear = now.getFullYear();
+-            if (endsAtMidnight) {
+-                eventEnd = new Date(eventEnd);
+-                eventEnd.setDate(eventEnd.getDate() - 1);
 +    _addMore(text, day) {
 +        const button = new St.Button({
 +            style_class: 'events-more-button',
@@ -643,21 +690,14 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
 +            () => this._openCalendar(_calendarArgs(null, day)));
 +        this._eventsList.add_child(button);
 +    }
- 
--            const startsAtMidnight = this._isAtMidnight(eventStart);
--            const endsAtMidnight = this._isAtMidnight(eventEnd);
--
--            const startYear = eventStart.getFullYear();
++
 +    _addPlaceholder(text) {
 +        this._eventsList.add_child(new St.Label({
 +            text,
 +            style_class: 'event-placeholder',
 +        }));
 +    }
- 
--            if (endsAtMidnight) {
--                eventEnd = new Date(eventEnd);
--                eventEnd.setDate(eventEnd.getDate() - 1);
++
 +    // From now into next month, grouped by day
 +    _showUpcoming(now) {
 +        const today = _addDays(now, 0);
@@ -836,7 +876,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
              const app = Gio.AppInfo.get_default_for_type('text/calendar', false);
              const defaultInRecommended = apps.some(a => a.equal(app));
              this._calendarApp = defaultInRecommended ? app : apps[0];
-@@ -320,12 +420,14 @@
+@@ -320,12 +452,14 @@
              this._calendarApp = null;
          }
  
@@ -852,7 +892,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
      }
  });
  
-@@ -949,13 +1051,19 @@
+@@ -949,13 +1083,19 @@
          this.add_style_class_name('clock-display');
  
          const layout = new FreezableBinLayout();
@@ -874,7 +914,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
          bin.add_child(hbox);
  
          this._calendar = new Calendar.Calendar();
-@@ -982,11 +1090,15 @@
+@@ -982,11 +1122,15 @@
          const vbox = new St.Widget({
              style_class: 'datemenu-calendar-column',
              layout_manager: boxLayout,
@@ -890,7 +930,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
          vbox.add_child(this._calendar);
  
          const displaysBox = new St.BoxLayout({
-@@ -998,6 +1110,7 @@
+@@ -998,6 +1142,7 @@
          this._displaysSection = new St.ScrollView({
              style_class: 'datemenu-displays-section vfade',
              x_expand: true,
@@ -898,7 +938,7 @@ diff --git a/js/ui/dateMenu.js b/js/ui/dateMenu.js
              overlay_scrollbars: true,
              vscrollbar_policy: St.PolicyType.EXTERNAL,
              child: displaysBox,
-@@ -1005,6 +1118,7 @@
+@@ -1005,6 +1150,7 @@
          vbox.add_child(this._displaysSection);
  
          this._eventsItem = new EventsSection();

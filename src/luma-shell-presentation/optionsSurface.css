@@ -143,7 +143,7 @@
 /* The date menu is the calendar column alone (0330): no gap for a notification column. */
 .datemenu-calendar-column:ltr, .datemenu-calendar-column:rtl { margin-left: 0; margin-right: 0; }
 /* The calendar panel (0331): the month and Today when another month is on show; today is the filled
-   accent, the chosen day a ring (a border: St paints no inset shadow on a clear fill), hover the tint alone, a focused day is outlined outside the cell.
+   accent, the chosen day a ring (a border: St paints no inset shadow on a clear fill), hover the tint alone, a focused day a fainter ring.
    Below it, what is coming up (or the chosen day), then Open Calendar. */
 .datemenu-popover #calendarArea .calendar .calendar-month-header .calendar-month-label { width: auto; padding: 8px 10px; text-align: left; background-color: transparent; font-size: 1.1em; }
 .datemenu-popover #calendarArea .calendar .calendar-day { width: 34px; height: 34px; margin: 1px; }
@@ -162,12 +162,12 @@
 .datemenu-popover.luma-surface-light #calendarArea .events-button .events-more-button:hover,
 .datemenu-popover.luma-surface-light #calendarArea .events-button .events-open-button:hover { background-color: rgba(20,22,26,.07); }
 .datemenu-popover #calendarArea .calendar .calendar-day:selected { background-color: transparent; border: 2px solid -st-accent-color; }
-.datemenu-popover #calendarArea .calendar .calendar-day:focus { box-shadow: 0 0 0 2px st-transparentize(-st-accent-color, 0.4) !important; }
-.datemenu-popover #calendarArea .calendar .calendar-day:selected:focus { background-color: transparent; }
+.datemenu-popover #calendarArea .calendar .calendar-day:focus { box-shadow: none !important; border: 2px solid st-transparentize(-st-accent-color, 0.5); }
+.datemenu-popover #calendarArea .calendar .calendar-day:selected:focus { border-color: -st-accent-color; }
 .datemenu-popover #calendarArea .calendar .calendar-day.calendar-today,
 .datemenu-popover #calendarArea .calendar .calendar-day.calendar-today:selected { background-color: -st-accent-color; color: -st-accent-fg-color; border-width: 0; box-shadow: none; }
 .datemenu-popover #calendarArea .calendar .calendar-day.calendar-today:hover { background-color: st-lighten(-st-accent-color, 4%); }
-.datemenu-popover #calendarArea .calendar .calendar-day.calendar-today:focus { box-shadow: 0 0 0 2px st-transparentize(-st-accent-color, 0.4) !important; }
+.datemenu-popover #calendarArea .calendar .calendar-day.calendar-today:focus { box-shadow: none !important; border: 2px solid st-transparentize(-st-accent-fg-color, 0.4); }
 .datemenu-popover #calendarArea .events-button .events-box,
 .datemenu-popover #calendarArea .events-button .events-box .events-list { spacing: 2px; }
 .datemenu-popover #calendarArea .events-button .events-box .events-title { padding: 6px 8px 2px; font-size: 0.85em; font-weight: bold; }

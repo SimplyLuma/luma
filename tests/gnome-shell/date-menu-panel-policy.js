@@ -64,6 +64,15 @@ assert(JSON.stringify(calendarArgs('local\nabc\n20261112T090000Z', day)) ===
     '["--event-uid=abc","--event-day=2026-11-12"]', 'a repeating event opens on its day');
 assert(JSON.stringify(calendarArgs(null, day)) === '["--event-day=2026-11-12"]', 'a day alone');
 
+// A calendar's colour is painted as Calendar paints it: its hue in OKLCH at the mark tokens
+const colorStart = menu.indexOf('const MARK_HUE_LIGHTNESS');
+const colorSource = menu.slice(colorStart, menu.indexOf('\n}\n', menu.indexOf('function _calendarColor')) + 2);
+const calendarColor = new Function(`${colorSource}; return _calendarColor;`)();
+assert(calendarColor('#e66100') === 'rgb(235, 130, 123)', `orange: ${calendarColor('#e66100')}`);
+assert(calendarColor('#62a0ea') === 'rgb(0, 185, 213)', `blue: ${calendarColor('#62a0ea')}`);
+assert(calendarColor('#808080') === null && calendarColor('red;') === null,
+    'grey or anything else falls back to the accent');
+
 const grid = calendar.slice(calendar.indexOf('export const Calendar'));
 assert(/export const UPCOMING_DAYS = \d+;/.test(calendar), 'calendar.js exports UPCOMING_DAYS');
 assert(/sameDay\(button\._date, this\._selectedDate\)\s*\?\s*new Date\(\)/.test(grid),
