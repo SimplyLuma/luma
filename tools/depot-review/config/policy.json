@@ -1,0 +1,32 @@
+{
+  "reserved_prefixes": [
+    "org.projectluma.",
+    "io.luma.",
+    "com.simplyluma.",
+    "org.simplyluma.",
+    "com.projectluma."
+  ],
+  "third_party_branch": "stable",
+  "runtimes": {
+    "org.projectluma.Platform": [
+      "44"
+    ],
+    "org.freedesktop.Platform": [
+      "25.08",
+      "26.08"
+    ],
+    "org.gnome.Platform": [
+      "49",
+      "50",
+      "51"
+    ],
+    "org.kde.Platform": [
+      "6.8",
+      "6.9",
+      "6.10",
+      "6.11"
+    ]
+  },
+  "max_upload_bytes": 4294967296,
+  "max_media_bytes": 20971520
+}

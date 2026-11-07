@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.nmcmil.DepotHello</id>
+  <name>Depot Hello</name>
+  <summary>The smallest app that goes through Depot review</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="io.github.nmcmil"><name>Nick McMillan</name></developer>
+  <description><p>A test app for Depot's submission pipeline.</p></description>
+  <launchable type="desktop-id">io.github.nmcmil.DepotHello.desktop</launchable>
+  <releases><release version="@VERSION@" date="2026-11-07"/></releases>
+  <content_rating type="oars-1.1"/>
+</component>
