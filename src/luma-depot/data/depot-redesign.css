@@ -1,0 +1,35 @@
+/* SPDX-License-Identifier: Apache-2.0
+ * Depot, redesigned (7 Nov 2026). Only Depot's own composition: every part (buttons, insets, menus,
+ * the bar) is a LumaUI part and styles itself. Numbers are the approved mockup's computed values
+ * (Design Center mockups/apps/depot) at 1180×740. */
+
+/* the shell (2.1–2.6) */
+window.dq .luma-navigation-sidebar.dq-side { min-width: 200px; }
+window.dq #dq-body > viewport > box.dq-page,
+window.dq box.dq-page { margin: 10px 32px 120px; }
+window.dq button.dq-fback {
+  margin: 14px 0 0 14px; min-width: 36px; min-height: 36px; padding: 0; border-radius: 12px; border: none;
+  background: alpha(@luma_hover, 1); color: @luma_ink;
+  box-shadow: inset 0 0 0 1px @luma_line_faint, 0 6px 18px -8px alpha(black, 0.5);
+}
+window.dq button.dq-fback:hover { background: @luma_control_fill; }
+window.dq button.dq-fback image { -gtk-icon-size: 18px; }
+
+/* page heads (2.3, 4) */
+window.dq box.dq-hello { margin: 18px 0 18px; }
+window.dq label.dq-kicker { font-size: 12px; font-weight: 650; letter-spacing: 0.72px; color: @luma_ink_secondary; }
+window.dq label.dq-title { font-size: 34px; font-weight: 750; letter-spacing: -0.68px; line-height: 37px; }
+window.dq box.dq-intro { margin: 18px 0 16px; border-spacing: 6px; }
+window.dq label.dq-intro-line { font-size: 15px; color: @luma_ink_secondary; }
+window.dq label.dq-bar-none { font-size: 13px; font-weight: 600; color: @luma_muted; margin: 0 8px; }
+
+/* sections (3.4) */
+window.dq box.dq-sec { margin-top: 34px; }
+window.dq box.dq-sec-head { margin-bottom: 14px; border-spacing: 12px; }
+window.dq label.dq-sec-kicker { font-size: 11.5px; font-weight: 650; letter-spacing: 0.575px; color: @luma_muted; margin-bottom: 4px; }
+window.dq label.dq-sec-title { font-size: 21px; font-weight: 700; letter-spacing: -0.21px; line-height: 24px; }
+window.dq label.dq-sec-note { font-size: 12.5px; color: @luma_muted; }
+window.dq button.dq-link { padding: 0; min-height: 0; border: none; background: none; box-shadow: none;
+  font-size: 13px; font-weight: 600; color: @luma_ink; }
+window.dq button.dq-link box { border-spacing: 4px; }
+window.dq button.dq-link image { -gtk-icon-size: 15px; }

@@ -3819,7 +3819,12 @@ class DepotApplication(Adw.Application):
         window = self.props.active_window
         if window is None:
             try:
-                window = DepotWindow(self)
+                if os.environ.get("LUMA_DEPOT_REDESIGN") == "1":
+                    # The redesign (7 Nov 2026), opt-in until it reaches every page.
+                    from .shell import DepotShell
+                    window = DepotShell(self)
+                else:
+                    window = DepotWindow(self)
             except Exception as error:  # noqa: BLE001 - never leave a person with nothing
                 import traceback
                 traceback.print_exc()
