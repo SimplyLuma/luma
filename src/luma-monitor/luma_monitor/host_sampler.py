@@ -11,6 +11,12 @@ from .host_protocol import BUS, OBJECT, encode, decode
 
 XML = '<node><interface name="'+BUS+'"><method name="Sample"><arg type="b" direction="in"/><arg type="s" direction="out"/></method><method name="Inspect"><arg type="u" direction="in"/><arg type="t" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="out"/></method><method name="ForceQuit"><arg type="a(ut)" direction="in"/><arg type="u" direction="out"/><arg type="u" direction="out"/></method><method name="QuitApp"><arg type="s" direction="in"/><arg type="b" direction="out"/></method></interface></node>'
 
+APP = 'io.luma.Monitor'
+# A sampling request answered within this long of the last measured sample
+# gets that sample again. Sampling runs only on request, so this bounds what
+# one caller can make the host spend without a hard CPU quota on the service.
+REUSE = {False: .15, True: .4}
+
 class Broker:
     def __init__(self):
         self.loop = GLib.MainLoop()
@@ -23,8 +29,33 @@ class Broker:
         self.cached = None
         self.snapshot = None
         self.operation_active = False
+        # Verified callers by unique bus name. A unique name belongs to one
+        # connection, whose peer credentials are fixed when it connects and
+        # which is never reused on the bus; for a Flatpak client it is the
+        # instance's own D-Bus proxy, which exits with the instance. Entries
+        # leave when the name does, so a verification lasts exactly as long as
+        # the verified connection.
+        self.callers = {}
+        self.names = None
+        # The first request otherwise pays for loading the caller check and
+        # for a sample without CPU deltas. Do both while the client starts.
+        self.sampling = threading.Lock()
+        self.prewarm = threading.Thread(target=self._prewarm, name='monitor-host-prewarm', daemon=True)
+        self.prewarm.start()
         self.owner = Gio.bus_own_name(Gio.BusType.SESSION, BUS, Gio.BusNameOwnerFlags.NONE, self._acquired, None, lambda *_: self.loop.quit())
         GLib.timeout_add_seconds(15, self._idle)
+
+    def _prewarm(self):
+        try:
+            from luma_installer import app_data_broker  # noqa: F401
+        except Exception:
+            pass
+        try:
+            with self.sampling:
+                if self.sampler.previous is None:
+                    self.catalog.refresh_running(); self.sampler.sample(memory=False)
+        except Exception:
+            pass
 
     def _idle(self):
         if not self.active and not self.operation_active and time.monotonic() - self.last_used > 60:
@@ -32,30 +63,58 @@ class Broker:
         return GLib.SOURCE_CONTINUE
 
     def _acquired(self, connection, *_):
+        self.names = connection.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus', 'NameOwnerChanged',
+            '/org/freedesktop/DBus', None, Gio.DBusSignalFlags.NONE, self._name_changed)
         connection.register_object(OBJECT, Gio.DBusNodeInfo.new_for_xml(XML).interfaces[0], self._call, None, None)
 
+    def _name_changed(self, _connection, _sender, _path, _interface, _signal, parameters):
+        name, _old, new = parameters.unpack()
+        if not new: self.callers.pop(name, None)
+
     def _call(self, connection, sender, _path, _interface, method, args, invocation):
+        self.last_used = time.monotonic()
+        if self.callers.get(sender) == APP:
+            self._authorized(method, args, invocation); return
+        # Verification reads the caller's Flatpak deployment and signature;
+        # keep it off the main loop so other callers and replies keep moving.
+        def verify():
+            try:
+                from luma_installer.app_data_broker import authenticate
+                app, error = authenticate(connection, sender), None
+            except Exception as failure:
+                app, error = None, str(failure)
+            GLib.idle_add(verified, app, error)
+        def verified(app, error):
+            if error is None and app != APP:
+                error = 'Only installed Luma Monitor can read host activity.'
+            if error is not None:
+                invocation.return_dbus_error(BUS+'.Refused', error)
+            else:
+                if len(self.callers) >= 64: self.callers.clear()
+                self.callers[sender] = app
+                self._authorized(method, args, invocation)
+            return GLib.SOURCE_REMOVE
+        threading.Thread(target=verify, name='monitor-host-verify', daemon=True).start()
+
+    def _authorized(self, method, args, invocation):
         try:
-            from luma_installer.app_data_broker import authenticate
-            if authenticate(connection, sender) != 'io.luma.Monitor':
-                raise PermissionError('Only installed Luma Monitor can read host activity.')
             self.last_used = time.monotonic()
             if method != 'Sample':
                 self._operation(method, args, invocation); return
             memory, = args.unpack()
             if type(memory) is not bool: raise ValueError('Invalid sampling mode.')
-            self.last_used = time.monotonic()
             if self.active: raise ValueError('A host activity sample is already running.')
             # Reuse an actual measured sample rather than resampling at caller speed.
-            if self.cached is not None and self.last_used - self.last_sample < .15 and (self.last_memory or not memory):
+            if self.cached is not None and self.last_used - self.last_sample < REUSE[memory] and (self.last_memory or not memory):
                 invocation.return_value(GLib.Variant('(s)', (self.cached,))); return
         except Exception as error:
             invocation.return_dbus_error(BUS+'.Refused', str(error)); return
         self.active = True
         def work():
             try:
-                self.catalog.refresh_running()
-                sample = self.sampler.sample(memory=memory)
+                with self.sampling:
+                    self.catalog.refresh_running()
+                    sample = self.sampler.sample(memory=memory)
                 sample['battery'] = battery_info(); sample['profile'] = performance_profile()
                 sample['filesystems'] = filesystems(); sample['advanced_facts'] = resource_facts(sample)
                 disk = os.statvfs('/'); sample['disk_free'] = (disk.f_bavail*disk.f_frsize, disk.f_blocks*disk.f_frsize)
@@ -125,7 +184,10 @@ class Broker:
 
     def run(self):
         try: self.loop.run()
-        finally: self.catalog.close(); Gio.bus_unown_name(self.owner)
+        finally: self.close()
+
+    def close(self):
+        self.catalog.close(); Gio.bus_unown_name(self.owner)
 
 class HostSampler:
     """Client shape matches Sampler; response preserves PID/start identity."""

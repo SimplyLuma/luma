@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Read-only system facts and classification for MONITOR's resource views."""
+"""Read-only system facts and classification for MONITOR's resource views,
+and the cached last app list a new window opens on."""
+import json
+import os
 from pathlib import Path
 from .model import read, mount_unescape
 from .v70_data import format_value
@@ -69,3 +72,53 @@ def resource_facts(snapshot, *, proc='/proc', sys='/sys'):
             'disk':[('Device',device),('Root',root),('Queue',queue),('Busy','—')],
             'net':[('Interface',interface),('Address','—'),('Link',link),('Packets',packets)],
             'en':[('Draw',f'{draw:.1f} W' if draw is not None else '—'),('Profile','—'),('Health',f'{health:g}%' if health is not None else '—'),('Cycles',str(cycles) if cycles is not None and cycles>=0 else '—')]}
+
+
+# The last list Monitor showed, so the next window opens on it while the first
+# live sample is read. Only what the app list draws is kept: names, icons and
+# figures of desktop apps and the size of each process group; never process
+# names, PIDs, users or command lines.
+VIEW_VERSION=1
+VIEW_LIMIT=256*1024
+APP_FIELDS=('cpu','mem','disk','net','en')
+
+
+def _number(value):
+    return value if isinstance(value,(int,float)) and not isinstance(value,bool) and value==value and value>=0 else None
+
+
+def save_view(path, apps, groups):
+    path=Path(path)
+    view={'version':VIEW_VERSION,
+          'apps':[{'id':str(a['id']),'n':str(a['n']),'icon':str(a['icon']),'count':len(a['procs']),'th':int(a['th']),
+                   **{k:_number(a.get(k)) for k in APP_FIELDS}} for a in apps[:200]],
+          'groups':[{'id':str(g['id']),'n':str(g['n']),'why':str(g['why']),'total':int(g['total']),'kernel':bool(g['kernel'])} for g in groups]}
+    text=json.dumps(view,separators=(',',':'),allow_nan=False)
+    if len(text)>VIEW_LIMIT:return False
+    path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+    temporary=path.with_name(path.name+'.tmp')
+    descriptor=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+    with os.fdopen(descriptor,'w') as stream:stream.write(text)
+    os.replace(temporary,path)
+    return True
+
+
+def load_view(path):
+    """Rows for a cached list, or None when there is no usable cache."""
+    try:
+        with open(path) as stream:text=stream.read(VIEW_LIMIT+1)
+        if len(text)>VIEW_LIMIT:return None
+        view=json.loads(text)
+        if view.get('version')!=VIEW_VERSION:return None
+        apps=[]
+        for a in view['apps']:
+            count,threads=int(a['count']),int(a['th'])
+            if not 0<count<=100000 or not 0<=threads<=10**7:return None
+            apps.append({'id':str(a['id']),'n':str(a['n']),'icon':str(a['icon']),
+                         'sub':f"{count} processes · {threads} threads",'procs':[['',None,None,None]]*count,'th':threads,
+                         **{k:_number(a.get(k)) for k in APP_FIELDS}})
+        groups=[{'id':str(g['id']),'n':str(g['n']),'why':str(g['why']),'p':[],'total':int(g['total']),'kernel':bool(g['kernel'])}
+                for g in view['groups']]
+        return apps,groups
+    except (OSError,ValueError,TypeError,KeyError,AttributeError):
+        return None

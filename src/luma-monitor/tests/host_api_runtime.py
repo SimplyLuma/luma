@@ -16,7 +16,8 @@ from luma_monitor.host_protocol import BUS, OBJECT, decode
 from luma_installer import app_data_broker
 
 broker=Broker();thread=threading.Thread(target=broker.loop.run);thread.start()
-client=Gio.DBusConnection.new_for_address_sync(os.environ['DBUS_SESSION_BUS_ADDRESS'],Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT|Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,None,None)
+def connect():return Gio.DBusConnection.new_for_address_sync(os.environ['DBUS_SESSION_BUS_ADDRESS'],Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT|Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,None,None)
+client=connect()
 child=None
 def call(method,args,result):return client.call_sync(BUS,OBJECT,BUS,method,args,GLib.VariantType.new(result),Gio.DBusCallFlags.NONE,15000,None).unpack()
 try:
@@ -44,11 +45,19 @@ try:
         try:call('ForceQuit',GLib.Variant('(a(ut))',([(target.pid,target.start+1)],)),'(uu)')
         except GLib.Error:pass
         else:raise AssertionError('Reused PID was signalled')
+    # A verified connection is remembered only while it exists.
+    name=client.get_unique_name();assert broker.callers.get(name)=='io.luma.Monitor'
+    client.close_sync(None);deadline=time.monotonic()+5
+    while name in broker.callers and time.monotonic()<deadline:time.sleep(.05)
+    assert name not in broker.callers, 'Verified caller outlived its connection'
+    client=connect()
     with patch.object(app_data_broker,'authenticate',return_value='org.projectluma.Clock'):
         try:call('Sample',GLib.Variant('(b)',(False,)),'(s)')
         except GLib.Error:pass
         else:raise AssertionError('Wrong installed app role sampled host')
+    assert client.get_unique_name() not in broker.callers
     print('Monitor real DBus/native proc+ownedchild pidfd, unsigned/wrong-role/path/PID controls PASS; signedclient gate remains separate',flush=True)
 finally:
     if child is not None and child.poll() is None:child.terminate();child.wait(timeout=5)
-    broker.loop.quit();thread.join();broker.catalog.close();Gio.bus_unown_name(broker.owner);client.close_sync(None)
+    broker.loop.quit();thread.join();broker.close()
+    if not client.is_closed():client.close_sync(None)
