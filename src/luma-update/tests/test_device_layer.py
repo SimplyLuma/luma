@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
+import errno
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from luma_update import device_layer as dl
 
@@ -164,12 +167,26 @@ class DeviceLayerTest(unittest.TestCase):
         self.assertIn("Packages not found", self.layer.load_state()["last_error"])
 
     def test_interrupted_run_gets_its_repositories_back(self):
-        aside = self.root / "var/lib/luma-device-layer/repos-aside"
-        aside.mkdir(parents=True)
-        (self.root / "etc/yum.repos.d/fedora.repo").rename(aside / "fedora.repo")
+        repos = self.root / "etc/yum.repos.d"
+        (repos / "fedora.repo").rename(repos / "fedora.repo.luma-aside")
         self.layer.restore_repos()
-        self.assertTrue((self.root / "etc/yum.repos.d/fedora.repo").exists())
-        self.assertFalse(aside.exists())
+        self.assertTrue((repos / "fedora.repo").exists())
+        self.assertEqual(list(repos.glob("*.luma-aside")), [])
+
+    def test_repositories_never_move_across_mounts(self):
+        """/etc and /var are separate mounts: a rename between them fails with EXDEV."""
+        real = os.replace
+
+        def replace(src, dst):
+            if Path(src).parent != Path(dst).parent and "etc" in {Path(src).parts[-2], Path(dst).parts[-2]}:
+                raise OSError(errno.EXDEV, "Invalid cross-device link", str(src))
+            return real(src, dst)
+
+        with mock.patch.object(dl.os, "replace", replace):
+            self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.system.repos_during_install, ["luma-fairphone-fp6.repo"])
+        names = sorted(p.name for p in (self.root / "etc/yum.repos.d").iterdir())
+        self.assertEqual(names, ["fedora-updates.repo", "fedora.repo", "luma-fairphone-fp6.repo"])
 
     def test_kit_for_another_device_is_refused(self):
         (self.root / "sys/firmware/devicetree/base/compatible").write_bytes(b"google,tokay\0google,zumapro\0")

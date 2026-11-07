@@ -213,10 +213,6 @@ class DeviceLayer:
     def state_file(self) -> Path:
         return self.paths.state_dir / "state.json"
 
-    @property
-    def aside(self) -> Path:
-        return self.paths.state_dir / "repos-aside"
-
     def load_state(self) -> dict:
         try:
             return json.loads(self.state_file.read_text())
@@ -322,23 +318,23 @@ class DeviceLayer:
 
     # -- repositories ------------------------------------------------------------
 
+    # Other repositories are renamed in place (dnf and rpm-ostree read only
+    # *.repo): /etc and /var are separate mounts on an OSTree system, and a
+    # rename never crosses them.
+    ASIDE = ".luma-aside"
+
     def set_repos_aside(self, keep: str) -> None:
-        self.aside.mkdir(parents=True, exist_ok=True)
         for repo in sorted(self.paths.repos.glob("*.repo")):
             if repo.name != keep:
-                os.replace(repo, self.aside / repo.name)
+                os.replace(repo, repo.with_name(repo.name + self.ASIDE))
 
     def restore_repos(self) -> None:
-        if not self.aside.is_dir():
-            return
-        self.paths.repos.mkdir(parents=True, exist_ok=True)
-        for repo in sorted(self.aside.glob("*.repo")):
-            target = self.paths.repos / repo.name
+        for aside in sorted(self.paths.repos.glob("*.repo" + self.ASIDE)):
+            target = aside.with_name(aside.name[:-len(self.ASIDE)])
             if target.exists():
-                repo.unlink()
+                aside.unlink()
             else:
-                os.replace(repo, target)
-        self.aside.rmdir()
+                os.replace(aside, target)
 
     def write_repo(self, kit: Kit, baseurl: str) -> None:
         path = self.paths.repos / f"{kit.repo_id}.repo"
