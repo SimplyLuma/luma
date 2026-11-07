@@ -3858,6 +3858,9 @@ class DepotApplication(Adw.Application):
 
     def _show_view(self, view: str) -> None:
         window = self.window()
+        if hasattr(window, "show_view"):          # the redesigned shell
+            window.show_view(view)
+            return
         if not isinstance(window, DepotWindow):   # a start that failed has no views
             return
         if view.startswith("app:"):
@@ -3894,13 +3897,13 @@ class DepotApplication(Adw.Application):
             self.activate()
         window = self.props.active_window
         for link in links:
-            if isinstance(window, DepotWindow):
+            if isinstance(window, DepotWindow) or hasattr(window, "show_view"):
                 window.open_uri(link)
         return 0
 
     def do_open(self, files, _count, _hint) -> None:
         window = self.window()
-        if not isinstance(window, DepotWindow):
+        if not (isinstance(window, DepotWindow) or hasattr(window, "show_view")):
             return
         for file in files:
             window.open_uri(file.get_uri())

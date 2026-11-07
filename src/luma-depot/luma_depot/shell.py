@@ -67,11 +67,18 @@ class DepotShell(AppWindow):
     """The window: sidebar, island, bar."""
 
     def __init__(self, application: Adw.Application, world: World | None = None) -> None:
-        if world is None:
-            fixture = os.environ.get("LUMA_DEPOT_FIXTURE", "")
-            world = load_fixture(fixture if fixture.endswith(".json") else default_fixture(),
-                                 here=os.environ.get("LUMA_DEPOT_HERE", "xps"))
-        self.world = world
+        from .model.store import SampleStore
+        fixture = os.environ.get("LUMA_DEPOT_FIXTURE", "")
+        if world is not None:
+            self.store = SampleStore(world)
+        elif fixture.endswith(".json") or os.environ.get("LUMA_DEPOT_PREVIEW") == "1":
+            # The approved sample: the design fixture, a preview, a screenshot run.
+            self.store = SampleStore(load_fixture(fixture if fixture.endswith(".json") else default_fixture(),
+                                                  here=os.environ.get("LUMA_DEPOT_HERE", "xps")))
+        else:
+            from .model.live import LiveStore
+            self.store = LiveStore(self._world_changed)
+        self.world = self.store.world
         super().__init__(application=application, app_id=application.get_application_id() or "org.projectluma.Depot",
                          title="Depot", icon_name=ICON_NAME, commands=self._commands(), default_width=1180,
                          default_height=740, minimum_width=360, minimum_height=440)
@@ -365,6 +372,52 @@ class DepotShell(AppWindow):
     def toast(self, message: str, kind: str = "done") -> None:
         Toast.show(self.host, message, kind=kind)
 
+    # ── links and views (luma-depot://, appstream://, --view) ─────────────
+
+    def _find_app(self, identifier: str):
+        world = self.world
+        for app in world.apps:
+            if identifier in (app.app_id, app.flatpak_id, app.slug):
+                return world.item("app", app.app_id)
+        return None
+
+    def open_uri(self, uri: str) -> None:
+        from luma_installer.depot_links import parse
+        link = parse(uri)
+        if link is None:
+            return
+        item = self._find_app(link.target) if link.action in ("app", "install") else None
+        if item is not None:
+            self.open_item("app", item.id)
+        else:
+            self.go("apps")
+
+    def show_view(self, view: str) -> None:
+        if view.startswith("app:"):
+            item = self._find_app(view.split(":", 1)[1])
+            if item is not None:
+                self.open_item("app", item.id)
+            return
+        self.go({"home": "today", "mine": "library", "updates": "updates"}.get(view, "today"))
+
+    def done(self, world: World, words: str = "") -> None:
+        """An action finished: the world changes, the bar follows (a key may flip), then the toast."""
+        self.set_world(world)
+        if self.center.grown is not None:
+            self.center.fold_panel()
+        self.refresh_bar()
+        self.refresh_body()
+        if words:
+            self.toast(words)
+
+    def _world_changed(self, world: World) -> None:
+        """The live store reloaded: redraw what shows, unless the person is typing or a panel is grown."""
+        if not hasattr(self, "pages"):
+            return
+        self.set_world(world)
+        if self.center.grown is None and self.place != "search":
+            self.refresh_body()
+
     def set_world(self, world: World) -> None:
         """The world changed (an install, an update): the badge and the page follow; the bar is redrawn
         only when its buttons change (an item page's key flips)."""
@@ -378,8 +431,7 @@ class DepotShell(AppWindow):
 
 
 def _install_style() -> None:
-    sheet = Path(__file__).resolve().parent.parent / "data" / "depot-redesign.css"
-    if not sheet.is_file():
-        sheet = Path("/usr/share/luma-depot/depot-redesign.css")
+    from .assets import data_dir
+    sheet = data_dir() / "depot-redesign.css"
     if sheet.is_file():
         add_style_sheet(str(sheet))

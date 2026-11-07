@@ -31,10 +31,16 @@ class UpdatesPage(Page):
 
     def __init__(self, shell) -> None:
         super().__init__(shell)
-        self.channel = "nightly"
-        self.system_state = "ready"   # ready · downloading · downloaded · restarted
         self.checked = ""
         self.open = {"changelog": False, "auto": False, "recent": False}
+
+    @property
+    def channel(self) -> str:
+        return self.shell.store.channel
+
+    @property
+    def system_state(self) -> str:
+        return self.shell.store.system_phase
 
     def snapshot(self) -> dict:
         return {"open": dict(self.open)}
@@ -42,16 +48,19 @@ class UpdatesPage(Page):
     def restore(self, state: dict) -> None:
         self.open.update(state.get("open", {}))
 
-    # what the channel offers (the mockup's chanRel): Nightly has the waiting build
     def _system(self):
+        """Luma's update for the channel this computer follows, and whether it is up to date."""
         system = self.world.system
         if system is None:
             return None, True
-        if self.channel == "beta":
-            return replace(system, name="Luma 1.1 · beta October 20", size="286 MB", channel="Beta"), False
-        if self.channel == "stable":
-            return replace(system, name="Luma 1.0", size="", channel="Stable"), True
-        return system, self.system_state == "restarted"
+        from ..model.store import SampleStore
+        if isinstance(self.shell.store, SampleStore):
+            # the sample's other channels (the mockup's chanRel): Nightly has the waiting build
+            if self.channel == "beta":
+                return replace(system, name="Luma 1.1 · beta October 20", size="286 MB", channel="Beta"), False
+            if self.channel == "stable":
+                return replace(system, name="Luma 1.0", size="", channel="Stable"), True
+        return system, self.system_state == "current"
 
     def build(self) -> Gtk.Widget:
         shell, world = self.shell, self.world
@@ -181,20 +190,14 @@ class UpdatesPage(Page):
         self.shell.refresh_body()
 
     def _download(self) -> None:
-        self.system_state = "downloading"
-        self.shell.refresh_body()
-        from gi.repository import GLib
-        GLib.timeout_add(2600, self._downloaded)
+        self.shell.store.download_system(self._system_changed)
 
-    def _downloaded(self) -> bool:
-        if self.system_state == "downloading":
-            self.system_state = "downloaded"
-            if self.shell.place == "updates" and self.shell.item is None:
-                self.shell.refresh_body()
-        return False
+    def _system_changed(self, world, words: str) -> None:
+        if self.shell.place == "updates" and self.shell.item is None:
+            self.shell.done(world, words)
 
     def _restart(self) -> None:
-        self.shell.toast("Restarting into Luma…")
+        self.shell.store.restart(self.shell.done)
 
     def _tonight(self) -> None:
         self.shell.toast("Luma restarts tonight")
@@ -215,9 +218,7 @@ class UpdatesPage(Page):
         decision = rules.channel_decision(self.channel, target, system.name.replace("Luma 1.0 · ", "") if system else "")
 
         def confirmed(_checked: bool) -> None:
-            self.channel = target
-            self.shell.refresh_body()
-            self.shell.toast(decision.toast)
+            self.shell.store.set_channel(target, lambda world, _w: self.shell.done(world, decision.toast))
 
         Confirm.ask(self.shell, title=decision.title, body=decision.body, action=decision.action,
                     icon="git-branch", destructive=False, on_confirm=confirmed,
@@ -244,11 +245,7 @@ class UpdatesPage(Page):
         head.append(words)
 
         def update() -> None:
-            devices = (world.here,) if here else pending.devices
-            shell.set_world(world.with_updated(item.id, devices))
-            shell.refresh_body()
-            where = world.this_device.name if here else " and ".join(world.device(d).name for d in devices)
-            shell.toast(f"{item.name} was updated on {where}")
+            shell.store.update(item, (world.here,) if here else pending.devices, shell.done)
 
         head.append(Button("Update", variant=Button.FILL if here else Button.PLAIN, size=Button.SM, on_click=update))
         card.append(head)
@@ -287,7 +284,7 @@ class UpdatesPage(Page):
             words.append(label(line, "dq-autorow-line", wrap=True))
             row.append(words)
             row.append(Switch(active=bool(auto.get(key)), label=title,
-                              on_toggle=lambda on, k=key: self.world.auto.__setitem__(k, on)))
+                              on_toggle=lambda on, k=key: self.shell.store.set_automatic(k, on)))
             rows.append(row)
         return rows
 
@@ -333,25 +330,16 @@ class UpdatesPage(Page):
     def _ask_go_back(self, version: str) -> None:
         Confirm.ask(self.shell, title=f"Go back to {version}?", icon="undo-2", destructive=False, action="Go back",
                     body="Luma restarts into it.",
-                    on_confirm=lambda _c: self.shell.toast(f"Restarting into {version}…"))
+                    on_confirm=lambda _c: self.shell.store.go_back(self.shell.done))
 
     # ── the bar (11.5) ────────────────────────────────────────────────────
 
     def check_now(self) -> None:
         self.checked = "just now"
-        self.shell.refresh_body()
-        self.shell.toast("Checked just now")
+        self.shell.store.check(self.shell.done)
 
     def update_all(self) -> None:
-        world = self.world
-        new = world
-        for pending in world.pending:
-            new = new.with_updated(pending.app, pending.devices)
-        count = len(world.pending)
-        self.shell.set_world(new)
-        self.shell.refresh_body()
-        self.shell.refresh_bar()
-        self.shell.toast(f"Updating {count} app{'s' if count != 1 else ''} on your devices")
+        self.shell.store.update_all(self.shell.done)
 
     def bar_items(self) -> list:
         items = [BarWidget(Button("Check now", icon="refresh-cw", on_click=self.check_now))]
@@ -375,5 +363,5 @@ class UpdatesPage(Page):
         self._ask_channel("beta")
 
     def demo_ready(self) -> None:
-        self.system_state = "downloaded"
+        self.shell.store._phase = "downloaded"
         self.shell.refresh_body()

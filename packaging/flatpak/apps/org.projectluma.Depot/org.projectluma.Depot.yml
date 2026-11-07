@@ -33,6 +33,12 @@ modules:
       - printf '#!/bin/sh\nexec python3 -m luma_appkit.migration_startup luma-depot-real "$@"\n' > /app/bin/luma-depot
       - chmod 755 /app/bin/luma-depot /app/bin/luma-depot-real
       - install -Dm644 src/luma-depot/data/depot.css /app/share/luma/depot/depot.css
+      - install -Dm644 src/luma-depot/data/depot-redesign.css /app/share/luma/depot/depot-redesign.css
+      - install -Dm644 src/luma-depot/data/luma-logo-white.svg /app/share/luma/depot/luma-logo-white.svg
+      - install -d /app/share/luma/depot/screenshots /app/share/luma/depot/photos /app/share/luma/depot/rooms
+      - install -m644 src/luma-depot/data/screenshots/*.webp /app/share/luma/depot/screenshots/
+      - install -m644 src/luma-depot/data/photos/*.webp /app/share/luma/depot/photos/
+      - install -m644 src/luma-depot/data/rooms/*.webp /app/share/luma/depot/rooms/
       - install -Dm644 src/luma-depot/data/org.projectluma.Depot.desktop /app/share/applications/org.projectluma.Depot.desktop
       - install -Dm644 src/luma-depot/data/org.projectluma.Depot.service /app/share/dbus-1/services/org.projectluma.Depot.service
       - install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Depot.svg

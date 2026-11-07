@@ -88,7 +88,17 @@ glib-compile-schemas --strict tests/appearance-schema
 %install
 install -d %{buildroot}%{python3_sitelib}/luma_depot
 install -m 0644 luma_depot/*.py %{buildroot}%{python3_sitelib}/luma_depot/
+for part in model pages parts pictures; do
+  install -d %{buildroot}%{python3_sitelib}/luma_depot/$part
+  install -m 0644 luma_depot/$part/*.py %{buildroot}%{python3_sitelib}/luma_depot/$part/
+done
 install -D -m0644 data/depot.css %{buildroot}%{_datadir}/luma-depot/depot.css
+install -D -m0644 data/depot-redesign.css %{buildroot}%{_datadir}/luma-depot/depot-redesign.css
+install -D -m0644 data/luma-logo-white.svg %{buildroot}%{_datadir}/luma-depot/luma-logo-white.svg
+for pictures in screenshots photos rooms; do
+  install -d %{buildroot}%{_datadir}/luma-depot/$pictures
+  install -m 0644 data/$pictures/*.webp %{buildroot}%{_datadir}/luma-depot/$pictures/
+done
 install -d %{buildroot}%{python3_sitelib}/luma_installer
 install -m 0644 luma_installer/*.py %{buildroot}%{python3_sitelib}/luma_installer/
 install -D -m0644 data/org.projectluma.AppPreferences.Read.gschema.xml %{buildroot}%{_datadir}/glib-2.0/schemas/org.projectluma.AppPreferences.Read.gschema.xml

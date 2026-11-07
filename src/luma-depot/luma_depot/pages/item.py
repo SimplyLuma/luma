@@ -201,48 +201,32 @@ class ItemPage(Page):
             items.append(BarWidget(widget))
         return items
 
-    def _changed(self, world: World, message: str) -> None:
-        self.shell.center.fold_panel() if self.shell.center.grown else None
-        self.shell.set_world(world)
-        self.shell.refresh_bar()
-        self.shell.refresh_body()
-        self.shell.toast(message)
-
     def open_it(self) -> None:
         """Open launches the app (a Look in use or an installed Tweak has nothing more to do)."""
         item = self.item
         if item.kind != "app" or item.app is None:
             return
         from gi.repository import Gio
-        desktop_id = f"{item.app.flatpak_id or item.app.app_id}.desktop"
         try:
-            info = Gio.DesktopAppInfo.new(desktop_id)
+            info = Gio.DesktopAppInfo.new(f"{item.app.flatpak_id or item.app.app_id}.desktop")
         except TypeError:
             info = None
         if info is not None:
             info.launch([], None)
 
     def install_here(self) -> None:
-        item, world = self.item, self.world
-        self._changed(world.with_on(item, world.here, True), f"{item.name} was installed on {world.this_device.name}")
+        self.shell.store.install(self.item, [self.world.here], self.shell.done)
 
     def install_on_device(self, device_id: str) -> None:
-        item, world = self.item, self.world
-        device = world.device(device_id)
-        message = (f"{item.name} was installed on {device.name}" if device_id == world.here
-                   else f"{item.name}: sent to {device.name}")
-        self._changed(world.with_on(item, device_id, True), message)
+        self.shell.store.install(self.item, [device_id], self.shell.done)
 
     def update_here(self) -> None:
-        item, world = self.item, self.world
-        self._changed(world.with_updated(item.id, (world.here,)), f"{item.name} was updated on {world.this_device.name}")
+        self.shell.store.update(self.item, (self.world.here,), self.shell.done)
 
     def update_elsewhere(self) -> None:
-        item, world = self.item, self.world
-        pending = world.pending_for(item.id)
-        away = tuple(d for d in pending.devices if d != world.here) if pending else ()
-        names = [world.device(d).name for d in away]
-        self._changed(world.with_updated(item.id, away), f"{item.name}: updating on {' and '.join(names)}")
+        pending = self.world.pending_for(self.item.id)
+        away = tuple(d for d in pending.devices if d != self.world.here) if pending else ()
+        self.shell.store.update(self.item, away, self.shell.done)
 
     def try_it(self) -> None:
         """Try applies the Look to this window only, until you leave the page (6.3)."""
@@ -257,12 +241,7 @@ class ItemPage(Page):
         item, world = self.item, self.world
 
         def confirm(picks: list[str], keep: bool) -> None:
-            new = world
-            for device_id in picks:
-                new = new.with_on(item, device_id, True)
-            new = new.with_matched(item.id, keep)
-            names = [world.device(d).name for d in picks]
-            self._changed(new, f"{item.name}: sent to {' and '.join(names)}")
+            self.shell.store.install(item, picks, self.shell.done, keep_matched=keep if item.kind == "app" else None)
 
         self.shell.center.grow("where", lambda: install_on_panel(world, item, on_close=self.shell.center.fold_panel,
                                                                   on_confirm=confirm),
@@ -273,7 +252,7 @@ class ItemPage(Page):
         device = world.device(device_id)
 
         def confirm() -> None:
-            self._changed(world.with_on(item, device_id, False), f"{item.name} was uninstalled from {device.name}")
+            self.shell.store.uninstall(item, device_id, self.shell.done)
 
         self.shell.center.grow(f"unin:{device_id}", lambda: uninstall_panel(item, device.name,
                                                                             on_cancel=self.shell.center.fold_panel,

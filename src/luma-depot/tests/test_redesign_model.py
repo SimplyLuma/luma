@@ -15,7 +15,10 @@ sys.path[:0] = [str(HERE.parent), str(ROOT / "src/luma-platform/appkit"), str(RO
 from luma_depot.model import rules  # noqa: E402
 from luma_depot.model.world import PendingUpdate, load_fixture  # noqa: E402
 
-FIXTURE = ROOT / "tests/fixtures/depot-redesign/world.json"
+# A checkout keeps the approved sample at the root; the package's source tarball beside its tests.
+FIXTURE = next((path for path in (ROOT / "tests/fixtures/depot-redesign/world.json",
+                                  HERE / "fixtures/depot-redesign/world.json") if path.is_file()),
+               ROOT / "tests/fixtures/depot-redesign/world.json")
 
 
 class BarStates(unittest.TestCase):
@@ -158,6 +161,32 @@ class Updates(unittest.TestCase):
     def test_devices_line(self) -> None:
         line = rules.devices_line(self.world, ("xps", "x1", "fp6", "tv", "home"))
         self.assertEqual(line, "On this computer, ThinkPad X1, Fairphone 6, Living room and Kitchen")
+
+
+class LiveWorld(unittest.TestCase):
+    """The real catalogue and installed apps in the redesign's shape (model/live.py)."""
+
+    def test_world_from_catalogue_and_installed(self) -> None:
+        from luma_depot.model.live import world_from
+        from luma_depot.providers import App, Catalogue, Category, InstalledApp
+        apps = (App("org.example.Paint", "Paint", "Draw things", categories=("Create",), tier="verified",
+                    developer="Example", developer_verified="organization", download_bytes=38_000_000),
+                App("org.projectluma.Tide", "Tide", "Music", categories=("Media",), tier="luma", developer="Luma"),
+                App("org.example.Hidden", "Hidden", "x", unlisted=True))
+        catalogue = Catalogue(apps=apps, categories=(Category("Create", "Create", "palette"),))
+        installed = {"org.example.Paint": InstalledApp("org.example.Paint", "1.0", 1, update_version="1.1",
+                                                       update_bytes=96_000_000, update_summary="Faster brushes")}
+        world = world_from(catalogue, installed)
+        self.assertEqual(len(world.devices), 1)
+        self.assertEqual([a.app_id for a in world.apps], ["org.example.Paint", "org.projectluma.Tide"])
+        paint = world.item("app", "org.example.Paint")
+        self.assertEqual((paint.category, paint.app.package_kind, paint.app.size_label), ("create", "flatpak", "38 MB"))
+        self.assertEqual(paint.seal, "verified")
+        self.assertEqual(world.pending[0].to_version, "1.1")
+        self.assertEqual(world.pending[0].size, "96 MB")
+        self.assertEqual(world.update_count(), 1)
+        self.assertEqual(rules.bar_for(paint, world).keys, ("update", "open", "share", "uninstall"))
+        self.assertEqual(world.looks, ())  # no Looks are invented
 
 
 class World(unittest.TestCase):

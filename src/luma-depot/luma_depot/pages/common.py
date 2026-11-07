@@ -18,11 +18,8 @@ def opener(shell, kind: str, item_id: str):
 
 def install_here(shell, kind: str, item_id: str):
     def run() -> None:
-        world = shell.world
-        item = world.item(kind, item_id)
-        shell.set_world(world.with_on(item, world.here, True))
-        shell.refresh_body()
-        shell.toast(f"{item.name} was installed on {world.this_device.name}")
+        item = shell.world.item(kind, item_id)
+        shell.store.install(item, [shell.world.here], shell.done)
     return run
 
 

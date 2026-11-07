@@ -113,5 +113,5 @@ class LibraryPage(Page):
         if count:
             items.append(BarWidget(Button("Update all", variant=Button.KEY, icon="refresh-cw",
                                           tooltip=f"{count} waiting across your devices",
-                                          on_click=self.shell.update_all_apps if hasattr(self.shell, "update_all_apps") else None)))
+                                          on_click=lambda: self.shell.store.update_all(self.shell.done))))
         return items
