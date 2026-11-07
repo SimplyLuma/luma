@@ -52,8 +52,8 @@ for identity in "$gtk" "$adwaita" "$platform" "$apk_metadata" \
   printf 'Checked browser provider: %s (%s identical retained copies)\n' "$identity" "${#matches[@]}"
   rpms+=("${matches[0]}")
 done
-installer=luma-application-installer-0.1.0-1.luma.71.creator20261021.1.fc44.noarch.rpm
-installer_sha=c26a7e6b68859f9624abf2d73cc62ba1845bff25447e14eafd376c8db2543ad4
+installer=luma-application-installer-0.1.0-1.luma.86.fc44.noarch.rpm
+installer_sha=ef2b347d41b654f7f6788ab254be031a995662402b0000cd2166c86aa939e3bc
 mkdir -p "$inputdir/mirrored"
 curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
   "https://media.simplyluma.com/inputs/rpm/$installer_sha/$installer" --output "$inputdir/mirrored/$installer"
