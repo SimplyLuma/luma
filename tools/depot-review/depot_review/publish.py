@@ -173,6 +173,9 @@ class Signer:
 
 
 def sync(config: Config) -> None:
+    if not config.sync_remote:
+        log("sync skipped (sync_remote is false)")
+        return
     env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root", "DEPOT_ROOT": str(config.depot_root),
            "DEPOT_KEYS": str(config.depot_keys), "DEPOT_TOOLS_CONTAINER": "unused-rsync-path"}
     run(["/bin/bash", str(config.source / "scripts/depot/sync-remote.sh")], env=env, timeout=3600)

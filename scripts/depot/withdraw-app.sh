@@ -13,7 +13,8 @@
 # newer release. With a `target` (an ancestor of the head that is still in the
 # repository), the ref moves forward to a new signed commit holding exactly the
 # target's content: clients update to it like any release, because OSTree
-# refuses to move a ref backwards. Without one (the app's first release), the
+# refuses to move a ref backwards; the new commit is stamped now, since OSTree
+# also refuses a commit older than the one installed. Without one (the app's first release), the
 # head is re-signed as end-of-life, which keeps installed copies working and
 # removes the app from AppStream. Run update-remote.sh and sync-remote.sh after.
 set -euo pipefail
@@ -38,6 +39,7 @@ reason = re.sub(r"[^A-Za-z0-9 .,'()-]", "", r.get("reason") or "Withdrawn")[:120
 print(r["app_id"], r["arch"], r["branch"], r["commit"], target, reason)
 PY
 )
+[ -n "${app_id:-}" ] || depot_die "withdraw.json is not a valid request"
 reason=${reason//_/ }
 ref="app/$app_id/$arch/$branch"
 head=$(depot_in_signer ostree rev-parse --repo="$depot_repo" "$ref") || depot_die "$ref is not published"
@@ -52,13 +54,13 @@ if [ "$target" != - ]; then
   done
   [ "$found" = 1 ] || depot_die "$target is not an earlier release of $ref still in the repository"
   depot_log "withdrawing $ref: $head -> content of $target"
-  depot_in_signer flatpak build-commit-from --untrusted --no-update-summary --force \
+  depot_in_signer flatpak build-commit-from --untrusted --no-update-summary --force --timestamp=NOW \
     --gpg-sign="$fingerprint" --gpg-homedir="$DEPOT_KEYS/gnupg" \
     --subject="Withdraw release ${head:0:12}: $reason" \
     --src-repo="$depot_repo" --src-ref="$target" "$depot_repo" "$ref"
 else
   depot_log "withdrawing the only release of $ref (end of life)"
-  depot_in_signer flatpak build-commit-from --untrusted --no-update-summary --force \
+  depot_in_signer flatpak build-commit-from --untrusted --no-update-summary --force --timestamp=NOW \
     --gpg-sign="$fingerprint" --gpg-homedir="$DEPOT_KEYS/gnupg" \
     --end-of-life="$reason" --subject="Withdraw release ${head:0:12}: $reason" \
     --src-repo="$depot_repo" --src-ref="$head" "$depot_repo" "$ref"

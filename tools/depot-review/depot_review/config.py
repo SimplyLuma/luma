@@ -37,6 +37,8 @@ class Config:
     depot_root: Path = Path("/srv/luma-build/n1105-depot/depot-root")
     depot_keys: Path = Path("/srv/luma-build/depot-keys")
     branch: str = "stable"
+    # False signs into depot_root but never uploads it (rehearsals on a staging copy).
+    sync_remote: bool = True
     publication_locks: list = field(default_factory=lambda: ["/srv/luma-build/depot-publication.lock"])
     catalogue_key: Path = Path("/srv/luma-build/depot-keys/minisign/depot-catalogue-v1.key")
     catalogue_pub: Path = Path("/srv/luma-build/depot-keys/minisign/depot-catalogue-v1.pub")
