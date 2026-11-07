@@ -338,8 +338,10 @@ def session_env(uid: str) -> str:
             f"WAYLAND_DISPLAY=wayland-0")
 
 
-def run_app(base: Path, key: Path, package: Path, app_id: str, fmt: str, out: Path, arch: str = "x86_64",
-            boot_timeout: int = 420) -> dict:
+def run_app(base: Path, key: Path, package: Path | None, app_id: str, fmt: str, out: Path, arch: str = "x86_64",
+            boot_timeout: int = 420, remote_ref: str | None = None) -> dict:
+    """With remote_ref (e.g. luma app/ID/ARCH/stable), install from the VM's own
+    configured remote instead of a bundle: the published-release check."""
     """Returns {"steps": [{step, ok, message}], "screenshot": path|None, "ok": bool}."""
     out.mkdir(parents=True, exist_ok=True)
     steps: list[dict] = []
@@ -375,14 +377,19 @@ def run_app(base: Path, key: Path, package: Path, app_id: str, fmt: str, out: Pa
         time.sleep(8)  # let the shell settle
         before = work / "before.ppm"
         qmp.command("screendump", filename=str(before))
-        guest.copy(package, "/var/tmp/app.flatpak")
-        install = guest.run("flatpak install --system --noninteractive -y /var/tmp/app.flatpak 2>&1", timeout=1200)
+        if remote_ref:
+            install = guest.run(f"flatpak install --system --noninteractive -y {remote_ref} 2>&1", timeout=1200)
+        else:
+            guest.copy(package, "/var/tmp/app.flatpak")
+            install = guest.run("flatpak install --system --noninteractive -y /var/tmp/app.flatpak 2>&1",
+                                timeout=1200)
         (out / "install.log").write_text(install.stdout + install.stderr)
         if install.returncode != 0:
             step("install", False, "Your app didn't install. " + plain_install_error(install.stdout),
                  detail=install.stdout[-1500:])
             return result
         installed = guest.run(f"flatpak info --system {app_id}", timeout=30)
+        (out / "flatpak-info.txt").write_text(installed.stdout)
         step("install", installed.returncode == 0, "Installed." if installed.returncode == 0 else
              "Your app didn't install.")
         if installed.returncode != 0:
@@ -471,7 +478,8 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run")
     r.add_argument("--base", type=Path, required=True)
     r.add_argument("--key", type=Path, required=True)
-    r.add_argument("--package", type=Path, required=True)
+    r.add_argument("--package", type=Path)
+    r.add_argument("--remote-ref", help="install from the VM's remote, e.g. 'luma app/ID/x86_64/stable'")
     r.add_argument("--app-id", required=True)
     r.add_argument("--format", default="flatpak")
     r.add_argument("--arch", default="x86_64")
@@ -483,7 +491,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "build-base":
         build_base(args.iso, args.out, args.arch)
         return 0
-    result = run_app(args.base, args.key, args.package, args.app_id, args.format, args.out, args.arch)
+    result = run_app(args.base, args.key, args.package, args.app_id, args.format, args.out, args.arch,
+                     remote_ref=args.remote_ref)
     print(json.dumps(result, indent=1))
     return 0 if result["ok"] else 1
 
