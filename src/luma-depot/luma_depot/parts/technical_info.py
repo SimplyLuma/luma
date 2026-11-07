@@ -8,7 +8,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk  # noqa: E402
 
-from luma_appkit import Disclosure, PermissionList, from_reach, icons
+from luma_appkit import Disclosure, PermissionList, from_keys, from_reach, icons
 
 from ..model.world import PACKAGE_WORDS, Item
 from ..pages.base import label
@@ -26,9 +26,14 @@ def technical_rows(item: Item) -> list[tuple[str, str]]:
     return [(key, value) for key, value in rows if value]
 
 
-def technical_info(item: Item, *, expanded: bool, on_toggled, on_site=None) -> Gtk.Widget | None:
+def technical_info(item: Item, *, expanded: bool, on_toggled, on_site=None, changes: tuple = ()) -> Gtk.Widget | None:
+    """`changes` are what a waiting update asks for (tagged New, Wider…); they are shown with the rest."""
     rows = technical_rows(item)
-    grants = from_reach(item.app.reach) if item.app is not None else []
+    grants = []
+    if item.app is not None:
+        grants = from_reach(item.app.reach) or from_keys(list(item.app.permissions) + list(changes))
+        if item.app.reach and changes:
+            grants = from_keys(list(changes)) + [g for g in grants if g.key not in {c.key for c in from_keys(changes)}]
     if not rows and not grants:
         return None
     body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)

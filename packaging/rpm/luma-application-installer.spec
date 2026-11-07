@@ -95,6 +95,7 @@ done
 install -D -m0644 data/depot.css %{buildroot}%{_datadir}/luma-depot/depot.css
 install -D -m0644 data/depot-redesign.css %{buildroot}%{_datadir}/luma-depot/depot-redesign.css
 install -D -m0644 data/luma-logo-white.svg %{buildroot}%{_datadir}/luma-depot/luma-logo-white.svg
+install -D -m0644 data/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg %{buildroot}%{_datadir}/luma-depot/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg
 for pictures in screenshots photos rooms; do
   install -d %{buildroot}%{_datadir}/luma-depot/$pictures
   install -m 0644 data/$pictures/*.webp %{buildroot}%{_datadir}/luma-depot/$pictures/

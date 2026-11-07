@@ -399,3 +399,10 @@ window.dq.dq-phone box.dq-hfoot { min-width: 0; }
 window.dq.dq-phone label.dq-iname { font-size: 30px; line-height: 33px; }
 window.dq.dq-phone box.dq-md .dq-md-act { opacity: 1; }
 window.dq.dq-phone button.dq-chan { margin-top: 0; }
+
+/* "Your apps" at the sidebar foot: a quiet row like the places above it */
+window.dq button.dq-portal { margin: 4px 0; min-height: 34px; padding: 0 10px; border-radius: 10px; border: none;
+  background: none; box-shadow: none; color: @luma_ink_secondary; }
+window.dq button.dq-portal:hover { background: @luma_hover; color: @luma_ink; }
+window.dq button.dq-portal box { border-spacing: 10px; }
+window.dq button.dq-portal image { -gtk-icon-size: 17px; }

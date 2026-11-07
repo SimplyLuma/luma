@@ -139,6 +139,7 @@ class LiveStore(Store):
         self.catalogue_provider, self.installer, self.host_client = providers()
         self.catalogue: Catalogue | None = None
         self.installed: dict[str, InstalledApp] = {}
+        self.busy: set[str] = set()
         try:
             from ..system_updates import SystemUpdates
             self.system = SystemUpdates(self._rebuild)
@@ -169,38 +170,95 @@ class LiveStore(Store):
 
     # ── apps ──────────────────────────────────────────────────────────────
 
-    def _finished(self, done: Done, words: str):
+    def permission_changes(self, app_id: str) -> tuple:
+        record = self.installed.get(app_id)
+        return tuple(record.permission_changes) if record is not None else ()
+
+    def _finished(self, done: Done, words: str, item: Item | None = None, failed: str = "", event: str = ""):
         def finished(result: Result) -> None:
+            if item is not None:
+                self.busy.discard(item.id)
             if result.ok:
                 self.installer.installed(lambda r: (self._installed(r), done(self.world, words)))
+                from .events import send
+                if item is not None and event:
+                    send(item, event)
             else:
-                done(self.world, result.error.message if result.error else "That didn't work. Try again")
+                done(self.world, failed or "That didn't work. Try again")
         return finished
 
     def install(self, item: Item, devices: list[str], done: Done, *, keep_matched: bool | None = None) -> None:
         if item.app is None:
             return
+        self.busy.add(item.id)
+        done(self.world, "")  # the key reads Installing… while it runs (17.2)
         self.installer.install(item.app, lambda _p: None,
-                               self._finished(done, f"{item.name} was installed on {self.world.this_device.name}"))
+                               self._finished(done, f"{item.name} was installed on {self.world.this_device.name}", item,
+                                              f"Couldn't install {item.name}. Try again", "install"))
 
     def uninstall(self, item: Item, device: str, done: Done) -> None:
+        self.busy.add(item.id)
         self.installer.remove(item.id, keep_data=True, callback=self._finished(
-            done, f"{item.name} was uninstalled from {self.world.this_device.name}"))
+            done, f"{item.name} was uninstalled from {self.world.this_device.name}", item,
+            f"Couldn't uninstall {item.name}. Try again", "uninstall"))
 
-    def update(self, item: Item, devices: tuple[str, ...], done: Done) -> None:
+    # An update that asks for more (a permission added or widened) is held until the person approves it
+    # on the app's page, under the changes it lists. Bulk, retry and background updates never approve
+    # (the old window's rule, kept exactly).
+    @staticmethod
+    def asks_for_more(record: InstalledApp | None) -> bool:
+        return record is not None and any(change.change in ("added", "widened") and change.key != "files.portal"
+                                          for change in record.permission_changes)
+
+    def held(self, app_id: str) -> bool:
+        from luma_installer import depot_autoupdate
+        record = self.installed.get(app_id)
+        if not self.asks_for_more(record):
+            return False
+        pending = depot_autoupdate.Pending(app_id, record.app.name if record.app else app_id, record.update_version,
+                                           True, record.update_commit, record.commit)
+        state = getattr(self.installer, "permission_state", None) or depot_autoupdate.load()
+        return depot_autoupdate.is_held(pending, state)
+
+    def update(self, item: Item, devices: tuple[str, ...], done: Done, *, approve: bool = False) -> None:
+        from luma_installer import depot_autoupdate
         record = self.installed.get(item.id)
+        if record is None or not record.has_update or not record.update_commit or not record.commit:
+            done(self.world, f"{item.name} changed. Check again before updating")
+            return
+        extra = {}
+        if self.asks_for_more(record):
+            pending = depot_autoupdate.Pending(item.id, item.name, record.update_version, True,
+                                               record.update_commit, record.commit)
+            if approve and getattr(self.installer, "requires_permission_approval", False):
+                extra = {"permission_approval": True}
+            elif approve:
+                try:
+                    depot_autoupdate.approve(pending)
+                except (OSError, ValueError):
+                    done(self.world, f"Couldn't update {item.name}. Check again and review it")
+                    return
+            elif self.held(item.id):
+                done(self.world, f"{item.name} asks for more. Review it on its page")
+                return
+        self.busy.add(item.id)
         self.installer.update(item.id, lambda _p: None,
-                              self._finished(done, f"{item.name} was updated on {self.world.this_device.name}"),
-                              expected_commit=getattr(record, "update_commit", "") if record else "",
-                              expected_installed_commit=getattr(record, "commit", "") if record else "")
+                              self._finished(done, f"{item.name} was updated on {self.world.this_device.name}", item,
+                                             f"Couldn't update {item.name}. Try again", "update"),
+                              None, expected_commit=record.update_commit, expected_installed_commit=record.commit,
+                              **extra)
 
     def update_all(self, done: Done) -> None:
-        pending = list(self.world.pending)
-        for entry in pending:
+        ready = [entry for entry in self.world.pending if not self.held(entry.app)]
+        for entry in ready:
             item = self.world.item("app", entry.app)
             if item is not None:
-                self.update(item, entry.devices, lambda world, _w: None)
-        done(self.world, f"Updating {len(pending)} app{'s' if len(pending) != 1 else ''}")
+                self.update(item, entry.devices, lambda world, _w: self.on_world(world))
+        held = len(self.world.pending) - len(ready)
+        words = f"Updating {len(ready)} app{'s' if len(ready) != 1 else ''}"
+        if held:
+            words += f". {held} ask{'s' if held == 1 else ''} for more; review on {'its' if held == 1 else 'their'} page"
+        done(self.world, words)
 
     def check(self, done: Done) -> None:
         if self.system is not None:

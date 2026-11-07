@@ -245,6 +245,9 @@ class UpdatesPage(Page):
         head.append(words)
 
         def update() -> None:
+            if shell.store.held(item.id):
+                opener(shell, "app", item.id)()  # it asks for more: review it on its page
+                return
             shell.store.update(item, (world.here,) if here else pending.devices, shell.done)
 
         head.append(Button("Update", variant=Button.FILL if here else Button.PLAIN, size=Button.SM, on_click=update))

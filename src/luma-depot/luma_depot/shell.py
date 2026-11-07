@@ -31,6 +31,7 @@ from .model.world import World, load_fixture  # noqa: E402
 __all__ = ["DepotShell", "PLACES"]
 
 ICON_NAME = "org.projectluma.Depot"
+PORTAL = "https://simplyluma.com/connect/developer"
 
 #: (key, title, Lucide glyph, group heading) exactly as 2.2: Today · Browse: Apps, Looks, Tweaks · Yours.
 PLACES: tuple[tuple[str, str, str, str], ...] = (
@@ -82,8 +83,7 @@ class DepotShell(AppWindow):
         super().__init__(application=application, app_id=application.get_application_id() or "org.projectluma.Depot",
                          title="Depot", icon_name=ICON_NAME, commands=self._commands(), default_width=1180,
                          default_height=740, minimum_width=360, minimum_height=440)
-        self.add_css_class("luma-depot")
-        self.add_css_class("dq")
+        self.add_css_class("dq")  # not "luma-depot": the old window's sheet stays with the old window
         _install_style()
 
         from .pages import create_pages
@@ -176,6 +176,20 @@ class DepotShell(AppWindow):
             self.rows[key] = row
         sidebar.list.connect("row-activated", lambda _l, row: self.go(row.destination)
                              if hasattr(row, "destination") else None)
+        # "Your apps" (platform plan, decision 9): the developer portal, in the browser, for everyone.
+        from .assets import data_dir
+        theme = Gtk.IconTheme.get_for_display(self.get_display() or Gdk.Display.get_default())
+        theme.add_search_path(str(data_dir() / "icons"))
+        portal = Gtk.Button()
+        portal.add_css_class("dq-portal")
+        line = Gtk.Box()
+        glyph = Gtk.Image(icon_name="lumaui-code-xml-symbolic")
+        line.append(glyph)
+        line.append(Gtk.Label(label="Your apps", xalign=0, hexpand=True))
+        portal.set_child(line)
+        portal.update_property([Gtk.AccessibleProperty.LABEL], ["Your apps, opens the developer portal"])
+        portal.connect("clicked", lambda _b: Gtk.UriLauncher.new(PORTAL).launch(self, None, None, None))
+        sidebar.append_footer(portal)
         self._refresh_badge()
         return sidebar
 

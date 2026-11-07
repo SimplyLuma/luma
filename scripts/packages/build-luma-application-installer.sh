@@ -53,6 +53,7 @@ cp "$repo_root/src/luma-depot/data/depot-redesign.css" "$repo_root/src/luma-depo
   "$source_dir/data/"
 cp -R "$repo_root/src/luma-depot/data/screenshots" "$repo_root/src/luma-depot/data/photos" \
   "$repo_root/src/luma-depot/data/rooms" "$source_dir/data/"
+install -D -m 0644 "$repo_root/src/luma-depot/data/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg" "$source_dir/data/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg"
 install -D -m 0644 "$repo_root/src/luma-depot/data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg" \
   "$source_dir/data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg"
 # Depot's code ships inside this package, so Depot's tests have to come with

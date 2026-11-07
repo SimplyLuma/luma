@@ -3774,6 +3774,32 @@ class DepotWindow(UpdatesPage, AppWindow):
         about.present(self)
 
 
+def use_redesign() -> bool:
+    """The redesigned Depot (7 Nov 2026) is the window, except where it can't be yet:
+
+    - TV posture keeps Depot's TV presentation (tv_views, the 10-foot design), which this window hosts;
+    - a runtime whose LumaUI predates the parts the redesign is built from (API level 11);
+    - the v70 design fixture and the old preview, which measure and exercise this window;
+    - LUMA_DEPOT_LEGACY=1, the way back for one release.
+    LUMA_DEPOT_REDESIGN=1 always picks it.
+    """
+    if os.environ.get("LUMA_DEPOT_REDESIGN") == "1":
+        return True
+    if os.environ.get("LUMA_DEPOT_LEGACY") == "1":
+        return False
+    fixture = os.environ.get("LUMA_DEPOT_FIXTURE", "")
+    if (fixture and not fixture.endswith("world.json")) or os.environ.get("LUMA_DEPOT_PREVIEW") == "1":
+        return False
+    try:
+        from luma_appkit import lumaui
+        if lumaui.tv_posture() or lumaui.LUMAUI_API_LEVEL < 11:
+            return False
+        from luma_appkit import Button, Disclosure, EdgeFadeScroller, FramedPicture, Inset  # noqa: F401
+    except (ImportError, AttributeError):
+        return False
+    return True
+
+
 class DepotApplication(Adw.Application):
     """Single instance: opening Depot again focuses the window it already has.
 
@@ -3819,8 +3845,7 @@ class DepotApplication(Adw.Application):
         window = self.props.active_window
         if window is None:
             try:
-                if os.environ.get("LUMA_DEPOT_REDESIGN") == "1":
-                    # The redesign (7 Nov 2026), opt-in until it reaches every page.
+                if use_redesign():
                     from .shell import DepotShell
                     window = DepotShell(self)
                 else:

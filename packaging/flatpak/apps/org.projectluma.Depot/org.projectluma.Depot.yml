@@ -39,6 +39,7 @@ modules:
       - install -m644 src/luma-depot/data/screenshots/*.webp /app/share/luma/depot/screenshots/
       - install -m644 src/luma-depot/data/photos/*.webp /app/share/luma/depot/photos/
       - install -m644 src/luma-depot/data/rooms/*.webp /app/share/luma/depot/rooms/
+      - install -Dm644 src/luma-depot/data/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg /app/share/luma/depot/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg
       - install -Dm644 src/luma-depot/data/org.projectluma.Depot.desktop /app/share/applications/org.projectluma.Depot.desktop
       - install -Dm644 src/luma-depot/data/org.projectluma.Depot.service /app/share/dbus-1/services/org.projectluma.Depot.service
       - install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Depot.svg

@@ -84,8 +84,12 @@ class ItemPage(Page):
         side = [facts_card(world, item, on_site=self.open_site),
                 installed_on(world, item, on_install=self.install_on_device, on_uninstall=self.ask_uninstall,
                              touch=self.shell.is_phone())]
+        store = self.shell.store
+        changes = store.permission_changes(item.id) if item.kind == "app" else ()
+        if store.asks_for_more(item.id) and world.pending_for(item.id) is not None:
+            self.tech_open = True  # an update that asks for more shows what it asks for before Update
         tech = technical_info(item, expanded=self.tech_open, on_toggled=lambda o: setattr(self, "tech_open", o),
-                              on_site=self.open_site)
+                              on_site=self.open_site, changes=changes)
         if tech is not None:
             side.append(tech)
         for index, section in enumerate(reading):
@@ -192,8 +196,12 @@ class ItemPage(Page):
                 Tooltip.attach(widget, button.tooltip.split(" from ")[0] if button.key == "uninstall" else button.tooltip,
                                label=False)
             else:
-                widget = Button(button.label, variant=Button.KEY if button.variant == "key" else Button.FILL,
-                                icon=button.icon, tooltip=button.tooltip or None, on_click=actions[button.key])
+                busy = button.variant == "key" and self.item.id in self.shell.store.busy
+                widget = Button("Installing…" if busy and button.key == "install" else
+                                "Updating…" if busy and button.key == "update" else button.label,
+                                variant=Button.KEY if button.variant == "key" else Button.FILL,
+                                icon=None if busy else button.icon, tooltip=button.tooltip or None,
+                                on_click=actions[button.key], sensitive=not busy)
             if button.key == "try":
                 widget.set_chosen(self.trying)  # raised while this window wears the Look
                 widget.update_property([Gtk.AccessibleProperty.LABEL], ["Try in this window"])
@@ -221,7 +229,10 @@ class ItemPage(Page):
         self.shell.store.install(self.item, [device_id], self.shell.done)
 
     def update_here(self) -> None:
-        self.shell.store.update(self.item, (self.world.here,), self.shell.done)
+        # Here, under the permissions it lists, Update is the person's approval of what it asks for more.
+        store = self.shell.store
+        self.shell.store.update(self.item, (self.world.here,), self.shell.done,
+                                approve=store.asks_for_more(self.item.id))
 
     def update_elsewhere(self) -> None:
         pending = self.world.pending_for(self.item.id)

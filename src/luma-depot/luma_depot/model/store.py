@@ -32,8 +32,22 @@ class Store:
     def uninstall(self, item: Item, device: str, done: Done) -> None:
         raise NotImplementedError
 
-    def update(self, item: Item, devices: tuple[str, ...], done: Done) -> None:
+    def update(self, item: Item, devices: tuple[str, ...], done: Done, *, approve: bool = False) -> None:
         raise NotImplementedError
+
+    #: Items with an install, removal or update running (the key reads Installing…).
+    busy: set = set()
+
+    def held(self, app_id: str) -> bool:
+        """Whether an update waits for the person to approve what it asks for more."""
+        return False
+
+    def asks_for_more(self, app_id: str) -> bool:
+        return bool([c for c in self.permission_changes(app_id) if c.change in ("added", "widened")])
+
+    def permission_changes(self, app_id: str) -> tuple:
+        """What a waiting update adds, widens, narrows or removes (Permission rows with `change`)."""
+        return ()
 
     def update_all(self, done: Done) -> None:
         raise NotImplementedError
@@ -100,7 +114,7 @@ class SampleStore(Store):
         self._set(self.world.with_on(item, device, False), done,
                   f"{item.name} was uninstalled from {self.world.device(device).name}")
 
-    def update(self, item: Item, devices: tuple[str, ...], done: Done) -> None:
+    def update(self, item: Item, devices: tuple[str, ...], done: Done, *, approve: bool = False) -> None:
         if devices == (self.world.here,):
             words = f"{item.name} was updated on {self.world.this_device.name}"
         else:
