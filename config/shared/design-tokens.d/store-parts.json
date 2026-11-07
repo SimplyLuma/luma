@@ -158,6 +158,9 @@
         "line_height": 1.5385,
         "tracking_em": 0
       }
+    },
+    "action_center": {
+      "grow_width_wide": 440
     }
   }
 }
