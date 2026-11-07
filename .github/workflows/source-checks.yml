@@ -17,6 +17,17 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Android graphics recovery and restart budget regressions
         run: PYTHONPATH=src/luma-android python3 -B -m unittest discover -s src/luma-android/tests -p 'test_graphics_watchdog.py'
+  shell-presentation-layout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install GJS
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y gjs
+      - name: Handheld Home density, status ink and display exclusions
+        run: |
+          gjs -m tests/gnome-shell/presentation/compact-layout.js
+          gjs -m tests/gnome-shell/presentation/density.js
   public-source-contracts:
     strategy:
       fail-fast: false

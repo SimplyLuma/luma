@@ -22,43 +22,112 @@ function preferredIcon(choice, automatic, width, height, labels) {
     return Math.floor(Math.max(20, Math.min(wanted, width - 12, height - (labels ? 24 : 12))));
 }
 
-export function homeLayout(width, height, mode, count, metrics = {}, preferences = {}) {
+// Physical targets for handheld Home, in millimetres at the user's zoom: a
+// comfortable app cell, the narrowest cell a phone's four columns may use,
+// the densest automatic cell, a row (icon, label and air), an icon and a
+// label. A page needs MIN_ROWS comfortable rows; a short screen (a square
+// keyboard phone) trades column width for rows instead.
+const CELL_MM = 17, PHONE_CELL_MM = 13, DENSE_CELL_MM = 12.5, ROW_MM = 17, ICON_MM = 10, WIDE_ICON_MM = 11.4, LABEL_MM = 2;
+const MIN_ROWS = 4;
+
+// Millimetres per logical pixel of the primary monitor, and the user's zoom:
+// its scale over the scale Mutter picks by default for the panel. Mutter
+// reports the last applied scale as a mode's preferred one, so the default is
+// derived as its calculate_scale() does (meta-monitor.c): the supported scale
+// nearest the panel's DPI over 135 (110 from 20 inches). Inputs are DisplayConfig
+// GetCurrentState and GetResources replies, deep-unpacked. Null when the
+// panel reports no plausible size (no EDID/DT size, or a 96 dpi placeholder).
+export function displayDensity(state, resources, x, y) {
+    const value = v => v?.deep_unpack ? v.deep_unpack() : v;
+    const logical = state?.[2]?.find(entry => entry[0] === x && entry[1] === y);
+    const connector = logical?.[5]?.[0]?.[0];
+    const mode = state?.[1]?.find(entry => entry[0][0] === connector)?.[1]
+        ?.find(entry => value(entry[6]?.['is-current']));
+    const output = resources?.[2]?.find(entry => entry[4] === connector);
+    if (!logical || !mode || !output) return null;
+    const widthMm = value(output[7]?.['width-mm']), heightMm = value(output[7]?.['height-mm']);
+    const [, nativeWidth, nativeHeight, , , supported = []] = mode;
+    const scale = logical[2];
+    if (!(widthMm > 0 && heightMm > 0 && nativeWidth > 0 && nativeHeight > 0 && scale > 0)) return null;
+    // Some EDIDs store only an aspect ratio; the panel's shape must match its pixels.
+    const pixelAspect = Math.max(nativeWidth, nativeHeight) / Math.min(nativeWidth, nativeHeight);
+    const mmAspect = Math.max(widthMm, heightMm) / Math.min(widthMm, heightMm);
+    if (Math.abs(mmAspect / pixelAspect - 1) > 0.15) return null;
+    const diagonalMm = Math.hypot(widthMm, heightMm);
+    const mmPerNative = diagonalMm / Math.hypot(nativeWidth, nativeHeight);
+    const perfect = 25.4 / mmPerNative / (diagonalMm < 20 * 25.4 ? 135 : 110);
+    const automatic = supported.length
+        ? supported.reduce((best, s) => Math.abs(s - perfect) < Math.abs(best - perfect) ? s : best) : scale;
+    const zoom = scale / automatic;
+    // A UI pixel at the default scale is 0.1-0.4 mm on any real screen, and
+    // nobody zooms past half or twice it: a 96 dpi placeholder size fails one.
+    const automaticPixel = mmPerNative * automatic;
+    if (automaticPixel < 0.1 || automaticPixel > 0.4 || zoom < 0.5 || zoom > 2) return null;
+    return {mmPerPx: mmPerNative * scale, zoom};
+}
+
+export function homeLayout(width, height, mode, count, metrics = {}, preferences = {}, density = null) {
     // Widgets and apps share the same whole icon-cell grid.
     // Density depends on usable geometry, independently of device or mode.
+    // Logical px for a physical size at the user's zoom, and back.
+    const px = mm => mm * density.zoom / density.mmPerPx;
+    const mmOf = pixels => pixels * density.mmPerPx / density.zoom;
     if (width <= 480 && height >= 280) {
         const inset = 8;
         const top = 44;
-        const dockHeight = 56;
+        let dockHeight = 56;
         const dockBottom = 6;
         const dotsHeight = 16;
-        const bottom = dockHeight + dockBottom + dotsHeight + 4;
-        const availableHeight = Math.max(1, height - top - bottom);
-        // Fit five columns when 68px cells fit, and reduce density on narrower
-        // displays. Additional columns must not also compress the row spacing.
         const contentWidth = width - 2 * inset;
-        const automaticColumns = Math.max(3, Math.min(5, Math.floor(contentWidth / 68)));
+        const reserved = () => dockHeight + dockBottom + dotsHeight + 4;
+        let automaticColumns, roomy = false;
+        if (density) {
+            // Four columns on any phone whose cells stay PHONE_CELL_MM wide,
+            // more on wider screens; on a short screen, the densest cell that
+            // still fits, so a page keeps enough apps.
+            const contentMm = mmOf(contentWidth);
+            const comfortable = Math.min(6, Math.max(contentMm >= 4 * PHONE_CELL_MM ? 4 : 3,
+                Math.round(contentMm / CELL_MM)));
+            roomy = mmOf(height - top - reserved()) / ROW_MM >= MIN_ROWS;
+            automaticColumns = roomy ? comfortable
+                : Math.max(comfortable, Math.min(6, Math.floor(contentMm / DENSE_CELL_MM)));
+            // The dock's buttons follow Home's icons (icon + 4 + two 6 px gaps).
+            if (roomy) dockHeight = Math.max(56, Math.round(Math.min(64, px(ICON_MM))) + 16);
+        } else {
+            // Fit five columns when 68px cells fit, and reduce density on narrower
+            // displays. Additional columns must not also compress the row spacing.
+            automaticColumns = Math.max(3, Math.min(5, Math.floor(contentWidth / 68)));
+        }
+        const bottom = reserved();
+        const availableHeight = Math.max(1, height - top - bottom);
         const iconColumns = preferredCount(preferences.columns, automaticColumns, contentWidth, 56, 3);
         const cellWidth = contentWidth / iconColumns;
         const minimumRow = Math.max(56, metrics.cellHeight ?? 0,
             Math.round(contentWidth / Math.min(iconColumns, 4) * 0.78));
-        const automaticRows = Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
+        const automaticRows = roomy
+            ? Math.max(2, Math.min(32, Math.round(mmOf(availableHeight) / ROW_MM)))
+            : Math.max(2, Math.min(32, Math.floor(availableHeight / minimumRow)));
         const rows = preferredCount(preferences.rows, automaticRows, availableHeight, 56, 2);
         const rowHeight = availableHeight / rows;
-        const iconSize = preferredIcon(preferences.iconSize, Math.min(64, rowHeight - 24, cellWidth * 0.66),
+        const automaticIcon = Math.min(64, rowHeight - 24, cellWidth * 0.66, density ? px(ICON_MM) : Infinity);
+        const iconSize = preferredIcon(preferences.iconSize, automaticIcon,
             cellWidth, rowHeight, preferences.showLabels !== false);
+        const labelSize = roomy ? Math.max(10, Math.min(13, Math.round(px(LABEL_MM)))) : 10;
         const columns = iconColumns;
         const capacity = rows * iconColumns;
         return {width, height, form: formOf(width, height), compact: true, inset,
             contentWidth, columns, iconColumns, appColumns: 1,
             widgetColumns: Math.floor(iconColumns / 2), top, bottom, dockHeight, dockBottom,
-            dotsHeight, iconSize, cellHeight: rowHeight - 4, rowHeight,
+            dotsHeight, iconSize, labelSize, cellHeight: rowHeight - 4, rowHeight,
             firstRows: rows, otherRows: rows, firstCapacity: capacity,
             laterCapacity: capacity, pages: Math.max(1, Math.ceil(count / capacity))};
     }
     const tablet = mode === 'tablet';
     const inset = tablet ? Math.min(56, width / 16) : 20;
     const contentWidth = Math.max(1, width - 2 * inset);
-    const cellWidth = Math.max(tablet ? 112 : 84, metrics.minimumCellWidth ?? 0);
+    // Wider screens keep their cell proportions around a physical icon.
+    const automaticIcon = density ? Math.max(48, Math.min(72, Math.round(px(WIDE_ICON_MM)))) : 60;
+    const cellWidth = Math.max(Math.round((tablet ? 112 : 84) * automaticIcon / 60), metrics.minimumCellWidth ?? 0);
     const columns = preferredCount(preferences.columns, Math.max(1, Math.floor(contentWidth / cellWidth)),
         contentWidth, 56, 3);
     const top = height < 440 ? 44 : 64;
@@ -74,9 +143,23 @@ export function homeLayout(width, height, mode, count, metrics = {}, preferences
     const firstCapacity = firstRows * columns;
     const laterCapacity = otherRows * columns;
     const pages = Math.max(1, 1 + Math.ceil(Math.max(0, count - firstCapacity) / laterCapacity));
-    const iconSize = preferredIcon(preferences.iconSize, 60, contentWidth / columns, rowHeight, preferences.showLabels !== false);
+    const iconSize = preferredIcon(preferences.iconSize, automaticIcon, contentWidth / columns, rowHeight, preferences.showLabels !== false);
     return {width, height, form: formOf(width, height), inset, contentWidth, columns, top, bottom, cellHeight, rowHeight, iconSize, firstRows, otherRows,
         firstCapacity, laterCapacity, pages};
+}
+
+// Ink for the status bar over sampled colours (0-255 channels): dark ink
+// (#191b1f) when it out-contrasts white over the median sample.
+export function inkFor(colors) {
+    const linear = c => (c /= 255) <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    const luminance = colors.map(({red, green, blue}) =>
+        0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)).sort((a, b) => a - b);
+    if (!luminance.length) return null;
+    const middle = luminance.length / 2;
+    const median = luminance.length % 2 ? luminance[Math.floor(middle)]
+        : (luminance[middle - 1] + luminance[middle]) / 2;
+    // Equal contrast against white and #191b1f is at luminance 0.203.
+    return median > 0.203 ? 'dark' : 'light';
 }
 
 export function pageRange(layout, page, count) {

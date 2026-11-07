@@ -283,7 +283,7 @@ export class TabletTasks {
         else { this.finishLift(false); if (distance < -24 * this.home._scale) this.peek(); }
     }
 
-    _ink(window) {
+    _ink(window, side) {
         const bus = window?.get_gtk_unique_bus_name();
         const path = window?.get_gtk_window_object_path();
         if (bus && path && !this._actions.has(window)) {
@@ -293,16 +293,17 @@ export class TabletTasks {
             this._actions.set(window, {actions, signals});
         }
         const hint = this._actions.get(window)?.actions.get_action_state('luma-status-ink')?.deep_unpack();
-        return ['light', 'dark'].includes(hint) ? hint : this.home._statusInk;
+        return ['light', 'dark'].includes(hint) ? hint : this.home._sampledInk?.[side] ?? this.home._statusInk;
     }
     updateInk() {
         const color = ink => ink === 'light' ? '#ffffff' : '#191b1f';
         const visible = this.enabled && this.active && !this.home._home.visible;
-        const left = visible ? this._ink(this.active.left) : this.home._statusInk;
-        const right = visible ? this._ink(this.active.right) : this.home._statusInk;
+        const left = visible ? this._ink(this.active.left, 'left') : this.home._statusInk;
+        const right = visible ? this._ink(this.active.right, 'right') : this.home._statusInk;
         this.home._clockButton?.set_style(`color: ${color(left)};`);
         this.home._statusRight.set_style(`color: ${color(right)};`);
-        this.home._gestureBar.get_child()?.set_style(`background-color: ${color(this.home._statusInk)};`);
+        const handle = this.home._home.visible ? this.home._statusInk : this.home._sampledInk?.bottom ?? this.home._statusInk;
+        this.home._gestureBar.get_child()?.set_style(`background-color: ${color(handle)};`);
         this._bars.forEach((bar, i) => bar.get_child()?.set_style(`background-color: ${color(i ? right : left)};`));
     }
 
