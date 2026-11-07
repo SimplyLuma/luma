@@ -467,6 +467,16 @@ if [ -n "$device_repo" ]; then
     [[ ";$override_removed" == *";$name;"* ]] || fail "the override does not remove $name"
   done
 fi
+# rpm-ostree's local policy rebuild regenerates the home-directory contexts from
+# useradd's HOME=/home and loses the image's /var/home rules: /var/home stays
+# var_t and useradd cannot create the first account's home. The override
+# changes no SELinux policy, so the deployment keeps the image's own store.
+(cd "$deploy/usr/etc" && find selinux -type f) | while read -r f; do
+  cmp -s "$deploy/usr/etc/$f" "$deploy/etc/$f" || cp -a "$deploy/usr/etc/$f" "$deploy/etc/$f"
+done
+rm -f "$deploy"/etc/selinux/targeted/semanage.*.LOCK
+grep -q '^/var/home' "$deploy/etc/selinux/targeted/contexts/files/file_contexts.homedirs" ||
+  fail "the deployment's SELinux policy has no /var/home home-directory contexts"
 grep -Eq "^(base)?refspec=$remote:$ref\$" "$deploy.origin" || fail "the deployment does not follow $remote:$ref"
 ! grep -Eq '^(base)?refspec=.*raspberrypi-rpi5' "$deploy.origin" || fail "the deployment follows the Raspberry Pi hardware ref"
 # The Pi follows the generic ARM stream: no hardware-targeted update.conf.

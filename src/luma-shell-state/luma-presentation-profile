@@ -19,7 +19,10 @@ try:
 except ValueError:
     chassis = None
 record_device_class()
-profile = presentation_profile(read("/sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw"),
+requested = read("/sys/firmware/qemu_fw_cfg/by_name/opt/luma/experience/raw")
+# TV is a posture over the Desktop presentation: keep it for read_device_posture;
+# read_presentation_profile maps it to Desktop.
+profile = "tv" if requested == "tv" else presentation_profile(requested,
                                read("/etc/luma-device-class"), chassis,
                                read("/sys/firmware/devicetree/base/chassis-type"))
 directory = Path("/run/luma")

@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep the SELinux home-directory contexts for /var/home
+ConditionSecurity=selinux
+DefaultDependencies=no
+After=local-fs.target
+Before=accounts-daemon.service systemd-user-sessions.service gdm.service shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-selinux-homedirs
+
+[Install]
+WantedBy=multi-user.target

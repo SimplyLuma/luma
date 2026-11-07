@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Thu, 5 Nov 2026 12:00:29 -0600
+Subject: [PATCH] LumaUI Settings: Turn off TV Mode on the TV's Display page
+
+In TV posture the Display page opens with a TV Mode row whose Turn Off
+button calls the shell state's SetPosture ("automatic"), the call Quick
+Options' mode picker and the TV quick panel make, so the saved
+presentation returns as it was. A failed call shows a toast. Test:
+/settings/view/tv-leave answers SetPosture from a stand-in shell state.
+---
+ shell/cc-luma-view-displays.c |  1 +
+ shell/cc-luma-view-private.h  |  1 +
+ shell/cc-luma-view-tv.c       | 39 +++++++++++++++++++++++
+ shell/test-luma-view.c        | 59 +++++++++++++++++++++++++++++++++++
+ 4 files changed, 100 insertions(+)
+
+diff --git a/shell/cc-luma-view-displays.c b/shell/cc-luma-view-displays.c
+index 5df4035..ac66713 100644
+--- a/shell/cc-luma-view-displays.c
++++ b/shell/cc-luma-view-displays.c
+@@ -348,6 +348,7 @@ void cc_luma_view_displays_render (View *v)
+   gtk_label_set_xalign (GTK_LABEL (hint), .5);
+   gtk_box_append (GTK_BOX (content), hint);
+   cf_hero (v, content, "cf-displays");
++  cc_luma_view_tv_mode_rows (v);
+   JsonObject *catalog = json_object_get_object_member (json_object_get_object_member (cc_luma_fixture_get_data (v->model), "CFDISP"), id);
+   GtkBox *card = cf_group (v, mirror ? "Both displays" : json_object_get_string_member (catalog, "n"), NULL);
+   const char *fields[] = { "res", "hz" }, *titles[] = { "Resolution", "Refresh rate" };
+diff --git a/shell/cc-luma-view-private.h b/shell/cc-luma-view-private.h
+index 96f52af..35c8712 100644
+--- a/shell/cc-luma-view-private.h
++++ b/shell/cc-luma-view-private.h
+@@ -181,4 +181,5 @@ void cc_luma_view_tv_render (View *v);
+ /* TV posture's hero line: the thing's icon tile beside its name and state (cc-luma-view-tv.c). */
+ GtkWidget *cc_luma_view_tv_hero_line (const char *icon, const char *title, const char *subtitle);
+ /* Display's TV-only rows (Fit › Screen edges), drawn only in TV posture. */
++void cc_luma_view_tv_mode_rows (View *v);
+ void cc_luma_view_tv_display_rows (View *v);
+diff --git a/shell/cc-luma-view-tv.c b/shell/cc-luma-view-tv.c
+index 2d04550..db16bd5 100644
+--- a/shell/cc-luma-view-tv.c
++++ b/shell/cc-luma-view-tv.c
+@@ -103,6 +103,45 @@ static char *percent_format (double value)
+   return g_strdup_printf ("%d%%", (int) round (value));
+ }
+ 
++/* TV Mode's way back: the shell state's SetPosture ("automatic"), the call Quick Options' mode
++ * picker and the TV quick panel make, so the saved presentation (desktop, tablet or mobile) comes
++ * back as it was. The posture change redraws Settings for the desktop. */
++#define SHELL_STATE "org.project_luma.ShellState1"
++static void leave_tv_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  g_autoptr (GtkWidget) root = data;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GVariant) reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  if (!reply)
++    {
++      g_warning ("TV Mode: SetPosture: %s", error->message);
++      luma_toast_show (root, "Couldn’t turn off TV Mode", "error");
++    }
++}
++
++static void leave_tv (GtkButton *button, View *v)
++{
++  (void) button;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
++  if (!bus)
++    {
++      luma_toast_show (v->root, "Couldn’t turn off TV Mode", "error");
++      return;
++    }
++  g_dbus_connection_call (bus, SHELL_STATE, "/org/project_luma/ShellState1", SHELL_STATE, "SetPosture",
++                          g_variant_new ("(s)", "automatic"), NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
++                          leave_tv_done, g_object_ref (v->root));
++}
++
++/* The TV's Display page opens with the way out: a row the remote reaches like any other. */
++void cc_luma_view_tv_mode_rows (View *v)
++{
++  if (!luma_ui_tv_posture ()) return; /* TV posture only */
++  GtkBox *mode = cf_group (v, "TV Mode", NULL);
++  cf_bt (v, mode, "Turn off TV Mode", "Back to the desktop as you left it", "Turn Off", FALSE, G_CALLBACK (leave_tv));
++}
++
+ void cc_luma_view_tv_display_rows (View *v)
+ {
+   if (!luma_ui_tv_posture ()) return; /* TV-only rows: never on a desktop, tablet or phone */
+diff --git a/shell/test-luma-view.c b/shell/test-luma-view.c
+index 96fe362..b444cf3 100644
+--- a/shell/test-luma-view.c
++++ b/shell/test-luma-view.c
+@@ -870,6 +870,64 @@ static GtkWidget *find_button_caption (GtkWidget *root, const char *caption)
+   }
+   return NULL;
+ }
++/* TV Mode's way back (Nick's Dell, 4 Nov): in TV posture the Display page opens with Turn off
++ * TV Mode, a focusable button that calls the shell state's SetPosture ("automatic"), the call
++ * Quick Options and the TV quick panel make. A stand-in shell state on the session bus answers. */
++static char *tv_leave_posture;
++static void tv_leave_call (GDBusConnection *bus, const char *sender, const char *path, const char *iface,
++                           const char *method, GVariant *params, GDBusMethodInvocation *invocation, gpointer data)
++{
++  (void) bus; (void) sender; (void) path; (void) iface; (void) data;
++  if (g_str_equal (method, "SetPosture"))
++    {
++      g_free (tv_leave_posture);
++      g_variant_get (params, "(s)", &tv_leave_posture);
++    }
++  g_dbus_method_invocation_return_value (invocation, NULL);
++}
++static gboolean tv_leave_timeout (gpointer data) { *(gboolean *) data = TRUE; return G_SOURCE_REMOVE; }
++static void tv_leave (void)
++{
++  static const char xml[] = "<node><interface name='org.project_luma.ShellState1'>"
++                            "<method name='SetPosture'><arg type='s' direction='in'/></method></interface></node>";
++  static const GDBusInterfaceVTable vtable = { tv_leave_call, NULL, NULL, { 0 } };
++  g_autoptr (GDBusConnection) bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
++  if (!bus) { g_test_skip ("no session bus"); return; }
++  g_autoptr (GDBusNodeInfo) info = g_dbus_node_info_new_for_xml (xml, NULL);
++  guint object = g_dbus_connection_register_object (bus, "/org/project_luma/ShellState1", info->interfaces[0],
++                                                    &vtable, NULL, NULL, NULL);
++  guint name = g_bus_own_name_on_connection (bus, "org.project_luma.ShellState1", G_BUS_NAME_OWNER_FLAGS_NONE,
++                                             NULL, NULL, NULL, NULL);
++  g_assert_cmpuint (object, >, 0);
++  g_autoptr (CcLumaFixture) model = load ();
++  /* a desktop's Display page has no TV row */
++  g_setenv ("LUMA_POSTURE", "desktop", TRUE);
++  GtkWidget *desk = g_object_ref_sink (cc_luma_view_new (model, "displays", NULL));
++  drain ();
++  g_assert_null (find_button_caption (desk, "Turn Off"));
++  g_object_unref (desk);
++  /* the TV's opens with it */
++  g_setenv ("LUMA_POSTURE", "tv", TRUE);
++  GtkWidget *view = g_object_ref_sink (cc_luma_view_new (model, "displays", NULL));
++  drain ();
++  GtkWidget *off = find_button_caption (view, "Turn Off");
++  g_assert_nonnull (off);
++  g_assert_true (gtk_widget_get_focusable (off));
++  g_assert_true (gtk_widget_get_sensitive (off));
++  g_clear_pointer (&tv_leave_posture, g_free);
++  g_signal_emit_by_name (off, "clicked");
++  gboolean expired = FALSE;
++  guint timer = g_timeout_add (5000, tv_leave_timeout, &expired);
++  while (!tv_leave_posture && !expired) g_main_context_iteration (NULL, TRUE);
++  if (!expired) g_source_remove (timer);
++  g_assert_cmpstr (tv_leave_posture, ==, "automatic");
++  g_clear_pointer (&tv_leave_posture, g_free);
++  g_unsetenv ("LUMA_POSTURE");
++  g_object_unref (view);
++  drain ();
++  g_bus_unown_name (name);
++  g_dbus_connection_unregister_object (bus, object);
++}
+ static void displays_view (void)
+ {
+   g_autoptr (CcLumaFixture) model = load ();
+@@ -2373,6 +2431,7 @@ int main (int argc, char **argv)
+   g_test_add_func ("/settings/view/missing-share-artwork", missing_share_artwork);
+   g_test_add_func ("/settings/view/nearby-join", nearby_join);
+   g_test_add_func ("/settings/view/nearby-in-place", nearby_in_place);
++  g_test_add_func ("/settings/view/tv-leave", tv_leave);
+   g_test_add_func ("/settings/view/turn-on", turn_on);
+   g_test_add_func ("/settings/view/scenario-variants", scenario_variants);
+   g_test_add_func ("/settings/view/bluetooth", bluetooth_view);

@@ -5,23 +5,32 @@
 A shared parent's setgid/default ACL must not supply ownership for the importer's
 working directories. Existing caches without this creation receipt are refused;
 quarantine them explicitly and create a fresh repository instead of rewriting
-cached objects or their metadata.
+cached objects or their metadata. With --quarantine-refused, a refused cache is
+renamed aside unread (`<name>.quarantine-<UTC>`) and a fresh one is created: the
+receipt binds the cache's device and inode, so moving the working root or a loop
+device renumbered by a reboot would otherwise stop every export.
 """
 import argparse
 import json
 import os
 from pathlib import Path
 import stat
+import sys
+import time
 
 MARKER = '.luma-private-import.json'
 SCHEMA = 'org.projectluma.private-import-directory/v1'
 ACL_NAMES = ('system.posix_acl_access', 'system.posix_acl_default')
 
 
-def ensure_private(path):
-    path = Path(path)
+def check_parent(path):
     if os.getuid() or not path.is_absolute() or path.parent.is_symlink() or not path.parent.is_dir():
         raise ValueError('Root and an existing nonsymlink import parent are required')
+
+
+def ensure_private(path):
+    path = Path(path)
+    check_parent(path)
     fresh = False
     try:
         path.mkdir(mode=0o700)
@@ -64,11 +73,27 @@ def ensure_private(path):
     return receipt
 
 
+def admit(path, quarantine_refused=False):
+    path = Path(path)
+    check_parent(path)
+    try:
+        return ensure_private(path)
+    except ValueError:
+        if not quarantine_refused or not (path.exists() or path.is_symlink()):
+            raise
+    # Never read or reuse the refused cache: move it aside whole and start fresh.
+    aside = path.with_name(f"{path.name}.quarantine-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}")
+    path.rename(aside)
+    print(f'quarantined refused import cache: {aside}', file=sys.stderr)
+    return ensure_private(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--quarantine-refused', action='store_true')
     parser.add_argument('path')
     args = parser.parse_args()
-    print(json.dumps(ensure_private(Path(args.path)), sort_keys=True))
+    print(json.dumps(admit(Path(args.path), args.quarantine_refused), sort_keys=True))
 
 
 if __name__ == '__main__':

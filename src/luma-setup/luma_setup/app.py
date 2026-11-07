@@ -127,6 +127,9 @@ class SetupApplication(Adw.Application):
             self.window = SetupTVWindow(self, setup)
         else:
             self.window = SetupWindow(self, setup, form)
+        # Closing the setup would end GDM's setup session and leave a black screen: a close
+        # request (Quit from the dash, Alt+F4) is refused; the setup ends only by signing in.
+        self.window.connect("close-request", lambda _window: True)
         data = system.fixture() or {}
         page = data.get("page")
         if page and page in self.window.pages:

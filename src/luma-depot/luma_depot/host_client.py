@@ -3,8 +3,8 @@
 import json
 import uuid
 from gi.repository import Gio, GLib
-from .host_wire import BUS, OBJECT, dumps, loads, request
-from .providers import Result, ProviderError
+from .host_wire import BUS, OBJECT, TRANSACTIONS, dumps, loads, request
+from .providers import Progress, Result, ProviderError
 
 class Client:
     def __init__(self):
@@ -35,12 +35,22 @@ class Client:
         rid=uuid.uuid4().hex
         text=json.dumps(values,separators=(',',':'),allow_nan=False)
         request(operation,text) # Same strict contract on both sides.
-        if len(self.pending)>=16:
+        transaction=operation in TRANSACTIONS
+        if sum(1 for j in self.pending.values() if j['transaction']==transaction)>=(64 if transaction else 16):
             GLib.idle_add(callback,Result(error=ProviderError('Depot is already checking applications. Try again shortly.')));return
-        job={'progress':progress,'cancellable':cancellable,'handler':0,
+        job={'progress':progress,'cancellable':cancellable,'handler':0,'transaction':transaction,
              'operation':operation,'text':text,'callback':callback}
         self.pending[rid]=job
         self.queue.append(rid)
+        if transaction and progress and 'app_id' in values and any(
+                self.pending[r]['transaction'] for r in self.pending if r!=rid):
+            # Waits behind another install or update: say so, never "failed".
+            job['app_id']=values['app_id']
+            def queued():
+                if rid in self.queue and not self.closed:
+                    job['queued']=True;progress(Progress(job['app_id'],0.,0,0,'Queued'))
+                return GLib.SOURCE_REMOVE
+            GLib.idle_add(queued)
         if cancellable:
             job['handler']=cancellable.connect(lambda *_: GLib.idle_add(self.cancel,rid))
         if cancellable and cancellable.is_cancelled():self.cancel(rid)
@@ -50,11 +60,18 @@ class Client:
         # A cold window asks for catalogue, inventory, free space, reviews and
         # tools together. Bound transport concurrency below the native owner's
         # four-job admission limit; optional reads cannot crowd out its own UI.
-        while not self.closed and self.queue and len(self.inflight)<2:
-            rid=self.queue.pop(0)
+        # Installs and updates have their own lane, one at a time and in
+        # order, so "Update all" never holds back the reads that show progress.
+        def lane(transaction):
+            return sum(1 for r in self.inflight if self.pending.get(r,{}).get('transaction')==transaction)
+        for rid in tuple(self.queue):
+            if self.closed:break
             job=self.pending.get(rid)
-            if job is None:continue
+            if job is None:self.queue.remove(rid);continue
+            if lane(job['transaction'])>=(1 if job['transaction'] else 2):continue
+            self.queue.remove(rid)
             self.inflight.add(rid)
+            if job.get('queued'):job['progress'](Progress(job['app_id'],0.,0,0,'Starting'))
             self._dispatch(rid,job)
 
     def _dispatch(self,rid,job):
@@ -71,7 +88,16 @@ class Client:
                 value=(Result(value=payload.get('value')) if payload['ok'] else
                     Result(error=ProviderError(payload.get('error','Depot could not complete this operation.'),
                          hint=payload.get('hint',''),detail=payload.get('detail',''))))
-            except (GLib.Error,ValueError,TypeError,KeyError) as error:
+            except GLib.Error as error:
+                refused='GDBus.Error:'+BUS+'.Refused: '
+                if error.message.startswith(refused):
+                    # The service answered and said why; that is not a broken service.
+                    value=Result(error=ProviderError(error.message[len(refused):][:512] or 'Depot could not do that now.',
+                         detail=error.message))
+                else:
+                    value=Result(error=ProviderError('Depot could not reach its application service.',
+                         hint='Retry or update Luma’s application service. Your installed apps are preserved.',detail=str(error)))
+            except (ValueError,TypeError,KeyError) as error:
                 value=Result(error=ProviderError('Depot could not reach its application service.',
                      hint='Retry or update Luma’s application service. Your installed apps are preserved.',detail=str(error)))
             try:

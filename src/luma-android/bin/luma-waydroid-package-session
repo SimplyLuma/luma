@@ -255,17 +255,58 @@ def main() -> int:
 
     refreeze = thaw_android()
     try:
-        completed = subprocess.run(
-            [
-                "/usr/bin/lxc-attach", "-P", LXC_PATH,
-                "-n", LXC_NAME, "--clear-env", "--", "/system/bin/pm",
-                "install", "--user", "0", "-r", *android_paths,
-            ],
-            check=False,
-        )
-        return completed.returncode
+        return install_session(android_paths, host_root)
     finally:
         refreeze_android(refreeze)
+
+
+def package_manager(*command: str, timeout: int = 120) -> tuple[int, str]:
+    completed = subprocess.run(
+        [
+            "/usr/bin/lxc-attach", "-P", LXC_PATH, "-n", LXC_NAME,
+            "--clear-env", "--", "/system/bin/pm", *command,
+        ],
+        capture_output=True, text=True, check=False, timeout=timeout,
+    )
+    return completed.returncode, (completed.stdout + completed.stderr).strip()
+
+
+def install_session(android_paths: list[str], host_root: Path) -> int:
+    """Install every payload through one PackageInstaller session.
+
+    Android verifies package identity, signatures and the complete split set
+    at commit; an abandoned session leaves the installed package untouched.
+    """
+    status, output = package_manager("install-create", "--user", "0", "-r")
+    match = re.search(r"\[([0-9]+)\]", output)
+    if status != 0 or match is None:
+        print(output or "Android could not open an install session", file=sys.stderr)
+        return status or 1
+    session = match.group(1)
+    try:
+        for android_path in android_paths:
+            name = Path(android_path).name
+            size = (host_root / name).lstat().st_size
+            status, output = package_manager(
+                "install-write", "-S", str(size), session, name, android_path,
+                timeout=600,
+            )
+            if status != 0 or "Success" not in output:
+                print(output or f"Android rejected {name}", file=sys.stderr)
+                return status or 1
+        status, output = package_manager("install-commit", session, timeout=600)
+        print(output)
+        if status != 0 or "Success" not in output.splitlines():
+            print(output or "Android rejected the package", file=sys.stderr)
+            return status or 1
+        session = ""
+        return 0
+    except subprocess.TimeoutExpired:
+        print("Android did not finish the package transaction in time", file=sys.stderr)
+        return 1
+    finally:
+        if session:
+            package_manager("install-abandon", session)
 
 
 if __name__ == "__main__":

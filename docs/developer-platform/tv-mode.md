@@ -527,6 +527,13 @@ notification list (`lumaPresentation/tvQuickPanel.js`, rules in
 centre: every row drives the object the desktop's Quick Options already own,
 and a row whose backend is missing is not drawn.
 
+While TV was chosen in Quick Options, **Leave TV Mode** sits in its own
+section right under the toggles. OK on it closes the panel and calls the shell
+state's `SetPosture('automatic')`, as Quick Options' mode picker does, so the
+saved presentation (desktop, tablet or mobile) comes back unchanged. Settings
+offers the same as **Turn off TV Mode**, first on its Display page in TV
+posture.
+
 - **Opening it.** A pad's Start, from any app or the TV home: the system's
   pause menu over whatever is showing (Start again closes it). On the TV
   home, Right past Search reaches the weather | time cluster at the bar's far
@@ -623,6 +630,13 @@ exports it like its other icons. Make it from the application's v4 icon with
 the Design Center's `tools/wide-tile.py` (plate, art between plate and rim,
 rim; art centred at 1.15x); its corner is a share of the tile
 (rx 190 of 1600x900), and it carries its own rim.
+
+Flatpak's export keeps only the desktop keys on its own allowlist, so the
+`X-Luma-TV*` keys never reach `exports/share/applications`. For an entry with
+`X-Flatpak` and no TV keys, the TV home reads them from the app's deployed
+desktop file in the same installation (`/var/lib/flatpak/app/<id>/current/active/files`
+or the user's), and takes the tile from that deploy's `share/luma-tv/<tile>.svg`
+before the icon theme. Only those two installations and plain app IDs are read.
 
 `presentation` names what the app shows in TV posture. `tv` means the app
 follows `tv_posture()` with its own TV presentation; `fullscreen` means it has

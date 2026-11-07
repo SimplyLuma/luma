@@ -26,7 +26,7 @@ import {TvPointer} from './tvPointer.js';
 import {TvScreenEdges} from './tvScreenEdges.js';
 import {TvQuickPanel} from './tvQuickPanel.js';
 import {tileMenu} from './tvAppSwitcherModel.js';
-import {greetingPart, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
+import {flatpakTile, flatpakTv, greetingPart, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
 import {gettext as _} from 'gettext';
 
@@ -107,7 +107,12 @@ export class TvPresentation {
         });
         watch(Main.layoutManager, 'monitors-changed', () => this._layout());
         watch(this._clock, 'notify::clock', () => this._tick());
-        watch(this._appSystem, 'installed-changed', () => this._loadApps());
+        // An install or update can change a Flatpak's deployed TV keys: read them again.
+        this._flatpakTv = new Map();
+        watch(this._appSystem, 'installed-changed', () => {
+            this._flatpakTv.clear();
+            this._loadApps();
+        });
         watch(Gio.AppInfoMonitor.get(), 'changed', () => this._loadApps());
         // A running app's tile carries the running dot.
         watch(this._appSystem, 'app-state-changed', () => this._syncRunning());
@@ -132,7 +137,11 @@ export class TvPresentation {
         this._quick = new TvQuickPanel({unit: () => this._unit(), opaque: () => this._opaque(),
             opened: () => this._draw(), closed: origin => this._quickClosed(origin),
             // The cluster never moves: the panel adopts it as its header while open.
-            cluster: {take: () => this._now, give: now => this._returnCluster(now)}});
+            cluster: {take: () => this._now, give: now => this._returnCluster(now)},
+            // Leave TV Mode: the same SetPosture('automatic') as Quick Options' mode picker.
+            leave: {available: () => this._presentation._state?.posture?.selected === 'tv',
+                run: () => this._presentation._call('SetPosture', new GLib.Variant('(s)', ['automatic']),
+                    () => this._presentation._refresh())}});
         // Running apps and closing them (tvAppSwitcher.js): Home pressed twice.
         this._switcher = new TvAppSwitcher({unit: () => this._unit(), opaque: () => this._opaque(),
             host: () => ({parent: this._home, below: this._track}),
@@ -436,13 +445,44 @@ export class TvPresentation {
         const entries = this._appSystem.get_installed()
             .filter(info => info.should_show?.() !== false && info.get_string)
             .map(info => tvEntry(info.get_id(), info.get_display_name() ?? info.get_name(),
-                key => info.get_string(key)));
+                key => info.get_string(key)) ?? this._flatpakEntry(info));
         this._apps = tvApps(entries);
         this._buildTiles();
     }
 
+    // A Flatpak whose export lost its TV keys: the keys of its own deployed desktop file
+    // (tvModel.js flatpakTv), read once per app until the installed apps change.
+    _flatpakEntry(info) {
+        const flatpakId = info.get_string('X-Flatpak');
+        if (!flatpakId) return null;
+        const id = info.get_id();
+        if (!this._flatpakTv.has(id)) {
+            const home = GLib.get_home_dir();
+            const roots = [{exports: '/var/lib/flatpak/exports/share/applications/', deploy: '/var/lib/flatpak/app'}];
+            if (home && home.startsWith('/'))
+                roots.push({exports: `${home}/.local/share/flatpak/exports/share/applications/`,
+                    deploy: `${home}/.local/share/flatpak/app`});
+            const read = path => {
+                try {
+                    const [ok, bytes] = GLib.file_get_contents(path);
+                    return ok ? new TextDecoder().decode(bytes) : null;
+                } catch {
+                    return null;
+                }
+            };
+            this._flatpakTv.set(id, flatpakTv(id, flatpakId, info.get_filename?.() ?? '', roots, read));
+        }
+        const found = this._flatpakTv.get(id);
+        if (!found) return null;
+        const entry = tvEntry(id, info.get_display_name() ?? info.get_name(), key => found.keys[key] ?? null);
+        if (entry) entry.files = found.files;
+        return entry;
+    }
+
     _tileFile(app, width) {
         if (!app.tile) return null;
+        const deployed = flatpakTile(app.files, app.tile);
+        if (deployed && GLib.file_test(deployed, GLib.FileTest.IS_REGULAR)) return Gio.File.new_for_path(deployed);
         const path = iconTheme.lookup_icon(app.tile, Math.round(width), 0)?.get_filename?.();
         return path ? Gio.File.new_for_path(path) : null;
     }
