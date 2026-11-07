@@ -44,7 +44,7 @@ def _tools_missing():
 def run(*argv, env=None):
     result = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=300)
     if result.returncode:
-        raise AssertionError(f'{argv[:3]} failed: {result.stdout}\n{result.stderr}')
+        raise AssertionError(f'{argv[0]} failed: {result.stdout}\n{result.stderr[-3000:]}')
     return result.stdout
 
 
@@ -77,6 +77,7 @@ class Fixture:
     def runtime(self):
         tree = self.root / 'runtime'
         (tree / 'usr/bin').mkdir(parents=True)
+        (tree / 'files').mkdir()  # build-export --runtime exports usr/, but wants a build directory
         (tree / 'usr/bin/true').write_text('#!/bin/sh\n')
         (tree / 'metadata').write_text(
             f'[Runtime]\nname={RUNTIME}\nruntime={RUNTIME}/{self.arch}/1\nsdk={RUNTIME}/{self.arch}/1\n')
@@ -128,7 +129,7 @@ from luma_installer import depot_catalogue_v1, depot_flatpak, native_app_roles
 options = json.loads(sys.argv[1])
 depot_catalogue_v1.PUBLIC_KEY_PATH = __import__('pathlib').Path(options['key'])
 depot_flatpak.REMOTES['luma'] = depot_flatpak.RemotePolicy(
-    'luma', 'Luma', frozenset({options['url']}), None)
+    'luma', 'Luma', frozenset({options['url'], options['url'].rstrip('/')}), None)
 native_app_roles.SIGNING_FINGERPRINTS = frozenset({options['fingerprint']})
 import gi
 gi.require_version('Flatpak', '1.0')
