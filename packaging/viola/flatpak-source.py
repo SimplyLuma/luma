@@ -12,8 +12,8 @@ from pathlib import Path
 import tarfile
 
 ENGINE_INPUTS = {
-    'x86_64': ('viola-native-engine-0.2.10-native30.tar.zst',
-               '2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028', 30),
+    'x86_64': ('viola-native-engine-0.2.10-native34.tar.zst',
+               'c31f198d2a9268fc7a1c882b82859ff35536f20a79a4ee2a0431b59890718b1e', 34),
     'aarch64': ('viola-native-engine-0.2.10-native33.tar.zst',
                 'a5fbcd7cd80a5c0b08833f92b98193f2d11bc5ccb5fc3350a03cae745ccc2a5b', 33),
 }

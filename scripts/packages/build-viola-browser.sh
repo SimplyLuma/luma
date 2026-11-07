@@ -13,8 +13,8 @@ esac
 case "$architecture" in
   x86_64)
     builder=$FEDORA_RPM_BUILD_CONTAINER
-    engine_release=30
-    engine_sha=2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028 ;;
+    engine_release=34
+    engine_sha=c31f198d2a9268fc7a1c882b82859ff35536f20a79a4ee2a0431b59890718b1e ;;
   aarch64)
     builder=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
     engine_release=33
