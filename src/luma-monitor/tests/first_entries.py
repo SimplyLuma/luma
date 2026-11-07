@@ -18,9 +18,9 @@ over budget is run once more and the better time counts.
 
 --source is the directory holding luma_monitor (default: this checkout;
 /usr/share/luma-monitor for the installed package). Needs GTK 4, libadwaita,
-PyGObject and LumaUI (luma_appkit); without a display or session bus it runs
-itself under dbus-run-session and xvfb-run. Prints one JSON line and exits 0
-on pass, 1 on fail.
+PyGObject, LumaUI (luma_appkit) and dbus-run-session; it runs itself on a
+private session bus, under xvfb-run when that is installed. Prints one JSON
+line and exits 0 on pass, 1 on fail.
 """
 from __future__ import annotations
 import argparse
@@ -270,15 +270,24 @@ def main():
     arguments.source = str(Path(arguments.source).resolve())
     if arguments.scenario or arguments.broker:
         return child(arguments)
-    if not arguments.wrapped and (not os.environ.get('DBUS_SESSION_BUS_ADDRESS') or
-                                  not (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))):
-        missing = [tool for tool in ('dbus-run-session', 'xvfb-run') if not shutil.which(tool)]
+    if not arguments.wrapped:
+        # Always a private session bus: the stand-in broker must not meet a
+        # real host service, and nothing here may reach the desktop's.
+        command = ['dbus-run-session', '--']
+        environment = dict(os.environ)
+        if shutil.which('xvfb-run'):
+            command += ['xvfb-run', '-a']
+            environment.pop('WAYLAND_DISPLAY', None)
+            environment['GDK_BACKEND'] = 'x11'
+        missing = [tool for tool in ('dbus-run-session',) if not shutil.which(tool)]
+        if not shutil.which('xvfb-run') and not (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
+            missing.append('xvfb-run')
         if missing:
             print(json.dumps({'check': CHECK, 'result': 'fail', 'detail': 'missing ' + ', '.join(missing)}))
             return 1
         # The private session's service chatter is not part of the result.
-        return subprocess.call(['dbus-run-session', '--', 'xvfb-run', '-a', sys.executable, SCRIPT,
-                                '--wrapped', *sys.argv[1:]], stderr=subprocess.DEVNULL)
+        return subprocess.call([*command, sys.executable, SCRIPT, '--wrapped', *sys.argv[1:]],
+                               env=environment, stderr=subprocess.DEVNULL)
     results = []
     with tempfile.TemporaryDirectory(prefix='monitor-first-entries-') as home:
         environment = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [arguments.source, os.environ.get('PYTHONPATH')])),
