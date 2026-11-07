@@ -18,7 +18,44 @@ from luma_appkit import icons, lumaui
 
 from ..model.world import Item, World
 
-__all__ = ["face", "face_colour", "hue_paint", "icon_path"]
+__all__ = ["face", "face_colour", "hue_paint", "icon_path", "picture"]
+
+def picture(path: str | None) -> Gtk.Picture:
+    """A picture from a file, decoded through the kit's texture cache (WebP included)."""
+    from luma_appkit.media_framed import texture
+    tex = texture(path)
+    return Gtk.Picture.new_for_paintable(tex) if tex is not None else Gtk.Picture()
+
+
+load_picture = picture
+
+
+class Backdrop(Gtk.Widget):
+    """A photo drawn to cover its box that asks for no size of its own (a card's blurred ground)."""
+
+    __gtype_name__ = "DepotBackdrop"
+
+    def __init__(self, path: str | None) -> None:
+        super().__init__(can_target=False, hexpand=True, vexpand=True)
+        from luma_appkit.media_framed import texture
+        self.texture = texture(path)
+
+    def do_measure(self, orientation, for_size):
+        return 0, 0, -1, -1
+
+    def do_snapshot(self, snapshot) -> None:
+        if self.texture is None:
+            return
+        gi.require_version("Graphene", "1.0")
+        gi.require_version("Gsk", "4.0")
+        from gi.repository import Graphene, Gsk
+        w, h = self.get_width(), self.get_height()
+        tw, th = self.texture.get_width(), self.texture.get_height()
+        scale = max(w / tw, h / th)
+        dw, dh = tw * scale, th * scale
+        snapshot.append_scaled_texture(self.texture, Gsk.ScalingFilter.TRILINEAR,
+                                       Graphene.Rect().init((w - dw) / 2, (h - dh) / 2, dw, dh))
+
 
 
 def hue_paint(widget: Gtk.Widget, lightness: float, chroma: float, hue: float) -> None:
@@ -148,7 +185,7 @@ def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
     elif look is not None:
         if look.art and world.assets is not None:
             art = world.assets / "art" / f"{look.art}.jpg"
-            picture = Gtk.Picture.new_for_filename(str(art))
+            picture = load_picture(str(art))
             picture.set_content_fit(Gtk.ContentFit.COVER)
             picture.set_can_shrink(True)
             picture.set_size_request(pixels, pixels)

@@ -253,3 +253,86 @@ box.dq-lspec.k-theme.th-cupertino { background: linear-gradient(160deg, #9ecbff,
 box.dq-lspec.k-theme.th-redmond { background: radial-gradient(ellipse 80% 90% at 70% 30%, #5aa2ff, #1d3f9a); }
 box.dq-lspec.k-theme.th-exile { background: #4a5a6a; }
 box.dq-lspec.k-theme.th-95 { background: #008080; }
+
+/* rows (3.3) */
+window.dq box.dq-rank { padding: 10px; border-radius: 14px; border-spacing: 12px; }
+window.dq box.dq-rank:hover, window.dq box.dq-rank:focus-visible { background: @luma_hover; }
+window.dq box.dq-rank:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+window.dq label.dq-rn { min-width: 18px; font-size: 15px; font-weight: 700; color: @luma_muted; font-feature-settings: "tnum"; }
+window.dq label.dq-rt-name { font-size: 14px; font-weight: 650; }
+window.dq label.dq-rt-line { font-size: 12.5px; color: @luma_muted; }
+window.dq label.dq-act-none { font-size: 12px; font-weight: 600; color: @luma_muted; }
+window.dq label.dq-empty { font-size: 14px; color: @luma_ink_secondary; margin: 12px 0; }
+window.dq box.dq-empty-line { border-spacing: 6px; }
+window.dq button.dq-crumb { margin-top: 18px; }
+window.dq button.dq-crumb + box.dq-intro { margin-top: 6px; }
+
+/* Today (4) */
+window.dq overlay.dq-hero { margin-top: 0; border-radius: 26px; min-height: 360px; }
+window.dq .dq-hbg { filter: blur(46px) saturate(1.3) brightness(0.62); opacity: 0.9; transform: scale(1.2); }
+window.dq box.dq-htx { padding: 36px 36px 40px; }
+window.dq label.dq-hkick { font-size: 12px; font-weight: 700; letter-spacing: 0.72px; color: alpha(white, 0.75); }
+window.dq label.dq-htitle { margin: 10px 0 12px; font-size: 40px; font-weight: 780; line-height: 42px; letter-spacing: -1px; color: white; }
+window.dq label.dq-hblurb { font-size: 15.5px; line-height: 23px; color: alpha(white, 0.82); }
+window.dq box.dq-hfoot { margin-top: 24px; padding: 10px; border-radius: 18px; border-spacing: 12px; min-width: 340px;
+  background: alpha(black, 0.28); box-shadow: inset 0 1px 2px alpha(black, 0.35), inset 0 0 0 1px alpha(white, 0.08); }
+window.dq label.dq-hname { font-size: 14.5px; font-weight: 700; color: white; }
+window.dq label.dq-hby { font-size: 12px; color: alpha(white, 0.7); }
+window.dq button.dq-hbtn { min-height: 34px; border-radius: 11px; padding: 0 16px; }
+window.dq picture.dq-hshot { border-radius: 14px 14px 0 0; transform: rotate(-3deg);
+  box-shadow: 0 0 0 1px alpha(white, 0.12), 0 -10px 50px -10px alpha(black, 0.65); transition: transform 400ms ease; }
+window.dq overlay.dq-hero:hover picture.dq-hshot { transform: translateY(-8px) rotate(-3deg); }
+window.dq .dq-two > box.dq-sec { margin-top: 34px; }
+
+/* tiles and cards (5.1, 6.1, 7.1) */
+window.dq overlay.dq-cat { border-radius: 20px; box-shadow: 0 18px 34px -24px alpha(black, 0.9); transition: transform 200ms ease; }
+window.dq overlay.dq-cat:hover { transform: translateY(-2px); }
+window.dq picture.dq-catpic { transition: transform 400ms ease; }
+window.dq overlay.dq-cat:hover picture.dq-catpic { transform: scale(1.04); }
+window.dq picture.dq-catpic.flip { transform: scaleX(-1); }
+window.dq overlay.dq-cat:hover picture.dq-catpic.flip { transform: scaleX(-1.04) scaleY(1.04); }
+window.dq box.dq-catfoot { background: linear-gradient(180deg, transparent 38%, alpha(black, 0.35) 62%, alpha(black, 0.88) 100%); }
+window.dq label.dq-catname { margin: 14px; font-size: 20px; font-weight: 720; letter-spacing: -0.2px; color: white; }
+window.dq box.dq-catfaces { margin: 10px; }
+window.dq box.dq-face.cat { margin-left: -6px; border-radius: 8px; min-width: 28px; min-height: 28px;
+  box-shadow: 0 6px 14px -4px alpha(black, 0.65), 0 1px 3px alpha(black, 0.4); }
+window.dq .dq-cats { margin-top: 22px; }
+window.dq box.dq-lt2 { border-spacing: 10px; }
+window.dq overlay.dq-ltp { border-radius: 16px; box-shadow: inset 0 0 0 1px @luma_line_faint, 0 14px 30px -20px alpha(black, 0.7);
+  transition: transform 200ms ease; }
+window.dq box.dq-lt2:hover overlay.dq-ltp { transform: translateY(-2px); }
+window.dq box.dq-ltn { padding: 0 2px; }
+window.dq label.dq-ltn-name { font-size: 14px; font-weight: 650; }
+window.dq label.dq-ltn-line { font-size: 12px; color: @luma_muted; }
+window.dq box.dq-ltuse { margin: 10px; padding: 4px 9px; border-radius: 9px; border-spacing: 4px; font-size: 11.5px; font-weight: 600;
+  color: white; background: rgba(20, 20, 26, 0.6); }
+window.dq box.dq-ltuse image { -gtk-icon-size: 12px; }
+window.dq box.dq-tc { padding: 16px; border-radius: 18px; background: @luma_control_fill; box-shadow: inset 0 0 0 1px @luma_line_faint;
+  border-spacing: 10px; }
+window.dq box.dq-tc:hover { background: @luma_control_fill_hover; }
+window.dq box.dq-tc-head { border-spacing: 12px; }
+window.dq label.dq-tc-name { font-size: 14.5px; font-weight: 650; }
+window.dq label.dq-tc-line { font-size: 12px; color: @luma_muted; }
+window.dq label.dq-tc-text { font-size: 13px; line-height: 19px; min-height: 38px; color: @luma_ink_secondary; }
+
+/* Library (10) */
+window.dq box.dq-tile { border-spacing: 2px; }
+window.dq button.dq-tface { padding: 6px 4px; border: none; background: none; box-shadow: none; border-radius: 14px; }
+window.dq button.dq-tface box { border-spacing: 8px; }
+window.dq button.dq-tface box.dq-face { box-shadow: 0 10px 22px -12px alpha(black, 0.6); transition: transform 150ms ease; }
+window.dq button.dq-tface:hover box.dq-face { transform: translateY(-2px); }
+window.dq box.dq-tile.away box.dq-face { opacity: 0.55; }
+window.dq label.dq-tile-name { font-size: 13px; font-weight: 650; }
+window.dq .dq-tile-state { font-size: 11.5px; color: @luma_muted; }
+window.dq box.dq-tile-state.up { color: @luma_accent; font-weight: 600; border-spacing: 4px; }
+window.dq box.dq-tile-state.up image { -gtk-icon-size: 12px; }
+window.dq button.dq-tget { min-height: 24px; }
+
+/* search (12) */
+window.dq box.dq-swhit { margin: 4px 0 12px; border-spacing: 8px; font-size: 14px; color: @luma_ink_secondary; }
+
+@media (prefers-reduced-motion: reduce) {
+  window.dq overlay.dq-cat:hover, window.dq box.dq-lt2:hover overlay.dq-ltp, window.dq button.dq-tface:hover box.dq-face,
+  window.dq overlay.dq-hero:hover picture.dq-hshot { transform: none; }
+  window.dq overlay.dq-cat:hover picture.dq-catpic { transform: none; }
+}
