@@ -186,6 +186,8 @@ class DepotShell(AppWindow):
 
     def go(self, place: str) -> None:
         """A sidebar place: the history clears and the place's filters reset (2.3)."""
+        if self.item is not None:
+            self.pages["item"].reset()
         self.history.clear()
         self.query = ""
         self.pages[place].reset()
@@ -202,6 +204,8 @@ class DepotShell(AppWindow):
         self._render()
 
     def back(self) -> None:
+        if self.item is not None:
+            self.pages["item"].reset()  # leaving stops a Look being tried
         if not self.history:
             self.go("today")
             return
@@ -301,6 +305,13 @@ class DepotShell(AppWindow):
         return False
 
     # ── things pages ask for ──────────────────────────────────────────────
+
+    def try_look(self, look) -> None:
+        """Wear a Look in this window only (None takes it off): a theme's class on the window."""
+        for name in [c for c in self.get_css_classes() if c.startswith("dq-trying-")]:
+            self.remove_css_class(name)
+        if look is not None:
+            self.add_css_class(f"dq-trying-{look.theme or look.kind.lower()}")
 
     def is_compact(self) -> bool:
         width = self.get_width()

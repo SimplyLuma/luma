@@ -46,6 +46,8 @@ class ItemPage(Page):
     def reset(self) -> None:
         self.tech_open = False
         self.picture = 0
+        if getattr(self, "trying", False):
+            self.shell.try_look(None)
         self.trying = False
 
     def snapshot(self) -> dict:
@@ -192,6 +194,9 @@ class ItemPage(Page):
             else:
                 widget = Button(button.label, variant=Button.KEY if button.variant == "key" else Button.FILL,
                                 icon=button.icon, tooltip=button.tooltip or None, on_click=actions[button.key])
+            if button.key == "try":
+                widget.set_chosen(self.trying)  # raised while this window wears the Look
+                widget.update_property([Gtk.AccessibleProperty.LABEL], ["Try in this window"])
             self.bar_buttons[button.key] = widget
             items.append(BarWidget(widget))
         return items
@@ -240,8 +245,13 @@ class ItemPage(Page):
         self._changed(world.with_updated(item.id, away), f"{item.name}: updating on {' and '.join(names)}")
 
     def try_it(self) -> None:
+        """Try applies the Look to this window only, until you leave the page (6.3)."""
         self.trying = not self.trying
-        self.shell.refresh_bar()
+        look = self.item.look
+        self.shell.try_look(look if self.trying else None)
+        button = self.bar_buttons.get("try")
+        if button is not None:
+            button.set_chosen(self.trying)
 
     def grow_install_on(self) -> None:
         item, world = self.item, self.world

@@ -102,7 +102,7 @@ def bar_for(item: Item, world: World, *, trying: bool = False) -> BarPlan:
         key = BarButton("install", "Install", "download" if item.kind == "app" else None, "key")
     tries = ()
     if item.kind == "look" and item.look is not None and (item.look.art or item.look.ink or item.look.kind == "Theme"):
-        tries = (BarButton("try", "Stop trying" if trying else "Try", "eye"),)
+        tries = (BarButton("try", "Try", "eye"),)
     return BarPlan((key, *tries, *update_on, *install_on, share, *uninstall))
 
 
