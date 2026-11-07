@@ -50,7 +50,11 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #    island for every AppWindow (tv_frame; C luma_window_set_tv_frame, luma_window_set_tv_active).
 # 10: wide tiles and app surfaces on TV (TvWideTile, TvShelf, TvTileGrid, TvPage, TvProgressButton,
 #     TvScreenshotViewer, TvEmptyState, compose_wide_tile, wide_tile_art); TvMenu.open(title=, first=).
-LUMAUI_API_LEVEL = 10
+# 11: Depot's parts (Button, Confirm(destructive=), Inset, TwoColumnInset, Checkbox, CheckMenuItem,
+#     RadioMenuItem, Tooltip, Disclosure, EdgeFadeScroller, PermissionList and the eleven permissions
+#     (PERMISSIONS, Grant, from_keys, from_reach), Changelog (ChangeLine, group_changelog), FramedPicture);
+#     TextButton sizes list, bar and big.
+LUMAUI_API_LEVEL = 11
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()

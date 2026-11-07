@@ -9,6 +9,14 @@
     Switch(active=True, on_toggle=set_wifi)             # 38x22; big=True is 44x26
 
 Twins: C luma_text_button_new() and luma_switch_new().
+
+The semantic form (Depot, 7 Nov) names what a button is for and how big it is,
+and never rounds a labelled button into a pill:
+
+    Button("Install", variant=Button.FILL, size=Button.SM)          # a list row: 30, 12 px padding, 10 round
+    Button("Open", variant=Button.KEY, size=Button.MD, icon=None)   # the bar's key: 36, 12 round
+    Button("All apps", icon="layout-grid", menu=True)               # opens a menu: a trailing chevron
+    Button("Uninstall", variant=Button.DANGER, size=Button.LG, icon="trash-2")
 """
 from __future__ import annotations
 
@@ -21,7 +29,8 @@ from gi.repository import Gtk  # noqa: E402
 
 from . import icons  # noqa: E402
 
-__all__ = ["ICON_BUTTON_SIZES", "IconOnlyButton", "Switch", "TEXT_BUTTON_STYLES", "TextButton"]
+__all__ = ["BUTTON_SIZES", "BUTTON_VARIANTS", "Button", "ICON_BUTTON_SIZES", "IconOnlyButton", "Switch",
+           "TEXT_BUTTON_STYLES", "TextButton"]
 
 ICON_BUTTON_SIZES = ("regular", "row", "small", "large")
 
@@ -36,8 +45,8 @@ class TextButton(Gtk.Button):
     def __init__(self, label: str, *, icon: str | None = None, style: str = "plain", small: bool = False,
                  danger: bool = False, on_click: Callable[[], None] | None = None, sensitive: bool = True,
                  hero: bool = False, size: str = "regular", inline: bool = False) -> None:
-        if size not in ("regular", "small", "hero", "large", "touch"):
-            raise ValueError("text button size is regular, small, hero, large or touch")
+        if size not in ("regular", "small", "hero", "large", "touch", "list", "bar", "big"):
+            raise ValueError("text button size is regular, small, hero, large, touch, list, bar or big")
         if size != "regular" and (small or hero):
             raise ValueError("use size or the legacy small/hero flags, not both")
         small, hero = small or size == "small", hero or size == "hero"
@@ -49,7 +58,7 @@ class TextButton(Gtk.Button):
         self.add_css_class("lumaui-text-button")
         if inline:
             self.add_css_class("inline")
-        if size in ("large", "touch"):
+        if size in ("large", "touch", "list", "bar", "big"):
             self.add_css_class(size)
         if style == "danger":
             self.add_css_class("danger-solid")
@@ -73,6 +82,59 @@ class TextButton(Gtk.Button):
         self.update_property([Gtk.AccessibleProperty.LABEL], [label])
         if on_click is not None:
             self.connect("clicked", lambda _b: on_click())
+
+
+BUTTON_VARIANTS = ("key", "fill", "plain", "danger")
+BUTTON_SIZES = ("sm", "md", "lg")
+_SIZE = {"sm": "list", "md": "bar", "lg": "big"}
+
+
+class Button(TextButton):
+    """A labelled button by purpose: KEY (the screen's one main action), FILL (install in a row, a
+    secondary bar action), PLAIN (open in a row) or DANGER (only a confirming uninstall); SM 30, MD 36, LG 40.
+
+    The icon goes before the label; `menu=True` adds the trailing chevron that means "opens a menu",
+    and only that. `set_chosen(True)` raises it as the chip (a menu button whose filters are on).
+    """
+
+    __gtype_name__ = "LumaUIButton"
+
+    KEY, FILL, PLAIN, DANGER = BUTTON_VARIANTS
+    SM, MD, LG = BUTTON_SIZES
+
+    def __init__(self, label: str, *, variant: str = "fill", size: str = "md", icon: str | None = None,
+                 menu: bool = False, on_click: Callable[[], None] | None = None, sensitive: bool = True,
+                 tooltip: str | None = None) -> None:
+        if variant not in BUTTON_VARIANTS:
+            raise ValueError(f"a button is {', '.join(BUTTON_VARIANTS)}, not {variant!r}")
+        if size not in BUTTON_SIZES:
+            raise ValueError(f"a button's size is {', '.join(BUTTON_SIZES)}, not {size!r}")
+        super().__init__(label, icon=icon, style=variant, size=_SIZE[size], on_click=on_click, sensitive=sensitive)
+        self.variant, self.size = variant, size
+        if menu:
+            child = self.get_child()
+            if not isinstance(child, Gtk.Box):
+                line = Gtk.Box(halign=Gtk.Align.CENTER)
+                line.add_css_class("lumaui-text-button-content")
+                self.set_child(None)
+                line.append(child)
+                self.set_child(line)
+                child = line
+            chevron = icons.image("chevron-down")
+            chevron.add_css_class("lumaui-text-button-menu")
+            child.append(chevron)
+            self.update_property([Gtk.AccessibleProperty.HAS_POPUP], [True])
+        if tooltip:
+            from .content_tooltip import Tooltip
+            Tooltip.attach(self, tooltip, label=False)
+
+    def set_label_text(self, label: str) -> None:
+        """Change the words in place (a menu button naming the current choice)."""
+        self.label_widget.set_label(label)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [label])
+
+    def set_chosen(self, chosen: bool) -> None:
+        (self.add_css_class if chosen else self.remove_css_class)("chosen")
 
 
 class IconOnlyButton(Gtk.Button):
