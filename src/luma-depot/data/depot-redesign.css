@@ -336,3 +336,50 @@ window.dq box.dq-swhit { margin: 4px 0 12px; border-spacing: 8px; font-size: 14p
   window.dq overlay.dq-hero:hover picture.dq-hshot { transform: none; }
   window.dq overlay.dq-cat:hover picture.dq-catpic { transform: none; }
 }
+
+/* Updates (11) */
+window.dq button.dq-chan { margin-top: 26px; }
+window.dq box.dq-luma { margin-top: 18px; border-radius: 22px; background: @luma_control_fill; box-shadow: inset 0 0 0 1px @luma_line_faint; }
+window.dq overlay.dq-lart { border-radius: 22px 0 0 22px; min-height: 150px; }
+window.dq .dq-lart-bg { filter: blur(22px) saturate(1.2); transform: scale(1.25); }
+window.dq image.dq-llogo { filter: drop-shadow(0 8px 20px alpha(black, 0.4)); }
+window.dq box.dq-lbody { padding: 24px 26px 20px; border-spacing: 4px; }
+window.dq label.dq-kick { font-size: 11.5px; font-weight: 650; letter-spacing: 0.575px; color: @luma_accent; }
+window.dq label.dq-ltitle { font-size: 26px; font-weight: 760; line-height: 30px; letter-spacing: -0.52px; }
+window.dq label.dq-lsize { font-size: 13.5px; color: @luma_ink_secondary; }
+window.dq box.dq-lprog { margin-top: 14px; border-spacing: 8px; }
+window.dq label.dq-lprog-title { font-size: 12.5px; }
+window.dq label.dq-lprog-note { font-size: 12.5px; color: @luma_muted; }
+window.dq progressbar.dq-lbar > trough { min-height: 6px; border-radius: 3px; background: @luma_well;
+  box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade; }
+window.dq progressbar.dq-lbar > trough > progress { min-height: 6px; border-radius: 3px; background: @luma_accent; }
+window.dq box.dq-lready { margin-top: 14px; border-spacing: 8px; font-size: 13px; }
+window.dq box.dq-lready image { -gtk-icon-size: 16px; color: oklch(0.72 0.14 150); }
+window.dq box.dq-lbtns { margin-top: 16px; border-spacing: 8px; }
+window.dq box.dq-lbtns button.dq-link label { font-size: 13px; font-weight: 600; }
+window.dq box.dq-lclog { margin-top: 18px; padding-top: 16px; box-shadow: inset 0 1px 0 @luma_line_faint; }
+window.dq box.dq-ucard { padding: 16px 16px 14px; border-radius: 18px; background: @luma_control_fill;
+  box-shadow: inset 0 0 0 1px @luma_line_faint; border-spacing: 10px; }
+window.dq box.dq-ucard-head { border-spacing: 12px; }
+window.dq label.dq-ucard-name { font-size: 15px; font-weight: 650; }
+window.dq box.dq-ucard-meta { border-spacing: 8px; margin-top: 3px; }
+window.dq label.dq-ver { padding: 2px 7px; border-radius: 6px; background: @luma_well; font-size: 11px; font-weight: 600;
+  color: @luma_ink_secondary; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade; font-feature-settings: "tnum"; }
+window.dq label.dq-ucard-size { font-size: 12px; color: @luma_muted; }
+window.dq box.dq-unotes { border-spacing: 3px; }
+window.dq label.dq-unote { font-size: 13px; line-height: 19px; color: @luma_ink_secondary; }
+window.dq box.dq-uwhere { padding-top: 10px; box-shadow: inset 0 1px 0 @luma_line_faint; border-spacing: 6px; color: @luma_muted; }
+window.dq box.dq-uwhere image { -gtk-icon-size: 14px; }
+window.dq label.dq-uwhere-text { font-size: 12px; }
+window.dq box.dq-uok { border-spacing: 8px; font-size: 14px; color: @luma_ink_secondary; }
+window.dq box.dq-uok image { -gtk-icon-size: 18px; color: oklch(0.72 0.14 150); }
+window.dq box.dq-fold { margin-top: 10px; }
+window.dq box.dq-sec + box.dq-fold, window.dq box.dq-luma + box.dq-fold { margin-top: 30px; }
+window.dq box.dq-autorow { padding: 12px 14px; border-spacing: 14px; }
+window.dq box.dq-autorow + box.dq-autorow { box-shadow: inset 0 1px 0 @luma_line_faint; }
+window.dq label.dq-autorow-title { font-size: 14px; font-weight: 600; }
+window.dq label.dq-autorow-line { font-size: 12.5px; color: @luma_muted; }
+window.dq box.dq-donerow { padding: 10px 8px; border-spacing: 12px; }
+window.dq box.dq-donerow + box.dq-donerow { box-shadow: inset 0 1px 0 @luma_line_faint; }
+window.dq label.dq-done-name { font-size: 13.5px; font-weight: 600; }
+window.dq label.dq-done-line, window.dq label.dq-done-when { font-size: 12.5px; color: @luma_muted; }

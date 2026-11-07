@@ -229,6 +229,8 @@ class World:
     assets: Path | None = None
     #: Luma's own apps a person removed from a device (they otherwise come with Luma).
     removed: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    #: Luma's own apps the Library lists (all of Luma's apps come with Luma; these are the ones kept in view).
+    kept: tuple[str, ...] = ()
     #: Names people know that aren't on Luma, and the apps that do the same job (search, 12).
     switching: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
@@ -414,4 +416,5 @@ def load_fixture(path: str | Path, *, here: str = "xps") -> World:
                  installed={k: tuple(v) for k, v in data.get("installed", {}).items()},
                  matched=tuple(data.get("matched", ())), pending=pending, done=done, auto=dict(data.get("auto", {})),
                  system=system, story=story, looks_in_use=in_use, assets=path.parent,
-                 switching=tuple((name, tuple(ids)) for name, ids in data.get("switching", ())))
+                 switching=tuple((name, tuple(ids)) for name, ids in data.get("switching", ())),
+                 kept=tuple(data.get("kept", ("tide", "photos", "messages", "write", "notes"))))

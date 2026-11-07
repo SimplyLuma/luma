@@ -49,8 +49,8 @@ class LibraryPage(Page):
         page.append(intro("Library", self.line()))
         shell, world = self.shell, self.world
         me = world.here
-        mine = sorted((it for it in world.items("app") if not it.is_system and world.on_devices(it)),
-                      key=lambda it: it.name.casefold())
+        mine = sorted((it for it in world.items("app") if not it.is_system and world.on_devices(it)
+                       and (it.seal != "luma" or it.id in world.kept)), key=lambda it: it.name.casefold())
         shown = [it for it in mine if not self.show or (self.show == "here") == (me in world.on_devices(it))]
         grid = Grid(lambda w: 3 if shell.is_compact() or w < 640 else max(4, min(8, (w + 8) // 124)),
                     column_gap=8, row_gap=22, css="dq-tiles")

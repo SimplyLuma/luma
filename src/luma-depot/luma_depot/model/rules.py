@@ -192,3 +192,62 @@ def narrowed_line(world: World, narrowing: Narrowing) -> tuple[str, str]:
     if category is not None:
         return title, category.about
     return title, "Narrowed by your filters"
+
+
+# ── Updates (11) ──────────────────────────────────────────────────────────
+
+#: (key, name, plain fact), the release channel menu's rows (11.3).
+CHANNELS = (("stable", "Stable", "Major releases"), ("beta", "Beta", "About once a week"),
+            ("nightly", "Nightly", "Every night"))
+_SPEED = {"stable": 0, "beta": 1, "nightly": 2}
+
+
+def _megabytes(size: str) -> float:
+    try:
+        number = float(size.split()[0])
+    except (ValueError, IndexError):
+        return 0.0
+    return number * (1000 if "GB" in size else 1)
+
+
+def size_words(megabytes: float) -> str:
+    return f"{megabytes / 1000:.1f} GB" if megabytes >= 1000 else f"{round(megabytes)} MB"
+
+
+def updates_lead(world: World, *, system_waiting: bool, checked: str) -> str:
+    """"5 updates · 1.0 GB · checked 6 hours ago", or "Everything is up to date · checked …"."""
+    count = len(world.pending) + (1 if system_waiting else 0)
+    total = sum(_megabytes(p.size) * len(p.devices) for p in world.pending)
+    if system_waiting and world.system is not None:
+        total += _megabytes(world.system.size)
+    if not count:
+        return f"Everything is up to date · checked {checked}"
+    return f"{count} update{'s' if count != 1 else ''} · {size_words(total)} · checked {checked}"
+
+
+@dataclass(frozen=True)
+class ChannelDecision:
+    title: str
+    body: str
+    action: str
+    toast: str
+
+
+def channel_decision(current: str, target: str, running: str) -> ChannelDecision:
+    """The words that ask first (11.3): joining a faster channel, or leaving for a slower one."""
+    name = dict((k, n) for k, n, _f in CHANNELS)
+    if _SPEED[target] > _SPEED[current]:
+        body = ("This computer will get Beta builds about once a week, before they reach Stable." if target == "beta"
+                else "This computer will get a new build of Luma every night. Nightly builds get less testing, "
+                     "so things can break.")
+        return ChannelDecision(f"Join {name[target]}?", body, f"Join {name[target]}", f"You joined {name[target]}")
+    body = (f"This computer stays on {running} until {name[target]} catches up, then gets {name[target]} "
+            "releases only.")
+    return ChannelDecision(f"Leave {name[current]}?", body, f"Switch to {name[target]}",
+                           f"This computer now gets {name[target]} updates")
+
+
+def devices_line(world: World, devices: tuple[str, ...]) -> str:
+    """"On this computer, ThinkPad X1, Fairphone 6, Living room and Kitchen"."""
+    names = ["this computer" if d == world.here else world.device(d).name for d in devices]
+    return "On " + _and_list(names)

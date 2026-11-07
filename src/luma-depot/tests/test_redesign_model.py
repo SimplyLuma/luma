@@ -132,6 +132,34 @@ class AppsNarrowing(unittest.TestCase):
         self.assertTrue(all(it.category == "create" for it in create))
 
 
+class Updates(unittest.TestCase):
+    def setUp(self) -> None:
+        self.world = load_fixture(FIXTURE)
+
+    def test_summary_line(self) -> None:
+        self.assertEqual(rules.updates_lead(self.world, system_waiting=True, checked="6 hours ago"),
+                         "5 updates · 1.0 GB · checked 6 hours ago")
+        empty = replace(self.world, pending=())
+        self.assertEqual(rules.updates_lead(empty, system_waiting=False, checked="just now"),
+                         "Everything is up to date · checked just now")
+
+    def test_channel_words_join_and_leave(self) -> None:
+        join = rules.channel_decision("stable", "beta", "nightly October 22")
+        self.assertEqual((join.title, join.action, join.toast), ("Join Beta?", "Join Beta", "You joined Beta"))
+        self.assertEqual(join.body, "This computer will get Beta builds about once a week, before they reach Stable.")
+        nightly = rules.channel_decision("beta", "nightly", "")
+        self.assertIn("Nightly builds get less testing, so things can break.", nightly.body)
+        leave = rules.channel_decision("nightly", "stable", "nightly October 22")
+        self.assertEqual((leave.title, leave.action), ("Leave Nightly?", "Switch to Stable"))
+        self.assertEqual(leave.body, "This computer stays on nightly October 22 until Stable catches up, then gets "
+                                     "Stable releases only.")
+        self.assertEqual(leave.toast, "This computer now gets Stable updates")
+
+    def test_devices_line(self) -> None:
+        line = rules.devices_line(self.world, ("xps", "x1", "fp6", "tv", "home"))
+        self.assertEqual(line, "On this computer, ThinkPad X1, Fairphone 6, Living room and Kitchen")
+
+
 class World(unittest.TestCase):
     def test_updates_badge_counts_every_device_and_luma(self) -> None:
         self.assertEqual(load_fixture(FIXTURE).update_count(), 11)
