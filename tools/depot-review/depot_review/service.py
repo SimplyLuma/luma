@@ -286,6 +286,11 @@ catalogue_due = [0.0]
 
 def serve(config: Config, once: bool = False) -> None:
     from .r2 import R2
+    while not Path(config.token_file).is_file():
+        log(f"waiting for the Hub service token at {config.token_file}")
+        if once:
+            return
+        time.sleep(300)
     hub = Hub(config.hub, config.token_file, config.paths)
     r2 = R2(config.r2_account, config.r2_bucket, config.r2_credentials)
     for path in (config.work, config.state, config.work / "jobs"):
