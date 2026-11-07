@@ -6,6 +6,8 @@
 # newest build in the verified pool, a delivered incoming drop (not HOLD), or
 # the app's own signed release directories; and fails its release notes when
 # the pin changed without a fragment "Updated <App> to X.Y" (type: improvement).
+# Source checks apply the notes rule to every pull request that moves a pin
+# or spec release here (system_apps_current.py pr).
 #
 # PACKAGE  DISPLAY-NAME (underscores for spaces)  [RELEASE-DIR...]
 viola-browser-stable  Viola  /srv/viola-linux/release-staging
