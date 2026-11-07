@@ -49,7 +49,30 @@ method = "fastboot"
 preserve = ["modemst1", "modemst2", "fsg", "fsc", "persist"]
 
 [updates]
-ostree_ref = "luma/1/aarch64/fairphone-fp6/nightly"
+# The one ARM OS commit; the device repository is a client-side layer.
+ostree_ref = "luma/1/aarch64/nightly"
+
+[device_repo]
+# Signed rpm-md repository (Luma OS Release key) with the Fairphone 6 platform:
+# kernel modules, firmware, platform services, IMS, eSIM and the modem stack.
+id = "luma-fairphone-fp6"
+url = "https://dl.simplyluma.com/os/devices/aarch64/fairphone-fp6/"
+replace = ["ModemManager", "ModemManager-glib", "libqmi", "libqmi-utils", "libcamera", "libcamera-ipa", "libcamera-gstreamer"]
+install = ["kernel-modules-luma-fp6", "luma-fp6-firmware", "luma-fp6-platform", "luma-fp6-carrier-adapter", "luma-imsd", "luma-esim-broker", "lpac-fp6", "qbootctl", "tqftpserv"]
+
+[kit]
+compatible = ["fairphone,fp6"]
+# The first start is `fastboot boot`, never a reboot: a normal first restart
+# lets the bootloader erase the modem settings (see INSTALL.md).
+flash = [
+  "flash userdata {userdata}",
+  "flash userdata {kit}",
+  "flash dtbo_a {dtbo}",
+  "flash dtbo_b {dtbo}",
+  "flash boot_a {boot}",
+  "flash boot_b {boot}",
+  "boot {boot}",
+]
 
 [[releases]]
 name = "alpha1"

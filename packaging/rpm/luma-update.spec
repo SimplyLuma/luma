@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.30%{?dist}
+Release:        1.luma.31%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -83,8 +83,9 @@ install -D -m 0755 bin/luma-update %{buildroot}%{_bindir}/luma-update
 install -D -m 0755 bin/luma-updated %{buildroot}%{_libexecdir}/luma-updated
 install -D -m 0755 bin/luma-update-notifier %{buildroot}%{_libexecdir}/luma-update-notifier
 install -D -m 0755 bin/luma-update-boot %{buildroot}%{_libexecdir}/luma-update-boot
+install -D -m 0755 bin/luma-device-layer %{buildroot}%{_libexecdir}/luma-device-layer
 
-for unit in luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service; do
+for unit in luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-device-layer.service; do
   install -D -m 0644 data/systemd/$unit %{buildroot}%{_unitdir}/$unit
 done
 for unit in luma-update-notifier.service luma-update-notifier.path luma-update-notifier.timer; do
@@ -130,6 +131,8 @@ install -m 0644 %{SOURCE5} %{buildroot}%{_prefix}/lib/luma-update/graph-keys.d/l
 install -D -m 0644 %{SOURCE2} %{buildroot}%{_sysconfdir}/ostree/remotes.d/luma.conf
 install -D -m 0600 %{SOURCE3} %{buildroot}%{_sysconfdir}/luma/update-mirrorlist
 install -D -m 0644 luma-release.gpg %{buildroot}%{_sysconfdir}/pki/ostree/luma-release.gpg
+# The same key, armored, for rpm-md repositories it signs (device repositories).
+install -D -m 0644 %{SOURCE4} %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release
 install -d -m 0755 %{buildroot}%{_sysconfdir}/luma/update-graph-keys.d
 
 install -d %{buildroot}%{_tmpfilesdir}
@@ -150,11 +153,11 @@ python3 -c "import gi, shutil; gi.require_version('OSTree', '1.0'); from gi.repo
 python3 -m unittest discover -v -s tests -p 'test_*.py'
 
 %post
-%systemd_post luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service
+%systemd_post luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service luma-device-layer.service
 %systemd_user_post luma-update-notifier.path luma-update-notifier.timer
 
 %preun
-%systemd_preun luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service
+%systemd_preun luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service luma-device-layer.service
 %systemd_user_preun luma-update-notifier.path luma-update-notifier.timer
 
 %postun
@@ -170,10 +173,12 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_libexecdir}/luma-updated
 %{_libexecdir}/luma-update-notifier
 %{_libexecdir}/luma-update-boot
+%{_libexecdir}/luma-device-layer
 %{_unitdir}/luma-updated.service
 %{_unitdir}/luma-update-check.service
 %{_unitdir}/luma-updated.timer
 %{_unitdir}/luma-update-boot.service
+%{_unitdir}/luma-device-layer.service
 %{_userunitdir}/luma-update-notifier.service
 %{_userunitdir}/luma-update-notifier.path
 %{_userunitdir}/luma-update-notifier.timer
@@ -222,9 +227,18 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %config(noreplace) %attr(0600,root,root) %{_sysconfdir}/luma/update-mirrorlist
 %dir %attr(0755,root,root) %{_sysconfdir}/pki/ostree
 %{_sysconfdir}/pki/ostree/luma-release.gpg
+%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.31
+- luma-device-layer.service: on an image that names a device kit
+  (/etc/luma/device-kit.conf), layer the kit's signed device repository
+  with rpm-ostree on the first boot, offline, then restart once; updates
+  then follow the online device repository.
+- luma-os-remote: the Luma OS Release key, armored, at
+  /etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.30
 - Once a release is staged, start luma-system-app-updates-prefetch.service so
   the app updates waiting on the luma remote come with it. A system without

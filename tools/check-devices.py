@@ -327,6 +327,29 @@ class Checker:
             if pattern.search(text):
                 self.error(path, f"writes or erases preserved partition {partition!r}")
 
+    def check_kit(self, device_dir: Path, device: dict) -> None:
+        """A device kit never writes a preserved partition and flashes every file it has."""
+        kit = device.get("kit")
+        where = device_dir / "device.toml"
+        if kit is None:
+            if device.get("device_repo") and device.get("form_factor") == "phone":
+                self.error(where, "a phone with a [device_repo] needs a [kit] to deliver it")
+            return
+        preserve = set(device.get("install", {}).get("preserve", []))
+        steps = kit.get("flash", [])
+        for step in steps:
+            words = step.split()
+            if len(words) > 1 and words[0] == "flash" and words[1] in preserve:
+                self.error(where, f"[kit] flash writes preserved partition {words[1]!r}")
+        joined = " ".join(steps)
+        for placeholder in ("{userdata}", "{boot}"):
+            if placeholder not in joined:
+                self.error(where, f"[kit] flash never uses {placeholder}")
+        if device.get("device_repo") and "{kit}" not in joined:
+            self.error(where, "[kit] flash never writes {kit}, the device repository")
+        if "{kit}" in joined and not device.get("device_repo"):
+            self.error(where, "[kit] flash writes {kit} but the device has no [device_repo]")
+
     def check_tests(self, device_dir: Path, vendor: str, codename: str) -> list[Path]:
         tests = device_dir / "tests"
         found = sorted(tests.glob("test_*.py")) if tests.is_dir() else []
@@ -389,6 +412,7 @@ class Checker:
                 self.check_boot(device_dir, boot, soc, device.get("tier", ""))
                 if (device_dir / "INSTALL.md").is_file():
                     self.check_install_guide(device_dir, device.get("install", {}))
+                self.check_kit(device_dir, device)
                 test_files += self.check_tests(device_dir, vendor.name, device_dir.name)
                 owned.append((device_dir, device.get("maintainers", [])))
         return test_files, owned
