@@ -1,3 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 enable luma-updated.timer
 enable luma-update-boot.service
+enable luma-greenboot-arm.service
+enable luma-greenboot-fallback.service

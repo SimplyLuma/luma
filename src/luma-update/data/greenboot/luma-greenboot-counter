@@ -1,0 +1,159 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# greenboot boot counting for staged updates (greenboot 0.16), on every
+# machine that boots from GRUB's 08_greenboot.cfg or the phone initramfs
+# resolver (scripts/mobile/common/initramfs/luma-ostree-boot.sh).
+#
+#   luma-greenboot-counter arm
+#     luma-greenboot-arm.service, at shutdown before ostree finalizes a staged
+#     deployment. greenboot's own trigger (greenboot-set-rollback-trigger)
+#     finds the staged deployment through `rpm-ostree status`, which needs
+#     rpm-ostreed; the daemon exits when idle and cannot be started during
+#     shutdown, so an update staged more than a minute before the restart was
+#     never armed: no trial boot, no counter, no rollback. This reads the staged
+#     deployment from the sysroot (`ostree admin status`) and sets
+#     greenboot_next_deployment_id and fallback=1 as greenboot does, plus
+#     boot_counter=GREENBOOT_MAX_BOOT_ATTEMPTS and boot_success=0, so a
+#     deployment that never reaches greenboot (panic, hang) also falls back
+#     after that many boots.
+#
+#   luma-greenboot-counter fallback
+#     luma-greenboot-fallback.service, before greenboot's health check. When
+#     the counter ran out, the previous deployment boots (boot_counter=-1) but
+#     the failed one is still ostree's default and the next boot that is not
+#     counted tries it again. greenboot rolls back only when
+#     greenboot_next_deployment_id names another deployment than the booted
+#     one. This rolls back whenever boot_counter is -1 and the booted
+#     deployment is not the default, then clears the counter and greenboot's
+#     triggers so greenboot does not roll back a second time.
+#
+# Both do nothing where greenboot does not judge boots (its health check is
+# not enabled, or masked on the kernel command line): an armed counter that
+# nothing clears would fall back from a healthy deployment. Neither applies to
+# the native FP6 A/B backend, which permits no GRUB fallback.
+set -u
+. /usr/lib/luma-update/luma-greenboot-common.sh
+
+luma_counter_log() {
+  printf 'luma greenboot counter: %s\n' "$*"
+}
+
+luma_counter_editenv() {
+  grub2-editenv "$(luma_greenboot_grubenv)" "$@"
+}
+
+# Run "$@" with /boot writable, as greenboot does: /boot is read-only on an
+# OSTree system with a read-only sysroot.
+luma_counter_boot_rw() {
+  local options remounted=0 status
+  options=$(awk '$2 == "/boot" { o = $4 } END { print o }' /proc/self/mounts 2>/dev/null)
+  case ",$options," in
+    *,ro,*)
+      mount -o remount,rw /boot || { luma_greenboot_error "cannot remount /boot read-write"; return 1; }
+      remounted=1 ;;
+  esac
+  "$@"
+  status=$?
+  if [ "$remounted" = 1 ]; then
+    mount -o remount,bind,ro /boot || luma_greenboot_error "cannot remount /boot read-only"
+  fi
+  return "$status"
+}
+
+luma_counter_applies() {
+  if [ -e /usr/lib/greenboot/fp6-qbootctl ] || [ -L /usr/lib/greenboot/fp6-qbootctl ]; then
+    luma_counter_log "native FP6 A/B backend: no GRUB boot counting"
+    return 1
+  fi
+  if ! systemctl is-enabled --quiet greenboot-healthcheck.service 2>/dev/null; then
+    luma_counter_log "greenboot-healthcheck.service is not enabled: boots are not judged, nothing to count"
+    return 1
+  fi
+  if ! command -v grub2-editenv >/dev/null 2>&1; then
+    luma_greenboot_error "grub2-editenv is not installed; a failed update will not roll back"
+    return 1
+  fi
+  return 0
+}
+
+luma_counter_max_attempts() {
+  local value
+  value=$(sed -n 's/^[[:space:]]*GREENBOOT_MAX_BOOT_ATTEMPTS[[:space:]]*=[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}[[:space:]]*$/\1/p' \
+    /etc/greenboot/greenboot.conf 2>/dev/null | tail -n 1)
+  case "$value" in
+    [1-9]|[1-9][0-9]) printf '%s\n' "$value" ;;
+    *) printf '3\n' ;;
+  esac
+}
+
+# `ostree admin status` prints one line per deployment, the default first:
+# "<* if booted> <stateroot> <checksum>.<serial>[ (staged)|(pending)|...]".
+luma_counter_status() {
+  local status
+  if ! status=$(ostree admin status 2>&1); then
+    luma_greenboot_error "ostree admin status failed: $status"
+    return 1
+  fi
+  printf '%s\n' "$status" | grep -E '^[* ] [^ ]+ [0-9a-f]{64}\.[0-9]+( |$)'
+}
+
+luma_counter_arm() {
+  local deployments staged attempts
+  luma_counter_applies || return 0
+  deployments=$(luma_counter_status) || return 1
+  # A finalization-locked deployment is not finalized at this shutdown and
+  # reads "(finalization locked)", not "(staged)".
+  staged=$(printf '%s\n' "$deployments" |
+    sed -n -E 's/^  [^ ]+ ([0-9a-f]{64})\.[0-9]+ \(staged\)( .*)?$/\1/p' | head -n 1)
+  if [ -z "$staged" ]; then
+    luma_counter_log "no deployment will be finalized at this shutdown; nothing to arm"
+    return 0
+  fi
+  attempts=$(luma_counter_max_attempts)
+  if ! luma_counter_boot_rw luma_counter_editenv set "boot_counter=$attempts" boot_success=0 \
+       "greenboot_next_deployment_id=$staged" fallback=1; then
+    luma_greenboot_error "cannot arm the boot counter for $staged; a failed update will not roll back"
+    return 1
+  fi
+  luma_counter_log "armed: $staged boots up to $attempts times before the previous deployment"
+}
+
+luma_counter_fallback() {
+  local environment counter deployments first
+  luma_counter_applies || return 0
+  if ! environment=$(luma_counter_editenv list 2>&1); then
+    luma_greenboot_error "cannot read $(luma_greenboot_grubenv): $environment"
+    return 1
+  fi
+  counter=$(printf '%s\n' "$environment" | sed -n 's/^boot_counter=//p' | tail -n 1)
+  [ "$counter" = -1 ] || return 0
+  deployments=$(luma_counter_status) || return 1
+  first=$(printf '%s\n' "$deployments" | head -n 1)
+  case "$first" in
+    '* '*)
+      luma_counter_log "boot counter ran out and the booted deployment is already the default"
+      return 0 ;;
+    '')
+      luma_greenboot_error "no deployments in ostree admin status"
+      return 1 ;;
+  esac
+  if ! printf '%s\n' "$deployments" | grep -q '^\* '; then
+    luma_greenboot_error "the booted deployment is not in ostree admin status"
+    return 1
+  fi
+  luma_counter_log "boot counter ran out: the previous deployment booted; making it the default"
+  if ! rpm-ostree rollback; then
+    luma_greenboot_error "rpm-ostree rollback failed; the failed deployment stays the default"
+    return 1
+  fi
+  luma_counter_boot_rw luma_counter_editenv unset boot_counter greenboot_next_deployment_id fallback \
+    greenboot_rollback_trigger ||
+    luma_greenboot_error "rolled back, but cannot clear the boot counter in $(luma_greenboot_grubenv)"
+  luma_counter_log "rolled back to the booted deployment"
+}
+
+case "${1:-}" in
+  arm) luma_counter_arm ;;
+  fallback) luma_counter_fallback ;;
+  *) echo "usage: luma-greenboot-counter arm|fallback" >&2; exit 2 ;;
+esac

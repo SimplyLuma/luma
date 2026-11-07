@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Keep the previous deployment after greenboot's boot counter ran out
+Documentation=file:///usr/lib/luma-update/luma-greenboot-counter
+# Before greenboot's health check, which would otherwise clear the counter and
+# leave the failed deployment the default.
+ConditionPathExists=/run/ostree-booted
+After=dbus.service
+Before=greenboot-healthcheck.service luma-update-boot.service
+RequiresMountsFor=/boot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/luma-update/luma-greenboot-counter fallback
+PrivateMounts=yes
+
+[Install]
+WantedBy=multi-user.target

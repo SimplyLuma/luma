@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.28%{?dist}
+Release:        1.luma.29%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -111,6 +111,16 @@ for check in data/greenboot/check/required.d/*.sh; do
 done
 install -D -m 0755 data/greenboot/green.d/50-luma-update-record.sh %{buildroot}%{_prefix}/lib/greenboot/green.d/50-luma-update-record.sh
 install -D -m 0755 data/greenboot/red.d/50-luma-update-record.sh %{buildroot}%{_prefix}/lib/greenboot/red.d/50-luma-update-record.sh
+# Boot counting for staged deployments, and making a counted-out fallback
+# permanent (data/greenboot/luma-greenboot-counter); enabled by the preset.
+# grub2-tools' boot-success timer would mark boots greenboot failed.
+install -D -m 0755 data/greenboot/luma-greenboot-counter %{buildroot}%{_prefix}/lib/luma-update/luma-greenboot-counter
+for unit in luma-greenboot-arm.service luma-greenboot-fallback.service; do
+  install -D -m 0644 data/systemd/$unit %{buildroot}%{_unitdir}/$unit
+done
+for unit in grub-boot-success.service grub-boot-success.timer; do
+  install -D -m 0644 data/systemd-user/$unit.d/50-luma-greenboot.conf %{buildroot}%{_userunitdir}/$unit.d/50-luma-greenboot.conf
+done
 
 install -D -m 0755 data/NetworkManager/90-luma-update %{buildroot}%{_prefix}/lib/NetworkManager/dispatcher.d/90-luma-update
 install -D -m 0644 data/config/update.conf %{buildroot}%{_prefix}/lib/luma/update.conf
@@ -140,11 +150,11 @@ python3 -c "import gi, shutil; gi.require_version('OSTree', '1.0'); from gi.repo
 python3 -m unittest discover -v -s tests -p 'test_*.py'
 
 %post
-%systemd_post luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service
+%systemd_post luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service
 %systemd_user_post luma-update-notifier.path luma-update-notifier.timer
 
 %preun
-%systemd_preun luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service
+%systemd_preun luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service
 %systemd_user_preun luma-update-notifier.path luma-update-notifier.timer
 
 %postun
@@ -187,6 +197,13 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/greenboot/check/required.d/43-luma-updated.sh
 %{_prefix}/lib/greenboot/green.d/50-luma-update-record.sh
 %{_prefix}/lib/greenboot/red.d/50-luma-update-record.sh
+%{_prefix}/lib/luma-update/luma-greenboot-counter
+%{_unitdir}/luma-greenboot-arm.service
+%{_unitdir}/luma-greenboot-fallback.service
+%dir %attr(0755,root,root) %{_userunitdir}/grub-boot-success.service.d
+%dir %attr(0755,root,root) %{_userunitdir}/grub-boot-success.timer.d
+%{_userunitdir}/grub-boot-success.service.d/50-luma-greenboot.conf
+%{_userunitdir}/grub-boot-success.timer.d/50-luma-greenboot.conf
 %{_prefix}/lib/NetworkManager/dispatcher.d/90-luma-update
 %dir %attr(0755,root,root) %{_prefix}/lib/luma
 %{_prefix}/lib/luma/update.conf
@@ -208,6 +225,14 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.29
+- Arm greenboot's boot counter for a staged deployment at shutdown without
+  rpm-ostreed (luma-greenboot-arm.service), so a failed update falls back.
+- After the counter runs out and the previous deployment boots, roll back to
+  it (luma-greenboot-fallback.service) so the failed one is not retried.
+- grub-boot-success.timer no longer marks boots successful where greenboot is
+  installed.
+
 * Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.28
 - Raspberry Pi 5 hardware target (raspberrypi,rpi5); a Pi 5 may still follow
   the generic ARM desktop stream.
