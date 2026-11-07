@@ -97,8 +97,33 @@ def luma_ids(config: Config) -> set[str]:
     repo = config.depot_root / "repo"
     if (repo / "config").exists():
         refs = subprocess.run(["ostree", "refs", f"--repo={repo}"], capture_output=True, text=True).stdout.split()
-        ids |= {r.split("/")[1] for r in refs if r.startswith("app/") and r.rsplit("/", 1)[-1] in ("beta", "nightly")}
+        held = {r.split("/")[1] for r in refs if r.startswith("app/")}
+        ids |= {i for i in held if not (config.depot_root / "releases" / i / "THIRD-PARTY").exists()}
     return ids
+
+
+def owners(config: Config) -> dict:
+    path = config.state / "owners.json"
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def developer_of(submission: dict) -> str:
+    developer = submission.get("developer") or {}
+    return str(developer.get("id") or "") if isinstance(developer, dict) else str(developer)
+
+
+def claim_owner(config: Config, app_id: str, developer: str) -> None:
+    """The first developer to publish an id keeps it."""
+    table = owners(config)
+    holder = table.get(app_id)
+    if holder and developer and holder != developer:
+        raise publish.PublishError(f"{app_id} belongs to developer {holder}")
+    if developer and not holder:
+        table[app_id] = developer
+        config.state.mkdir(parents=True, exist_ok=True)
+        tmp = config.state / "owners.json.new"
+        tmp.write_text(json.dumps(table, indent=1, sort_keys=True) + "\n")
+        os.replace(tmp, config.state / "owners.json")
 
 
 def review(config: Config, hub: Hub | None, submission: dict, job: Path, packages: list[dict]) -> dict:
@@ -113,6 +138,10 @@ def review(config: Config, hub: Hub | None, submission: dict, job: Path, package
         (job / f"facts-{package['arch']}.json").write_text(json.dumps(facts, indent=1))
         all_facts.append(facts)
         report_checks += checks.package_checks(facts, package, submission, policy, luma_ids(config))
+    holder = owners(config).get(submission.get("app_id") or "")
+    if holder and developer_of(submission) and holder != developer_of(submission):
+        report_checks.append(checks.check("identity", False, "This app id belongs to another developer's app. "
+                                          "Use a reverse-DNS id for a domain you own."))
     if not any(p["arch"] == "x86_64" for p in packages) and kind == "app":
         report_checks.append(checks.check("architecture", False, "Send an x86_64 build too. ARM builds are welcome "
                                                                  "alongside it."))
@@ -210,6 +239,7 @@ def handle_publish(config: Config, hub: Hub, item: dict) -> None:
         if not flatpaks or len(flatpaks) != len(packages):
             raise publish.PublishError("only Flatpak bundles publish to Depot tonight; universal packages are "
                                        "coming soon")
+        claim_owner(config, app_id, developer_of(item))
         results = publish.publish(config, sid, app_id, flatpaks)
         hub.call("POST", "report_publish", {"status": "published", "releases": results,
                                             "published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, id=sid)

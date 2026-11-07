@@ -15,7 +15,7 @@
 # --third-party publishes a developer's app from a Depot submission
 # (tools/depot-review). Third-party apps live on the stable branch, can never
 # use an id Luma owns (reserved prefixes, packaging/flatpak/apps/titles.json, or
-# any id with a Luma beta/nightly ref), and bring their listing media through
+# any id the remote already carries without a third-party mark), and bring their listing media through
 # the signed Depot catalogue instead of share/luma-app-media. A Luma publish
 # refuses an id that a third-party release already holds, so neither side can
 # shadow the other.
@@ -62,9 +62,13 @@ if [ "$third_party" = 1 ]; then
   esac
   depot_in_signer python3 -B -c 'import json,sys; sys.exit(sys.argv[2] in json.load(open(sys.argv[1])))' \
     packaging/flatpak/apps/titles.json "$app_id" || depot_die "$app_id is one of Luma's own apps"
-  remote_refs=$(depot_in_signer ostree refs --repo="$depot_repo")
-  if grep -Eq "^(app/${app_id//./\\.}/[^/]+/(beta|nightly)|runtime/${app_id//./\\.}\.[^/]+/)" <<<"$remote_refs"; then
-    depot_die "$app_id already has a Luma release; a third-party app cannot shadow it"
+  # The first third-party release of an id claims it only if the remote has
+  # never carried that id (any branch, any CPU, or a companion runtime).
+  if [ ! -e "$owner_mark" ]; then
+    remote_refs=$(depot_in_signer ostree refs --repo="$depot_repo")
+    if grep -Eq "^(app/${app_id//./\\.}/|runtime/${app_id//./\\.}\.[^/]+/)" <<<"$remote_refs"; then
+      depot_die "$app_id already has a Luma release; a third-party app cannot shadow it"
+    fi
   fi
   printf '%s\n' "$app_id" >"$owner_mark"
 else
