@@ -127,5 +127,35 @@ class Handoff(unittest.TestCase):
         (self.root/'unexpected').write_text('not part of the baseline')
         with self.assertRaises(ValueError):baseline_input.admit(self.root,REPO/'config/os/first-party-app-baseline.json')
 
+class RemoteTrust(unittest.TestCase):
+    """A reset during the first handoff leaves the remote without its keyring."""
+    def setUp(self):
+        import shutil
+        if os.geteuid()!=0 or not shutil.which('flatpak') or not shutil.which('ostree'):self.skipTest('needs root, flatpak and ostree')
+        self.tmp=tempfile.TemporaryDirectory(prefix='remote-trust-',dir=sys.argv[1]);self.addCleanup(self.tmp.cleanup)
+        home=Path(self.tmp.name);self.repo=home/'repo'
+        import subprocess,base64,configparser
+        subprocess.run(['ostree','init','--mode=bare-user-only','--repo='+str(self.repo)],check=True)
+        # The state found after the reset: remotes.d applied, keyring lost.
+        with (self.repo/'config').open('a') as config:
+            config.write('[remote "luma"]\nurl=https://dl.simplyluma.com/repo/\ngpg-verify=true\ngpg-verify-summary=true\n')
+        config=configparser.ConfigParser();config.read(REPO/'config/os/flatpak/luma.flatpakrepo')
+        self.key=home/'luma-depot.gpg';self.key.write_bytes(base64.b64decode(config['Flatpak Repo']['GPGKey']))
+        self.env=dict(os.environ,FLATPAK_SYSTEM_DIR=str(home))
+    def run_flatpak(self,argv,check):
+        import subprocess
+        return subprocess.run(argv,check=check,env=self.env)
+    def keys(self):
+        import subprocess
+        out=subprocess.run(['ostree','--repo='+str(self.repo),'remote','gpg-list-keys','luma'],capture_output=True,text=True).stdout
+        return out.replace(' ','')
+    def test_existing_remote_without_keyring_gets_the_pinned_key(self):
+        fingerprint='069E001599679B49042FE40885FCC398C02A8BEE'
+        self.assertNotIn(fingerprint,self.keys())
+        baseline.trust_remote(self.key,self.run_flatpak)
+        self.assertIn(fingerprint,self.keys())
+        baseline.trust_remote(self.key,self.run_flatpak)
+        self.assertIn(fingerprint,self.keys())
+
 if __name__=='__main__':
     parent=sys.argv[1];unittest.main(argv=[sys.argv[0]])
