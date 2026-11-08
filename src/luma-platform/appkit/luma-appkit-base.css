@@ -2280,3 +2280,112 @@ window.luma-treatment-dark popover.luma-menu-popover > arrow {
   background-image: none;
   border-color: alpha(@luma_ink, .16);
 }
+
+
+/* ══ LumaUI parts, Nov 2026 (Depot is the first user; mockups/apps/depot, measured) ══════════════════
+ * Inset and TwoColumnInset (.dq-ranks), Checkbox (.dq-chk), Disclosure (.dq-tech, .dq-fold), Tooltip
+ * (.dq-ri::after), EdgeFadeScroller arrows (.dq-rnav), PermissionList (.dq-perms), Changelog (.dq-clog),
+ * FramedPicture (.dq-frame) and TextButton's list and bar sizes (.dq-act, .dq-bar .dq-act.bar). */
+box.lumaui-inset {
+  padding: var(--lumaui-inset-padding); border-radius: var(--lumaui-inset-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-inset.card { padding: var(--lumaui-inset-card-padding); border-radius: var(--lumaui-inset-card-radius); }
+box.lumaui-inset.none { padding: 0; }
+box.lumaui-inset-hair { background: @luma_line_faint; min-width: 1px; }
+
+box.lumaui-checkbox {
+  min-width: var(--lumaui-checkbox-size); min-height: var(--lumaui-checkbox-size); border-radius: var(--lumaui-checkbox-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+  color: transparent; transition: background var(--lumaui-duration-hover) ease;
+}
+box.lumaui-checkbox image { -gtk-icon-size: var(--lumaui-checkbox-icon); color: transparent; -gtk-icon-style: symbolic; }
+box.lumaui-checkbox.on { background: @luma_checkbox_on; box-shadow: none; }
+box.lumaui-checkbox.on image { color: @luma_checkbox_on_ink; }
+box.lumaui-checkbox:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
+button.lumaui-menu-row.check .lumaui-menu-line { border-spacing: var(--lumaui-checkbox-row-gap); }
+
+button.lumaui-disclosure-summary {
+  min-height: 0; padding: 0; margin: 0; border: none; box-shadow: none; background: none; outline: 0 solid transparent;
+}
+box.lumaui-disclosure.line button.lumaui-disclosure-summary {
+  padding: var(--lumaui-disclosure-line-padding-y) var(--lumaui-disclosure-line-padding-x);
+  border-radius: var(--lumaui-disclosure-line-radius); color: @luma_muted;
+  font-size: var(--lumaui-t-disclosure-line-size); font-weight: var(--lumaui-t-disclosure-line-weight);
+}
+box.lumaui-disclosure.line button.lumaui-disclosure-summary:hover { color: @luma_ink; }
+box.lumaui-disclosure.line .lumaui-disclosure-line { border-spacing: var(--lumaui-disclosure-line-gap); }
+box.lumaui-disclosure.line .lumaui-disclosure-chevron { -gtk-icon-size: var(--lumaui-disclosure-line-chevron); }
+box.lumaui-disclosure.line .lumaui-disclosure-body { margin-top: var(--lumaui-disclosure-line-body-top); }
+box.lumaui-disclosure.card { padding: 0; border-radius: var(--lumaui-inset-card-radius); }
+box.lumaui-disclosure.card button.lumaui-disclosure-summary {
+  padding: 14px var(--lumaui-disclosure-card-padding); border-radius: var(--lumaui-inset-card-radius);
+  color: @luma_ink; font-size: var(--lumaui-t-disclosure-card-size); font-weight: var(--lumaui-t-disclosure-card-weight);
+}
+box.lumaui-disclosure.card button.lumaui-disclosure-summary:hover { background: @luma_hover; }
+box.lumaui-disclosure.card .lumaui-disclosure-line { border-spacing: var(--lumaui-disclosure-card-header-gap); }
+box.lumaui-disclosure.card .lumaui-disclosure-icon { -gtk-icon-size: var(--lumaui-disclosure-card-icon); color: @luma_ink_secondary; }
+box.lumaui-disclosure.card .lumaui-disclosure-chevron { -gtk-icon-size: var(--lumaui-disclosure-card-chevron); color: @luma_muted; }
+box.lumaui-disclosure.card .lumaui-disclosure-body { padding: 4px 8px 8px; box-shadow: inset 0 1px 0 @luma_line_faint; }
+.lumaui-disclosure-chevron { transition: -gtk-icon-transform var(--lumaui-duration-disclosure, 200ms) ease; }
+box.lumaui-disclosure.open .lumaui-disclosure-chevron { -gtk-icon-transform: rotate(180deg); }
+button.lumaui-disclosure-summary:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+
+popover.lumaui-tooltip { background: none; box-shadow: none; padding: 0; }
+popover.lumaui-tooltip > contents {
+  padding: var(--lumaui-tooltip-padding-y) var(--lumaui-tooltip-padding-x); border-radius: var(--lumaui-tooltip-radius);
+  background: @luma_tooltip_surface; color: @luma_tooltip_ink; border: none;
+  box-shadow: 0 var(--lumaui-tooltip-shadow-y) var(--lumaui-tooltip-shadow-blur) var(--lumaui-tooltip-shadow-spread) @luma_tooltip_shadow;
+  font-size: var(--lumaui-t-tooltip-size); font-weight: var(--lumaui-t-tooltip-weight); line-height: var(--lumaui-t-tooltip-line-height);
+}
+popover.lumaui-tooltip > arrow { min-width: 0; min-height: 0; }
+
+button.lumaui-edge-fade-arrow {
+  min-width: var(--lumaui-edge-fade-arrow); min-height: var(--lumaui-edge-fade-arrow); padding: 0; border: none;
+  border-radius: 999px; background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end);
+  color: @luma_key_ink; box-shadow: 0 var(--lumaui-edge-fade-arrow-shadow-y) var(--lumaui-edge-fade-arrow-shadow-blur) var(--lumaui-edge-fade-arrow-shadow-spread) alpha(black, 0.6);
+  transition: opacity var(--lumaui-duration-edge-fade, 250ms) ease;
+}
+button.lumaui-edge-fade-arrow image { -gtk-icon-size: var(--lumaui-edge-fade-arrow-icon); color: @luma_key_ink; }
+
+box.lumaui-permission { padding: var(--lumaui-permissions-row-padding-y) 0; border-spacing: var(--lumaui-permissions-gap); }
+box.lumaui-permission + box.lumaui-permission { box-shadow: inset 0 1px 0 @luma_line_faint; }
+box.lumaui-permission-glyph {
+  min-width: var(--lumaui-permissions-glyph-box); min-height: var(--lumaui-permissions-glyph-box); border-radius: var(--lumaui-permissions-glyph-radius);
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-permission-glyph image { -gtk-icon-size: var(--lumaui-permissions-glyph); color: @luma_ink_secondary; }
+box.lumaui-permission-text { border-spacing: var(--lumaui-permissions-text-gap); }
+label.lumaui-permission-word { font-size: var(--lumaui-t-permission-word-size); font-weight: var(--lumaui-t-permission-word-weight); }
+label.lumaui-permission-reason { font-size: var(--lumaui-t-permission-reason-size); line-height: var(--lumaui-t-permission-reason-line-height); color: @luma_muted; }
+label.lumaui-permission-change { margin-left: 6px; font-size: 11px; font-weight: 600; color: @luma_muted; }
+label.lumaui-permission-change.added, label.lumaui-permission-change.widened { color: @luma_warning_ink; }
+box.lumaui-permission.removed label.lumaui-permission-word { text-decoration-line: line-through; color: @luma_muted; }
+
+box.lumaui-changelog { border-spacing: var(--lumaui-changelog-gap); }
+label.lumaui-changelog-heading {
+  margin: var(--lumaui-changelog-heading-top) 0 var(--lumaui-changelog-heading-bottom); color: @luma_muted;
+  font-size: var(--lumaui-t-changelog-heading-size); font-weight: var(--lumaui-t-changelog-heading-weight);
+}
+box.lumaui-changelog > label.lumaui-changelog-heading:first-child { margin-top: 0; }
+box.lumaui-changelog-lines { border-spacing: var(--lumaui-changelog-line-gap); }
+box.lumaui-changelog-line label { font-size: var(--lumaui-t-changelog-line-size); line-height: var(--lumaui-t-changelog-line-line-height); color: @luma_ink_secondary; }
+label.lumaui-changelog-bullet { min-width: var(--lumaui-changelog-indent); }
+
+/* TextButton list (30: rows and cards) and bar (36, 12 round: an action bar) sizes; big is 40, 12 round. */
+button.lumaui-text-button.list {
+  min-height: var(--lumaui-text-button-list-height); padding: 0 var(--lumaui-text-button-list-padding-x);
+  border-radius: var(--lumaui-text-button-list-radius); font-size: var(--lumaui-text-button-list-font-size); font-weight: 600;
+}
+button.lumaui-text-button.bar { border-radius: var(--lumaui-text-button-bar-radius); padding: 0 var(--lumaui-text-button-bar-padding-x); font-weight: 650; }
+button.lumaui-text-button.big { min-height: var(--lumaui-text-button-big-height); border-radius: var(--lumaui-text-button-big-radius); font-weight: 650; }
+button.lumaui-text-button.chosen { background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow; }
+button.lumaui-text-button .lumaui-text-button-menu { -gtk-icon-size: 14px; color: @luma_muted; margin-left: -2px; }
+
+/* Confirm(destructive=False): a decision that is not destructive (v73 lConfirm o.key): a neutral icon, the key. */
+box.lumaui-dialog.key .lumaui-dialog-icon { color: @luma_ink; }
+box.lumaui-dialog.key button.lumaui-dialog-action {
+  background: @luma_key; background-image: linear-gradient(to bottom, @luma_key, @luma_key_end); color: @luma_key_ink;
+  box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
+}
+box.lumaui-dialog.key button.lumaui-dialog-action:hover { filter: brightness(1.05); }

@@ -1,0 +1,166 @@
+{
+  "_source": "Depot redesign 7 Nov 2026 (mockups/apps/depot, measured): the inset and two-column inset, checkbox, disclosure, tooltip, edge-fade scroller, permissions list, changelog, framed picture and the list/bar button sizes. Generic LumaUI parts; Depot is the first user.",
+  "lumaui": {
+    "colors": {
+      "light": {
+        "tooltip_surface": "#f4f4f6",
+        "tooltip_ink": "#16171a",
+        "tooltip_shadow": "rgba(0, 0, 0, 0.5)",
+        "checkbox_on": "oklch(from @luma_accent 0.62 0.14 h)",
+        "checkbox_on_ink": "#ffffff"
+      },
+      "dark": {
+        "tooltip_surface": "#f4f4f6",
+        "tooltip_ink": "#16171a",
+        "tooltip_shadow": "rgba(0, 0, 0, 0.5)",
+        "checkbox_on": "oklch(from @luma_accent 0.62 0.14 h)",
+        "checkbox_on_ink": "#ffffff"
+      }
+    },
+    "inset": {
+      "padding": 8,
+      "radius": 20,
+      "card_padding": 16,
+      "card_radius": 18,
+      "column_gap": 28,
+      "row_gap": 4,
+      "hair_inset": 16
+    },
+    "checkbox": {
+      "size": 16,
+      "radius": 5,
+      "icon": 11,
+      "row_gap": 10
+    },
+    "disclosure": {
+      "line_padding_y": 4,
+      "line_padding_x": 16,
+      "line_radius": 8,
+      "line_gap": 4,
+      "line_chevron": 14,
+      "line_body_top": 6,
+      "card_padding": 16,
+      "card_header_gap": 10,
+      "card_icon": 17,
+      "card_chevron": 16,
+      "card_body_top": 12
+    },
+    "tooltip": {
+      "padding_y": 4,
+      "padding_x": 9,
+      "radius": 8,
+      "offset": 6,
+      "shadow_y": 6,
+      "shadow_blur": 16,
+      "shadow_spread": -6
+    },
+    "edge_fade": {
+      "fade": 56,
+      "thumbs_fade": 72,
+      "arrow": 34,
+      "arrow_outside": 6,
+      "arrow_shadow_y": 6,
+      "arrow_shadow_blur": 16,
+      "arrow_shadow_spread": -6,
+      "arrow_icon": 18
+    },
+    "permissions": {
+      "glyph_box": 30,
+      "glyph": 15,
+      "glyph_radius": 9,
+      "row_padding_y": 11,
+      "gap": 12,
+      "text_gap": 2
+    },
+    "changelog": {
+      "gap": 4,
+      "heading_top": 10,
+      "heading_bottom": 2,
+      "line_gap": 6,
+      "indent": 18
+    },
+    "framed_picture": {
+      "radius": 18,
+      "thumb_radius": 10,
+      "window_width": 0.64,
+      "window_top": 0.09,
+      "window_radius": 0.016,
+      "dock_icon": 0.038,
+      "dock_gap": 0.011,
+      "blur_desktop": 0.022,
+      "blur_phone": 0.032,
+      "phone_height": 0.82
+    },
+    "text_button": {
+      "list_height": 30,
+      "list_padding_x": 12,
+      "list_radius": 10,
+      "list_font_size": 12.5,
+      "bar_radius": 12,
+      "bar_padding_x": 14,
+      "big_height": 40,
+      "big_radius": 12
+    },
+    "motion": {
+      "disclosure_ms": 200,
+      "edge_fade_ms": 250,
+      "lift_ms": 200
+    },
+    "type_scale": {
+      "checkbox_row": {
+        "size": 13,
+        "weight": 400,
+        "line_height": 1.4615,
+        "tracking_em": 0
+      },
+      "disclosure_line": {
+        "size": 12.5,
+        "weight": 600,
+        "line_height": 1.28,
+        "tracking_em": 0,
+        "tone": "muted"
+      },
+      "disclosure_card": {
+        "size": 15,
+        "weight": 650,
+        "line_height": 1.2,
+        "tracking_em": 0
+      },
+      "tooltip": {
+        "size": 11.5,
+        "weight": 600,
+        "line_height": 1.3043,
+        "tracking_em": 0
+      },
+      "permission_word": {
+        "size": 12.5,
+        "weight": 600,
+        "line_height": 1.28,
+        "tracking_em": 0
+      },
+      "permission_reason": {
+        "size": 11.5,
+        "weight": 400,
+        "line_height": 1.3913,
+        "tracking_em": 0,
+        "tone": "muted"
+      },
+      "changelog_heading": {
+        "size": 12,
+        "weight": 650,
+        "line_height": 1.25,
+        "tracking_em": 0,
+        "tone": "muted"
+      },
+      "changelog_line": {
+        "size": 13,
+        "weight": 400,
+        "line_height": 1.5385,
+        "tracking_em": 0
+      }
+    },
+    "action_center": {
+      "grow_width_wide": 440
+    }
+  }
+}

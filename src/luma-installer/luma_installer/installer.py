@@ -16,6 +16,7 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from luma_appkit import (AppWindow, Command, CommandGroup, CommandRegistry,
                         Menu, Toast, apply_type, icons)
+from luma_appkit.content_permissions import PERMISSIONS as _PERMISSIONS
 from luma_appkit.lumaui import mobile_form_factor
 from .errors import InstallerError
 from .inspectors import architecture_is_compatible, architecture_mismatch_message, inspect_package
@@ -27,6 +28,8 @@ from .valet_permissions import network_declared
 from .valet_ticket import ValetTicket
 from .valet_fixture import ValetFixture
 from .desktop import iter_records
+
+PERMISSION_GLYPHS = {key: (word, glyph) for key, word, glyph in _PERMISSIONS}
 
 
 def human_size(size):
@@ -202,8 +205,10 @@ class InstallerWindow(AppWindow):
         self.permission_changes.clear()
         declared_network = network_declared(report)
         self._declared_network = declared_network
+        # The one permission vocabulary Depot uses too (luma_appkit.content_permissions).
+        internet = PERMISSION_GLYPHS['internet']
         self.card.set_permissions([
-            ('Network', 'globe', declared_network, True, self._network_changed)
+            (internet[0], internet[1], declared_network, True, self._network_changed)
         ] if declared_network is not None else [])
         self.card.set_facts([
             ('Version', report.version or 'Not declared'),

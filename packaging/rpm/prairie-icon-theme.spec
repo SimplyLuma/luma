@@ -2,7 +2,7 @@
 
 Name:           prairie-icon-theme
 Version:        0.1.0
-Release:        1.luma.46%{?dist}
+Release:        1.luma.47%{?dist}
 Summary:        Prairie application icon theme for Project Luma
 License:        CC-BY-SA-4.0 AND Apache-2.0 AND ISC AND MIT AND LicenseRef-Luma-System-Artwork-Pending
 URL:            https://project-luma.local/
@@ -152,6 +152,9 @@ done
 %{_datadir}/glib-2.0/schemas/90-prairie.gschema.override
 
 %changelog
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.47
+- Lucide blocks, tablet, tv, monitor-smartphone and arrow-right for Depot.
+
 * Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.46
 - Add LumaUI thermometer and tv-minimal glyphs.
 

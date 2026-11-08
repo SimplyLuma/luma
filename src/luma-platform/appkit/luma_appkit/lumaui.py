@@ -50,7 +50,11 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #    island for every AppWindow (tv_frame; C luma_window_set_tv_frame, luma_window_set_tv_active).
 # 10: wide tiles and app surfaces on TV (TvWideTile, TvShelf, TvTileGrid, TvPage, TvProgressButton,
 #     TvScreenshotViewer, TvEmptyState, compose_wide_tile, wide_tile_art); TvMenu.open(title=, first=).
-LUMAUI_API_LEVEL = 10
+# 11: Depot's parts (Button, Confirm(destructive=), Inset, TwoColumnInset, Checkbox, CheckMenuItem,
+#     RadioMenuItem, Tooltip, Disclosure, EdgeFadeScroller, PermissionList and the eleven permissions
+#     (PERMISSIONS, Grant, from_keys, from_reach), Changelog (ChangeLine, group_changelog), FramedPicture);
+#     TextButton sizes list, bar and big.
+LUMAUI_API_LEVEL = 11
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()
@@ -593,7 +597,9 @@ _paint_providers: dict[int, tuple[Gtk.CssProvider, set[str]]] = {}
 
 def paint_class(widget: Gtk.Widget, colour: str | None) -> str:
     """Give a face its own exact colour (a sender's brand, v71 Charlie CRB.c): the class that carries
-    it, e.g. "lumaui-paint-0f5d73". The colour is data (#rrggbb), never a kit literal. None removes it."""
+    it, e.g. "lumaui-paint-0f5d73". The colour is data (#rrggbb), never a kit literal. None removes it.
+    It paints an avatar, or any widget that also carries `lumaui-painted` (an app's official logo on its
+    own ground, a colour swatch)."""
     for name in [c for c in widget.get_css_classes() if c.startswith("lumaui-paint-")]:
         widget.remove_css_class(name)
     if colour is None:
@@ -612,7 +618,8 @@ def paint_class(widget: Gtk.Widget, colour: str | None) -> str:
         if value not in paints:
             paints.add(value)
             provider.load_from_string("\n".join(
-                f".lumaui-paint-{v}.lumaui-avatar {{ background: #{v}; }}" for v in sorted(paints)))
+                f".lumaui-paint-{v}.lumaui-avatar, .lumaui-paint-{v}.lumaui-painted {{ background: #{v}; }}"
+                for v in sorted(paints)))
     name = f"lumaui-paint-{value}"
     widget.add_css_class(name)
     return name

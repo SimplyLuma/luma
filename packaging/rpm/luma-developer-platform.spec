@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.123%{?dist}
+Release:        1.luma.124%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -373,6 +373,13 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.124
+- LumaUI parts for Depot (API level 11): Button by purpose, Confirm in a
+  non-destructive form, Inset and TwoColumnInset, Checkbox, checkbox and radio
+  menu rows that update in place, Tooltip, Disclosure, EdgeFadeScroller,
+  PermissionList with the eleven permission words, Changelog, FramedPicture;
+  wide grown action-bar panels.
+
 * Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.123
 - LumaUI TV parts (API level 10): focus, stage, menu, keyboard, island,
   media, wide tiles, shelves, grids and pages; TV design tokens.

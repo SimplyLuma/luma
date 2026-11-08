@@ -1183,8 +1183,11 @@ class ActionCenter(Gtk.Box):
 
     def grow(self, key: str | None = None, widget: object = None, *, entry: Gtk.Widget | None = None,
              anchor: Gtk.Widget | None = None, on_fold: Callable[[], None] | None = None,
-             close_word: str | None = None, panel_padding: bool = True) -> None:
+             close_word: str | None = None, panel_padding: bool = True, wide: bool = False) -> None:
         """Grow. With no arguments, into the editor (Charlie's reply), restoring the draft.
+
+        `wide=True` grows a window's panel to min(440, window − 24): a list of choices with
+        notes and a full-width key under them (Depot's Install on…).
 
         v71: `grow(key, widget)` grows the bar into a panel above its own row,
         inside the same glass (⋯, Details, Share, Add, a context menu, a confirm).
@@ -1197,6 +1200,7 @@ class ActionCenter(Gtk.Box):
         side, a window min(380, window − 24); the row's layout holds.
         """
         if key is not None or widget is not None:
+            self._grow_wide = wide
             self._grow_panel(key or "panel", widget, entry=entry, anchor=anchor, on_fold=on_fold,
                              close_word=close_word)
             self.set_panel_padding(panel_padding)
@@ -2040,7 +2044,8 @@ class ActionCenter(Gtk.Box):
             grow_side = metrics["frame_side"] if self._fill or self._all_filling_actions() else metrics["grow_side"]
             if self._phone_grown_inset is not None:
                 grow_side = self._phone_grown_inset
-            grow = width - 2 * grow_side if phone else min(metrics["grow_width"], width - 2 * metrics["grow_side"])
+            wide_width = metrics["grow_width_wide"] if getattr(self, "_grow_wide", False) else metrics["grow_width"]
+            grow = width - 2 * grow_side if phone else min(wide_width, width - 2 * metrics["grow_side"])
             return phone, max(base, grow), (metrics["frame_sheet_room"] if phone else top), bottom
         if width <= 0:
             wanted = -1

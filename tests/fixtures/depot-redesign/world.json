@@ -1,0 +1,3720 @@
+{
+ "schema": 1,
+ "_source": "Design Center mockups/apps/depot catalogue.js + world.js (d6ff399), the approved Depot redesign of 7 Nov 2026",
+ "cats": {
+  "create": {
+   "name": "Create",
+   "about": "Make pictures, films and music",
+   "icon": "palette",
+   "hue": 25
+  },
+  "work": {
+   "name": "Work",
+   "about": "Write, plan, build and talk",
+   "icon": "briefcase",
+   "hue": 250
+  },
+  "media": {
+   "name": "Media",
+   "about": "Watch, listen and look",
+   "icon": "clapperboard",
+   "hue": 330
+  },
+  "play": {
+   "name": "Play",
+   "about": "Games and the places they live",
+   "icon": "gamepad-2",
+   "hue": 150
+  },
+  "tools": {
+   "name": "Tools",
+   "about": "Keep the computer in shape",
+   "icon": "wrench",
+   "hue": 200
+  }
+ },
+ "apps": [
+  {
+   "id": "tide",
+   "name": "Tide",
+   "summary": "Your music, from everywhere you keep it",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "music",
+   "win": "tide",
+   "inst": 1,
+   "size": "38 MB",
+   "version": "1.0.4",
+   "updated": "Oct 18, 2026",
+   "shots": [
+    "tide-desktop-dark",
+    "tide-desktop-light",
+    "tide-phone-dark"
+   ],
+   "desc": [
+    "Tide plays the music on this computer and on your own music server in one library. The album that's playing lights the window, and the queue survives a restart.",
+    "Gapless playback, a mini player in the Shelf, and the same library on your phone."
+   ],
+   "news": {
+    "v": "1.0.4",
+    "date": "Oct 18",
+    "items": [
+     "Crossfade between tracks, from off to 12 seconds",
+     "Albums from a Navidrome server load twice as fast"
+    ]
+   },
+   "rating": {
+    "avg": 4.9,
+    "n": 1204,
+    "dist": [
+     1061,
+     108,
+     22,
+     7,
+     6
+    ]
+   },
+   "reviews": [
+    [
+     "PR",
+     "Priya",
+     5,
+     "Oct 12",
+     "Finally, my Navidrome server and my laptop in one place. The album colour thing is gorgeous."
+    ],
+    [
+     "TH",
+     "Theo",
+     5,
+     "Oct 9",
+     "Gapless playback that actually works. The queue survives a restart."
+    ],
+    [
+     "MA",
+     "Marisol",
+     4,
+     "Sep 30",
+     "Lovely. I want smart playlists next."
+    ],
+    [
+     "JN",
+     "Jonah",
+     5,
+     "Oct 20",
+     "Crossfade at 6 seconds is perfect for long runs."
+    ],
+    [
+     "KM",
+     "Kemi",
+     4,
+     "Oct 17",
+     "Missing lyrics, but everything else beats what I used before."
+    ],
+    [
+     "LO",
+     "Luis",
+     5,
+     "Oct 15",
+     "The mini player in the Shelf is all I need most of the day."
+    ],
+    [
+     "AV",
+     "Ava",
+     5,
+     "Oct 2",
+     "My FLAC library finally looks like a record shelf."
+    ]
+   ],
+   "reach": [
+    [
+     "music-2",
+     "Your Music folder",
+     "Reads it to build your library"
+    ],
+    [
+     "headphones",
+     "Your music server",
+     "Only if you add one, like Navidrome"
+    ],
+    [
+     "shield-check",
+     "No account",
+     "Nothing about what you play leaves this computer"
+    ]
+   ],
+   "alt": [
+    "iTunes",
+    "Apple Music",
+    "Winamp"
+   ]
+  },
+  {
+   "id": "photos",
+   "name": "Photos",
+   "summary": "Every photo you've taken, beautifully kept",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "photos",
+   "win": "photos",
+   "inst": 1,
+   "size": "44 MB",
+   "version": "1.0.3",
+   "updated": "Oct 14, 2026",
+   "shots": [
+    "photos-desktop-dark",
+    "photos-desktop-light",
+    "photos-phone-dark"
+   ],
+   "desc": [
+    "Your photos by day, month and year, with the places and the people in them. Memories gathers a weekend or a trip without being asked.",
+    "Edits are kept beside the original, so you can always go back."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 902,
+    "dist": [
+     760,
+     104,
+     24,
+     8,
+     6
+    ]
+   },
+   "reviews": [
+    [
+     "JN",
+     "Jonah",
+     5,
+     "Oct 3",
+     "Years view is the best way to scroll through ten years of photos I have used."
+    ],
+    [
+     "PR",
+     "Priya",
+     5,
+     "Oct 16",
+     "Found every photo from our trip by typing “beach 2024”."
+    ],
+    [
+     "TH",
+     "Theo",
+     4,
+     "Oct 11",
+     "Fast with 60,000 photos. I would like albums to sort by date."
+    ],
+    [
+     "MA",
+     "Marisol",
+     5,
+     "Oct 6",
+     "Edits sync to my phone before I pick it up."
+    ]
+   ],
+   "reach": [
+    [
+     "image",
+     "Your Pictures folder",
+     "Where your library lives"
+    ],
+    [
+     "map-pin",
+     "Places in your photos",
+     "Read from the photos themselves; nothing is uploaded"
+    ]
+   ],
+   "alt": [
+    "Google Photos",
+    "Apple Photos"
+   ]
+  },
+  {
+   "id": "filer",
+   "name": "Filer",
+   "summary": "Files, with a tray you can carry",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "system",
+   "icon": "files",
+   "win": "filer",
+   "inst": 1,
+   "size": "21 MB",
+   "version": "1.0.2",
+   "updated": "Oct 2, 2026",
+   "shots": [
+    "filer-desktop-dark",
+    "filer-desktop-light",
+    "filer-phone-dark"
+   ],
+   "desc": [
+    "Your files and drives, with a tray that holds what you're moving between folders and windows. Filer comes with Luma and updates with it."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 655,
+    "dist": [
+     540,
+     88,
+     15,
+     7,
+     5
+    ]
+   },
+   "reach": [
+    [
+     "hard-drive",
+     "Every drive and folder",
+     "It is the file manager"
+    ]
+   ],
+   "alt": [
+    "File Explorer",
+    "Finder"
+   ]
+  },
+  {
+   "id": "write",
+   "name": "Write",
+   "summary": "Documents, beautifully set and easy to share",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "documents",
+   "win": "write",
+   "inst": 1,
+   "size": "62 MB",
+   "version": "0.1.0",
+   "updated": "Oct 6, 2026",
+   "shots": [
+    "write-desktop-dark",
+    "write-desktop-light",
+    "write-phone-dark"
+   ],
+   "desc": [
+    "A word processor that sets your text well without a ribbon. Opens and saves Word documents, exports to PDF, and shares a live copy anyone can read in a browser."
+   ],
+   "news": {
+    "v": "0.1.0",
+    "date": "Oct 6",
+    "items": [
+     "The first release"
+    ]
+   },
+   "rating": {
+    "avg": 4.7,
+    "n": 188,
+    "dist": [
+     150,
+     24,
+     8,
+     3,
+     3
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Microsoft Word",
+    "Pages",
+    "Microsoft Office",
+    "Google Docs"
+   ],
+   "reviews": [
+    [
+     "DN",
+     "Dana",
+     5,
+     "Oct 19",
+     "Opens my Word files and they look right. That alone sold me."
+    ],
+    [
+     "RA",
+     "Ruth",
+     4,
+     "Oct 14",
+     "Lovely to write in. Track changes needs a filter for one person."
+    ],
+    [
+     "OH",
+     "Omar",
+     5,
+     "Oct 9",
+     "The outline on the left keeps a 90-page report under control."
+    ]
+   ]
+  },
+  {
+   "id": "viola",
+   "name": "Viola",
+   "summary": "A calmer way to browse",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "system",
+   "icon": "browser",
+   "win": "viola",
+   "inst": 1,
+   "size": "118 MB",
+   "version": "1.0",
+   "updated": "Oct 20, 2026",
+   "shots": [
+    "viola-desktop-dark",
+    "viola-desktop-light",
+    "viola-phone-dark"
+   ],
+   "desc": [
+    "The web, with tabs in a sidebar you can name and keep. Viola comes with Luma and updates with it."
+   ],
+   "rating": {
+    "avg": 4.6,
+    "n": 1418,
+    "dist": [
+     1020,
+     280,
+     70,
+     28,
+     20
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "download",
+     "Downloads",
+     "Where it saves files"
+    ]
+   ],
+   "alt": [
+    "Chrome",
+    "Edge",
+    "Safari"
+   ]
+  },
+  {
+   "id": "messages",
+   "name": "Messages",
+   "summary": "Talk to anyone, privately",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "messages",
+   "win": "messages",
+   "inst": 1,
+   "size": "33 MB",
+   "version": "1.0.1",
+   "updated": "Oct 16, 2026",
+   "shots": [
+    "messages-desktop-dark",
+    "messages-desktop-light",
+    "messages-phone-dark"
+   ],
+   "desc": [
+    "Messages and calls, end-to-end encrypted, on your own Luma network. Your @username finds people; your number never has to."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 433,
+    "dist": [
+     380,
+     36,
+     9,
+     5,
+     3
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "mic",
+     "Microphone and camera",
+     "Only during a call you start or answer"
+    ],
+    [
+     "bell",
+     "Notifications",
+     "For new messages"
+    ]
+   ],
+   "alt": [
+    "WhatsApp",
+    "iMessage",
+    "Telegram"
+   ],
+   "reviews": [
+    [
+     "ZM",
+     "Zoe",
+     5,
+     "Oct 18",
+     "Texts from my Android phone right on the laptop."
+    ],
+    [
+     "KM",
+     "Kemi",
+     5,
+     "Oct 12",
+     "Group calls just work. No account to make."
+    ],
+    [
+     "AR",
+     "Alex",
+     4,
+     "Oct 3",
+     "Would love scheduled messages."
+    ]
+   ]
+  },
+  {
+   "id": "notes",
+   "name": "Notes",
+   "summary": "Catch a thought, share it with anyone",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "notes",
+   "win": "notes",
+   "inst": 1,
+   "size": "12 MB",
+   "version": "1.0.2",
+   "updated": "Oct 11, 2026",
+   "shots": [
+    "notes-desktop-dark",
+    "notes-desktop-light",
+    "notes-phone-dark"
+   ],
+   "desc": [
+    "Notes that open where you left off. Checklists, pictures and links; share one with a link anyone can open."
+   ],
+   "rating": {
+    "avg": 4.9,
+    "n": 612,
+    "dist": [
+     570,
+     30,
+     6,
+     3,
+     3
+    ]
+   },
+   "reach": [
+    [
+     "shield-check",
+     "Nothing else",
+     "Your notes stay in your account"
+    ]
+   ],
+   "alt": [
+    "OneNote",
+    "Apple Notes",
+    "Google Keep"
+   ],
+   "reviews": [
+    [
+     "TH",
+     "Theo",
+     5,
+     "Oct 15",
+     "Quick, quiet, and the search is instant."
+    ],
+    [
+     "PR",
+     "Priya",
+     5,
+     "Oct 8",
+     "Shared notes with my partner for groceries. It just updates."
+    ],
+    [
+     "LO",
+     "Luis",
+     4,
+     "Sep 29",
+     "I want tags as well as folders."
+    ]
+   ]
+  },
+  {
+   "id": "calendar",
+   "name": "Calendar",
+   "summary": "See what's next and when you're free",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "calendar",
+   "win": "calendar",
+   "inst": 1,
+   "size": "18 MB",
+   "version": "1.0.1",
+   "updated": "Oct 9, 2026",
+   "shots": [
+    "calendar-desktop-dark",
+    "calendar-desktop-light",
+    "calendar-phone-dark"
+   ],
+   "desc": [
+    "Your calendars side by side. Type an event the way you'd say it and the bar becomes the event."
+   ],
+   "rating": {
+    "avg": 4.7,
+    "n": 240,
+    "dist": [
+     196,
+     30,
+     8,
+     4,
+     2
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "bell",
+     "Notifications",
+     "For reminders"
+    ]
+   ],
+   "alt": [
+    "Outlook",
+    "Google Calendar"
+   ],
+   "reviews": [
+    [
+     "MA",
+     "Marisol",
+     5,
+     "Oct 17",
+     "Typing “lunch with Ana fri 1pm” and having it appear is magic."
+    ],
+    [
+     "DN",
+     "Dana",
+     4,
+     "Oct 10",
+     "Week view is great. Time zones could be clearer."
+    ]
+   ]
+  },
+  {
+   "id": "contacts",
+   "name": "Contacts",
+   "summary": "Everyone you know, in one place",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "contacts",
+   "win": "contacts",
+   "inst": 1,
+   "size": "9 MB",
+   "version": "1.0",
+   "updated": "Sep 30, 2026",
+   "shots": [
+    "contacts-desktop-dark",
+    "contacts-desktop-light",
+    "contacts-phone-dark"
+   ],
+   "rating": {
+    "avg": 4.6,
+    "n": 98,
+    "dist": [
+     76,
+     14,
+     4,
+     2,
+     2
+    ]
+   }
+  },
+  {
+   "id": "charlie",
+   "name": "Charlie",
+   "summary": "Mail, with the noise turned down",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "mail",
+   "win": "charlie",
+   "inst": 1,
+   "size": "41 MB",
+   "version": "1.0.2",
+   "updated": "Oct 17, 2026",
+   "shots": [
+    "charlie-desktop-dark",
+    "charlie-desktop-light",
+    "charlie-phone-dark"
+   ],
+   "desc": [
+    "Mail from all your accounts in one inbox. People you write to come first; newsletters and receipts wait in their own place. Replies grow out of the bar."
+   ],
+   "rating": {
+    "avg": 4.7,
+    "n": 377,
+    "dist": [
+     300,
+     55,
+     12,
+     6,
+     4
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "bell",
+     "Notifications",
+     "For mail from people you know"
+    ]
+   ],
+   "alt": [
+    "Outlook",
+    "Apple Mail",
+    "Gmail"
+   ]
+  },
+  {
+   "id": "youtube",
+   "name": "YouTube",
+   "summary": "Watch YouTube, made for Luma",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "youtube",
+   "win": "youtube",
+   "inst": 1,
+   "size": "27 MB",
+   "version": "0.9",
+   "updated": "Oct 21, 2026",
+   "shots": [
+    "youtube-desktop-dark",
+    "youtube-desktop-light",
+    "youtube-phone-dark"
+   ],
+   "desc": [
+    "A YouTube client in Luma's own parts: the video leads, Up next sits beside it, and it keeps your place across the desktop, a tablet and your phone."
+   ],
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ]
+   ]
+  },
+  {
+   "id": "term",
+   "name": "Terminal",
+   "summary": "A quiet, fast command line",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "system",
+   "icon": "terminal",
+   "win": "term",
+   "inst": 1,
+   "size": "8 MB",
+   "version": "1.0",
+   "updated": "Sep 22, 2026",
+   "shots": [
+    "term-desktop-dark",
+    "term-desktop-light",
+    "term-phone-dark"
+   ],
+   "rating": {
+    "avg": 4.9,
+    "n": 210,
+    "dist": [
+     196,
+     10,
+     2,
+     1,
+     1
+    ]
+   },
+   "alt": [
+    "Command Prompt",
+    "PowerShell",
+    "iTerm"
+   ]
+  },
+  {
+   "id": "maps",
+   "name": "Maps",
+   "summary": "Find your way, without being followed",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "maps",
+   "win": "maps",
+   "inst": 1,
+   "size": "46 MB",
+   "version": "1.0",
+   "updated": "Oct 1, 2026",
+   "shots": [
+    "maps-desktop-dark",
+    "maps-desktop-light",
+    "maps-phone-dark"
+   ],
+   "desc": [
+    "Maps and directions with no account. Your searches and trips stay on this computer."
+   ],
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "map-pin",
+     "Your location",
+     "Only while you ask for it"
+    ]
+   ],
+   "alt": [
+    "Google Maps"
+   ]
+  },
+  {
+   "id": "weather",
+   "name": "Weather",
+   "summary": "The sky, at a glance",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "weather",
+   "win": "weather",
+   "inst": 1,
+   "size": "6 MB",
+   "version": "1.0",
+   "updated": "Sep 28, 2026",
+   "shots": [
+    "weather-desktop-dark",
+    "weather-desktop-light",
+    "weather-phone-dark"
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 311,
+    "dist": [
+     270,
+     30,
+     6,
+     3,
+     2
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "map-pin",
+     "Your location",
+     "If you let it, for local weather"
+    ]
+   ]
+  },
+  {
+   "id": "clock",
+   "name": "Clock",
+   "summary": "Alarms, timers and the time anywhere",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "clock",
+   "win": "clock",
+   "inst": 1,
+   "size": "5 MB",
+   "version": "1.0",
+   "updated": "Sep 28, 2026",
+   "shots": [
+    "clock-desktop-dark",
+    "clock-desktop-light",
+    "clock-phone-dark"
+   ]
+  },
+  {
+   "id": "camera",
+   "name": "Camera",
+   "summary": "Photos and video from any camera",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "camera",
+   "win": "camera",
+   "inst": 1,
+   "size": "11 MB",
+   "version": "1.0",
+   "updated": "Sep 26, 2026",
+   "shots": [
+    "camera-desktop-dark",
+    "camera-desktop-light",
+    "camera-phone-dark"
+   ],
+   "reach": [
+    [
+     "camera",
+     "Your camera and microphone",
+     "Only while it is open"
+    ]
+   ]
+  },
+  {
+   "id": "memos",
+   "name": "Memo",
+   "summary": "Voice notes that write themselves down",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "memo",
+   "win": "memos",
+   "inst": 1,
+   "size": "14 MB",
+   "version": "1.0",
+   "updated": "Oct 4, 2026",
+   "shots": [
+    "memos-desktop-dark",
+    "memos-desktop-light",
+    "memos-phone-dark"
+   ],
+   "desc": [
+    "Record a thought and read it back: every memo is transcribed on this computer, nothing is uploaded."
+   ],
+   "reach": [
+    [
+     "mic",
+     "Your microphone",
+     "Only while recording"
+    ]
+   ]
+  },
+  {
+   "id": "tasks",
+   "name": "Tasks",
+   "summary": "What to do, and when",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "tasks",
+   "win": "tasks",
+   "inst": 1,
+   "size": "7 MB",
+   "version": "1.0",
+   "updated": "Oct 2, 2026",
+   "shots": [
+    "tasks-desktop-dark",
+    "tasks-desktop-light",
+    "tasks-phone-dark"
+   ]
+  },
+  {
+   "id": "leaf",
+   "name": "Leaf",
+   "summary": "Long reads, set for reading",
+   "cat": "media",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "leaf",
+   "win": "leaf",
+   "inst": 1,
+   "size": "16 MB",
+   "version": "1.0",
+   "updated": "Oct 1, 2026",
+   "shots": [
+    "leaf-desktop-dark",
+    "leaf-desktop-light",
+    "leaf-phone-dark"
+   ]
+  },
+  {
+   "id": "viewer",
+   "name": "Viewer",
+   "summary": "Open any picture or PDF",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "viewer",
+   "win": "viewer",
+   "inst": 1,
+   "size": "9 MB",
+   "version": "1.0",
+   "updated": "Sep 24, 2026",
+   "shots": [
+    "viewer-desktop-dark",
+    "viewer-desktop-light",
+    "viewer-phone-dark"
+   ]
+  },
+  {
+   "id": "valet",
+   "name": "Valet",
+   "summary": "Keeps the computer tidy",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "valet",
+   "win": "valet",
+   "inst": 1,
+   "size": "6 MB",
+   "version": "0.9",
+   "updated": "Sep 24, 2026",
+   "shots": [
+    "valet-desktop-dark",
+    "valet-desktop-light",
+    "valet-phone-dark"
+   ]
+  },
+  {
+   "id": "disks",
+   "name": "Disks",
+   "summary": "Drives, partitions and their health",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "system",
+   "icon": "disks",
+   "win": "disks",
+   "inst": 1,
+   "size": "12 MB",
+   "version": "1.0",
+   "updated": "Sep 22, 2026",
+   "shots": [
+    "disks-desktop-dark",
+    "disks-desktop-light",
+    "disks-phone-dark"
+   ]
+  },
+  {
+   "id": "monitor",
+   "name": "Monitor",
+   "summary": "What the computer is doing, right now",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "system",
+   "icon": "monitor",
+   "win": "monitor",
+   "inst": 1,
+   "size": "10 MB",
+   "version": "1.0",
+   "updated": "Sep 22, 2026",
+   "shots": [
+    "monitor-desktop-dark",
+    "monitor-desktop-light",
+    "monitor-phone-dark"
+   ],
+   "alt": [
+    "Task Manager",
+    "Activity Monitor"
+   ]
+  },
+  {
+   "id": "calc",
+   "name": "Calculator",
+   "summary": "Sums, units and currencies",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "calculator",
+   "win": "calc",
+   "inst": 1,
+   "size": "4 MB",
+   "version": "1.0",
+   "updated": "Sep 20, 2026",
+   "shots": [
+    "calc-desktop-dark",
+    "calc-desktop-light",
+    "calc-phone-dark"
+   ]
+  },
+  {
+   "id": "tipsplit",
+   "name": "Tip Split",
+   "summary": "Split the bill",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "tipsplit",
+   "win": "tipsplit",
+   "inst": 0,
+   "size": "2 MB",
+   "version": "0.5",
+   "updated": "Sep 20, 2026",
+   "shots": [
+    "tipsplit-desktop-dark",
+    "tipsplit-desktop-light",
+    "tipsplit-phone-dark"
+   ]
+  },
+  {
+   "id": "ari",
+   "name": "Ari",
+   "summary": "Ask anything, on this computer",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "ari",
+   "win": "ari",
+   "inst": 1,
+   "size": "1.2 GB",
+   "version": "0.8",
+   "updated": "Oct 15, 2026",
+   "shots": [
+    "ari-desktop-dark",
+    "ari-desktop-light",
+    "ari-phone-dark"
+   ],
+   "desc": [
+    "Ari answers questions, finds things across your apps and does small jobs for you. It runs on this computer; when a question needs the internet, it says so and asks."
+   ],
+   "reach": [
+    [
+     "layers",
+     "Your apps' content",
+     "Only what you ask about"
+    ],
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ]
+   ]
+  },
+  {
+   "id": "canvas",
+   "name": "Canvas",
+   "summary": "Design anything, from posters to apps",
+   "cat": "create",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "designer",
+   "win": "canvas",
+   "inst": 0,
+   "size": "96 MB",
+   "version": "0.1.0",
+   "updated": "Oct 12, 2026",
+   "shots": [
+    "canvas-desktop-dark",
+    "canvas-desktop-light",
+    "canvas-phone-dark"
+   ],
+   "desc": [
+    "Layouts, illustrations and prototypes on one infinite canvas, with real type and real colour."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 64,
+    "dist": [
+     56,
+     5,
+     2,
+     1,
+     0
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Figma",
+    "Illustrator",
+    "Canva"
+   ]
+  },
+  {
+   "id": "grid",
+   "name": "Grid",
+   "summary": "Spreadsheets without the dread",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "spreadsheets",
+   "win": "grid",
+   "inst": 0,
+   "size": "54 MB",
+   "version": "0.2",
+   "updated": "Oct 10, 2026",
+   "shots": [
+    "grid-desktop-dark",
+    "grid-desktop-light",
+    "grid-phone-dark"
+   ],
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Excel",
+    "Microsoft Office",
+    "Google Sheets"
+   ]
+  },
+  {
+   "id": "stage",
+   "name": "Stage",
+   "summary": "Presentations that look designed",
+   "cat": "work",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "presentations",
+   "win": "stage",
+   "inst": 0,
+   "size": "71 MB",
+   "version": "0.2",
+   "updated": "Oct 10, 2026",
+   "shots": [
+    "stage-desktop-dark",
+    "stage-desktop-light",
+    "stage-phone-dark"
+   ],
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "PowerPoint",
+    "Keynote",
+    "Microsoft Office"
+   ]
+  },
+  {
+   "id": "session",
+   "name": "Sessions",
+   "summary": "Record, arrange and mix music",
+   "cat": "create",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "daw",
+   "win": "session",
+   "inst": 0,
+   "size": "212 MB",
+   "version": "0.3",
+   "updated": "Oct 8, 2026",
+   "shots": [
+    "session-desktop-dark",
+    "session-desktop-light",
+    "session-phone-dark"
+   ],
+   "desc": [
+    "A recording studio: record takes, arrange them on a timeline and mix with real-time effects. Works with any audio interface Luma sees."
+   ],
+   "rating": {
+    "avg": 4.7,
+    "n": 81,
+    "dist": [
+     66,
+     10,
+     3,
+     1,
+     1
+    ]
+   },
+   "reach": [
+    [
+     "mic",
+     "Microphones and instruments",
+     "Your audio inputs"
+    ],
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "GarageBand",
+    "Logic",
+    "Ableton"
+   ]
+  },
+  {
+   "id": "darkroom",
+   "name": "Darkroom",
+   "summary": "Develop your photos like film",
+   "cat": "create",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "photo-editor",
+   "win": "darkroom",
+   "inst": 1,
+   "size": "88 MB",
+   "version": "0.4",
+   "updated": "Oct 13, 2026",
+   "shots": [
+    "darkroom-desktop-dark",
+    "darkroom-desktop-light",
+    "darkroom-phone-dark"
+   ],
+   "desc": [
+    "Raw development with film looks you can tune, and edits that never touch the original."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 142,
+    "dist": [
+     124,
+     12,
+     4,
+     1,
+     1
+    ]
+   },
+   "reach": [
+    [
+     "image",
+     "Your Pictures folder",
+     "To find your photos"
+    ]
+   ],
+   "alt": [
+    "Lightroom",
+    "Photoshop"
+   ]
+  },
+  {
+   "id": "reel",
+   "name": "Reel",
+   "summary": "Edit video on a timeline that stays out of the way",
+   "cat": "create",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "video-editor",
+   "win": "reel",
+   "inst": 0,
+   "size": "140 MB",
+   "version": "0.3",
+   "updated": "Oct 11, 2026",
+   "shots": [
+    "reel-desktop-dark",
+    "reel-desktop-light",
+    "reel-phone-dark"
+   ],
+   "desc": [
+    "Cut, trim and grade on a magnetic timeline; export for anywhere you post."
+   ],
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Premiere",
+    "Final Cut",
+    "iMovie"
+   ]
+  },
+  {
+   "id": "vault",
+   "name": "Vault",
+   "summary": "Passwords and passkeys, synced privately",
+   "cat": "tools",
+   "dev": "Luma",
+   "verified": true,
+   "pk": "luma",
+   "icon": "vault",
+   "win": null,
+   "inst": 0,
+   "size": "15 MB",
+   "version": "0.1",
+   "updated": "Oct 19, 2026",
+   "desc": [
+    "Your passwords and passkeys, end-to-end encrypted and synced through your Connect account. It fills them in for you in Viola and in apps."
+   ],
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "key-round",
+     "Sign-in forms",
+     "Only to fill them when you ask"
+    ]
+   ],
+   "alt": [
+    "1Password",
+    "LastPass",
+    "Keychain"
+   ]
+  },
+  {
+   "id": "blender",
+   "name": "Blender",
+   "dev": "Blender Foundation",
+   "summary": "Free and open 3D creation",
+   "cat": "create",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "blender",
+    "bg": "#E87D0D"
+   },
+   "size": "477 MB",
+   "version": "4.5.3",
+   "updated": "Oct 7, 2026",
+   "license": "GPL-3.0-or-later",
+   "site": "blender.org",
+   "desc": [
+    "Modelling, sculpting, animation, rendering, compositing and video editing in one application."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 2890,
+    "dist": [
+     2430,
+     300,
+     90,
+     40,
+     30
+    ]
+   },
+   "reviews": [
+    [
+     "SK",
+     "Sam",
+     5,
+     "Oct 10",
+     "Runs better here than on my old Windows install. Cycles finds the GPU on its own."
+    ],
+    [
+     "AV",
+     "Ava",
+     5,
+     "Oct 15",
+     "Sculpting with a pen tablet feels smooth."
+    ],
+    [
+     "OH",
+     "Omar",
+     4,
+     "Oct 4",
+     "Installed in a minute. Took a restart before Cycles saw my second GPU."
+    ],
+    [
+     "JN",
+     "Jonah",
+     5,
+     "Sep 28",
+     "Same files as my Windows machine, no conversion."
+    ]
+   ],
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Opens and saves wherever you choose"
+    ],
+    [
+     "cpu",
+     "Your graphics card",
+     "For the viewport and rendering"
+    ],
+    [
+     "globe",
+     "The network",
+     "For add-ons and asset libraries"
+    ]
+   ],
+   "alt": [
+    "Maya",
+    "Cinema 4D",
+    "3ds Max"
+   ]
+  },
+  {
+   "id": "gimp",
+   "name": "GIMP",
+   "dev": "The GIMP Team",
+   "summary": "High-end image editing",
+   "cat": "create",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "gimp",
+    "bg": "#5C5543"
+   },
+   "size": "100 MB",
+   "version": "3.0.4",
+   "updated": "Sep 29, 2026",
+   "license": "GPL-3.0-or-later",
+   "site": "gimp.org",
+   "desc": [
+    "Retouching, compositing and painting with layers, masks and filters."
+   ],
+   "rating": {
+    "avg": 4.3,
+    "n": 1402,
+    "dist": [
+     820,
+     330,
+     140,
+     60,
+     52
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Photoshop"
+   ],
+   "reviews": [
+    [
+     "RA",
+     "Ruth",
+     4,
+     "Oct 13",
+     "Does everything I need. Still learning where things are."
+    ],
+    [
+     "ZM",
+     "Zoe",
+     5,
+     "Oct 2",
+     "Opens big PSDs without a fuss."
+    ]
+   ]
+  },
+  {
+   "id": "inkscape",
+   "name": "Inkscape",
+   "dev": "Inkscape Project",
+   "summary": "Draw freely, in vectors",
+   "cat": "create",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "inkscape",
+    "bg": "#1B1B1D"
+   },
+   "size": "91 MB",
+   "version": "1.4",
+   "updated": "Sep 18, 2026",
+   "license": "GPL-2.0-or-later",
+   "site": "inkscape.org",
+   "rating": {
+    "avg": 4.6,
+    "n": 611,
+    "dist": [
+     450,
+     110,
+     30,
+     12,
+     9
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Illustrator"
+   ]
+  },
+  {
+   "id": "krita",
+   "name": "Krita",
+   "dev": "Krita Foundation",
+   "summary": "Painting, made by artists",
+   "cat": "create",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "krita",
+    "bg": "#3BABFF"
+   },
+   "size": "182 MB",
+   "version": "5.3",
+   "updated": "Oct 16, 2026",
+   "license": "GPL-3.0-or-later",
+   "site": "krita.org",
+   "desc": [
+    "A painting application with brush engines, a wrap-around mode and animation, made by and for artists."
+   ],
+   "rating": {
+    "avg": 4.8,
+    "n": 937,
+    "dist": [
+     800,
+     100,
+     22,
+     9,
+     6
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ],
+    [
+     "monitor",
+     "Drawing tablets",
+     "Pressure and tilt"
+    ]
+   ],
+   "alt": [
+    "Photoshop",
+    "Procreate",
+    "Clip Studio"
+   ],
+   "reviews": [
+    [
+     "KM",
+     "Kemi",
+     5,
+     "Oct 18",
+     "Pressure on my tablet worked first try."
+    ],
+    [
+     "AV",
+     "Ava",
+     5,
+     "Oct 9",
+     "The best free painting app, and it feels at home here."
+    ]
+   ]
+  },
+  {
+   "id": "kdenlive",
+   "name": "Kdenlive",
+   "dev": "KDE",
+   "summary": "Video editing with many tracks",
+   "cat": "create",
+   "pk": "flatpak",
+   "mark": {
+    "file": "kdenlive",
+    "bg": "#527EB2"
+   },
+   "size": "224 MB",
+   "version": "25.08",
+   "updated": "Oct 3, 2026",
+   "license": "GPL-3.0-or-later",
+   "site": "kdenlive.org",
+   "rating": {
+    "avg": 4.4,
+    "n": 402,
+    "dist": [
+     260,
+     90,
+     30,
+     12,
+     10
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Premiere",
+    "Final Cut"
+   ]
+  },
+  {
+   "id": "audacity",
+   "name": "Audacity",
+   "dev": "Audacity Team",
+   "summary": "Record and edit audio",
+   "cat": "create",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "audacity",
+    "bg": "#0000CC"
+   },
+   "size": "24 MB",
+   "version": "3.7.5",
+   "updated": "Sep 25, 2026",
+   "license": "GPL-3.0-or-later",
+   "site": "audacityteam.org",
+   "rating": {
+    "avg": 4.5,
+    "n": 1120,
+    "dist": [
+     760,
+     230,
+     70,
+     30,
+     30
+    ]
+   },
+   "reach": [
+    [
+     "mic",
+     "Your microphone",
+     "For recording"
+    ],
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "GarageBand"
+   ]
+  },
+  {
+   "id": "obs",
+   "name": "OBS Studio",
+   "dev": "OBS Project",
+   "summary": "Record and stream",
+   "cat": "media",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "obsstudio",
+    "bg": "#302E31"
+   },
+   "size": "199 MB",
+   "version": "31.1",
+   "updated": "Oct 2, 2026",
+   "license": "GPL-2.0-or-later",
+   "site": "obsproject.com",
+   "desc": [
+    "Capture your screen, windows and cameras, mix scenes, and record or stream them."
+   ],
+   "rating": {
+    "avg": 4.6,
+    "n": 845,
+    "dist": [
+     610,
+     160,
+     40,
+     20,
+     15
+    ]
+   },
+   "reach": [
+    [
+     "monitor",
+     "Your screen",
+     "When you add a screen or window source"
+    ],
+    [
+     "camera",
+     "Cameras and microphones",
+     "The sources you add"
+    ],
+    [
+     "globe",
+     "The network",
+     "To stream"
+    ]
+   ],
+   "reviews": [
+    [
+     "ZM",
+     "Zoe",
+     5,
+     "Oct 18",
+     "Records my screen and webcam without dropped frames."
+    ]
+   ]
+  },
+  {
+   "id": "vlc",
+   "name": "VLC",
+   "dev": "VideoLAN",
+   "summary": "Plays everything",
+   "cat": "media",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "vlcmediaplayer",
+    "bg": "#FF8800"
+   },
+   "size": "53 MB",
+   "version": "3.0.21",
+   "updated": "Aug 28, 2026",
+   "license": "GPL-2.0-or-later",
+   "site": "videolan.org",
+   "rating": {
+    "avg": 4.7,
+    "n": 3310,
+    "dist": [
+     2600,
+     500,
+     120,
+     50,
+     40
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ],
+    [
+     "globe",
+     "The network",
+     "For streams you open"
+    ]
+   ],
+   "reviews": [
+    [
+     "LO",
+     "Luis",
+     5,
+     "Oct 16",
+     "Plays everything, as always."
+    ],
+    [
+     "TH",
+     "Theo",
+     4,
+     "Oct 1",
+     "Works on the TV too. The remote layout is a bit small."
+    ]
+   ]
+  },
+  {
+   "id": "kodi",
+   "name": "Kodi",
+   "dev": "Team Kodi",
+   "summary": "Your media centre",
+   "cat": "media",
+   "pk": "flatpak",
+   "mark": {
+    "file": "kodi",
+    "bg": "#17B2E7"
+   },
+   "size": "96 MB",
+   "version": "21.2",
+   "updated": "Sep 12, 2026",
+   "license": "GPL-2.0-or-later",
+   "site": "kodi.tv",
+   "rating": {
+    "avg": 4.5,
+    "n": 288,
+    "dist": [
+     190,
+     60,
+     20,
+     10,
+     8
+    ]
+   }
+  },
+  {
+   "id": "spotify",
+   "name": "Spotify",
+   "dev": "Spotify",
+   "summary": "Music and podcasts, streamed",
+   "cat": "media",
+   "pk": "flatpak",
+   "mark": {
+    "file": "spotify",
+    "bg": "#121212",
+    "fg": "#1ED760"
+   },
+   "size": "180 MB",
+   "version": "1.2.48",
+   "updated": "Oct 18, 2026",
+   "license": "Proprietary",
+   "inst": 1,
+   "rating": {
+    "avg": 4.4,
+    "n": 5412,
+    "dist": [
+     3500,
+     1100,
+     400,
+     200,
+     212
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "volume-2",
+     "Sound",
+     "To play"
+    ]
+   ],
+   "alt": [
+    "iTunes",
+    "Apple Music"
+   ],
+   "reviews": [
+    [
+     "DN",
+     "Dana",
+     4,
+     "Oct 19",
+     "Works fine. Media keys and the Shelf player both control it."
+    ],
+    [
+     "PR",
+     "Priya",
+     5,
+     "Oct 12",
+     "Same as on any other computer, which is what I wanted."
+    ],
+    [
+     "AR",
+     "Alex",
+     3,
+     "Oct 5",
+     "Sometimes forgets my login after an update."
+    ]
+   ]
+  },
+  {
+   "id": "discord",
+   "name": "Discord",
+   "dev": "Discord",
+   "summary": "Talk, play, hang out",
+   "cat": "work",
+   "pk": "deb",
+   "mark": {
+    "file": "discord",
+    "bg": "#5865F2"
+   },
+   "size": "92 MB",
+   "version": "1.0.159",
+   "updated": "Oct 20, 2026",
+   "license": "Proprietary",
+   "inst": 1,
+   "upd": "1.0.160",
+   "rating": {
+    "avg": 4.3,
+    "n": 2018,
+    "dist": [
+     1200,
+     480,
+     180,
+     80,
+     78
+    ]
+   },
+   "news": {
+    "v": "1.0.160",
+    "date": "Oct 21",
+    "items": [
+     "Faster start-up",
+     "A fix for sharing your screen"
+    ]
+   },
+   "reviews": [
+    [
+     "JN",
+     "Jonah",
+     5,
+     "Oct 20",
+     "Screen share with sound works. Finally."
+    ],
+    [
+     "ZM",
+     "Zoe",
+     4,
+     "Oct 14",
+     "Notifications land in the right place. Updates are frequent."
+    ]
+   ]
+  },
+  {
+   "id": "signal",
+   "name": "Signal",
+   "dev": "Signal Foundation",
+   "summary": "Private messenger",
+   "cat": "work",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "signal",
+    "bg": "#3B45FD"
+   },
+   "size": "165 MB",
+   "version": "7.70",
+   "updated": "Oct 15, 2026",
+   "license": "AGPL-3.0",
+   "site": "signal.org",
+   "desc": [
+    "Messages, voice and video calls, end-to-end encrypted, from a non-profit."
+   ],
+   "rating": {
+    "avg": 4.6,
+    "n": 1707,
+    "dist": [
+     1250,
+     320,
+     80,
+     30,
+     27
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "mic",
+     "Microphone and camera",
+     "During calls"
+    ],
+    [
+     "bell",
+     "Notifications",
+     "For new messages"
+    ]
+   ],
+   "alt": [
+    "WhatsApp",
+    "iMessage"
+   ],
+   "reviews": [
+    [
+     "OH",
+     "Omar",
+     5,
+     "Oct 17",
+     "Linked to my phone in ten seconds."
+    ],
+    [
+     "RA",
+     "Ruth",
+     5,
+     "Oct 7",
+     "Private and simple. Nothing to complain about."
+    ]
+   ]
+  },
+  {
+   "id": "telegram",
+   "name": "Telegram",
+   "dev": "Telegram",
+   "summary": "Fast messaging and channels",
+   "cat": "work",
+   "pk": "flatpak",
+   "mark": {
+    "file": "telegram",
+    "bg": "#26A5E4"
+   },
+   "size": "74 MB",
+   "version": "5.6",
+   "updated": "Oct 9, 2026",
+   "license": "GPL-3.0",
+   "rating": {
+    "avg": 4.5,
+    "n": 902,
+    "dist": [
+     610,
+     190,
+     60,
+     22,
+     20
+    ]
+   },
+   "alt": [
+    "WhatsApp"
+   ]
+  },
+  {
+   "id": "thunderbird",
+   "name": "Thunderbird",
+   "dev": "MZLA Technologies",
+   "summary": "Mail, calendar and contacts",
+   "cat": "work",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "thunderbird",
+    "bg": "#0A84FF"
+   },
+   "size": "108 MB",
+   "version": "144",
+   "updated": "Oct 14, 2026",
+   "license": "MPL-2.0",
+   "site": "thunderbird.net",
+   "rating": {
+    "avg": 4.4,
+    "n": 522,
+    "dist": [
+     330,
+     120,
+     40,
+     18,
+     14
+    ]
+   },
+   "alt": [
+    "Outlook"
+   ]
+  },
+  {
+   "id": "libreoffice",
+   "name": "LibreOffice",
+   "dev": "The Document Foundation",
+   "summary": "The office suite, free forever",
+   "cat": "work",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "libreoffice",
+    "bg": "#18A303"
+   },
+   "size": "327 MB",
+   "version": "25.8",
+   "updated": "Oct 1, 2026",
+   "license": "MPL-2.0",
+   "site": "libreoffice.org",
+   "desc": [
+    "Writer, Calc, Impress and Draw: documents, spreadsheets and presentations that open and save Microsoft Office files."
+   ],
+   "rating": {
+    "avg": 4.2,
+    "n": 2606,
+    "dist": [
+     1400,
+     700,
+     280,
+     120,
+     106
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ]
+   ],
+   "alt": [
+    "Microsoft Office",
+    "Word",
+    "Excel",
+    "PowerPoint"
+   ],
+   "reviews": [
+    [
+     "RA",
+     "Ruth",
+     4,
+     "Oct 16",
+     "Opens everything. Looks a little old next to Luma’s apps."
+    ],
+    [
+     "OH",
+     "Omar",
+     5,
+     "Oct 2",
+     "Our whole office uses it. No licences to buy."
+    ]
+   ]
+  },
+  {
+   "id": "obsidian",
+   "name": "Obsidian",
+   "dev": "Obsidian",
+   "summary": "Markdown notes that link together",
+   "cat": "work",
+   "pk": "flatpak",
+   "mark": {
+    "file": "obsidian",
+    "bg": "#2A2A3B",
+    "fg": "#A88BFA"
+   },
+   "size": "231 MB",
+   "version": "1.7.5",
+   "updated": "Oct 18, 2026",
+   "license": "Proprietary",
+   "inst": 1,
+   "rating": {
+    "avg": 4.7,
+    "n": 1334,
+    "dist": [
+     1050,
+     200,
+     50,
+     20,
+     14
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your vault folder",
+     "The folder you choose for your notes"
+    ],
+    [
+     "globe",
+     "The network",
+     "For sync and community plugins"
+    ]
+   ],
+   "alt": [
+    "Notion",
+    "OneNote",
+    "Evernote"
+   ],
+   "reviews": [
+    [
+     "AV",
+     "Ava",
+     5,
+     "Oct 18",
+     "My vault opened untouched. Plugins all work."
+    ],
+    [
+     "LO",
+     "Luis",
+     4,
+     "Oct 11",
+     "Great. I wish it used the Luma file picker."
+    ]
+   ]
+  },
+  {
+   "id": "zoom",
+   "name": "Zoom",
+   "dev": "Zoom Video Communications",
+   "summary": "Video meetings",
+   "cat": "work",
+   "pk": "deb",
+   "mark": {
+    "file": "zoom",
+    "bg": "#0B5CFF"
+   },
+   "size": "312 MB",
+   "version": "6.6.0",
+   "updated": "Oct 2, 2026",
+   "license": "Proprietary",
+   "inst": 1
+  },
+  {
+   "id": "steam",
+   "name": "Steam",
+   "dev": "Valve",
+   "summary": "Your games library",
+   "cat": "play",
+   "pk": "layered",
+   "verified": true,
+   "mark": {
+    "file": "steam",
+    "bg": "#1B2838"
+   },
+   "size": "4 MB",
+   "version": "1.0.0.82",
+   "updated": "Oct 8, 2026",
+   "license": "Proprietary",
+   "inst": 1,
+   "desc": [
+    "Your Steam library on Luma. Most Windows games run through Proton without changes."
+   ],
+   "rating": {
+    "avg": 4.6,
+    "n": 5120,
+    "dist": [
+     3900,
+     800,
+     220,
+     110,
+     90
+    ]
+   },
+   "reach": [
+    [
+     "shield-check",
+     "Installed into the system",
+     "It comes off the next time you restart after removing it"
+    ]
+   ],
+   "reviews": [
+    [
+     "TH",
+     "Theo",
+     5,
+     "Oct 19",
+     "Most of my library runs with no tweaking."
+    ],
+    [
+     "KM",
+     "Kemi",
+     4,
+     "Oct 8",
+     "A couple of anti-cheat games won’t start, which is not Luma’s fault."
+    ],
+    [
+     "JN",
+     "Jonah",
+     5,
+     "Sep 30",
+     "Big Picture on the TV is a great couch setup."
+    ]
+   ]
+  },
+  {
+   "id": "vscodium",
+   "name": "VSCodium",
+   "dev": "VSCodium",
+   "summary": "The code editor, without telemetry",
+   "cat": "work",
+   "pk": "flatpak",
+   "mark": {
+    "file": "vscodium",
+    "bg": "#2F80ED"
+   },
+   "size": "134 MB",
+   "version": "1.105",
+   "updated": "Oct 10, 2026",
+   "license": "MIT",
+   "rating": {
+    "avg": 4.7,
+    "n": 733,
+    "dist": [
+     580,
+     110,
+     25,
+     10,
+     8
+    ]
+   },
+   "reach": [
+    [
+     "folder-open",
+     "Your files",
+     "Only the ones you open or save"
+    ],
+    [
+     "terminal",
+     "A terminal",
+     "Runs the commands you type in it"
+    ]
+   ],
+   "alt": [
+    "Visual Studio Code"
+   ]
+  },
+  {
+   "id": "godot",
+   "name": "Godot Engine",
+   "dev": "Godot Foundation",
+   "summary": "Make 2D and 3D games",
+   "cat": "play",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "godotengine",
+    "bg": "#478CBF"
+   },
+   "size": "118 MB",
+   "version": "4.5",
+   "updated": "Oct 5, 2026",
+   "license": "MIT",
+   "site": "godotengine.org",
+   "rating": {
+    "avg": 4.8,
+    "n": 219,
+    "dist": [
+     190,
+     20,
+     5,
+     2,
+     2
+    ]
+   },
+   "alt": [
+    "Unity",
+    "Unreal"
+   ]
+  },
+  {
+   "id": "nextcloud",
+   "name": "Nextcloud",
+   "dev": "Nextcloud",
+   "summary": "Sync your files with your own server",
+   "cat": "tools",
+   "pk": "flatpak",
+   "mark": {
+    "file": "nextcloud",
+    "bg": "#0082C9"
+   },
+   "size": "66 MB",
+   "version": "3.17",
+   "updated": "Sep 30, 2026",
+   "license": "GPL-2.0-or-later",
+   "rating": {
+    "avg": 4.1,
+    "n": 96,
+    "dist": [
+     52,
+     22,
+     10,
+     6,
+     6
+    ]
+   },
+   "alt": [
+    "Dropbox",
+    "OneDrive"
+   ]
+  },
+  {
+   "id": "bitwarden",
+   "name": "Bitwarden",
+   "dev": "Bitwarden",
+   "summary": "A password manager you can host",
+   "cat": "tools",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "bitwarden",
+    "bg": "#175DDC"
+   },
+   "size": "102 MB",
+   "version": "2025.10",
+   "updated": "Oct 12, 2026",
+   "license": "GPL-3.0",
+   "rating": {
+    "avg": 4.6,
+    "n": 412,
+    "dist": [
+     320,
+     60,
+     16,
+     8,
+     8
+    ]
+   },
+   "alt": [
+    "1Password",
+    "LastPass"
+   ],
+   "reviews": [
+    [
+     "AR",
+     "Alex",
+     5,
+     "Oct 14",
+     "Fills passwords in Viola too."
+    ]
+   ]
+  },
+  {
+   "id": "firefox",
+   "name": "Firefox",
+   "dev": "Mozilla",
+   "summary": "The browser from a non-profit",
+   "cat": "work",
+   "pk": "flatpak",
+   "verified": true,
+   "mark": {
+    "file": "firefoxbrowser",
+    "bg": "#20123A",
+    "fg": "#FF7139"
+   },
+   "size": "96 MB",
+   "version": "144",
+   "updated": "Oct 14, 2026",
+   "license": "MPL-2.0",
+   "site": "mozilla.org",
+   "rating": {
+    "avg": 4.5,
+    "n": 2950,
+    "dist": [
+     2100,
+     540,
+     170,
+     70,
+     70
+    ]
+   },
+   "reach": [
+    [
+     "globe",
+     "The network",
+     "To reach its servers"
+    ],
+    [
+     "download",
+     "Downloads",
+     "Where it saves files"
+    ]
+   ],
+   "alt": [
+    "Chrome",
+    "Edge"
+   ],
+   "reviews": [
+    [
+     "DN",
+     "Dana",
+     5,
+     "Oct 15",
+     "Hardware video decoding is on out of the box."
+    ],
+    [
+     "MA",
+     "Marisol",
+     4,
+     "Oct 3",
+     "Works great. Viola is faster for me, but I keep this for work."
+    ]
+   ]
+  },
+  {
+   "id": "heroic",
+   "name": "Heroic",
+   "dev": "Heroic Games Launcher",
+   "summary": "Your Epic, GOG and Amazon games",
+   "cat": "play",
+   "pk": "flatpak",
+   "size": "326 MB",
+   "version": "2.18",
+   "updated": "Sep 21, 2026",
+   "license": "GPL-3.0",
+   "rating": {
+    "avg": 4.5,
+    "n": 311,
+    "dist": [
+     220,
+     60,
+     15,
+     8,
+     8
+    ]
+   }
+  },
+  {
+   "id": "moonlight",
+   "name": "Moonlight",
+   "dev": "Moonlight Game Streaming",
+   "summary": "Stream games from your PC",
+   "cat": "play",
+   "pk": "flatpak",
+   "size": "8 MB",
+   "version": "6.1",
+   "updated": "Aug 30, 2026",
+   "license": "GPL-3.0",
+   "rating": {
+    "avg": 4.6,
+    "n": 190,
+    "dist": [
+     140,
+     34,
+     8,
+     4,
+     4
+    ]
+   }
+  },
+  {
+   "id": "supertux",
+   "name": "SuperTux",
+   "dev": "SuperTux Team",
+   "summary": "A classic side-scroller",
+   "cat": "play",
+   "pk": "flatpak",
+   "size": "160 MB",
+   "version": "0.6.3"
+  },
+  {
+   "id": "nvtop",
+   "name": "nvtop",
+   "dev": null,
+   "summary": "Graphics card activity in the terminal",
+   "cat": "tools",
+   "pk": "rpm",
+   "size": "1 MB",
+   "version": "3.2.0"
+  }
+ ],
+ "popular": [
+  "blender",
+  "obsidian",
+  "spotify",
+  "signal",
+  "vlc",
+  "steam",
+  "gimp",
+  "discord",
+  "libreoffice",
+  "firefox",
+  "krita",
+  "obs"
+ ],
+ "runs": {
+  "tide": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv",
+   "home"
+  ],
+  "photos": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv"
+  ],
+  "youtube": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv"
+  ],
+  "weather": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv",
+   "home"
+  ],
+  "clock": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv",
+   "home"
+  ],
+  "calendar": [
+   "desktop",
+   "tablet",
+   "phone",
+   "home"
+  ],
+  "messages": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "notes": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "contacts": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "charlie": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "filer": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "viola": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "maps": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "camera": [
+   "tablet",
+   "phone"
+  ],
+  "memos": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "tasks": [
+   "desktop",
+   "tablet",
+   "phone",
+   "home"
+  ],
+  "leaf": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "viewer": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "ari": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv",
+   "home"
+  ],
+  "calc": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "tipsplit": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "vault": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "write": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "grid": [
+   "desktop",
+   "tablet"
+  ],
+  "stage": [
+   "desktop",
+   "tablet",
+   "tv"
+  ],
+  "term": [
+   "desktop",
+   "tablet"
+  ],
+  "canvas": [
+   "desktop",
+   "tablet"
+  ],
+  "session": [
+   "desktop",
+   "tablet"
+  ],
+  "darkroom": [
+   "desktop",
+   "tablet"
+  ],
+  "reel": [
+   "desktop",
+   "tablet"
+  ],
+  "disks": [
+   "desktop"
+  ],
+  "monitor": [
+   "desktop"
+  ],
+  "valet": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "spotify": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv",
+   "home"
+  ],
+  "vlc": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv"
+  ],
+  "kodi": [
+   "desktop",
+   "tv"
+  ],
+  "steam": [
+   "desktop",
+   "tv"
+  ],
+  "moonlight": [
+   "desktop",
+   "tablet",
+   "phone",
+   "tv"
+  ],
+  "signal": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "telegram": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "discord": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "bitwarden": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "nextcloud": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "obsidian": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "firefox": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "zoom": [
+   "desktop",
+   "tablet",
+   "phone"
+  ],
+  "blender": [
+   "desktop"
+  ],
+  "obs": [
+   "desktop"
+  ],
+  "kdenlive": [
+   "desktop"
+  ],
+  "audacity": [
+   "desktop"
+  ],
+  "godot": [
+   "desktop"
+  ],
+  "vscodium": [
+   "desktop"
+  ],
+  "nvtop": [
+   "desktop"
+  ]
+ },
+ "forms": [
+  {
+   "id": "desktop",
+   "name": "Desktop",
+   "icon": "monitor"
+  },
+  {
+   "id": "tablet",
+   "name": "Tablet",
+   "icon": "tablet"
+  },
+  {
+   "id": "phone",
+   "name": "Phone",
+   "icon": "smartphone"
+  },
+  {
+   "id": "tv",
+   "name": "TV",
+   "icon": "tv"
+  },
+  {
+   "id": "home",
+   "name": "Home",
+   "icon": "house"
+  }
+ ],
+ "devices": [
+  {
+   "id": "xps",
+   "name": "XPS 14",
+   "form": "desktop",
+   "note": "Desktop"
+  },
+  {
+   "id": "x1",
+   "name": "ThinkPad X1",
+   "form": "tablet",
+   "note": "Tablet"
+  },
+  {
+   "id": "fp6",
+   "name": "Fairphone 6",
+   "form": "phone",
+   "note": "Phone"
+  },
+  {
+   "id": "tv",
+   "name": "Living room",
+   "form": "tv",
+   "note": "TV · off, installs when it wakes"
+  },
+  {
+   "id": "home",
+   "name": "Kitchen",
+   "form": "home",
+   "note": "Home display"
+  }
+ ],
+ "installed": {
+  "xps": [
+   "spotify",
+   "discord",
+   "firefox"
+  ],
+  "x1": [
+   "spotify",
+   "obsidian",
+   "signal",
+   "krita"
+  ],
+  "fp6": [
+   "spotify",
+   "signal",
+   "discord",
+   "bitwarden"
+  ],
+  "tv": [
+   "spotify",
+   "kodi",
+   "moonlight"
+  ],
+  "home": [
+   "spotify"
+  ]
+ },
+ "matched": [
+  "spotify",
+  "signal"
+ ],
+ "seals": {
+  "luma": {
+   "name": "Luma",
+   "icon": "badge-check",
+   "line": "Made by Luma"
+  },
+  "verified": {
+   "name": "Verified",
+   "icon": "shield-check",
+   "line": "Developer verified, build reviewed by Luma"
+  },
+  "community": {
+   "name": "Community",
+   "icon": "users",
+   "line": "Signed by its maker, not reviewed by Luma"
+  }
+ },
+ "looks": [
+  {
+   "id": "theme-luma",
+   "name": "Luma",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Theme",
+   "theme": "luma",
+   "hue": 260,
+   "line": "Soft glass, round corners and one bright key",
+   "n": 48200,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone",
+    "tv",
+    "home"
+   ],
+   "about": "The way Luma comes: translucent windows over your wallpaper, rounded corners, and a single bright button for the thing you came to do."
+  },
+  {
+   "id": "theme-cupertino",
+   "name": "Cupertino",
+   "by": "Orchard Works",
+   "seal": "verified",
+   "kind": "Theme",
+   "theme": "cupertino",
+   "hue": 220,
+   "line": "Light windows, three coloured dots and a quiet grey",
+   "n": 21400,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "about": "Light, airy windows with the close, minimise and zoom dots on the left and the title in the middle. Calm greys and a blue accent."
+  },
+  {
+   "id": "theme-redmond",
+   "name": "Redmond",
+   "by": "Lakeside Studio",
+   "seal": "verified",
+   "kind": "Theme",
+   "theme": "redmond",
+   "hue": 210,
+   "line": "Square-ish windows, controls on the right, a soft frosted sheet",
+   "n": 17900,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "about": "Windows with gently squared corners, the controls on the right and a frosted sheet behind the content. Familiar from the first click."
+  },
+  {
+   "id": "theme-exile",
+   "name": "Exile",
+   "by": "tinkerbird",
+   "seal": "community",
+   "kind": "Theme",
+   "theme": "exile",
+   "hue": 0,
+   "line": "Black title bars, bevelled grey and a 1990s workstation",
+   "n": 6400,
+   "runs": [
+    "desktop",
+    "tablet"
+   ],
+   "about": "A tribute to the black-and-grey workstations of the early 90s: bevelled buttons, black title bars and not a gradient in sight."
+  },
+  {
+   "id": "theme-95",
+   "name": "95",
+   "by": "tinkerbird",
+   "seal": "community",
+   "kind": "Theme",
+   "theme": "95",
+   "hue": 180,
+   "line": "Navy title bars, chunky bevels, teal desktop. Start me up",
+   "n": 12800,
+   "runs": [
+    "desktop",
+    "tablet"
+   ],
+   "about": "Gray bevelled windows, navy title bars and a teal desktop. Everything a little chunkier, everything exactly where you remember it."
+  },
+  {
+   "id": "ember",
+   "name": "Ember",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Wallpaper",
+   "art": "../wallpapers/ember.png",
+   "hue": 30,
+   "line": "A slow coal glow that warms the whole shell",
+   "n": 18200,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone",
+    "tv",
+    "home"
+   ],
+   "about": "Deep oranges at the bottom of the screen, cooling to plum at the top. Your windows pick up a little of the warmth."
+  },
+  {
+   "id": "fog",
+   "name": "Blue Fog",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Wallpaper",
+   "art": "../wallpapers/blue-fog.png",
+   "hue": 230,
+   "line": "Cool, quiet and easy on tired eyes",
+   "n": 15400,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone",
+    "tv",
+    "home"
+   ],
+   "about": "Soft blues with nothing sharp in them. It stays out of the way of whatever you are doing."
+  },
+  {
+   "id": "dink",
+   "name": "D-Ink",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Appearance",
+   "hue": 60,
+   "ink": true,
+   "line": "Paper and ink, three line weights, nothing tinted. Made for e-paper, lovely anywhere",
+   "n": 9100,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "about": "Black ink on warm paper. No colour, no shadows, three weights of line. Built for e-paper screens, and calm on any screen."
+  },
+  {
+   "id": "meadow",
+   "name": "Meadow",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Wallpaper",
+   "art": "../wallpapers/meadow.png",
+   "hue": 120,
+   "line": "Morning grass for the light appearance",
+   "n": 12800,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone",
+    "tv",
+    "home"
+   ],
+   "about": "Fresh grass under a pale sky, made for the light appearance."
+  },
+  {
+   "id": "prism",
+   "name": "Prism",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Wallpaper",
+   "art": "../wallpapers/prism.png",
+   "hue": 290,
+   "line": "The colour Luma started with",
+   "n": 22100,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone",
+    "tv",
+    "home"
+   ],
+   "about": "The ribbon of colour Luma started with. It looks good in the dark and the light appearance."
+  },
+  {
+   "id": "studio-night",
+   "name": "Studio Night",
+   "by": "Ines Duarte",
+   "seal": "verified",
+   "kind": "Theme",
+   "art": "../wallpapers/luma-creatives.png",
+   "hue": 330,
+   "line": "A deep plum appearance with a matching wallpaper and accent",
+   "n": 4300,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "about": "A plum appearance with a matching wallpaper and accent colour, for late work in a dim room."
+  },
+  {
+   "id": "pebble",
+   "name": "Pebble",
+   "by": "Kai Mori",
+   "seal": "verified",
+   "kind": "Icons",
+   "hue": 200,
+   "swatch": [
+    "#9fb8c9",
+    "#d8c3a5",
+    "#a8b8a0",
+    "#c9a6a6"
+   ],
+   "line": "Every app icon as a smooth river stone",
+   "n": 6100,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "about": "Every app icon, redrawn as a smooth stone in quiet colours. The shapes stay the same, so you still find things."
+  },
+  {
+   "id": "softkeys",
+   "name": "Soft Keys",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Sounds",
+   "hue": 160,
+   "line": "Gentle clicks, chimes and alerts recorded on wood",
+   "n": 3900,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone",
+    "tv",
+    "home"
+   ],
+   "about": "Clicks, chimes and alerts recorded on wooden blocks. Quieter than the defaults, and easier to live with."
+  },
+  {
+   "id": "atkinson",
+   "name": "Atkinson Hyperlegible",
+   "by": "Braille Institute",
+   "seal": "verified",
+   "kind": "Font",
+   "hue": 40,
+   "line": "A typeface drawn for low vision, set as the system font",
+   "n": 2800,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone",
+    "tv"
+   ],
+   "about": "A typeface designed so each letter is hard to mistake for another. Set across Luma as the system font."
+  },
+  {
+   "id": "pointer-dusk",
+   "name": "Dusk Pointers",
+   "by": "tinkerbird",
+   "seal": "community",
+   "kind": "Cursor",
+   "hue": 260,
+   "line": "Rounded pointers with a soft shadow, in six sizes",
+   "n": 1700,
+   "runs": [
+    "desktop",
+    "tablet"
+   ],
+   "about": "Rounded pointers with a soft shadow, in six sizes, so it is easy to find on a big screen."
+  }
+ ],
+ "tweaks": [
+  {
+   "id": "battery-care",
+   "name": "Battery Care",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Hardware",
+   "icon": "power",
+   "hue": 140,
+   "line": "Stops charging at 80% while you are plugged in all day",
+   "changes": [
+    "Charging"
+   ],
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "n": 14900,
+   "on": [
+    "xps"
+   ],
+   "about": "Batteries wear out fastest when they sit at 100%. Battery Care holds yours at 80% while you are plugged in, and charges to full when you unplug.",
+   "off": "Charging stops at 100%",
+   "onTxt": "Charging stops at 80% while plugged in"
+  },
+  {
+   "id": "android",
+   "name": "Android Apps",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "System",
+   "icon": "smartphone",
+   "hue": 100,
+   "line": "Run Android apps in a window, beside your Luma apps",
+   "changes": [
+    "A system service",
+    "App list"
+   ],
+   "restart": true,
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "n": 21300,
+   "about": "Install Android apps from Depot and run them in their own windows, next to your Luma apps.",
+   "off": "Android apps are not available",
+   "onTxt": "Android apps open in windows like any other app"
+  },
+  {
+   "id": "hot-corners",
+   "name": "Hot Corners",
+   "by": "Mara Lind",
+   "seal": "verified",
+   "kind": "Windows",
+   "icon": "mouse-pointer-2",
+   "hue": 210,
+   "line": "Push the pointer into a corner to show windows, the desktop or Now",
+   "changes": [
+    "Shelf",
+    "Windows"
+   ],
+   "runs": [
+    "desktop",
+    "tablet"
+   ],
+   "n": 8800,
+   "on": [
+    "xps"
+   ],
+   "about": "Push the pointer into a corner of the screen to show all your windows, the desktop, or Now.",
+   "off": "Corners do nothing",
+   "onTxt": "Each corner opens something you choose"
+  },
+  {
+   "id": "peek",
+   "name": "Three-finger Peek",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Gestures",
+   "icon": "layers",
+   "hue": 260,
+   "line": "Rest three fingers on the touchpad to see under every window",
+   "changes": [
+    "Touchpad"
+   ],
+   "runs": [
+    "desktop",
+    "tablet"
+   ],
+   "n": 7600,
+   "about": "Rest three fingers on the touchpad and every window turns see-through, so you can see what is underneath.",
+   "off": "Three fingers do nothing",
+   "onTxt": "Three fingers show what is under your windows"
+  },
+  {
+   "id": "compose",
+   "name": "Compose Key",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Keyboard",
+   "icon": "keyboard",
+   "hue": 30,
+   "line": "Caps Lock becomes Compose: type é, ñ, — and → in two keys",
+   "changes": [
+    "Keyboard"
+   ],
+   "runs": [
+    "desktop",
+    "tablet"
+   ],
+   "n": 5200,
+   "about": "Caps Lock becomes a Compose key. Press it, then two keys, to type characters like é, ñ, — and →.",
+   "off": "Caps Lock types in capitals",
+   "onTxt": "Caps Lock then e and ’ types é"
+  },
+  {
+   "id": "lock-now",
+   "name": "Now Playing on Lock",
+   "by": "Oren Vale",
+   "seal": "verified",
+   "kind": "Lock screen",
+   "icon": "lock",
+   "hue": 330,
+   "line": "Big album art and controls on the lock screen while music plays",
+   "changes": [
+    "Lock screen"
+   ],
+   "runs": [
+    "tablet",
+    "phone"
+   ],
+   "n": 6400,
+   "about": "While music plays, the lock screen shows the album cover large, with play, skip and volume.",
+   "off": "A small player on the lock screen",
+   "onTxt": "Full album art and controls"
+  },
+  {
+   "id": "pihole",
+   "name": "Pi-hole Tile",
+   "by": "netgnome",
+   "seal": "community",
+   "kind": "Quick Options",
+   "icon": "shield",
+   "hue": 0,
+   "line": "Pause your Pi-hole for five minutes from Quick Options",
+   "changes": [
+    "Quick Options"
+   ],
+   "runs": [
+    "desktop",
+    "tablet",
+    "phone"
+   ],
+   "n": 2100,
+   "about": "Adds a Pi-hole tile to Quick Options, so you can pause ad blocking for five minutes when a site needs it.",
+   "off": "Pausing means opening Pi-hole",
+   "onTxt": "Pause it from Quick Options"
+  },
+  {
+   "id": "studio-tiles",
+   "name": "Studio Layouts",
+   "by": "tilewright",
+   "seal": "community",
+   "kind": "Windows",
+   "icon": "app-window",
+   "hue": 190,
+   "line": "Tiling layouts for wide monitors: 3 columns, focus and stage",
+   "changes": [
+    "Windows",
+    "Tiling"
+   ],
+   "runs": [
+    "desktop"
+   ],
+   "n": 3300,
+   "about": "Layouts for wide monitors: three columns, one big window in the middle, or a stage with the rest to the side.",
+   "off": "Two-column tiling",
+   "onTxt": "Three-column, focus and stage layouts"
+  },
+  {
+   "id": "seconds",
+   "name": "Seconds in the Shelf",
+   "by": "Luma",
+   "seal": "luma",
+   "kind": "Shelf",
+   "icon": "clock",
+   "hue": 220,
+   "line": "The Shelf clock shows seconds",
+   "changes": [
+    "Shelf"
+   ],
+   "runs": [
+    "desktop",
+    "tablet"
+   ],
+   "n": 4100,
+   "about": "The clock in the Shelf shows seconds as well as hours and minutes.",
+   "off": "9:41",
+   "onTxt": "9:41:27"
+  }
+ ],
+ "today": [
+  {
+   "kind": "everywhere",
+   "kick": "One library, every screen",
+   "title": "Tide follows you from desk to sofa",
+   "blurb": "Start an album at your desk, keep it going on your phone, finish it on the TV. One library, no subscriptions.",
+   "app": "tide",
+   "art": "../social-luma/photos/pet-sounds.webp",
+   "hue": 25
+  },
+  {
+   "kind": "look",
+   "kick": "Look of the week",
+   "look": "ember"
+  },
+  {
+   "kind": "tweak",
+   "kick": "Tweak of the week",
+   "tweak": "battery-care",
+   "blurb": "Laptops that live on a charger wear their battery out fastest. Battery Care holds it at 80% until you unplug."
+  },
+  {
+   "kind": "switch",
+   "kick": "Coming from Windows or a Mac",
+   "title": "Type the name you know"
+  },
+  {
+   "kind": "screen",
+   "kick": "For the living room",
+   "title": "Made for your TV",
+   "form": "tv"
+  },
+  {
+   "kind": "row",
+   "kick": "Fresh this week",
+   "title": "New and updated",
+   "items": [
+    [
+     "app",
+     "krita"
+    ],
+    [
+     "look",
+     "studio-night"
+    ],
+    [
+     "tweak",
+     "hot-corners"
+    ],
+    [
+     "app",
+     "godot"
+    ],
+    [
+     "look",
+     "pebble"
+    ],
+    [
+     "tweak",
+     "lock-now"
+    ],
+    [
+     "app",
+     "obsidian"
+    ]
+   ]
+  },
+  {
+   "kind": "screen",
+   "kick": "In the kitchen",
+   "title": "Glanceable, from across the room",
+   "form": "home"
+  }
+ ],
+ "pending": [
+  {
+   "app": "discord",
+   "devs": [
+    "xps",
+    "fp6"
+   ],
+   "from": "1.0.158",
+   "to": "1.0.159",
+   "size": "96 MB",
+   "notes": [
+    "Voice rooms reconnect faster after sleep",
+    "Fixes a crash when sharing a screen"
+   ]
+  },
+  {
+   "app": "obsidian",
+   "devs": [
+    "xps",
+    "x1"
+   ],
+   "from": "1.7.4",
+   "to": "1.7.5",
+   "size": "84 MB",
+   "notes": [
+    "Canvas cards snap to a grid",
+    "Search finds text inside PDFs"
+   ]
+  },
+  {
+   "app": "spotify",
+   "devs": [
+    "xps",
+    "x1",
+    "fp6",
+    "tv",
+    "home"
+   ],
+   "from": "1.2.47",
+   "to": "1.2.48",
+   "size": "38 MB",
+   "notes": [
+    "Smart shuffle on every device"
+   ]
+  },
+  {
+   "app": "krita",
+   "devs": [
+    "x1"
+   ],
+   "from": "5.2.6",
+   "to": "5.2.7",
+   "size": "182 MB",
+   "notes": [
+    "Pressure curves per pen",
+    "Faster brush previews"
+   ]
+  }
+ ],
+ "done": [
+  [
+   "luma",
+   "Luma 1.0 · nightly October 16",
+   "Oct 16",
+   "All devices"
+  ],
+  [
+   "vlc",
+   "3.0.20 → 3.0.21",
+   "Oct 15",
+   "XPS 14"
+  ],
+  [
+   "signal",
+   "7.31 → 7.32",
+   "Oct 14",
+   "Every device"
+  ],
+  [
+   "steam",
+   "Client update",
+   "Oct 12",
+   "XPS 14"
+  ]
+ ],
+ "auto": {
+  "apps": true,
+  "luma": "overnight",
+  "matched": true
+ },
+ "system": {
+  "name": "Luma 1.0 · nightly October 22",
+  "size": "312 MB",
+  "blurb": "Faster wake from sleep, Tide crossfades, plus 14 more changes.",
+  "running": "Luma 1.0 · nightly October 16",
+  "channel": "Nightly",
+  "from": "dl.simplyluma.com",
+  "checked": "6 hours ago",
+  "notes": [
+   [
+    "Feature",
+    "sparkles",
+    "Adjustable scroll speed",
+    "Set how fast mice and touchpads scroll, in Settings › Mouse and touchpad."
+   ],
+   [
+    "Improvement",
+    "folder-open",
+    "Filer's tray remembers",
+    "What you were carrying is still there after a restart."
+   ],
+   [
+    "Improvement",
+    "music-2",
+    "Tide fades between tracks",
+    "Choose how long in Tide's settings, or turn it off."
+   ],
+   [
+    "Fix",
+    "wrench",
+    "11 fixes",
+    "For things you told us about, from Calendar to Quick Options."
+   ],
+   [
+    "Security",
+    "shield-check",
+    "2 security fixes",
+    "Both in system libraries. Nothing you need to do."
+   ]
+  ]
+ },
+ "switching": [
+  [
+   "Photoshop",
+   [
+    "gimp",
+    "krita",
+    "darkroom"
+   ]
+  ],
+  [
+   "Microsoft Office",
+   [
+    "libreoffice",
+    "write",
+    "grid",
+    "stage"
+   ]
+  ],
+  [
+   "iTunes",
+   [
+    "tide",
+    "spotify"
+   ]
+  ],
+  [
+   "WhatsApp",
+   [
+    "signal",
+    "messages",
+    "telegram"
+   ]
+  ],
+  [
+   "Premiere",
+   [
+    "reel",
+    "kdenlive"
+   ]
+  ],
+  [
+   "Notion",
+   [
+    "obsidian",
+    "notes"
+   ]
+  ],
+  [
+   "Outlook",
+   [
+    "charlie",
+    "thunderbird"
+   ]
+  ],
+  [
+   "1Password",
+   [
+    "vault",
+    "bitwarden"
+   ]
+  ]
+ ]
+}
