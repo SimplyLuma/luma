@@ -1,8 +1,8 @@
 ---
-type: fix
+type: improvement
 component: Viola
 packages: [viola-browser-stable]
 highlight: false
 ---
-Summary: Fixed videos freezing in background tabs
-Details: A video playing in a tab that went to the background could freeze the tab and stop the sidebar player. Returning to the tab now shows the video still playing, and the sidebar player and picture in picture show it while the tab is in the background.
+Summary: Updated Viola to 151.0.7922.72
+Details: A video in a tab that goes to the background keeps playing instead of freezing the tab, and the sidebar player shows it.
