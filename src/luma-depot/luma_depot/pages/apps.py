@@ -78,11 +78,11 @@ class AppsPage(Page):
         for category in world.categories:
             tiles.append(category_tile(world, category, on_open=lambda k=category.key: self.set_category(k)))
         page.append(tiles)
-        page.append(section("Top apps", self._ranks(rules.top_apps(world), lambda it: " · ".join(
-            x for x in (category_of(it), rules.rating_line(it)) if x), ranked=True)))
+        page.append(section(rules.popular_title(world, "Top apps"), self._ranks(rules.top_apps(world), lambda it: " · ".join(
+            x for x in (category_of(it), rules.rating_line(it)) if x), ranked=world.popular_measured)))
         page.append(section("Recently added and updated", follows=True, body=self._ranks(
-            rules.recently_updated(world), lambda it: f"{category_of(it)} · {rules.short_date(it.app.updated)}",
-            ranked=False)))
+            rules.recently_updated(world), lambda it: " · ".join(
+                x for x in (category_of(it), rules.short_date(it.app.updated)) if x), ranked=False)))
         return page
 
     def _clear_category(self) -> None:

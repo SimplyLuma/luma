@@ -13,9 +13,9 @@ from datetime import datetime
 
 from .world import Item, World, form
 
-__all__ = ["BarButton", "BarPlan", "Narrowing", "bar_for", "filter_count", "fmt_count", "narrowed", "narrowed_line",
-           "rating_line", "recently_updated", "row_action", "short_date", "sort_date", "today_fresh", "today_popular",
-           "top_apps"]
+__all__ = ["BarButton", "BarPlan", "Narrowing", "bar_for", "category_name", "filter_count", "fmt_count", "listed_apps",
+           "narrowed", "narrowed_line", "popular_title", "rating_line", "recently_updated", "row_action", "short_date",
+           "sort_date", "today_fresh", "today_popular", "top_apps"]
 
 
 # ── words ─────────────────────────────────────────────────────────────────
@@ -123,15 +123,30 @@ def row_action(item: Item, world: World) -> tuple[str, str]:
 
 # ── Today (4.2) ───────────────────────────────────────────────────────────
 
+def listed_apps(world: World) -> list[Item]:
+    """Depot's listings only: never a local app (Android, another package) or a launcher."""
+    return [it for it in world.items("app") if world.listed(it.id)]
+
+
 def _store_apps(world: World) -> list[Item]:
     here = world.this_device.form
-    return [it for it in world.items("app") if not it.is_system and here in it.runs]
+    return [it for it in listed_apps(world) if not it.is_system and here in it.runs]
 
 
 def today_popular(world: World, count: int = 6) -> list[Item]:
-    """The top of the catalogue's popularity order that runs here."""
+    """The top of the catalogue's popularity order that runs here (or its curated order; see `popular_title`)."""
     apps = {it.id: it for it in _store_apps(world)}
     return [apps[i] for i in world.popular if i in apps][:count]
+
+
+def popular_title(world: World, measured: str) -> str:
+    """`measured` ("Popular", "Top apps") only when real install counts rank the list; else "Explore apps"."""
+    return measured if world.popular_measured else "Explore apps"
+
+
+def category_name(world: World, item: Item) -> str:
+    category = world.category(item.category)
+    return category.name if category is not None else ""
 
 
 def today_fresh(world: World, count: int = 6) -> list[Item]:

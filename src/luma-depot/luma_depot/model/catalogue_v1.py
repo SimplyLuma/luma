@@ -24,7 +24,7 @@ import urllib.request
 from ..providers import App, Release, Screenshot
 from .world import Look, Tweak
 
-__all__ = ["CATALOGUE_URL", "PUBLIC_KEY", "Listing", "MediaCache", "load", "parse", "verify"]
+__all__ = ["CATALOGUE_URL", "PUBLIC_KEY", "Listing", "MediaCache", "curated", "load", "parse", "verify"]
 
 CATALOGUE_URL = "https://dl.simplyluma.com/depot/catalogue/v1/catalogue.json"
 SIGNATURE_URL = CATALOGUE_URL + ".minisig"
@@ -211,8 +211,9 @@ def _app(entry: dict) -> App:
         developer=_text(developer.get("name") if isinstance(developer, dict) else developer) or _text(entry.get("dev")),
         developer_verified="organization" if ((developer.get("verified") if isinstance(developer, dict) and developer else None)
                                               or entry.get("verified") or entry.get("first_party")) else "",
-        categories=(_text(_get(entry, "category", "cat", default="tools")).casefold(),),
-        category_key=_text(_get(entry, "category", "cat", default="tools")).casefold(),
+        # The listing's own category, or none: an app nobody filed is left out of category shelves.
+        categories=tuple(c for c in (_text(_get(entry, "category", "cat", default="")).casefold(),) if c),
+        category_key=_text(_get(entry, "category", "cat", default="")).casefold(),
         icon_name="", icon_url=_media(entry.get("icon")), licence=_text(_get(entry, "license", "licence", default="")),
         rating=float(rating.get("avg", 0) or 0), rating_count=int(rating.get("n", 0) or 0),
         rating_distribution=tuple(rating.get("dist") or ()),
@@ -220,7 +221,8 @@ def _app(entry: dict) -> App:
         releases=(Release(version=version, date=_date(entry.get("updated") or latest.get("date") or news.get("date")),
                           notes=tuple(n for n in notes if n)),) if version else (),
         homepage=_text(_get(developer if isinstance(developer, dict) else {}, "site", default="") or entry.get("site", "")),
-        flatpak_id=_text(entry["id"]), slug=_text(entry["id"]),
+        flatpak_id=_text(entry["id"]), slug=_text(entry.get("slug")) or _text(entry["id"]),
+        featured=entry.get("featured") is True,
         tier="luma" if entry.get("first_party") or _text(developer.get("name") if isinstance(developer, dict) else entry.get("dev")) == "Luma" else "listed",
         runs=tuple(entry.get("runs") or ()), mark=_media(mark.get("file") if isinstance(mark, dict) else ""),
         mark_colour=_text(mark.get("bg") if isinstance(mark, dict) else ""),
@@ -283,3 +285,22 @@ def parse(document: dict) -> tuple[list[App], list[Look], list[Tweak], dict]:
     today = document.get("today") or {}
     story = today.get("story") if isinstance(today, dict) and isinstance(today.get("story"), dict) else {}
     return apps, looks, tweaks, story
+
+
+def curated(document: dict) -> tuple[str, ...]:
+    """The Hub's own order of apps, for when no install counts rank them: featured listings first, then each
+    collection's members (named by listing id or slug), each once."""
+    entries = [e for e in document.get("items") or document.get("apps") or []
+               if isinstance(e, dict) and isinstance(e.get("id"), str) and e.get("kind", "app") == "app"]
+    by_name = {}
+    for entry in entries:
+        by_name.setdefault(entry["id"], entry["id"])
+        if isinstance(entry.get("slug"), str) and entry["slug"]:
+            by_name.setdefault(entry["slug"], entry["id"])
+    order = [e["id"] for e in entries if e.get("featured") is True]
+    for collection in document.get("collections") or []:
+        if not isinstance(collection, dict):
+            continue
+        members = collection.get("applications") or collection.get("apps") or []
+        order += [by_name[m] for m in members if isinstance(m, str) and m in by_name]
+    return tuple(dict.fromkeys(order))
