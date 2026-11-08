@@ -1103,12 +1103,29 @@ def seed_catalog(seed=None) -> Catalog:
     raise CatalogError('No catalogue is installed')
 
 
-def local_catalog(*, cache=None, seed=None, key=None) -> Catalog:
-    """Newest catalogue on disk: the verified cache, else the shipped seed."""
+def _with_third_party(catalog: Catalog, *, refresh=False, offline=True) -> Catalog:
+    """Add the signed catalogue v1's third-party apps; never fails the first-party answer."""
+    try:
+        from .depot_catalogue_v1 import merge
+        return merge(catalog, refresh=refresh, offline=offline)
+    except Exception:
+        return catalog
+
+
+def _local_first_party(*, cache=None, seed=None, key=None) -> Catalog:
     try:
         return load_verified(cache, key=key)
     except CatalogError:
         return seed_catalog(seed)
+
+
+def local_catalog(*, cache=None, seed=None, key=None) -> Catalog:
+    """Newest catalogue on disk: the verified cache, else the shipped seed.
+
+    Third-party apps from the kept, verified catalogue v1 are added after
+    every first-party entry (depot_catalogue_v1); they never replace one.
+    """
+    return _with_third_party(_local_first_party(cache=cache, seed=seed, key=key))
 
 
 def current_catalog(*, url=None, cache=None, seed=None, key=None, refresh=False,
@@ -1124,6 +1141,12 @@ def current_catalog(*, url=None, cache=None, seed=None, key=None, refresh=False,
     attached only to a fetch in a week not yet counted, and the week is marked
     only once the request succeeded.
     """
+    catalog = _current_catalog(url=url, cache=cache, seed=seed, key=key, refresh=refresh,
+                               counter=counter)
+    return _with_third_party(catalog, refresh=refresh, offline=False)
+
+
+def _current_catalog(*, url, cache, seed, key, refresh, counter) -> Catalog:
     global _last_failure
     cache = Path(cache) if cache is not None else cache_path()
     if not refresh:
@@ -1133,14 +1156,14 @@ def current_catalog(*, url=None, cache=None, seed=None, key=None, refresh=False,
         except (OSError, CatalogError):
             pass
         if time.monotonic() - _last_failure < RETRY_SECONDS and _last_failure:
-            return local_catalog(cache=cache, seed=seed, key=key)
+            return _local_first_party(cache=cache, seed=seed, key=key)
     bucket = counter.pending() if counter is not None else None
     try:
         return fetch_catalog(url, cache=cache, key=key, countme=bucket,
                              on_counted=counter.counted if counter is not None else None)
     except CatalogError:
         _last_failure = time.monotonic()
-    return local_catalog(cache=cache, seed=seed, key=key)
+    return _local_first_party(cache=cache, seed=seed, key=key)
 
 
 def utc_now() -> str:

@@ -435,6 +435,39 @@ def revert_transaction(installation, ref, commit, cancellable=None):
     return tx
 
 
+def third_party(app_id) -> bool:
+    """A developer's app from the signed catalogue v1, not one of Luma's."""
+    from .depot_catalogue_v1 import is_third_party
+    return is_third_party(app_id)
+
+
+def verify_installed(installation, source, cancellable=None):
+    """After installing or updating a third-party app: check what was deployed.
+
+    The deployed commit must carry a valid signature by Luma's maintained
+    signing key and be bound to exactly this app, architecture and branch --
+    the check first-party apps get (native_app_roles.verify_deployed_commit).
+    An app that fails it is uninstalled again (its data stays) and the caller
+    gets SourceUnavailable. Luma's own apps and Flathub apps are unchanged.
+    """
+    if source.remote != 'luma' or not third_party(source.app_id):
+        return
+    from .native_app_roles import verify_deployed_commit
+    ref = installed_ref(installation, source, cancellable)
+    try:
+        if ref is None or ref.get_origin() != 'luma':
+            raise ValueError('the app is not installed from the Luma remote')
+        verify_deployed_commit(installation, ref, cancellable,
+                               commit=ref.get_commit(), exact_ref=source.ref)
+    except Exception as error:
+        if ref is not None:
+            try:
+                removal_transaction(installation, ref, cancellable).run(cancellable)
+            except Exception:
+                pass
+        raise SourceUnavailable('This app’s signature could not be verified, so it was not kept.') from error
+
+
 def removal_transaction(installation, ref, cancellable=None):
     """Uninstall one catalogued application. Its data in ~/.var/app stays."""
     from gi.repository import Flatpak

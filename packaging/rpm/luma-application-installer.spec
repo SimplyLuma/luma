@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.87%{?dist}
+Release:        1.luma.88%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -19,6 +19,9 @@ BuildRequires:  flatpak-libs
 BuildRequires:  xdg-dbus-proxy
 BuildRequires:  bubblewrap
 BuildRequires:  ostree-libs
+# test_depot_third_party_install builds and installs from a signed local repository.
+BuildRequires:  flatpak
+BuildRequires:  gnupg2
 BuildRequires:  desktop-file-utils
 BuildRequires:  python3-devel
 BuildRequires:  shared-mime-info
@@ -113,6 +116,8 @@ install -D -m 0644 data/org.projectluma.Depot.desktop %{buildroot}%{_datadir}/ap
 install -D -m 0644 data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg
 install -D -m 0644 data/depot-catalog.json %{buildroot}%{_datadir}/luma/installer/depot-catalog.json
 install -D -m 0644 data/depot-catalog-4.json %{buildroot}%{_datadir}/luma/installer/depot-catalog-4.json
+# Pinned minisign key of the signed Depot catalogue v1 (third-party apps).
+install -D -m 0644 data/depot-catalogue-v1.pub %{buildroot}%{_datadir}/luma/installer/depot-catalogue-v1.pub
 # The catalogue key and the Luma remote's .flatpakrepo come from the
 # distribution workstream. Until they are committed Depot reads its seed and
 # reports the Luma remote as not set up; it never ships a stand-in key.
@@ -234,6 +239,7 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_datadir}/applications/org.projectluma.Depot.desktop
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg
 %{_datadir}/luma/installer/depot-catalog.json
+%{_datadir}/luma/installer/depot-catalogue-v1.pub
 %dir %{_datadir}/luma/firmware
 %{_datadir}/luma/energy-flag-exceptions.txt
 %{_datadir}/luma/firmware/blocklist.json
@@ -283,6 +289,14 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.88
+- Depot installs, updates and removes third-party apps listed in the signed
+  Depot catalogue v1 from the Luma remote. The catalogue is verified against
+  the pinned depot-catalogue-v1 key and the last good copy is kept. Its apps
+  can never take a Luma app id, and each deployed commit must carry Luma's
+  signature and ref binding or it is removed again. Without a valid catalogue
+  Depot behaves as before.
+
 * Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.87
 - Depot opens its redesigned window (luma_depot.shell; the old window remains
   for TV posture, an older LumaUI, the v70 fixture and LUMA_DEPOT_LEGACY=1),
