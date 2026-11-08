@@ -27,6 +27,14 @@ def kit_json(**overrides):
     return json.dumps(data)
 
 
+def _librepo_loads():
+    try:
+        dl.ctypes.CDLL("librepo.so.0")
+        return True
+    except OSError:
+        return False
+
+
 class FakeSystem:
     """rpm-ostree, gpgv and systemctl as the service sees them."""
 
@@ -86,6 +94,8 @@ class DeviceLayerTest(unittest.TestCase):
         (repos / "fedora-updates.repo").write_text("[updates]\n")
         (self.root / "etc/pki/ostree").mkdir(parents=True)
         (self.root / "etc/pki/ostree/luma-release.gpg").write_bytes(b"key")
+        (self.root / "etc/pki/rpm-gpg").mkdir(parents=True)
+        (self.root / "etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release").write_text("armored key")
         compatible = self.root / "sys/firmware/devicetree/base/compatible"
         compatible.parent.mkdir(parents=True)
         compatible.write_bytes(b"fairphone,fp6\0qcom,milos\0")
@@ -96,7 +106,14 @@ class DeviceLayerTest(unittest.TestCase):
         (self.kit / "kit.json").write_text(kit_json())
         (self.kit / "kit.json.asc").write_text("sig")
         self.system = FakeSystem(self.root)
-        self.layer = dl.DeviceLayer(dl.Paths(root=self.root), run=self.system, sleep=lambda _: None)
+        self.imported = []
+
+        def import_key(key, gpgdir):
+            self.imported.append((key, gpgdir))
+            (gpgdir / "C8CE1A1B51D96CE2.pub").write_bytes(key.read_bytes())
+
+        self.layer = dl.DeviceLayer(dl.Paths(root=self.root), run=self.system, sleep=lambda _: None,
+                                    import_key=import_key)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -129,6 +146,42 @@ class DeviceLayerTest(unittest.TestCase):
         self.assertTrue(verified[0].endswith("luma-device-kit/kit.json"))
         self.assertTrue(verified[1].endswith("var/lib/luma-device-layer/repo/repodata/repomd.xml"))
         self.assertFalse((self.root / "var/lib/luma-device-layer/layered").exists())
+
+    def test_staged_repository_carries_the_key_libdnf_checks(self):
+        """libdnf checks a file:// repository's repomd.xml against <baseurl>/gpgdir only."""
+        (self.kit / "repo/gpgdir").mkdir()
+        (self.kit / "repo/gpgdir/0123456789ABCDEF.pub").write_text("not ours")
+        repos_seen = []
+        call = self.system.__call__
+
+        def run(argv):
+            if list(argv[:3]) == ["rpm-ostree", "override", "replace"]:
+                staged = self.root / "var/lib/luma-device-layer/repo"
+                repos_seen.append((self.repo_file(), sorted(p.name for p in (staged / "gpgdir").iterdir())))
+            return call(argv)
+
+        self.layer.run = run
+        self.assertEqual(self.layer.apply(), 0)
+        staged = self.root / "var/lib/luma-device-layer/repo"
+        self.assertEqual(self.imported, [(self.root / "etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release",
+                                          staged / "gpgdir")])
+        text, keys = repos_seen[0]
+        self.assertIn(f"baseurl=file://{staged}\n".replace(str(self.root), ""), text)
+        self.assertEqual(keys, ["C8CE1A1B51D96CE2.pub"])
+
+    def test_missing_rpm_key_is_refused(self):
+        (self.root / "etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release").unlink()
+        self.assertEqual(self.layer.apply(), 1)
+        self.assertEqual(self.commands(["rpm-ostree", "override"]), [])
+        self.assertIn("no release key at", self.layer.load_state()["last_error"])
+
+    @unittest.skipUnless(_librepo_loads(), "librepo is not installed")
+    def test_librepo_import_reports_a_bad_key(self):
+        bad = self.root / "bad.asc"
+        bad.write_text("not a key")
+        (self.root / "gpgdir").mkdir()
+        with self.assertRaises(dl.LayerError):
+            dl.librepo_import_key(bad, self.root / "gpgdir")
 
     def test_second_boot_marks_the_layer_and_does_nothing_else(self):
         self.layer.apply()

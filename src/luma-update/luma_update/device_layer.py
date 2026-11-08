@@ -9,9 +9,11 @@ written to its LumaBoot filesystem. The image builder names that filesystem in
    the repository's repomd.xml against the Luma OS Release key in
    /etc/pki/ostree/luma-release.gpg;
 2. refuses a kit whose device-tree compatible list does not match this device;
-3. copies the repository to /var/lib/luma-device-layer/repo and runs
-   rpm-ostree there with only that repository configured (no network):
-   override replace --from repo=ID, then install;
+3. copies the repository to /var/lib/luma-device-layer/repo, imports the
+   rpm-gpg release key into its gpgdir/ (libdnf checks a file:// repository's
+   repomd.xml there and never imports gpgkey= into it), and runs rpm-ostree
+   with only that repository configured (no network): override replace
+   --from repo=ID, then install;
 4. points /etc/yum.repos.d/ID.repo at the device repository's https URL (with
    repo_gpgcheck=1), so rpm-ostree upgrades keep the layer, and restarts once.
 
@@ -24,6 +26,7 @@ says so. `luma-device-layer apply --retry` starts over.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import re
@@ -180,6 +183,26 @@ def layer_in(requested: set[str], replaced: dict[str, set[str]], kit: Kit) -> bo
     return set(kit.install) <= requested and set(kit.replace) <= replaced.get(kit.repo_id, set())
 
 
+class _GError(ctypes.Structure):
+    _fields_ = [("domain", ctypes.c_uint32), ("code", ctypes.c_int), ("message", ctypes.c_char_p)]
+
+
+def librepo_import_key(key: Path, gpgdir: Path) -> None:
+    """Import an armored key into gpgdir with librepo's own backend (rpm or GPGME),
+    in the form lr_gpg_check_signature reads back."""
+    try:
+        lib = ctypes.CDLL("librepo.so.0")
+    except OSError as exc:
+        raise LayerError(f"cannot load librepo: {exc}") from None
+    func = lib.lr_gpg_import_key
+    func.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.POINTER(_GError))]
+    func.restype = ctypes.c_int
+    error = ctypes.POINTER(_GError)()
+    if not func(os.fsencode(key), os.fsencode(gpgdir), ctypes.byref(error)):
+        message = error.contents.message.decode(errors="replace") if error else "no error message"
+        raise LayerError(f"importing {key} into {gpgdir} failed: {message}")
+
+
 def repo_file_text(kit: Kit, baseurl: str, rpm_key: str) -> str:
     return "\n".join([
         f"# {kit.name or kit.device} device packages, layered on the Luma OS with",
@@ -198,10 +221,12 @@ def repo_file_text(kit: Kit, baseurl: str, rpm_key: str) -> str:
 
 class DeviceLayer:
     def __init__(self, paths: Paths | None = None, run: Callable = default_run,
-                 sleep: Callable[[float], None] = time.sleep):
+                 sleep: Callable[[float], None] = time.sleep,
+                 import_key: Callable[[Path, Path], None] = librepo_import_key):
         self.paths = paths or Paths()
         self.run = run
         self.sleep = sleep
+        self.import_key = import_key
 
     # -- state -----------------------------------------------------------------
 
@@ -313,6 +338,18 @@ class DeviceLayer:
             shutil.rmtree(target)
         shutil.copytree(kit.repo, target)
         self.verify(target / "repodata" / "repomd.xml")
+        # libdnf treats a file:// baseurl as a local repository: it checks
+        # repomd.xml.asc against the keys in <baseurl>/gpgdir and skips the
+        # refresh that imports gpgkey=, so the key goes in here (any gpgdir
+        # the kit carried is not trusted).
+        gpgdir = target / "gpgdir"
+        shutil.rmtree(gpgdir, ignore_errors=True)
+        if gpgdir.exists() or gpgdir.is_symlink():
+            gpgdir.unlink()
+        if not self.paths.rpm_key.is_file():
+            raise LayerError(f"no release key at {self.paths.rpm_key}")
+        gpgdir.mkdir(mode=0o755)
+        self.import_key(self.paths.rpm_key, gpgdir)
         self.run(["restorecon", "-R", str(target)])
         return target
 
