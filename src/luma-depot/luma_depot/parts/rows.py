@@ -135,6 +135,7 @@ def category_tile(world: World, category: CategoryInfo, *, on_open) -> Gtk.Widge
     name.set_halign(Gtk.Align.START)
     tile.add_overlay(name)
     apps = sorted((it for it in world.items("app") if it.category == category.key and not it.is_system
+                   and world.listed(it.id)
                    and world.can_run(it, world.here)),
                   key=lambda it: it.app.rating_count, reverse=True)[:3]
     faces = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.START)
