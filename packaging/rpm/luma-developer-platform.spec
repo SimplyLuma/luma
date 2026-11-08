@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.124%{?dist}
+Release:        1.luma.125%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -373,6 +373,11 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.125
+- LumaUI API level 12: an edge-filled phone bar, a medium search well,
+  frosted specimens, the places sidebar and list insets. A bar text
+  button's minimum width is its border box; an Inset holds the frame's ink.
+
 * Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.124
 - LumaUI parts for Depot (API level 11): Button by purpose, Confirm in a
   non-destructive form, Inset and TwoColumnInset, Checkbox, checkbox and radio

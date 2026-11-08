@@ -39,7 +39,7 @@ Requires:       dpkg
 Requires:       flatpak
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.123
+Requires:       luma-developer-platform >= 0.1.0-1.luma.125
 Requires:       container-selinux
 Requires:       policycoreutils
 Requires:       podman

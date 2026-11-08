@@ -54,7 +54,9 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #     RadioMenuItem, Tooltip, Disclosure, EdgeFadeScroller, PermissionList and the eleven permissions
 #     (PERMISSIONS, Grant, from_keys, from_reach), Changelog (ChangeLine, group_changelog), FramedPicture);
 #     TextButton sizes list, bar and big.
-LUMAUI_API_LEVEL = 11
+# 12: ActionCenter.show_bar(fill="edge"), BarSearch(span="medium"), FramedPicture(frost=), the places
+#     sidebar (lumaui-sidebar-places), Inset(padding="list") rows 4 apart.
+LUMAUI_API_LEVEL = 12
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()
