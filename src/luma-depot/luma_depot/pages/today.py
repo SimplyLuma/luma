@@ -53,7 +53,7 @@ class TodayPage(Page):
                                   on_install=install_here(shell, "app", item.id)))
         two = Grid(lambda w: 1 if compact or w < 640 else 2, column_gap=32, row_gap=0, css="dq-two")
         two.append(section("Popular", popular, more=("See all", lambda: shell.go("apps"))))
-        two.append(section("New and updated", fresh))
+        two.append(section("New and updated", fresh, follows=True))
         page.append(two)
         looks = sorted(world.items("look"), key=lambda it: it.users, reverse=True)
         looks = [it for it in looks if world.this_device.form in it.runs][:4]
@@ -61,12 +61,12 @@ class TodayPage(Page):
         for item in looks:
             grid.append(look_tile(world, item, on_open=opener(shell, "look", item.id),
                                   in_use=world.here in world.on_devices(item)))
-        page.append(section("Looks", grid, more=("See all", lambda: shell.go("looks"))))
+        page.append(section("Looks", grid, more=("See all", lambda: shell.go("looks")), follows=True))
         tweaks = sorted(world.items("tweak"), key=lambda it: it.users, reverse=True)
         tweaks = [it for it in tweaks if world.this_device.form in it.runs][:4]
         cards = Grid(lambda w: 1 if compact or w < 640 else 2, column_gap=12, row_gap=12, css="dq-tgrid")
         for item in tweaks:
             cards.append(tweak_card(world, item, on_open=opener(shell, "tweak", item.id),
                                     on_install=install_here(shell, "tweak", item.id)))
-        page.append(section("Tweaks", cards, more=("See all", lambda: shell.go("tweaks"))))
+        page.append(section("Tweaks", cards, more=("See all", lambda: shell.go("tweaks")), follows=True))
         return page

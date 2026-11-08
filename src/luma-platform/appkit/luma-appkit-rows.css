@@ -210,6 +210,42 @@ list.lumaui-content-list > row.luma-navigation-row + row.luma-navigation-row {
   border-top: 1px solid @luma_line;
 }
 
+/* places: v73 Depot .dpside (220 wide, padding 4 10 10) and .si: 34 px rows 1 apart, a 17 glyph in ink-3 (the accent
+ * ink when chosen), 11 from 13/500 in ink-2. A heading is .sh (11.5/600, ink-3); a ruled one is .sh.dpsh, under a
+ * hairline the sidebar's full width (margin 12 -10 6, padding 12 20 0). */
+.luma-navigation-sidebar.lumaui-sidebar-places {
+  padding: var(--lumaui-nav-places-padding-top) 0 var(--lumaui-nav-places-padding-bottom);
+}
+.luma-navigation-sidebar.lumaui-sidebar-places .luma-navigation-list > row.lumaui-row {
+  min-height: var(--lumaui-nav-places-row-height); padding: 0 var(--lumaui-nav-places-row-padding-x);
+  margin: 0 var(--lumaui-sidebar-edge) var(--lumaui-nav-places-row-spacing);
+  border-radius: var(--lumaui-nav-places-row-radius);
+}
+.luma-navigation-sidebar.lumaui-sidebar-places > box.luma-navigation-footer { margin: 0 var(--lumaui-sidebar-edge); }
+.luma-navigation-sidebar.lumaui-sidebar-places .luma-navigation-list > row.lumaui-row > box.lumaui-row-line,
+.luma-navigation-sidebar.lumaui-sidebar-places .luma-navigation-list > row.lumaui-row > .lumaui-swipe-row > box.lumaui-row-line { border-spacing: var(--lumaui-nav-places-row-gap); }
+.luma-navigation-sidebar.lumaui-sidebar-places row.lumaui-row label.lumaui-row-title {
+  font-size: var(--lumaui-nav-places-title-size); font-weight: var(--lumaui-frame-title-weight); color: @luma_frame_ink_secondary;
+}
+.luma-navigation-sidebar.lumaui-sidebar-places row.lumaui-row image.lead-icon {
+  -gtk-icon-size: var(--lumaui-nav-places-icon); min-width: var(--lumaui-nav-places-icon); color: @luma_frame_muted;
+}
+.luma-navigation-sidebar.lumaui-sidebar-places row.lumaui-row:selected label.lumaui-row-title { color: @luma_ink; }
+.luma-navigation-sidebar.lumaui-sidebar-places row.lumaui-row:selected image.lead-icon { color: @luma_accent_ink; }
+.luma-navigation-sidebar.lumaui-sidebar-places .luma-navigation-list > row.luma-navigation-section {
+  margin: var(--lumaui-nav-places-heading-top) var(--lumaui-nav-places-heading-inset) var(--lumaui-nav-places-heading-bottom);
+  margin-left: calc(2 * var(--lumaui-sidebar-edge)); padding: 0; min-height: 0; border: none;
+}
+.luma-navigation-sidebar.lumaui-sidebar-places .luma-navigation-list > row.luma-navigation-section.ruled {
+  margin: var(--lumaui-nav-places-ruled-heading-top) 0 var(--lumaui-nav-places-heading-bottom);
+  padding: var(--lumaui-nav-places-ruled-heading-padding-top) var(--lumaui-sidebar-edge) 0 var(--lumaui-nav-places-ruled-heading-padding-start);
+  border-top: 1px solid @luma_line;
+}
+.luma-navigation-sidebar.lumaui-sidebar-places row.luma-navigation-section label.luma-navigation-heading {
+  font-size: var(--lumaui-nav-places-heading-size); font-weight: var(--lumaui-nav-places-heading-weight);
+  line-height: var(--lumaui-nav-places-heading-line); letter-spacing: var(--lumaui-nav-places-heading-tracking); color: @luma_frame_muted;
+}
+
 /* people in the phone drawer (v70 .mwin.navopen .msidebar, .crow 8/9): the drawer pads the top. */
 box.lumaui-sidebar-drawer.full .luma-navigation-sidebar.lumaui-sidebar-people { padding-top: 0; }
 box.lumaui-sidebar-drawer.full .luma-navigation-sidebar.lumaui-sidebar-people .luma-navigation-list > row.lumaui-row {

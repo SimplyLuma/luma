@@ -21,8 +21,8 @@ class Grid(Gtk.Widget):
     def __init__(self, columns: Callable[[int], int], *, column_gap: int = 12, row_gap: int = 12,
                  css: str = "") -> None:
         super().__init__(hexpand=True)
-        if css:
-            self.add_css_class(css)
+        for name in css.split():
+            self.add_css_class(name)
         self.columns_for, self.column_gap, self.row_gap = columns, column_gap, row_gap
         self.cells: list[Gtk.Widget] = []
         keys = Gtk.EventControllerKey()
@@ -33,9 +33,10 @@ class Grid(Gtk.Widget):
         self.cells.append(child)
         child.set_parent(self)
 
-    def _layout(self, width: int) -> tuple[int, int]:
+    def _layout(self, width: int) -> tuple[int, float]:
+        """Columns and their exact width: CSS grid's 1fr tracks, fractional, so the last ends at the edge."""
         columns = max(1, self.columns_for(width))
-        return columns, max(1, (width - self.column_gap * (columns - 1)) // columns)
+        return columns, max(1.0, (width - self.column_gap * (columns - 1)) / columns)
 
     def _rows(self, columns: int) -> list[list[Gtk.Widget]]:
         shown = [c for c in self.cells if c.get_visible()]
@@ -49,7 +50,7 @@ class Grid(Gtk.Widget):
             return 0, 600, -1, -1
         width = for_size if for_size > 0 else 600
         columns, cell = self._layout(width)
-        heights = [max(c.measure(Gtk.Orientation.VERTICAL, cell)[1] for c in row) for row in self._rows(columns)]
+        heights = [max(c.measure(Gtk.Orientation.VERTICAL, round(cell))[1] for c in row) for row in self._rows(columns)]
         height = sum(heights) + self.row_gap * max(0, len(heights) - 1)
         return height, height, -1, -1
 
@@ -57,10 +58,10 @@ class Grid(Gtk.Widget):
         columns, cell = self._layout(width)
         y = 0
         for row in self._rows(columns):
-            row_height = max(c.measure(Gtk.Orientation.VERTICAL, cell)[1] for c in row)
+            row_height = max(c.measure(Gtk.Orientation.VERTICAL, round(cell))[1] for c in row)
             for index, child in enumerate(row):
                 point = Graphene.Point().init(index * (cell + self.column_gap), y)
-                child.allocate(cell, row_height, -1, Gsk.Transform().translate(point))
+                child.allocate(round(cell), row_height, -1, Gsk.Transform().translate(point))
             y += row_height + self.row_gap
 
     def do_snapshot(self, snapshot) -> None:

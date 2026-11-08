@@ -66,7 +66,7 @@ def hue_paint(widget: Gtk.Widget, lightness: float, chroma: float, hue: float) -
     lumaui.paint_class(widget, "#%02x%02x%02x" % tuple(channels))
 
 #: (size, radius) per name.
-SIZES = {"xs": (26, 7), "row": (46, 12), "sm": (44, 11), "md": (64, 15), "lg": (76, 19)}
+SIZES = {"xs": (26, 7), "row": (46, 12), "sm": (44, 11), "md": (64, 15), "mdc": (56, 13), "lg": (76, 19)}
 _LOOK_GLYPHS = {"Sounds": "volume-2", "Font": "type", "Cursor": "mouse-pointer-2", "Theme": "palette",
                 "Icons": "blocks", "Appearance": "paintbrush"}
 
@@ -137,15 +137,13 @@ _provider: list = []
 def paint_gradient(widget: Gtk.Widget, start: tuple[float, float, float], end: tuple[float, float, float],
                    degrees: int = 160) -> None:
     """Paint `widget` a linear gradient between two OKLCH colours from data (a glyph face's hue)."""
-    import re
     from gi.repository import Gdk
-    a = [int(v) for v in re.findall(r"\d+", lumaui.oklch_rgba(*start))[:3]]
-    b = [int(v) for v in re.findall(r"\d+", lumaui.oklch_rgba(*end))[:3]]
-    name = "dq-grad-%d-%02x%02x%02x-%02x%02x%02x" % (degrees, *a, *b)
+    # OKLCH stops, blended in Oklab as CSS does between non-legacy colours (an sRGB blend is lighter mid-way).
+    a, b = ("oklch(%.4g %.4g %.4g)" % (l, c, h % 360) for l, c, h in (start, end))
+    name = "dq-grad-%d-%s" % (degrees, "-".join("%d" % round(v * 1000) for v in (*start, *end)))
     widget.add_css_class(name)
     if name not in _gradients:
-        _gradients[name] = (f".{name} {{ background: linear-gradient({degrees}deg, rgb({a[0]},{a[1]},{a[2]}), "
-                            f"rgb({b[0]},{b[1]},{b[2]})); }}")
+        _gradients[name] = f".{name} {{ background: linear-gradient({degrees}deg in oklab, {a}, {b}); }}"
         display = Gdk.Display.get_default()
         if display is not None:
             if not _provider:
@@ -191,7 +189,9 @@ def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
         else:
             text = Gtk.Label(label=item.name[:2])
             text.add_css_class("dq-mono")
-            picture = text
+            # The initials never widen the face (overflow: hidden): they float over it.
+            picture = Gtk.Overlay(child=Gtk.Box())
+            picture.add_overlay(text)
             box.add_css_class("mono")
             hue_paint(box, 0.55, 0.1, item.hue)
     elif look is not None:

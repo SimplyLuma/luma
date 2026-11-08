@@ -58,10 +58,12 @@ def kicker_title(kicker: str, title: str) -> Gtk.Widget:
 
 
 def section(title: str, body: Gtk.Widget, *, kicker: str = "", more: tuple[str, object] | None = None,
-            note: str = "") -> Gtk.Widget:
+            note: str = "", follows: bool = False) -> Gtk.Widget:
     """A section: an optional kicker over the 21/700 title, "See all ›" on the title's line (`.dq-sec`)."""
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     box.add_css_class("dq-sec")
+    if follows:  # `.dq-sec + .dq-sec`: a section straight after another
+        box.add_css_class("follows")
     head = Gtk.Box(valign=Gtk.Align.END)
     head.add_css_class("dq-sec-head")
     words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, valign=Gtk.Align.END)
@@ -70,7 +72,7 @@ def section(title: str, body: Gtk.Widget, *, kicker: str = "", more: tuple[str, 
     words.append(label(title, "dq-sec-title"))
     head.append(words)
     if note:
-        head.append(label(note, "dq-sec-note"))
+        head.append(label(note.upper(), "dq-sec-note"))
     if more is not None:
         from luma_appkit import icons
         words_text, on_click = more

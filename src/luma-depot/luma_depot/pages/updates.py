@@ -67,19 +67,25 @@ class UpdatesPage(Page):
         system, up_to_date = self._system()
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         page.add_css_class("p-updates")
+        compact = shell.is_compact()
         head = Gtk.Overlay()
-        head.set_child(intro("Updates", rules.updates_lead(world, system_waiting=not up_to_date,
-                                                             checked=self.checked or (system.checked if system else ""))))
+        lead = intro("Updates", rules.updates_lead(world, system_waiting=not up_to_date,
+                                                   checked=self.checked or (system.checked if system else "")))
         channel = Button(dict((k, n) for k, n, _f in rules.CHANNELS)[self.channel], icon="git-branch", menu=True)
         channel.set_name("dq-chanmenu")
-        channel.set_halign(Gtk.Align.END)
+        channel.set_halign(Gtk.Align.START if compact else Gtk.Align.END)
         channel.set_valign(Gtk.Align.START)
         channel.add_css_class("dq-chan")
         channel.update_property([Gtk.AccessibleProperty.LABEL], ["Release channel"])
         channel.connect("clicked", lambda b: self._channel_menu(b))
         self.channel_button = channel
-        head.add_overlay(channel)
-        page.append(head)
+        if compact:  # .dq-compact .dq-chan: static, at the start, above the title
+            page.append(channel)
+            page.append(lead)
+        else:
+            head.set_child(lead)
+            head.add_overlay(channel)
+            page.append(head)
         if system is not None:
             page.append(self._luma_card(system, up_to_date))
         updates = sorted(world.pending, key=lambda p: world.here not in p.devices)
@@ -104,8 +110,12 @@ class UpdatesPage(Page):
     # ── Luma's own card (11.2) ────────────────────────────────────────────
 
     def _luma_card(self, system, up_to_date: bool) -> Gtk.Widget:
-        card = Gtk.Box()
+        compact = self.shell.is_compact()
+        # .dq-compact .dq-luma: the picture 110 tall across the top, the words under it
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL if compact else Gtk.Orientation.HORIZONTAL)
         card.add_css_class("dq-luma")
+        if compact:
+            card.add_css_class("compact")
         if up_to_date:
             card.add_css_class("ok")
         art = Gtk.Overlay(overflow=Gtk.Overflow.HIDDEN)
@@ -119,8 +129,11 @@ class UpdatesPage(Page):
             logo.set_pixel_size(40 if up_to_date else 64)
             logo.add_css_class("dq-llogo")
             art.add_overlay(logo)
-        art.set_size_request(120 if up_to_date else 240, -1)
-        art.set_hexpand(False)
+        if compact:
+            art.set_size_request(-1, 110)
+        else:
+            art.set_size_request(120 if up_to_date else 240, -1)
+            art.set_hexpand(False)
         card.append(art)
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         body.add_css_class("dq-lbody")
@@ -168,7 +181,7 @@ class UpdatesPage(Page):
                                   on_click=self._download))
         spacer = Gtk.Box(hexpand=True)
         buttons.append(spacer)
-        toggle = Gtk.Button()
+        toggle = Gtk.Button(valign=Gtk.Align.CENTER)
         toggle.add_css_class("dq-link")
         inner = Gtk.Box()
         inner.append(Gtk.Label(label="View changelog"))
@@ -239,7 +252,10 @@ class UpdatesPage(Page):
         words.append(label(item.name, "dq-ucard-name"))
         meta = Gtk.Box()
         meta.add_css_class("dq-ucard-meta")
-        meta.append(label(f"{pending.from_version} → {pending.to_version}", "dq-ver"))
+        version = Gtk.Box(valign=Gtk.Align.CENTER)
+        version.add_css_class("dq-ver")
+        version.append(label(f"{pending.from_version} → {pending.to_version}"))
+        meta.append(version)
         meta.append(label(pending.size, "dq-ucard-size"))
         words.append(meta)
         head.append(words)
@@ -255,7 +271,12 @@ class UpdatesPage(Page):
         notes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         notes.add_css_class("dq-unotes")
         for note in pending.notes:
-            notes.append(label(f"•  {note}", "dq-unote", wrap=True))
+            line = Gtk.Box()
+            dot = Gtk.Box(valign=Gtk.Align.START, accessible_role=Gtk.AccessibleRole.PRESENTATION)
+            dot.add_css_class("dq-unote-dot")  # the list's disc, drawn, not a character
+            line.append(dot)
+            line.append(label(note, "dq-unote", wrap=True))
+            notes.append(line)
         card.append(notes)
         where = Gtk.Box()
         where.add_css_class("dq-uwhere")

@@ -16,6 +16,9 @@ Variants (`SIDEBAR_VARIANTS`), each its width and row metrics as tokens:
   with its count or pin (v70 `#m-side .crow`, `.pnrow`).
 - ``destinations``: places in the app. 36 px single-line rows, a glyph or a
   mark, a count at the end (v70 `.tki`, `#p-rail .si`).
+- ``places``: an app's places in v73's frame. 34 px rows, a 17 px glyph lit
+  in the accent ink when chosen, headings under a full-width hairline
+  (v73 Depot `.dpside`, `.si`, `.sh.dpsh`).
 - ``resources``: things with a live value. A square well or round glyph face,
   two lines, a live trail such as a sparkline (v70 `.mnres`, `.mprow`, `.wxpl`).
 - ``files``: documents. A 42x34 thumbnail over two small lines, or no lead
@@ -62,7 +65,7 @@ from . import icons, lumaui, rows_tokens  # noqa: E402
 __all__ = ["RowAction", "RowLead", "SIDEBAR_VARIANTS", "SIDEBAR_WIDTHS", "SidebarRow", "SidebarSection",
            "append_section", "apply_sidebar_variant", "sidebar_width"]
 
-SIDEBAR_VARIANTS = ("people", "destinations", "resources", "files", "tree", "settings")
+SIDEBAR_VARIANTS = ("people", "destinations", "resources", "files", "tree", "settings", "places")
 SIDEBAR_WIDTHS = ("narrow", "regular", "wide")
 FACE_SIZES = ("large", "medium", "small")
 THUMBNAIL_KINDS = ("image", "document", "missing")

@@ -253,7 +253,11 @@ entry.lumaui-bar-search:focus-visible {
   box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 0 0 var(--lumaui-bar-search-focus-ring) @luma_focus_ring;
 }
 entry.lumaui-bar-search image { -gtk-icon-size: var(--lumaui-bar-search-icon); }
+/* The glyph is the well's ink-3 at full strength (v70 .srch svg.i): the theme's dimmed entry icon is not the kit's. */
+entry.lumaui-bar-search > image { opacity: 1; color: @luma_bar_muted; }
 entry.lumaui-bar-search text { background: none; color: @luma_ink; font-size: var(--lumaui-bar-search-font-size); }
+/* An input's own 2 px inset (v70 .srch input): the words start 2 past the gap. */
+entry.lumaui-bar-search > text { margin-left: 2px; }
 entry.lumaui-bar-search text > placeholder { color: @luma_muted; }
 entry.lumaui-bar-search.folded { padding: 0 var(--lumaui-bar-search-folded-padding-x); }
 entry.lumaui-bar-search button.lumaui-bar-search-clear {
@@ -850,6 +854,13 @@ box.lumaui-ac-edit-sep { min-width: 1px; margin: 10px 2px; background: @luma_lin
 .lumaui-action-center box.lumaui-modes button.lumaui-mode:checked,
 .lumaui-action-center box.lumaui-modes button.lumaui-mode.on { color: @luma_ink; }
 .lumaui-action-center label.lumaui-count:not(.attention) { color: @luma_bar_ink_secondary; }
+.lumaui-action-center button.lumaui-icon-only.in-bar { color: @luma_bar_ink_secondary; }
+/* v73 phone bar: every icon button is the 48 key, 20 round, a 20 glyph (html[data-phone] .fbar .ib). */
+.lumaui-action-center.phone button.lumaui-icon-only.in-bar {
+  min-width: var(--lumaui-ac-phone-control); min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius);
+}
+.lumaui-action-center.phone button.lumaui-icon-only.in-bar image { -gtk-icon-size: var(--lumaui-ac-phone-icon); }
+.lumaui-action-center button.lumaui-text-button .lumaui-text-button-menu { color: @luma_bar_muted; }
 .lumaui-action-center entry.lumaui-bar-entry text > placeholder,
 .lumaui-action-center entry.lumaui-bar-search text > placeholder,
 .lumaui-action-center label.lumaui-bar-entry-placeholder { color: @luma_bar_muted; }

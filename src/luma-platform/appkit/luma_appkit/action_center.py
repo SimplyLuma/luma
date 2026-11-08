@@ -1064,7 +1064,7 @@ class ActionCenter(Gtk.Box):
 
     def show_bar(self, items: Sequence[object], *, context: BarContext | None = None,
                  modes: Gtk.Widget | None = None, more: Sequence[object] = (), entry: object = None,
-                 fill: bool = False, tabs: bool | str | None = None, head: Gtk.Widget | None = None,
+                 fill: bool | str = False, tabs: bool | str | None = None, head: Gtk.Widget | None = None,
                  toolbar: bool = False, phone_control_size: str = "regular", head_inset: bool = True) -> None:
         """The bar, or double height when there is a `context` line over it.
 
@@ -1077,7 +1077,8 @@ class ActionCenter(Gtk.Box):
         decides by `TabBar.wants_tabs`, False keeps the switch, "compact" keeps
         it as icon-only tabs in the bar (Clock).
         `fill=True` (v71 Memos' page bar, Valet, Tide): on a phone the bar spans the
-        16 gutter and its icon buttons (and `BarAction(fill=True)` keys) share it.
+        16 gutter and its icon buttons (and `BarAction(fill=True)` keys) share it; `fill="edge"` spans it
+        12 a side (v73 .fbar's calc(100% - 24px): Depot's bar, whatever it holds).
         `entry` (a BarEntry, BarSearch or widget) makes a two-row bar: the items,
         then under a hairline the always-there field, full width and the
         bottom-most line (v71 Tasks, Calendar); `set_foot()` swaps it alone.
@@ -1090,7 +1091,10 @@ class ActionCenter(Gtk.Box):
         """
         self.set_phone_control_size(phone_control_size)
         self._fold_panel(quiet=True)
-        self._fill = fill
+        if fill not in (True, False, "edge"):
+            raise ValueError('fill is True, False or "edge"')
+        self._fill = bool(fill)
+        self._fill_edge = fill == "edge"
         lumaui.set_css_class(self, "document-toolbar", toolbar)
         self._panel_only = None
         self.bar_row.set_visible(True)
@@ -1820,7 +1824,9 @@ class ActionCenter(Gtk.Box):
     def _shape_row(self) -> None:
         """v71 on a phone: icon-and-word buttons show the icon alone (unless they keep their words);
         grown, the row's buttons share the width unless a field or a labelled key takes it."""
-        grown = self._panel_key is not None or self._held is not None or (self._fill and self._phone)
+        # An edge-filled bar (v73) only spans the phone; its buttons keep their own widths at the start.
+        edge = self._fill and getattr(self, "_fill_edge", False)
+        grown = self._panel_key is not None or self._held is not None or (self._fill and self._phone and not edge)
         children = _children(self.bar_row)
         equal_actions = self._phone and grown and self._all_filling_actions()
         self.bar_row.set_homogeneous(equal_actions)
@@ -2065,7 +2071,9 @@ class ActionCenter(Gtk.Box):
         elif phone and state in ("bar", "double") and self._panel_only is not None:
             wanted = width - 2 * metrics["frame_side"]
         elif phone and state in ("bar", "double") and (self.foot_row.get_visible() or self.head_row.get_visible() or self._fill):
-            wanted = width - 2 * metrics["frame_side"]  # v71 two-row and full-width bars: the 16 gutter
+            # v71 two-row and full-width bars: the 16 gutter; a v73 edge-filled bar: 12 a side
+            edge = self._fill and getattr(self, "_fill_edge", False)
+            wanted = width - 2 * (metrics["phone_side_margin"] if edge else metrics["frame_side"])
         elif phone and (wide or state == "split" or self._search is not None
                         or (state == "bar" and getattr(self, "_phone_wide", False))):
             wanted = width - 2 * metrics["phone_side_margin"]

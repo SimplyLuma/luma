@@ -328,6 +328,7 @@
 @define-color luma_tooltip_shadow rgba(0, 0, 0, 0.5);
 @define-color luma_checkbox_on oklch(from @luma_accent 0.62 0.14 h);
 @define-color luma_checkbox_on_ink #ffffff;
+@define-color luma_list_button_fill rgba(255, 255, 255, 0.07);
 @define-color luma_island_shadow_far rgba(0, 0, 0, 0.85);
 @define-color luma_island_shadow_near rgba(0, 0, 0, 0.5);
 @define-color luma_island_scrim rgba(0, 0, 0, 0.24);
@@ -1039,7 +1040,7 @@
   --lumaui-t-checkbox-row-unit-gap: 1.56px;
   --lumaui-t-disclosure-line-size: 12.5px;
   --lumaui-t-disclosure-line-weight: 600;
-  --lumaui-t-disclosure-line-line-height: 16px;
+  --lumaui-t-disclosure-line-line-height: 15px;
   --lumaui-t-disclosure-line-tracking: 0px;
   --lumaui-t-disclosure-line-unit-size: 5px;
   --lumaui-t-disclosure-line-unit-gap: 1.5px;
@@ -1057,7 +1058,7 @@
   --lumaui-t-tooltip-unit-gap: 1.38px;
   --lumaui-t-permission-word-size: 12.5px;
   --lumaui-t-permission-word-weight: 600;
-  --lumaui-t-permission-word-line-height: 16px;
+  --lumaui-t-permission-word-line-height: 15px;
   --lumaui-t-permission-word-tracking: 0px;
   --lumaui-t-permission-word-unit-size: 5px;
   --lumaui-t-permission-word-unit-gap: 1.5px;
@@ -2178,6 +2179,7 @@
   --lumaui-bar-search-label-size: 12px;
   --lumaui-bar-search-focus-ring: 1.5px;
   --lumaui-bar-search-width-narrow: 220px;
+  --lumaui-bar-search-width-medium: 240px;
   --lumaui-bar-search-folded-padding-x: 10px;
   --lumaui-bar-readout-padding-start: 10px;
   --lumaui-bar-readout-padding-end: 14px;
@@ -2438,8 +2440,12 @@
   --lumaui-text-button-list-font-size: 12.5px;
   --lumaui-text-button-bar-radius: 12px;
   --lumaui-text-button-bar-padding-x: 14px;
+  --lumaui-text-button-bar-min-width: 64px;
   --lumaui-text-button-big-height: 40px;
   --lumaui-text-button-big-radius: 12px;
+  --lumaui-text-button-big-padding-x: 22px;
+  --lumaui-text-button-big-font-size: 14px;
+  --lumaui-text-button-big-gap: 8px;
   --lumaui-icon-button-size: 36px;
   --lumaui-icon-button-large-size: 40px;
   --lumaui-icon-button-radius: 10px;
@@ -2952,6 +2958,26 @@
   --lumaui-nav-destinations-action-heading-bottom: 4px;
   --lumaui-nav-destinations-action-heading-padding-top: 12px;
   --lumaui-nav-destinations-action-heading-padding-start: 20px;
+  --lumaui-nav-places-width: 220px;
+  --lumaui-nav-places-padding-top: 4px;
+  --lumaui-nav-places-padding-bottom: 10px;
+  --lumaui-nav-places-row-height: 34px;
+  --lumaui-nav-places-row-padding-x: 10px;
+  --lumaui-nav-places-row-gap: 11px;
+  --lumaui-nav-places-row-radius: 10px;
+  --lumaui-nav-places-row-spacing: 1px;
+  --lumaui-nav-places-icon: 17px;
+  --lumaui-nav-places-title-size: 13px;
+  --lumaui-nav-places-heading-size: 11.5px;
+  --lumaui-nav-places-heading-weight: 600;
+  --lumaui-nav-places-heading-tracking: 0.115px;
+  --lumaui-nav-places-heading-line: 17px;
+  --lumaui-nav-places-heading-top: 18px;
+  --lumaui-nav-places-heading-bottom: 6px;
+  --lumaui-nav-places-heading-inset: 10px;
+  --lumaui-nav-places-ruled-heading-top: 12px;
+  --lumaui-nav-places-ruled-heading-padding-top: 12px;
+  --lumaui-nav-places-ruled-heading-padding-start: 20px;
   --lumaui-nav-settings-width: 236px;
   --lumaui-nav-settings-padding-x: 10px;
   --lumaui-nav-settings-padding-bottom: 10px;
@@ -3257,7 +3283,7 @@
   --lumaui-inset-radius: 20px;
   --lumaui-inset-card-padding: 16px;
   --lumaui-inset-card-radius: 18px;
-  --lumaui-inset-column-gap: 28px;
+  --lumaui-inset-column-gap: 33px;
   --lumaui-inset-row-gap: 4px;
   --lumaui-inset-hair-inset: 16px;
   --lumaui-checkbox-size: 16px;
@@ -3533,10 +3559,10 @@
 .lumaui-t-weather-phone-kicker, window.luma-app-window label.lumaui-t-weather-phone-kicker { font-size: var(--lumaui-t-weather-phone-kicker-size); font-weight: var(--lumaui-t-weather-phone-kicker-weight); line-height: 17px; letter-spacing: 0.575px; }
 .lumaui-t-weather-phone-hour-temperature, window.luma-app-window label.lumaui-t-weather-phone-hour-temperature { font-size: var(--lumaui-t-weather-phone-hour-temperature-size); font-weight: var(--lumaui-t-weather-phone-hour-temperature-weight); line-height: 25px; letter-spacing: -0.102px; }
 .lumaui-t-checkbox-row, window.luma-app-window label.lumaui-t-checkbox-row { font-size: var(--lumaui-t-checkbox-row-size); font-weight: var(--lumaui-t-checkbox-row-weight); line-height: 19px; letter-spacing: 0px; }
-.lumaui-t-disclosure-line, window.luma-app-window label.lumaui-t-disclosure-line { font-size: var(--lumaui-t-disclosure-line-size); font-weight: var(--lumaui-t-disclosure-line-weight); line-height: 16px; letter-spacing: 0px; color: @luma_muted; }
+.lumaui-t-disclosure-line, window.luma-app-window label.lumaui-t-disclosure-line { font-size: var(--lumaui-t-disclosure-line-size); font-weight: var(--lumaui-t-disclosure-line-weight); line-height: 15px; letter-spacing: 0px; color: @luma_muted; }
 .lumaui-t-disclosure-card, window.luma-app-window label.lumaui-t-disclosure-card { font-size: var(--lumaui-t-disclosure-card-size); font-weight: var(--lumaui-t-disclosure-card-weight); line-height: 18px; letter-spacing: 0px; }
 .lumaui-t-tooltip, window.luma-app-window label.lumaui-t-tooltip { font-size: var(--lumaui-t-tooltip-size); font-weight: var(--lumaui-t-tooltip-weight); line-height: 15px; letter-spacing: 0px; }
-.lumaui-t-permission-word, window.luma-app-window label.lumaui-t-permission-word { font-size: var(--lumaui-t-permission-word-size); font-weight: var(--lumaui-t-permission-word-weight); line-height: 16px; letter-spacing: 0px; }
+.lumaui-t-permission-word, window.luma-app-window label.lumaui-t-permission-word { font-size: var(--lumaui-t-permission-word-size); font-weight: var(--lumaui-t-permission-word-weight); line-height: 15px; letter-spacing: 0px; }
 .lumaui-t-permission-reason, window.luma-app-window label.lumaui-t-permission-reason { font-size: var(--lumaui-t-permission-reason-size); font-weight: var(--lumaui-t-permission-reason-weight); line-height: 16px; letter-spacing: 0px; color: @luma_muted; }
 .lumaui-t-changelog-heading, window.luma-app-window label.lumaui-t-changelog-heading { font-size: var(--lumaui-t-changelog-heading-size); font-weight: var(--lumaui-t-changelog-heading-weight); line-height: 15px; letter-spacing: 0px; color: @luma_muted; }
 .lumaui-t-changelog-line, window.luma-app-window label.lumaui-t-changelog-line { font-size: var(--lumaui-t-changelog-line-size); font-weight: var(--lumaui-t-changelog-line-weight); line-height: 20px; letter-spacing: 0px; }

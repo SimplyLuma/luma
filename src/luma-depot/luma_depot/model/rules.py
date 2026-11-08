@@ -81,7 +81,7 @@ def bar_for(item: Item, world: World, *, trying: bool = False) -> BarPlan:
     others = any(d.id != me and d.form in item.runs for d in world.devices)
     install_on = (BarButton("install-on", "Install on…", "monitor-smartphone"),) if others and not system else ()
     share = BarButton("share", "", "share-2", tooltip="Share")
-    uninstall = ((BarButton("uninstall", "", "trash-2", tooltip=f"Uninstall from {world.this_device.name}"),)
+    uninstall = ((BarButton("uninstall", "", "trash-2", tooltip=f"Uninstall on {world.this_device.name}"),)
                  if mine and not system else ())
     if system:
         return BarPlan((BarButton("open", "Open", None, "key"), share))

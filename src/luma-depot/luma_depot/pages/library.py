@@ -16,6 +16,78 @@ from .common import empty, install_here, opener
 from .menus import choice_button
 
 
+class _Overhang(Gtk.Widget):
+    """A tile's column: never asks for more than its track, and when a line is wider (Update ready in an 84 track)
+    it runs past the right edge, its contents centred on the wider column, as the mockup's grid track grows."""
+
+    __gtype_name__ = "DepotOverhang"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.inner.add_css_class("dq-tile-track")
+        self.inner.set_parent(self)
+
+    def append(self, child: Gtk.Widget) -> None:
+        self.inner.append(child)
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_measure(self, orientation, for_size):
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            return 0, 0, -1, -1
+        low, natural, _b, _c = self.inner.measure(orientation, -1)
+        return low, natural, -1, -1
+
+    def do_size_allocate(self, width, height, baseline):
+        # A grid track grows to its items' min-content: an ellipsizing name gives way, a state line does not.
+        need = max(width, self.inner.measure(Gtk.Orientation.HORIZONTAL, -1)[0])
+        self.inner.allocate(need, height, -1, None)
+
+    def do_snapshot(self, snapshot):
+        self.snapshot_child(self.inner, snapshot)
+
+    def do_dispose(self):
+        if self.inner is not None:
+            self.inner.unparent()
+            self.inner = None
+
+
+class _Spill(Gtk.Widget):
+    """A tile's name (v73 .dq-tface b, max-width 104): it never widens its tile; when the tile is narrower it runs
+    past both edges, centred, and only beyond 104 does it ellipsize."""
+
+    __gtype_name__ = "DepotSpill"
+    CAP = 104
+
+    def __init__(self, child: Gtk.Widget) -> None:
+        super().__init__()
+        child.set_parent(self)
+        self.child = child
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_measure(self, orientation, for_size):
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            return 0, min(self.child.measure(orientation, -1)[1], self.CAP), -1, -1
+        low, natural, _b, _c = self.child.measure(orientation, -1)
+        return low, natural, -1, -1
+
+    def do_size_allocate(self, width, height, baseline):
+        gi.require_version("Gsk", "4.0")
+        gi.require_version("Graphene", "1.0")
+        from gi.repository import Graphene, Gsk
+        need = max(width, min(self.child.measure(Gtk.Orientation.HORIZONTAL, -1)[1], self.CAP))
+        self.child.allocate(need, height, -1, Gsk.Transform().translate(Graphene.Point().init((width - need) / 2, 0)))
+
+    def do_dispose(self):
+        if self.child is not None:
+            self.child.unparent()
+            self.child = None
+
+
 class LibraryPage(Page):
     place = "library"
 
@@ -52,8 +124,10 @@ class LibraryPage(Page):
         mine = sorted((it for it in world.items("app") if not it.is_system and world.on_devices(it)
                        and (it.seal != "luma" or it.id in world.kept)), key=lambda it: it.name.casefold())
         shown = [it for it in mine if not self.show or (self.show == "here") == (me in world.on_devices(it))]
-        grid = Grid(lambda w: 3 if shell.is_compact() or w < 640 else max(4, min(8, (w + 8) // 124)),
-                    column_gap=8, row_gap=22, css="dq-tiles")
+        # .dq-tiles: as many 112-wide columns as fit, 10 apart, rows 16 apart (84 and 4 by 8 when compact)
+        compact = shell.is_compact()
+        grid = Grid(lambda w: max(1, (w + 4) // 88) if compact else max(1, (w + 10) // 122),
+                    column_gap=4 if compact else 10, row_gap=8 if compact else 16, css="dq-tiles")
         for item in shown:
             grid.append(self._tile(item))
         page.append(grid if shown else empty())
@@ -66,19 +140,17 @@ class LibraryPage(Page):
         on = world.on_devices(item)
         here = me in on
         pending = world.pending_for(item.id)
-        tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER)
+        tile = _Overhang()
         tile.add_css_class("dq-tile")
         if not here:
             tile.add_css_class("away")
-        open_button = Gtk.Button()
+        open_button = Gtk.Button(halign=Gtk.Align.CENTER)
         open_button.add_css_class("dq-tface")
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER)
-        icon = face(world, item, "md")
+        icon = face(world, item, "mdc" if shell.is_compact() else "md")  # .dq-compact .dq-face.md: 56, 13 round
         icon.set_halign(Gtk.Align.CENTER)
-        if not here:
-            icon.set_opacity(0.55)  # only on other devices: dimmed
         inner.append(icon)
-        inner.append(label(item.name, "dq-tile-name", xalign=0.5, ellipsize=True))
+        inner.append(_Spill(label(item.name, "dq-tile-name", xalign=0.5, ellipsize=True)))
         open_button.set_child(inner)
         open_button.update_property([Gtk.AccessibleProperty.LABEL], [item.name])
         open_button.connect("clicked", lambda _b: opener(shell, "app", item.id)())
@@ -87,18 +159,24 @@ class LibraryPage(Page):
             state = Gtk.Box(halign=Gtk.Align.CENTER)
             state.add_css_class("dq-tile-state")
             state.add_css_class("up")
-            state.append(icons.image("refresh-cw"))
-            state.append(Gtk.Label(label="Update ready"))
+            mark = icons.image("refresh-cw")
+            mark.set_valign(Gtk.Align.START)
+            state.append(mark)
+            state.append(Gtk.Label(label="Update ready", valign=Gtk.Align.START))
             tile.append(state)
         elif here:
-            tile.append(label("Installed", ("dq-tile-state",), xalign=0.5))
-        elif not world.can_run(item, me):
-            tile.append(label(f"No {world.this_device.form_name.lower()} version", ("dq-tile-state",), xalign=0.5))
+            installed = label("Installed", ("dq-tile-state",), xalign=0.5)
+            installed.set_yalign(0)  # the words at the top of the 22 row, as the mockup's line sits
+            tile.append(installed)
         else:
-            get = Button("Install", variant=Button.PLAIN, size=Button.SM, icon="download",
-                         on_click=install_here(shell, "app", item.id))
+            # .dq-tget: a quiet 22 px pill, the glyph and the word (not a row button)
+            get = Gtk.Button(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
             get.add_css_class("dq-tget")
-            get.set_halign(Gtk.Align.CENTER)
+            words = Gtk.Box()
+            words.append(icons.image("download"))
+            words.append(Gtk.Label(label="Install"))
+            get.set_child(words)
+            get.connect("clicked", lambda _b: install_here(shell, "app", item.id)())
             get.update_property([Gtk.AccessibleProperty.LABEL], [f"Install {item.name} here"])
             others = [world.device(d).name for d in on if d != me]
             if others:
@@ -111,7 +189,10 @@ class LibraryPage(Page):
                                lambda: self.show, self.pick, name="dq-libmenu")]
         count = self.world.update_count()
         if count:
-            items.append(BarWidget(Button("Update all", variant=Button.KEY, icon="refresh-cw",
-                                          tooltip=f"{count} waiting across your devices",
-                                          on_click=lambda: self.shell.store.update_all(self.shell.done))))
+            waiting = f"{count} waiting across your devices"
+            update = Button("Update" if self.shell.is_compact() else "Update all", variant=Button.KEY,
+                            icon="refresh-cw", tooltip=waiting,
+                            on_click=lambda: self.shell.store.update_all(self.shell.done))
+            update.update_property([Gtk.AccessibleProperty.LABEL], [waiting])  # the mockup's title names it
+            items.append(BarWidget(update))
         return items

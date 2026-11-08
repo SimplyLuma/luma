@@ -22,7 +22,7 @@ def _bars(distribution: tuple[int, ...]) -> Gtk.Widget:
     bars.add_css_class("dq-rbars")
     for index, count in enumerate(distribution[:5]):
         line = Gtk.Box()
-        line.append(label(str(5 - index), "dq-rbar-digit"))
+        line.append(label(str(5 - index), "dq-rbar-digit", xalign=1))
         track = Gtk.ProgressBar(fraction=count / total, hexpand=True, valign=Gtk.Align.CENTER)
         track.set_size_request(150, -1)
         track.add_css_class("dq-rbar")
@@ -51,7 +51,9 @@ def _review(initials: str, name: str, stars: int, date: str, text: str) -> Gtk.W
     star_line.update_property([Gtk.AccessibleProperty.LABEL], [f"{stars} of 5"])
     who.append(star_line)
     head.append(who)
-    head.append(label(date, "dq-rev-date"))
+    stamp = label(date, "dq-rev-date")
+    stamp.set_valign(Gtk.Align.START)
+    head.append(stamp)
     card.append(head)
     words = label(text, "dq-rev-text", wrap=True, lines=5)
     words.set_max_width_chars(1)  # wrap at the card's width, never widen it
@@ -70,7 +72,9 @@ def ratings(item: Item, *, arrows: bool = True) -> Gtk.Widget | None:
     score.set_size_request(180, -1)
     average = Gtk.Box()
     average.add_css_class("dq-ravg")
-    average.append(label(f"{app.rating:g}", "dq-ravg-score"))
+    figure = label(f"{app.rating:g}", "dq-ravg-score")
+    figure.set_valign(Gtk.Align.BASELINE_FILL)  # the count sits on the figure's baseline
+    average.append(figure)
     count = label(f"{fmt_count(app.rating_count)} ratings", "dq-ravg-count")
     count.set_valign(Gtk.Align.BASELINE_FILL)
     average.append(count)

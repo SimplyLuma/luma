@@ -703,7 +703,10 @@ class Capture:
             layout = widget.get_layout()
             ink, logical = layout.get_pixel_extents()
             # A label drawn under a transform (a focused button lifted by scale) shows its words at that scale.
-            allocated = widget.get_width()
+            # Its own border box against its box on the window: get_width() is the content box, which a padded
+            # label (a count pill) would otherwise read as a scale.
+            own_ok, own = widget.compute_bounds(widget)
+            allocated = own.size.width if own_ok else widget.get_width()
             scale = rec["box"][2] / allocated if allocated > 0 and rec["box"][2] > 0 else 1.0
             scale = scale if abs(scale - 1.0) > 0.005 else 1.0
             rec.update(text=widget.get_text(), xalign=widget.get_xalign(), wrap=widget.get_wrap(),
@@ -856,7 +859,8 @@ class Capture:
         elif kind in ("outset-shadow", "inset-shadow"):
             outline = node.get_outline()
             ops.append({"k": "shadow", "inset": kind == "inset-shadow", "box": box(outline.bounds), "color": _node_rgba(node, node.get_color()),
-                        "dx": node.get_dx(), "dy": node.get_dy(), "blur": node.get_blur_radius(), "spread": node.get_spread(),
+                        "dx": round(node.get_dx() * unit, 2), "dy": round(node.get_dy() * unit, 2),
+                        "blur": round(node.get_blur_radius() * unit, 2), "spread": round(node.get_spread() * unit, 2),
                         "radius": sr(outline.corner), "op": round(opacity, 3)})
         elif kind == "text":
             font = node.get_font()
@@ -864,9 +868,13 @@ class Capture:
             metrics = font.get_metrics(None)
             off = node.get_offset()
             origin = mapper(Graphene.Rect().init(off.x, off.y, 0, 0))
+            # Under a scale (a picture drawn at its design size, shrunk to a thumbnail) the words show at that size.
+            drawn = _font(desc)
+            if abs(unit - 1.0) > 0.005 and drawn.get("size"):
+                drawn["size"] = round(drawn["size"] * unit, 4)
             ops.append({"k": "text", "box": box(node.get_bounds()), "x": round(origin.origin.x, 2), "baseline": round(origin.origin.y, 2),
-                        "ascent": round(metrics.get_ascent() / 1024, 2), "descent": round(metrics.get_descent() / 1024, 2),
-                        "font": _font(desc), "color": _node_rgba(node, node.get_color()), "glyphs": node.get_num_glyphs(), "op": round(opacity, 3)})
+                        "ascent": round(metrics.get_ascent() / 1024 * unit, 2), "descent": round(metrics.get_descent() / 1024 * unit, 2),
+                        "font": drawn, "color": _node_rgba(node, node.get_color()), "glyphs": node.get_num_glyphs(), "op": round(opacity, 3)})
         elif kind in ("texture", "texture-scale"):
             ops.append({"k": "texture", "box": box(node.get_bounds()), "op": round(opacity, 3)})
         elif kind == "fill" or kind == "stroke":

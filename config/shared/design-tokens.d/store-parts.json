@@ -7,14 +7,19 @@
         "tooltip_ink": "#16171a",
         "tooltip_shadow": "rgba(0, 0, 0, 0.5)",
         "checkbox_on": "oklch(from @luma_accent 0.62 0.14 h)",
-        "checkbox_on_ink": "#ffffff"
+        "checkbox_on_ink": "#ffffff",
+        "list_button_fill": "oklch(0.2 0.01 265 / 0.05)"
       },
       "dark": {
         "tooltip_surface": "#f4f4f6",
         "tooltip_ink": "#16171a",
         "tooltip_shadow": "rgba(0, 0, 0, 0.5)",
         "checkbox_on": "oklch(from @luma_accent 0.62 0.14 h)",
-        "checkbox_on_ink": "#ffffff"
+        "checkbox_on_ink": "#ffffff",
+        "list_button_fill": "rgba(255, 255, 255, 0.07)"
+      },
+      "high_contrast": {
+        "list_button_fill": "alpha(@window_fg_color, 0.12)"
       }
     },
     "inset": {
@@ -22,7 +27,7 @@
       "radius": 20,
       "card_padding": 16,
       "card_radius": 18,
-      "column_gap": 28,
+      "column_gap": 33,
       "row_gap": 4,
       "hair_inset": 16
     },
@@ -98,8 +103,12 @@
       "list_font_size": 12.5,
       "bar_radius": 12,
       "bar_padding_x": 14,
+      "bar_min_width": 64,
       "big_height": 40,
-      "big_radius": 12
+      "big_radius": 12,
+      "big_padding_x": 22,
+      "big_font_size": 14,
+      "big_gap": 8
     },
     "motion": {
       "disclosure_ms": 200,
@@ -116,7 +125,7 @@
       "disclosure_line": {
         "size": 12.5,
         "weight": 600,
-        "line_height": 1.28,
+        "line_height": 1.2,
         "tracking_em": 0,
         "tone": "muted"
       },
@@ -135,7 +144,7 @@
       "permission_word": {
         "size": 12.5,
         "weight": 600,
-        "line_height": 1.28,
+        "line_height": 1.2,
         "tracking_em": 0
       },
       "permission_reason": {

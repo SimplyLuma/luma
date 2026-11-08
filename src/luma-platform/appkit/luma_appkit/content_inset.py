@@ -36,7 +36,7 @@ INSET_PADDINGS = ("list", "card", "none")
 
 
 class Inset(Gtk.Box):
-    """A well. Children stack vertically; `spacing` is the gap between them."""
+    """A well. Children stack vertically; `spacing` is the gap between them (a list's rows are 4 apart)."""
 
     __gtype_name__ = "LumaUIInset"
 
@@ -48,6 +48,9 @@ class Inset(Gtk.Box):
         self.add_css_class("lumaui-inset")
         if padding != "list":
             self.add_css_class(padding)
+        if spacing is None and padding == "list":
+            from .lumaui_tokens import INSET
+            spacing = INSET["row_gap"]  # rows 4 apart (.dq-ranks row-gap)
         if spacing is not None:
             self.set_spacing(spacing)
 
@@ -144,7 +147,7 @@ class _Halves(Gtk.Widget):
 class TwoColumnInset(Inset):
     """An inset whose rows run in two columns with a 1 px hairline down the middle.
 
-    Depot `.dq-ranks.two`: 28 between the columns, 4 between rows, the hairline
+    Depot `.dq-ranks.two`: 33 between the columns, 4 between rows, the hairline
     16 short of the well's top and bottom edges (8 padding + 8). `set_columns(1)`
     stacks them (a phone) and the hairline disappears.
     """

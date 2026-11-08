@@ -69,7 +69,9 @@ class AppsPage(Page):
             title, words = rules.narrowed_line(world, self.narrowing)
             page.append(intro(title, words))
             items = rules.narrowed(world, self.narrowing)
-            page.append(self._ranks(items, lambda it: it.line, ranked=False) if items else empty())
+            ranks = self._ranks(items, lambda it: it.line, ranked=False) if items else empty()
+            ranks.add_css_class("dq-ranks-after")
+            page.append(ranks)
             return page
         page.append(intro("Apps", "For every screen you own"))
         tiles = Grid(lambda w: 2 if shell.is_compact() or w < 640 else 5, column_gap=12, row_gap=12, css="dq-cats")
@@ -78,7 +80,7 @@ class AppsPage(Page):
         page.append(tiles)
         page.append(section("Top apps", self._ranks(rules.top_apps(world), lambda it: " · ".join(
             x for x in (category_of(it), rules.rating_line(it)) if x), ranked=True)))
-        page.append(section("Recently added and updated", self._ranks(
+        page.append(section("Recently added and updated", follows=True, body=self._ranks(
             rules.recently_updated(world), lambda it: f"{category_of(it)} · {rules.short_date(it.app.updated)}",
             ranked=False)))
         return page

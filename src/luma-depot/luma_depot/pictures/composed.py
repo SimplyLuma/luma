@@ -45,13 +45,14 @@ def lock_screen(day: str | None = None) -> Gtk.Widget:
 
 def banner(glyph: str, name: str, text: str) -> Gtk.Widget:
     """The frosted chip near a frame's foot: the tweak's glyph, its name and what it does."""
-    chip = Gtk.Grid(column_spacing=8, halign=Gtk.Align.CENTER)
+    chip = Gtk.Grid(column_spacing=8, halign=Gtk.Align.CENTER)  # 1.4cqw of the 572 reference
     chip.add_css_class("dq-fchip")
     mark = icons.image(glyph)
     chip.attach(mark, 0, 0, 1, 2)
-    title = Gtk.Label(label=name, xalign=0)
+    # A frame is a gallery button's or a thumbnail's picture: a <button> centres its words.
+    title = Gtk.Label(label=name, xalign=0.5)
     title.add_css_class("title")
-    words = Gtk.Label(label=text, xalign=0)
+    words = Gtk.Label(label=text, xalign=0.5)
     words.add_css_class("text")
     chip.attach(title, 1, 0, 1, 1)
     chip.attach(words, 1, 1, 1, 1)
@@ -62,13 +63,16 @@ def off_on(glyph: str, off: str, on: str) -> Gtk.Widget:
     """Two frosted panels, OFF and ON, an arrow between them; the On one ringed in the accent."""
     row = Gtk.Box(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL, hexpand=True, vexpand=True)
     row.add_css_class("dq-ba")
+    inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, hexpand=True)  # centred, 4cqw apart
+    inner.add_css_class("dq-ba-row")
+    row.append(inner)
     for index, (word, text) in enumerate((("Off", off), ("On", on))):
         if index:
             arrow = icons.image("arrow-right")
             arrow.add_css_class("arrow")
             arrow.set_valign(Gtk.Align.CENTER)
-            row.append(arrow)
-        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, hexpand=True)
+            inner.append(arrow)
+        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
         panel.add_css_class("side")
         if index:
             panel.add_css_class("on")
@@ -83,7 +87,7 @@ def off_on(glyph: str, off: str, on: str) -> Gtk.Widget:
         words.add_css_class("text")
         for widget in (kicker, well, words):
             panel.append(widget)
-        row.append(panel)
+        inner.append(panel)
     return row
 
 
@@ -104,9 +108,10 @@ def composed_pictures(world: World, item: Item) -> list[Picture]:
                         lambda r: FramedPicture.phone(art, backdrop=art, screen=lock_screen(), radius=r), phone=True),
             ]
         # The tile's specimen, scaled up: a theme's window fills about three quarters of its desktop.
-        width = 300 if look.kind == "Icons" else 270
+        # .dq-frame.f-spec .dq-lspec > * { zoom: 1.9 } (1.3 for icons) in a panel 68% of a 572 frame: 389 wide.
+        width = round(389 / (1.3 if look.kind == "Icons" else 1.9))
         return [Picture("specimen", f"{look.name}",
-                        lambda r: FramedPicture.specimen_of(specimen(look), backdrop=prism, radius=r,
+                        lambda r: FramedPicture.specimen_of(specimen(look, centred=True), backdrop=prism, radius=r,
                                                             specimen_width=width))]
     tweak = item.tweak
     if tweak is None:
@@ -114,7 +119,8 @@ def composed_pictures(world: World, item: Item) -> list[Picture]:
     on_text = tweak.on_text or tweak.line
     pictures = [Picture("offon", f"{tweak.name}, off and on",
                         lambda r: FramedPicture.specimen_of(off_on(tweak.icon, tweak.off or "As Luma comes", on_text),
-                                                            backdrop=prism, radius=r, specimen_width=389))]
+                                                            backdrop=prism, radius=r, specimen_width=389,
+                                                            frost=20))]
     chip = lambda: banner(tweak.icon, tweak.name, on_text)  # noqa: E731
     if "desktop" in item.runs:
         icons_, _running = dock_for(world, world.item("app", "filer"))

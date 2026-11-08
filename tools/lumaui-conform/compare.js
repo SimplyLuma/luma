@@ -151,7 +151,17 @@ function gtkModel(G) {
   // wallpaper, is centred on whatever small image sits mid-window).
   // Glyphs are symbolic icons (Lucide, the kit's); an app's own full-colour icon is a picture, as the spec's <img> is.
   // App icons pair with the spec's <img> app icons as boxes (appIconRe); other full-colour pictures are left out.
-  const icons = ws.filter(w => (w.css === 'image' || appIconRe.test(w.icon || '')) && w.icon && vis(w) && (/-symbolic$/.test(w.icon) || appIconRe.test(w.icon))).map(w => { const b = B(w.box), gs = glyphs.filter(o => inside(B(o.box), b, 1) && (o.k === 'glyph' || (o.box[2] <= b.w + 2 && o.box[3] <= b.h + 2))), g = gs[0];
+  // Glyphs of something else drawn inside an image's box (a page's glyph under a floating bar's key) are not its own:
+  // when the glyphs there differ in colour, the image's are the group centred nearest its box.
+  // One drawing is one run of same-coloured glyph ops in snapshot order: two icons of one colour that overlap (a floating
+  // bar's key over a row's) are still two groups.
+  const glyphRun = new Map(); { let run = 0, prev = null;
+    for (const o of G.ops) { if (o.k === 'glyph') { const c = JSON.stringify(o.color || null); if (!prev || prev.k !== 'glyph' || JSON.stringify(prev.color || null) !== c) run++; glyphRun.set(o, run); } prev = o; } }
+  const ownGlyphs = (gs, b) => { const groups = new Map(); for (const o of gs) { const k = JSON.stringify(o.color || null) + (o.k === 'glyph' ? '#' + glyphRun.get(o) : ''); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(o); }
+    if (groups.size < 2) return gs; const [cx, cy] = center(b);
+    const off = os => { const u = os.map(o => B(o.geo || o.box)), x0 = Math.min(...u.map(r => r.x)), y0 = Math.min(...u.map(r => r.y)), x1 = Math.max(...u.map(r => r.x + r.w)), y1 = Math.max(...u.map(r => r.y + r.h)); return Math.hypot((x0 + x1) / 2 - cx, (y0 + y1) / 2 - cy); };
+    return [...groups.values()].sort((p, q) => off(p) - off(q))[0]; };
+  const icons = ws.filter(w => (w.css === 'image' || appIconRe.test(w.icon || '')) && w.icon && vis(w) && (/-symbolic$/.test(w.icon) || appIconRe.test(w.icon))).map(w => { const b = B(w.box), gs = ownGlyphs(glyphs.filter(o => inside(B(o.box), b, 1) && (o.k === 'glyph' || (o.box[2] <= b.w + 2 && o.box[3] <= b.h + 2))), b), g = gs[0];
     if (!gs.length || gs.every(o => (o.op ?? 1) <= 0.02)) return null; // never drawn, or at CSS opacity 0 (v70's hover-only copy buttons)
     const c = g && g.color ? parseColor(g.color) : parseColor(w.color); if (c && g) c.a = (c.a ?? 1) * (g.op ?? 1);
     const ink = gs.length ? gs.map(o => B(o.geo || o.box)).reduce((a, o) => { const x = Math.min(a.x, o.x), y = Math.min(a.y, o.y); return { x, y, w: Math.max(a.x + a.w, o.x + o.w) - x, h: Math.max(a.y + a.h, o.y + o.h) - y }; }) : b;

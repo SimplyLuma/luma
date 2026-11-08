@@ -194,7 +194,7 @@
       "gtk": [
         {
           "env": {
-            "LUMA_DEPOT_STATE": "item:app:bitwarden"
+            "LUMA_DEPOT_STATE": "place:apps;item:app:bitwarden"
           }
         }
       ]
@@ -213,7 +213,7 @@
       "gtk": [
         {
           "env": {
-            "LUMA_DEPOT_STATE": "item:look:theme-95"
+            "LUMA_DEPOT_STATE": "place:looks;item:look:theme-95"
           }
         }
       ]
@@ -232,7 +232,7 @@
       "gtk": [
         {
           "env": {
-            "LUMA_DEPOT_STATE": "item:tweak:battery-care"
+            "LUMA_DEPOT_STATE": "place:tweaks;item:tweak:battery-care"
           }
         }
       ]

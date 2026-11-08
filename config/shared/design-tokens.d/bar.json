@@ -68,7 +68,7 @@
         "key_width": 24
       },
       "search": {
-        "_doc": "v70 .fbar .srch well (.mnq, .mpq, #p-bar .srch): 36 tall at 12 on the well, 16 glyph, 13 text; the width is the part's own; at phone width it takes the span.",
+        "_doc": "v70 .fbar .srch well (.mnq, .mpq, #p-bar .srch): 36 tall at 12 on the well, 16 glyph, 13 text; the width is the part's own (narrow 220, v73 Depot's medium 240, regular 250, wide 300); at phone width it takes the span.",
         "height": 36,
         "radius": 12,
         "padding_start": 11,
@@ -81,6 +81,7 @@
         "label_size": 12,
         "focus_ring": 1.5,
         "width_narrow": 220,
+        "width_medium": 240,
         "folded_padding_x": 10
       },
       "readout": {

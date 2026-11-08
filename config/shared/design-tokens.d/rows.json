@@ -14,6 +14,13 @@
       "padding_top": 4, "padding_bottom": 12, "row_spacing": 1,
       "action_heading_top": 12, "action_heading_bottom": 4, "action_heading_padding_top": 12, "action_heading_padding_start": 20
     },
+    "nav_places": {
+      "_doc": "v73 Depot .dpside (220 wide, padding 4 10 10) with .si rows: 34 tall, 1 apart, a 17 px glyph in ink-3 (the accent ink when chosen), 11 from 13 px words in ink-2 at the frame's title weight (500 dark, 600 light). Headings .sh 11.5/600 in ink-3 (margin 18 10 6); a ruled one is .sh.dpsh, under a hairline the sidebar's full width (margin 12 -10 6, padding 12 20 0).",
+      "width": 220, "padding_top": 4, "padding_bottom": 10, "row_height": 34, "row_padding_x": 10, "row_gap": 11, "row_radius": 10,
+      "row_spacing": 1, "icon": 17, "title_size": 13,
+      "heading_size": 11.5, "heading_weight": 600, "heading_tracking": 0.115, "heading_line": 17, "heading_top": 18, "heading_bottom": 6, "heading_inset": 10,
+      "ruled_heading_top": 12, "ruled_heading_padding_top": 12, "ruled_heading_padding_start": 20
+    },
     "nav_settings": {
       "_doc": "v70 Settings .cfside (236 wide, padding 0 10 10; its own right padding is the gap to the island, so the frame's 8 comes out of its width) with .si rows at .cfside's 32: a 17 px glyph in ink-3 (the accent ink when chosen), 13/500 in ink-2, an 11.5 ink-4 value at the end (at most 92 wide), headings .sh 11.5/600 at 16 10 5.",
       "width": 236, "padding_x": 10, "padding_bottom": 10, "row_height": 32, "row_padding_x": 10, "row_gap": 11, "row_radius": 10,

@@ -145,3 +145,15 @@ The first-boot sheet departs from the Design Center mockup where the one-session
 - `first-boot-first-focus`: each page focuses its first field as it opens, so that field shows its focus ring; the mockup's pages open unfocused.
 - `first-boot-photo-button`: the photo button is exactly its avatar, so the avatar's gradient and ring are also reported under the button.
 - `first-boot-password-bullets`: the spec capture measures a password value's letters; both sides draw bullets.
+
+## Depot redesign (depot-*)
+
+Depot (`depot-redesign`) against the Design Center mockup:
+
+- `depot-your-apps`: the sidebar's foot holds "Your apps" (the developer portal, code-xml) for everyone; the mockup predates it and has no foot.
+- `depot-identity-chevron`: the mockup's Depot title row drops the app menu's chevron; the kit's identity keeps the app menu every window has.
+- `depot-identity-sidebar-button`: the same row, so the sidebar button sits after the chevron, up to 23 px further right.
+- `depot-95-tahoma`: the 95 theme's specimen asks for Tahoma, then MS Sans Serif; neither is installed, so both sides draw the sans-serif fallback and the spec reports the family it asked for.
+- `depot-story-photo-capture`: the capture's Design Center copy lacks `social-luma/photos`, so the spec's Today story is its gradient alone, while Depot and the Design Center draw the blurred photo on it. Surface colour of the story and its app strip only, on Today. `conform-serve.sh` copies the photos; remove this once the service is reinstalled.
+- `depot-specimen-panel`: FramedPicture draws a specimen's panel (round clip and drop shadow) in its own snapshot at the specimen's box, so the capture gives them to the Off and On panel itself; the mockup draws them on its parent at the same box. Radius and shadow of that panel only.
+- `depot-float-back-blur`: `no-backdrop-blur` for the item page's floating Back key over a picture, up to ΔE 5.
