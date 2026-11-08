@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261107.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261108.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -115,6 +115,12 @@ fi
 engine=%{buildroot}/opt/viola/browser
 install -d %{buildroot}/opt/viola
 mv engine "$engine"
+# The engine archive keeps the modes of the tree it was assembled in (setgid
+# 2750 directories and 0600 files from the native33/34 archives), which hides
+# the browser from every user but root. Package fixed modes instead.
+find "$engine" -type d -exec chmod u=rwx,go=rx,ug-s {} +
+find "$engine" -type f -perm /0111 -exec chmod u=rwx,go=rx {} +
+find "$engine" -type f ! -perm /0111 -exec chmod u=rw,go=r {} +
 mv "$engine/chrome-sandbox.packaged" "$engine/chrome-sandbox"
 chmod 4755 "$engine/chrome-sandbox"
 install -d %{buildroot}%{_bindir}
@@ -278,6 +284,9 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Sun Nov 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native42.creator20261108.1
+- Package the engine with fixed modes: 0755 directories without setgid, 0755/0644 files.
+
 * Sat Nov 07 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native42.creator20261107.1
 - x86 engine native34: source-built from the ARM engine's tree (0001-0004), with the host-drawn sign-in.
 
