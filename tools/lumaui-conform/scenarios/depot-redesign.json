@@ -3,6 +3,7 @@
   "title": "Depot (redesign, 7 Nov 2026)",
   "about": "The redesigned Depot (luma_depot.shell, LUMA_DEPOT_REDESIGN=1) against the approved mockup (Design Center mockups/apps/depot, current.html?app=depot) with the same sample data (tests/fixtures/depot-redesign). The old v70 Depot keeps scenarios/depot.json until it is removed.",
   "spec": {
+    "root": "design-center",
     "url": "mockups/current.html?desktop=1&app=depot&status=panel&mode=dark",
     "window": "#w-depot",
     "exclude": [
