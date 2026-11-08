@@ -27,3 +27,6 @@ luma-imager removed Imager remains an optional Depot application; covered in cha
 openemu-linux removed The optional emulator is omitted from the default install; covered in changes/creator-default-application-set-20261005.md.
 luma-session-instruments removed Studio instruments are installed separately; covered in changes/creator-default-application-set-20261005.md.
 sfizz removed The instrument engine is omitted with optional Studio instruments; covered in changes/creator-default-application-set-20261005.md.
+luma-vitals-energy 0.1.0-1.luma.16.fc44 Rebuilt unchanged with luma-vitals 1.luma.16; its payload is identical to 1.luma.15.
+luma-vitals-crash-evidence 0.1.0-1.luma.16.fc44 Rebuilt unchanged with luma-vitals 1.luma.16; its payload is identical to 1.luma.15.
+luma-vitals-power-guard 0.1.0-1.luma.16.fc44 Rebuilt unchanged with luma-vitals 1.luma.16; its payload is identical to 1.luma.15.

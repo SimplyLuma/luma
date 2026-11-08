@@ -12,7 +12,9 @@ import time
 
 from .agents import Notifier
 from .crashes import _field, _json_lines
-from .detectors import Event, friendly
+from .detectors import Event
+from .names import display_name
+from .sampler import container_unit
 
 # SD_MESSAGE_UNIT_FAILURE_RESULT, systemd259 unit.c: terminal failure outcome.
 UNIT_FAILURE_MESSAGE_ID = 'd9b373ed55a64feb8242e02dbe79a49c'
@@ -79,7 +81,7 @@ class MemoryWatch:
                 continue
             seen.append(identity)
             found.append(Event('out-of-memory', unit,
-                               f'{friendly(unit)} closed after running out of memory',
+                               f'{display_name(container_unit(unit))} closed after running out of memory',
                                {'source': 'systemd-user-final-result', 'cursor': _field(entry, '__CURSOR'),
                                 'invocation': invocation, 'boot_id': watch.boot_id}))
         watch.state.set('memory-seen', json.dumps(seen[-MAX_RECORDS:]))
@@ -87,9 +89,13 @@ class MemoryWatch:
 
 
 class MemoryFeedback:
-    def __init__(self, notifier=None, clock=time.monotonic):
+    def __init__(self, notifier=None, clock=time.monotonic, kill_notices_elsewhere=None):
         self.notifier = notifier or Notifier()
         self.clock = clock
+        #: True while something else in the session already names each
+        #: systemd-oomd kill (the housekeeping plugin, patched to post from
+        #: Monitor): the kill is recorded here and not announced twice.
+        self.kill_notices_elsewhere = kill_notices_elsewhere or (lambda: False)
         self.told = {}
         self.pending = {}
         self.next_pressure_notice = 0
@@ -104,7 +110,12 @@ class MemoryFeedback:
                 self.pending[event.unit] = event
         self.pending = dict(list(self.pending.items())[-MAX_RECORDS:])
         unique = list(self.pending)
-        names = [friendly(unit) for unit in unique]
+        if unique and self.kill_notices_elsewhere():
+            self.told.update({unit: now for unit in unique})
+            self.pending.clear()
+            self.next_pressure_notice = now + 300
+            return
+        names = [display_name(container_unit(unit)) for unit in unique]
         if names:
             if len(names) == 1:
                 title = f'{names[0]} closed because memory ran out'
@@ -119,6 +130,8 @@ class MemoryFeedback:
                 self.pending.clear()
                 self.next_pressure_notice = now + 300
         elif (not killed and now >= self.next_pressure_notice and
+              # The memory policy already told the person what it did.
+              not any(event.kind in ('memory-warning', 'memory-reclaimed') for event in events) and
               any(event.kind == 'memory-pressure' for event in events)):
             sent = self.notifier.notify('Memory is under pressure',
                                        'Save your work and close unused apps to help this computer stay responsive.')

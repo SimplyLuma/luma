@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Luma Vitals memory guard: reclaim tuned for swap on zram.
+#
+# Reading a page back from zram is a decompression, far cheaper than reading
+# a dropped file page back from disk, so anonymous memory may be swapped as
+# readily as cache is dropped (swappiness above 100 prefers swap, per
+# Documentation/admin-guide/sysctl/vm.rst). zram gains nothing from reading
+# neighbouring pages in, so swap readahead is one page. A larger watermark
+# gap lets kswapd reclaim in the background before allocations stall, and
+# watermark boosting, which only helps fragmentation on disk swap, is off.
+vm.swappiness = 180
+vm.page-cluster = 0
+vm.watermark_boost_factor = 0
+vm.watermark_scale_factor = 125

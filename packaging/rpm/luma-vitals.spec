@@ -2,7 +2,7 @@
 
 Name:           luma-vitals
 Version:        0.1.0
-Release:        1.luma.15.nightly20261026.1%{?dist}
+Release:        1.luma.16%{?dist}
 Summary:        What every application and service costs, and when one misbehaves
 License:        Apache-2.0 AND MPL-2.0
 URL:            https://projectluma.org/vitals
@@ -32,6 +32,9 @@ Recommends:     %{name}-energy = %{version}-%{release}
 # and telling the person.
 Requires:       systemd
 Requires:       glib2
+# The memory policy's notifications carry Close and Keep Open buttons, and the
+# answers arrive as session bus signals.
+Requires:       python3-gobject-base
 
 %description
 Luma Vitals samples the CPU, memory, swap and I/O of every application and
@@ -42,6 +45,13 @@ keeps a day of samples and a month of hourly totals locally, and writes an
 hourly report. `luma-vitals report` shows what cost the most. A background
 agent that grows past 2 GB (or 15% of memory) and keeps growing is restarted
 gracefully, and the person is told once.
+
+An app that holds a quarter of memory or keeps growing fast is named in a
+notification that offers to close it or keep it open. When memory and swap
+are both nearly full, before systemd-oomd would act, the app that is running
+away, or else the largest one not in use, is named once more and then closed
+gracefully; the focused app, one used in the last ten minutes and one the
+person chose to keep open are never closed.
 
 On battery it also records what the machine is drawing: the rate out of the
 battery, the charge left and the runtime that implies, the screen, and the
@@ -56,13 +66,21 @@ the charge. None of it runs on mains power.
 Summary:        Stop one app's runaway memory from stalling the whole desktop
 Requires:       systemd-oomd-defaults
 Requires:       zram-generator-defaults
+# The CIL module that lets systemd-oomd signal apps in a user namespace.
+Requires(post): policycoreutils
+Requires(post): selinux-policy-targeted
+Requires(postun): policycoreutils
 
 %description memory-guard
 System-wide memory policy for Luma: when used memory and swap both pass 90%,
 systemd-oomd stops the app or background agent holding the most swap (only
 in the apps' and background agents' slices, never the Shell or the session),
 and swap on zram is compressed with zstd, which holds about a third more than
-the kernel's default lzo-rle. The compositor has a best-effort 1 GiB memory
+the kernel's default lzo-rle, and sized as RAM up to 16 GiB, with reclaim tuned
+for it (swappiness 180, no swap readahead, an earlier kswapd). Every app
+scope, app service and universal-package container gets a soft 60% memory
+ceiling (MemoryHigh), and an SELinux module lets systemd-oomd stop an app in a
+user namespace. The compositor has a best-effort 1 GiB memory
 protection within the image's uresourced active-session budget, capped there
 to 10% of physical RAM. It does not allocate memory or set a hard reservation.
 
@@ -154,6 +172,17 @@ for slice in app.slice luma-background.slice; do
   grep -qx 'ManagedOOMSwap=kill' %{buildroot}%{_userunitdir}/$slice.d/60-luma-oomd-swap.conf
 done
 grep -qx 'compression-algorithm = zstd' %{buildroot}%{_prefix}/lib/systemd/zram-generator.conf.d/60-luma-zram-zstd.conf
+grep -qx 'zram-size = min(ram, 16384)' %{buildroot}%{_prefix}/lib/systemd/zram-generator.conf.d/60-luma-zram-zstd.conf
+grep -qx 'vm.swappiness = 180' %{buildroot}%{_prefix}/lib/sysctl.d/60-luma-memory.conf
+grep -qx 'vm.page-cluster = 0' %{buildroot}%{_prefix}/lib/sysctl.d/60-luma-memory.conf
+# A soft ceiling only, named below set-property's 50- so a run-time ceiling wins.
+grep -qx 'MemoryHigh=60%%' %{buildroot}%{_userunitdir}/app-.scope.d/40-luma-app-memory.conf
+grep -qx 'MemoryHigh=60%%' %{buildroot}%{_userunitdir}/libpod-.scope.d/40-luma-app-memory.conf
+grep -qx '\[Service\]' %{buildroot}%{_userunitdir}/app-.service.d/40-luma-app-memory.conf
+if grep -qE '^Memory(Max|SwapMax)=' %{buildroot}%{_userunitdir}/app-.s*.d/40-luma-app-memory.conf %{buildroot}%{_userunitdir}/libpod-.scope.d/40-luma-app-memory.conf; then exit 1; fi
+grep -qx '(allow systemd_oomd_t self (cap_userns (kill)))' %{buildroot}%{_datadir}/selinux/packages/luma_oomd.cil
+test -f %{buildroot}%{python3_sitelib}/luma_vitals/memory_policy.py
+test -f %{buildroot}%{python3_sitelib}/luma_vitals/session_bus.py
 grep -qx 'MemoryLow=1G' %{buildroot}%{_userunitdir}/org.gnome.Shell@.service.d/60-luma-compositor-memory.conf
 # This is reclaim protection, not a cap or a new OOM policy for the Shell.
 if grep -qE '^(Memory(Min|High|Max|SwapMax)|ManagedOOM[^=]*)=' %{buildroot}%{_userunitdir}/org.gnome.Shell@.service.d/60-luma-compositor-memory.conf; then exit 1; fi
@@ -186,6 +215,13 @@ grep -q '^-- e6f1229b2154445eaaf8f207d149fb1f$' %{buildroot}%{_prefix}/lib/syste
 
 %post crash-evidence
 %sysctl_apply 60-luma-crash-evidence.conf
+
+%post memory-guard
+%sysctl_apply 60-luma-memory.conf
+/usr/sbin/semodule -i %{_datadir}/selinux/packages/luma_oomd.cil
+
+%postun memory-guard
+if [ "$1" -eq 0 ]; then /usr/sbin/semodule -r luma_oomd; fi
 
 %files
 %license LICENSE.md
@@ -226,6 +262,14 @@ grep -q '^-- e6f1229b2154445eaaf8f207d149fb1f$' %{buildroot}%{_prefix}/lib/syste
 %{_prefix}/lib/systemd/zram-generator.conf.d/60-luma-zram-zstd.conf
 %dir %{_userunitdir}/org.gnome.Shell@.service.d
 %{_userunitdir}/org.gnome.Shell@.service.d/60-luma-compositor-memory.conf
+%dir %{_userunitdir}/app-.scope.d
+%{_userunitdir}/app-.scope.d/40-luma-app-memory.conf
+%dir %{_userunitdir}/app-.service.d
+%{_userunitdir}/app-.service.d/40-luma-app-memory.conf
+%dir %{_userunitdir}/libpod-.scope.d
+%{_userunitdir}/libpod-.scope.d/40-luma-app-memory.conf
+%{_prefix}/lib/sysctl.d/60-luma-memory.conf
+%{_datadir}/selinux/packages/luma_oomd.cil
 
 %files crash-evidence
 %license LICENSE.md
@@ -241,6 +285,18 @@ grep -q '^-- e6f1229b2154445eaaf8f207d149fb1f$' %{buildroot}%{_prefix}/lib/syste
 %{_prefix}/lib/bootc/kargs.d/60-luma-crash-evidence.toml
 
 %changelog
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.16
+- Memory policy for apps: warn about an app holding a quarter of memory or
+  growing fast, with Close and Keep Open; hold a growing app the person is not
+  using at its size; when memory and swap are both nearly full, warn once more
+  and close the app running away or the largest one not in use, never the
+  focused or recently used app
+- One notice for an app systemd-oomd stopped, by the app's name (a container
+  by what it runs); left to the housekeeping notice when that runs
+- memory-guard: zram sized min(ram, 16384), sysctl reclaim tuning for zram,
+  a soft 60% MemoryHigh for app scopes, app services and libpod scopes, and a
+  CIL module allowing systemd_oomd_t cap_userns kill
+
 * Mon Oct 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.15.nightly20261026.1
 - Package the October 26 shared source updates.
 

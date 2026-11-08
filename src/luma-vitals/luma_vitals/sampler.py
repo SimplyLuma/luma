@@ -23,6 +23,11 @@ class UnitSample:
     io_write: int
     #: The slices it runs in, below the session: "app.slice", "luma-background-essential.slice".
     slice: str = ""
+    #: The systemd unit, where ``unit`` names it for people (libpod-<id>.scope for <name>.container).
+    systemd_unit: str = ""
+
+    def __post_init__(self) -> None:
+        self.systemd_unit = self.systemd_unit or self.unit
 
 
 @dataclass
@@ -82,6 +87,20 @@ def container_names(proc: Path = Path("/proc")) -> dict[str, str]:
     return names
 
 
+#: Container id prefix -> name, kept after the container is gone, so a
+#: container systemd-oomd stopped is still named by what it ran.
+KNOWN_CONTAINERS: dict[str, str] = {}
+
+
+def container_unit(unit: str) -> str:
+    """libpod-<id>.scope -> <name>.container when the container was seen; otherwise unchanged."""
+    if unit.startswith("libpod-") and unit.endswith(".scope"):
+        name = KNOWN_CONTAINERS.get(unit[len("libpod-"):][:12])
+        if name:
+            return f"{name}.container"
+    return unit
+
+
 def units(root: Path) -> list[UnitSample]:
     """Every scope and service under the session, named by its leaf unit."""
     found = []
@@ -94,13 +113,20 @@ def units(root: Path) -> list[UnitSample]:
             continue
         subdirectories[:] = []  # a unit's own cgroup already includes its children
         path = Path(directory)
+        unit = name
         if name.startswith("libpod-") and not name.startswith("libpod-conmon-"):
-            if containers is None:
-                containers = container_names()
             identity = name[len("libpod-"):][:12]
-            if identity in containers:
-                name = f"{containers[identity]}.container"
-        found.append(_unit_sample(path, name, str(path.parent.relative_to(root)) if path.parent != Path(root) else ""))
+            if identity not in KNOWN_CONTAINERS:
+                if containers is None:
+                    containers = container_names()
+                    if len(KNOWN_CONTAINERS) > 1024:
+                        KNOWN_CONTAINERS.clear()
+                    KNOWN_CONTAINERS.update(containers)
+            if identity in KNOWN_CONTAINERS:
+                name = f"{KNOWN_CONTAINERS[identity]}.container"
+        sample = _unit_sample(path, name, str(path.parent.relative_to(root)) if path.parent != Path(root) else "")
+        sample.systemd_unit = unit
+        found.append(sample)
     return found
 
 

@@ -3,7 +3,9 @@ python = import('python').find_installation('python3')
 python.install_sources('luma_vitals/__init__.py', 'luma_vitals/agents.py', 'luma_vitals/battery_cli.py',
                        'luma_vitals/cli.py', 'luma_vitals/crashes.py', 'luma_vitals/detectors.py',
                        'luma_vitals/power.py', 'luma_vitals/memory_feedback.py',
-                       'luma_vitals/sampler.py', 'luma_vitals/service.py', 'luma_vitals/store.py',
+                       'luma_vitals/memory_policy.py', 'luma_vitals/names.py',
+                       'luma_vitals/sampler.py', 'luma_vitals/service.py', 'luma_vitals/session_bus.py',
+                       'luma_vitals/store.py',
                        subdir: 'luma_vitals')
 install_data('data/luma-vitals.service', install_dir: get_option('prefix') / 'lib/systemd/user')
 install_data('data/luma-vitals-daemon.in', install_dir: get_option('libexecdir'), rename: 'luma-vitals',
@@ -49,3 +51,12 @@ endforeach
 install_data('memory-guard/60-luma-zram-zstd.conf', install_dir: prefix_lib / 'systemd/zram-generator.conf.d')
 install_data('memory-guard/60-luma-compositor-memory.conf',
              install_dir: prefix_lib / 'systemd/user/org.gnome.Shell@.service.d')
+# A soft per-app ceiling (MemoryHigh) for app scopes, app services and the
+# containers universal packages run in.
+foreach unit : ['app-.scope', 'libpod-.scope']
+  install_data('memory-guard/40-luma-app-memory.conf', install_dir: prefix_lib / 'systemd/user' / (unit + '.d'))
+endforeach
+install_data('memory-guard/40-luma-app-memory-service.conf', install_dir: prefix_lib / 'systemd/user/app-.service.d',
+             rename: '40-luma-app-memory.conf')
+install_data('memory-guard/60-luma-memory.sysctl', install_dir: prefix_lib / 'sysctl.d', rename: '60-luma-memory.conf')
+install_data('memory-guard/luma_oomd.cil', install_dir: get_option('datadir') / 'selinux/packages')
