@@ -9,6 +9,7 @@ from gi.repository import Gtk  # noqa: E402
 
 from luma_appkit import Inset, icons
 
+from ..model import rules
 from ..parts.rows import rank_row
 from .base import Page, intro, label, section
 from .common import install_here, opener
@@ -30,7 +31,7 @@ class SearchPage(Page):
 
         switch = next(((name, ids) for name, ids in world.switching
                        if name.casefold() in q or q in name.casefold()), None)
-        apps = [it for it in world.items("app")
+        apps = [it for it in rules.listed_apps(world)
                 if hit(it) or any(q in name.casefold() for name in (it.app.alternatives or ()))]
         looks = [it for it in world.items("look") if hit(it)]
         tweaks = [it for it in world.items("tweak") if hit(it)]

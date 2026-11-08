@@ -74,10 +74,35 @@ def _package_kind(app: App) -> str:
 
 
 def _category(app: App) -> str:
-    for name in app.categories:
-        if name.casefold() in _KEYS:
+    """The listing's own category, or "": an app nobody filed is in no category shelf (never "Tools")."""
+    for name in (app.category_key, *app.categories):
+        if name and name.casefold() in _KEYS:
             return name.casefold()
-    return "tools"
+    return ""
+
+
+#: How many apps need real install counts before a list may say "Popular" and number them (Today shows six).
+MEASURED = 6
+
+
+def _popular(store: list[App], curated: tuple[str, ...], catalogue: Catalogue | None) -> tuple[tuple[str, ...], bool]:
+    """Store apps by real installs when enough have them; else the Hub's curated order, unranked (the old
+    window's `home_selection.popular_apps`, kept: measured first, then featured and collections, then the
+    Explore picks, then the other publishers' apps by name)."""
+    from ..home_selection import EXPLORE_SLUGS, catalogue_slug
+    measured = sorted((a for a in store if a.installs_total > 0),
+                      key=lambda a: (-a.installs_total, a.name.casefold(), a.app_id))
+    if len(measured) >= MEASURED:
+        return tuple(a.app_id for a in measured), True
+    ids = {a.app_id for a in store}
+    by_slug = {catalogue_slug(a): a.app_id for a in store}
+    order = [a.app_id for a in measured] + [i for i in curated if i in ids]
+    if catalogue is not None:
+        order += [a.app_id for a in (catalogue.featured,) if a is not None and a.app_id in ids]
+        order += [i for c in catalogue.collections for i in c.app_ids if i in ids]
+    order += [by_slug[s] for s in EXPLORE_SLUGS if s in by_slug]
+    order += [a.app_id for a in sorted(store, key=lambda a: (a.name.casefold(), a.app_id)) if a.tier != "luma"]
+    return tuple(dict.fromkeys(order)), False
 
 
 def _when(timestamp: int) -> str:
@@ -117,21 +142,29 @@ def _merge(provider: App, listing: App) -> App:
 
 
 def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], system_state=None,
-               listings=None, media=None) -> World:
+               listings=None, media=None, curated: tuple[str, ...] = ()) -> World:
+    """The world from the installer's catalogue (its listings and every app installed here, Android and
+    other local packages included) and the signed v1 listings. Store lists read only Depot listings
+    (`World.store`): the v1 listings once they are here (the Hub is their source), until then the
+    installer's own signed catalogue. Local apps stay in `apps` for the Library and their pages."""
     here = Device("here", device_name(), _form())
     apps = []
     v1_apps, v1_looks, v1_tweaks, _story = listings or ([], [], [], {})
     by_id = {a.app_id: a for a in v1_apps}
-    seen = set()
+    seen = {}  # v1 listing id -> the world's id for it
     provided = list(catalogue.apps if catalogue else ())
     merged = []
     for app in provided:
         listing = by_id.get(app.app_id) or by_id.get(app.flatpak_id) or by_id.get(app.slug)
         merged.append(_merge(app, listing) if listing is not None else app)
         if listing is not None:
-            seen.add(listing.app_id)
+            seen[listing.app_id] = app.app_id
     # listed in v1 but unknown to the installer's catalogue: shown, never installed from a ref
     merged += [replace(a, installable=False) for a in v1_apps if a.app_id not in seen]
+    if v1_apps:
+        store_ids = set(seen.values()) | {a.app_id for a in v1_apps if a.app_id not in seen}
+    else:
+        store_ids = {a.app_id for a in provided if a.app_id.startswith("catalog:")}
     for app in merged:
         if app.unlisted:
             continue
@@ -142,7 +175,9 @@ def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], 
                                   _size(record.update_bytes),
                                   (record.update_summary,) if record.update_summary else ())
                     for app_id, record in installed.items() if record.has_update)
-    popular = tuple(app.app_id for app in sorted(apps, key=lambda a: (a.installs_total, a.rating_count), reverse=True))
+    store = tuple(a.app_id for a in apps if a.app_id in store_ids)
+    popular, measured = _popular([a for a in apps if a.app_id in store_ids],
+                                 tuple(seen.get(i, i) for i in curated), catalogue)
     rollback = []
     if system_state is not None and getattr(system_state, "rollback_available", False):
         rollback.append(DoneRow("luma", system_state.booted_name or "Luma", "", device_name()))
@@ -152,7 +187,7 @@ def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], 
                       _story.get("art", ""), int(_story.get("hue", 0) or 0))
     return World(forms=FORMS, devices=(here,), here="here", categories=CATEGORIES, apps=tuple(apps),
                  looks=tuple(v1_looks), tweaks=tuple(v1_tweaks), media=media, story=story,
-                 popular=popular, installed={"here": tuple(installed)}, pending=pending, done=tuple(rollback),
+                 popular=popular, popular_measured=measured, store=store, installed={"here": tuple(installed)}, pending=pending, done=tuple(rollback),
                  auto={"apps": True, "luma": bool(getattr(system_state, "automatic_download", True)), "matched": False},
                  system=_system(system_state), kept=tuple(a.app_id for a in apps if a.app_id in installed))
 
@@ -168,6 +203,7 @@ class LiveStore(Store):
         self.installed: dict[str, InstalledApp] = {}
         self.busy: set[str] = set()
         self.listings = None
+        self.curated: tuple[str, ...] = ()
         from .catalogue_v1 import MediaCache
         self.media = MediaCache(on_ready=self._rebuild)
         self._load_listings()
@@ -204,13 +240,13 @@ class LiveStore(Store):
             document = catalogue_v1.load()
             if document is None:
                 return
-            listings = catalogue_v1.parse(document)
-            GLib.idle_add(lambda: (self._listed(listings), False)[1])
+            listings, curated = catalogue_v1.parse(document), catalogue_v1.curated(document)
+            GLib.idle_add(lambda: (self._listed(listings, curated), False)[1])
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _listed(self, listings) -> None:
-        self.listings = listings
+    def _listed(self, listings, curated: tuple[str, ...] = ()) -> None:
+        self.listings, self.curated = listings, curated
         apps, looks, tweaks, _story = listings
         urls = [a.icon_url for a in apps] + [s for a in apps for s in a.shot_keys] + [a.mark for a in apps]
         urls += [x.art for x in looks] + [listings[3].get("art", "")]
@@ -219,7 +255,7 @@ class LiveStore(Store):
 
     def _rebuild(self) -> None:
         self.world = world_from(self.catalogue, self.installed, self.system.state if self.system else None,
-                                listings=self.listings, media=self.media.path)
+                                listings=self.listings, media=self.media.path, curated=self.curated)
         self.on_world(self.world)
 
     # ── apps ──────────────────────────────────────────────────────────────

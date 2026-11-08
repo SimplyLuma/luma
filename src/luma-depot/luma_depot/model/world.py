@@ -216,6 +216,12 @@ class World:
     looks: tuple[Look, ...] = ()
     tweaks: tuple[Tweak, ...] = ()
     popular: tuple[str, ...] = ()
+    #: `popular` is ranked by real install counts. When it is not, it is the catalogue's curated order and the
+    #: pages say "Explore apps" without numbers.
+    popular_measured: bool = True
+    #: The apps that are Depot listings (store lists show only these); None: every app is one (the fixture).
+    #: Local apps (Android, other packages) are in `apps` for the Library and their pages, never in store lists.
+    store: tuple[str, ...] | None = None
     installed: dict[str, tuple[str, ...]] = field(default_factory=dict)
     matched: tuple[str, ...] = ()
     pending: tuple[PendingUpdate, ...] = ()
@@ -244,6 +250,10 @@ class World:
         if self.media is not None:
             return self.media(url)
         return url if Path(url).is_file() else None
+
+    def listed(self, app_id: str) -> bool:
+        """A Depot listing, shown in store lists (Today, Apps, categories, search)."""
+        return self.store is None or app_id in self.store
 
     def device(self, device_id: str) -> Device:
         return next(device for device in self.devices if device.id == device_id)

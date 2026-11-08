@@ -42,17 +42,19 @@ class TodayPage(Page):
                                    on_action=(lambda: None) if here else install_here(shell, "app", item.id)))
         popular = Inset()
         for rank, item in enumerate(rules.today_popular(world), 1):
-            popular.append(rank_row(world, item, " · ".join(x for x in (world.category(item.category).name,
+            popular.append(rank_row(world, item, " · ".join(x for x in (rules.category_name(world, item),
                                                                          rules.rating_line(item)) if x),
-                                    rank=rank, on_open=opener(shell, "app", item.id),
+                                    rank=rank if world.popular_measured else None,
+                                    on_open=opener(shell, "app", item.id),
                                     on_install=install_here(shell, "app", item.id)))
         fresh = Inset()
         for item in rules.today_fresh(world):
-            fresh.append(rank_row(world, item, f"{world.category(item.category).name} · {rules.short_date(item.app.updated)}",
+            fresh.append(rank_row(world, item, " · ".join(x for x in (rules.category_name(world, item),
+                                                                       rules.short_date(item.app.updated)) if x),
                                   rank=None, on_open=opener(shell, "app", item.id),
                                   on_install=install_here(shell, "app", item.id)))
         two = Grid(lambda w: 1 if compact or w < 640 else 2, column_gap=32, row_gap=0, css="dq-two")
-        two.append(section("Popular", popular, more=("See all", lambda: shell.go("apps"))))
+        two.append(section(rules.popular_title(world, "Popular"), popular, more=("See all", lambda: shell.go("apps"))))
         two.append(section("New and updated", fresh, follows=True))
         page.append(two)
         looks = sorted(world.items("look"), key=lambda it: it.users, reverse=True)

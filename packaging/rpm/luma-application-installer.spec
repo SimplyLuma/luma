@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.90%{?dist}
+Release:        1.luma.91%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -289,6 +289,14 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.91
+- Depot's store lists (Today, Apps, categories, search) show only Depot
+  catalogue listings; Android and other local apps stay in the Library.
+  Popular and Top apps are ranked only by real install counts, otherwise
+  "Explore apps" in the catalogue's curated order. Unfiled apps are no longer
+  called Tools, and launchers that aren't apps (folder shortcuts, developer
+  scripts) are left out.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.90
 - The host accepts lifecycle events from the redesigned Depot window
   (DepotShell), so its launches reach the journal again.
