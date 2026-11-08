@@ -47,6 +47,13 @@ cp -R "$repo_root/src/luma-android/luma_android" "$source_dir/tests/dependencies
 install -m0644 "$repo_root/LICENSES/GPL-3.0-or-later.txt" "$source_dir/tests/dependencies/COPYING.GPL-3.0"
 
 cp "$repo_root/src/luma-depot/data/depot.css" "$source_dir/data/depot.css"
+# The redesigned Depot (opt-in until it reaches every flow): its sheet, Luma's own
+# screenshots, the category photos and the rooms phones are pictured in.
+cp "$repo_root/src/luma-depot/data/depot-redesign.css" "$repo_root/src/luma-depot/data/luma-logo-white.svg" \
+  "$source_dir/data/"
+cp -R "$repo_root/src/luma-depot/data/screenshots" "$repo_root/src/luma-depot/data/photos" \
+  "$repo_root/src/luma-depot/data/rooms" "$source_dir/data/"
+install -D -m 0644 "$repo_root/src/luma-depot/data/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg" "$source_dir/data/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg"
 install -D -m 0644 "$repo_root/src/luma-depot/data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg" \
   "$source_dir/data/icons/hicolor/scalable/apps/org.projectluma.Depot-tv.svg"
 # Depot's code ships inside this package, so Depot's tests have to come with
@@ -56,6 +63,8 @@ cp "$repo_root/src/luma-depot/tests/"test_*.py "$source_dir/tests/"
 install -d "$source_dir/tests/fixtures"
 install -m 0644 "$repo_root/tests/fixtures/depot-v70.json" \
   "$repo_root/tests/fixtures/valet-v70.json" "$source_dir/tests/fixtures/"
+install -D -m 0644 "$repo_root/tests/fixtures/depot-redesign/world.json" \
+  "$source_dir/tests/fixtures/depot-redesign/world.json"
 find "$source_dir/luma_depot" "$source_dir/luma_installer" "$source_dir/tests" \
   -type d -name __pycache__ -prune -exec rm -rf {} +
 # Project Luma's own listings stay private until each is public; only the seed

@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
-from luma_monitor.live_data import process_groups,resource_facts
+from luma_monitor.live_data import process_groups,resource_facts,save_view,load_view
 
 
 class LiveDataTests(unittest.TestCase):
@@ -39,3 +39,28 @@ class LiveDataTests(unittest.TestCase):
             self.assertEqual(dict(facts['mem'])['zram'],'1.0 GB → 380 MB')
             self.assertEqual(dict(facts['en'])['Draw'],'12.8 W')
             self.assertEqual(before,{p:p.read_bytes() for p in root.rglob('*') if p.is_file()})
+
+    def test_cached_view_keeps_the_list_but_no_process_identities(self):
+        apps=[{'id':'app:org.example.Editor','n':'Editor','icon':'org.example.Editor','sub':'2 processes · 9 threads',
+               'procs':[['editor',4242,1.5,80.0],['editor-helper',4243,None,20.0]],'th':9,'cpu':1.5,'mem':100.0,'disk':None,'net':None,'en':None}]
+        groups=[{'id':'bg','n':'Background services','why':'Helpers','p':[['indexer',77,'nick',0.0,5.0,1]],'total':1,'kernel':False}]
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'cache/luma-monitor/last-view.json'
+            self.assertTrue(save_view(path,apps,groups))
+            self.assertEqual(path.stat().st_mode&0o777,0o600)
+            text=path.read_text()
+            for private in ('editor-helper','4242','indexer','nick'):self.assertNotIn(private,text)
+            cached_apps,cached_groups=load_view(path)
+        self.assertEqual([(a['id'],a['n'],a['sub'],a['cpu'],a['mem'],a['disk'],len(a['procs'])) for a in cached_apps],
+                         [('app:org.example.Editor','Editor','2 processes · 9 threads',1.5,100.0,None,2)])
+        self.assertEqual([(g['id'],g['total'],g['p']) for g in cached_groups],[('bg',1,[])])
+
+    def test_unusable_cached_view_is_ignored(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'last-view.json'
+            self.assertIsNone(load_view(path))
+            for text in ('{','[]','{"version":0,"apps":[],"groups":[]}','{"version":1,"apps":[{"id":"x"}],"groups":[]}',
+                         '{"version":1,"apps":[{"id":"x","n":"X","icon":"x","count":0,"th":1}],"groups":[]}',
+                         '{"version":1,"apps":[],"groups":[]}'+' '*(300*1024)):
+                path.write_text(text)
+                self.assertIsNone(load_view(path),text[:60])

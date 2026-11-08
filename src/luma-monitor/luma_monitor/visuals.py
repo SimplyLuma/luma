@@ -241,13 +241,15 @@ class ActivityRow(Gtk.Box):
         while child:
             child.set_focusable(False);child=child.get_next_sibling()
         words.append(title)
-        if not phone:words.append(label(app['sub'],'caption',css='mn-subtitle'))
+        self.subtitle=None if phone else label(app['sub'],'caption',css='mn-subtitle')
+        if self.subtitle:words.append(self.subtitle)
         identity.append(words);line.append(identity)
         self.counters=[]
         for text in ([len(app['procs']),app['th']] if all_processes else []):
             cell=label(text,'caption',end=True);cell.set_size_request(64,-1);cell.set_visible(all_processes);self.counters.append(cell);line.append(cell)
         metric=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=5,valign=Gtk.Align.CENTER,width_request=128)
-        metric.append(label(value,end=True,css='mn-value'));metric.append(ProgressLine(fraction,tone='chart',label=app['n']+' resource use'));line.append(metric)
+        self.value=label(value,end=True,css='mn-value');self.meter=ProgressLine(fraction,tone='chart',label=app['n']+' resource use')
+        metric.append(self.value);metric.append(self.meter);line.append(metric)
         # The disclosure is a separate keyboard-operable button, never a button inside a button.
         self.disclosure=Gtk.Button(child=disclosure_icon(expanded),tooltip_text='Show its processes',width_request=26,height_request=26,valign=Gtk.Align.CENTER)
         self.disclosure.set_name('mn-expand-'+app['id']);self.disclosure.add_css_class('mn-disclosure')
@@ -260,6 +262,14 @@ class ActivityRow(Gtk.Box):
         if not phone:self.disclosure.set_halign(Gtk.Align.END);self.disclosure.set_margin_end(12);outer.add_overlay(self.disclosure)
         self.append(outer)
         self.update_property([Gtk.AccessibleProperty.LABEL],[app['n']])
+
+    def update(self, app, value, fraction):
+        """A new reading for the same app: refill the figures, keep the widgets."""
+        if self.value.get_label()!=value:self.value.set_label(value)
+        self.meter.set_fraction(fraction)
+        if self.subtitle and self.subtitle.get_label()!=app['sub']:self.subtitle.set_label(app['sub'])
+        for cell,text in zip(self.counters,[len(app['procs']),app['th']]):
+            if cell.get_label()!=str(text):cell.set_label(str(text))
 
 
 from gi.repository import Gio

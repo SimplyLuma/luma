@@ -16,7 +16,7 @@
 # not relicensed here.
 Name:           luma-monitor
 Version:        0.1.0
-Release:        1.luma.19%{?dist}
+Release:        1.luma.20%{?dist}
 Summary:        Native application activity monitor for Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/
@@ -94,7 +94,7 @@ grep -Fxq 'Exec=%{_bindir}/io.luma.Monitor' %{buildroot}%{_datadir}/dbus-1/servi
 test -f %{buildroot}%{_datadir}/%{name}/data/monitor.css
 test -f %{buildroot}%{_datadir}/%{name}/data/machine.css
 %{python3} counted-unittest.py --self-test
-PYTHONPATH=$PWD/src/luma-monitor %{python3} counted-unittest.py src/luma-monitor/tests 88
+PYTHONPATH=$PWD/src/luma-monitor %{python3} counted-unittest.py src/luma-monitor/tests 90
 # The installed tree imports as the launcher imports it, and the stylesheets
 # the app resolves from its own location are there.
 PYTHONPATH= %{python3} -c "
@@ -113,6 +113,9 @@ dbus-run-session -- xvfb-run -a --server-args="-screen 0 1800x1000x24" env GSK_R
 dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$PWD/data/monitor.css PYTHONPATH=$PWD %{python3} tests/runtime_smoke.py
 dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$PWD/data/monitor.css PYTHONPATH=$PWD %{python3} tests/responsive_smoke.py
 dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$PWD/data/monitor.css PYTHONPATH=$PWD %{python3} tests/machine_runtime.py
+# Window map to first app rows painted on a desktop-sized process table: a
+# relaunch over the last list within 200 ms, a first launch within 800 ms.
+%{python3} tests/first_entries.py --budget-ms 200 --cold-budget-ms 800
 
 %files
 %{_libexecdir}/luma-app-launchers/io.luma.Monitor
@@ -126,6 +129,12 @@ dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$
 %{_datadir}/dbus-1/services/org.projectluma.MonitorHost1.service
 
 %changelog
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.20
+- Open on the last app list, greyed until the first live reading replaces it
+- Paint the first rows of a long list first and update rows in place each second
+- Drop the host service's CPU quota; reuse samples and verified callers instead
+- Check window-map to first rows painted in %%check
+
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.19
 - Require the developer platform that ships the shared application launcher.
 

@@ -19,6 +19,15 @@ in the panel above the row.
                           action="Delete", on_confirm=lambda also: delete())
     DestructiveDialog.in_bar(center, title="Delete 3 photos?", body="They're removed from every device.",
                              action="Delete", on_confirm=delete)
+
+A decision that is not destructive (Depot's release channel: "Join Beta?")
+uses the same card with `destructive=False`: a neutral icon and the key
+button for the action (v73 `lConfirm` with `o.key`). `Confirm` is the
+semantic name for both forms.
+
+    Confirm.ask(button, title="Join Beta?", icon="git-branch", action="Join Beta", destructive=False,
+                body="This computer will get Beta builds about once a week, before they reach Stable.",
+                on_confirm=lambda _checked: join("beta"))
 """
 from __future__ import annotations
 
@@ -35,7 +44,7 @@ from .structure_layers import LayerHost, ModalHandle  # noqa: E402
 
 _COLUMN = DIALOG["width"] - 2 * DIALOG["padding_x"]  # v70 lConfirm: the words wrap at 300
 
-__all__ = ["DestructiveDialog"]
+__all__ = ["Confirm", "DestructiveDialog"]
 
 _VAGUE = {"ok", "okay", "yes", "confirm", "continue"}
 
@@ -46,13 +55,16 @@ class DestructiveDialog(Gtk.Box):
     __gtype_name__ = "LumaUIDestructiveDialog"
 
     def __init__(self, *, title: str, body: str, action: str = "Delete", icon: str = "trash-2",
-                 option: str | None = None) -> None:
+                 option: str | None = None, destructive: bool = True) -> None:
         if not title.strip() or title.strip().lower().startswith("are you sure"):
             raise ValueError("a destructive dialog's title is the question, naming the thing")
         if action.strip().lower() in _VAGUE:
             raise ValueError("name the action for what it does (Delete, Leave, Uninstall), never OK")
         super().__init__(orientation=Gtk.Orientation.VERTICAL, accessible_role=Gtk.AccessibleRole.ALERT_DIALOG)
         self.add_css_class("lumaui-dialog")
+        self.destructive = destructive
+        if not destructive:
+            self.add_css_class("key")
         self.on_confirm: Callable[[bool], None] | None = None
         self.on_cancel: Callable[[], None] | None = None
         self.handle: ModalHandle | None = None
@@ -123,9 +135,10 @@ class DestructiveDialog(Gtk.Box):
     def ask(cls, where: Gtk.Widget, *, title: str, body: str, action: str = "Delete",
             icon: str = "trash-2", option: str | None = None,
             on_confirm: Callable[[bool], None] | None = None,
-            on_cancel: Callable[[], None] | None = None) -> "DestructiveDialog":
-        """Ask over the window `where` is in. `on_confirm(option_checked)` runs on the red action."""
-        dialog = cls(title=title, body=body, action=action, icon=icon, option=option)
+            on_cancel: Callable[[], None] | None = None, destructive: bool = True) -> "DestructiveDialog":
+        """Ask over the window `where` is in. `on_confirm(option_checked)` runs on the action
+        (red when `destructive`, the key when not)."""
+        dialog = cls(title=title, body=body, action=action, icon=icon, option=option, destructive=destructive)
         dialog.on_confirm, dialog.on_cancel = on_confirm, on_cancel
         dialog.present(where)
         return dialog
@@ -195,3 +208,24 @@ class DestructiveDialog(Gtk.Box):
             self.handle.close()
         if self.on_confirm is not None:
             self.on_confirm(checked)
+
+
+class Confirm(DestructiveDialog):
+    """The confirmation, by its semantic name: `destructive=False` is the key form (a neutral icon)."""
+
+    __gtype_name__ = "LumaUIConfirm"
+
+    def __init__(self, *, title: str, body: str, action: str, icon: str | None = None,
+                 option: str | None = None, destructive: bool = True) -> None:
+        super().__init__(title=title, body=body, action=action, option=option, destructive=destructive,
+                         icon=icon or ("trash-2" if destructive else "circle-check"))
+
+    @classmethod
+    def ask(cls, where: Gtk.Widget, *, title: str, body: str, action: str = "Delete",
+            icon: str | None = None, option: str | None = None,
+            on_confirm: Callable[[bool], None] | None = None,
+            on_cancel: Callable[[], None] | None = None, destructive: bool = True) -> "Confirm":
+        dialog = cls(title=title, body=body, action=action, icon=icon, option=option, destructive=destructive)
+        dialog.on_confirm, dialog.on_cancel = on_confirm, on_cancel
+        dialog.present(where)
+        return dialog

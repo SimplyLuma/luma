@@ -9,17 +9,17 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 41
-# The native host is shared. ARM uses the source-built engine; x86 keeps its
-# existing engine and original release identity.
+%global native_release 42
+# The native host is shared. Both CPUs use source-built engines from the same
+# tree (engine patches 0001-0004); each has its own release number.
 %ifarch aarch64
 %global engine_release 33
 %global approved_release 20261107-native33-arm-desktop
 %global engine_sha256 3697e5d9203302378984e82bab96d65bc2966752aaad1b1329b55d8651f5a1c8
 %else
-%global engine_release 30
-%global approved_release 20260921-native-30
-%global engine_sha256 d6a87f43aff38963678dcfd0f89223fdc798193745dac99df4882c03938feff1
+%global engine_release 34
+%global approved_release 20261107-native34-x86-desktop
+%global engine_sha256 13094f67db88906aaef720f2a8c9ec6dde9358169841f1ccbf9163eee3b5e7ed
 %endif
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
@@ -278,6 +278,9 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Sat Nov 07 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native42.creator20261107.1
+- x86 engine native34: source-built from the ARM engine's tree (0001-0004), with the host-drawn sign-in.
+
 * Sat Nov 07 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native41.creator20261107.1
 - Ask for a site's HTTP sign-in in the bar: the engine hands the login request to the host (ARM engine native33).
 - ARM engine native33: native32 with one tab in a new private window and the host-drawn sign-in.

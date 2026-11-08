@@ -51,3 +51,5 @@
 .mn-series-marker { border-radius: 3px; }
 .mn-series-marker.primary { background: @luma_monitor_chart_primary; }
 .mn-series-marker.secondary { background: @luma_monitor_chart_secondary; }
+/* The last list, shown until the first live reading replaces it. */
+#mn-list.mn-stale { opacity: .55; }

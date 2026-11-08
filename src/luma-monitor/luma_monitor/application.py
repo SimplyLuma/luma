@@ -39,15 +39,23 @@ from luma_appkit import (AppWindow,Island,ToastHost,Toast,TableHeader,Column,Sel
 from luma_appkit.action_bubble import FloatingMenu,MenuItem,float_at
 from luma_appkit import lumaui,lumaui_tokens
 from .visuals import label,ResourceChart,ResourceCells,ActivityRow,CoreMeter,mark_selected,app_icon,disclosure_icon,PhoneCells
+from .live_data import load_view,save_view
 
 APP_ID='io.luma.Monitor.LumaUIPreview' if os.environ.get('LUMA_MONITOR_FIXTURE') or os.environ.get('LUMA_MONITOR_PREVIEW') else 'io.luma.Monitor'
 RESOURCE_NAMES={'cpu':'CPU','mem':'Memory','disk':'Disk','net':'Network','en':'Energy'}
 RESOURCES=[('cpu','CPU','cpu'),('mem','Memory','layers'),('disk','Disk','hard-drive'),('net','Network','wifi'),('en','Energy','battery-medium')]
 MAXIMUM={'cpu':30,'mem':2400,'disk':90,'net':5,'en':45}
+# Rows laid out before a new list's first paint, then per frame after it. Each
+# app row costs several milliseconds of first layout; a window shows about ten.
+FIRST_ROWS=10
 
 
 def clear(box):
     while box.get_first_child():box.remove(box.get_first_child())
+
+
+def view_path():
+    return Path(GLib.get_user_cache_dir())/'luma-monitor'/'last-view.json'
 
 
 class MonitorWindow(AppWindow):
@@ -68,6 +76,13 @@ class MonitorWindow(AppWindow):
         self.sample_failed=False
         self.histories={k:deque(maxlen=60) for k in RESOURCE_NAMES}
         if self.fixture:self._fixture_history()
+        # Ask for the first reading before building any widgets; the window
+        # opens on the last list it showed, greyed until live rows replace it.
+        self.stale=False;self.app_rows={};self.view_saved=False;self.rows_job=0;self._rendered_phone=None
+        if not self.fixture:
+            self._sample()
+            cached=load_view(view_path())
+            if cached:self.apps,self.groups=cached;self.stale=True
         commands=CommandRegistry((CommandGroup(None,(
             Command('monitor.find','Find an app or process',lambda:self._active_search().focus(),'search',shortcut=('Ctrl','F')),
             Command('monitor.quit','Quit Monitor',self.close,'log-out',shortcut=('Ctrl','Q')),
@@ -98,11 +113,10 @@ class MonitorWindow(AppWindow):
         key=Gtk.EventControllerKey();key.connect('key-pressed',self._key);self.add_controller(key)
         self._render()
         # v71 tiers: under 560 the phone shape (a picker in the bar, wells, the detail shown); crossing redraws.
-        self.tier_watch.connect('tier-changed',lambda *_:self._render())
+        self.tier_watch.connect('tier-changed',lambda *_:self._render() if self._phone()!=self._rendered_phone else None)
         # A window between 560 and 680 has no sidebar either, so its bar carries the picker too.
         self.connect('notify::phone-layout',lambda *_:(self._render_bar(),self._render_body(),self._adapt()))
         if initial_query:self.search.entry.set_text(initial_query)
-        if not self.fixture:self._sample()
 
     def _fixture_history(self):
         t=self.totals
@@ -178,7 +192,7 @@ class MonitorWindow(AppWindow):
         return (f"At this pace, the battery lasts about {4 if t['en']>60 else 6} hours.",f'{top} uses the most energy'+(f' · {awake} is keeping the screen awake' if awake else ''))
 
     def _render_body(self):
-        clear(self.hero);clear(self.list);self._narrow_widgets=[];self.core_grid=None;self.advanced_grid=None
+        clear(self.hero);clear(self.list);self._narrow_widgets=[];self.core_grid=None;self.advanced_grid=None;self.app_rows={};self.reveal_text=None
         phone=self._phone();everything=self._all()
         # v71 retains the content gutter on phones; only the top spacing changes.
         for side in ('start','end'):getattr(self.page,'set_margin_'+side)(lumaui_tokens.MONITOR['content_gutter'])
@@ -188,7 +202,9 @@ class MonitorWindow(AppWindow):
         plot=Gtk.Overlay();self.chart=ResourceChart(self.histories[self.resource],self._chart_max(self.resource),stacked=self.resource in ('cpu','mem'),single=self.resource=='en',height=120 if phone else 150)
         self.chart.set_name('mn-chart');plot.set_child(self.chart)
         caption=label('60 s','caption',css='mn-chart-caption');caption.set_halign(Gtk.Align.START);caption.set_valign(Gtk.Align.END);caption.set_margin_start(12);caption.set_margin_bottom(8);plot.add_overlay(caption);self.hero.append(Card(plot,recessed=True,padded=False))
-        self._stats()
+        self.stats=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.hero.append(self.stats);self._stats()
+        # A cached list is shown until the first live reading; it can't be acted on.
+        self.list.set_sensitive(not self.stale);(self.list.add_css_class if self.stale else self.list.remove_css_class)('mn-stale')
         cols=[Column('n','Apps',expand=True)]
         if everything and not phone:cols += [Column(None,'Procs',width=64,end=True),Column(None,'Threads',width=64,end=True)]
         cols += [Column('v', 'Energy impact' if self.resource=='en' else RESOURCE_NAMES[self.resource],width=128,end=True),Column(None,'',width=26)]
@@ -199,26 +215,75 @@ class MonitorWindow(AppWindow):
         # v71 phone: no sort header (it still aligns the rows' columns, so it stays, hidden).
         self.header.set_visible(not phone)
         if everything and not phone:self._narrow_widgets.extend(self.header.cells[1:3])
-        for app in sorted_apps(self._visible_apps(),self.resource,key=sort[0],descending=sort[1]=='descending',query=self.query):
+        apps=sorted_apps(self._visible_apps(),self.resource,key=sort[0],descending=sort[1]=='descending',query=self.query)
+        if self.rows_job:self.remove_tick_callback(self.rows_job);self.rows_job=0
+        self._rendered_phone=phone
+        if len(apps)<=FIRST_ROWS or self.scroll.get_vadjustment().get_value()>0:
+            self._add_rows(apps,everything,phone);self._render_tail(everything);return
+        # A long list paints its first rows now and the rest a frame at a time.
+        self._add_rows(apps[:FIRST_ROWS],everything,phone)
+        rest=apps[FIRST_ROWS:];painted=[]
+        def more(_widget,clock):
+            if self.closed:self.rows_job=0;return GLib.SOURCE_REMOVE
+            if not painted:painted.append(clock.get_frame_counter());return GLib.SOURCE_CONTINUE
+            self._add_rows(rest[:FIRST_ROWS],everything,phone);del rest[:FIRST_ROWS];self._adapt()
+            if rest:return GLib.SOURCE_CONTINUE
+            self.rows_job=0;self._render_tail(everything);self._adapt()
+            return GLib.SOURCE_REMOVE
+        self.rows_job=self.add_tick_callback(more)
+
+    def _add_rows(self,apps,everything,phone):
+        for app in apps:
             shown=dict(app);shown['tags']=[]
             if self.fixture:
                 if app['id'] in self.source.stopped:shown['tags'].append('Stopped')
                 priority=self.source.priority.get(app['id'],'0')
                 if priority!='0':shown['tags'].append(dict(self.source.priorities)[priority]+' priority')
-            value=app.get(self.resource);row=ActivityRow(shown,format_value(value,self.resource),(value or 0)/MAXIMUM[self.resource],self._pick,self._expand,all_processes=everything and not phone,expanded=app['id'] in self.open_apps,phone=phone)
+            row=ActivityRow(shown,*self._shown_value(app),self._pick,self._expand,all_processes=everything and not phone,expanded=app['id'] in self.open_apps,phone=phone)
+            row.identity=(app['n'],app.get('icon'),app.get('ic'))
             self.header.align(row.line)
-            mark_selected(row.button,self.selected=='a:'+app['id']);self.list.append(row)
+            mark_selected(row.button,self.selected=='a:'+app['id']);self.list.append(row);self.app_rows[app['id']]=row
             self._narrow_widgets.extend(row.counters)
             if app['id'] in self.open_apps and not phone:self._app_details(row,app)
+
+    def _render_tail(self,everything):
         if not any(activity_matches(a,self.query) for a in self._visible_apps()):
             empty=label(f'No apps match “{self.query}”.',wrap=True,muted=True)
             empty.set_margin_start(12);empty.set_margin_end(12);self.list.append(empty)
-        if everything:self._render_groups()
+        self.reveal_text=None
+        if everything:
+            if not self.stale:self._render_groups()
         else:
-            count=sum(g['total'] for g in self.groups)
             reveal=Gtk.Button();reveal.set_name('mn-all');reveal.add_css_class('mn-reveal');line=Gtk.Box(spacing=12,margin_top=14,margin_bottom=14,margin_start=16,margin_end=16)
-            line.append(icons.image('layers'));line.append(label(f'{count} processes keep Luma running. You don’t need to manage them, but you can.',wrap=True));line.append(label('Show them',css='mn-value'))
+            self.reveal_text=label(self._reveal_words(),wrap=True)
+            line.append(icons.image('layers'));line.append(self.reveal_text);line.append(label('Show them',css='mn-value'))
             reveal.set_child(line);reveal.set_margin_top(14);reveal.connect('clicked',lambda *_:self._toggle_all());self.list.append(reveal)
+
+    def _reveal_words(self):
+        return f"{sum(g['total'] for g in self.groups)} processes keep Luma running. You don’t need to manage them, but you can."
+
+    def _shown_value(self,app):
+        value=app.get(self.resource)
+        return format_value(value,self.resource),(value or 0)/MAXIMUM[self.resource]
+
+    def _refresh_body(self):
+        """A new reading for the same list: refill and reorder the rows in place.
+
+        Rebuilding every row each second cost tens of milliseconds of main
+        loop per reading, and more with every app. Anything that changes the
+        list's shape (other apps, details, every process) still rebuilds.
+        """
+        if self.list.has_css_class('mn-stale') or self.rows_job or self._all() or self.open_apps or not self.app_rows or self.fixture:return False
+        apps=sorted_apps(self._visible_apps(),self.resource,key=self.sort[0],descending=self.sort[1]=='descending',query=self.query)
+        if len(apps)!=len(self.app_rows) or any(a['id'] not in self.app_rows or self.app_rows[a['id']].identity!=(a['n'],a.get('icon'),a.get('ic')) for a in apps):return False
+        previous=self.header
+        for app in apps:
+            row=self.app_rows[app['id']];row.update(app,*self._shown_value(app))
+            if row.get_prev_sibling() is not previous:self.list.reorder_child_after(row,previous)
+            previous=row
+        if self.reveal_text is not None:self.reveal_text.set_label(self._reveal_words())
+        self.core_grid=self.advanced_grid=None;clear(self.stats);self._stats()
+        return True
 
     def _resource_caption(self, title, index, resource):
         line=Gtk.Box(spacing=7)
@@ -239,7 +304,7 @@ class MonitorWindow(AppWindow):
         phone=self._phone()
         if facts:
             # v71 phone: the figures are inset wells (20 round, 17/700 numbers); Performance mode spans the row.
-            grid=PhoneCells(energy=r=='en') if phone else ResourceCells(energy=r=='en');grid.set_name('mn-resource-cells');self.hero.append(grid)
+            grid=PhoneCells(energy=r=='en') if phone else ResourceCells(energy=r=='en');grid.set_name('mn-resource-cells');self.stats.append(grid)
             for i,(key,value) in enumerate(facts):
                 if phone:
                     cell=grid.cell();box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);cell.append(box)
@@ -262,7 +327,7 @@ class MonitorWindow(AppWindow):
                 if not phone:card.append(box);grid.append(card)
         if not self._all():return
         if r=='cpu':
-            cores=Gtk.Grid(column_homogeneous=True,column_spacing=8,row_spacing=8,margin_top=12);self.hero.append(cores)
+            cores=Gtk.Grid(column_homogeneous=True,column_spacing=8,row_spacing=8,margin_top=12);self.stats.append(cores)
             for i,value in enumerate(getattr(self,'cores',[])):
                 well=Gtk.Overlay(height_request=70);bar=CoreMeter((value or 0)/100);well.set_child(bar)
                 caption=label(i,'caption',css='mn-core-caption');caption.set_halign(Gtk.Align.CENTER);caption.set_valign(Gtk.Align.START);caption.set_margin_top(5);well.add_overlay(caption);cores.attach(well,i%8,i//8,1,1)
@@ -272,7 +337,7 @@ class MonitorWindow(AppWindow):
                  'disk':[('Device','nvme0n1'),('Root','btrfs · /'),('Queue','2'),('Busy',f"{min(99,int(t['write']/1.1+.5))}%")],
                  'net':[('Interface','wlp0s20f3'),('Address','10.0.4.12'),('Link','1.2 Gb/s · Wi‑Fi 6'),('Packets','2.1 M in · 380 K out')],
                  'en':[('Draw',f"{7+t['en']/12:.1f} W"),('Profile','Balanced'),('Health','94%'),('Cycles','212')]}[r] if self.fixture else getattr(self,'advanced_facts',{}).get(r,[(key,'—') for key in {'mem':['Cached','Swap','zram','Committed'],'disk':['Device','Root','Queue','Busy'],'net':['Interface','Address','Link','Packets'],'en':['Draw','Profile','Health','Cycles']}[r]]))
-        row=Gtk.Grid(column_spacing=10,row_spacing=10,column_homogeneous=True,margin_top=12);self.hero.append(row);self.advanced_grid=row
+        row=Gtk.Grid(column_spacing=10,row_spacing=10,column_homogeneous=True,margin_top=12);self.stats.append(row);self.advanced_grid=row
         for i,(key,value) in enumerate(details):
             card=Card(recessed=True,padded=False);words=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,margin_top=9,margin_bottom=9,margin_start=12,margin_end=12);words.append(label(key,'caption',css='mn-fact-key'));words.append(label(value,css='mn-advanced-value'));card.append(words);row.attach(card,i%4,i//4,1,1)
 
@@ -684,12 +749,17 @@ class MonitorWindow(AppWindow):
             self._sample()
             self.timer=GLib.timeout_add_seconds(1,self._sample)
     def _unmapped(self,*_):
+        # A reading in flight still applies: discarding it on an unmap/map
+        # cycle left a new window waiting for a later, slower full sample.
         if self.timer:GLib.source_remove(self.timer);self.timer=0
-        self.generation+=1
     def _closing(self,*_):
-        self.closed=True;self._close_menu();self._unmapped()
+        self.closed=True;self._close_menu();self._unmapped();self.generation+=1
+        if not self.fixture and not self.stale and self.apps:self._save_view()
         if hasattr(self,'catalog'):self.catalog.close()
         return False
+    def _save_view(self):
+        try:save_view(view_path(),self.apps,self.groups)
+        except (OSError,ValueError,TypeError,KeyError):pass
 
     def _sample(self):
         if self.fixture or self.closed or self.working:return GLib.SOURCE_CONTINUE
@@ -744,7 +814,7 @@ class MonitorWindow(AppWindow):
             title,subtitle=self._hero_text()
             self.hero_title.set_label(title);self.hero_subtitle.set_label(subtitle)
             return GLib.SOURCE_REMOVE
-        self.sample_failed=False
+        self.sample_failed=False;self.stale=False
         self.live_rows={};self.apps=[];self.live_processes=snapshot['processes']
         for row in snapshot['rows']:
             if row['background']:continue
@@ -778,11 +848,13 @@ class MonitorWindow(AppWindow):
         for k,pair in [('cpu',(snapshot['apps_cpu'],snapshot['system_cpu'])),('mem',(used,0)),('disk',(self.totals['read'],self.totals['write'])),('net',(self.totals['down'],self.totals['up'])),('en',(None,None))]:self.histories[k].append(pair)
         title,subtitle=self._hero_text()
         self.hero_title.set_label(title);self.hero_subtitle.set_label(subtitle)
-        if self.selected and not self._subject()[0] and not self._subject()[1]:self.selected=None
+        reshape=False
+        if self.selected and not self._subject()[0] and not self._subject()[1]:self.selected=None;reshape=True
         self._render_sidebar()
         self.chart.update(self.histories[self.resource],self._chart_max(self.resource))
+        if complete and not getattr(self,'view_saved',True):self.view_saved=True;self._save_view()
         interacting=(self._menu_widget and self._menu_widget.is_open) or self.host.modal or self.layer_host.modal
-        if not interacting:
+        if not interacting and (reshape or not self._refresh_body()):
             adjustment=self.scroll.get_vadjustment();position=adjustment.get_value()
             focus=self.get_focus()
             focus_name=focus.get_name() if focus and focus.is_ancestor(self.list) else None

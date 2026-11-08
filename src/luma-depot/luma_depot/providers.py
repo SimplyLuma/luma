@@ -63,6 +63,8 @@ class Release:
     version: str
     date: str = ""
     description: str = ""
+    #: The release notes as lines, in the one changelog format (luma_appkit Changelog).
+    notes: tuple[str, ...] = ()
 
 
 def monogram(name: str) -> str:
@@ -164,6 +166,28 @@ class App:
     runtime_note: str = ""
     #: Where updates come from, as a Details fact: "Automatic, from the Snap Store".
     update_note: str = ""
+    # ── the redesign (7 Nov 2026, handoff section 13.1); empty means missing, never invented ──
+    #: Device forms it runs on: desktop, tablet, phone, tv, home. Empty: desktop and tablet.
+    runs: tuple[str, ...] = ()
+    #: An official logo (a file) and the colour it sits on, for apps without a Luma icon.
+    mark: str = ""
+    mark_colour: str = ""
+    #: system | luma | flatpak | deb | rpm | snap | layered (Technical info's Format).
+    package_kind: str = ""
+    #: The download size as people read it ("38 MB").
+    size_label: str = ""
+    #: 5★ to 1★ counts, for the ratings bars.
+    rating_distribution: tuple[int, ...] = ()
+    #: (initials, name, stars, date, text) per review.
+    reviews: tuple[tuple[str, str, int, str, str], ...] = ()
+    #: What the publisher says it reaches: (glyph, what, why), mapped to the eleven permissions.
+    reach: tuple[tuple[str, str, str], ...] = ()
+    #: Names people know that this app replaces ("Photoshop"), for search.
+    alternatives: tuple[str, ...] = ()
+    #: The category key (create, work, media, play, tools).
+    category_key: str = ""
+    #: Screenshot keys: <id>-desktop-dark, -desktop-light, -phone-dark (resolved by the pictures module).
+    shot_keys: tuple[str, ...] = ()
 
     @property
     def version(self) -> str:

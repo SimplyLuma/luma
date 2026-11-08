@@ -157,6 +157,14 @@
       "gtk_symbolic_sha256": "2b0673c5d683ee7ba194236011a646d21bd614eb7a3bace6086f7a6bcd8dd0ad"
     },
     {
+      "lucide": "arrow-right",
+      "icon": "lumaui-arrow-right-symbolic",
+      "source": "upstream/lucide/lumaui/arrow-right.svg",
+      "sha256": "75e3cc5b0970e196f4f4cf46a7f742a8f7cdec8c428dffe359a77201175dba68",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "857f9c17cb6a392677d10cacdd5975127331a72da5d2c278b377564a2156d628"
+    },
+    {
       "lucide": "arrow-up",
       "icon": "lumaui-arrow-up-symbolic",
       "source": "upstream/lucide/lumaui/arrow-up.svg",
@@ -283,6 +291,14 @@
       "sha256": "558f9532a97c24fd5bb52b1d165c697bea9b6c553d0d8bea40fdc50e1c2dd375",
       "upstream_version": "1.48.0",
       "gtk_symbolic_sha256": "90cbf0a405273b33281be964f53e163e96af626a328242b4a284b2806586f73b"
+    },
+    {
+      "lucide": "blocks",
+      "icon": "lumaui-blocks-symbolic",
+      "source": "upstream/lucide/lumaui/blocks.svg",
+      "sha256": "5b94a6ec06cef9b9cf525d0ceebfef748506a0c7b8bc75b92603fbf9d70ed174",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "29d801ed48fdfde86d8f77fae3efd58740a341e8e083ce7eb330c591a1a856bf"
     },
     {
       "lucide": "bluetooth",
@@ -1498,6 +1514,14 @@
       "gtk_symbolic_sha256": "332e7dc8f473e724b490acbee80088aa3fc37f50e1773a623d002bc187b7ff45"
     },
     {
+      "lucide": "monitor-smartphone",
+      "icon": "lumaui-monitor-smartphone-symbolic",
+      "source": "upstream/lucide/lumaui/monitor-smartphone.svg",
+      "sha256": "8e5bcf8a4c030bfe013e88d2a0cd0f519fc7c804141d50a2bf32454da20100b5",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "01aa67d9cb5c134fcc25b95fd44159c3499b400f002a936ce812638b0ae313ca"
+    },
+    {
       "lucide": "monitor-up",
       "icon": "lumaui-monitor-up-symbolic",
       "source": "upstream/lucide/lumaui/monitor-up.svg",
@@ -2311,6 +2335,14 @@
       "gtk_symbolic_sha256": "a93bde44a957aa4c65fb61e99cba9e447cb07764569a0319b2168f16d64ef6b2"
     },
     {
+      "lucide": "tablet",
+      "icon": "lumaui-tablet-symbolic",
+      "source": "upstream/lucide/lumaui/tablet.svg",
+      "sha256": "d3f7609a62014154c728b774ce9410f9088773d0867411c12b8bf963b8645332",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "dbcd62fa35e7242eda8a791d678cbe373626b1aa8b5d0b8e39f6d65f76a19756"
+    },
+    {
       "lucide": "tag",
       "icon": "lumaui-tag-symbolic",
       "source": "upstream/lucide/lumaui/tag.svg",
@@ -2414,6 +2446,14 @@
       "sha256": "d96c1a1700b18a9cf1903e8d89151bc9fe881f58f6ba986a367daadf4a6fef17",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "8f092c77f8004e21672957922216f0af7e938ac7b53f47a8139d9dbf68a1ab30"
+    },
+    {
+      "lucide": "tv",
+      "icon": "lumaui-tv-symbolic",
+      "source": "upstream/lucide/lumaui/tv.svg",
+      "sha256": "1d47e5de7e912d21e1f431fdda9accd52095c3ad1e07d875bf89132232b2e97e",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "547ec673297366da1324723a1c6c7539de56c8fecbf9c26ffd12e0996e799fa2"
     },
     {
       "lucide": "tv-minimal",

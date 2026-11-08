@@ -91,7 +91,18 @@ glib-compile-schemas --strict tests/appearance-schema
 %install
 install -d %{buildroot}%{python3_sitelib}/luma_depot
 install -m 0644 luma_depot/*.py %{buildroot}%{python3_sitelib}/luma_depot/
+for part in model pages parts pictures; do
+  install -d %{buildroot}%{python3_sitelib}/luma_depot/$part
+  install -m 0644 luma_depot/$part/*.py %{buildroot}%{python3_sitelib}/luma_depot/$part/
+done
 install -D -m0644 data/depot.css %{buildroot}%{_datadir}/luma-depot/depot.css
+install -D -m0644 data/depot-redesign.css %{buildroot}%{_datadir}/luma-depot/depot-redesign.css
+install -D -m0644 data/luma-logo-white.svg %{buildroot}%{_datadir}/luma-depot/luma-logo-white.svg
+install -D -m0644 data/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg %{buildroot}%{_datadir}/luma-depot/icons/hicolor/scalable/actions/lumaui-code-xml-symbolic.svg
+for pictures in screenshots photos rooms; do
+  install -d %{buildroot}%{_datadir}/luma-depot/$pictures
+  install -m 0644 data/$pictures/*.webp %{buildroot}%{_datadir}/luma-depot/$pictures/
+done
 install -d %{buildroot}%{python3_sitelib}/luma_installer
 install -m 0644 luma_installer/*.py %{buildroot}%{python3_sitelib}/luma_installer/
 install -D -m0644 data/org.projectluma.AppPreferences.Read.gschema.xml %{buildroot}%{_datadir}/glib-2.0/schemas/org.projectluma.AppPreferences.Read.gschema.xml
@@ -285,6 +296,13 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
   can never take a Luma app id, and each deployed commit must carry Luma's
   signature and ref binding or it is removed again. Without a valid catalogue
   Depot behaves as before.
+
+* Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.87
+- Depot opens its redesigned window (luma_depot.shell; the old window remains
+  for TV posture, an older LumaUI, the v70 fixture and LUMA_DEPOT_LEGACY=1),
+  reads the signed v1 catalogue with AppStream as the fallback, keeps updates
+  that ask for more held until approved on the app's page, and posts
+  anonymous install counts.
 
 * Thu Nov 05 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.86
 - Depot installs and updates wait in one first-in, first-out queue instead

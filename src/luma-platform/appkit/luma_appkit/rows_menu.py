@@ -10,13 +10,23 @@
         MenuSection(import_card),                                                         # any widget
     ]).popup(anchor)
 
+    # Checkbox and radio rows update in place (Depot's Filters and category menus):
+    bar_menu(button, ["Also works on",
+                      CheckMenuItem("Phone", icon="smartphone", checked=True, on_toggle=narrow),
+                      None, "Category",
+                      RadioMenuItem("All apps", group="category", checked=True, on_activate=show_all)])
+
 The same rows present in `MenuDrawer.present_items` at phone width, so every
 menu keeps its rows on a phone. v70: `.crmi` (36 min, a 11 px subtitle),
 `#cm-pop .cmsw` (a switch at 85%) and `.cmval` (a 12 px value and a 14 px
 chevron), `.tsesspop` (trailing actions shown on hover or focus, an inline
 rename), `#lmenu .pimp/.pnewal` (custom content).
 
-Behaviour: a toggle row flips its switch and stays open; a value row, a
+Behaviour: a toggle row flips its switch and stays open; a checkbox row
+(`checkbox=`, a LumaUI Checkbox before its label, menuitemcheckbox) ticks in
+place and stays open, so the person can tick several; a radio row (`radio=`
+names its group, menuitemradio) moves the group's check to itself in place,
+then closes and runs (`stay_open=True` keeps the menu); a value row, a
 plain row and a trailing action close the menu, then run. A rename row's
 pencil (or F2) swaps the name for an entry: Enter keeps it, Esc puts it
 back. A busy row shows a spinner where its icon was and does nothing.
@@ -34,7 +44,7 @@ from gi.repository import Gdk, GLib, GObject, Gtk, Pango  # noqa: E402
 from . import icons, lumaui  # noqa: E402
 from .action_bubble import MenuItem  # noqa: E402
 
-__all__ = ["MenuSection", "RichMenuItem"]
+__all__ = ["CheckMenuItem", "MenuSection", "RadioMenuItem", "RichMenuItem"]
 
 
 class RichMenuItem(MenuItem):
@@ -45,9 +55,12 @@ class RichMenuItem(MenuItem):
                  value: str | None = None, busy: bool = False, trail: Sequence[object] = (),
                  rename: bool = False, on_rename: Callable[[str], None] | None = None,
                  on_activate: Callable[[], None] | None = None, selected: bool = False,
-                 danger: bool = False, gicon: object | None = None, checked: bool = False) -> None:
+                 danger: bool = False, gicon: object | None = None, checked: bool = False,
+                 checkbox: bool | None = None, radio: str | None = None, stay_open: bool = False) -> None:
         if toggle is not None and value is not None:
             raise ValueError("a menu row is a switch or a value, not both")
+        if sum(x is not None for x in (toggle, checkbox, radio)) > 1:
+            raise ValueError("a menu row is one of a switch, a checkbox or a radio")
         if rename and on_rename is None:
             raise ValueError("a row that renames needs on_rename")
         super().__init__(label, icon=icon, gicon=gicon, note=None, on_activate=on_activate, selected=selected)
@@ -55,6 +68,7 @@ class RichMenuItem(MenuItem):
         self.value, self.busy, self.trail = value, busy, tuple(trail)
         self.rename, self.on_rename, self.danger = rename, on_rename, danger
         self.checked = checked
+        self.checkbox, self.radio, self.stay_open = checkbox, radio, stay_open
 
     def menu_widget(self, close: Callable[[], None]) -> Gtk.Widget:
         """The row, for FloatingMenu and MenuDrawer; `close` dismisses the menu it is in."""
@@ -88,8 +102,9 @@ class _RichRow(Gtk.Button):
 
     def __init__(self, item: RichMenuItem, close: Callable[[], None]) -> None:
         checkbox = item.toggle is not None
-        super().__init__(accessible_role=Gtk.AccessibleRole.MENU_ITEM_CHECKBOX if checkbox
-                         else Gtk.AccessibleRole.MENU_ITEM)
+        role = (Gtk.AccessibleRole.MENU_ITEM_CHECKBOX if checkbox or item.checkbox is not None
+                else Gtk.AccessibleRole.MENU_ITEM_RADIO if item.radio is not None else Gtk.AccessibleRole.MENU_ITEM)
+        super().__init__(accessible_role=role)
         self.item, self._close = item, close
         for name in ("lumaui-menu-item", "lumaui-menu-row", "lumaui-menu-rich"):
             self.add_css_class(name)
@@ -98,6 +113,12 @@ class _RichRow(Gtk.Button):
         self.menu_buttons = [self]
         line = Gtk.Box()  # the gap is the menu row token's (CSS border-spacing), not a second one here
         line.add_css_class("lumaui-menu-line")
+        self.box = None
+        if item.checkbox is not None:
+            from .content_checkbox import Checkbox
+            self.box = Checkbox(checked=item.checkbox)
+            self.add_css_class("check")
+            line.append(self.box)
         if item.busy:
             spinner = Gtk.Spinner(spinning=True)
             spinner.add_css_class("lumaui-menu-busy")
@@ -128,10 +149,12 @@ class _RichRow(Gtk.Button):
             chevron = icons.image("chevron-right")
             chevron.add_css_class("lumaui-menu-chevron")
             line.append(chevron)
-        if item.checked:
-            check = icons.image("check")
-            check.add_css_class("lumaui-menu-check")
-            line.append(check)
+        self.check = None
+        if item.checked or item.radio is not None:
+            self.check = icons.image("check")
+            self.check.add_css_class("lumaui-menu-check")
+            self.check.set_visible(item.checked)
+            line.append(self.check)
         if checkbox:
             # The row is the control: the switch shows its state and never takes a click of its own.
             self.switch = Gtk.Switch(active=bool(item.toggle), can_focus=False, can_target=False,
@@ -170,8 +193,11 @@ class _RichRow(Gtk.Button):
         # The row is named by its label; what it says beside that is its description.
         self.update_property([Gtk.AccessibleProperty.LABEL], [item.label])
         more = [part for part in (item.subtitle, item.value, "busy" if item.busy else None,
-                                  "chosen" if item.checked else None) if part]
+                                  "chosen" if item.checked and item.radio is None else None) if part]
         self.update_property([Gtk.AccessibleProperty.DESCRIPTION], [", ".join(more)])
+        if item.checkbox is not None or item.radio is not None:
+            on = item.checkbox if item.checkbox is not None else item.checked
+            self.update_state([Gtk.AccessibleState.CHECKED], [GObject.Value(GObject.TYPE_INT, int(bool(on)))])
         if self.switch is not None:
             self.update_state([Gtk.AccessibleState.CHECKED], [GObject.Value(GObject.TYPE_INT, int(self.switch.get_active()))])
 
@@ -183,6 +209,27 @@ class _RichRow(Gtk.Button):
     def _activated(self) -> None:
         if self.entry is not None or self.item.busy:
             return
+        if self.box is not None:  # a checkbox row ticks in place and the menu stays open
+            self.item.checkbox = not self.item.checkbox
+            self.box.set_checked(self.item.checkbox)
+            self._speak()
+            if self.item.on_toggle is not None:
+                self.item.on_toggle(self.item.checkbox)
+            return
+        if self.item.radio is not None:  # move the group's check here, in place, then run
+            self.set_chosen(True)
+            parent = self.get_parent()
+            child = parent.get_first_child() if parent is not None else None
+            while child is not None:
+                if child is not self and isinstance(child, _RichRow) and child.item.radio == self.item.radio:
+                    child.set_chosen(False)
+                child = child.get_next_sibling()
+            if self.item.stay_open:
+                if self.item.on_activate is not None:
+                    self.item.on_activate()
+                return
+            self._run(self.item.on_activate)
+            return
         if self.switch is not None:
             active = not self.switch.get_active()
             self.switch.set_active(active)
@@ -192,6 +239,14 @@ class _RichRow(Gtk.Button):
                 self.item.on_toggle(active)
             return
         self._run(self.item.on_activate)
+
+    def set_chosen(self, chosen: bool) -> None:
+        """A radio row's check, moved in place (the menu is never rebuilt, so it never flickers)."""
+        self.item.checked = chosen
+        lumaui.set_css_class(self, "on", chosen)
+        if self.check is not None:
+            self.check.set_visible(chosen)
+        self._speak()
 
     # ── rename ─────────────────────────────────────────────────────────────
 
@@ -235,3 +290,21 @@ class _RichRow(Gtk.Button):
             self.start_rename()
             return True
         return False
+
+
+class CheckMenuItem(RichMenuItem):
+    """A row with a LumaUI checkbox before its label; ticking it stays in the open menu (Filters)."""
+
+    def __init__(self, label: str, *, checked: bool = False, icon: str | None = None,
+                 on_toggle: Callable[[bool], None] | None = None, subtitle: str | None = None) -> None:
+        super().__init__(label, icon=icon, subtitle=subtitle, checkbox=checked, on_toggle=on_toggle)
+
+
+class RadioMenuItem(RichMenuItem):
+    """One choice of a group: the current one carries the check; picking moves it in place."""
+
+    def __init__(self, label: str, *, group: str, checked: bool = False, icon: str | None = None,
+                 on_activate: Callable[[], None] | None = None, subtitle: str | None = None,
+                 stay_open: bool = False) -> None:
+        super().__init__(label, icon=icon, subtitle=subtitle, radio=group, checked=checked,
+                         on_activate=on_activate, stay_open=stay_open, selected=checked)

@@ -6,7 +6,7 @@ needed to change the host UI.
 
 | CPU | Retained engine | Archive SHA-256 |
 | --- | --- | --- |
-| x86_64 | native30 | `2760bcadbb3864ffb637888b06e9717642c1add31656c2b81c6d0fb7fd5b1028` |
+| x86_64 | native34 | `c31f198d2a9268fc7a1c882b82859ff35536f20a79a4ee2a0431b59890718b1e` |
 | aarch64 | native33 | `a5fbcd7cd80a5c0b08833f92b98193f2d11bc5ccb5fc3350a03cae745ccc2a5b` |
 
 The ARM desktop preview requires native32 or later. Its source-built engine

@@ -324,6 +324,11 @@
 @define-color luma_storage_tone_slate oklch(0.62000000 0.03000000 250.00000000);
 @define-color luma_storage_map_background_slate oklch(0.90500000 0.00750000 250.00000000);
 @define-color luma_storage_map_used_slate oklch(0.79100000 0.01650000 250.00000000);
+@define-color luma_tooltip_surface #f4f4f6;
+@define-color luma_tooltip_ink #16171a;
+@define-color luma_tooltip_shadow rgba(0, 0, 0, 0.5);
+@define-color luma_checkbox_on oklch(from @luma_accent 0.62 0.14 h);
+@define-color luma_checkbox_on_ink #ffffff;
 @define-color luma_island_shadow_far rgba(0, 0, 0, 0.85);
 @define-color luma_island_shadow_near rgba(0, 0, 0, 0.5);
 @define-color luma_island_scrim rgba(0, 0, 0, 0.24);
@@ -409,6 +414,9 @@
   --lumaui-duration-search-debounce: 180ms;
   --lumaui-duration-creative-panel-move: 380ms;
   --lumaui-duration-creative-panel-fade: 220ms;
+  --lumaui-duration-disclosure: 200ms;
+  --lumaui-duration-edge-fade: 250ms;
+  --lumaui-duration-lift: 200ms;
   --lumaui-t-display-size: 72px;
   --lumaui-t-display-weight: 600;
   --lumaui-t-display-line-height: 79.2px;
@@ -1024,6 +1032,54 @@
   --lumaui-t-weather-phone-hour-temperature-tracking: -0.102px;
   --lumaui-t-weather-phone-hour-temperature-unit-size: 6.8px;
   --lumaui-t-weather-phone-hour-temperature-unit-gap: 2.04px;
+  --lumaui-t-checkbox-row-size: 13px;
+  --lumaui-t-checkbox-row-weight: 400;
+  --lumaui-t-checkbox-row-line-height: 19px;
+  --lumaui-t-checkbox-row-tracking: 0px;
+  --lumaui-t-checkbox-row-unit-size: 5.2px;
+  --lumaui-t-checkbox-row-unit-gap: 1.56px;
+  --lumaui-t-disclosure-line-size: 12.5px;
+  --lumaui-t-disclosure-line-weight: 600;
+  --lumaui-t-disclosure-line-line-height: 16px;
+  --lumaui-t-disclosure-line-tracking: 0px;
+  --lumaui-t-disclosure-line-unit-size: 5px;
+  --lumaui-t-disclosure-line-unit-gap: 1.5px;
+  --lumaui-t-disclosure-card-size: 15px;
+  --lumaui-t-disclosure-card-weight: 650;
+  --lumaui-t-disclosure-card-line-height: 18px;
+  --lumaui-t-disclosure-card-tracking: 0px;
+  --lumaui-t-disclosure-card-unit-size: 6px;
+  --lumaui-t-disclosure-card-unit-gap: 1.8px;
+  --lumaui-t-tooltip-size: 11.5px;
+  --lumaui-t-tooltip-weight: 600;
+  --lumaui-t-tooltip-line-height: 15px;
+  --lumaui-t-tooltip-tracking: 0px;
+  --lumaui-t-tooltip-unit-size: 4.6px;
+  --lumaui-t-tooltip-unit-gap: 1.38px;
+  --lumaui-t-permission-word-size: 12.5px;
+  --lumaui-t-permission-word-weight: 600;
+  --lumaui-t-permission-word-line-height: 16px;
+  --lumaui-t-permission-word-tracking: 0px;
+  --lumaui-t-permission-word-unit-size: 5px;
+  --lumaui-t-permission-word-unit-gap: 1.5px;
+  --lumaui-t-permission-reason-size: 11.5px;
+  --lumaui-t-permission-reason-weight: 400;
+  --lumaui-t-permission-reason-line-height: 16px;
+  --lumaui-t-permission-reason-tracking: 0px;
+  --lumaui-t-permission-reason-unit-size: 4.6px;
+  --lumaui-t-permission-reason-unit-gap: 1.38px;
+  --lumaui-t-changelog-heading-size: 12px;
+  --lumaui-t-changelog-heading-weight: 650;
+  --lumaui-t-changelog-heading-line-height: 15px;
+  --lumaui-t-changelog-heading-tracking: 0px;
+  --lumaui-t-changelog-heading-unit-size: 4.8px;
+  --lumaui-t-changelog-heading-unit-gap: 1.44px;
+  --lumaui-t-changelog-line-size: 13px;
+  --lumaui-t-changelog-line-weight: 400;
+  --lumaui-t-changelog-line-line-height: 20px;
+  --lumaui-t-changelog-line-tracking: 0px;
+  --lumaui-t-changelog-line-unit-size: 5.2px;
+  --lumaui-t-changelog-line-unit-gap: 1.56px;
   --lumaui-t-editorial-size: 38px;
   --lumaui-t-editorial-weight: 750;
   --lumaui-t-editorial-line-height: 41.8px;
@@ -1619,6 +1675,7 @@
   --lumaui-ac-safe-gap: 20px;
   --lumaui-ac-search-gap: 6px;
   --lumaui-ac-anchor-frame-radius: 24px;
+  --lumaui-ac-grow-width-wide: 440px;
   --lumaui-bubble-radius: 12px;
   --lumaui-bubble-padding: 4px;
   --lumaui-bubble-gap: 2px;
@@ -2376,6 +2433,14 @@
   --lumaui-text-button-touch-height: 46px;
   --lumaui-text-button-touch-radius: 16px;
   --lumaui-text-button-touch-font-size: 15px;
+  --lumaui-text-button-list-height: 30px;
+  --lumaui-text-button-list-padding-x: 12px;
+  --lumaui-text-button-list-radius: 10px;
+  --lumaui-text-button-list-font-size: 12.5px;
+  --lumaui-text-button-bar-radius: 12px;
+  --lumaui-text-button-bar-padding-x: 14px;
+  --lumaui-text-button-big-height: 40px;
+  --lumaui-text-button-big-radius: 12px;
   --lumaui-icon-button-size: 36px;
   --lumaui-icon-button-large-size: 40px;
   --lumaui-icon-button-radius: 10px;
@@ -3189,6 +3254,64 @@
   --lumaui-message-run-join: 5px;
   --lumaui-message-run-gap: 2px;
   --lumaui-message-run-wider-slack: 3px;
+  --lumaui-inset-padding: 8px;
+  --lumaui-inset-radius: 20px;
+  --lumaui-inset-card-padding: 16px;
+  --lumaui-inset-card-radius: 18px;
+  --lumaui-inset-column-gap: 28px;
+  --lumaui-inset-row-gap: 4px;
+  --lumaui-inset-hair-inset: 16px;
+  --lumaui-checkbox-size: 16px;
+  --lumaui-checkbox-radius: 5px;
+  --lumaui-checkbox-icon: 11px;
+  --lumaui-checkbox-row-gap: 10px;
+  --lumaui-disclosure-line-padding-y: 4px;
+  --lumaui-disclosure-line-padding-x: 16px;
+  --lumaui-disclosure-line-radius: 8px;
+  --lumaui-disclosure-line-gap: 4px;
+  --lumaui-disclosure-line-chevron: 14px;
+  --lumaui-disclosure-line-body-top: 6px;
+  --lumaui-disclosure-card-padding: 16px;
+  --lumaui-disclosure-card-header-gap: 10px;
+  --lumaui-disclosure-card-icon: 17px;
+  --lumaui-disclosure-card-chevron: 16px;
+  --lumaui-disclosure-card-body-top: 12px;
+  --lumaui-tooltip-padding-y: 4px;
+  --lumaui-tooltip-padding-x: 9px;
+  --lumaui-tooltip-radius: 8px;
+  --lumaui-tooltip-offset: 6px;
+  --lumaui-tooltip-shadow-y: 6px;
+  --lumaui-tooltip-shadow-blur: 16px;
+  --lumaui-tooltip-shadow-spread: -6px;
+  --lumaui-edge-fade-fade: 56px;
+  --lumaui-edge-fade-thumbs-fade: 72px;
+  --lumaui-edge-fade-arrow: 34px;
+  --lumaui-edge-fade-arrow-outside: 6px;
+  --lumaui-edge-fade-arrow-shadow-y: 6px;
+  --lumaui-edge-fade-arrow-shadow-blur: 16px;
+  --lumaui-edge-fade-arrow-shadow-spread: -6px;
+  --lumaui-edge-fade-arrow-icon: 18px;
+  --lumaui-permissions-glyph-box: 30px;
+  --lumaui-permissions-glyph: 15px;
+  --lumaui-permissions-glyph-radius: 9px;
+  --lumaui-permissions-row-padding-y: 11px;
+  --lumaui-permissions-gap: 12px;
+  --lumaui-permissions-text-gap: 2px;
+  --lumaui-changelog-gap: 4px;
+  --lumaui-changelog-heading-top: 10px;
+  --lumaui-changelog-heading-bottom: 2px;
+  --lumaui-changelog-line-gap: 6px;
+  --lumaui-changelog-indent: 18px;
+  --lumaui-framed-picture-radius: 18px;
+  --lumaui-framed-picture-thumb-radius: 10px;
+  --lumaui-framed-picture-window-width: 0.64px;
+  --lumaui-framed-picture-window-top: 0.09px;
+  --lumaui-framed-picture-window-radius: 0.016px;
+  --lumaui-framed-picture-dock-icon: 0.038px;
+  --lumaui-framed-picture-dock-gap: 0.011px;
+  --lumaui-framed-picture-blur-desktop: 0.022px;
+  --lumaui-framed-picture-blur-phone: 0.032px;
+  --lumaui-framed-picture-phone-height: 0.82px;
   --lumaui-tiers-phone-below: 560px;
   --lumaui-tiers-regular-above: 900px;
   --lumaui-title-island-height: 48px;
@@ -3410,6 +3533,14 @@
 .lumaui-t-weather-phone-tile, window.luma-app-window label.lumaui-t-weather-phone-tile { font-size: var(--lumaui-t-weather-phone-tile-size); font-weight: var(--lumaui-t-weather-phone-tile-weight); line-height: 29px; letter-spacing: -0.12px; }
 .lumaui-t-weather-phone-kicker, window.luma-app-window label.lumaui-t-weather-phone-kicker { font-size: var(--lumaui-t-weather-phone-kicker-size); font-weight: var(--lumaui-t-weather-phone-kicker-weight); line-height: 17px; letter-spacing: 0.575px; }
 .lumaui-t-weather-phone-hour-temperature, window.luma-app-window label.lumaui-t-weather-phone-hour-temperature { font-size: var(--lumaui-t-weather-phone-hour-temperature-size); font-weight: var(--lumaui-t-weather-phone-hour-temperature-weight); line-height: 25px; letter-spacing: -0.102px; }
+.lumaui-t-checkbox-row, window.luma-app-window label.lumaui-t-checkbox-row { font-size: var(--lumaui-t-checkbox-row-size); font-weight: var(--lumaui-t-checkbox-row-weight); line-height: 19px; letter-spacing: 0px; }
+.lumaui-t-disclosure-line, window.luma-app-window label.lumaui-t-disclosure-line { font-size: var(--lumaui-t-disclosure-line-size); font-weight: var(--lumaui-t-disclosure-line-weight); line-height: 16px; letter-spacing: 0px; color: @luma_muted; }
+.lumaui-t-disclosure-card, window.luma-app-window label.lumaui-t-disclosure-card { font-size: var(--lumaui-t-disclosure-card-size); font-weight: var(--lumaui-t-disclosure-card-weight); line-height: 18px; letter-spacing: 0px; }
+.lumaui-t-tooltip, window.luma-app-window label.lumaui-t-tooltip { font-size: var(--lumaui-t-tooltip-size); font-weight: var(--lumaui-t-tooltip-weight); line-height: 15px; letter-spacing: 0px; }
+.lumaui-t-permission-word, window.luma-app-window label.lumaui-t-permission-word { font-size: var(--lumaui-t-permission-word-size); font-weight: var(--lumaui-t-permission-word-weight); line-height: 16px; letter-spacing: 0px; }
+.lumaui-t-permission-reason, window.luma-app-window label.lumaui-t-permission-reason { font-size: var(--lumaui-t-permission-reason-size); font-weight: var(--lumaui-t-permission-reason-weight); line-height: 16px; letter-spacing: 0px; color: @luma_muted; }
+.lumaui-t-changelog-heading, window.luma-app-window label.lumaui-t-changelog-heading { font-size: var(--lumaui-t-changelog-heading-size); font-weight: var(--lumaui-t-changelog-heading-weight); line-height: 15px; letter-spacing: 0px; color: @luma_muted; }
+.lumaui-t-changelog-line, window.luma-app-window label.lumaui-t-changelog-line { font-size: var(--lumaui-t-changelog-line-size); font-weight: var(--lumaui-t-changelog-line-weight); line-height: 20px; letter-spacing: 0px; }
 .lumaui-t-editorial, window.luma-app-window label.lumaui-t-editorial { font-size: var(--lumaui-t-editorial-size); font-weight: var(--lumaui-t-editorial-weight); line-height: 42px; letter-spacing: -1.14px; }
 .lumaui-t-app-title, window.luma-app-window label.lumaui-t-app-title { font-size: var(--lumaui-t-app-title-size); font-weight: var(--lumaui-t-app-title-weight); line-height: 38px; letter-spacing: -1.02px; }
 .lumaui-t-detail-title, window.luma-app-window label.lumaui-t-detail-title { font-size: var(--lumaui-t-detail-title-size); font-weight: var(--lumaui-t-detail-title-weight); line-height: 36px; letter-spacing: -0.75px; }

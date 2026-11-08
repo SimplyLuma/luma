@@ -155,6 +155,26 @@ __all__ = [
     "IconOnlyButton",
     "Switch",
     "TextButton",
+    "Button",
+    "Confirm",
+    "Inset",
+    "TwoColumnInset",
+    "Checkbox",
+    "CheckMenuItem",
+    "RadioMenuItem",
+    "Tooltip",
+    "Disclosure",
+    "EdgeFadeScroller",
+    "PERMISSIONS",
+    "Grant",
+    "PermissionList",
+    "from_keys",
+    "from_reach",
+    "ChangeLine",
+    "Changelog",
+    "group_changelog",
+    "FramedPicture",
+    "FrameSpec",
     "Toast",
     "ToastHost",
     "TOAST_KINDS",
@@ -458,12 +478,40 @@ def __getattr__(name: str):
         from . import structure_adapt
         return getattr(structure_adapt, name)
     # ── LumaUI action
-    if name in {"DestructiveDialog"}:
+    if name in {"DestructiveDialog", "Confirm"}:
         from . import action_dialog
         return getattr(action_dialog, name)
-    if name in {"TextButton", "Switch", "IconOnlyButton"}:
+    if name in {"TextButton", "Switch", "IconOnlyButton", "Button"}:
         from . import content_controls
         return getattr(content_controls, name)
+    # ── LumaUI parts, Nov 2026 (Depot)
+    if name in {"Inset", "TwoColumnInset"}:
+        from . import content_inset
+        return getattr(content_inset, name)
+    if name in {"Checkbox"}:
+        from . import content_checkbox
+        return getattr(content_checkbox, name)
+    if name in {"CheckMenuItem", "RadioMenuItem"}:
+        from . import rows_menu
+        return getattr(rows_menu, name)
+    if name in {"Tooltip"}:
+        from . import content_tooltip
+        return getattr(content_tooltip, name)
+    if name in {"Disclosure"}:
+        from . import structure_disclosure
+        return getattr(structure_disclosure, name)
+    if name in {"EdgeFadeScroller"}:
+        from . import structure_edge_fade
+        return getattr(structure_edge_fade, name)
+    if name in {"PERMISSIONS", "Grant", "PermissionList", "from_keys", "from_reach"}:
+        from . import content_permissions
+        return getattr(content_permissions, name)
+    if name in {"ChangeLine", "Changelog", "group_changelog"}:
+        from . import content_changelog
+        return getattr(content_changelog, name)
+    if name in {"FramedPicture", "FrameSpec"}:
+        from . import media_framed
+        return getattr(media_framed, name)
     if name in {"StackedButton", "StackedButtons"}:
         from . import action_stack
         return getattr(action_stack, name)
