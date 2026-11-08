@@ -185,6 +185,9 @@
           "click": "[data-dq-place=\"apps\"]"
         },
         {
+          "click": "[data-dq-chip=\"tools\"]"
+        },
+        {
           "click": "[data-dq-item=\"app:bitwarden\"]"
         }
       ],
