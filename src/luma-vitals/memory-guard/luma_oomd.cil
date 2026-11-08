@@ -1,0 +1,7 @@
+; SPDX-License-Identifier: Apache-2.0
+; Luma Vitals memory guard: let systemd-oomd stop apps that run in a user
+; namespace (Flatpak sandboxes, universal-package containers). Signalling a
+; process in another user namespace needs CAP_KILL there; without it an
+; enforcing machine denies the kill and the desktop keeps thrashing
+; (avc: denied { kill } ... tclass=cap_userns, seen 2026-11-07).
+(allow systemd_oomd_t self (cap_userns (kill)))

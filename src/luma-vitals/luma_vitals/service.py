@@ -13,13 +13,15 @@ from .agents import RunawayAgents
 from .crashes import CHECK_SECONDS, CrashWatch
 from .detectors import Detectors, PowerDetectors
 from .memory_feedback import MemoryFeedback, MemoryWatch
+from .memory_policy import MemoryPolicy
+from .session_bus import HOUSEKEEPING, SessionBus
 from .store import Store, state_dir
 
 INTERVAL = 15.0
 
 
 #: Evidence that the machine or a program died is an error; the rest are warnings.
-PRIORITIES = {"out-of-memory": 3, "agent-restart-failed": 3, "unclean-shutdown": 3, "kernel-crash-record": 3,
+PRIORITIES = {"out-of-memory": 3, "memory-reclaimed": 3, "agent-restart-failed": 3, "unclean-shutdown": 3, "kernel-crash-record": 3,
               "firmware-crash-record": 3}
 
 
@@ -40,12 +42,15 @@ def main() -> int:
     signal.signal(signal.SIGTERM, lambda *_: stop.append(True))
     store = Store()
     detectors = Detectors()
-    agents = RunawayAgents()
+    bus = SessionBus()
+    agents = RunawayAgents(notifier=bus)
+    policy = MemoryPolicy(bus)
     attributor = power.Attributor()
     battery = PowerDetectors()
     crashes = CrashWatch(store)
     memory_watch = MemoryWatch(crashes)
-    memory_feedback = MemoryFeedback()
+    memory_feedback = MemoryFeedback(notifier=bus, kill_notices_elsewhere=lambda: bus.has_owner(HOUSEKEEPING))
+    interval = INTERVAL
     last_prune = last_report = time.monotonic()
     last_crash_check = None
     os.nice(10)
@@ -66,8 +71,11 @@ def main() -> int:
             journal(event)
         sample = sampler.machine()
         events, cpu = detectors.observe(sample)
-        # Not just a report: a background agent that keeps growing is restarted.
+        # Not just a report: a background agent that keeps growing is restarted,
+        # and an app that runs away is named, held back and, last, closed.
         events += agents.observe(sample)
+        events += policy.observe(sample)
+        interval = policy.interval(sample, INTERVAL)
         # On battery only: what the machine is drawing and what is spending it.
         reading = power.sample(attributor)
         if store.record_power(reading, cpu) is not None:
@@ -85,7 +93,19 @@ def main() -> int:
             path.parent.mkdir(exist_ok=True)
             path.write_text(json.dumps(store.report(3600), indent=1))
             last_report = started
-        time.sleep(max(1.0, INTERVAL - (time.monotonic() - started)))
+        # Sleep until the next sample, waking at once when the person answers
+        # a memory notification ("Close", "Keep Open").
+        # At least a second, however long the sample took.
+        deadline = max(started + interval, time.monotonic() + 1.0)
+        while not stop:
+            answer = bus.wait(min(1.0, deadline - time.monotonic()))
+            if answer is not None:
+                answered = policy.answer(*answer)
+                store.add_events(answered)
+                for event in answered:
+                    journal(event)
+            if time.monotonic() >= deadline:
+                break
     return 0
 
 
