@@ -26,6 +26,14 @@ AUTO = (("apps", "Update apps overnight", "On every device, while it charges"),
         ("matched", "Keep matched apps on the same version", "A device that wakes catches up before you use it"))
 
 
+#: What the page says about apps while no update is listed: (section note, line, Lucide glyph).
+STATUS = {
+    "running": ("Installing in the background", "Installing app updates in the background…", "refresh-cw"),
+    "checking": ("Checking", "Checking for app updates…", "refresh-cw"),
+    "failed": ("Not checked", "Couldn't check for app updates. Check now to try again.", "circle-alert"),
+}
+
+
 class UpdatesPage(Page):
     place = "updates"
 
@@ -33,6 +41,9 @@ class UpdatesPage(Page):
         super().__init__(shell)
         self.checked = ""
         self.open = {"changelog": False, "auto": False, "recent": False}
+        #: Whether this window has asked the remotes about app updates: unchecked · checking · checked · failed.
+        #: Until a check comes back the page never says the apps are up to date.
+        self.apps = "unchecked" if getattr(shell.store, "installer", None) is not None else "checked"
 
     @property
     def channel(self) -> str:
@@ -62,15 +73,57 @@ class UpdatesPage(Page):
                 return replace(system, name="Luma 1.0", size="", channel="Stable"), True
         return system, self.system_state == "current"
 
+    # ── app updates: asked, not assumed ───────────────────────────────────
+
+    def check_apps(self) -> bool:
+        """Ask the remotes now, not a cached answer; the page says Checking… until they reply."""
+        store = self.shell.store
+        installer = getattr(store, "installer", None)
+        if installer is None:
+            self.apps = "checked"
+            return False
+        self.apps = "checking"
+        if hasattr(installer, "force_update_check"):
+            installer.force_update_check = True
+
+        def checked(result) -> None:
+            self.apps = "checked" if result.ok else "failed"
+            loaded = getattr(store, "_installed", None)
+            if loaded is not None:
+                loaded(result)  # the store rebuilds the world from this answer
+            if self.shell.place == "updates" and self.shell.item is None:
+                self.shell.refresh_bar()
+                self.shell.refresh_body()
+
+        installer.installed(checked)
+        return False
+
+    def apps_status(self) -> str:
+        """What the Apps section says when it lists no update: running · checking · failed · current."""
+        if self.shell.app_update_run() is not None:
+            return "running"
+        if self.apps in ("unchecked", "checking"):
+            return "checking"
+        return "failed" if self.apps == "failed" else "current"
+
     def build(self) -> Gtk.Widget:
         shell, world = self.shell, self.world
+        if self.apps == "unchecked":
+            self.apps = "checking"
+            from gi.repository import GLib
+            GLib.idle_add(self.check_apps)
         system, up_to_date = self._system()
+        run = shell.app_update_run()
         page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         page.add_css_class("p-updates")
         compact = shell.is_compact()
         head = Gtk.Overlay()
-        lead = intro("Updates", rules.updates_lead(world, system_waiting=not up_to_date,
-                                                   checked=self.checked or (system.checked if system else "")))
+        line = rules.updates_lead(world, system_waiting=not up_to_date,
+                                  checked=self.checked or (system.checked if system else ""))
+        status = self.apps_status()
+        if not world.pending and up_to_date and status != "current":
+            line = STATUS[status][1]
+        lead = intro("Updates", line)
         channel = Button(dict((k, n) for k, n, _f in rules.CHANNELS)[self.channel], icon="git-branch", menu=True)
         channel.set_name("dq-chanmenu")
         channel.set_halign(Gtk.Align.START if compact else Gtk.Align.END)
@@ -93,12 +146,19 @@ class UpdatesPage(Page):
             cards = Grid(lambda w: 1 if shell.is_compact() or w < 680 else 2, column_gap=12, row_gap=12, css="dq-ucards")
             for pending in updates:
                 cards.append(self._app_card(pending))
-            page.append(section("Apps", cards, note=f"{len(updates)} update{'s' if len(updates) != 1 else ''}"))
+            note = (STATUS["running"][0] if run is not None
+                    else f"{len(updates)} update{'s' if len(updates) != 1 else ''}")
+            page.append(section("Apps", cards, note=note))
         else:
             ok = Gtk.Box()
             ok.add_css_class("dq-uok")
-            ok.append(icons.image("circle-check"))
-            ok.append(label(f"Every app is up to date on all {len(world.devices)} devices.", "dq-uok-text"))
+            if status == "current":
+                ok.append(icons.image("circle-check"))
+                ok.append(label(f"Every app is up to date on all {len(world.devices)} devices.", "dq-uok-text"))
+            else:
+                ok.add_css_class(status)
+                ok.append(icons.image(STATUS[status][2]))
+                ok.append(label(STATUS[status][1], "dq-uok-text", wrap=True))
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             box.add_css_class("dq-sec")
             box.append(ok)
@@ -266,7 +326,13 @@ class UpdatesPage(Page):
                 return
             shell.store.update(item, (world.here,) if here else pending.devices, shell.done)
 
-        head.append(Button("Update", variant=Button.FILL if here else Button.PLAIN, size=Button.SM, on_click=update))
+        run = shell.app_update_run()
+        if run is not None and here and run.busy(item.id):
+            # The background update has it: no second update of the same app.
+            head.append(Button("Updating…", variant=Button.FILL, size=Button.SM, sensitive=False))
+        else:
+            head.append(Button("Update", variant=Button.FILL if here else Button.PLAIN, size=Button.SM,
+                               on_click=update))
         card.append(head)
         notes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         notes.add_css_class("dq-unotes")
@@ -360,15 +426,25 @@ class UpdatesPage(Page):
 
     def check_now(self) -> None:
         self.checked = "just now"
+        self.check_apps()
         self.shell.store.check(self.shell.done)
 
     def update_all(self) -> None:
         self.shell.store.update_all(self.shell.done)
 
+    def update_now(self) -> None:
+        """While apps update in the background, one by one: the rest start now, together."""
+        run = self.shell.app_update_run()
+        if run is not None:
+            run.hurry()
+
     def bar_items(self) -> list:
         items = [BarWidget(Button("Check now", icon="refresh-cw", on_click=self.check_now))]
         _system, up_to_date = self._system()
-        if self.world.pending or not up_to_date:
+        run = self.shell.app_update_run()
+        if run is not None and run.queue:
+            items.append(BarWidget(Button("Update now", variant=Button.KEY, icon="download", on_click=self.update_now)))
+        elif run is None and (self.world.pending or not up_to_date):
             items.append(BarWidget(Button("Update all", variant=Button.KEY, icon="download", on_click=self.update_all)))
         return items
 

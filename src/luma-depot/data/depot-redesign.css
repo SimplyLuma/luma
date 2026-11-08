@@ -412,6 +412,9 @@ window.dq box.dq-uwhere image { -gtk-icon-size: 14px; }
 window.dq label.dq-uwhere-text { font-size: 12px; line-height: 17px; letter-spacing: -0.078px; }
 window.dq box.dq-uok { border-spacing: 8px; font-size: 14px; color: @luma_ink_secondary; }
 window.dq box.dq-uok image { -gtk-icon-size: 18px; color: oklch(0.72 0.14 150); }
+/* Not "up to date" until a check says so: checking, installing in the background, or not checked. */
+window.dq box.dq-uok.checking image, window.dq box.dq-uok.running image { color: @luma_muted; }
+window.dq box.dq-uok.failed image { color: oklch(0.8 0.14 85); }
 window.dq box.dq-fold { margin-top: 10px; }
 window.dq box.dq-sec + box.dq-fold, window.dq box.dq-luma + box.dq-fold { margin-top: 30px; }
 window.dq box.dq-autorow { padding: 12px 14px; border-spacing: 14px; }

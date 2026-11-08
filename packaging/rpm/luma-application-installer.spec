@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.90%{?dist}
+Release:        1.luma.91%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -152,8 +152,11 @@ ln -s ../luma-depot-provision.service \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-depot-provision.service
 ln -s ../luma-depot-app-updates.timer \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-depot-app-updates.timer
+install -D -m 0644 data/luma-depot-app-updates-login.service %{buildroot}%{_userunitdir}/luma-depot-app-updates-login.service
+ln -s ../luma-depot-app-updates-login.service \
+  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-depot-app-updates-login.service
 install -d %{buildroot}%{_userpresetdir}
-printf 'enable luma-depot-provision.service\nenable luma-depot-app-updates.timer\n' > %{buildroot}%{_userpresetdir}/60-luma-depot.preset
+printf 'enable luma-depot-provision.service\nenable luma-depot-app-updates.timer\nenable luma-depot-app-updates-login.service\n' > %{buildroot}%{_userpresetdir}/60-luma-depot.preset
 install -D -m 0755 bin/luma-appctl %{buildroot}%{_bindir}/luma-appctl
 install -D -m 0755 bin/luma-icon-plates %{buildroot}%{_bindir}/luma-icon-plates
 install -D -m 0644 data/luma-icon-plates.service %{buildroot}%{_userunitdir}/luma-icon-plates.service
@@ -169,6 +172,11 @@ install -D -m 0644 data/luma-app-baseline.service %{buildroot}%{_unitdir}/luma-a
 install -D -m 0644 data/luma-app-baseline.conf %{buildroot}%{_tmpfilesdir}/luma-app-baseline.conf
 install -d %{buildroot}%{_unitdir}/graphical.target.wants
 ln -s ../luma-app-baseline.service %{buildroot}%{_unitdir}/graphical.target.wants/luma-app-baseline.service
+# App updates downloaded with a staged Luma update; deployed on its first boot.
+install -D -m 0755 bin/luma-system-app-updates %{buildroot}%{_libexecdir}/luma-system-app-updates
+install -D -m 0644 data/luma-system-app-updates-prefetch.service %{buildroot}%{_unitdir}/luma-system-app-updates-prefetch.service
+install -D -m 0644 data/luma-system-app-updates.service %{buildroot}%{_unitdir}/luma-system-app-updates.service
+ln -s ../luma-system-app-updates.service %{buildroot}%{_unitdir}/graphical.target.wants/luma-system-app-updates.service
 install -D -m 0644 data/org.projectluma.AppData1.service %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.AppData1.service
 install -D -m 0644 data/org.projectluma.DepotHost1.service %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.DepotHost1.service
 install -D -m 0644 data/org.projectluma.ApplicationDirectory1.service %{buildroot}%{_datadir}/dbus-1/services/org.projectluma.ApplicationDirectory1.service
@@ -256,6 +264,8 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_userunitdir}/luma-depot-app-updates.timer
 %{_userunitdir}/graphical-session.target.wants/luma-depot-provision.service
 %{_userunitdir}/graphical-session.target.wants/luma-depot-app-updates.timer
+%{_userunitdir}/luma-depot-app-updates-login.service
+%{_userunitdir}/graphical-session.target.wants/luma-depot-app-updates-login.service
 %{_userpresetdir}/60-luma-depot.preset
 %{_bindir}/luma-appctl
 %{_bindir}/luma-icon-plates
@@ -268,6 +278,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_bindir}/luma-seed-app-baseline
 %{_unitdir}/luma-app-baseline.service
 %{_unitdir}/graphical.target.wants/luma-app-baseline.service
+%{_libexecdir}/luma-system-app-updates
+%{_unitdir}/luma-system-app-updates-prefetch.service
+%{_unitdir}/luma-system-app-updates.service
+%{_unitdir}/graphical.target.wants/luma-system-app-updates.service
 %{_tmpfilesdir}/luma-app-baseline.conf
 %{_datadir}/dbus-1/services/org.projectluma.AppData1.service
 %{_datadir}/dbus-1/services/org.projectluma.DepotHost1.service
@@ -289,6 +303,21 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.91
+- App and runtime updates on the luma remote are downloaded with a staged Luma
+  update (luma-system-app-updates-prefetch.service) and deployed from the
+  local repository on that deployment's first boot, before the display
+  manager (luma-system-app-updates.service, bounded, never fatal). Updates
+  that ask for more, apps taken back to a previous version and apps needing a
+  newer host are left for Depot.
+- luma-depot-app-updates-login.service starts Depot's background app update
+  at sign-in when an app it updates has an update waiting.
+- Depot's first update check after boot is a real check: a host started in a
+  boot's first ten minutes took "never checked" for a fresh empty answer.
+- The redesigned Updates page says Checking until a check returns, shows the
+  background update ("Installing in the background", Update now) and no
+  longer runs the background update in a window it can present.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.90
 - The host accepts lifecycle events from the redesigned Depot window
   (DepotShell), so its launches reach the journal again.

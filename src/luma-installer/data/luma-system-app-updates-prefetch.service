@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Download the app updates that come with the staged Luma update
+Documentation=https://simplyluma.com/apps
+# Started by luma-updated once it has staged a Luma update.
+ConditionPathExists=/run/ostree-booted
+Wants=network-online.target
+After=network-online.target rpm-ostreed.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-system-app-updates prefetch
+Nice=19
+IOSchedulingClass=idle
+# System Flatpak content must be readable by ordinary application users.
+UMask=0022
+StateDirectory=luma/system-app-updates
+StateDirectoryMode=0755
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Depot's settings and history decide what waits for the person.
+ProtectHome=read-only
+ReadWritePaths=/var/lib/flatpak
+TimeoutStartSec=4h

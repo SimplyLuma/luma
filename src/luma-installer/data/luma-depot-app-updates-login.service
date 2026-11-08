@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Update apps at sign-in when updates are waiting
+Documentation=https://simplyluma.com/apps
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+# Starts luma-depot-app-updates.service at once when an app Depot updates has
+# an update waiting; otherwise the timer's six-hour cadence stands.
+ExecStart=/usr/libexec/luma-system-app-updates pending
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=5min

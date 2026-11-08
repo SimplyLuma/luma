@@ -3841,8 +3841,15 @@ class DepotApplication(Adw.Application):
         updates.connect("activate", lambda *_: self._show_view("updates"))
         self.add_action(updates)
 
+    def shown_window(self):
+        """The window a person sees: never the hidden one a background app update runs in."""
+        active = self.props.active_window
+        if active is not None and not getattr(active, "background_runner", False):
+            return active
+        return next((w for w in self.get_windows() if not getattr(w, "background_runner", False)), None)
+
     def window(self, *, present: bool = True):
-        window = self.props.active_window
+        window = self.shown_window()
         if window is None:
             try:
                 if use_redesign():
@@ -3920,7 +3927,7 @@ class DepotApplication(Adw.Application):
             self._show_view(view)
         else:
             self.activate()
-        window = self.props.active_window
+        window = self.shown_window()
         for link in links:
             if isinstance(window, DepotWindow) or hasattr(window, "show_view"):
                 window.open_uri(link)

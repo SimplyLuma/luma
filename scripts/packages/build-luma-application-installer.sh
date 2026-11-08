@@ -121,6 +121,13 @@ bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
     test -f usr/lib/systemd/user-preset/60-luma-depot.preset
     test -f usr/lib/systemd/user/luma-depot-app-updates.timer
     test -L usr/lib/systemd/user/graphical-session.target.wants/luma-depot-app-updates.timer
+    test -x usr/libexec/luma-system-app-updates
+    test -f usr/lib/systemd/system/luma-system-app-updates-prefetch.service
+    test -L usr/lib/systemd/system/graphical.target.wants/luma-system-app-updates.service
+    test -L usr/lib/systemd/user/graphical-session.target.wants/luma-depot-app-updates-login.service
+    # The boot deploy is bounded and can never fail the boot.
+    grep -Fq "ExecStart=-/usr/libexec/luma-system-app-updates deploy" usr/lib/systemd/system/luma-system-app-updates.service
+    grep -Fq "Before=display-manager.service" usr/lib/systemd/system/luma-system-app-updates.service
     grep -Fq "Exec=luma-depot --view updates" usr/share/applications/org.projectluma.SoftwareUpdate.desktop
     python3 -m py_compile usr/lib/python3*/site-packages/luma_depot/*.py
     test -f usr/lib/python3*/site-packages/luma_depot/firmware_probe.py

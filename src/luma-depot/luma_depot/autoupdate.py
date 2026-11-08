@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """The six-hourly background app update, run inside Depot.
 
-``luma-depot-app-updates.timer`` starts ``luma-depot --update-apps``. Like
+``luma-depot-app-updates.timer`` starts ``luma-depot --update-apps`` every six hours, and
+``luma-depot-app-updates-login.service`` starts it at sign-in when an update is waiting. Like
 first-boot provisioning, that makes this process Depot's single instance, so
 updates go through the window's own update path and show in the Updates tab
 if it is open. Updates that ask for more wait for review. Deferred updates and
@@ -33,25 +34,57 @@ def pending_for(records) -> list:
 def start_app_updates(application) -> "AppUpdateRun | None":
     if getattr(application, "app_updates", None) is not None and application.app_updates.active:
         return application.app_updates
-    window = application.props.active_window
-    if window is None:
-        from .window import DepotWindow
-        window = DepotWindow(application)
-    run = AppUpdateRun(application, window)
+    run = AppUpdateRun(application, _runner_window(application))
     application.app_updates = run
     run.start()
     return run
 
 
+def _runner_window(application):
+    """The window whose update queue the run uses: Depot's TV and legacy window, or a hidden one.
+
+    The redesigned window (shell.DepotShell) has no update queue of its own. Behind it the run gets
+    a DepotWindow that is never shown (DepotApplication.window passes over it), and the shell follows
+    the run through ``app_updates_changed``."""
+    from .window import DepotWindow
+    for window in application.get_windows():
+        if isinstance(window, DepotWindow):
+            return window
+    window = DepotWindow(application)
+    if _redesign():
+        window.background_runner = True
+    return window
+
+
+def _redesign() -> bool:
+    from .window import use_redesign
+    return use_redesign()
+
+
 class AppUpdateRun:
+    #: Settings arrive from the host after the window is built; wait this long for them (0.5 s each).
+    SETTINGS_WAITS = 20
+
     def __init__(self, application, window) -> None:
         self.application = application
         self.window = window
         self.active = False
         self.queue: list[str] = []
-        self.current = ""
+        self.running: set[str] = set()
         self.pending = {}
         self.completed = []
+        self._settings_waits = 0
+
+    def busy(self, app_id: str) -> bool:
+        """Whether this run is updating the app or will in a moment."""
+        return self.active and (app_id in self.running or app_id in self.queue)
+
+    def _changed(self) -> None:
+        """Tell every window that follows the run (the redesigned shell) that it moved on."""
+        for window in tuple(getattr(self.application, "get_windows", tuple)()):
+            follow = getattr(window, "app_updates_changed", None)
+            if follow is not None:
+                follow(self)
 
     def start(self) -> None:
         self.active = True
@@ -71,6 +104,10 @@ class AppUpdateRun:
         self.pending = {item.app_id: item for item in pending}
         if getattr(self.window, 'host_client', None) is not None:
             if not self.window._settings_ready:
+                if self._settings_waits < self.SETTINGS_WAITS:
+                    self._settings_waits += 1
+                    GLib.timeout_add(500, lambda: (self._checked(result), False)[1])
+                    return
                 self._finish()
                 return
             settings = self.window.settings
@@ -117,32 +154,44 @@ class AppUpdateRun:
         self._next()
 
     def _next(self) -> bool:
-        if not self.queue:
+        """One at a time, in the background: the next waiting update, or the end of the run."""
+        while self.queue and not self.running:
+            self._start(self.queue.pop(0))
+        if not self.queue and not self.running:
             self._finish()
-            return GLib.SOURCE_REMOVE
-        self.current = self.queue.pop(0)
-        job = self.window.jobs.get(self.current)
-        if job is not None and not job.failed:
-            self.current = ""
-            GLib.idle_add(self._next)
-            return GLib.SOURCE_REMOVE
-        started = self.window._update(self.current, approve=False, automatic=True,
-                            expected_commit=self.pending[self.current].commit,
-                            expected_installed_commit=self.pending[self.current].installed_commit)
-        if started is False:
-            self.current = ""
-            GLib.idle_add(self._next)
+        else:
+            self._changed()
         return GLib.SOURCE_REMOVE
+
+    def _start(self, app_id: str) -> bool:
+        job = self.window.jobs.get(app_id)
+        if job is not None and not job.failed:
+            return False
+        started = self.window._update(app_id, approve=False, automatic=True,
+                                      expected_commit=self.pending[app_id].commit,
+                                      expected_installed_commit=self.pending[app_id].installed_commit)
+        if started is False:
+            return False
+        self.running.add(app_id)
+        return True
+
+    def hurry(self) -> None:
+        """Update now: everything still waiting in the run starts at once."""
+        while self.queue:
+            self._start(self.queue.pop(0))
+        if not self.running:
+            GLib.idle_add(self._next)
+        self._changed()
 
     def install_finished(self, app_id, result, cancelled) -> None:
         """Install results are not ours; updates arrive in update_finished."""
 
     def update_finished(self, app_id, result, cancelled) -> None:
-        if app_id != self.current:
+        if app_id not in self.running:
             return
+        self.running.discard(app_id)
         if result.ok and not cancelled and app_id in self.pending:
             self.completed.append(self.pending[app_id])
-        self.current = ""
         GLib.idle_add(self._next)
 
     def _notify_held(self, held) -> bool:
@@ -230,4 +279,5 @@ class AppUpdateRun:
         provisioning = self.window.provisioning
         if not self.window.get_visible() and not (provisioning is not None and provisioning.active):
             self.window.destroy()
+        self._changed()
         self.application.release()

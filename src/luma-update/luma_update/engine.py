@@ -392,7 +392,7 @@ def repository_url(paths: Paths, settings: Settings) -> str:
 class Engine:
     def __init__(self, paths: Paths, settings: Settings, backend, probes, http, *, clock=time.time,
                  arch: str | None = None, on_change=None, boot_id=_boot_id,
-                 greenboot_installed=None) -> None:
+                 greenboot_installed=None, on_staged=None) -> None:
         self.paths = paths
         self.settings = settings
         self.backend = backend
@@ -401,6 +401,8 @@ class Engine:
         self.clock = clock
         self.arch = arch or platform.machine()
         self.on_change = on_change
+        #: Called once a release is staged: its app updates are fetched for it (apps.py).
+        self.on_staged = on_staged
         self.boot_id = boot_id
         self._greenboot_installed = greenboot_installed
         redact.install(log, lambda: _installed_credentials(paths))
@@ -1327,6 +1329,11 @@ class Engine:
         self._set(progress=1.0)
         self.refresh(keep_busy=False)
         log.info("staged %s (%s) for the next restart", release.version, release.commit)
+        if self.on_staged is not None:
+            try:
+                self.on_staged(release)
+            except Exception as error:  # noqa: BLE001 - the apps never cost the system update
+                log.warning("app updates were not started for %s: %s", release.version, error)
         return True
 
     def _refresh_boot_menu(self, view: SystemView, release) -> None:

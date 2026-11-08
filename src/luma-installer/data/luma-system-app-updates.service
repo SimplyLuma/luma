@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Finish the app updates downloaded with this Luma update
+Documentation=https://simplyluma.com/apps
+ConditionPathExists=/run/ostree-booted
+ConditionPathExists=/var/lib/luma/system-app-updates/manifest.json
+After=local-fs.target systemd-tmpfiles-setup.service dbus.service rpm-ostreed.service luma-app-baseline.service
+# Apps are current before anyone signs in. Ordering only: a failure or a
+# timeout here never holds the display manager back for longer than the bound.
+Before=display-manager.service systemd-user-sessions.service graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/libexec/luma-system-app-updates deploy
+UMask=0022
+StateDirectory=luma/system-app-updates
+StateDirectoryMode=0755
+# Deploys from the local repository only.
+PrivateNetwork=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/flatpak
+TimeoutStartSec=2min
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target
