@@ -19,6 +19,9 @@ BuildRequires:  flatpak-libs
 BuildRequires:  xdg-dbus-proxy
 BuildRequires:  bubblewrap
 BuildRequires:  ostree-libs
+# test_depot_third_party_install builds and installs from a signed local repository.
+BuildRequires:  flatpak
+BuildRequires:  gnupg2
 BuildRequires:  desktop-file-utils
 BuildRequires:  python3-devel
 BuildRequires:  shared-mime-info
