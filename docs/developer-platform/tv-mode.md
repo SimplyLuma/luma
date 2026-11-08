@@ -269,12 +269,15 @@ its download on, with no change in Depot.
 Catalogue schema 4, optional and additive (malformed values are ignored):
 
 ```text
-"tv": {"runs": true, "input": "remote"},     // remote | controller | keyboard
+"tv": {"runs": true, "input": "remote", "action": "BigPicture"},  // input: remote | controller | keyboard
 "keywords": ["iTunes"]                         // names people search for it by
 ```
 
-The seed's keywords come from `src/luma-installer/data/depot-switching.json`
-(the names people arrive with), written by `tools/generate-depot-seed.py`.
+Both are set in the Hub (admin, Depot > Apps: Runs on TV, its input and TV
+action, and Search words), like every other listing field; the catalog and the
+installer's seed are exports of it. `action` names a desktop action of the
+app (Steam's `BigPicture`) that TV Mode should launch instead of the plain
+app; Depots that do not know it ignore it.
 
 ## Remotes and gamepads
 

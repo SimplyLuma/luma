@@ -53,6 +53,8 @@ class Config:
     catalogue_seconds: int = 60
     # False skips catalogue publishing (rehearsals against a stand-in Hub).
     publish_catalogue: bool = True
+    # The installed Depot's catalog-4/catalog-3, signed by scripts/depot/sign-catalog.py.
+    publish_catalog4: bool = True
     max_upload_bytes: int = 4 * 1024 ** 3
     vm_arches: list = field(default_factory=lambda: ["x86_64"])
 

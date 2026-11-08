@@ -1,39 +1,73 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# One run of the catalog signing job (started by luma-depot-catalog.timer).
+# Publish Depot's catalog from the Hub, once.
 #
-# Hub service token: $DEPOT_KEYS/secrets/hub-catalog-token (mode 0600).
-# Until it exists the job reports "not configured" and exits 0, so the timer
-# can be enabled before Hub serves snapshots. Uploads when hosting is
-# configured ($DEPOT_KEYS/secrets/spaces.env, or dl-origin.env for the
-# dl.simplyluma.com origin); otherwise the signed files stay in
-# $DEPOT_ROOT/site/catalog for serve-remote.sh.
+#   run-catalog-signer.sh [--dry-run]
 #
-# Until Hub serves snapshots, the catalog is authored in this repository
-# (src/luma-installer/data) and signed with --from-dir; see
-# docs/depot/publishing-runbook.md section 6.
+# The Hub is the only source of Depot listings (admin.simplyluma.com, Depot >
+# Apps); nothing in this repository authors one. luma-depot-review.service runs
+# the same signer every minute (tools/depot-review, depot_review/catalog4.py);
+# this is the manual run. sign-catalog.py fetches the Hub's schema 4 and schema 3
+# snapshots with the Hub service token, copies listing pictures the site lacks
+# from the Hub, validates both with the rules installed Depots run, signs them
+# with the catalog key and writes them under $DEPOT_ROOT/site/catalog; pictures
+# upload before documents. An unchanged catalogue publishes nothing. The
+# firmware block list (data/firmware-blocklist.json, not a listing) is signed
+# here too when its bytes change. Holds the Depot publication lock.
+#
+# Hub token: $DEPOT_HUB_TOKEN (default $DEPOT_KEYS/secrets/hub-pipeline.token,
+# mode 0600). Upload: sync-remote.sh (dl-origin.env or spaces.env).
 set -euo pipefail
 . "$(dirname -- "$0")/lib.sh"
 
-podman start "$DEPOT_TOOLS_CONTAINER" >/dev/null
-upload=()
-[ -f "$DEPOT_KEYS/secrets/spaces.env" ] &&
-  upload=(--upload "DEPOT_ROOT=$DEPOT_ROOT DEPOT_KEYS=$DEPOT_KEYS DEPOT_INSIDE_TOOLS=1 bash scripts/depot/sync-remote.sh --catalog")
+dry_run=0
+[ "${1:-}" = --dry-run ] && dry_run=1
+token=${DEPOT_HUB_TOKEN:-$DEPOT_KEYS/secrets/hub-pipeline.token}
+lock=${DEPOT_PUBLICATION_LOCK:-/srv/luma-build/depot-publication.lock}
+here=$(cd -- "$(dirname -- "$0")" && pwd)
 
-set +e
-depot_in_tools python3 scripts/depot/sign-catalog.py \
-  --token-file "$DEPOT_KEYS/secrets/hub-catalog-token" \
+exec 9>>"$lock"
+flock 9
+
+upload=()
+[ "$dry_run" = 1 ] ||
+  upload=(--upload "bash '$here/sync-remote.sh' --media && bash '$here/sync-remote.sh' --catalog")
+site="$DEPOT_ROOT/site"
+if [ "$dry_run" = 1 ]; then
+  # Signs into a scratch site; pictures copied from the Hub stay in the real one.
+  site=$(mktemp -d); trap 'rm -rf "$site"' EXIT
+  cp -a "$DEPOT_ROOT/site/catalog" "$site/" 2>/dev/null || true
+  mkdir -p "$DEPOT_ROOT/site/media" && ln -s "$DEPOT_ROOT/site/media" "$site/media"
+fi
+
+# On the host: it needs the Hub, and the origin key never enters a container.
+python3 -I "$here/sign-catalog.py" \
+  --token-file "$token" \
   --key "$DEPOT_KEYS/minisign/luma-depot-catalog.key" \
   --public-key "$DEPOT_KEYS/minisign/luma-depot-catalog.pub" \
-  --site "$DEPOT_ROOT/site" "${upload[@]}"
-status=$?
-set -e
-[ "$status" = 2 ] && exit 0
-# The origin upload runs on the host so its key never enters the container;
-# rsync sends nothing when the signed files are unchanged.
-if [ "$status" = 0 ] && [ ! -f "$DEPOT_KEYS/secrets/spaces.env" ] && [ -f "$DEPOT_KEYS/secrets/dl-origin.env" ] &&
-   [ -f "$DEPOT_ROOT/site/catalog/catalog-4.json.minisig" ]; then
-  bash "$(dirname -- "$0")/sync-remote.sh" --catalog
+  --site "$site" "${upload[@]}"
+[ "$dry_run" = 1 ] && exit 0
+
+# The firmware block list (org.projectluma.firmware-blocklist/v1, read by
+# luma_installer/depot_firmware.py), signed with the same key and served beside
+# the catalog. Bump generated_at with every change: Depot keeps the newest
+# verified copy.
+blocklist="$depot_repo_root/src/luma-installer/data/firmware-blocklist.json"
+served="$DEPOT_ROOT/site/catalog/firmware-blocklist.json"
+if [ -f "$blocklist" ] && { [ ! -f "$served.minisig" ] || ! cmp -s "$blocklist" "$served"; }; then
+  work=$(mktemp -d)
+  install -m 0644 "$blocklist" "$work/firmware-blocklist.json"
+  generated=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["schema"] == "org.projectluma.firmware-blocklist/v1" and isinstance(d["entries"], list); print(d["generated_at"])' "$blocklist")
+  minisign -S -s "$DEPOT_KEYS/minisign/luma-depot-catalog.key" -m "$work/firmware-blocklist.json" \
+    -x "$work/firmware-blocklist.json.minisig" -t "firmware-blocklist generated $generated" </dev/null >/dev/null
+  minisign -V -q -p "$DEPOT_KEYS/minisign/luma-depot-catalog.pub" -m "$work/firmware-blocklist.json" \
+    -x "$work/firmware-blocklist.json.minisig"
+  install -d -m 0755 "$(dirname -- "$served")"
+  install -m 0644 "$work/firmware-blocklist.json.minisig" "$served.minisig.next"
+  install -m 0644 "$work/firmware-blocklist.json" "$served.next"
+  mv -f "$served.next" "$served" && mv -f "$served.minisig.next" "$served.minisig"
+  rm -rf "$work"
+  depot_log "signed firmware-blocklist.json (generated $generated)"
+  bash "$here/sync-remote.sh" --catalog
 fi
-exit "$status"
