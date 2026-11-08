@@ -110,7 +110,7 @@ class DesktopApplicationInventoryTests(unittest.TestCase):
                              lines('config/os/removed-packages.txt'))
         self.assertNotIn('luma-tide', lines('config/os/removed-packages.txt'))
         for path in ('src/luma-installer-atlas/src/data/app-collections.json',
-                     'src/luma-installer/data/depot-first-party.json'):
+                     'src/luma-installer/data/depot-catalog-4.json'):
             catalog = json.loads((ROOT / path).read_text())
             self.assertTrue(all('tide' not in collection['applications'] for collection in catalog['collections']))
             if 'atlas' not in path:

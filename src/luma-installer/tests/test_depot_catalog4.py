@@ -141,16 +141,15 @@ class Schema4(unittest.TestCase):
                 validate_catalog({**catalog(CANVAS), 'generated_at': value})
 
 
-FIRST_PARTY = DATA / 'depot-first-party.json'
+SEED_TOOL = DATA.parent / 'tools/generate-depot-seed.py'
 
 
-@unittest.skipUnless(FIRST_PARTY.is_file() and (DATA.parent / 'tools').is_dir(),
-                     'the private first-party input is not part of the source package')
-class SeedInputs(unittest.TestCase):
-    def test_the_committed_seed_is_generated_from_its_inputs(self):
-        tool = DATA.parent / 'tools/generate-depot-seed.py'
-        result = subprocess.run([sys.executable, str(tool), '--check', str(DATA / 'depot-catalog-4.json')],
-                                capture_output=True, text=True)
+@unittest.skipUnless(SEED_TOOL.is_file() and (DATA / 'depot-catalog-4.json.minisig').is_file(),
+                     'the seed export tool is not part of the source package')
+class SeedExport(unittest.TestCase):
+    def test_the_committed_seed_is_the_signed_hub_catalogue(self):
+        # Depot listings are written in the Hub only; the seed is its signed export.
+        result = subprocess.run([sys.executable, str(SEED_TOOL), '--check'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_filer_and_ari_have_one_flatpak_update_identity(self):
@@ -169,74 +168,25 @@ class SeedInputs(unittest.TestCase):
                 self.assertEqual(entry.luma_system.desktop_id, app_id + '.desktop')
                 self.assertTrue(entry.preinstalled_on_luma)
 
-    def test_the_first_party_input_is_private(self):
-        seed = json.loads((DATA / 'depot-catalog-4.json').read_text())
-        first_party = json.loads((DATA / 'depot-first-party.json').read_text())
-        private = {row['id'] for row in first_party['applications']
-                   if {**first_party['defaults'], **row}['visibility'] not in ('public', 'unlisted')}
-        # Private suite apps and withdrawn listings stay out of the seed.
-        withdrawn = {row['id'] for row in first_party['applications']
-                     if {**first_party['defaults'], **row}['visibility'] == 'withdrawn'}
-        self.assertEqual(private, {'grid', 'stage', 'canvas', 'session', 'reel'} | withdrawn)
-        self.assertIn('sticky-notes', private)
-        shipped = {row['id'] for row in seed['applications']}
-        self.assertFalse(private & shipped)
-        self.assertTrue(all(row['visibility'] in ('public', 'unlisted') for row in seed['applications']))
-        channels = json.loads((DATA / 'depot-channels.json').read_text())['applications']
-        legacy = json.loads((DATA / 'depot-catalog.json').read_text())
-        verified = json.loads((DATA / 'depot-verified.json').read_text())
-        expected = set(public_ids(DATA))
-        for source in (legacy, verified):
-            for row in source['applications']:
-                entry = {**source.get('defaults', {}), **row}
-                visibility = channels.get(entry['id'], {}).get('visibility', entry.get('visibility', 'public'))
-                if visibility in ('public', 'unlisted'):
-                    expected.add(entry['id'])
-        self.assertEqual(shipped, expected)
-        self.assertEqual({c['id'] for c in seed['collections']}, {'office', 'creative', 'studio'})
-
-    def test_first_party_entries_validate_once_public(self):
-        first_party = json.loads((DATA / 'depot-first-party.json').read_text())
-        rows = []
-        for row in first_party['applications']:
-            entry = {**first_party['defaults'], **row, 'visibility': 'public'}
-            entry.setdefault('reference_url', f"https://simplyluma.com/apps/{entry['id']}")
-            rows.append(entry)
-        parsed = validate_catalog(catalog(*rows, collections=first_party['collections']))
-        self.assertEqual(len(parsed.applications), 30)
-        self.assertEqual(parsed.skipped, 0)
-        # Optional apps retain their native identity for older installations;
-        # that identity does not claim inclusion in the current base image.
-        self.assertTrue(all(entry.luma_system is not None for entry in parsed.applications))
-        optional = {identifier for collection in first_party['collections']
-                    for identifier in collection['applications']}
-        self.assertTrue(all(not entry.preinstalled_on_luma for entry in parsed.applications
-                            if entry.id in optional))
-        self.assertTrue(parsed.find('tide').preinstalled_on_luma)
-        self.assertFalse(parsed.find('imager').preinstalled_on_luma)
-
-
-
     def test_verified_listings_install_from_the_luma_remote(self):
-        verified = json.loads((DATA / 'depot-verified.json').read_text())
-        rows = [{**verified['defaults'], **row} for row in verified['applications']]
-        parsed = validate_catalog(catalog(*rows))
-        self.assertEqual(parsed.skipped, 0)
-        self.assertEqual({entry.id for entry in parsed.applications}, {'viola'})
-        for entry in parsed.applications:
-            self.assertEqual((entry.tier, entry.backend, entry.repository), ('verified', 'flatpak', 'luma'))
+        seed = validate_catalog(json.loads((DATA / 'depot-catalog-4.json').read_text()))
+        verified = [entry for entry in seed.applications if entry.tier == 'verified']
+        self.assertIn('viola', {entry.id for entry in verified})
+        for entry in verified:
+            self.assertEqual((entry.backend, entry.repository), ('flatpak', 'luma'))
             self.assertEqual(entry.source_id, entry.app_id)
-            # Viola also ships in the image; where it does, Depot must not offer the Flatpak.
-            self.assertEqual((entry.luma_system.package, entry.luma_system.desktop_id),
-                             ('viola-browser-stable', 'com.rhyme.viola.desktop'))
-            self.assertTrue(entry.permissions)
+        viola = seed.find('viola')
+        # Viola also ships in the image; where it does, Depot must not offer the Flatpak.
+        self.assertEqual((viola.luma_system.package, viola.luma_system.desktop_id),
+                         ('viola-browser-stable', 'com.rhyme.viola.desktop'))
+        self.assertTrue(viola.permissions)
 
 
 class Seed(unittest.TestCase):
     def test_the_seed_ships_no_private_entry(self):
         seed = json.loads((DATA / 'depot-catalog-4.json').read_text())
         self.assertTrue(all(row['visibility'] in ('public', 'unlisted') for row in seed['applications']))
-        self.assertFalse({'grid', 'stage', 'canvas', 'session', 'reel'}
+        self.assertFalse({'grid', 'stage', 'session', 'reel', 'sticky-notes', 'displays'}
                          & {row['id'] for row in seed['applications']})
         self.assertEqual({c['id'] for c in seed['collections']}, {'office', 'creative', 'studio'})
 
@@ -244,9 +194,7 @@ class Seed(unittest.TestCase):
         legacy = depot_catalog.load_catalog(DATA / 'depot-catalog.json')
         seed = depot_catalog.load_catalog(DATA / 'depot-catalog-4.json')
         listed = {e.id for e in seed.applications if e.tier == 'listed'}
-        # depot-channels.json withdraws two command-line tools from schema 4
-        # only; older Depots keep reading them from catalog-3.
-        self.assertEqual({e.id for e in legacy.applications} - {'ollama', 'sevenzip'}, listed)
+        self.assertEqual({e.id for e in legacy.applications}, listed)
 
     def test_first_party_native_identity_and_flatpak_fallback_are_preserved(self):
         seed = depot_catalog.load_catalog(DATA / 'depot-catalog-4.json')
@@ -254,9 +202,16 @@ class Seed(unittest.TestCase):
         self.assertEqual({entry.id for entry in first_party}, set(public_ids(DATA)))
         self.assertNotIn('displays', {entry.id for entry in first_party})
         # Published first-party apps retain native provenance and their release branch.
-        wave1 = {'tide', 'darkroom', 'leaf', 'notes', 'calendar', 'contacts', 'weather', 'tasks',
+        wave1 = {'tide', 'leaf', 'notes', 'calendar', 'contacts', 'weather', 'tasks',
                  'monitor', 'photos', 'camera', 'connect', 'write', 'filer', 'ari'}
+        # Apps Luma ships only through Depot (Canvas, Focus) have no image identity.
+        flatpak_only = {entry.id for entry in first_party if entry.luma_system is None}
+        self.assertEqual(flatpak_only, {'canvas', 'darkroom'})
         for entry in first_party:
+            if entry.id in flatpak_only:
+                self.assertEqual((entry.backend, entry.repository, entry.source_id), ('flatpak', 'luma', entry.app_id))
+                self.assertFalse(entry.preinstalled_on_luma, entry.id)
+                continue
             self.assertEqual(entry.app_id + '.desktop', entry.luma_system.desktop_id)
             if entry.id in wave1:
                 branch = 'stable' if entry.id == 'write' else 'beta'
@@ -270,11 +225,11 @@ class Seed(unittest.TestCase):
         by_id = {e.id: e for e in first_party}
         self.assertEqual(by_id['filer'].luma_system, depot_catalog.LumaSystemSource(
             'nautilus', 'org.gnome.Nautilus.desktop', False))
-        core = {e.id for e in first_party if e.luma_system.package == 'prairie-core-apps'}
+        core = {e.id for e in first_party if e.luma_system and e.luma_system.package == 'prairie-core-apps'}
         self.assertEqual(core, {'notes', 'calendar', 'contacts', 'messages', 'phone', 'photos', 'camera',
                                 'clock', 'weather', 'tasks', 'voice-memos'})
         # Apps the system or Settings needs are never offered for removal.
-        self.assertEqual({e.id for e in first_party if not e.luma_system.removable},
+        self.assertEqual({e.id for e in first_party if e.luma_system and not e.luma_system.removable},
                          {'filer', 'connect', 'monitor', 'mods'})
 
     def test_preinstalled_flags_match_actual_image_pins(self):

@@ -4,7 +4,7 @@
 
     DEPOT_RENDER_SCHEME=light|dark python3 depot_store_render.py OUT MEDIA_SITE [NAME...]
 
-MEDIA_SITE is a site directory holding media/listings/ as enrich-listings.py
+MEDIA_SITE is a site directory holding media/listings/ as the catalog signer
 wrote it. Every picture is placed in Depot's content-addressed cache under its
 digest, exactly as Depot would after downloading and verifying it, so nothing
 is fetched. The catalogue is the generated seed, signed with the RFC 8032 test

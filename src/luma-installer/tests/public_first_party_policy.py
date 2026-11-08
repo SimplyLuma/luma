@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Project public identity expectations without packaging private listing data."""
+"""Project public identity expectations without packaging private listing data.
+
+Luma's public first-party listings are the seed's ``luma`` tier entries (the
+seed is an export of the Hub's signed catalogue). A packaged copy keeps only
+these ids in tests/fixtures/depot-public-first-party.json.
+"""
 import argparse
 import json
 from pathlib import Path
@@ -15,19 +20,13 @@ def checked_ids(result):
 
 def public_ids(data):
     data = Path(data)
-    source = data / 'depot-first-party.json'
-    if not source.is_file():
+    seed = data / 'depot-catalog-4.json'
+    if not seed.is_file():
         fixture = data.parent / 'tests/fixtures/depot-public-first-party.json'
         return checked_ids(json.loads(fixture.read_text())['first_party_ids'])
-    document = json.loads(source.read_text())
-    channels = json.loads((data / 'depot-channels.json').read_text())['applications']
-    result = []
-    for row in document['applications']:
-        entry = {**document.get('defaults', {}), **row}
-        visibility = channels.get(entry['id'], {}).get('visibility', entry.get('visibility'))
-        if visibility in ('public', 'unlisted'):
-            result.append(entry['id'])
-    return checked_ids(result)
+    document = json.loads(seed.read_text())
+    return checked_ids([row['id'] for row in document['applications']
+                        if row.get('tier') == 'luma' and row.get('visibility') in ('public', 'unlisted')])
 
 
 if __name__ == '__main__':
