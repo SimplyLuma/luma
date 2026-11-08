@@ -48,6 +48,8 @@ function dump({ winSel, groups, exclude, pairSels }) {
   const isect = (q, c) => { const l = Math.max(q.left, c.l), t = Math.max(q.top, c.t), r = Math.min(q.right, c.r), b = Math.min(q.bottom, c.b); return r - l > 0.5 && b - t > 0.5 ? { left: l, top: t, width: r - l, height: b - t } : null; };
   const opacityOf = el => { let o = 1; for (let a = el; a; a = a.parentElement) { o *= parseFloat(getComputedStyle(a).opacity); if (a === win) break; } return +o.toFixed(3); };
   const shown = el => { for (let a = el; a; a = a.parentElement) { const cs = getComputedStyle(a); if (cs.display === 'none' || a.hidden) return false; if (a === win) break; }
+    // Content the page does not render (a closed <details> body: content-visibility hidden) is not on screen.
+    if (el.checkVisibility && !el.checkVisibility()) return false;
     const cs = getComputedStyle(el); return cs.visibility !== 'hidden'; };
   const roleOf = el => { const r = el.getAttribute('role'); if (r) return r; const t = el.tagName.toLowerCase();
     if (t === 'button' || t === 'summary') return el.classList.contains('sw') ? 'switch' : 'button';
@@ -56,15 +58,17 @@ function dump({ winSel, groups, exclude, pairSels }) {
     if (t === 'section' || t === 'article') return 'region'; if (t === 'nav') return 'navigation'; if (t === 'header') return 'banner'; if (t === 'main') return 'main';
     if (t === 'img' || (t === 'svg' && el.dataset.icon)) return 'img'; if (t === 'label') return 'label'; return 'generic'; };
   const tt = (s, cs) => cs.textTransform === 'uppercase' ? s.toUpperCase() : cs.textTransform === 'lowercase' ? s.toLowerCase() : cs.textTransform === 'capitalize' ? s.replace(/\b\w/g, c => c.toUpperCase()) : s;
-  const font = cs => ({ family: cs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), size: px(cs.fontSize), weight: +cs.fontWeight, style: cs.fontStyle,
-    lineHeight: cs.lineHeight === 'normal' ? null : px(cs.lineHeight), letterSpacing: cs.letterSpacing === 'normal' ? 0 : px(cs.letterSpacing) });
-  const paint = (cs, drawn) => { const p = paint0(cs, drawn); for (const k of Object.keys(p)) p[k] = k === 'border' ? { widths: p[k].widths, colors: p[k].colors.map(col) } : col(p[k]); return p; };
-  const paint0 = (cs, drawn) => { const p = {};
+  // Under CSS zoom (a Look's specimen drawn 1.9 times), computed lengths are the unzoomed ones: the words show at size × zoom.
+  const font = (cs, el) => { const z = (el && el.currentCSSZoom) || 1, zm = v => z === 1 ? v : +(v * z).toFixed(4);
+    return { family: cs.fontFamily.split(',')[0].replace(/["']/g, '').trim(), size: zm(px(cs.fontSize)), weight: +cs.fontWeight, style: cs.fontStyle,
+      lineHeight: cs.lineHeight === 'normal' ? null : zm(px(cs.lineHeight)), letterSpacing: cs.letterSpacing === 'normal' ? 0 : zm(px(cs.letterSpacing)) }; };
+  const paint = (cs, drawn, z = 1) => { const p = paint0(cs, drawn, z); for (const k of Object.keys(p)) p[k] = k === 'border' ? { widths: p[k].widths, colors: p[k].colors.map(col) } : col(p[k]); return p; };
+  const paint0 = (cs, drawn, z = 1) => { const p = {};
     if (cs.backgroundColor && !/rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor)) p.background = cs.backgroundColor;
     if (cs.backgroundImage && cs.backgroundImage !== 'none') p.backgroundImage = cs.backgroundImage.slice(0, 400);
     const bw = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map(px), bs = [cs.borderTopStyle, cs.borderRightStyle, cs.borderBottomStyle, cs.borderLeftStyle];
     if (bw.some((w, i) => w > 0 && bs[i] !== 'none')) p.border = { widths: bw, colors: [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor] };
-    const rad = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(v => /%/.test(v) ? parseFloat(v) / 100 * (drawn ?? px(cs.width)) : px(v));   /* a share of the box as drawn (a wide tile's 11.875%, a lifted swatch's 50%): its horizontal radius in px */ if (rad.some(r => r > 0)) p.radius = rad;
+    const rad = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(v => /%/.test(v) ? parseFloat(v) / 100 * (drawn ?? px(cs.width)) : px(v));   /* a share of the box as drawn (a wide tile's 11.875%, a lifted swatch's 50%): its horizontal radius in px */ if (rad.some(r => r > 0)) p.radius = z === 1 ? rad : rad.map(r => +(r * z).toFixed(3));   /* as drawn under CSS zoom */
     if (cs.boxShadow && cs.boxShadow !== 'none') p.boxShadow = cs.boxShadow;
     if (cs.outlineStyle !== 'none' && px(cs.outlineWidth) > 0) p.outline = `${cs.outlineWidth} ${cs.outlineStyle} ${cs.outlineColor}`;
     if (cs.backdropFilter && cs.backdropFilter !== 'none') p.backdropFilter = cs.backdropFilter;
@@ -79,12 +83,12 @@ function dump({ winSel, groups, exclude, pairSels }) {
     const clip = clipOf(el), vis = el === win ? q : isect(q, clip);
     const cs = getComputedStyle(el), op = opacityOf(el); if (op < 0.02) continue;
     if (!vis) { for (const n of el.childNodes) if (n.nodeType === 3 && n.textContent.trim()) { const r = document.createRange(); r.selectNodeContents(n); const u = r.getBoundingClientRect();
-        if (u.width > 0.5) texts.push({ el: null, text: tt(n.textContent.replace(/\s+/g, ' ').trim(), cs), offscreen: true, box: rel(u), font: font(cs), color: col(cs.color), opacity: op, lines: 1 }); }
+        if (u.width > 0.5) texts.push({ el: null, text: tt(n.textContent.replace(/\s+/g, ' ').trim(), cs), offscreen: true, box: rel(u), font: font(cs, n.parentElement), color: col(cs.color), opacity: op, lines: 1 }); }
       continue; }
     const id = elements.length; ids.set(el, id);
     let parent = null; for (let a = el.parentElement; a; a = a.parentElement) { if (ids.has(a)) { parent = ids.get(a); break; } if (a === win) break; }
     const rec = { id, parent, tag: t, cls: typeof el.className === 'string' ? el.className : (el.getAttribute('class') || ''), elId: el.id || undefined, role: roleOf(el),
-      label: el.getAttribute('aria-label') || el.getAttribute('title') || hiddenName(el) || undefined, box: rel(q), visible: rel(vis), opacity: op, color: col(cs.color), font: font(cs), paint: paint(cs, q.width) };
+      label: el.getAttribute('aria-label') || el.getAttribute('title') || hiddenName(el) || undefined, box: rel(q), visible: rel(vis), opacity: op, color: col(cs.color), font: font(cs, el), paint: paint(cs, q.width, el.currentCSSZoom || 1) };
     if (t === 'svg' && el.dataset.icon) { rec.icon = el.dataset.icon; let ink = null; try {
         // The glyph's geometry as drawn: each shape's client rect is its bbox after every transform (a
         // rotated twisty, a flipped arrow), without stroke, as GTK's path bounds are.
@@ -101,7 +105,7 @@ function dump({ winSel, groups, exclude, pairSels }) {
         const cw = q.width - px(cs.paddingLeft) - px(cs.paddingRight) - px(cs.borderLeftWidth) - px(cs.borderRightWidth), al = cs.textAlign === 'center' ? 0.5 : (cs.textAlign === 'right' || cs.textAlign === 'end') ? 1 : 0;
         const x = q.left + px(cs.paddingLeft) + px(cs.borderLeftWidth) + Math.max(0, cw - m.width) * al, y = q.top + px(cs.borderTopWidth) + px(cs.paddingTop) + (ch - ascent - descent) / 2;
         const tq = isect({ left: x, top: y, right: x + m.width, bottom: y + ascent + descent }, clip);
-        if (tq) texts.push({ el: id, text: s, placeholder: !v, box: rel(tq), font: font(cs), color: col(v ? cs.color : (getComputedStyle(el, '::placeholder').color || cs.color)), opacity: op, lines: 1 }); } }
+        if (tq) texts.push({ el: id, text: s, placeholder: !v, box: rel(tq), font: font(cs, el), color: col(v ? cs.color : (getComputedStyle(el, '::placeholder').color || cs.color)), opacity: op, lines: 1 }); } }
     elements.push(rec);
     // Own text runs: each direct text node, as the browser laid it out.
     for (const n of el.childNodes) { if (n.nodeType !== 3 || !n.textContent.trim()) continue;
@@ -110,9 +114,9 @@ function dump({ winSel, groups, exclude, pairSels }) {
       let tc = clip; if (cs.overflowX !== 'visible') tc = { l: Math.max(clip.l, q.left), t: Math.max(clip.t, q.top), r: Math.min(clip.r, q.right), b: Math.min(clip.b, q.bottom) };
       const tq = isect({ left: u.left, top: u.top, right: u.right, bottom: u.bottom }, tc); if (!tq) continue;
       const lines = new Set(rects.map(x => Math.round(x.top))).size;
-      texts.push({ el: id, text: tt(n.textContent.replace(/\s+/g, ' ').trim(), cs), box: rel(tq), full: rel({ left: u.left, top: u.top, width: u.right - u.left, height: u.bottom - u.top }), font: font(cs), color: col(cs.color), opacity: op, lines, baseline: +(u.top - W.top + asc(cs)).toFixed(2),
+      texts.push({ el: id, text: tt(n.textContent.replace(/\s+/g, ' ').trim(), cs), box: rel(tq), full: rel({ left: u.left, top: u.top, width: u.right - u.left, height: u.bottom - u.top }), font: font(cs, el), color: col(cs.color), opacity: op, lines, baseline: +(u.top - W.top + asc(cs)).toFixed(2),
         ellipsis: cs.textOverflow === 'ellipsis' && el.scrollWidth > el.clientWidth + 1 }); }
-    if (el.isContentEditable && el.getAttribute('contenteditable') === 'true' && !el.textContent.trim() && el.dataset.ph) texts.push({ el: id, text: el.dataset.ph, placeholder: true, box: rel(vis), font: font(cs), color: col(cs.color), opacity: op, lines: 1 });
+    if (el.isContentEditable && el.getAttribute('contenteditable') === 'true' && !el.textContent.trim() && el.dataset.ph) texts.push({ el: id, text: el.dataset.ph, placeholder: true, box: rel(vis), font: font(cs, el), color: col(cs.color), opacity: op, lines: 1 });
   }
   const grp = groups.map(g => { const els = g.spec ? [...document.querySelectorAll(g.spec)].filter(e => e.getClientRects().length && shown(e)) : [];
     return { name: g.name, info_only: !!g.info_only, boxes: els.map(e => rel(e.getBoundingClientRect())) }; });

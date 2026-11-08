@@ -204,8 +204,11 @@ dc_scenario=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).g
 # by the capture user), taken once per run.
 if [ -n "$dc_scenario" ]; then
   mkdir -p "$work/design-center"
-  for d in mockups fonts wallpapers icons; do
-    [ -d "$design_center/$d" ] && cp -R "$design_center/$d" "$work/design-center/"
+  # (social-luma/photos and brand: pictures the simulator and app mockups load from ../)
+  for d in mockups fonts wallpapers icons brand social-luma/photos; do
+    [ -d "$design_center/$d" ] || continue
+    mkdir -p "$work/design-center/$(dirname "$d")"
+    cp -R "$design_center/$d" "$work/design-center/$(dirname "$d")/"
   done
   chown -R 1000:1000 "$work/design-center"
   design_center=$work/design-center

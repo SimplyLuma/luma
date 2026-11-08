@@ -75,8 +75,8 @@ luma-cast-backend-common-0.1.0-1.luma.1.fc44.noarch
 luma-cast-dlna-0.1.0-1.luma.1.fc44.noarch
 luma-cast-googlecast-0.1.0-1.luma.2.fc44.x86_64
 luma-cast-miracast-0.1.0-1.luma.1.fc44.x86_64
-luma-developer-platform-0.1.0-1.luma.124.fc44.x86_64
-luma-developer-platform-sdk-0.1.0-1.luma.124.fc44.noarch
+luma-developer-platform-0.1.0-1.luma.125.fc44.x86_64
+luma-developer-platform-sdk-0.1.0-1.luma.125.fc44.noarch
 luma-mods-0.1.0-1.luma.24.creator20261007.1.fc44.noarch
 luma-monitor-0.1.0-1.luma.20.fc44.noarch
 luma-notification-policy-0.1.0-1.luma.1~preview.20260905.1.fc44.noarch
@@ -106,7 +106,7 @@ python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 luma-android-runtime-0.1.0-1.luma.110.fc44.noarch
 luma-android-images-20.0-1.luma.17.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
-luma-application-installer-0.1.0-1.luma.88.fc44.noarch
+luma-application-installer-0.1.0-1.luma.89.fc44.noarch
 luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
 luma-homebrew-0.1.0-1.luma.1.fc44.noarch
 luma-relay-0.1.0-1.luma.12.fc44.noarch

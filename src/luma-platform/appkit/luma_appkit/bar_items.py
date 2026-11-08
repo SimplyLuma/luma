@@ -150,7 +150,7 @@ def subject_name(chip: BarChip) -> str:
 class BarSearch:
     """A search well in the bar. `on_change(text)` on each edit, `on_activate(text)` on Return; Esc clears."""
 
-    SPANS = ("narrow", "regular", "wide")
+    SPANS = ("narrow", "medium", "regular", "wide")
 
     def __init__(self, placeholder: str = "Search", *, text: str = "", label: str | None = None,
                  span: str = "regular", wide: bool = False, on_change: Callable[[str], None] | None = None,
@@ -203,6 +203,7 @@ class BarSearch:
         well.add_css_class(self.span)
         well.bar_search = True
         well.open_in_bar = lambda center: center.open_search(self)
+        well.set_hexpand(self.keep)  # set either way: a folded glyph's own expanding never widens the well
         if self.keep:
             well.add_css_class("keep")
             well.bar_phone_wide = True
@@ -210,12 +211,13 @@ class BarSearch:
             from .lumaui_tokens import ACTION_CENTER
             well.set_margin_end(ACTION_CENTER["search_gap"])  # v71: a clear 6 before the next button
         # v70's widths are the border box; GTK adds the padding outside the layout.
-        width = (_m("search", {"narrow": "width_narrow", "regular": "width", "wide": "width_wide"}[self.span])
+        width = (_m("search", {"narrow": "width_narrow", "medium": "width_medium", "regular": "width", "wide": "width_wide"}[self.span])
                  - _m("search", "padding_start") - _m("search", "padding_end"))
+        # The gap is the well's CSS border-spacing, which GtkBoxLayout adds to its own spacing (left at 0).
         layout = _SearchLayout(width)
-        layout.set_spacing(_m("search", "gap"))
         well.set_layout_manager(layout)
-        well.append(icons.image("search"))
+        glyph = icons.image("search")
+        well.append(glyph)
         if self.opens:
             well.add_css_class("opens")
             word = Gtk.Label(label=self.placeholder, xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END)
@@ -261,6 +263,9 @@ class BarSearch:
             folded = self.collapsed or (on and self.span != "wide" and not self.keep)
             lumaui.set_css_class(well, "folded", folded)
             entry.set_visible(not self.opens and (not folded or bool(entry.get_text())))
+            # Folded, the glyph is the button's own, centred in it (v73 .fbar .ib).
+            glyph.set_hexpand(folded and not entry.get_visible())
+            glyph.set_halign(Gtk.Align.CENTER if folded and not entry.get_visible() else Gtk.Align.FILL)
             layout.width = 0 if folded else width
             well.queue_resize()
 

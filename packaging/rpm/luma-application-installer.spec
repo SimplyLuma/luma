@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.88%{?dist}
+Release:        1.luma.89%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -39,7 +39,7 @@ Requires:       dpkg
 Requires:       flatpak
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.123
+Requires:       luma-developer-platform >= 0.1.0-1.luma.125
 Requires:       container-selinux
 Requires:       policycoreutils
 Requires:       podman
@@ -289,6 +289,11 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.89
+- Depot matches its design: bar buttons at their own width, the Off and On
+  panels, theme previews, tweak cards, Library tile names and Oklab-blended
+  gradients.
+
 * Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.88
 - Depot installs, updates and removes third-party apps listed in the signed
   Depot catalogue v1 from the Luma remote. The catalogue is verified against

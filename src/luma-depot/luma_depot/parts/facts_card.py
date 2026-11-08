@@ -58,7 +58,9 @@ def facts_card(world: World, item: Item, on_site=None) -> Gtk.Widget:
         value = Gtk.Box(halign=Gtk.Align.END)
         value.append(label(f"{item.app.rating:g} \u2605", "dq-fact-value"))
         value.append(label(fmt_count(item.app.rating_count), "dq-fact-count"))
-        card.append(_row("Rating", value))
+        row = _row("Rating", value)
+        row.add_css_class("stars")
+        card.append(row)
     elif item.users:
         card.append(_row("Used by", label(fmt_count(item.users), "dq-fact-value")))
     else:

@@ -2286,8 +2286,9 @@ window.luma-treatment-dark popover.luma-menu-popover > arrow {
  * Inset and TwoColumnInset (.dq-ranks), Checkbox (.dq-chk), Disclosure (.dq-tech, .dq-fold), Tooltip
  * (.dq-ri::after), EdgeFadeScroller arrows (.dq-rnav), PermissionList (.dq-perms), Changelog (.dq-clog),
  * FramedPicture (.dq-frame) and TextButton's list and bar sizes (.dq-act, .dq-bar .dq-act.bar). */
+/* An Inset holds the frame's ink: libadwaita's .card ink (card_fg_color) is not LumaUI's. */
 box.lumaui-inset {
-  padding: var(--lumaui-inset-padding); border-radius: var(--lumaui-inset-radius);
+  padding: var(--lumaui-inset-padding); border-radius: var(--lumaui-inset-radius); color: @luma_ink;
   background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
 }
 box.lumaui-inset.card { padding: var(--lumaui-inset-card-padding); border-radius: var(--lumaui-inset-card-radius); }
@@ -2314,6 +2315,7 @@ box.lumaui-disclosure.line button.lumaui-disclosure-summary {
   font-size: var(--lumaui-t-disclosure-line-size); font-weight: var(--lumaui-t-disclosure-line-weight);
 }
 box.lumaui-disclosure.line button.lumaui-disclosure-summary:hover { color: @luma_ink; }
+box.lumaui-disclosure.line button.lumaui-disclosure-summary label { line-height: var(--lumaui-t-disclosure-line-line-height); }
 box.lumaui-disclosure.line .lumaui-disclosure-line { border-spacing: var(--lumaui-disclosure-line-gap); }
 box.lumaui-disclosure.line .lumaui-disclosure-chevron { -gtk-icon-size: var(--lumaui-disclosure-line-chevron); }
 box.lumaui-disclosure.line .lumaui-disclosure-body { margin-top: var(--lumaui-disclosure-line-body-top); }
@@ -2377,8 +2379,19 @@ button.lumaui-text-button.list {
   min-height: var(--lumaui-text-button-list-height); padding: 0 var(--lumaui-text-button-list-padding-x);
   border-radius: var(--lumaui-text-button-list-radius); font-size: var(--lumaui-text-button-list-font-size); font-weight: 600;
 }
-button.lumaui-text-button.bar { border-radius: var(--lumaui-text-button-bar-radius); padding: 0 var(--lumaui-text-button-bar-padding-x); font-weight: 650; }
-button.lumaui-text-button.big { min-height: var(--lumaui-text-button-big-height); border-radius: var(--lumaui-text-button-big-radius); font-weight: 650; }
+/* A filled list button (Install in a row, v73 .dq-act) rests on v73's fill-1. */
+button.lumaui-text-button.list.fill { background: @luma_list_button_fill; }
+/* A plain list button (Open in a row, v73 .dq-act.quiet) rests in ink-2 and lights to ink. */
+button.lumaui-text-button.list:not(.fill):not(.key):not(.danger-solid):not(.raised):not(.danger) { color: @luma_ink_secondary; }
+button.lumaui-text-button.list:not(.fill):not(.key):not(.danger-solid):not(.raised):not(.danger):hover { color: @luma_ink; }
+/* v73 .dq-act: min-width 64 is the border box; GTK's min-width is the content box, inside the padding. */
+button.lumaui-text-button.bar { min-width: calc(var(--lumaui-text-button-bar-min-width) - 2 * var(--lumaui-text-button-bar-padding-x)); border-radius: var(--lumaui-text-button-bar-radius); padding: 0 var(--lumaui-text-button-bar-padding-x); font-weight: 650; }
+/* big: v73 .dq-act.big, 40 tall, 0 22, 14/700, 8 between a 16 glyph and the words */
+button.lumaui-text-button.big {
+  min-height: var(--lumaui-text-button-big-height); padding: 0 var(--lumaui-text-button-big-padding-x);
+  border-radius: var(--lumaui-text-button-big-radius); font-size: var(--lumaui-text-button-big-font-size); font-weight: 700; letter-spacing: 0;
+}
+button.lumaui-text-button.big .lumaui-text-button-content { border-spacing: var(--lumaui-text-button-big-gap); }
 button.lumaui-text-button.chosen { background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow; }
 button.lumaui-text-button .lumaui-text-button-menu { -gtk-icon-size: 14px; color: @luma_muted; margin-left: -2px; }
 

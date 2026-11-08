@@ -112,7 +112,15 @@ class ItemPage(Page):
             # 8.1 on a phone: name, gallery, facts, Installed on, Technical info, About, What's new, Ratings
             column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             column.add_css_class("dq-icol")
-            for widget in ([gallery] if gallery is not None else []) + side + reading:
+            if gallery is not None:
+                gallery.add_css_class("dq-icol-gallery")
+                column.append(gallery)
+            aside = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            aside.add_css_class("dq-iside")
+            for card in side:
+                aside.append(card)
+            column.append(aside)
+            for widget in reading:
                 column.append(widget)
             page.append(column)
         return page
@@ -193,7 +201,7 @@ class ItemPage(Page):
                 continue
             if not button.label:
                 widget = IconOnlyButton(button.icon, button.tooltip, on_click=actions[button.key])
-                Tooltip.attach(widget, button.tooltip.split(" from ")[0] if button.key == "uninstall" else button.tooltip,
+                Tooltip.attach(widget, button.tooltip.split(" on ")[0] if button.key == "uninstall" else button.tooltip,
                                label=False)
             else:
                 busy = button.variant == "key" and self.item.id in self.shell.store.busy
@@ -204,7 +212,6 @@ class ItemPage(Page):
                                 on_click=actions[button.key], sensitive=not busy)
             if button.key == "try":
                 widget.set_chosen(self.trying)  # raised while this window wears the Look
-                widget.update_property([Gtk.AccessibleProperty.LABEL], ["Try in this window"])
             self.bar_buttons[button.key] = widget
             items.append(BarWidget(widget))
         return items

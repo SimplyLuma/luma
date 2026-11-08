@@ -3792,7 +3792,7 @@ def use_redesign() -> bool:
         return False
     try:
         from luma_appkit import lumaui
-        if lumaui.tv_posture() or lumaui.LUMAUI_API_LEVEL < 11:
+        if lumaui.tv_posture() or lumaui.LUMAUI_API_LEVEL < 12:
             return False
         from luma_appkit import Button, Disclosure, EdgeFadeScroller, FramedPicture, Inset  # noqa: F401
     except (ImportError, AttributeError):

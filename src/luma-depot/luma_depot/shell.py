@@ -22,7 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gdk, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
-    ActionCenter, AppWindow, Command, CommandGroup, CommandRegistry, BarSearch, BarWidget, CountBadge, Island, NavigationSidebar, ScrollView, SidebarRow,
+    ActionCenter, AppWindow, Command, CommandGroup, CommandRegistry, BarSearch, BarWidget, CountBadge, Island, NavigationSidebar, RowLead, ScrollView, SidebarRow,
     SidebarToggle, Toast, ToastHost, Tooltip, add_style_sheet, icons,
 )
 
@@ -74,8 +74,11 @@ class DepotShell(AppWindow):
             self.store = SampleStore(world)
         elif fixture.endswith(".json") or os.environ.get("LUMA_DEPOT_PREVIEW") == "1":
             # The approved sample: the design fixture, a preview, a screenshot run.
+            # The sample's own device is the one it runs on: the phone on a phone, else the computer (the mockup's here()).
+            from luma_appkit import lumaui
+            here = os.environ.get("LUMA_DEPOT_HERE") or ("fp6" if lumaui.mobile_form_factor() else "xps")
             self.store = SampleStore(load_fixture(fixture if fixture.endswith(".json") else default_fixture(),
-                                                  here=os.environ.get("LUMA_DEPOT_HERE", "xps")))
+                                                  here=here))
         else:
             from .model.live import LiveStore
             self.store = LiveStore(self._world_changed)
@@ -106,7 +109,10 @@ class DepotShell(AppWindow):
         # Phone and compact (16.1): the sidebar becomes the places sheet behind a menu button,
         # Back moves into the bar, grids narrow; each tier change redraws the page.
         from luma_appkit.structure_adapt import WidthWatch
+        from luma_appkit import lumaui
         self.width_tier = "regular"
+        if lumaui.mobile_form_factor():
+            self._apply_tier("phone")  # before the first page, so it is drawn for the phone
         self._width_watch = WidthWatch(self.host, on_tier=self._tier_changed)
 
         keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
@@ -158,7 +164,7 @@ class DepotShell(AppWindow):
             self._search.entry.grab_focus()
 
     def _build_sidebar(self) -> NavigationSidebar:
-        sidebar = NavigationSidebar(variant="destinations")
+        sidebar = NavigationSidebar(variant="places")
         sidebar.set_name("dq-side")
         sidebar.add_css_class("dq-side")
         self.rows: dict[str, Gtk.Widget] = {}
@@ -167,7 +173,7 @@ class DepotShell(AppWindow):
             if group != heading:
                 sidebar.append_section(group, ruled=True)
                 heading = group
-            row = SidebarRow(title, lead=icons.image(glyph))
+            row = SidebarRow(title, lead=RowLead.icon(glyph))
             row.destination = key
             if key == "updates":
                 self.update_badge = CountBadge(attention=True)
@@ -212,11 +218,13 @@ class DepotShell(AppWindow):
         Tooltip.attach(self.back_button, "Back")
         self.back_button.connect("clicked", lambda _b: self.back())
         overlay.add_overlay(self.back_button)
+        # On a phone the title row is gone: the places' ☰ floats where the phone frame puts the row's pills
+        # (16 in, 48 down: under the clock, centred in the 52 row) and opens the kit's places drawer.
         self.places_button = Gtk.Button(halign=Gtk.Align.START, valign=Gtk.Align.START, visible=False)
         self.places_button.add_css_class("dq-places")
-        self.places_button.set_child(icons.image("menu"))
+        # The ☰ is the pill's own drawing (as the mockup's phone .lsidebtn draws it), not a separate image.
         self.places_button.update_property([Gtk.AccessibleProperty.LABEL], ["Places"])
-        self.places_button.connect("clicked", lambda _b: self.open_places())
+        self.places_button.connect("clicked", lambda _b: self.sidebar_toggle.toggle())
         overlay.add_overlay(self.places_button)
         island.append(overlay)
         self.host = ToastHost(island)
@@ -306,13 +314,13 @@ class DepotShell(AppWindow):
                 items.append(BarAction("chevron-left", tooltip="Back", on_activate=self.back))
             items += page.bar_items()
         else:
-            self._search = BarSearch("Search Depot", text=self.query, collapsed=self.is_compact(),
+            self._search = BarSearch("Search Depot", text=self.query, span="medium", collapsed=self.is_compact(),
                                      on_change=self._search_changed)
             self._search.on_escape_empty = self._search_escaped
             items.append(self._search)
             items += page.bar_items()
         # On a phone the bar spans the width, keeping the same buttons (16.1).
-        self.center.show_bar(items, fill=self.is_phone())
+        self.center.show_bar(items, fill="edge" if self.is_phone() else False)
 
     # ── search (12) ───────────────────────────────────────────────────────
 
@@ -376,33 +384,21 @@ class DepotShell(AppWindow):
         from luma_appkit import lumaui
         return lumaui.mobile_form_factor() or self.width_tier == "phone"
 
-    def _tier_changed(self, tier: str) -> None:
-        if tier == self.width_tier:
-            return
+    def _apply_tier(self, tier: str) -> None:
+        """Phone and compact (16.1): on a phone the kit's ☰ opens the places as its drawer, and the page runs
+        under the clock, insetting itself."""
         self.width_tier = tier
         phone = self.is_phone()
-        self.sidebar.set_visible(not phone)
-        self.places_button.set_visible(phone)
+        self.set_phone_bleed(phone)
         lumaui_set = __import__("luma_appkit").lumaui.set_css_class
         lumaui_set(self, "dq-phone", phone)
         lumaui_set(self, "dq-compact", self.is_compact())
-        self._render(scroll=self.scroller.get_vadjustment().get_value())
 
-    def open_places(self) -> None:
-        """The places sheet (2.2 on a phone): the same rows and headings as the sidebar, from the bottom."""
-        from luma_appkit import RadioMenuItem
-        from luma_appkit.menus import bar_menu
-        current = self.place if self.item is None and self.place != "search" else (
-            self.history[0].place if self.history else "today")
-        rows: list = []
-        heading = ""
-        for key, title, glyph, group in PLACES:
-            if group != heading:
-                rows.append(group)
-                heading = group
-            rows.append(RadioMenuItem(title, icon=glyph, group="place", checked=key == current,
-                                      on_activate=lambda k=key: self.go(k)))
-        bar_menu(self.places_button, rows, label="Places")
+    def _tier_changed(self, tier: str) -> None:
+        if tier == self.width_tier:
+            return
+        self._apply_tier(tier)
+        self._render(scroll=self.scroller.get_vadjustment().get_value())
 
     def toast(self, message: str, kind: str = "done") -> None:
         Toast.show(self.host, message, kind=kind)

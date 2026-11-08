@@ -377,7 +377,7 @@
       "id": "rating-stars-fallback",
       "doc": "lumaui-deviations.md: rating-stars-fallback",
       "reason": "Figtree has no \u2605/\u2606: both sides draw a rating's five stars from a fallback face; the spec reports the CSS family, GTK the face that drew them, whose advances are a few px wider.",
-      "apps": ["tv-depot"],
+      "apps": ["tv-depot", "depot-redesign"],
       "subject": "^text \"[\u2605\u2606]{5}\"$",
       "prop": "^(font family|font weight|width)$",
       "max_delta": 8
@@ -465,6 +465,76 @@
       ],
       "subject": "^text \"(abc|abd)\"$",
       "prop": "^width$"
+    },
+    {
+      "id": "depot-your-apps",
+      "doc": "lumaui-deviations.md: depot-your-apps",
+      "apps": ["depot-redesign"],
+      "reason": "The platform plan (7 Nov, section 9) puts \"Your apps\" (the developer portal, Lucide code-xml) at the foot of Depot's sidebar for everyone; the redesign mockup predates it and has no foot.",
+      "group": "sidebar",
+      "subject": "Your apps|^icon code-xml$",
+      "prop": "^extra$"
+    },
+    {
+      "id": "depot-identity-chevron",
+      "doc": "lumaui-deviations.md: depot-identity-chevron",
+      "apps": ["depot-redesign"],
+      "reason": "depot.js replaces the title row the simulator draws for Depot (luma-73.js renderDepot: icon, name, the app menu's chevron, the sidebar button) with the name and the sidebar button; the kit's identity keeps the app menu every Luma window has, so its chevron stays.",
+      "group": "window",
+      "subject": "^icon chevron-down$",
+      "prop": "^extra$",
+      "max_count": 1
+    },
+    {
+      "id": "depot-identity-sidebar-button",
+      "doc": "lumaui-deviations.md: depot-identity-sidebar-button",
+      "apps": ["depot-redesign"],
+      "reason": "The same title row: the sidebar button follows the identity's chevron (14 wide, 9 before the button), 21.6 further right than in the mockup.",
+      "group": "window",
+      "subject": "^button \"(Hide|Show) sidebar\"$",
+      "prop": "^position$",
+      "max_delta": 23
+    },
+    {
+      "id": "depot-95-tahoma",
+      "doc": "lumaui-deviations.md: depot-95-tahoma",
+      "apps": ["depot-redesign"],
+      "reason": "The 95 theme's specimen asks for Tahoma, then MS Sans Serif; neither is on Luma or the capture host, so both sides draw the sans-serif fallback. The spec reports the CSS family it asked for.",
+      "subject": "^text \"(Files|Cancel|Open)\"$",
+      "prop": "^font family$",
+      "spec_value": "^Tahoma$"
+    },
+    {
+      "id": "depot-story-photo-capture",
+      "doc": "lumaui-deviations.md: depot-story-photo-capture",
+      "apps": ["depot-redesign"],
+      "states": ["today"],
+      "reason": "The capture's Design Center copy has no social-luma/photos (conform-serve.sh copies it once the service is reinstalled), so the mockup's story photo does not load there and the spec's hero is its gradient alone; Depot draws the blurred photo on it, as the Design Center does. Remove when the service copies the photos.",
+      "group": "content",
+      "subject": "^(card \"Tide\"|box \"ONE LIBRARY, EVERY SCREEN\")$",
+      "prop": "^surface colour$",
+      "max_delta": 25
+    },
+    {
+      "id": "depot-specimen-panel",
+      "doc": "lumaui-deviations.md: depot-specimen-panel",
+      "apps": ["depot-redesign"],
+      "states": ["tweak-battery"],
+      "reason": "FramedPicture draws a specimen's panel (its round clip and drop shadow) in its own snapshot at the specimen's box, so the capture gives them to the specimen, the Off and On panel (.dq-ba); the mockup draws them on .dq-spec, the panel's parent at the same box. The same pixels.",
+      "group": "content",
+      "subject": "^box \"icon:arrow-right\"$",
+      "prop": "^(radius|shadow)$",
+      "max_count": 4
+    },
+    {
+      "id": "depot-float-back-blur",
+      "doc": "lumaui-deviations.md: depot-float-back-blur",
+      "apps": ["depot-redesign"],
+      "reason": "no-backdrop-blur for the page's floating Back key (.dq-fback, backdrop-filter blur): over a picture GTK's token glass samples a little lighter.",
+      "group": "content",
+      "subject": "^button \"Back\"$",
+      "prop": "^surface colour$",
+      "max_delta": 5
     }
   ]
 }

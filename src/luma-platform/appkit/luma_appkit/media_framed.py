@@ -150,7 +150,9 @@ class FramedPicture(Gtk.Widget):
 
     def __init__(self, spec: FrameSpec, *, specimen: Gtk.Widget | None = None, radius: float = 18,
                  specimen_width: int = 360, label: str | None = None, screen: Gtk.Widget | None = None,
-                 banner: Gtk.Widget | None = None) -> None:
+                 banner: Gtk.Widget | None = None, frost: float = 0) -> None:
+        """`frost`: the specimen is frosted glass, the backdrop blurred that many px more behind it
+        (Depot's Off and On panel: backdrop-filter blur(20px))."""
         super().__init__(overflow=Gtk.Overflow.HIDDEN, accessible_role=Gtk.AccessibleRole.IMG)
         self.add_css_class("lumaui-framed-picture")
         self.add_css_class(spec.kind)
@@ -158,6 +160,7 @@ class FramedPicture(Gtk.Widget):
         self.radius = radius
         self.aspect = (16, 9)
         self.specimen_width = specimen_width
+        self.frost = frost
         self.specimen: Gtk.Widget | None = None
         if specimen is not None:
             self.specimen = specimen
@@ -257,13 +260,14 @@ class FramedPicture(Gtk.Widget):
             self.snapshot_child(self.banner, snapshot)
         snapshot.pop()
 
-    def _backdrop(self, snapshot: Gtk.Snapshot, width: float, height: float) -> None:
+    def _backdrop(self, snapshot: Gtk.Snapshot, width: float, height: float, more: float = 0) -> None:
         tex = texture(self.spec.backdrop)
         if tex is None:
             snapshot.append_color(_rgba(0.1, 0.11, 0.13, 1), _rect(0, 0, width, height))
             return
         phone = self.spec.kind == "phone"
         blur = width * (BLUR_PHONE if phone else BLUR_DESKTOP)
+        blur = (blur * blur + more * more) ** 0.5  # a blur over a blur: their deviations add in quadrature
         bleed = width * 0.06  # .dq-fbg { inset: -6cqw }: the blur never shows a soft edge
         matrix, offset = _matrix(1.1 if phone else 1.35, 0.8 if phone else 0.88)
         snapshot.push_color_matrix(matrix, offset)
@@ -373,6 +377,8 @@ class FramedPicture(Gtk.Widget):
         panel = _rounded(x, y, w, h, width * SPEC_RADIUS)
         snapshot.append_outset_shadow(panel, _rgba(0, 0, 0, 0.6), 0, height * 0.04, -height * 0.02, height * 0.09)
         snapshot.push_rounded_clip(panel)
+        if self.frost > 0:
+            self._backdrop(snapshot, width, height, self.frost)
         if self.specimen is not None:
             self.snapshot_child(self.specimen, snapshot)
         snapshot.pop()

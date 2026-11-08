@@ -30,26 +30,30 @@ def _box(css: str, orientation: Gtk.Orientation = Gtk.Orientation.HORIZONTAL, **
     return box
 
 
-def theme_window(theme: str) -> Gtk.Widget:
-    """A title bar with its controls, a sidebar, a list of bars, Cancel and the main button."""
+def theme_window(theme: str, *, centred: bool = False) -> Gtk.Widget:
+    """A title bar with its controls, a sidebar, a list of bars, Cancel and the main button.
+    `centred`: every title centred (the item page's specimen sits in the gallery's button, whose words centre)."""
     if theme not in THEMES:
         theme = "luma"
-    window = _box(f"dq-thm t-{theme}", Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
-    window.set_size_request(200, 125)
+    window = _box(f"dq-thm t-{theme}", Gtk.Orientation.VERTICAL)
+    window.set_overflow(Gtk.Overflow.HIDDEN)
     bar = _box("tb")
-    left = _box("wc l")
-    right = _box("wc r")
+    left = _box("wc l", valign=Gtk.Align.CENTER)  # .tb is align-items: center
+    right = _box("wc r", valign=Gtk.Align.CENTER)
     for side in (left, right):
         for _ in range(3):
             side.append(_box("dot"))
-    title = Gtk.Label(label="Files", hexpand=True, xalign=0.5 if theme in ("cupertino", "exile", "95") else 0)
+    title = Gtk.Label(label="Files", hexpand=True, xalign=0.5 if centred or theme in ("cupertino", "exile") else 0)
     bar.append(left)
     bar.append(title)
     bar.append(right)
     left.set_visible(theme in ("cupertino", "exile"))
     right.set_visible(theme in ("luma", "redmond", "exile", "95"))
     window.append(bar)
-    body = _box("bd", vexpand=True)
+    body = _Split(0.28)  # .bd: grid-template-columns 28% 1fr
+    body.set_overflow(Gtk.Overflow.HIDDEN)
+    body.add_css_class("bd")
+    body.set_vexpand(True)
     side = _box("sd", Gtk.Orientation.VERTICAL)
     for _ in range(4):
         side.append(_box("ln"))
@@ -57,8 +61,8 @@ def theme_window(theme: str) -> Gtk.Widget:
     for index in range(5):
         line = _box("ln" + (" short" if index % 2 == 0 else ""))
         main.append(line)
-    body.append(side)
-    body.append(main)
+    body.add(side)
+    body.add(main)
     window.append(body)
     foot = _box("ft", halign=Gtk.Align.END)
     for word, key in (("Cancel", False), ("Open", True)):
@@ -119,15 +123,78 @@ def _ink() -> Gtk.Widget:
     return paper
 
 
-def specimen(look: Look) -> Gtk.Widget:
-    """The Look's picture on its own ground (the mockup's .dq-lspec), sized for a tile."""
+class _Split(Gtk.Widget):
+    """Two columns: the first a share of the width, the second the rest (a theme window's sidebar and list)."""
+
+    __gtype_name__ = "DepotSplit"
+
+    def __init__(self, share: float) -> None:
+        super().__init__()
+        self.share = share
+        self.parts: list[Gtk.Widget] = []
+
+    def add(self, child: Gtk.Widget) -> None:
+        child.set_parent(self)
+        self.parts.append(child)
+
+    def do_measure(self, orientation, for_size):
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            return 0, 0, -1, -1
+        heights = [p.measure(orientation, -1)[1] for p in self.parts]
+        return 0, max(heights or [0]), -1, -1  # min-height 0: the window clips what does not fit
+
+    def do_size_allocate(self, width, height, baseline):
+        gi.require_version("Gsk", "4.0")
+        gi.require_version("Graphene", "1.0")
+        from gi.repository import Graphene, Gsk
+        first = round(width * self.share)
+        self.parts[0].allocate(first, height, -1, None)
+        self.parts[1].allocate(width - first, height, -1, Gsk.Transform().translate(Graphene.Point().init(first, 0)))
+
+    def do_dispose(self):
+        for part in self.parts:
+            part.unparent()
+        self.parts = []
+
+
+class _Share(Gtk.Widget):
+    """Its child a share of its width at an aspect, centred (.dq-thm: width 74%, aspect-ratio 16 / 10)."""
+
+    __gtype_name__ = "DepotShare"
+
+    def __init__(self, child: Gtk.Widget, share: float, aspect: float) -> None:
+        super().__init__(hexpand=True, vexpand=True)
+        self.share, self.aspect = share, aspect
+        child.set_parent(self)
+        self.child = child
+
+    def do_measure(self, orientation, for_size):
+        return 0, 0, -1, -1
+
+    def do_size_allocate(self, width, height, baseline):
+        gi.require_version("Gsk", "4.0")
+        gi.require_version("Graphene", "1.0")
+        from gi.repository import Graphene, Gsk
+        w = width * self.share
+        h = w / self.aspect
+        self.child.allocate(round(w), round(h), -1,
+                            Gsk.Transform().translate(Graphene.Point().init((width - w) / 2, (height - h) / 2)))
+
+    def do_dispose(self):
+        if self.child is not None:
+            self.child.unparent()
+            self.child = None
+
+
+def specimen(look: Look, *, centred: bool = False) -> Gtk.Widget:
+    """The Look's picture on its own ground (the mockup's .dq-lspec), sized for a tile; `centred` as theme_window."""
     ground = _box(f"dq-lspec k-{look.kind.lower().replace(' ', '')}", hexpand=True, vexpand=True)
     if look.theme:
         ground.add_css_class(f"th-{look.theme if look.theme in THEMES else 'luma'}")
     elif look.kind != "Appearance":
         _ground_hue(ground, look.hue)
     if look.theme:
-        inner = theme_window(look.theme)
+        inner = _Share(theme_window(look.theme, centred=centred), 0.74, 16 / 10)
     elif look.swatch:
         inner = _swatches(look.swatch)
     elif look.ink:

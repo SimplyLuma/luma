@@ -24,7 +24,7 @@ __all__ = ["installed_on"]
 
 def installed_on(world: World, item: Item, *, on_install: Callable[[str], None],
                  on_uninstall: Callable[[str], None], touch: bool = False) -> Gtk.Widget:
-    card = Inset(padding="card")
+    card = Inset(padding="card", spacing=2)  # rows 2 apart (.dq-iside .dq-mydevs)
     card.add_css_class("dq-mydevs")
     card.append(label("Installed on", "dq-aside-heading"))
     on = world.on_devices(item)
@@ -44,7 +44,7 @@ def installed_on(world: World, item: Item, *, on_install: Callable[[str], None],
         words.append(label(state, "dq-md-state"))
         row.append(words)
         if has and not item.is_system:
-            bin_ = IconOnlyButton("trash-2", f"Uninstall from {device.name}", size="row",
+            bin_ = IconOnlyButton("trash-2", f"Uninstall on {device.name}", size="row",
                                   on_click=lambda d=device.id: on_uninstall(d))
             bin_.add_css_class("dq-md-act")
             Tooltip.attach(bin_, "Uninstall", label=False)

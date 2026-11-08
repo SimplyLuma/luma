@@ -20,6 +20,7 @@ __all__: list[str] = []
 _FALLBACK: dict[str, dict] = {
     "nav_people": {"width": 292},
     "nav_destinations": {"width": 224},
+    "nav_places": {"width": 220},
     "nav_resources": {"width": 248, "well": 32, "face": 34},
     "nav_files": {"width": 236},
     "nav_tree": {"width": 284, "indent": 16, "faces": 16},

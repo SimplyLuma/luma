@@ -48,8 +48,6 @@ class Gallery(Gtk.Box):
                 frame = picture.make(10)
                 width, height = (76, 43) if compact else (96, 54)
                 frame.set_size_request(width, height)
-                if compact:
-                    frame.set_aspect(4, 3)
                 thumb.set_child(frame)
                 thumb.update_property([Gtk.AccessibleProperty.LABEL], [f"Picture {index + 1}: {picture.label}"])
                 thumb.connect("clicked", lambda _b, i=index: self.choose(i))
@@ -64,8 +62,6 @@ class Gallery(Gtk.Box):
             self.slot.remove(child)
         frame = self.pictures[index].make(18)
         frame.set_hexpand(True)
-        if self.compact:
-            frame.set_aspect(4, 3)
         self.slot.append(frame)
         for i, thumb in enumerate(self.thumbs):
             lumaui.set_css_class(thumb, "on", i == index)
