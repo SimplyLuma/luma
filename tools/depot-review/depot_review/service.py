@@ -10,7 +10,7 @@ import time
 import traceback
 from pathlib import Path
 
-from . import catalogue, checks, images, publish, vm
+from . import catalog4, catalogue, checks, images, publish, vm
 from .config import Config
 from .hub import Hub, HubError
 
@@ -319,6 +319,11 @@ def serve(config: Config, once: bool = False) -> None:
                     catalogue.publish(config, hub, r2)
                 except Exception as error:  # the next round retries
                     log(f"catalogue: {error}")
+                if config.publish_catalog4:
+                    try:
+                        catalog4.publish(config)
+                    except Exception as error:  # the next round retries
+                        log(f"catalog-4: {error}")
                 catalogue_due[0] = time.time() + config.catalogue_seconds
             if not busy:
                 if once:

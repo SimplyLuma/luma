@@ -32,7 +32,9 @@ def app(**overrides):
         "screenshots": [{"url": "https://dl.simplyluma.com/media/org.projectluma.Canvas/shot-1.webp",
                          "sha256": "1" * 64, "width": 1600, "height": 1000}],
         "permissions": [{"key": "files.portal", "level": "standard"}],
-        "sign_in": "none", "qualification": "admitted",
+        "sign_in": "none", "qualification": "admitted", "distribution": "publisher",
+        "architectures": ["x86_64"], "reference_url": "https://simplyluma.com/apps/canvas",
+        "qualification_reason": "Reviewed by Luma.",
     }
     entry.update(overrides)
     return entry
@@ -52,6 +54,13 @@ class Schema4Tests(unittest.TestCase):
     def test_valid_catalog(self):
         document = sign_catalog.validate_schema4(catalog(app()))
         self.assertEqual(document["applications"][0]["id"], "canvas")
+        sign_catalog.validate_with_client(catalog(app()))
+
+    def test_what_installed_depots_refuse_is_refused(self):
+        entry = app()
+        del entry["reference_url"]
+        with self.assertRaises(sign_catalog.CatalogRefused):
+            sign_catalog.validate_with_client(catalog(entry))
 
     def test_explicit_nightly_branch_and_unknown_branch(self):
         document = sign_catalog.validate_schema4(catalog(app(branch="nightly")))
@@ -288,3 +297,27 @@ class QualityGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MediaFromHubTests(unittest.TestCase):
+    def test_missing_pictures_are_copied_by_digest_and_checked(self):
+        import hashlib, io
+        from unittest import mock
+        picture = b"\x89PNG picture bytes"
+        digest = hashlib.sha256(picture).hexdigest()
+        url = f"{sign_catalog.MEDIA_PREFIX}fern/{digest}.png"
+        document = {"applications": [{"id": "fern", "icon": {"url": url, "sha256": digest}}]}
+        asked = []
+
+        def urlopen(request, timeout):
+            asked.append(request.full_url)
+            return io.BytesIO(picture)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(sign_catalog.urllib.request, "urlopen", urlopen):
+            site = Path(tmp)
+            self.assertEqual(sign_catalog.fetch_media(document, site, "https://hub.example"), [f"fern/{digest}.png"])
+            self.assertEqual((site / f"media/listings/fern/{digest}.png").read_bytes(), picture)
+            self.assertEqual(asked, [f"https://hub.example/api/depot/media/{digest}.png"])
+            self.assertEqual(sign_catalog.fetch_media(document, site, "https://hub.example"), [])
+            document["applications"][0]["icon"] = {"url": url.replace("fern/", "other/"), "sha256": "0" * 64}
+            with self.assertRaises(sign_catalog.CatalogRefused):
+                sign_catalog.fetch_media(document, site, "https://hub.example")
