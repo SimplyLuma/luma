@@ -155,7 +155,7 @@ def request(operation, text):
             raise ValueError('Unsupported Depot lifecycle event.')
         if not math.isfinite(value['seconds']) or not 0 <= value['seconds'] <= 600:
             raise ValueError('Invalid Depot lifecycle duration.')
-        if value['window'] not in ('','DepotWindow','FailureWindow'):
+        if value['window'] not in ('','DepotWindow','DepotShell','FailureWindow'):
             raise ValueError('Unsupported Depot window.')
     for key in ('app_id','name','device_id'):
         if key in value and not IDENTITY.fullmatch(value[key]): raise ValueError('Invalid Depot identity.')
