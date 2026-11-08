@@ -3879,6 +3879,8 @@ class DepotApplication(Adw.Application):
             return GLib.SOURCE_REMOVE
 
         window.connect("map", mapped)
+        if window.get_mapped():  # mapped before the watch began: "map" will not come again
+            mapped()
         GLib.timeout_add_seconds(errors.LIFECYCLE_SLOW_SECONDS, late)
 
     def _show_view(self, view: str) -> None:

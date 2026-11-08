@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.89%{?dist}
+Release:        1.luma.90%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -289,6 +289,11 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.90
+- The redesigned window's start reaches the journal: the Depot host accepts
+  DepotShell as a lifecycle window, and a window already mapped when the
+  watch begins is recorded as shown at once.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.89
 - Depot matches its design: bar buttons at their own width, the Off and On
   panels, theme previews, tweak cards, Library tile names and Oklab-blended
