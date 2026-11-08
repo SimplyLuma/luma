@@ -86,6 +86,13 @@
 # is executed: every other step uses the build host's own tools, and an
 # x86_64 host runs the override with qemu-user binfmt.
 set -euo pipefail
+# Mount the card in a private mount namespace. A container or service that
+# starts while the card is mounted in the host namespace copies those mounts
+# and keeps the root filesystem open after this script unmounts it, which
+# then fails btrfs check (20261108.5 release card).
+if [ -z "${LUMA_CARD_PRIVATE_MOUNTS:-}" ]; then
+  LUMA_CARD_PRIVATE_MOUNTS=1 exec unshare --mount --propagation private bash "$0" "$@"
+fi
 export TZ=UTC LC_ALL=C MTOOLS_SKIP_CHECK=1
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -674,7 +681,7 @@ sync
 umount "$sysroot/boot/efi" "$sysroot/boot" "$sysroot"
 fsck.fat -n "${loop}p1" >"$work/fsck.log" 2>&1 || { cat "$work/fsck.log" >&2; fail "the boot partition failed fsck"; }
 e2fsck -fn "${loop}p2" >/dev/null || fail "/boot failed fsck"
-btrfs check --readonly "${loop}p3" >/dev/null 2>&1 || fail "the root filesystem failed btrfs check"
+btrfs check --readonly "${loop}p3" >"$work/btrfs-check.log" 2>&1 || { tail -n 20 "$work/btrfs-check.log" >&2; fail "the root filesystem failed btrfs check"; }
 losetup -d "$loop"
 loop=""
 
