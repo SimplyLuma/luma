@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "reviewed_on": "2026-09-12",
+  "reviewed_on": "2026-11-08",
   "applications": [
     {
       "id": "android-studio",
@@ -14,7 +14,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.google.AndroidStudio",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "IDE for Android app development.",
+      "homepage": "https://developer.android.com/studio/"
     },
     {
       "id": "anydesk",
@@ -29,7 +31,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.anydesk.Anydesk",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Connect to a computer remotely.",
+      "homepage": "https://www.anydesk.com"
     },
     {
       "id": "audacity",
@@ -43,8 +47,10 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/en/apps/org.audacityteam.Audacity",
+      "qualification": "pending",
       "qualification_reason": "Community package; recording and device integration checks are pending.",
-      "qualification": "pending"
+      "summary": "Audacity is the world's most popular audio editing and recording app.",
+      "homepage": "https://www.audacityteam.org/"
     },
     {
       "id": "bitwarden",
@@ -59,7 +65,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.bitwarden.desktop",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via bitwarden.com; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via bitwarden.com; Luma has not qualified it.",
+      "summary": "A secure and free password manager for all of your devices.",
+      "homepage": "https://www.bitwarden.com/"
     },
     {
       "id": "blender",
@@ -73,7 +81,9 @@
       ],
       "reference_url": "https://flathub.org/apps/org.blender.Blender",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Free and open source 3D creation suite.",
+      "homepage": "https://www.blender.org"
     },
     {
       "id": "brave",
@@ -87,8 +97,10 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/apps/com.brave.Browser",
+      "qualification": "pending",
       "qualification_reason": "Packaged on Flathub and verified by Brave. Brave also publishes native packages, which Depot does not install yet.",
-      "qualification": "pending"
+      "summary": "Fast Internet, AI, Adblock.",
+      "homepage": "https://brave.com"
     },
     {
       "id": "chatgpt",
@@ -97,14 +109,16 @@
       "source_id": "chatgpt",
       "repository": "openai",
       "distribution": "publisher",
-      "architectures": [],
+      "architectures": [
+        "x86_64",
+        "aarch64"
+      ],
       "reference_url": "https://learn.chatgpt.com/docs/linux/linux-app",
       "qualification": "pending",
-      "qualification_reason": "OpenAI publishes a Fedora package and the installed package registers their signed repository; the repository's signing key and update path have not been checked here yet.",
+      "qualification_reason": "OpenAI's own Fedora package from OpenAI's signed repository. Luma checks the repository key against the fingerprint OpenAI publishes before adding it.",
       "publisher": "OpenAI",
-      "summary": "Chat with ChatGPT from your desktop.",
-      "description": "The ChatGPT desktop app from OpenAI: ask questions, write, brainstorm and work with files in a window of its own.",
-      "homepage": "https://chatgpt.com/download"
+      "summary": "OpenAI’s assistant for chat, documents and code.",
+      "homepage": "https://chatgpt.com/download/"
     },
     {
       "id": "chrome",
@@ -118,8 +132,10 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/apps/com.google.Chrome",
+      "qualification": "pending",
       "qualification_reason": "Packaged on Flathub by the community rather than by Google, which publishes only native packages.",
-      "qualification": "pending"
+      "summary": "The browser built to be yours.",
+      "homepage": "https://chrome.google.com/"
     },
     {
       "id": "claude",
@@ -134,10 +150,9 @@
       ],
       "reference_url": "https://code.claude.com/docs/en/desktop-linux",
       "qualification": "pending",
-      "qualification_reason": "Anthropic publishes this for Debian and Ubuntu only and states that Fedora is not supported, so it runs from a Debian capsule rather than natively. Cowork additionally wants KVM, which a capsule does not grant. Neither has been qualified here.",
+      "qualification_reason": "Anthropic's own Debian package from Anthropic's signed APT repository (key pinned by fingerprint), run in Luma's Debian capsule. Cowork's virtual machine needs KVM, which a capsule does not provide.",
       "publisher": "Anthropic",
-      "summary": "Anthropic's AI assistant for writing, analysis and code.",
-      "description": "Claude helps you write, analyse documents, reason through problems and build software. Anthropic publishes the desktop app for Debian and Ubuntu.",
+      "summary": "Anthropic’s AI assistant for writing, analysis and code.",
       "homepage": "https://claude.ai/download"
     },
     {
@@ -151,8 +166,10 @@
         "x86_64"
       ],
       "reference_url": "https://flathub.org/en/apps/com.discordapp.Discord",
+      "qualification": "pending",
       "qualification_reason": "Game Activity and Rich Presence require compatibility testing.",
-      "qualification": "pending"
+      "summary": "Talk, play, hang out.",
+      "homepage": "https://discord.com"
     },
     {
       "id": "dropbox",
@@ -166,7 +183,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.dropbox.Client",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Access your files from any computer.",
+      "homepage": "https://www.dropbox.com"
     },
     {
       "id": "expressvpn",
@@ -180,9 +199,25 @@
       "qualification": "pending",
       "qualification_reason": "ExpressVPN publishes a versioned file and no repository: every directory and .repo path on their package host answers 403, and the download needs an account. So it is listed but not sourced -- the file is fetched from the publisher and reviewed by Valet like any other, and updates will not arrive with the system's.",
       "publisher": "ExpressVPN",
-      "summary": "A fast, private VPN.",
-      "description": "ExpressVPN encrypts your connection and lets you browse from servers in over 100 countries. It needs an ExpressVPN account.",
+      "summary": "A subscription VPN with one-click connect.",
       "homepage": "https://www.expressvpn.com/vpn-software/vpn-linux"
+    },
+    {
+      "id": "figma",
+      "name": "Figma",
+      "backend": "download",
+      "source_id": "figma-desktop",
+      "repository": "figma-linux",
+      "distribution": "publisher",
+      "architectures": [
+        "x86_64"
+      ],
+      "reference_url": "https://www.figma.com/downloads/",
+      "qualification": "pending",
+      "qualification_reason": "Figma publishes desktop apps for macOS and Windows only. On Luma it runs in the web browser at figma.com, with the same files and features.",
+      "publisher": "Figma",
+      "summary": "Design, prototype and collaborate, in your browser.",
+      "homepage": "https://www.figma.com/"
     },
     {
       "id": "firefox",
@@ -196,8 +231,10 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/en/apps/org.mozilla.firefox",
+      "qualification": "pending",
       "qualification_reason": "Install, launch, portal and update checks are pending.",
-      "qualification": "pending"
+      "summary": "Fast, Private & Safe Web Browser.",
+      "homepage": "https://www.mozilla.org/firefox/"
     },
     {
       "id": "gimp",
@@ -211,8 +248,10 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/en/apps/org.gimp.GIMP",
+      "qualification": "pending",
       "qualification_reason": "File, graphics and launcher checks are pending.",
-      "qualification": "pending"
+      "summary": "High-end image creation and manipulation.",
+      "homepage": "https://www.gimp.org/"
     },
     {
       "id": "handbrake",
@@ -226,7 +265,9 @@
       ],
       "reference_url": "https://flathub.org/apps/fr.handbrake.ghb",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via handbrake.fr; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via handbrake.fr; Luma has not qualified it.",
+      "summary": "Video Transcoder.",
+      "homepage": "https://handbrake.fr/"
     },
     {
       "id": "heroic",
@@ -240,7 +281,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.heroicgameslauncher.hgl",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via heroicgameslauncher.com; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via heroicgameslauncher.com; Luma has not qualified it.",
+      "summary": "Play Epic, GOG and Amazon Games.",
+      "homepage": "https://heroicgameslauncher.com"
     },
     {
       "id": "kodi",
@@ -255,7 +298,9 @@
       ],
       "reference_url": "https://flathub.org/apps/tv.kodi.Kodi",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via kodi.tv; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via kodi.tv; Luma has not qualified it.",
+      "summary": "Ultimate entertainment center.",
+      "homepage": "https://kodi.tv/"
     },
     {
       "id": "libreoffice",
@@ -269,8 +314,9 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/en/apps/org.libreoffice.LibreOffice",
+      "qualification": "pending",
       "qualification_reason": "Document open, save and suite launcher checks are pending.",
-      "qualification": "pending"
+      "summary": "The LibreOffice productivity suite."
     },
     {
       "id": "mega",
@@ -279,13 +325,15 @@
       "source_id": "megasync",
       "repository": "mega",
       "distribution": "publisher",
-      "architectures": [],
+      "architectures": [
+        "x86_64",
+        "aarch64"
+      ],
       "reference_url": "https://mega.io/desktop",
       "qualification": "pending",
-      "qualification_reason": "MEGA's own Fedora repository, read from its metadata: it carries megasync, megacmd and a Files extension. Neither the repository's signing key nor the Files extension has been qualified here.",
+      "qualification_reason": "MEGA's own Fedora package from MEGA's signed repository, with the repository key pinned by fingerprint.",
       "publisher": "MEGA",
-      "summary": "Secure cloud storage with end-to-end encryption.",
-      "description": "MEGA keeps folders on this computer in sync with your encrypted MEGA cloud storage.",
+      "summary": "Sync and back up your folders to MEGA’s encrypted cloud.",
       "homepage": "https://mega.io/desktop"
     },
     {
@@ -301,23 +349,27 @@
       ],
       "reference_url": "https://flathub.org/apps/com.moonlight_stream.Moonlight",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via moonlight-stream.com; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via moonlight-stream.com; Luma has not qualified it.",
+      "summary": "Stream games and other applications from another PC running Sunshine or GeForce Experience.",
+      "homepage": "https://moonlight-stream.org"
     },
     {
       "id": "nordvpn",
       "name": "NordVPN",
-      "backend": "rpm",
+      "backend": "snap",
       "source_id": "nordvpn",
-      "repository": "nordvpn",
+      "repository": "snap-store",
       "distribution": "publisher",
-      "architectures": [],
-      "reference_url": "https://support.nordvpn.com/hc/en-us/articles/20196094470929-How-to-install-the-NordVPN-app-on-Linux-distributions",
-      "qualification_reason": "Privileged VPN service, architecture, network recovery and Atomic integration require qualification.",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ],
+      "reference_url": "https://snapcraft.io/nordvpn",
       "qualification": "pending",
+      "qualification_reason": "NordVPN's own snap, published on the Snap Store by NordVPN (verified), strictly confined. Its VPN service needs network, firewall and system-observation interfaces that the Snap Store does not connect by itself; Depot connects exactly those (the ones NordVPN's status command asks for) after installing.",
       "publisher": "Nord Security",
-      "summary": "VPN for private, secure browsing.",
-      "description": "NordVPN encrypts your connection, blocks trackers and lets you connect through servers worldwide. It needs a NordVPN account.",
-      "homepage": "https://nordvpn.com/download/linux/"
+      "summary": "Encrypt your connection and browse privately through NordVPN’s servers.",
+      "homepage": "https://nordvpn.com"
     },
     {
       "id": "obs",
@@ -330,8 +382,10 @@
         "x86_64"
       ],
       "reference_url": "https://obsproject.com/kb/linux-installation",
+      "qualification": "pending",
       "qualification_reason": "Capture portals, audio and hardware encoding checks are pending.",
-      "qualification": "pending"
+      "summary": "Live stream and record videos.",
+      "homepage": "https://obsproject.com"
     },
     {
       "id": "obsidian",
@@ -345,24 +399,10 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/en/apps/md.obsidian.Obsidian",
-      "qualification_reason": "Publisher verifies this distribution but does not support it; vault and updater checks are pending.",
-      "qualification": "pending"
-    },
-    {
-      "id": "ollama",
-      "name": "Ollama",
-      "backend": "rpm",
-      "source_id": "ollama",
-      "repository": "fedora",
-      "distribution": "community",
-      "architectures": [],
-      "reference_url": "https://src.fedoraproject.org/rpms/ollama",
       "qualification": "pending",
-      "qualification_reason": "Packaged by Fedora rather than by the publisher. Ollama is a local model service with a command line, not a windowed application; it is listed because it is asked for, and it has not been qualified here.",
-      "publisher": "Ollama",
-      "summary": "Run large language models on this computer.",
-      "description": "Ollama downloads and runs open models such as Llama, Mistral and Gemma locally, from the command line or through apps that use it.",
-      "homepage": "https://ollama.com/download/linux"
+      "qualification_reason": "Publisher verifies this distribution but does not support it; vault and updater checks are pending.",
+      "summary": "Markdown-based knowledge base.",
+      "homepage": "https://obsidian.md/"
     },
     {
       "id": "onepassword",
@@ -377,7 +417,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.onepassword.OnePassword",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via onepassword.com; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via onepassword.com; Luma has not qualified it.",
+      "summary": "Password manager and secure wallet.",
+      "homepage": "https://1password.com"
     },
     {
       "id": "opera",
@@ -391,7 +433,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.opera.Opera",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Your personal browser.",
+      "homepage": "https://www.opera.com/"
     },
     {
       "id": "plex",
@@ -405,7 +449,9 @@
       ],
       "reference_url": "https://flathub.org/apps/tv.plex.PlexDesktop",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via plex.tv; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via plex.tv; Luma has not qualified it.",
+      "summary": "Plex client for desktop computers.",
+      "homepage": "https://plex.tv"
     },
     {
       "id": "qbittorrent",
@@ -420,7 +466,9 @@
       ],
       "reference_url": "https://flathub.org/apps/org.qbittorrent.qBittorrent",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via qbittorrent.org; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via qbittorrent.org; Luma has not qualified it.",
+      "summary": "An open-source Bittorrent client.",
+      "homepage": "https://www.qbittorrent.org/"
     },
     {
       "id": "reaper",
@@ -435,7 +483,9 @@
       ],
       "reference_url": "https://flathub.org/apps/fm.reaper.Reaper",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Digital Audio Workstation.",
+      "homepage": "https://www.reaper.fm"
     },
     {
       "id": "rpi-imager",
@@ -450,23 +500,9 @@
       ],
       "reference_url": "https://flathub.org/apps/org.raspberrypi.rpi-imager",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community from the Raspberry Pi Foundation's release."
-    },
-    {
-      "id": "sevenzip",
-      "name": "7-Zip",
-      "backend": "rpm",
-      "source_id": "7zip",
-      "repository": "fedora",
-      "distribution": "community",
-      "architectures": [],
-      "reference_url": "https://src.fedoraproject.org/rpms/7zip",
-      "qualification": "pending",
-      "qualification_reason": "Packaged by Fedora rather than by the publisher, from the repository already enabled on every installation; Luma has not qualified it.",
-      "publisher": "Igor Pavlov",
-      "summary": "A file archiver with a high compression ratio.",
-      "description": "7-Zip creates and opens 7z, zip, tar, gzip and many other archive formats from the command line.",
-      "homepage": "https://www.7-zip.org/download.html"
+      "qualification_reason": "Packaged on Flathub by the community from the Raspberry Pi Foundation's release.",
+      "summary": "Raspberry Pi imaging utility.",
+      "homepage": "https://github.com/raspberrypi/rpi-imager"
     },
     {
       "id": "signal",
@@ -481,7 +517,9 @@
       ],
       "reference_url": "https://flathub.org/apps/org.signal.Signal",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Private messenger.",
+      "homepage": "https://signal.org/"
     },
     {
       "id": "slack",
@@ -495,7 +533,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.slack.Slack",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Business communication.",
+      "homepage": "https://slack.com"
     },
     {
       "id": "spotify",
@@ -508,8 +548,10 @@
         "x86_64"
       ],
       "reference_url": "https://flathub.org/apps/com.spotify.Client",
+      "qualification": "pending",
       "qualification_reason": "Packaged on Flathub by the community from Spotify's own Linux client.",
-      "qualification": "pending"
+      "summary": "Online music streaming service.",
+      "homepage": "https://www.spotify.com"
     },
     {
       "id": "steam",
@@ -522,8 +564,10 @@
         "x86_64"
       ],
       "reference_url": "https://flathub.org/en/apps/com.valvesoftware.Steam",
+      "qualification": "pending",
       "qualification_reason": "Not supported by Valve; graphics and game-library integration checks are pending.",
-      "qualification": "pending"
+      "summary": "Launcher for the Steam software distribution service.",
+      "homepage": "https://store.steampowered.com/"
     },
     {
       "id": "stremio",
@@ -538,7 +582,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.stremio.Stremio",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via stremio.com; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via stremio.com; Luma has not qualified it.",
+      "summary": "Freedom to Stream.",
+      "homepage": "https://github.com/Stremio/stremio-linux-shell"
     },
     {
       "id": "teamviewer",
@@ -547,14 +593,15 @@
       "source_id": "teamviewer",
       "repository": "teamviewer",
       "distribution": "publisher",
-      "architectures": [],
-      "reference_url": "https://www.teamviewer.com/en-us/download/linux/",
+      "architectures": [
+        "x86_64"
+      ],
+      "reference_url": "https://www.teamviewer.com/en/download/linux/",
       "qualification": "pending",
-      "qualification_reason": "TeamViewer's own repository. Remote control of this machine is exactly what it is for, so its qualification is about more than packaging and has not been done.",
+      "qualification_reason": "TeamViewer's own package from TeamViewer's signed repository, with the repository key pinned by fingerprint. It runs TeamViewer's background service.",
       "publisher": "TeamViewer",
-      "summary": "Remote access and support.",
-      "description": "TeamViewer lets you connect to and control other computers, or let someone help you on this one.",
-      "homepage": "https://www.teamviewer.com/en-us/download/linux/"
+      "summary": "Remote access and support for computers and devices.",
+      "homepage": "https://www.teamviewer.com/"
     },
     {
       "id": "telegram",
@@ -569,24 +616,25 @@
       ],
       "reference_url": "https://flathub.org/apps/org.telegram.desktop",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via telegram.org; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via telegram.org; Luma has not qualified it.",
+      "summary": "New era of messaging.",
+      "homepage": "https://desktop.telegram.org/"
     },
     {
       "id": "termius",
       "name": "Termius",
-      "backend": "download",
+      "backend": "snap",
       "source_id": "termius-app",
-      "repository": "termius",
+      "repository": "snap-store",
       "distribution": "publisher",
       "architectures": [
         "x86_64"
       ],
-      "reference_url": "https://termius.com/download/linux",
+      "reference_url": "https://snapcraft.io/termius-app",
       "qualification": "pending",
-      "qualification_reason": "Termius publishes a .deb for Linux and no repository Luma can follow, so it is listed but not sourced: the file is downloaded from Termius and Valet installs it into a Debian capsule. Updates do not arrive with the system's.",
+      "qualification_reason": "Termius's own snap, published on the Snap Store by Termius (verified), strictly confined. Depot connects the keyring interface so saved passwords work; serial-port and raw-usb (serial cable support) stay unconnected.",
       "publisher": "Termius",
-      "summary": "An SSH client that keeps your hosts and keys in sync.",
-      "description": "Termius connects to your servers over SSH, Mosh and SFTP, with hosts, keys and snippets that follow you between computers and phones. Syncing needs a Termius account.",
+      "summary": "An SSH, Mosh and SFTP client whose hosts and keys follow you between devices.",
       "homepage": "https://termius.com/download/linux"
     },
     {
@@ -600,8 +648,10 @@
         "x86_64"
       ],
       "reference_url": "https://flathub.org/en/apps/org.mozilla.thunderbird",
+      "qualification": "pending",
       "qualification_reason": "Existing capitalized application ID migration and profile preservation require testing.",
-      "qualification": "pending"
+      "summary": "Thunderbird is a free and open source email, newsfeed, chat, and calendaring client.",
+      "homepage": "https://www.thunderbird.net/"
     },
     {
       "id": "todoist",
@@ -615,7 +665,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.todoist.Todoist",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Planner & Calendar.",
+      "homepage": "https://todoist.com/"
     },
     {
       "id": "tor-browser",
@@ -629,7 +681,9 @@
       ],
       "reference_url": "https://flathub.org/apps/org.torproject.torbrowser-launcher",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via torproject.org; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via torproject.org; Luma has not qualified it.",
+      "summary": "A program to help you download, keep updated, and run Tor Browser.",
+      "homepage": "https://gitlab.torproject.org/tpo/applications/torbrowser-launcher"
     },
     {
       "id": "transmission",
@@ -644,7 +698,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.transmissionbt.Transmission",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Download and share files over BitTorrent.",
+      "homepage": "https://transmissionbt.com/"
     },
     {
       "id": "virtualbox",
@@ -659,7 +715,6 @@
       "qualification_reason": "Oracle's own Fedora repository, which sets gpgcheck and repo_gpgcheck; neither that key nor the kernel modules this builds have been qualified here.",
       "publisher": "Oracle",
       "summary": "Run other operating systems in virtual machines.",
-      "description": "VirtualBox runs Windows, Linux and other systems in windows on this computer.",
       "homepage": "https://www.virtualbox.org/wiki/Linux_Downloads"
     },
     {
@@ -675,7 +730,9 @@
       ],
       "reference_url": "https://flathub.org/apps/com.vivaldi.Vivaldi",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Feature-packed web browser.",
+      "homepage": "https://vivaldi.com/"
     },
     {
       "id": "vlc",
@@ -689,8 +746,10 @@
         "aarch64"
       ],
       "reference_url": "https://flathub.org/en/apps/org.videolan.VLC",
+      "qualification": "pending",
       "qualification_reason": "Community package; media playback and integration checks are pending.",
-      "qualification": "pending"
+      "summary": "VLC media player, the open-source multimedia player.",
+      "homepage": "https://www.videolan.org/vlc/"
     },
     {
       "id": "zen",
@@ -705,7 +764,9 @@
       ],
       "reference_url": "https://flathub.org/apps/app.zen_browser.zen",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub and verified by the publisher via zen-browser.app; Luma has not qualified it."
+      "qualification_reason": "Packaged on Flathub and verified by the publisher via zen-browser.app; Luma has not qualified it.",
+      "summary": "Stay focused, browse faster.",
+      "homepage": "https://zen-browser.app"
     },
     {
       "id": "zoom",
@@ -719,25 +780,9 @@
       ],
       "reference_url": "https://flathub.org/apps/us.zoom.Zoom",
       "qualification": "pending",
-      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here."
-    },
-    {
-      "id": "figma",
-      "name": "Figma",
-      "backend": "download",
-      "source_id": "figma-desktop",
-      "repository": "figma-linux",
-      "distribution": "community",
-      "architectures": [
-        "x86_64"
-      ],
-      "reference_url": "https://github.com/IliyaBrook/figma-linux/releases/tag/126.5.6",
-      "qualification": "pending",
-      "qualification_reason": "Figma publishes no Linux app. This community build wraps Figma's own desktop client for Linux and ships an RPM, a .deb and an AppImage with each release; the RPM is the one to use on Luma, where Valet installs it into a Fedora capsule. It is not from Figma, and updates do not arrive with the system's.",
-      "publisher": "IliyaBrook/figma-linux (community)",
-      "summary": "Design and prototype together, in Figma's desktop client.",
-      "description": "Figma for Linux runs Figma's desktop client, with your files, fonts and plugins, in a window of its own. It is an unofficial community build, and it needs a Figma account.",
-      "homepage": "https://github.com/IliyaBrook/figma-linux/releases/tag/126.5.6"
+      "qualification_reason": "Packaged on Flathub by the community rather than the publisher; neither provenance nor behaviour is qualified here.",
+      "summary": "Video Conferencing, Web Conferencing, Webinars, Screen Sharing.",
+      "homepage": "https://zoom.us"
     }
   ]
 }

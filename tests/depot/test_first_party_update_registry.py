@@ -17,12 +17,6 @@ class Registry(unittest.TestCase):
                          {'repository':'luma','source_id':'org.projectluma.Connect','branch':'beta'})
         self.assertEqual(entry['sources']['luma_system'],
                          {'package':'luma-continuity','desktop_id':'org.projectluma.Connect.desktop','removable':False})
-        spec=__import__('importlib.util',fromlist=['x']).spec_from_file_location(
-            'seed_generator',ROOT/'src/luma-installer/tools/generate-depot-seed.py')
-        generator=__import__('importlib.util',fromlist=['x']).module_from_spec(spec)
-        spec.loader.exec_module(generator)
-        generated=next(a for a in json.loads(generator.generate())['applications'] if a['id']=='connect')
-        self.assertEqual(generated,entry)
 
     def test_bundled_app_catalogue_supports_both_shipping_cpus(self):
         baseline=set(json.loads((ROOT/'config/os/first-party-app-baseline.json').read_text())['applications'])
@@ -48,8 +42,6 @@ class Registry(unittest.TestCase):
         self.assertNotIn('org.projectluma.Displays',{a['id'] for a in registry['applications']})
         self.assertNotIn('org.projectluma.Displays',shipping['applications'])
         self.assertNotIn('displays',{a['id'] for a in catalog['applications']})
-        history=json.loads((ROOT/'src/luma-installer/data/depot-first-party.json').read_text())
-        self.assertEqual(next(a for a in history['applications'] if a['id']=='displays')['visibility'],'withdrawn')
 
     def test_every_catalogued_image_app_has_maintained_identity_and_producer(self):
         registry=json.loads((ROOT/'packaging/flatpak/first-party-updates.json').read_text())

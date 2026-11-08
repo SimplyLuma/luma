@@ -1,6 +1,6 @@
 {
   "schema_version": 4,
-  "generated_at": "2026-09-12T00:00:00Z",
+  "generated_at": "2026-11-08T04:40:00Z",
   "collections": [
     {
       "id": "office",
@@ -331,6 +331,7 @@
         }
       },
       "summary": "Ask Luma’s assistant, or tell her what to change.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -422,6 +423,85 @@
       "summary": "Audacity is the world's most popular audio editing and recording app.",
       "support_url": "https://support.audacityteam.org/",
       "tier": "listed",
+      "visibility": "public"
+    },
+    {
+      "app_id": "io.github.nmcmil.Aura",
+      "architectures": [
+        "x86_64"
+      ],
+      "backend": "flatpak",
+      "branch": "stable",
+      "categories": [
+        "create"
+      ],
+      "channel": {
+        "kind": "luma",
+        "title": "Luma Depot",
+        "publisher": "nmcmil"
+      },
+      "description": "Aura is a native wallpaper studio with seven effects, editable palettes and a live preview. Create desktop, phone and multi-monitor wallpapers, save editable designs and export full-resolution 8-bit or 16-bit PNGs. Aura works offline and requires no account.",
+      "developer": {
+        "id": "nmcmil",
+        "name": "nmcmil"
+      },
+      "distribution": "publisher",
+      "homepage": "https://github.com/nmcmil/Aura",
+      "icon": {
+        "url": "https://dl.simplyluma.com/media/listings/aura/icon-512-97739525cf2815a1.png",
+        "sha256": "97739525cf2815a1d0da1bb6f684a421ed097df2e63e1056c2f4107dbee4452a",
+        "width": 512,
+        "height": 512
+      },
+      "id": "aura",
+      "name": "Aura",
+      "permissions": [
+        {
+          "key": "files.portal",
+          "level": "standard"
+        },
+        {
+          "key": "files.other",
+          "level": "sensitive",
+          "access": "read-write",
+          "names": [
+            "xdg-data/aura:rw",
+            "xdg-data/wally:rw"
+          ]
+        }
+      ],
+      "preinstalled_on_luma": false,
+      "qualification": "admitted",
+      "qualification_reason": "Aura 0.1.1 x86_64: signed Luma runtime compatibility, native controls, saved designs and full-resolution PNG exports qualified.",
+      "reference_url": "https://github.com/nmcmil/Aura/releases/tag/v0.1.1",
+      "release": {
+        "version": "0.1.1",
+        "date": "2026-10-11",
+        "notes": "Added Depot packaging and fixed native Flatpak menu settings."
+      },
+      "repository": "luma",
+      "screenshots": [
+        {
+          "url": "https://dl.simplyluma.com/media/io.github.nmcmil.Aura/3b24007a2be2db6aa754596c5d0e93de1a325191e979fd45a99bc2b99ba0722b.png",
+          "sha256": "3b24007a2be2db6aa754596c5d0e93de1a325191e979fd45a99bc2b99ba0722b",
+          "width": 1340,
+          "height": 920,
+          "caption": "Aura wallpaper studio"
+        }
+      ],
+      "sign_in": "none",
+      "source_id": "io.github.nmcmil.Aura",
+      "source_url": "https://github.com/nmcmil/Aura",
+      "sources": {
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "io.github.nmcmil.Aura",
+          "branch": "stable"
+        }
+      },
+      "summary": "Create procedural wallpapers and seamless monitor layouts.",
+      "support_url": "https://github.com/nmcmil/Aura/issues",
+      "tier": "verified",
       "visibility": "public"
     },
     {
@@ -886,6 +966,7 @@
         }
       },
       "summary": "Manage events and schedules.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -962,10 +1043,15 @@
         }
       ],
       "preinstalled_on_luma": true,
-      "qualification": "pending",
-      "qualification_reason": "Updates from Luma's signed app repository.",
+      "qualification": "admitted",
+      "qualification_reason": "Signed shared-library access qualified in the installed Luma sandbox.",
       "reference_url": "https://simplyluma.com/apps/camera",
+      "release": {
+        "version": "0.1.0",
+        "notes": "Fixed access to the shared photo library."
+      },
       "repository": "luma",
+      "sandbox": "flatpak",
       "screenshots_pending": "Needs a camera; renders \"No camera found\" without one.",
       "sign_in": "none",
       "source_id": "org.projectluma.Camera",
@@ -982,6 +1068,85 @@
         }
       },
       "summary": "Take photos and videos.",
+      "support_url": "https://hub.simplyluma.com/forum",
+      "tier": "luma",
+      "visibility": "public"
+    },
+    {
+      "app_id": "org.projectluma.Canvas",
+      "architectures": [
+        "x86_64"
+      ],
+      "backend": "flatpak",
+      "branch": "stable",
+      "categories": [
+        "create"
+      ],
+      "channel": {
+        "kind": "luma",
+        "title": "Luma",
+        "publisher_verified": true
+      },
+      "description": "Design frames, vectors and pages in a native visual workspace. Use components, auto layout, editable gradients and effects, and connect interactive prototypes. Your designs save automatically; find them with search, projects and stars. Import supported Figma files and export PNG, SVG or PDF. Canvas works offline without an account.",
+      "developer": {
+        "id": "dev_projectluma",
+        "name": "Simply Luma",
+        "verified": "organization"
+      },
+      "distribution": "publisher",
+      "homepage": "https://github.com/SimplyLuma/Canvas",
+      "icon": {
+        "url": "https://dl.simplyluma.com/media/listings/canvas/icon-512-f80b2078bed5b927.png",
+        "sha256": "f80b2078bed5b927b8ca8a76790d02c2e74caa6db74da280a151622be9356eb8",
+        "width": 512,
+        "height": 512
+      },
+      "id": "canvas",
+      "keywords": [
+        "Canva",
+        "Figma",
+        "Illustrator"
+      ],
+      "license": "Apache-2.0 AND MPL-2.0 AND LGPL-2.1-or-later AND CC-BY-SA-4.0",
+      "name": "Canvas",
+      "permissions": [
+        {
+          "key": "files.portal",
+          "level": "standard"
+        }
+      ],
+      "preinstalled_on_luma": false,
+      "qualification": "admitted",
+      "qualification_reason": "Canvas 0.1.0 x86_64: native editing, persistent save/reopen, PNG/SVG/PDF, a 1,001-design library, narrow-window workflows, all 23 prototype animations and real exported Figma routes qualified against the signed Luma Platform44 runtime.",
+      "reference_url": "https://github.com/SimplyLuma/Canvas/releases/tag/v0.1.0",
+      "release": {
+        "version": "0.1.0",
+        "date": "2026-10-12",
+        "source_commit": "271eb8301d6c190c770bd225ecb187efc6c99c22",
+        "notes": "Initial public x86_64 Linux release."
+      },
+      "repository": "luma",
+      "screenshots": [
+        {
+          "url": "https://dl.simplyluma.com/media/org.projectluma.Canvas/be27edd7a732961e77e67b00b878d701192d52c96b4b9c7458f8e7361e10acda.png",
+          "sha256": "be27edd7a732961e77e67b00b878d701192d52c96b4b9c7458f8e7361e10acda",
+          "width": 1106,
+          "height": 679,
+          "caption": "Canvas editing a visual design with native Luma controls"
+        }
+      ],
+      "sign_in": "none",
+      "source_id": "org.projectluma.Canvas",
+      "source_url": "https://github.com/SimplyLuma/Canvas",
+      "sources": {
+        "flatpak": {
+          "repository": "luma",
+          "source_id": "org.projectluma.Canvas",
+          "branch": "stable"
+        }
+      },
+      "summary": "Visual design and interactive prototypes with Luma UI.",
+      "support_url": "https://github.com/SimplyLuma/Canvas/issues",
       "tier": "luma",
       "visibility": "public"
     },
@@ -1061,6 +1226,7 @@
         }
       },
       "summary": "Read and send mail without the nonsense.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -1456,6 +1622,7 @@
         }
       },
       "summary": "World clocks, alarms, a stopwatch and a timer.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -1511,10 +1678,10 @@
       "qualification_reason": "Included with Luma.",
       "reference_url": "https://simplyluma.com/apps/connect",
       "release": {
-        "version": "0.64.0",
+        "version": "0.65.0",
         "date": "2026-10-09",
-        "download_bytes": 153608,
-        "installed_bytes": 278016
+        "download_bytes": 154055,
+        "installed_bytes": 278528
       },
       "repository": "luma",
       "screenshots_pending": "Shows only sign-in and an empty state without an account and a paired phone.",
@@ -1533,6 +1700,7 @@
         }
       },
       "summary": "Your Luma account, its devices and your phones.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -1574,7 +1742,29 @@
       "qualification_reason": "Included with Luma.",
       "reference_url": "https://simplyluma.com/apps/contacts",
       "repository": "luma",
-      "screenshots_pending": "The packaged app is missing its call, mail, message and video icons, so a render shows broken icons.",
+      "screenshots": [
+        {
+          "url": "https://dl.simplyluma.com/media/listings/contacts/shot-348abe8f98ab1e73.webp",
+          "sha256": "348abe8f98ab1e73be68b88d76149104a13ef18610f4669c2c7e7c997904be19",
+          "width": 1440,
+          "height": 900,
+          "caption": "Everyone you know, in one place"
+        },
+        {
+          "url": "https://dl.simplyluma.com/media/listings/contacts/shot-2ba061e7fdb9e06b.webp",
+          "sha256": "2ba061e7fdb9e06b00db62f1069ee598be0358235c2112bc858db7f08f8c728a",
+          "width": 1440,
+          "height": 900,
+          "caption": "Find anyone as you type"
+        },
+        {
+          "url": "https://dl.simplyluma.com/media/listings/contacts/shot-bd319118c0b69eb7.webp",
+          "sha256": "bd319118c0b69eb75fdfa61dd20d4c39dc78a01cca108f44caeb567c5f9bc279",
+          "width": 1440,
+          "height": 900,
+          "caption": "Update details in a moment"
+        }
+      ],
       "sign_in": "none",
       "source_id": "org.projectluma.Contacts",
       "sources": {
@@ -1590,17 +1780,17 @@
         }
       },
       "summary": "Manage people and contact details.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
     {
       "app_id": "org.projectluma.Darkroom",
       "architectures": [
-        "x86_64",
-        "aarch64"
+        "x86_64"
       ],
       "backend": "flatpak",
-      "branch": "beta",
+      "branch": "stable",
       "categories": [
         "create"
       ],
@@ -1609,14 +1799,14 @@
         "title": "Luma",
         "publisher_verified": true
       },
-      "description": "Darkroom is Luma’s photo editor. Your originals are never changed: every adjustment can be tuned or taken back later.\n\nAdjust colour and light, crop and straighten reversibly, work in layers with editable masks, retouch, step back through history or keep snapshots, then export at full resolution. The same app runs in a desktop window and on a handheld.",
+      "description": "Focus is Luma’s native photo editor. Adjust light and colour, develop camera RAW files, crop and straighten, heal blemishes, and use editable brush, radial and gradient masks. Grade shadows, midtones and highlights independently. Originals remain unchanged, and editable recipes preserve your work. Export full-resolution JPEG, PNG, TIFF, WebP or PDF. HEIC decoding, the Luma UI toolkit and imaging libraries are included; Flatpak installs the shared runtime automatically.",
       "developer": {
         "id": "dev_projectluma",
-        "name": "Project Luma",
+        "name": "Simply Luma",
         "verified": "organization"
       },
       "distribution": "publisher",
-      "homepage": "https://simplyluma.com/apps/darkroom",
+      "homepage": "https://github.com/SimplyLuma/Focus",
       "icon": {
         "url": "https://dl.simplyluma.com/media/listings/darkroom/icon-512-2185cebd91d9df96.png",
         "sha256": "2185cebd91d9df9645fb4d4b561f050468ad8eb92362143342dc9501d24c067a",
@@ -1628,51 +1818,53 @@
         "Lightroom",
         "Photoshop"
       ],
-      "license": "Apache-2.0",
-      "name": "Darkroom",
+      "license": "Apache-2.0 AND CC-BY-SA-4.0",
+      "name": "Focus",
+      "permissions": [
+        {
+          "key": "files.portal",
+          "level": "standard"
+        },
+        {
+          "key": "files.pictures",
+          "level": "sensitive",
+          "access": "read",
+          "names": [
+            "xdg-pictures:ro"
+          ]
+        }
+      ],
       "preinstalled_on_luma": false,
-      "qualification": "pending",
-      "qualification_reason": "Available through Depot.",
-      "reference_url": "https://simplyluma.com/apps/darkroom",
+      "qualification": "admitted",
+      "qualification_reason": "Focus 0.1.0 x86_64 Linux release: packaged native GTK checks, image import, reversible edits, saved recipe recovery, HEIC decoding and full-resolution exports verified against the signed Luma runtime.",
+      "reference_url": "https://github.com/SimplyLuma/Focus/releases/tag/v0.1.0",
+      "release": {
+        "version": "0.1.0",
+        "date": "2026-10-10",
+        "notes": "First public Focus release for x86_64 Linux."
+      },
       "repository": "luma",
       "screenshots": [
         {
-          "url": "https://dl.simplyluma.com/media/listings/darkroom/shot-5362a873f7c9b737.webp",
-          "sha256": "5362a873f7c9b73761c29962b6cc8a77beb61e51d233bbd749c5b5a949cc746d",
-          "width": 1440,
-          "height": 900,
-          "caption": "Pro-grade light and color controls"
-        },
-        {
-          "url": "https://dl.simplyluma.com/media/listings/darkroom/shot-2c0efd5f24ffdb60.webp",
-          "sha256": "2c0efd5f24ffdb603f7f7dd5c6a3e948a4dcc6d386071d6fd6fb140fc31e97fd",
-          "width": 1440,
-          "height": 900,
-          "caption": "Every edit kept in history"
-        },
-        {
-          "url": "https://dl.simplyluma.com/media/listings/darkroom/shot-684be0fe8ac66cfe.webp",
-          "sha256": "684be0fe8ac66cfe5191834a1897422e338e082251a752e8cdd9796ce21cb206",
-          "width": 1440,
-          "height": 900,
-          "caption": "Non-destructive photo editing"
+          "url": "https://dl.simplyluma.com/media/org.projectluma.Darkroom/c8320db45fd033bb530f12a3e2c007d04d890f97be45b1cbc6f8cee22c8e71d8.png",
+          "sha256": "c8320db45fd033bb530f12a3e2c007d04d890f97be45b1cbc6f8cee22c8e71d8",
+          "width": 1430,
+          "height": 990,
+          "caption": "Focus desktop editing; sample photograph courtesy of NASA Johnson Space Center"
         }
       ],
       "sign_in": "none",
       "source_id": "org.projectluma.Darkroom",
+      "source_url": "https://github.com/SimplyLuma/Focus",
       "sources": {
-        "luma_system": {
-          "package": "luma-darkroom",
-          "desktop_id": "org.projectluma.Darkroom.desktop",
-          "removable": true
-        },
         "flatpak": {
           "repository": "luma",
           "source_id": "org.projectluma.Darkroom",
-          "branch": "beta"
+          "branch": "stable"
         }
       },
-      "summary": "Develop and edit images non-destructively.",
+      "summary": "A native, non-destructive photo editor.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -2076,7 +2268,29 @@
       "qualification_reason": "Updates are delivered through Depot from Luma’s signed app source.",
       "reference_url": "https://simplyluma.com/apps/filer",
       "repository": "luma",
-      "screenshots_pending": "The packaged Filer is missing two navigation icons, so a render shows broken icons.",
+      "screenshots": [
+        {
+          "url": "https://dl.simplyluma.com/media/listings/filer/shot-67889d92d7e06c94.webp",
+          "sha256": "67889d92d7e06c94a3f1b6de86b087615416501b617e5dedad78fa129bedf8c8",
+          "width": 1440,
+          "height": 900,
+          "caption": "All your files, neatly in place"
+        },
+        {
+          "url": "https://dl.simplyluma.com/media/listings/filer/shot-c82a13ae0daf98de.webp",
+          "sha256": "c82a13ae0daf98de19b584e1c5a7be228cd63a69a552bcdd973432f394950777",
+          "width": 1440,
+          "height": 900,
+          "caption": "See photos at a glance"
+        },
+        {
+          "url": "https://dl.simplyluma.com/media/listings/filer/shot-1ca8d907ad93425b.webp",
+          "sha256": "1ca8d907ad93425b847a496e652f0a2515a6bb3b3b6b69a93d9cb88b3a1f5e00",
+          "width": 1440,
+          "height": 900,
+          "caption": "Every detail in list view"
+        }
+      ],
       "sign_in": "none",
       "source_id": "org.gnome.Nautilus",
       "sources": {
@@ -2092,6 +2306,7 @@
         }
       },
       "summary": "Access and organize files.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -2713,6 +2928,7 @@
         }
       },
       "summary": "Put a system on a USB drive to try it or install it.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "system_tool": true,
       "tier": "luma",
       "visibility": "public"
@@ -2953,6 +3169,7 @@
         }
       },
       "summary": "Read your books, or listen to them.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -3212,6 +3429,7 @@
         }
       },
       "summary": "Send and receive messages.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -3263,6 +3481,7 @@
         }
       },
       "summary": "Discover, review, and manage changes to Luma.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "system_tool": true,
       "tier": "luma",
       "visibility": "public"
@@ -3318,10 +3537,15 @@
         }
       ],
       "preinstalled_on_luma": true,
-      "qualification": "pending",
-      "qualification_reason": "Updates from Luma's signed app repository.",
+      "qualification": "admitted",
+      "qualification_reason": "Signed Monitor client qualified with the Monitor 17 host service. Update Luma first if the host service is older.",
       "reference_url": "https://simplyluma.com/apps/monitor",
+      "release": {
+        "version": "0.1.0",
+        "notes": "Fixed Monitor loading system activity."
+      },
       "repository": "luma",
+      "sandbox": "flatpak",
       "sign_in": "none",
       "source_id": "io.luma.Monitor",
       "sources": {
@@ -3337,6 +3561,7 @@
         }
       },
       "summary": "See what this computer is doing.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "system_tool": true,
       "tier": "luma",
       "visibility": "public"
@@ -3627,6 +3852,7 @@
         }
       },
       "summary": "Write notes and edit text files.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -4146,7 +4372,22 @@
       "qualification_reason": "Included with Luma.",
       "reference_url": "https://simplyluma.com/apps/phone",
       "repository": "luma",
-      "screenshots_pending": "The packaged app is missing its icons and needs a modem to show anything but an error.",
+      "screenshots": [
+        {
+          "url": "https://dl.simplyluma.com/media/listings/phone/shot-a1296889a9f3d994.webp",
+          "sha256": "a1296889a9f3d994ad7f09a872d94c2676f374d246cad892dce5353c56f9ac9e",
+          "width": 1440,
+          "height": 900,
+          "caption": "Every call, at a glance"
+        },
+        {
+          "url": "https://dl.simplyluma.com/media/listings/phone/shot-8866eb345bf3d928.webp",
+          "sha256": "8866eb345bf3d92851788d41160aeb4d1aea4d9b28102eb6d72215edadb1f162",
+          "width": 1440,
+          "height": 900,
+          "caption": "Your favourite people, one tap away"
+        }
+      ],
       "sign_in": "none",
       "source_id": "prairie-core-apps",
       "sources": {
@@ -4157,6 +4398,7 @@
         }
       },
       "summary": "Make and receive calls.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -4233,10 +4475,15 @@
         }
       ],
       "preinstalled_on_luma": true,
-      "qualification": "pending",
-      "qualification_reason": "Updates from Luma's signed app repository.",
+      "qualification": "admitted",
+      "qualification_reason": "Signed shared-library access qualified in the installed Luma sandbox.",
       "reference_url": "https://simplyluma.com/apps/photos",
+      "release": {
+        "version": "0.1.0",
+        "notes": "Fixed access to the shared photo library."
+      },
       "repository": "luma",
+      "sandbox": "flatpak",
       "screenshots": [
         {
           "url": "https://dl.simplyluma.com/media/listings/photos/shot-929f9f175238f8e2.webp",
@@ -4275,6 +4522,7 @@
         }
       },
       "summary": "Browse and view photos.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -5427,6 +5675,7 @@
         }
       },
       "summary": "Organize tasks and due dates.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -5953,6 +6202,7 @@
         }
       },
       "summary": "Play music from every place it lives.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -6325,6 +6575,7 @@
         }
       },
       "summary": "Open a file, fast, and look at it.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -6360,16 +6611,13 @@
       },
       "id": "viola",
       "keywords": [
-        "Chrome",
-        "Edge",
-        "Safari",
         "browser",
-        "chromium",
+        "web browser",
         "default browser",
         "internet",
-        "tabs",
         "web",
-        "web browser",
+        "chromium",
+        "tabs",
         "workspaces"
       ],
       "license": "GPL-3.0-only AND BSD-3-Clause",
@@ -6841,6 +7089,7 @@
         }
       },
       "summary": "Record and play voice memos.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -6920,6 +7169,7 @@
         }
       },
       "summary": "View forecasts for saved places.",
+      "support_url": "https://hub.simplyluma.com/forum",
       "tier": "luma",
       "visibility": "public"
     },
@@ -6967,7 +7217,9 @@
       "reference_url": "https://simplyluma.com/apps/write",
       "release": {
         "version": "0.1.0",
-        "date": "2026-10-10"
+        "date": "2026-10-10",
+        "commit": "865803d057df513e94d451e7e26d9c8f530009511365132c95aea43dc370e47d",
+        "source_commit": "0cc01c320916d294e28d32c04a5157232eaea376"
       },
       "repository": "luma",
       "screenshots": [

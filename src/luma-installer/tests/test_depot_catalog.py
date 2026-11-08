@@ -17,13 +17,16 @@ class DepotCatalogTests(unittest.TestCase):
 
     def test_curated_data_is_valid_and_never_install_authority(self):
         catalog = load_catalog(CATALOG)
-        self.assertEqual(len(catalog.applications), 49)
+        # Exported from the Hub with schema 4 (depot-catalog-4.json): the same listings, its listed tier.
+        self.assertEqual(len(catalog.applications), len(self.value['applications']))
+        seed = {app.id: app for app in load_catalog(CATALOG.with_name('depot-catalog-4.json')).applications}
         self.assertTrue(all(not app.installable for app in catalog.applications))
         by_id = {app.id: app for app in catalog.applications}
         self.assertEqual(by_id['steam'].distribution, 'community')
         self.assertEqual(by_id['obsidian'].distribution, 'publisher-verified-community')
         self.assertEqual(by_id['thunderbird'].source_id, 'org.mozilla.thunderbird')
-        self.assertEqual(by_id['nordvpn'].architectures, ())
+        self.assertEqual(by_id['nordvpn'].architectures, seed['nordvpn'].architectures)
+        self.assertEqual(set(by_id), {e.id for e in seed.values() if e.tier == 'listed'})
         with self.assertRaises(FrozenInstanceError):
             by_id['steam'].qualification = 'admitted'
 
@@ -34,7 +37,7 @@ class DepotCatalogTests(unittest.TestCase):
                                       'source_id': 'future-app'})
         catalog = validate_catalog(value)
         self.assertNotIn('future-app', {app.id for app in catalog.applications})
-        self.assertEqual(len(catalog.applications), 49)
+        self.assertEqual(len(catalog.applications), len(self.value['applications']))
         for backend, repository in (('download', 'https://evil.example'), ('shell;rm', 'x')):
             bad = deepcopy(value)
             bad['applications'][-1].update(backend=backend, repository=repository)

@@ -3,16 +3,21 @@
 """Fetch Hub's unsigned catalog snapshots, verify them, sign them, publish them.
 
 ADR-028 section 4.1: Hub renders the catalog but never holds the catalog key.
-This job runs on the build host (luma-depot-catalog.timer). Each run:
+The Hub is the only source of Depot listings (admin.simplyluma.com, Depot >
+Apps); nothing in this repository authors one. This job runs on the build host
+(luma-depot-catalog.timer, scripts/depot/run-catalog-signer.sh). Each run:
 
 1. GET <hub>/api/depot/catalog/snapshot?schema=4 and ?schema=3 with the Hub
-   service token (Authorization: Bearer, read from a 0600 file).
+   service token (Authorization: Bearer, read from a 0600 file). Listing
+   pictures the snapshot names under dl.simplyluma.com/media/listings/ that the
+   site does not have yet are copied from <hub>/api/depot/media/<sha256>.<ext>
+   and checked against their digest, so the quality gate below can verify them.
 2. Refuse either document unless it parses and passes the schema rules below.
    For schema 4 that includes: only public and unlisted entries, known tiers,
    repositories and permission keys, https URLs, and the 5,000-entry / 8 MiB
-   bound. For schema 3 it is the validator installed Depot clients run
-   (luma_installer.depot_catalog), so an old client can never be handed a
-   document it would reject.
+   bound, then the validator installed Depot clients run
+   (luma_installer.depot_catalog). For schema 3 it is that validator too, so
+   no client can be handed a document it would reject.
 3. Sign the exact bytes Hub served with minisign, verify the signature with the
    public key, and write catalog-4.json(.minisig) and catalog-3.json(.minisig)
    atomically under <site>/catalog/. Unchanged documents are left untouched.
@@ -161,6 +166,60 @@ def validate_schema4(content: bytes) -> dict:
             # a private member is legitimately absent; clients skip unknown ids
             print(f"note: {where} names entries not in this snapshot: {missing}", file=sys.stderr)
     return document
+
+
+def validate_with_client(content: bytes) -> None:
+    """Schema 4 through the validator installed Depots run: a document they
+    would refuse as a whole must never be signed."""
+    sys.path.insert(0, str(ROOT / "src/luma-installer"))
+    try:
+        from luma_installer.depot_catalog import CatalogError, validate_catalog
+    finally:
+        sys.path.pop(0)
+    try:
+        validate_catalog(json.loads(content))
+    except (CatalogError, ValueError, KeyError, TypeError) as error:
+        raise CatalogRefused(f"schema 4: installed Depots would refuse it: {error}") from error
+
+
+def fetch_media(document: dict, site: Path, hub: str) -> list[str]:
+    """Copy listing pictures the site lacks from the Hub, by digest.
+
+    The snapshot names a picture the Hub holds as
+    dl.simplyluma.com/media/listings/<slug>/<file>; the Hub serves the same
+    bytes at /api/depot/media/<sha256>.<ext>. Each copy is checked against the
+    digest the snapshot names before it is written. Returns what was copied.
+    """
+
+    copied = []
+    for app in document.get("applications", []):
+        icon = app.get("icon")
+        for image in ([icon] if isinstance(icon, dict) else []) + [s for s in app.get("screenshots") or [] if isinstance(s, dict)]:
+            url, digest = str(image.get("url", "")), str(image.get("sha256", ""))
+            if not url.startswith(MEDIA_PREFIX) or not SHA256.match(digest):
+                continue
+            relative = url[len(MEDIA_PREFIX):]
+            local = site / "media/listings" / relative
+            if ".." in Path(relative).parts:
+                raise CatalogRefused(f"{app.get('id')}: picture path {relative} leaves the media directory")
+            if local.is_file():
+                continue
+            extension = relative.rsplit(".", 1)[-1].lower()
+            if extension not in ("png", "webp", "svg"):
+                raise CatalogRefused(f"{app.get('id')}: picture {url} is not png, webp or svg")
+            request = urllib.request.Request(f"{hub}/api/depot/media/{digest}.{extension}",
+                                             headers={"User-Agent": "luma-depot-catalog-signer"})
+            with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 (https only)
+                content = response.read(20 * 1024 * 1024 + 1)
+            if hashlib.sha256(content).hexdigest() != digest:
+                raise CatalogRefused(f"{app.get('id')}: the Hub's {digest}.{extension} does not match its digest")
+            local.parent.mkdir(parents=True, exist_ok=True)
+            temporary = local.with_name(f".{local.name}.tmp")
+            temporary.write_bytes(content)
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, local)
+            copied.append(relative)
+    return copied
 
 
 def icon_coverage(document: dict) -> tuple[int, int, list[str]]:
@@ -364,6 +423,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="sign without the listing quality gate (tests and emergencies only)")
     parser.add_argument("--from-dir", type=Path,
                         help="read catalog-4.json and catalog-3.json from a directory instead of Hub (testing)")
+    parser.add_argument("--no-media", action="store_true",
+                        help="do not copy missing listing pictures from Hub")
     args = parser.parse_args(argv)
 
     if args.from_dir is None:
@@ -385,6 +446,10 @@ def main(argv: list[str] | None = None) -> int:
     catalog_dir = args.site / "catalog"
     try:
         document4 = validate_schema4(content4)
+        validate_with_client(content4)
+        if args.from_dir is None and not args.no_media:
+            for relative in fetch_media(document4, args.site, args.hub.rstrip("/")):
+                print(f"media: copied {relative} from Hub")
         refuse_icon_regression(document4, catalog_dir / "catalog-4.json")
         if not args.skip_quality_gate:
             refuse_below_quality(document4, args.site)

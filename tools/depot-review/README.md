@@ -35,7 +35,10 @@ On approval, each reviewed bundle becomes an unsigned repository holding exactly
 
 ## Catalogue
 
-The Hub's catalogue is signed with the `depot-catalogue-v1` minisign key (`/srv/luma-build/depot-keys/minisign/`). It is published to `https://dl.simplyluma.com/depot/catalogue/v1/catalogue.json` and `.minisig`. Pictures are copied to `https://media.simplyluma.com/depot/<app-id>/<sha256>.<ext>`.
+The Hub is the only source of Depot listings: Luma's apps, Flathub and community listings, publisher packages and developer submissions are all edited in admin (Depot > Apps). Every round (`catalogue_seconds`) publishes two documents from it:
+
+- Catalogue v1 (`catalogue.py`), read by the redesigned Depot and the installer's third-party path: signed with the `depot-catalogue-v1` minisign key (`/srv/luma-build/depot-keys/minisign/`) and published to `https://dl.simplyluma.com/depot/catalogue/v1/catalogue.json` and `.minisig`. Pictures are copied to `https://media.simplyluma.com/depot/<app-id>/<sha256>.<ext>`.
+- catalog-4 and catalog-3 (`catalog4.py`), read by installed Depots: `scripts/depot/sign-catalog.py` from the deployed checkout fetches the Hub's snapshots, copies new listing pictures into `$DEPOT_ROOT/site/media/listings`, validates with the installed Depot's rules, signs with the catalog key and uploads with `sync-remote.sh` (pictures first) to `https://dl.simplyluma.com/catalog/`. It skips a round while the publication lock is held. `scripts/depot/run-catalog-signer.sh` is the same run by hand. `publish_catalog4: false` turns it off.
 
 ## Commands
 
