@@ -24,7 +24,7 @@
     "boot": {
       "type": "object", "additionalProperties": false, "required": ["format"],
       "properties": {
-        "format": {"enum": ["android-boot-v2", "android-boot-v3", "android-boot-v4", "uefi"]},
+        "format": {"enum": ["android-boot-v0", "android-boot-v2", "android-boot-v3", "android-boot-v4", "uefi"]},
         "page_size": {"enum": [2048, 4096, 16384]},
         "slots": {"enum": ["ab", "a-only"]},
         "dtb_in_boot_image": {"type": "boolean"},

@@ -1,0 +1,42 @@
+{
+  "schema": "org.projectluma.kernel-source/v1",
+  "version": "7.1-rc1",
+  "release": "7.1.0-rc1-sdm845-luma",
+  "architecture": "aarch64",
+  "device_tree": "qcom/sdm845-oneplus-fajita.dtb",
+  "sources": {
+    "linux": {
+      "name": "linux-sdm845-7.1-rc1-r0.tar.gz",
+      "url": "https://gitlab.com/sdm845-mainline/linux/-/archive/sdm845-7.1-rc1-r0/linux-sdm845-7.1-rc1-r0.tar.gz",
+      "sha256": "4389f4ae6f5b80174a4b2d2da93ab5afc1d3922db215ebabf7c01436494eb9f2",
+      "size": 262515568,
+      "revision": "sdm845-7.1-rc1-r0"
+    },
+    "overlay": {
+      "name": "pmaports-fa22430585a1-linux-postmarketos-qcom-sdm845.tar.gz",
+      "url": "https://gitlab.nura.eco/nura/pmaports/-/archive/fa22430585a1/pmaports-fa22430585a1.tar.gz?path=device/community/linux-postmarketos-qcom-sdm845",
+      "sha256": "68d0ecf8254fb8aa3a1d8ba5d551c4e4e4a6a8c126bda189d540f047fb4bde5d",
+      "size": 73594,
+      "revision": "fa22430585a1"
+    }
+  },
+  "base_config": {
+    "source": "overlay",
+    "member": "device/community/linux-postmarketos-qcom-sdm845/config-postmarketos-qcom-sdm845.aarch64",
+    "sha256": "3ad5a18d99f322f635de3c9f31b54836b2995527e01d813e8acb557ea7374aed"
+  },
+  "patches": [
+    {
+      "source": "overlay",
+      "path": "device/community/linux-postmarketos-qcom-sdm845/enable-dynamic-ftrace.patch",
+      "sha256": "ca918ee296eacca9093982d3109a3b5830c87e5d3fa88ee4fb00f0a76e9eb0b0",
+      "origin": "postmarketOS linux-postmarketos-qcom-sdm845 7.1_rc1"
+    },
+    {
+      "source": "overlay",
+      "path": "device/community/linux-postmarketos-qcom-sdm845/libbpf-Fix-UAF-in-strset__add_str.patch",
+      "sha256": "aacf8a93fd20dda0e034711a836fc1f6dbec79493eece8d1d107b3cdb1edfa42",
+      "origin": "postmarketOS linux-postmarketos-qcom-sdm845 7.1_rc1"
+    }
+  ]
+}
