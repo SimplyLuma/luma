@@ -46,6 +46,9 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+SCRATCH_MIN_FREE = "1GB"
+
+
 def sniff(path: Path) -> str:
     with path.open("rb") as stream:
         head = stream.read(64)
@@ -69,6 +72,9 @@ def sniff(path: Path) -> str:
 def inspect_flatpak(upload: Path, work: Path) -> dict:
     repo = work / "repo"
     run(["ostree", "init", "--mode=archive-z2", f"--repo={repo}"])
+    # A scratch repository: a fixed floor instead of ostree's 3% default, which a
+    # large, mostly full data disk trips even with a hundred gigabytes free.
+    run(["ostree", "config", f"--repo={repo}", "set", "core.min-free-space-size", SCRATCH_MIN_FREE])
     imported = run(["flatpak", "build-import-bundle", "--no-update-summary", str(repo), str(upload)],
                    check=False, timeout=900)
     if imported.returncode != 0:
