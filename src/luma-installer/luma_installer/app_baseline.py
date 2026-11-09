@@ -110,10 +110,11 @@ def write_state(path, doc):
         if os.path.exists(temporary):os.unlink(temporary)
 
 
-def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
+def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run, progress=None):
     if os.getuid()!=0: raise PermissionError('Only the signed OS baseline owner may seed system apps.')
     from .retired_apps import reconcile_current
     reconcile_current(system=True)
+    if progress is not None:progress.begin()
     doc, records, key = inventory(root)  # all bytes are admitted before writes
     protected(CONTRACT)
     if digest(CONTRACT) != doc['role_contract_sha256']:
@@ -158,13 +159,17 @@ def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
             if history.get('schema')!='org.projectluma.app-baseline-seed/v1' or not isinstance(history.get('applications'),dict):
                 raise ValueError('The baseline journal needs repair.')
         outcomes=[]
+        apps=sum(row['ref'].startswith('app/') and row['ref'].split('/')[1] not in RETIRED for row in records);ready=0
+        if progress is not None:progress.step(ready,apps)
         for row in sorted(records,key=lambda row:(row['ref'].startswith('app/'),row['ref'])):
             parts=row['ref'].split('/');kind,name=parts[:2]
             if kind == 'app' and name in RETIRED:
                 outcomes.append({'ref':row['ref'],'result':'preserved-retired-application'});continue
             installed=[ref for ref in installation.list_installed_refs(None) if ref.get_name()==name and ref.format_ref().startswith(kind+'/')]
             if kind=='app' and name in history['applications']:
-                outcomes.append({'ref':row['ref'],'result':'preserved-prior-user-choice'});continue
+                outcomes.append({'ref':row['ref'],'result':'preserved-prior-user-choice'})
+                if progress is not None:ready+=1;progress.step(ready,apps)
+                continue
             if installed:
                 if len(installed)!=1 or installed[0].get_origin()!='luma':raise ValueError('An existing baseline app has an ambiguous source.')
                 verify_deployed_commit(installation,installed[0])
@@ -189,12 +194,21 @@ def seed(root=ROOT, state=STATE, *, installation=None, runner=subprocess.run):
                 history['applications'][name]={'ref':installed[0].format_ref(),'commit':installed[0].get_commit(),'seeded_unix':time.time()}
                 write_state(journal,history)  # survive interruption without replaying completed choices
             outcomes.append({'ref':row['ref'],'result':result})
+            if kind=='app' and progress is not None:ready+=1;progress.step(ready,apps)
         history.update(result='PASS',inventory_sha256=digest(root/'manifest.json'),completed_unix=time.time(),outcomes=outcomes)
         write_state(journal,history);return history
     finally:os.close(fd)
 
 
 def main():
-    print(json.dumps(seed(),sort_keys=True))
+    from .app_baseline_progress import Progress
+    # The display manager waits for READY at most Progress.wait seconds; the
+    # import then continues in the background and resumes after a reboot.
+    progress=Progress();progress.arm()
+    try:
+        result=seed(progress=progress)
+    except BaseException:
+        progress.finish(ok=False);raise
+    progress.finish();print(json.dumps(result,sort_keys=True))
 
 if __name__=='__main__':main()

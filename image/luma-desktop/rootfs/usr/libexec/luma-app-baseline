@@ -86,7 +86,7 @@ def finish(state,manifest,commits):
     finally:os.unlink(name)
 
 
-def handoff(root,state,architecture,installation,verify,install):
+def handoff(root,state,architecture,installation,verify,install,progress=lambda ready,total:None):
     # A marker belongs to mutable machine state, never to an OS commit.
     if state.exists():
         st=state.lstat()
@@ -113,6 +113,8 @@ def handoff(root,state,architecture,installation,verify,install):
     existing_refs=installation()
     for row in rows:
         if row['ref'] in existing_refs:verify(existing_refs[row['ref']],row['ref'])
+    apps=sum(row['ref'].startswith('app/') for row in rows);ready=0
+    progress(ready,apps)
     for row in rows:
         refs=installation()
         existing=refs.get(row['ref'])
@@ -124,6 +126,7 @@ def handoff(root,state,architecture,installation,verify,install):
         # updates. Conflicting origins or signature failures abort the handoff.
         verify(existing,row['ref'])
         commits[row['ref']]=existing.get_commit()
+        if row['ref'].startswith('app/'):ready+=1;progress(ready,apps)
     finish(state,digest(root/'manifest.json'),commits)
     return 'completed'
 
@@ -139,12 +142,25 @@ def trust_remote(key,run=subprocess.run):
 
 def main():
     if os.geteuid()!=0:raise PermissionError('The OS baseline handoff requires root.')
+    from luma_installer.app_baseline_progress import Progress
+    # The display manager waits for READY at most Progress.wait seconds; the
+    # import then continues in the background and resumes after a reboot.
+    progress=Progress();progress.arm()
+    try:
+        result=run(progress)
+    except BaseException:
+        progress.finish(ok=False);raise
+    progress.finish();print(result)
+
+
+def run(progress):
     # Retirement runs on every updated boot, including completed baselines.
     from luma_installer.retired_apps import reconcile_current
     reconcile_current(system=True)
     if (STATE/'installed-v1.json').exists() or (STATE/'installed-v1.json').is_symlink():
         # The handoff function validates the marker before skipping transactions.
-        print(handoff(BASELINE,STATE,platform.machine(),lambda:{},lambda *a:None,lambda *a:None));return
+        return handoff(BASELINE,STATE,platform.machine(),lambda:{},lambda *a:None,lambda *a:None)
+    progress.begin()
     validate(BASELINE,platform.machine())
     import gi
     gi.require_version('Flatpak','1.0')
@@ -178,7 +194,7 @@ def main():
         verify_deployed_commit(instance,actual,commit=row['commit'],exact_ref=row['ref'])
         subprocess.run(['flatpak','install','--system','--noninteractive',
                         '--no-pull','--no-deps','--no-related','luma',row['ref']],check=True)
-    print(handoff(BASELINE,STATE,platform.machine(),installed,verify,install))
+    return handoff(BASELINE,STATE,platform.machine(),installed,verify,install,progress.step)
 
 
 if __name__=='__main__':main()

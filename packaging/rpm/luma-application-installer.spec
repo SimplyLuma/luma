@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.92%{?dist}
+Release:        1.luma.93%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -156,7 +156,7 @@ install -D -m 0644 data/luma-depot-app-updates-login.service %{buildroot}%{_user
 ln -s ../luma-depot-app-updates-login.service \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-depot-app-updates-login.service
 install -d %{buildroot}%{_userpresetdir}
-printf 'enable luma-depot-provision.service\nenable luma-depot-app-updates.timer\nenable luma-depot-app-updates-login.service\n' > %{buildroot}%{_userpresetdir}/60-luma-depot.preset
+printf 'enable luma-depot-provision.service\nenable luma-depot-app-updates.timer\nenable luma-depot-app-updates-login.service\nenable luma-app-baseline-notice.service\n' > %{buildroot}%{_userpresetdir}/60-luma-depot.preset
 install -D -m 0755 bin/luma-appctl %{buildroot}%{_bindir}/luma-appctl
 install -D -m 0755 bin/luma-icon-plates %{buildroot}%{_bindir}/luma-icon-plates
 install -D -m 0644 data/luma-icon-plates.service %{buildroot}%{_userunitdir}/luma-icon-plates.service
@@ -169,6 +169,11 @@ install -D -m 0755 bin/luma-capsule-launch %{buildroot}%{_bindir}/luma-capsule-l
 install -D -m 0755 bin/luma-app-data-broker %{buildroot}%{_libexecdir}/luma-app-data-broker
 install -D -m 0755 bin/luma-seed-app-baseline %{buildroot}%{_bindir}/luma-seed-app-baseline
 install -D -m 0644 data/luma-app-baseline.service %{buildroot}%{_unitdir}/luma-app-baseline.service
+install -D -m 0644 data/luma-app-baseline-display-manager.conf \
+  %{buildroot}%{_unitdir}/display-manager.service.d/20-luma-app-baseline.conf
+install -D -m 0644 data/luma-app-baseline-notice.service %{buildroot}%{_userunitdir}/luma-app-baseline-notice.service
+ln -s ../luma-app-baseline-notice.service \
+  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-app-baseline-notice.service
 install -D -m 0644 data/luma-app-baseline.conf %{buildroot}%{_tmpfilesdir}/luma-app-baseline.conf
 install -d %{buildroot}%{_unitdir}/graphical.target.wants
 ln -s ../luma-app-baseline.service %{buildroot}%{_unitdir}/graphical.target.wants/luma-app-baseline.service
@@ -278,6 +283,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_bindir}/luma-seed-app-baseline
 %{_unitdir}/luma-app-baseline.service
 %{_unitdir}/graphical.target.wants/luma-app-baseline.service
+%dir %{_unitdir}/display-manager.service.d
+%{_unitdir}/display-manager.service.d/20-luma-app-baseline.conf
+%{_userunitdir}/luma-app-baseline-notice.service
+%{_userunitdir}/graphical-session.target.wants/luma-app-baseline-notice.service
 %{_libexecdir}/luma-system-app-updates
 %{_unitdir}/luma-system-app-updates-prefetch.service
 %{_unitdir}/luma-system-app-updates.service
@@ -303,6 +312,19 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.93
+- luma-app-baseline.service is Type=notify: ready when the handoff finishes
+  or after 90 seconds, then the import continues in the background and
+  resumes on the next boot. The display manager drop-in moves here and only
+  Wants= and orders After= it; it no longer Requires= it, so a slow or failed
+  first import never keeps the login screen away.
+- Progress is published to /run/luma/app-baseline/status.json and
+  luma-app-baseline-notice.service tells the signed-in person that apps are
+  still being set up, then when they are ready.
+- System retirement opens the system installation under its lock, so the
+  baseline and luma-retired-system-apps no longer race to create
+  /var/lib/flatpak/repo on a first boot.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.92
 - App and runtime updates on the luma remote are downloaded with a staged Luma
   update (luma-system-app-updates-prefetch.service) and deployed from the

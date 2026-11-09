@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Say when the apps that come with Luma are still being set up
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionPathExists=/run/luma/app-baseline/status.json
+ConditionUser=!@system
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 -B -m luma_installer.app_baseline_progress notice
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target
