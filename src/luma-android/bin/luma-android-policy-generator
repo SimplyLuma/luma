@@ -136,6 +136,11 @@ def main(argv: list[str]) -> int:
             + f"MemoryMax={profile['MEMORY_MAX_PERCENT']}%\n"
             + "TasksAccounting=yes\n"
             + f"TasksMax={profile['TASKS_MAX']}\n"
+            # LXC puts Android's payload cgroup outside this unit; the
+            # container entrypoint applies the same ceilings to it.
+            + f"Environment=LUMA_ANDROID_MEMORY_HIGH_PERCENT={profile['MEMORY_HIGH_PERCENT']}"
+            + f" LUMA_ANDROID_MEMORY_MAX_PERCENT={profile['MEMORY_MAX_PERCENT']}"
+            + f" LUMA_ANDROID_TASKS_MAX={profile['TASKS_MAX']}\n"
         ),
         encoding="utf-8",
     )

@@ -29,6 +29,15 @@ class GraphicsWatchdog(unittest.TestCase):
         self.assertEqual(watchdog.container_processes(self.proc),
                          {"surfaceflinger": (10, 500), "system_server": (12, 300)})
 
+    def test_android_process_cgroups_inside_the_payload_count(self):
+        process(self.proc, 10, "surfaceflinger", 500,
+                cgroup=watchdog.CONTAINER_CGROUP + "/uid_1000/pid_93")
+        process(self.proc, 12, "system_server", 300,
+                cgroup=watchdog.CONTAINER_CGROUP + "/uid_1000/pid_348")
+        process(self.proc, 13, "system_server", 200, cgroup="0::/lxc.payload.waydroid2")
+        self.assertEqual(watchdog.container_processes(self.proc),
+                         {"surfaceflinger": (10, 500), "system_server": (12, 300)})
+
     def test_surfaceflinger_newer_than_framework_is_stale(self):
         self.assertEqual(watchdog.stale_framework(
             {"surfaceflinger": (10, 500), "system_server": (12, 300)}), 12)

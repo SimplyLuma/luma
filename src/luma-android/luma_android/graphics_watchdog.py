@@ -38,7 +38,9 @@ def container_processes(proc: Path = Path("/proc")) -> dict[str, tuple[int, int]
             comm = (entry / "comm").read_text().strip()
             if comm not in {"surfaceflinger", "system_server"}:
                 continue
-            if (entry / "cgroup").read_text().strip() != CONTAINER_CGROUP:
+            # Android moves its services into uid_N/pid_N under the payload.
+            cgroup = (entry / "cgroup").read_text().strip()
+            if cgroup != CONTAINER_CGROUP and not cgroup.startswith(CONTAINER_CGROUP + "/"):
                 continue
             start = int((entry / "stat").read_text().rsplit(")", 1)[1].split()[19])
         except (OSError, ValueError, IndexError):

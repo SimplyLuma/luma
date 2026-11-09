@@ -14,19 +14,20 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-# ReadWritePaths only grants a directory that already exists.
-ExecStartPre=+/usr/bin/mkdir -p %h/.local/share/luma/icons
+# Launcher reconciliation publishes rounded application icons here.
+ExecStartPre=/usr/bin/mkdir -p %h/.local/share/luma/icons
 ExecStart=/usr/bin/luma-android-session
 ExecStop=/usr/bin/waydroid session stop
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=45
+# This process serves Binder to system_server and admits it by the kernel's
+# sender UID. A user manager runs any mount sandbox (PrivateTmp=,
+# ProtectSystem=, ProtectHome=, ReadWritePaths=) in a user namespace that maps
+# only this user, where every Android UID reads as the overflow UID: each
+# notification was refused and the refusal took system_server down. Keep to
+# hardening that needs no namespace.
 NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=read-only
-# Launcher reconciliation publishes rounded application icons here.
-ReadWritePaths=-%h/.local/share/waydroid -%h/.local/share/applications -%h/.local/state/luma-android -%t/waydroid -%t/luma-android -%h/.local/share/luma/icons
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
