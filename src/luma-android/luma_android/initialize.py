@@ -48,9 +48,11 @@ def _virtio_has_3d(node: Path) -> bool:
 # Kernel drivers with a Mesa renderer in the packaged Android images. Display
 # controllers can expose render nodes too (exynos-drm beside a Mali panthor
 # GPU); Waydroid would pick whichever sorts first and crash SurfaceFlinger.
+# On SoCs where one msm device drives display and Adreno GPU (SDM845), the
+# render node's device is the DPU and its driver reads "msm_dpu".
 RENDER_DRIVERS = frozenset({
-    "amdgpu", "etnaviv", "i915", "lima", "msm", "nouveau", "panfrost", "panthor",
-    "radeon", "tegra", "v3d", "vc4", "virtio_gpu", "vmwgfx", "xe",
+    "amdgpu", "etnaviv", "i915", "lima", "msm", "msm_dpu", "nouveau", "panfrost",
+    "panthor", "radeon", "tegra", "v3d", "vc4", "virtio_gpu", "vmwgfx", "xe",
 })
 
 
