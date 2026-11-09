@@ -104,10 +104,12 @@ def import_bundle(config: Config, bundle: Path, app_id: str, arch: str, build_ro
     out.mkdir(parents=True)
     script = f"""set -euo pipefail
 ostree init --mode=archive-z2 --repo=/work/tmp
+ostree config --repo=/work/tmp set core.min-free-space-size 1GB
 flatpak build-import-bundle --no-update-summary /work/tmp /in/bundle.flatpak >/dev/null
 src=$(ostree refs --repo=/work/tmp | grep '^app/{app_id}/{arch}/' )
 test "$(printf '%s\\n' "$src" | wc -l)" = 1
 ostree init --mode=archive-z2 --repo=/work/out/repo
+ostree config --repo=/work/out/repo set core.min-free-space-size 1GB
 flatpak build-commit-from --no-update-summary --src-repo=/work/tmp --src-ref="$src" /work/out/repo app/{app_id}/{arch}/{config.branch}
 commit=$(ostree rev-parse --repo=/work/out/repo app/{app_id}/{arch}/{config.branch})
 ostree cat --repo=/work/out/repo "$commit" /metadata > /work/out/metadata
