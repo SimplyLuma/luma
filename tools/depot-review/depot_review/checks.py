@@ -128,6 +128,9 @@ def malware_check(facts: dict, label: str) -> dict:
 
 
 def permission_checks(all_facts: list[dict], declared_raw) -> tuple[list[dict], dict]:
+    """What the package can reach, for the reviewer. Developers no longer declare
+    permissions: Depot reads them from the app's own sandbox settings, so nothing
+    here fails. Anything still declared is kept in the summary for comparison."""
     declared = words.normalise_declared(declared_raw)
     detected: dict[str, list[str]] = {}
     notes: list[str] = []
@@ -137,22 +140,11 @@ def permission_checks(all_facts: list[dict], declared_raw) -> tuple[list[dict], 
             detected.setdefault(word, [])
             detected[word] += [w for w in why if w not in detected[word]]
         notes += [n for n in reach.get("notes", []) if n not in notes]
-    out = []
-    missing = words.compare(declared, detected)
-    for item in missing:
-        out.append(check(f"permission:{item['word']}", False, item["message"], detail=item["detail"]))
-    if not missing:
-        listed = ", ".join(w for w in words.WORDS if w in detected) or "nothing beyond its own sandbox"
-        out.append(check("permissions", True, f"Your app reaches {listed}, and your listing declares it."))
-    reasons = {(i.get("word") if isinstance(i, dict) else i): (i.get("reason", "") if isinstance(i, dict) else "")
-               for i in (declared_raw or [])}
-    for word in declared:
-        if not (reasons.get(word) or "").strip():
-            out.append(check(f"permission-reason:{word}", False,
-                             f"Add a one-line reason for {word}; people see it in Depot."))
-    unused = [w for w in declared if w not in detected]
+    listed = ", ".join(w for w in words.WORDS if w in detected) or "nothing beyond its own sandbox"
+    out = [check("permissions", True, f"Your app reaches {listed}. Depot shows this to people, read from "
+                                      "your app's sandbox settings.")]
     summary = {"declared": declared, "detected": {w: detected[w] for w in words.WORDS if w in detected},
-               "declared_not_detected": unused, "notes": notes}
+               "declared_not_detected": [w for w in declared if w not in detected], "notes": notes}
     return out, summary
 
 

@@ -118,9 +118,11 @@ class Checks(unittest.TestCase):
         facts = {"reach": words.flatpak_reach(METADATA)}
         out, summary = checks.permission_checks([facts], [{"word": "Internet", "reason": "Sync"},
                                                           {"word": "Files", "reason": "Music"}])
-        failed = sorted(c["key"] for c in out if not c["ok"])
-        self.assertEqual(failed, ["permission:Notifications", "permission:Other apps", "permission:Passwords"])
-        self.assertEqual(checks.outcome(out), "needs_changes")
+        # Reach is reported, never failed: Depot reads it from the sandbox itself.
+        self.assertTrue(all(c["ok"] for c in out))
+        self.assertEqual(sorted(summary["detected"]), ["Files", "Internet", "Notifications", "Other apps", "Passwords"])
+        out, _ = checks.permission_checks([facts], [])
+        self.assertTrue(all(c["ok"] for c in out))
 
     def test_internal_only_failure_is_attention(self):
         self.assertEqual(checks.outcome([checks.check("malware", False, "x", internal=True)]), "attention")
