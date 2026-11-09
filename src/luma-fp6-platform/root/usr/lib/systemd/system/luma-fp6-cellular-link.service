@@ -1,0 +1,23 @@
+[Unit]
+Description=Project Luma FP6 cellular bearer integration
+After=ModemManager.service NetworkManager.service
+Wants=ModemManager.service NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/luma-fp6-cellular-link
+Restart=on-failure
+RestartSec=5
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

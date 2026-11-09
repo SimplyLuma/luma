@@ -1,0 +1,40 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Stop the FP6 modem while native file-backed rmtfs is still alive.
+# Preserve shutdown ordering so late writes reach its existing store.
+
+set -Eeuo pipefail
+
+remoteproc=/sys/class/remoteproc/remoteproc1
+
+event() { printf 'event=luma_fp6_modem_quiesce %s\n' "$*"; }
+fail() { event "state=failed reason=$1" >&2; exit 1; }
+
+[[ $(id -u) -eq 0 ]] || fail not_root
+[[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == 'The Fairphone (Gen. 6)' ]] || \
+  fail model
+[[ $(cat "$remoteproc/name") == modem ]] || fail remoteproc_identity
+systemctl is-active --quiet rmtfs.service || fail rmtfs_inactive
+
+case $(cat "$remoteproc/state") in
+  offline)
+    event 'state=already-offline'
+    exit 0
+    ;;
+  running)
+    printf stop >"$remoteproc/state"
+    ;;
+  *)
+    fail remoteproc_state
+    ;;
+esac
+
+for _ in $(seq 1 50); do
+  [[ $(cat "$remoteproc/state") == offline ]] && {
+    event 'state=offline rmtfs=active'
+    exit 0
+  }
+  sleep 0.2
+done
+fail timeout

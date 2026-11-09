@@ -1,0 +1,12 @@
+[Unit]
+Description=Fairphone 6: mark the running boot slot successful
+Documentation=man:qbootctl(8)
+ConditionFirmware=device-tree-compatible(fairphone,fp6)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/qbootctl -m
+
+[Install]
+WantedBy=multi-user.target
