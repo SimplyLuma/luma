@@ -13,13 +13,13 @@
 # The native host is shared. Both CPUs use source-built engines from the same
 # tree (engine patches 0001-0005); each has its own release number.
 %ifarch aarch64
-%global engine_release 33
-%global approved_release 20261107-native33-arm-desktop
-%global engine_sha256 3697e5d9203302378984e82bab96d65bc2966752aaad1b1329b55d8651f5a1c8
+%global engine_release 36
+%global approved_release 20261108-native36-arm-desktop
+%global engine_sha256 285400fa482d40e8cee961e3726268bdb779f72c287ebf7a1a38cfec8dc30d31
 %else
-%global engine_release 34
-%global approved_release 20261107-native34-x86-desktop
-%global engine_sha256 13094f67db88906aaef720f2a8c9ec6dde9358169841f1ccbf9163eee3b5e7ed
+%global engine_release 35
+%global approved_release 20261108-native35-x86-desktop
+%global engine_sha256 354dc6bc19aef237a50fab0ac5695af21e89debf4561e370654543989f57a433
 %endif
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
@@ -286,6 +286,7 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %changelog
 * Sun Nov 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native42.creator20261108.2
 - Engine patch 0005: a failed WebRTC readback of a GPU video frame no longer deadlocks the renderer (a background tab's video froze with the media preview).
+- Engines native35 (x86) and native36 (ARM): native34 and native33 with 0005; only chrome differs.
 
 * Sun Nov 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native42.creator20261108.1
 - Package the engine with fixed modes: 0755 directories without setgid, 0755/0644 files.
