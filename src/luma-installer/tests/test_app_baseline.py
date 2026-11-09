@@ -103,6 +103,21 @@ class Inventory(unittest.TestCase):
         self.assertIn('RemainAfterExit=yes\n', unit)
         self.assertIn('PrivateNetwork=yes\n', unit)
         self.assertIn('ProtectSystem=strict\n', unit)
+        # Ready within the bounded login wait, then the import runs on.
+        self.assertIn('Type=notify\n', unit)
+        self.assertIn('TimeoutStartSec=5min\n', unit)
+        self.assertNotIn('RuntimeMaxSec', unit)
+
+    def test_display_manager_only_orders_after_the_baseline(self):
+        data = Path(__file__).resolve().parents[1] / 'data'
+        dropin = (data / 'luma-app-baseline-display-manager.conf').read_text()
+        self.assertIn('Wants=luma-app-baseline.service\n', dropin)
+        self.assertIn('After=luma-app-baseline.service\n', dropin)
+        for strong in ('Requires=', 'Requisite=', 'BindsTo=', 'PartOf=', 'Upholds='):
+            self.assertNotIn(strong, dropin)
+        notice = (data / 'luma-app-baseline-notice.service').read_text()
+        self.assertIn('ConditionUser=!@system\n', notice)
+        self.assertIn('ConditionPathExists=/run/luma/app-baseline/status.json\n', notice)
 
     def test_separate_product_cannot_be_added_to_os_inventory(self):
         row = dict(self.doc['bundles'][-1], ref='app/org.projectluma.Write/x86_64/beta')

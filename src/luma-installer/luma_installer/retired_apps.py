@@ -90,14 +90,16 @@ def reconcile_current(*, system=False):
     import gi
     gi.require_version('Flatpak', '1.0')
     from gi.repository import Flatpak
-    installations = (Flatpak.get_system_installations(None) if system else
-                     (Flatpak.Installation.new_user(None),))
     if system:
         # Boot reconciliation and the baseline handoff may overlap. Serialize
         # their inventories and transactions so neither races an uninstall.
+        # Opening the system installation creates /var/lib/flatpak/repo on a
+        # first boot, so that is serialized too: a second process opening the
+        # half-created repo fails with opendir(objects) and finds no system
+        # installation at all.
         with _lock(Path('/run/luma-retired-apps.lock'), 0):
-            return reconcile(installations)
-    return reconcile(installations)
+            return reconcile(Flatpak.get_system_installations(None))
+    return reconcile((Flatpak.Installation.new_user(None),))
 
 
 def main():

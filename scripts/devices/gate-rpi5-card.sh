@@ -175,8 +175,9 @@ env=$(vm grub2-editenv list 2>/dev/null | tr '\n' ' ')
   fail_now fresh-greenboot "greenboot-healthcheck/boot-complete: $state; grubenv: $env"
 stage fresh-greenboot pass "greenboot judged the first boot healthy (boot_success=1)"
 
+# Type=notify: active (running) after the login wait while the import goes on.
 for _ in $(seq 1 60); do
-  [ "$(vm systemctl is-active luma-app-baseline 2>/dev/null)" = activating ] || break; sleep 10
+  case "$(vm systemctl show -P SubState luma-app-baseline 2>/dev/null)" in start|running) sleep 10 ;; *) break ;; esac
 done
 contract=$(vm "kernel='$kernel' locals='$locals'" 'bash -s' <<'EOF'
 problems=()

@@ -6,8 +6,16 @@ Before=display-manager.service graphical.target
 ConditionPathExists=/usr/share/luma/app-baseline/manifest.json
 
 [Service]
-Type=oneshot
+# READY comes when the handoff finishes or after a bounded wait, whichever is
+# first (app_baseline_progress.LOGIN_WAIT). The display manager only orders
+# after it, so login never waits longer than that and never depends on it.
+# The import then carries on in the background, and an interrupted one
+# resumes with what is missing on the next boot.
+Type=notify
 ExecStart=/usr/bin/luma-seed-app-baseline
+ExecStopPost=/usr/bin/python3 -B -m luma_installer.app_baseline_progress stopped
+# Bounds only the time to READY; the import itself has no runtime limit.
+TimeoutStartSec=5min
 # System Flatpak content must be readable by ordinary application users.
 # StateDirectory and completion records retain their explicit private modes.
 UMask=0022
@@ -19,10 +27,11 @@ ProtectHome=yes
 ReadWritePaths=/var/lib/flatpak /var/lib/luma/app-baseline /run
 StateDirectory=luma/app-baseline
 StateDirectoryMode=0700
+# status.json: progress the signed-in session reads.
+RuntimeDirectory=luma/app-baseline
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 RemainAfterExit=yes
-# Match the packaged baseline owner: a slow first import must not prevent GDM
-# from starting while authenticated offline application bundles are progressing.
-TimeoutStartSec=30min
 
 [Install]
 WantedBy=graphical.target
