@@ -7,11 +7,14 @@ import os
 
 def seed(services, origin, download_directory, media=False):
     report = {'classification': 'disposable browser-service layout fixture', 'tabs': {}, 'groups': []}
-    space = services.state['spaces'][0]['id']
+    # Fixture state is published by a real engine, which a loaded machine slows.
+    wait_state = lambda predicate: services.wait_state(predicate, timeout=60)
+    # The first published state can precede the sidebar's space list.
+    space = wait_state(lambda state: state.get('spaces'))['spaces'][0]['id']
     def create(title, new=True):
         url = origin + '/layout?title=' + quote(title)
         services.navigate(url, new_tab=new)
-        state = services.wait_state(lambda state: state.get('activeUrl') == url and any(
+        state = wait_state(lambda state: state.get('activeUrl') == url and any(
             tab.get('id') == state.get('activeTabId') and tab.get('title') == title
             for kind in ('today', 'pinned', 'favorites') for tab in state.get(kind, [])))
         report['tabs'][title] = state['activeTabId']
@@ -21,21 +24,21 @@ def seed(services, origin, download_directory, media=False):
         tab = create(title)
         services.send('sidebar', 'tab:reorder', {'tabId': tab, 'spaceId': space,
                                                'section': 'favorite', 'index': index})
-        services.wait_state(lambda state: any(t['id'] == tab for t in state.get('favorites', [])))
+        wait_state(lambda state: any(t['id'] == tab for t in state.get('favorites', [])))
     create('Shopping — long tab title layout fixture')
     for title, names in (('Social Media', ('Community fixture', 'Marketplace fixture', 'Professional fixture')),
                          ('Reading', ('Article one fixture', 'Article two fixture'))):
         tabs = [create(name) for name in names]
         services.send('sidebar', 'tabGroup:groupTab', {'tabId': tabs[1], 'targetTabId': tabs[0],
             'groupId': None, 'spaceId': space, 'index': 1})
-        state = services.wait_state(lambda state: any(set(tabs[:2]).issubset(g.get('tabIds', []))
+        state = wait_state(lambda state: any(set(tabs[:2]).issubset(g.get('tabIds', []))
                                                      for g in state.get('tabGroups', [])))
         group = next(g['id'] for g in state['tabGroups'] if set(tabs[:2]).issubset(g.get('tabIds', [])))
         for index, tab in enumerate(tabs[2:], 2):
             services.send('sidebar', 'tabGroup:groupTab', {'tabId': tab, 'targetTabId': None,
                 'groupId': group, 'spaceId': space, 'index': index})
         services.send('sidebar', 'tabGroup:rename', {'groupId': group, 'spaceId': space, 'title': title})
-        services.wait_state(lambda state: any(g['id'] == group and g.get('title') == title
+        wait_state(lambda state: any(g['id'] == group and g.get('title') == title
                                               for g in state.get('tabGroups', [])))
         if title == 'Social Media':
             description = services.open_menu('tabGroup:menu', {'groupId': group, 'spaceId': space})
@@ -46,7 +49,7 @@ def seed(services, origin, download_directory, media=False):
                 services.dismiss_menu(description['nonce'])
         report['groups'].append(group)
     services.send('sidebar', 'tab:activate', {'tabId': main})
-    services.wait_state(lambda state: state.get('activeTabId') == main)
+    wait_state(lambda state: state.get('activeTabId') == main)
     report['favorite_count'] = len(services.state.get('favorites', []))
     download_directory.mkdir(parents=True, exist_ok=True)
     services.engine.call('Browser.setDownloadBehavior', {
@@ -58,12 +61,12 @@ def seed(services, origin, download_directory, media=False):
     session = services.engine.call('Target.attachToTarget', {'targetId': target, 'flatten': True})['sessionId']
     services.engine.call('Runtime.evaluate', {'expression': 'location.assign(' + json.dumps(origin + '/download') + ')',
                                               'userGesture': True}, session=session)
-    services.wait_state(lambda state: bool(state.get('notifications')))
+    wait_state(lambda state: bool(state.get('notifications')))
     report['notification_count'] = len(services.state['notifications'])
     services.engine.call('Target.detachFromTarget', {'sessionId': session})
     if media:
         services.send('sidebar', 'tab:activate', {'tabId': report['tabs']['Music fixture']})
-        services.wait_state(lambda state: state.get('activeTabId') == report['tabs']['Music fixture'])
+        wait_state(lambda state: state.get('activeTabId') == report['tabs']['Music fixture'])
         music_url = origin + '/layout?title=' + quote('Music fixture')
         target = next(t['targetId'] for t in services.engine.call('Target.getTargets')['targetInfos']
                       if t['type'] == 'page' and t['url'] == music_url)
@@ -92,7 +95,7 @@ def seed(services, origin, download_directory, media=False):
         if result.get('exceptionDetails'):
             raise RuntimeError('Existing Chromium media fixture did not play')
         try:
-            services.wait_state(lambda state: bool(state.get('media')))
+            wait_state(lambda state: bool(state.get('media')))
         except TimeoutError as error:
             diagnostics = services.engine.call('Runtime.evaluate', {'expression':
                 "(() => { const v=document.querySelector('video'); return {paused:v.paused, time:v.currentTime, duration:v.duration, muted:v.muted, volume:v.volume, ready:v.readyState, visibility:document.visibilityState, playback:navigator.mediaSession.playbackState}; })()",
@@ -102,7 +105,7 @@ def seed(services, origin, download_directory, media=False):
         report['media_title'] = services.state['media'].get('title')
         if os.environ.get('VIOLA_QA_MEDIA_FOREGROUND') != '1':
             services.send('sidebar', 'tab:activate', {'tabId': main})
-            services.wait_state(lambda state: state.get('activeTabId') == main)
+            wait_state(lambda state: state.get('activeTabId') == main)
         report['media_foreground'] = services.state.get('activeTabId') == services.state['media']['tabId']
         services.engine.call('Target.detachFromTarget', {'sessionId': session})
     return report

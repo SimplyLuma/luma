@@ -9,9 +9,9 @@
 # (for example virtio-vga-gl): the deadlock this guards against (engine patch
 # 0005) is reached only when the preview's WebRTC encoder reads back GPU video
 # frames. Runs the installed host's own media qualification (headless_qa.py
-# --representative --media-fixture, VIOLA_QA_MEDIA_CHECKS=1) from a private copy
-# whose startup deadlines are raised for slow virtual GPUs, then judges the
-# report. Prints one JSON line per check and exits non-zero on any failure.
+# --representative --media-fixture, VIOLA_QA_MEDIA_CHECKS=1) unchanged, then
+# judges the report: the preview must be drawn in the sidebar, not only
+# received. Prints one JSON line per check and exits non-zero on any failure.
 set -u
 fixture=${1:?usage: background-media.sh FIXTURE.webm [HOST_DIR] [ENGINE]}
 host=${2:-/usr/share/viola-browser/luma-host}
@@ -35,37 +35,7 @@ useradd -m "$user" && created=1
 uid=$(id -u "$user")
 loginctl enable-linger "$user"
 for _ in $(seq 60); do [ -S "/run/user/$uid/bus" ] && break; sleep 1; done
-cp -a "$host" "$work/host"
 cp "$fixture" "$work/fixture.webm"
-# Raise only startup deadlines; every check and its threshold stays the host's.
-python3 - "$work/host" <<'PY'
-import sys
-from pathlib import Path
-root = Path(sys.argv[1])
-edits = {
-    'headless_qa.py': [('time.monotonic() + 15', 'time.monotonic() + 180'),
-                       ('time.monotonic() + 45', 'time.monotonic() + 400'),
-                       ('end = time.monotonic() + 5\n', 'end = time.monotonic() + 60\n'),
-                       ('timeout=7, stdout=log', 'timeout=60, stdout=log'),
-                       # The window's fixed lifetime also bounds its startup;
-                       # the media qualification still quits it when done.
-                       ("else '60' if args.representative", "else '400' if args.representative"),
-                       ("timeout=5).strip()", "timeout=60).strip()"),
-                       ('application.wait(timeout=75 if args.qualify_controls else 55)',
-                        'application.wait(timeout=600)')],
-    'browser_services.py': [('def wait_state(self, predicate, timeout=10)',
-                             'def wait_state(self, predicate, timeout=60)'),
-                            ('def connect(self, timeout=10', 'def connect(self, timeout=60')],
-}
-for name, pairs in edits.items():
-    path = root / name
-    text = path.read_text()
-    for old, new in pairs:
-        if old not in text:
-            raise SystemExit(f'{name}: deadline {old!r} not found')
-        text = text.replace(old, new)
-    path.write_text(text)
-PY
 chown -R "$user:" "$work"
 for _ in $(seq 30); do
   runuser -u "$user" -- env XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus \
@@ -74,7 +44,7 @@ for _ in $(seq 30); do
 done
 runuser -u "$user" -- env -i HOME=/home/$user USER=$user PATH=/usr/bin:/bin \
   XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus \
-  VIOLA_QA_MEDIA_CHECKS=1 timeout -k 10 900 python3 "$work/host/headless_qa.py" \
+  VIOLA_QA_MEDIA_CHECKS=1 timeout -k 10 900 python3 "$host/headless_qa.py" \
   --engine "$engine" --work-root "$work/runs" --representative --media-fixture "$work/fixture.webm" \
   >"$work/qa.log" 2>&1
 report=$(ls "$work"/runs/headless-*/native-window-*/integration-report.json 2>/dev/null | head -1)
@@ -101,12 +71,20 @@ check('media-page-answers', timeouts.get('count') == 0,
       json.dumps(timeouts.get('recent', [])[-2:]))
 check('background-preview-frames', media.get('frames', 0) > 0 and not media.get('errors'),
       json.dumps({k: media.get(k) for k in ('offers', 'answers', 'frames', 'errors')}))
+check('background-preview-presents', media.get('presented', 0) > 0
+      and checks.get('sustained_preview_presentation') is True,
+      json.dumps({'presented': media.get('presented'),
+                  'steady': {k: (qualification.get('steady_preview') or {}).get(k)
+                             for k in ('decoded_cadence', 'presented_cadence')}}))
 check('background-video-plays', video.get('paused') is False and video.get('time', 0) > 0
       and video.get('visibility') == 'hidden', json.dumps(video))
 check('foreground-stops-preview', checks.get('foreground_source_hides_and_stops_preview') is True,
       json.dumps(qualification.get('checks')))
-check('leaving-source-restarts-preview', media.get('offers', 0) >= 2,
-      json.dumps({'offers': media.get('offers')}))
+check('leaving-source-resumes-preview', media.get('offers', 0) >= 2
+      and checks.get('leaving_source_resumes_preview') is True,
+      json.dumps({'offers': media.get('offers'),
+                  'resumed': {k: (qualification.get('resumed_preview') or {}).get(k)
+                              for k in ('decoded_cadence', 'presented_cadence')}}))
 check('engine-exit', report.get('engine_exit_code') == 0, str(report.get('engine_exit_code')))
 raise SystemExit(1 if failed else 0)
 PY

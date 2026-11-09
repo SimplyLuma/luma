@@ -12,6 +12,7 @@ class MediaPaintable(GObject.Object, Gdk.Paintable):
         super().__init__()
         self.source = source
         self.serial = 0
+        self.presented = 0
         self.presentations = deque(maxlen=600)
         self.handlers = [source.connect('invalidate-contents', self.changed),
                          source.connect('invalidate-size', lambda *_: self.invalidate_size())]
@@ -22,6 +23,8 @@ class MediaPaintable(GObject.Object, Gdk.Paintable):
 
     def do_snapshot(self, snapshot, width, height):
         self.source.snapshot(snapshot, width, height)
+        if not self.presentations or self.presentations[-1][1] != self.serial:
+            self.presented += 1
         self.presentations.append((time.monotonic(), self.serial))
 
     def do_get_intrinsic_width(self):
