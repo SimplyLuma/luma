@@ -47,6 +47,9 @@ edits = {
                        ('time.monotonic() + 45', 'time.monotonic() + 400'),
                        ('end = time.monotonic() + 5\n', 'end = time.monotonic() + 60\n'),
                        ('timeout=7, stdout=log', 'timeout=60, stdout=log'),
+                       # The window's fixed lifetime also bounds its startup;
+                       # the media qualification still quits it when done.
+                       ("else '60' if args.representative", "else '400' if args.representative"),
                        ("timeout=5).strip()", "timeout=60).strip()"),
                        ('application.wait(timeout=75 if args.qualify_controls else 55)',
                         'application.wait(timeout=600)')],
