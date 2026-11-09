@@ -20,7 +20,7 @@ gi.require_version("Gio", "2.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-from . import system  # noqa: E402
+from . import apps, system  # noqa: E402
 from .config import Paths, load_settings  # noqa: E402
 from .dbus_interface import BUS_NAME, ERROR_PREFIX, INTERFACE, METHODS, OBJECT_PATH, introspection_xml  # noqa: E402
 from .engine import Busy, Engine, NothingToDo, UpdateError, classify_error, ensure_runtime_dir  # noqa: E402
@@ -62,7 +62,8 @@ class Daemon:
         self.connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
         self.engine = Engine(self.paths, self.settings, RpmOstree(self.connection), Probes(self.connection),
                              Http(allow_insecure=self.settings.allow_insecure_urls),
-                             on_change=self._on_change_threaded)
+                             on_change=self._on_change_threaded,
+                             on_staged=lambda _release: apps.start_prefetch(self.connection))
         self.node = Gio.DBusNodeInfo.new_for_xml(introspection_xml())
         self.registration = 0
         self.owner = 0

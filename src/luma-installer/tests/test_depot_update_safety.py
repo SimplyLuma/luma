@@ -109,10 +109,10 @@ class BackgroundSnapshot(unittest.TestCase):
         runner.completed = []
         with mock.patch.object(GLib, 'idle_add'):
             for ok, cancelled in ((False, False), (True, True)):
-                runner.current = item.app_id
+                runner.running = {item.app_id}
                 runner.update_finished(item.app_id, NS(ok=ok), cancelled)
                 self.assertEqual(runner.completed, [])
-            runner.current = item.app_id
+            runner.running = {item.app_id}
             runner.update_finished(item.app_id, NS(ok=True), False)
         self.assertEqual(runner.completed, [item])
 

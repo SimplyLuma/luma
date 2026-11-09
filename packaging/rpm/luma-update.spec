@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.29%{?dist}
+Release:        1.luma.30%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -225,6 +225,11 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.30
+- Once a release is staged, start luma-system-app-updates-prefetch.service so
+  the app updates waiting on the luma remote come with it. A system without
+  the unit, or a failure to start it, leaves the staged update as it is.
+
 * Sat Nov 07 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.29
 - Arm greenboot's boot counter for a staged deployment at shutdown without
   rpm-ostreed (luma-greenboot-arm.service), so a failed update falls back.

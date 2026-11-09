@@ -441,6 +441,26 @@ class DepotShell(AppWindow):
         if words:
             self.toast(words)
 
+    def app_updates_changed(self, run) -> None:
+        """The background app update (autoupdate.AppUpdateRun) moved on: once an app is done, or the
+        run ends, what is installed is read again, and the Updates page says where the run stands."""
+        done = (len(run.completed), run.active)
+        if done != getattr(self, "_app_updates_seen", (0, True)) and getattr(self.store, "reload", None):
+            installer = getattr(self.store, "installer", None)
+            if not run.active and hasattr(installer, "force_update_check"):
+                installer.force_update_check = True  # the run is over: ask the remotes again
+            self.store.reload()
+        self._app_updates_seen = done
+        if self.place == "updates" and self.item is None and self.center.grown is None:
+            self.refresh_bar()
+            self.refresh_body()
+
+    def app_update_run(self):
+        """The background app update running in this process, if one is."""
+        application = self.get_application()
+        run = getattr(application, "app_updates", None) if application is not None else None
+        return run if run is not None and run.active else None
+
     def _world_changed(self, world: World) -> None:
         """The live store reloaded: redraw what shows, unless the person is typing or a panel is grown."""
         if not hasattr(self, "pages"):

@@ -139,9 +139,9 @@ class CancelledTerminal(unittest.TestCase):
         runner=autoupdate.AppUpdateRun(NS(),view)
         runner.pending={APP:policy.Pending(APP,'Tide','2',False,NEW,OLD)}
         runner.queue=[APP]
-        with mock.patch.object(GLib,'idle_add') as idle:
+        with mock.patch.object(runner,'_finish') as finish:
             runner._next()
-        self.assertEqual(runner.current,'')
-        idle.assert_called_once_with(runner._next)
+        self.assertEqual(runner.running,set())
+        finish.assert_called_once_with()
 
 if __name__ == '__main__': unittest.main()

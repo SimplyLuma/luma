@@ -492,7 +492,8 @@ class NativeCatalogue:
 class NativeInstallation:
     def __init__(self):
         self._updates = {}
-        self._updates_checked = 0.0
+        #: None until the first check: "never checked" is not "checked moments after boot".
+        self._updates_checked = None
         self._lock = threading.Lock()
         self.force_update_check = False
 
@@ -611,7 +612,11 @@ class NativeInstallation:
 
     def _pending_updates(self, cancellable=None, *, force=False):
         with self._lock:
-            fresh = time.monotonic() - self._updates_checked < UPDATE_CHECK_SECONDS
+            # The monotonic clock starts at boot. Measured against 0.0, every Depot or host
+            # started in a boot's first ten minutes took "never checked" for fresh and said
+            # every app was up to date, which is when a person comes back from a Luma update.
+            fresh = (self._updates_checked is not None
+                     and time.monotonic() - self._updates_checked < UPDATE_CHECK_SECONDS)
             if fresh and not force and not self.force_update_check:
                 return self._updates
             self.force_update_check = False
