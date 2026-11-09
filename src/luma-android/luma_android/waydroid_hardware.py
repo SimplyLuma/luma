@@ -111,6 +111,68 @@ def verify_confinement(enforce: Path, current: Path):
             raise RuntimeError('Android container is outside its Waydroid SELinux domain')
 
 
+MIRRORED_LIMITS = ('memory.high', 'memory.max', 'pids.max')
+PAGE = 4096
+
+
+def profile_limits(environ, meminfo=Path('/proc/meminfo')):
+    """The hardware profile's ceilings for the payload cgroup LXC creates.
+
+    LXC puts Android in lxc.payload.waydroid at the top of the hierarchy,
+    outside waydroid-container.service, so the MemoryHigh=, MemoryMax= and
+    TasksMax= the policy generator sets on the unit never bounded Android.
+    The generator passes the same profile values in the environment; the
+    unit's cgroup files are not readable in the container's SELinux domain.
+    """
+    total = 0
+    for line in meminfo.read_text().splitlines():
+        fields = line.split()
+        if fields[:1] == ['MemTotal:'] and len(fields) > 1 and fields[1].isdigit():
+            total = int(fields[1]) * 1024
+    limits = {}
+    for name, key in (('memory.high', 'LUMA_ANDROID_MEMORY_HIGH_PERCENT'),
+                      ('memory.max', 'LUMA_ANDROID_MEMORY_MAX_PERCENT')):
+        value = environ.get(key, '')
+        if total and value.isdigit() and 0 < int(value) <= 100:
+            limits[name] = str(total * int(value) // 100 // PAGE * PAGE)
+    tasks = environ.get('LUMA_ANDROID_TASKS_MAX', '')
+    if tasks.isdigit() and int(tasks) > 0:
+        limits['pids.max'] = tasks
+    return limits
+
+
+def container_defines(limits):
+    # Android's libprocessgroup puts every service and app in its own
+    # uid_N/pid_N cgroup and kills that cgroup to end them. On a read-only
+    # mount it cannot, so a framework restart left every app of the previous
+    # generation running. The container's cgroup namespace keeps the
+    # writable view inside its own payload cgroup.
+    defines = ['-s', 'lxc.mount.auto=cgroup:rw:force']
+    for name in MIRRORED_LIMITS:
+        if name in limits:
+            defines += ['-s', f'lxc.cgroup2.{name}={limits[name]}']
+    return defines
+
+
+def install_container_policy(run, defines):
+    """Add Luma's container settings to the provider's lxc-start command."""
+    original = run.user
+    current = getattr(original, 'luma_container_defines', None)
+    if current is not None:
+        if current != tuple(defines):
+            raise RuntimeError('Android container policy changed during startup')
+        return
+
+    def user(args, command, *rest, **kwargs):
+        if isinstance(command, list) and command[:1] == ['lxc-start'] and '--' in command:
+            split = command.index('--')
+            command = command[:split] + list(defines) + command[split:]
+        return original(args, command, *rest, **kwargs)
+
+    user.luma_container_defines = tuple(defines)
+    run.user = user
+
+
 def main():
     import os
     import sys
@@ -121,8 +183,10 @@ def main():
     verify_confinement(Path('/sys/fs/selinux/enforce'), Path('/proc/self/attr/current'))
     sys.path.insert(0, '/usr/lib/waydroid')
     import tools
+    import tools.helpers.run
     from tools.interfaces import IHardware
     install_guard(IHardware)
+    install_container_policy(tools.helpers.run, container_defines(profile_limits(os.environ)))
     sys.argv = ['waydroid', 'container', 'start']
     os.umask(0o022)
     return tools.main()

@@ -12,6 +12,13 @@ subframes, repeated URLs and gestures. The unchanged decision must fail with
 exit42. All callback values are synthetic; this does not qualify actual Android
 intent resolution, account authentication or native window activation.
 
+`idle-runtime-check.py --minutes 30 --notify` runs as root on a booted Luma
+machine with Android started and unused. It posts one notification from
+Android's shell user, then fails on any framework restart, more than one
+Settings process, an app process orphaned by its zygote, a journal growing
+faster than 1,200 lines an hour, or an Android payload cgroup without a memory
+ceiling. It needs a running Android and gates no package build.
+
 `desktop-canvas.cpp` checks the production logical desktop bounds helper and
 settings request layout, including negative monitor positions, invalid spans,
 and package names. Compile with C++17 and the native patch include directory.

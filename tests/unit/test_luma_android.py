@@ -279,6 +279,9 @@ class PolicyTests(unittest.TestCase):
             self.assertIn("CPUQuota=1000%", text)
             self.assertIn("MemoryHigh=60%", text)
             self.assertIn("MemoryMax=75%", text)
+            # The same ceilings reach Android's payload cgroup outside the unit.
+            self.assertIn("Environment=LUMA_ANDROID_MEMORY_HIGH_PERCENT=60 "
+                          "LUMA_ANDROID_MEMORY_MAX_PERCENT=75 LUMA_ANDROID_TASKS_MAX=4096", text)
             # systemd 259 warns that CPUAccounting= was removed on every reload.
             self.assertNotIn("CPUAccounting=", text)
 
