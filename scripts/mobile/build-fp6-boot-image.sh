@@ -15,6 +15,11 @@
 # serves every nightly, rpm-ostree upgrade and rollback; it changes only with
 # the kernel or the initramfs.
 #
+# It also holds /hooks-cleanup/60-luma-fp6-modem-store.sh
+# (scripts/mobile/fp6-initramfs): on the first start, which is `fastboot boot`,
+# it copies the modem storage partitions into the private rmtfs store before
+# any normal boot lets the bootloader erase modemst.
+#
 # usage: build-fp6-boot-image.sh --alpha-boot FILE --output FILE
 #
 # Needs AOSP's mkbootimg.py, unpack_bootimg.py and avbtool.py (MKBOOTIMG,
@@ -24,6 +29,7 @@ set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 device="$repo_root/devices/fairphone/fp6"
 shared="$repo_root/scripts/mobile/common/initramfs"
+modem_store="$repo_root/scripts/mobile/fp6-initramfs/hooks-cleanup/60-luma-fp6-modem-store.sh"
 fail() { printf 'build-fp6-boot-image: %s\n' "$*" >&2; exit 1; }
 # The generic phone userdata image's filesystems (scripts/mobile/build-phone-userdata.sh).
 root_uuid=03797c05-cf87-4eda-adc4-6ce111baf2d3
@@ -41,6 +47,7 @@ done
 for f in "$shared/luma-ostree-boot.sh" "$shared/hooks-extra/50-luma-ostree-default.sh"; do
   [ -f "$f" ] || fail "missing $f (the shared OSTree boot resolver)"
 done
+[ -f "$modem_store" ] || fail "missing $modem_store (the modem store seed)"
 mkbootimg=${MKBOOTIMG:-mkbootimg.py} unpack=${UNPACK_BOOTIMG:-unpack_bootimg.py} avbtool=${AVBTOOL:-avbtool.py}
 
 eval "$(python3 - "$device" <<'PY'
@@ -79,6 +86,7 @@ o="$work/overlay"
 install -D -m 0644 "$script" "$o/init_functions.sh"
 install -D -m 0644 "$shared/luma-ostree-boot.sh" "$o/usr/lib/luma/ostree-boot.sh"
 install -D -m 0755 "$shared/hooks-extra/50-luma-ostree-default.sh" "$o/hooks-extra/50-luma-ostree-default.sh"
+install -D -m 0755 "$modem_store" "$o/hooks-cleanup/60-luma-fp6-modem-store.sh"
 # 00755: GNU chmod keeps a directory's setgid bit (inherited from TMPDIR) under 0755.
 find "$o" -type d -exec chmod 00755 {} +
 find "$o" -exec touch -h -d @0 {} +
@@ -121,7 +129,7 @@ python3 "$unpack" --boot_img "$work/boot.img" --out "$work/check" --format mkboo
 grep -Fq -- "--cmdline '$cmdline'" "$work/check.args" || fail "command line not in the image"
 cmp -s "$work/check/kernel" "$work/in/kernel" && cmp -s "$work/check/dtb" "$work/in/dtb" || fail "kernel or DTB changed"
 # Every archive in the ramdisk, in order, later entries replacing earlier ones.
-python3 - "$work/check/ramdisk" "$script" <<'PY' || fail "the ramdisk lacks the OSTree boot pieces"
+python3 - "$work/check/ramdisk" "$script" "$modem_store" <<'PY' || fail "the ramdisk lacks the OSTree boot pieces or the modem store seed"
 import gzip, sys
 data, files, i = gzip.open(sys.argv[1]).read(), {}, 0
 while i < len(data):
@@ -137,9 +145,11 @@ while i < len(data):
 script = open(sys.argv[2], "rb").read()
 assert files["init_functions.sh"][1] == script, "init_functions.sh"
 assert "etc/luma-fp6-ostree" in files
-for name in ("hooks-extra/50-luma-ostree-default.sh", "usr/lib/ostree/ostree-prepare-root"):
+for name in ("hooks-extra/50-luma-ostree-default.sh", "hooks-cleanup/60-luma-fp6-modem-store.sh",
+             "usr/lib/ostree/ostree-prepare-root"):
     assert files[name][0] & 0o111, name
 assert files["usr/lib/luma/ostree-boot.sh"][1], "ostree-boot.sh"
+assert files["hooks-cleanup/60-luma-fp6-modem-store.sh"][1] == open(sys.argv[3], "rb").read(), "modem store seed"
 PY
 python3 "$avbtool" verify_image --image "$work/boot.img" >/dev/null
 [ "$(stat -c %s "$work/boot.img")" = "$partition_size" ] || fail "the image is not the boot partition's size"

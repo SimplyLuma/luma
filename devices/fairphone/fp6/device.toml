@@ -28,8 +28,11 @@ config = "boot.toml"
 #  3:   Luma overlay: init_functions.sh, Luma kernel modules, ostree-prepare-root
 #       with its Fedora 44 libraries, and the boot theme.
 # ramdisk_sha256 is those three, from Alpha 1. Boot images for the shared ARM
-# image add a fourth (scripts/mobile/build-fp6-boot-image.sh): init_functions.sh
-# and the shared OSTree boot resolver (scripts/mobile/common/initramfs).
+# image add a fourth (scripts/mobile/build-fp6-boot-image.sh): init_functions.sh,
+# the shared OSTree boot resolver (scripts/mobile/common/initramfs) and the
+# modem store seed (scripts/mobile/fp6-initramfs), which copies modemst1/2,
+# fsc, fsg and study into /var/lib/luma/rmtfs on the first `fastboot boot`,
+# before any normal boot lets the bootloader erase modemst.
 ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"
 base = "postmarketos-initramfs 3.12.0-r0"
 init_functions = "scripts/mobile/fp6-native-init-functions.sh"
