@@ -19,6 +19,11 @@ Settings process, an app process orphaned by its zygote, more than 300
 journal lines an hour from Android and its host units, or an Android payload
 cgroup without a memory ceiling. It needs a running Android and gates no package build.
 
+`cgroup-v2-task-profiles.py` checks the vendor task profiles from
+`patches/android-device-waydroid/0006`: no remaining action joins or writes a
+v1-only controller. With `--source-root` it also requires every upstream
+profile that touches one to be overridden, and no other.
+
 `desktop-canvas.cpp` checks the production logical desktop bounds helper and
 settings request layout, including negative monitor positions, invalid spans,
 and package names. Compile with C++17 and the native patch include directory.

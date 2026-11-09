@@ -1,0 +1,166 @@
+diff --git a/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java b/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
+index 3cbd1d8..3b363e2 100644
+--- a/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
++++ b/lineage/lib/main/java/org/lineageos/platform/internal/WayDroidService.java
+@@ -107,7 +107,7 @@ public class WayDroidService extends LineageSystemService {
+                         vendor.waydroid.window.V1_3.IWaydroidWindow.getService(false);
+                 if (host != null) host.closeRemovedTask(taskId);
+                 else Log.w(TAG, "Host task-removal service unavailable");
+-            } catch (RemoteException | java.util.NoSuchElementException error) {
++            } catch (RemoteException | RuntimeException error) {
+                 // Old HAL versions remain compatible; the matching new image
+                 // pair provides 1.3. Never block or crash system_server here.
+                 Log.w(TAG, "Host task-removal service unavailable", error);
+diff --git a/sdk/src/java/lineageos/waydroid/Clipboard.java b/sdk/src/java/lineageos/waydroid/Clipboard.java
+index 0f80176..c204ab6 100644
+--- a/sdk/src/java/lineageos/waydroid/Clipboard.java
++++ b/sdk/src/java/lineageos/waydroid/Clipboard.java
+@@ -78,7 +78,7 @@ public class Clipboard {
+         }
+         try {
+             service.sendClipboardData(value);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             invalidateService(service);
+             Log.e(TAG, "Native clipboard operation failed", e);
+         }
+@@ -93,7 +93,7 @@ public class Clipboard {
+         try {
+             String paste = service.getClipboardData();
+             return paste != null ? paste : "";
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             invalidateService(service);
+             Log.e(TAG, "Native clipboard operation failed", e);
+         }
+diff --git a/sdk/src/java/lineageos/waydroid/Hardware.java b/sdk/src/java/lineageos/waydroid/Hardware.java
+index 328f9a5..ea3b7ef 100644
+--- a/sdk/src/java/lineageos/waydroid/Hardware.java
++++ b/sdk/src/java/lineageos/waydroid/Hardware.java
+@@ -80,7 +80,7 @@ public class Hardware {
+         }
+         try {
+             return service.enableNFC(enable);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+         return ERROR_UNDEFINED;
+@@ -93,7 +93,7 @@ public class Hardware {
+         }
+         try {
+             return service.enableBluetooth(enable);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+         return ERROR_UNDEFINED;
+@@ -106,7 +106,7 @@ public class Hardware {
+         }
+         try {
+             service.suspend();
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+         return;
+@@ -119,7 +119,7 @@ public class Hardware {
+         }
+         try {
+             service.reboot();
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+         return;
+@@ -137,14 +137,14 @@ public class Hardware {
+             Log.d(TAG, "IHardware.upgrade2 not implemented (detected through timeout), falling back to IHardware.upgrade");
+             try {
+                 service.upgrade(system_zip, (int)system_time, vendor_zip, (int)vendor_time);
+-            } catch (RemoteException e) {
++            } catch (RemoteException | RuntimeException e) {
+                 Log.e(TAG, e.getLocalizedMessage(), e);
+             }
+         } catch (RemoteException | RuntimeException ignored) {
+             Log.d(TAG, "IHardware.upgrade2 not implemented, falling back to IHardware.upgrade");
+             try {
+                 service.upgrade(system_zip, (int)system_time, vendor_zip, (int)vendor_time);
+-            } catch (RemoteException e) {
++            } catch (RemoteException | RuntimeException e) {
+                 Log.e(TAG, e.getLocalizedMessage(), e);
+             }
+         }
+diff --git a/sdk/src/java/lineageos/waydroid/Notifications.java b/sdk/src/java/lineageos/waydroid/Notifications.java
+index 79c6c04..2910a06 100644
+--- a/sdk/src/java/lineageos/waydroid/Notifications.java
++++ b/sdk/src/java/lineageos/waydroid/Notifications.java
+@@ -87,7 +87,8 @@ public class Notifications {
+             return sService.notify(replaces_id, app_name, package_name, summary, body,
+                                    actions, image, category, suppress_sound,
+                                    expire_timeout, is_resident, is_transient, urgency);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
++            // A host refusal arrives as SecurityException: never throw into system_server.
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+         return 0;
+@@ -97,7 +98,7 @@ public class Notifications {
+     public boolean supportsInlineReply() {
+         if (sService == null) return false;
+         try { return (sService.getCapabilities() & 1) != 0; }
+-        catch (RemoteException error) { return false; }
++        catch (RemoteException | RuntimeException error) { return false; }
+     }
+ 
+     /** @hide Do not retry an uncertain notification mutation. */
+@@ -111,7 +112,7 @@ public class Notifications {
+             return sService.notifyWithReply(replaces_id, app_name, package_name, summary, body,
+                     actions, image, category, suppress_sound, expire_timeout,
+                     is_resident, is_transient, urgency, reply_action);
+-        } catch (RemoteException error) { return 0; }
++        } catch (RemoteException | RuntimeException error) { return 0; }
+     }
+ 
+     public void closeNotification(int notification_id) {
+@@ -120,7 +121,8 @@ public class Notifications {
+         }
+         try {
+             sService.closeNotification(notification_id);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
++            // A host refusal arrives as SecurityException: never throw into system_server.
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+     }
+@@ -131,7 +133,8 @@ public class Notifications {
+         }
+         try {
+             sService.registerListener(listener);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
++            // A host refusal arrives as SecurityException: never throw into system_server.
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+     }
+diff --git a/sdk/src/java/lineageos/waydroid/UserMonitor.java b/sdk/src/java/lineageos/waydroid/UserMonitor.java
+index e89da40..c303358 100644
+--- a/sdk/src/java/lineageos/waydroid/UserMonitor.java
++++ b/sdk/src/java/lineageos/waydroid/UserMonitor.java
+@@ -79,7 +79,7 @@ public class UserMonitor {
+         }
+         try {
+             service.userUnlocked(uid);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+         return;
+@@ -92,7 +92,7 @@ public class UserMonitor {
+         }
+         try {
+             service.packageStateChanged(mode, packageName, uid);
+-        } catch (RemoteException e) {
++        } catch (RemoteException | RuntimeException e) {
+             Log.e(TAG, e.getLocalizedMessage(), e);
+         }
+         return;

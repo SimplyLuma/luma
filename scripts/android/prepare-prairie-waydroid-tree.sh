@@ -64,6 +64,7 @@ lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platfo
 lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native-clipboard-reconnect.patch"
 lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-notification-replies.patch"
 lineage_icon_patch="$repo_root/patches/android-lineage-sdk/0006-luma-unmasked-adaptive-icons.patch"
+lineage_bridge_patch="$repo_root/patches/android-lineage-sdk/0007-luma-host-bridge-refusals-stay-local.patch"
 framework_patch="$repo_root/patches/android-frameworks-base/0001-prairie-host-owned-window-chrome.patch"
 framework_status_bar_patch="$repo_root/patches/android-frameworks-base/0002-luma-host-status-bar-inset.patch"
 framework_orientation_patch="$repo_root/patches/android-frameworks-base/0003-luma-handheld-app-orientation.patch"
@@ -72,6 +73,7 @@ device_codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-s
 device_input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
 device_forced_density_patch="$repo_root/patches/android-device-waydroid/0004-luma-forced-display-density.patch"
 device_microg_patch="$repo_root/patches/android-device-waydroid/0005-luma-microg.patch"
+device_task_profiles_patch="$repo_root/patches/android-device-waydroid/0006-luma-cgroup-v2-task-profiles.patch"
 native_patch="$repo_root/patches/android-frameworks-native/0001-luma-task-layer-ownership.patch"
 native_density_patch="$repo_root/patches/android-frameworks-native/0002-luma-read-display-density-when-queried.patch"
 
@@ -159,6 +161,7 @@ write_state() {
     printf 'LINEAGE_CLIPBOARD_PATCH_SHA=%s\n' "$(patch_sha "$lineage_clipboard_patch")"
     printf 'LINEAGE_REPLY_PATCH_SHA=%s\n' "$(patch_sha "$lineage_reply_patch")"
     printf 'LINEAGE_ICON_PATCH_SHA=%s\n' "$(patch_sha "$lineage_icon_patch")"
+    printf 'LINEAGE_BRIDGE_PATCH_SHA=%s\n' "$(patch_sha "$lineage_bridge_patch")"
     printf 'HARDWARE_TASK_LIFETIME_PATCH_SHA=%s\n' "$(patch_sha "$hardware_task_lifetime_patch")"
     printf 'HARDWARE_INITIAL_RESIZE_PATCH_SHA=%s\n' "$(patch_sha "$hardware_initial_resize_patch")"
     printf 'HARDWARE_RPC_THREADPOOL_PATCH_SHA=%s\n' "$(patch_sha "$hardware_rpc_threadpool_patch")"
@@ -211,6 +214,7 @@ write_state() {
     printf 'DEVICE_INPUT_METHOD_PATCH_SHA=%s\n' "$(patch_sha "$device_input_method_patch")"
     printf 'DEVICE_FORCED_DENSITY_PATCH_SHA=%s\n' "$(patch_sha "$device_forced_density_patch")"
     printf 'DEVICE_MICROG_PATCH_SHA=%s\n' "$(patch_sha "$device_microg_patch")"
+    printf 'DEVICE_TASK_PROFILES_PATCH_SHA=%s\n' "$(patch_sha "$device_task_profiles_patch")"
   } >"$temporary"
   mv "$temporary" "$state_file"
 }
@@ -330,6 +334,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$lineage_root" apply "$lineage_clipboard_patch"
   git -C "$lineage_root" apply "$lineage_reply_patch"
   git -C "$lineage_root" apply "$lineage_icon_patch"
+  git -C "$lineage_root" apply "$lineage_bridge_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
@@ -348,6 +353,7 @@ if [ ! -f "$state_file" ]; then
   git -C "$device_root" apply "$device_input_method_patch"
   git -C "$device_root" apply "$device_forced_density_patch"
   git -C "$device_root" apply "$device_microg_patch"
+  git -C "$device_root" apply "$device_task_profiles_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   git -C "$jelly_root" apply "$jelly_patch"
   commit_patch "$jelly_root" 'Consume browser navigation after successful app redirect'
@@ -585,7 +591,8 @@ if [ "$(patch_sha "$lineage_task_lifetime_patch")" != "${LINEAGE_TASK_LIFETIME_P
    [ "$(patch_sha "$lineage_admission_patch")" != "${LINEAGE_ADMISSION_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$lineage_clipboard_patch")" != "${LINEAGE_CLIPBOARD_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$lineage_reply_patch")" != "${LINEAGE_REPLY_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$lineage_icon_patch")" != "${LINEAGE_ICON_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$lineage_icon_patch")" != "${LINEAGE_ICON_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$lineage_bridge_patch")" != "${LINEAGE_BRIDGE_PATCH_SHA:-}" ]; then
   git -C "$lineage_root" reset --hard -q "$lineage_official_head"
   git -C "$lineage_root" clean -fdq
   git -C "$lineage_root" apply "$lineage_task_lifetime_patch"
@@ -594,6 +601,7 @@ if [ "$(patch_sha "$lineage_task_lifetime_patch")" != "${LINEAGE_TASK_LIFETIME_P
   git -C "$lineage_root" apply "$lineage_clipboard_patch"
   git -C "$lineage_root" apply "$lineage_reply_patch"
   git -C "$lineage_root" apply "$lineage_icon_patch"
+  git -C "$lineage_root" apply "$lineage_bridge_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$lineage_root/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
@@ -620,7 +628,8 @@ if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$device_codec_patch")" != "${DEVICE_CODEC_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$device_input_method_patch")" != "${DEVICE_INPUT_METHOD_PATCH_SHA:-}" ] || \
    [ "$(patch_sha "$device_forced_density_patch")" != "${DEVICE_FORCED_DENSITY_PATCH_SHA:-}" ] || \
-   [ "$(patch_sha "$device_microg_patch")" != "${DEVICE_MICROG_PATCH_SHA:-}" ]; then
+   [ "$(patch_sha "$device_microg_patch")" != "${DEVICE_MICROG_PATCH_SHA:-}" ] || \
+   [ "$(patch_sha "$device_task_profiles_patch")" != "${DEVICE_TASK_PROFILES_PATCH_SHA:-}" ]; then
   git -C "$device_root" reset --hard -q "$DEVICE_OFFICIAL_HEAD"
   git -C "$device_root" clean -fdq
   git -C "$device_root" apply "$device_patch"
@@ -628,6 +637,7 @@ if [ "$(patch_sha "$device_patch")" != "${DEVICE_PATCH_SHA:-}" ] || \
   git -C "$device_root" apply "$device_input_method_patch"
   git -C "$device_root" apply "$device_forced_density_patch"
   git -C "$device_root" apply "$device_microg_patch"
+  git -C "$device_root" apply "$device_task_profiles_patch"
   commit_patch "$device_root" 'Prairie Android product window policy'
   changed=1
 fi
