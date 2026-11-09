@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Layer the phone's device kit onto the Luma OS
+Documentation=https://github.com/SimplyLuma/luma/blob/main/devices/README.md
+# Only images that carry a device kit name one (the phone userdata image), and
+# once a booted deployment has the layer the unit no longer starts.
+ConditionPathExists=/run/ostree-booted
+ConditionPathExists=/etc/luma/device-kit.conf
+ConditionPathExists=!/var/lib/luma-device-layer/layered
+After=local-fs.target dbus.service systemd-udev-trigger.service
+# Before anyone signs in and before the update agent starts a transaction.
+Before=display-manager.service luma-updated.service luma-update-check.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-device-layer apply
+RemainAfterExit=yes
+# One rpm-ostree transaction (assemble, commit, deploy): minutes on a phone,
+# about half an hour under emulation. The limit only catches a hang; a stopped
+# run is picked up again on the next boot.
+TimeoutStartSec=2h
+StateDirectory=luma-device-layer
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

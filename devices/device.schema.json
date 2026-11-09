@@ -90,7 +90,25 @@
     },
     "updates": {
       "type": "object", "additionalProperties": false, "required": ["ostree_ref"],
-      "properties": {"ostree_ref": {"type": "string", "pattern": "^luma/[0-9]+/[a-z0-9_]+/[a-z0-9-]+/[a-z0-9-]+$"}}
+      "properties": {"ostree_ref": {"type": "string", "pattern": "^luma/[0-9]+/[a-z0-9_]+(/[a-z0-9-]+)?/[a-z0-9-]+$"}}
+    },
+    "device_repo": {
+      "description": "Signed rpm-md repository (Luma OS Release key) with only this device's packages, layered client-side onto the generic OS commit. Phones get it offline from the device kit on the first boot; rpm-ostree upgrades then follow url.",
+      "type": "object", "additionalProperties": false, "required": ["id", "url", "install"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^luma-[a-z0-9][a-z0-9_-]*$", "maxLength": 64},
+        "url": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/%-]*/$"},
+        "replace": {"description": "Base packages replaced by the repository's builds (rpm-ostree override replace --from repo=id).", "type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/package"}},
+        "install": {"description": "Packages layered on top (rpm-ostree install).", "type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/package"}}
+      }
+    },
+    "kit": {
+      "description": "The device kit (scripts/devices/build-device-kit.py): boot image, offline device repository on the generic phone userdata image's LumaBoot, flash steps.",
+      "type": "object", "additionalProperties": false, "required": ["compatible", "flash"],
+      "properties": {
+        "compatible": {"description": "Device-tree compatible strings that identify this device; the first-boot layer refuses a kit none of them match.", "type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*,[A-Za-z0-9][A-Za-z0-9._+-]*$"}},
+        "flash": {"description": "fastboot commands in order, with {userdata}, {kit}, {boot} and {dtbo} for the kit's files.", "type": "array", "minItems": 2, "items": {"type": "string", "pattern": "^(flash [a-z0-9_]+ \\{(userdata|kit|boot|dtbo)\\}|boot \\{boot\\}|--set-active=[ab]|reboot)$"}}
+      }
     },
     "releases": {
       "type": "array",
@@ -121,6 +139,7 @@
   ],
   "$defs": {
     "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$", "maxLength": 40},
+    "package": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$", "maxLength": 128},
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "url": {"type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[A-Za-z0-9._~/%-]*$"},
     "relpath": {"type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./+-]*$", "not": {"pattern": "(^|/)\\.\\.(/|$)"}}
