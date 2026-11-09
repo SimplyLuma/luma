@@ -9,8 +9,8 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 }
 architecture=${LUMA_TARGET_ARCHITECTURE:?select the target CPU}
 case "$architecture" in
-  x86_64) engine_release=34; engine_sha=c31f198d2a9268fc7a1c882b82859ff35536f20a79a4ee2a0431b59890718b1e ;;
-  aarch64) engine_release=33; engine_sha=a5fbcd7cd80a5c0b08833f92b98193f2d11bc5ccb5fc3350a03cae745ccc2a5b ;;
+  x86_64) engine_release=35; engine_sha=ab4b8994ff4634780102671070a6d3908161438c3c0baafb1db9c6f74a3e5b37 ;;
+  aarch64) engine_release=36; engine_sha=072d4bb42a64cde7efee51c653e112adbe15a24d078a098c0d501520984bb3b0 ;;
   *) exit 2 ;;
 esac
 [ "$(rpm --eval '%{_arch}')" = "$architecture" ]
