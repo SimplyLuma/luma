@@ -153,6 +153,15 @@ class IconCoverageTests(unittest.TestCase):
             sign_catalog.refuse_icon_regression(self.document(app(icon=None)), self.published)
         self.assertIn("icon coverage fell from 1 to 0", str(caught.exception))
 
+    def test_removing_an_entry_with_an_icon_is_allowed(self):
+        self.publish(app(), app(id="hello", app_id="io.example.Hello"))
+        sign_catalog.refuse_icon_regression(self.document(app()), self.published)
+
+    def test_losing_an_icon_while_another_entry_is_removed_is_refused(self):
+        self.publish(app(), app(id="hello", app_id="io.example.Hello"))
+        with self.assertRaises(sign_catalog.CatalogRefused):
+            sign_catalog.refuse_icon_regression(self.document(app(icon=None)), self.published)
+
     def test_an_unreadable_published_copy_does_not_block_publishing(self):
         self.published.write_bytes(b"not json")
         sign_catalog.refuse_icon_regression(self.document(app()), self.published)
