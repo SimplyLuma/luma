@@ -599,6 +599,16 @@ mount_boot_partition() {
 	local partition
 	local mount_opts
 
+	# Luma OSTree: /boot is the root filesystem's /boot, which the OSTree
+	# system generator bind-mounts after switch_root. ostree writes its boot
+	# entries and greenboot its grubenv there, and the OSTree boot resolver
+	# (/usr/lib/luma/ostree-boot.sh) reads them there. The boot partition
+	# (LumaBoot) holds only the device kit; luma-device-layer mounts it itself.
+	if [ "$1" = /sysroot/boot ] && [ -e /etc/luma-fp6-ostree ]; then
+		echo "Luma OSTree: /boot stays on the root filesystem; not mounting the boot partition"
+		return 0
+	fi
+
 	find_boot_partition partition
 	mount_opts="-o nodev,nosuid,noexec"
 

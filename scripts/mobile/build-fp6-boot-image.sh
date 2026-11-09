@@ -7,7 +7,9 @@
 # deployment.
 #
 # The added archive holds scripts/mobile/fp6-native-init-functions.sh as
-# /init_functions.sh, and the shared OSTree boot resolver
+# /init_functions.sh (which leaves /boot on the root filesystem, where ostree
+# writes its boot entries, instead of mounting LumaBoot there), and the shared
+# OSTree boot resolver
 # (scripts/mobile/common/initramfs): /usr/lib/luma/ostree-boot.sh and
 # /hooks-extra/50-luma-ostree-default.sh, which point /ostree/root.<slot> at
 # ostree's default deployment on every boot. ostree=/ostree/root.a names the
