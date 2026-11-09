@@ -46,6 +46,7 @@ class FakeSystem:
         self.good_signatures = True
         self.fail_install = False
         self.repos_during_install = None
+        self.devices = {}
         self.write_origin(BASE, "")
 
     def write_origin(self, checksum, extra):
@@ -77,8 +78,8 @@ class FakeSystem:
             if self.fail_install:
                 return subprocess.CompletedProcess(argv, 1, "", "error: Packages not found: luma-fp6-platform")
             self.staged = LAYERED
-        if argv[0] == "mountpoint":
-            return subprocess.CompletedProcess(argv, 1, "", "")
+        if argv[:2] == ["blkid", "-U"] and argv[2] in self.devices:
+            return subprocess.CompletedProcess(argv, 0, self.devices[argv[2]] + "\n", "")
         return ok
 
 
@@ -286,6 +287,66 @@ class DeviceLayerTest(unittest.TestCase):
         (self.root / "etc/luma/device-kit.conf").write_text("source=UUID=032D-57AD\n")
         self.assertEqual(self.layer.apply(wait=0), 0)
         self.assertEqual(self.commands(["blkid"]), [["blkid", "-U", "032D-57AD"]])
+
+    def kit_on(self, where):
+        """The kit on LumaBoot (/dev/loop0p1), its files at ROOT/where."""
+        (self.root / "etc/luma/device-kit.conf").write_text("source=UUID=032D-57AD\n")
+        self.system.devices["032D-57AD"] = "/dev/loop0p1"
+        target = self.root / where
+        target.mkdir(parents=True, exist_ok=True)
+        os.rename(self.kit, target / "luma-device-kit")
+
+    def mountinfo(self, *lines):
+        path = self.root / "proc/self/mountinfo"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(line + "\n" for line in lines))
+
+    def test_kit_filesystem_mounted_read_write_by_the_initramfs_is_read_in_place(self):
+        # postmarketOS mounts its boot partition on /boot (rw) when /etc/fstab is
+        # empty; mounting it read-only again fails with "would change RO state".
+        self.kit_on("boot")
+        self.mountinfo(
+            "1 0 259:2 /ostree/deploy/luma/deploy/x.0 / rw,relatime shared:1 - ext4 /dev/loop0p2 rw",
+            "92 1 259:1 / /boot rw,nosuid,nodev,noexec,relatime shared:40 - vfat /dev/loop0p1 rw,fmask=0077")
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.commands(["mount"]), [])
+        self.assertEqual(self.commands(["umount"]), [])
+        self.assertEqual(len(self.transactions()), 1)
+        self.assertEqual(self.commands(["gpgv"])[0][-1], str(self.root / "boot/luma-device-kit/kit.json"))
+        self.assertTrue((self.root / "boot/luma-device-kit/kit.json").is_file())
+
+    def test_existing_mount_is_found_by_device_number(self):
+        self.kit_on("media/kit dir")
+        self.mountinfo("40 1 259:1 / /media/kit\\040dir rw shared:9 - vfat /dev/block/259:1 rw")
+        with mock.patch.object(dl.DeviceLayer, "device_number", return_value="259:1"):
+            self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.commands(["mount"]) + self.commands(["umount"]), [])
+        self.assertEqual(self.commands(["gpgv"])[0][-1], str(self.root / "media/kit dir/luma-device-kit/kit.json"))
+
+    def test_kit_is_mounted_read_only_and_only_that_mount_is_undone(self):
+        # A bind mount of a subdirectory is not the kit filesystem's top.
+        self.kit_on("run/luma-device-kit")
+        self.mountinfo("50 1 259:1 /luma-device-kit /srv/kit rw - vfat /dev/loop0p1 rw")
+        self.system.fail_install = True
+        self.assertEqual(self.layer.apply(), 1)
+        mnt = str(self.root / "run/luma-device-kit")
+        self.assertEqual(self.commands(["mount"]),
+                         [["mount", "-o", "ro,nodev,nosuid,noexec", "/dev/loop0p1", mnt]])
+        self.assertEqual(self.commands(["umount"]), [["umount", mnt]])
+
+    def test_a_mount_left_on_the_kit_mount_point_is_reused_and_undone(self):
+        self.kit_on("run/luma-device-kit")
+        self.mountinfo("60 1 259:1 / /run/luma-device-kit ro - vfat /dev/loop0p1 ro")
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.commands(["mount"]), [])
+        self.assertEqual(self.commands(["umount"]), [["umount", str(self.root / "run/luma-device-kit")]])
+
+    def test_mountinfo_parser(self):
+        self.assertEqual(dl.parse_mountinfo(
+            "36 35 98:0 /mnt1 /mnt\\0402 rw,noatime master:1 - ext3 /dev/root rw,errors=continue\n"
+            "garbage\n"
+            "37 1 0:5 / /dev rw - devtmpfs devtmpfs rw\n"),
+            [("98:0", "/mnt1", "/mnt 2", "/dev/root"), ("0:5", "/", "/dev", "devtmpfs")])
 
     def test_kit_manifest_rules(self):
         dl.parse_kit(kit_json())
