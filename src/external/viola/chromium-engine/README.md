@@ -36,6 +36,17 @@ notice channel as `{type: 'login'}` instead of a tab-modal dialog on the
 undisplayed browser window. The host answers `permission:respond` with
 `decision: 'signin'` and the credentials, or `dismiss`. Requests queue one at
 a time in the product shell.
+
+`0005-webrtc-readback-fallback-outside-context-lock.patch` applies to any
+point of the stack (it touches only Blink's WebRTC frame adapter). When the
+asynchronous YUV readback of a GPU video frame fails, the raster interface
+reports it from the command buffer's query callback while it holds the media
+context lock; the adapter's fallback took that lock again and deadlocked the
+renderer's media thread. The fallback now runs as its own task. Viola's
+media preview reads back every frame of a background tab's video
+(`captureStream()` into WebRTC), and on ANGLE GL that readback fails for
+hardware-decoded and other GPU video frames, so without this patch a playing
+video freezes its tab once the tab is in the background.
 Do not replace a released engine merely because these inputs build successfully;
 its native rendering, input, resize and window lifecycle checks must also pass.
 

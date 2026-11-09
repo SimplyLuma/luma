@@ -1,0 +1,49 @@
+diff --git a/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.cc b/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.cc
+index 75de50e..f15d34f 100644
+--- a/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.cc
++++ b/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.cc
+@@ -14,6 +14,7 @@
+ #include "base/memory/raw_ptr.h"
+ #include "base/numerics/safe_conversions.h"
+ #include "base/synchronization/waitable_event.h"
++#include "base/task/sequenced_task_runner.h"
+ #include "base/threading/thread_restrictions.h"
+ #include "base/trace_event/trace_event.h"
+ #include "gpu/GLES2/gl2extchromium.h"
+@@ -295,6 +296,22 @@ void WebRtcVideoFrameAdapter::SharedResources::OnAsyncReadbackCompleted(
+     return;
+   }
+ 
++  // A failed readback is reported from the raster interface's query callback,
++  // which CommandBufferProxyImpl runs while it holds the context lock. The
++  // fallback takes that lock again (GetRasterContextProvider() and the
++  // ScopedRasterContextLock below), which deadlocks this thread and, with it,
++  // every user of the media context in the renderer. Run the fallback as its
++  // own task, after the lock is released.
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE,
++      base::BindOnce(&WebRtcVideoFrameAdapter::SharedResources::
++                         MapFrameAfterFailedReadback,
++                     this, std::move(texture_frame), std::move(callback)));
++}
++
++void WebRtcVideoFrameAdapter::SharedResources::MapFrameAfterFailedReadback(
++    scoped_refptr<media::VideoFrame> texture_frame,
++    base::OnceCallback<void(scoped_refptr<media::VideoFrame>)> callback) {
+   // Try to just map the `texture_frame` without scaling to ensure that it will
+   // be at least mapped outside of encoder.
+ 
+diff --git a/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.h b/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.h
+index cd347e7..9323f70 100644
+--- a/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.h
++++ b/third_party/blink/renderer/platform/webrtc/webrtc_video_frame_adapter.h
+@@ -139,6 +139,9 @@ class PLATFORM_EXPORT WebRtcVideoFrameAdapter
+         scoped_refptr<media::VideoFrame> mapped_frame,
+         base::OnceCallback<void(scoped_refptr<media::VideoFrame>)> callback,
+         bool success);
++    void MapFrameAfterFailedReadback(
++        scoped_refptr<media::VideoFrame> texture_frame,
++        base::OnceCallback<void(scoped_refptr<media::VideoFrame>)> callback);
+ 
+     media::VideoFramePool pool_;
+     media::VideoFramePool pool_for_mapped_frames_;
