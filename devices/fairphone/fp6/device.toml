@@ -32,11 +32,14 @@ config = "boot.toml"
 # the shared OSTree boot resolver (scripts/mobile/common/initramfs) and the
 # modem store seed (scripts/mobile/fp6-initramfs), which copies modemst1/2,
 # fsc, fsg and study into /var/lib/luma/rmtfs on the first `fastboot boot`,
-# before any normal boot lets the bootloader erase modemst.
+# before any normal boot lets the bootloader erase modemst. With an empty
+# /etc/fstab postmarketOS would mount the boot partition (LumaBoot) on /boot;
+# init_functions.sh leaves /boot on the root filesystem, where ostree writes
+# the boot entries the resolver reads.
 ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"
 base = "postmarketos-initramfs 3.12.0-r0"
 init_functions = "scripts/mobile/fp6-native-init-functions.sh"
-init_functions_sha256 = "357c081ffa5e1e9b5ebbcb1e358338e70380118d9bcf615983e1f411d7acdc52"
+init_functions_sha256 = "7ab22459bb10d7bc40045a405747f58d151c1c053060d95476de7cb27ee208c0"
 ostree_package = "ostree-2026.5-1.luma.2.fc44"
 ostree_source = "config/mobile/fp6-ostree-source.json"
 
