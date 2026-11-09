@@ -25,7 +25,8 @@ class BrowserServices:
         self.on_native_menu = lambda _description: None
         engine.on_event = self._event
 
-    def connect(self, timeout=10, targets=None):
+    def connect(self, timeout=60, targets=None):
+        # A loaded machine can take tens of seconds to load the WebUI surfaces.
         deadline = time.monotonic() + timeout
         wanted = {'chrome://viola/': 'sidebar',
                   'chrome://viola/overlay.html': 'overlay'}

@@ -17,6 +17,54 @@ import time
 import uuid
 
 
+# A private display normally starts in well under a second. On a loaded
+# machine Mutter has needed 25 s, so only a stalled or dead compositor fails
+# early; a slow one gets STARTUP_LIMIT before the browser gives up opening.
+STARTUP_LIMIT = 120
+STALL_LIMIT = 20
+POINTER_SERVICE = 'org.gnome.Mutter.RemoteDesktop'
+
+
+def _activity(pid):
+    """CPU time and page faults so far: these grow while a process starts."""
+    try:
+        fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+    except (OSError, IndexError):
+        return None
+    # minflt, majflt, utime, stime: proc(5) fields 10, 12, 14 and 15.
+    return tuple(int(fields[index]) for index in (7, 9, 11, 12))
+
+
+def wait_started(ready, processes, what, *, limit=STARTUP_LIMIT, stall=STALL_LIMIT,
+                 clock=time.monotonic, sleep=time.sleep):
+    """Wait for ready() while the named startup processes are alive and busy."""
+    start = progressed = clock()
+    seen = None
+    while not ready():
+        for name, process in processes:
+            code = process.poll()
+            if code is not None:
+                raise RuntimeError(f'{what} did not start: {name} exited with status {code}')
+        now = clock()
+        activity = tuple(_activity(process.pid) for _, process in processes)
+        if activity != seen:
+            seen, progressed = activity, now
+        elif now - progressed > stall:
+            names = ' and '.join(name for name, _ in processes)
+            raise TimeoutError(f'{what} did not start: {names} made no progress for {stall} s')
+        if now - start > limit:
+            raise TimeoutError(f'{what} did not become ready within {limit} s')
+        # Poll briskly for a normal start, then stop competing with a slow one.
+        sleep(.05 if now - start < 2 else .25)
+
+
+def _name_owned(connection, name):
+    from gi.repository import Gio, GLib
+    return connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
+        'org.freedesktop.DBus', 'NameHasOwner', GLib.Variant('(s)', (name,)),
+        None, Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+
+
 class EngineDisplay:
     def __init__(self, log, runtime_directory=None):
         self.remote_connection = self.remote_handle = None
@@ -62,13 +110,20 @@ class EngineDisplay:
             self.compositor = subprocess.Popen(['/usr/bin/mutter', '--headless', '--wayland',
                 '--no-x11', '--virtual-monitor=1920x1080@60', '--wayland-display=' + self.display],
                 env=environment, stdout=log, stderr=log, start_new_session=True)
-            deadline = time.monotonic() + 15
-            while not self.socket_path.exists():
-                if self.broker.poll() is not None or self.compositor.poll() is not None:
-                    raise RuntimeError('The private engine display stopped during startup')
-                if time.monotonic() > deadline:
-                    raise TimeoutError('The private engine display did not become ready')
-                time.sleep(.05)
+            processes = (('Mutter', self.compositor), ('its D-Bus broker', self.broker))
+            wait_started(self.socket_path.exists, processes, 'The private engine display')
+            # The socket appears before Mutter owns its input service. Wait for
+            # it here, where startup progress is visible, so a client acquiring
+            # this display finds the service already present.
+            from gi.repository import Gio
+            connection = Gio.DBusConnection.new_for_address_sync(
+                self.private_bus_address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
+                Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+            try:
+                wait_started(lambda: _name_owned(connection, POINTER_SERVICE), processes,
+                             'The private engine display input service')
+            finally:
+                connection.close_sync(None)
             if runtime_directory is None:
                 self.establish_pointer(environment['DBUS_SESSION_BUS_ADDRESS'])
         except Exception:
@@ -85,7 +140,8 @@ class EngineDisplay:
         try:
             result = self.remote_connection.call_sync('org.projectluma.ViolaHost1',
                 '/org/projectluma/ViolaHost1', 'org.projectluma.ViolaHost1', 'Acquire',
-                None, GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE, 30000, None).unpack()[0]
+                None, GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NONE,
+                (2 * STARTUP_LIMIT + 30) * 1000, None).unpack()[0]
             if len(result) > 1024:
                 raise ValueError('The private display reply is oversized.')
             record = json.loads(result)
@@ -137,14 +193,10 @@ class EngineDisplay:
             address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
             Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
         connection = self.pointer_connection
-        service = 'org.gnome.Mutter.RemoteDesktop'
-        deadline = time.monotonic() + 5
-        while not connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
-                'org.freedesktop.DBus', 'NameHasOwner', GLib.Variant('(s)', (service,)),
-                None, Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]:
-            if time.monotonic() >= deadline:
-                raise TimeoutError('Private engine pointer service did not become ready')
-            time.sleep(.05)
+        service = POINTER_SERVICE
+        # The display's owner waited for this service during startup.
+        if not _name_owned(connection, service):
+            raise RuntimeError('The private engine display has no input service')
         def call(path, interface, method, params=None):
             return connection.call_sync(service, path, interface, method, params,
                 None, Gio.DBusCallFlags.NONE, 5000, None)

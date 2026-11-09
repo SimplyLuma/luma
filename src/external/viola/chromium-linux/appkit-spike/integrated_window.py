@@ -99,13 +99,17 @@ class IntegratedWindow(AppWindow):
         sidebar_bin = Adw.BreakpointBin(child=self.sidebar, hexpand=False, vexpand=True)
         sidebar_bin.set_size_request(252, 1)
         fixed_sidebar = FixedSidebar(sidebar_bin)
-        for threshold, property_name in ((699, 'compact-media'), (559, 'compact-notifications')):
+        # A window opens at the kit's shared height (70% of the work area), so
+        # a 1080p sidebar is about 630 px and a 900 px-tall screen's about
+        # 510 px. The media preview stays in both; only a sidebar too short
+        # for it and the tabs above it folds the preview to its title row.
+        for threshold, property_name in ((559, 'compact-notifications'), (479, 'compact-media')):
             breakpoint = Adw.Breakpoint.new(Adw.BreakpointCondition.parse(f'max-height: {threshold}px'))
             breakpoint.add_setter(self.sidebar.footer, property_name, True)
-            if threshold == 559:
+            if threshold == 479:
                 # AdwBreakpointBin activates the last matching breakpoint;
-                # the shorter case must retain the taller case's media rule.
-                breakpoint.add_setter(self.sidebar.footer, 'compact-media', True)
+                # the shorter case must retain the taller case's notice rule.
+                breakpoint.add_setter(self.sidebar.footer, 'compact-notifications', True)
             sidebar_bin.add_breakpoint(breakpoint)
         self.rows = self.sidebar.rows
         composition.append(fixed_sidebar)

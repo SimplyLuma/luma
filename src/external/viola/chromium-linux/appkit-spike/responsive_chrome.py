@@ -40,9 +40,20 @@ def address_control(item, size):
 register_item(BrowserAddress, address_control)
 
 
+# Below these widths a browser window folds its sidebar away (compact) and
+# then becomes the phone composition.
+COMPACT_WIDTH = 900
+PHONE_WIDTH = 560
+
+
 class ResponsiveChrome:
     def __init__(self, host):
         self.host = host
+        if not host.mini:
+            # The fold is a width rule of its own, not an Adw breakpoint the
+            # kit sees, so declare it: a desktop window then opens unfolded,
+            # with its sidebar and the sidebar's media preview showing.
+            host.declare_narrow_width(COMPACT_WIDTH)
         self.phone = False
         self.compact = False
         self.query_generation = 0
@@ -102,8 +113,8 @@ class ResponsiveChrome:
             for widget in (self.host.forward, self.host.reload, self.download_anchor):
                 widget.set_visible(not dense)
             return GLib.SOURCE_CONTINUE
-        phone = not self.host.mini and 0 < self.host.get_width() < 560
-        compact = not self.host.mini and 0 < self.host.get_width() < 900
+        phone = not self.host.mini and 0 < self.host.get_width() < PHONE_WIDTH
+        compact = not self.host.mini and 0 < self.host.get_width() < COMPACT_WIDTH
         if phone != self.phone or compact != self.compact:
             focused = self.host.get_focus()
             edit = self.capture_address_edit()

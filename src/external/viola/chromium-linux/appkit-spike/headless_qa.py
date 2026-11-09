@@ -15,6 +15,12 @@ import subprocess
 import sys
 import tempfile
 import time
+from engine_display import wait_started
+
+# Failure bounds only: a passing run never waits for them. A loaded machine
+# or a virtual GPU can take minutes to start an engine and play its fixture.
+COMMAND_TIMEOUT = 30
+READY_LIMIT = 180
 
 
 def stop(process):
@@ -55,7 +61,7 @@ def main():
     listener.listen(32)
     desktop_values = {key: subprocess.check_output(
         ['/usr/bin/gsettings', 'get', 'org.gnome.desktop.interface', key],
-        text=True, timeout=5).strip() for key in
+        text=True, timeout=COMMAND_TIMEOUT).strip() for key in
         ('icon-theme', 'gtk-theme', 'font-name', 'monospace-font-name', 'text-scaling-factor')}
     environment = os.environ.copy()
     environment['PYTHONPATH'] = str(Path(__file__).resolve().parent) + os.pathsep + environment.get('PYTHONPATH', '')
@@ -77,7 +83,7 @@ def main():
             if args.media_fixture:
                 sink = 'viola_qa_' + str(os.getpid())
                 audio_module = subprocess.check_output(['/usr/bin/pactl', 'load-module',
-                    'module-null-sink', 'sink_name=' + sink], text=True, timeout=5).strip()
+                    'module-null-sink', 'sink_name=' + sink], text=True, timeout=COMMAND_TIMEOUT).strip()
                 environment['PULSE_SINK'] = sink
             broker_env = environment | {'LISTEN_FDS': '1'}
             descriptor = listener.fileno()
@@ -96,10 +102,10 @@ def main():
                     ('org.gnome.desktop.wm.keybindings', 'switch-windows', "['<Alt>Tab']"),
                     ('org.gnome.desktop.interface', 'color-scheme', 'prefer-dark')):
                 subprocess.run(['/usr/bin/gsettings', 'set', schema, key, value],
-                               env=environment, check=True, timeout=5)
+                               env=environment, check=True, timeout=COMMAND_TIMEOUT)
             for key, value in desktop_values.items():
                 subprocess.run(['/usr/bin/gsettings', 'set', 'org.gnome.desktop.interface', key, value],
-                               env=environment, check=True, timeout=5)
+                               env=environment, check=True, timeout=COMMAND_TIMEOUT)
             gtk_config = configparser.ConfigParser()
             gtk_config['Settings'] = {
                 'gtk-icon-theme-name': ast.literal_eval(desktop_values['icon-theme']),
@@ -114,31 +120,21 @@ def main():
                 f'--virtual-monitor={round(1600*args.display_scale)}x{round(1000*args.display_scale)}', '--wayland-display=' + environment['WAYLAND_DISPLAY']],
                 env=environment, stdout=log, stderr=log, start_new_session=True)
             display_path = Path(environment['XDG_RUNTIME_DIR']) / environment['WAYLAND_DISPLAY']
-            deadline = time.monotonic() + 15
-            while not display_path.exists():
-                if broker.poll() is not None or compositor.poll() is not None:
-                    raise RuntimeError('Private display failed; see ' + str(run / 'headless.log'))
-                if time.monotonic() > deadline:
-                    raise TimeoutError('Private Wayland display did not become ready')
-                time.sleep(.1)
+            processes = (('Mutter', compositor), ('its D-Bus broker', broker))
+            wait_started(display_path.exists, processes, 'The private QA display')
             # The Wayland socket appears before Mutter owns its capture/input
             # bus names. Wait for those services before starting physical QA.
-            subprocess.run([sys.executable, '-c', """
-import time
-from gi.repository import Gio, GLib
-bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-end = time.monotonic() + 5
-while time.monotonic() < end:
-    ready = all(bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
-        'org.freedesktop.DBus', 'NameHasOwner', GLib.Variant('(s)', (name,)),
-        None, Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
-        for name in ('org.gnome.Mutter.ScreenCast', 'org.gnome.Mutter.RemoteDesktop'))
-    if ready:
-        break
-    time.sleep(.05)
-else:
-    raise TimeoutError('Private Mutter capture/input services did not become ready')
-"""], env=environment, check=True, timeout=7, stdout=log, stderr=log)
+            from gi.repository import Gio
+            from engine_display import _name_owned
+            bus = Gio.DBusConnection.new_for_address_sync(environment['DBUS_SESSION_BUS_ADDRESS'],
+                Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
+                Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+            try:
+                wait_started(lambda: all(_name_owned(bus, name) for name in (
+                    'org.gnome.Mutter.ScreenCast', 'org.gnome.Mutter.RemoteDesktop')),
+                    processes, 'The private QA display capture/input services')
+            finally:
+                bus.close_sync(None)
             if args.display_scale != 1:
                 # Change only this run's private compositor. Logical geometry
                 # stays 1600x1000 so physical input qualification stays valid.
@@ -159,10 +155,15 @@ call('ApplyMonitorsConfig',params)
                                env=environment, check=True, timeout=10, stdout=log, stderr=log)
             diagnostic = ('import faulthandler,runpy,sys; faulthandler.dump_traceback_later(50); '
                           'sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name="__main__")')
+            # A representative run quits itself once its fixture is measured;
+            # its lifetime bounds a slow start, not the measurement.
+            lifetime = (45 if os.environ.get('VIOLA_QA_RESPONSIVE') == '1' else 45 if os.environ.get('VIOLA_QA_WINDOWS') == '1'
+                        else READY_LIMIT + 60 if args.representative else 70 if args.qualify_controls
+                        else 30 if args.qualify_input else 22)
             application_args = [sys.executable, '-c', diagnostic,
                 str(Path(__file__).with_name('integrated_window.py')),
                 '--engine', str(args.engine), '--work-root', str(run),
-                '--seconds', '45' if os.environ.get('VIOLA_QA_RESPONSIVE') == '1' else '45' if os.environ.get('VIOLA_QA_WINDOWS') == '1' else '60' if args.representative else '70' if args.qualify_controls else '30' if args.qualify_input else '22']
+                '--seconds', str(lifetime)]
             if args.qualify_manual_identity:
                 application_args.append('--qualify-manual-identity')
             if args.qualify_input:
@@ -206,7 +207,7 @@ call('ApplyMonitorsConfig',params)
                 application_environment['VIOLA_QA_EMPTY_MONITOR'] = str(baseline)
             application = subprocess.Popen(application_args, env=application_environment, start_new_session=True)
             if args.representative:
-                deadline = time.monotonic() + 45
+                deadline = time.monotonic() + READY_LIMIT
                 while not (run / 'native-ready').exists():
                     if application.poll() is not None or time.monotonic() > deadline:
                         raise RuntimeError('Representative browser state did not become ready')
@@ -233,7 +234,7 @@ call('ApplyMonitorsConfig',params)
                     str(Path(__file__).with_name('capture_private_display.py')),
                     '--output', str(run / 'native-monitor.png')] + (['--focus-native-window'] if args.representative else []), env=environment, start_new_session=True)
                 capture_code = capture.wait(timeout=20)
-            code = application.wait(timeout=75 if args.qualify_controls else 55)
+            code = application.wait(timeout=lifetime + 30)
             print('Isolated native QA:', run)
             if code or capture_code:
                 raise SystemExit(code or capture_code)

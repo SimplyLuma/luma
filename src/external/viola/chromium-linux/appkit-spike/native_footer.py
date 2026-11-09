@@ -264,7 +264,7 @@ class NativeFooter(Gtk.Box):
 
     def resize(self, height):
         self.sidebar_height = height
-        self.props.compact_media = height < 700
+        self.props.compact_media = height < 480
         self.props.compact_notifications = height < 560
 
     def update_visibility(self):

@@ -24,7 +24,8 @@ class NativeMedia:
         self.last_frame = 0
         self.answer_sent = False
         self.closed = False
-        self.metrics = {'offers': 0, 'answers': 0, 'frames': 0, 'errors': []}
+        self.presented = 0
+        self.metrics = {'offers': 0, 'answers': 0, 'frames': 0, 'presented': 0, 'errors': []}
         self.timer = GLib.timeout_add(500, self.health)
 
     def event(self, payload):
@@ -155,6 +156,8 @@ class NativeMedia:
     def update_metrics(self):
         now = time.monotonic()
         self.metrics['decoded_cadence'] = cadence(list(self.frame_samples), now)
+        # Frames the sidebar or PiP actually drew, across every preview.
+        self.metrics['presented'] = self.presented + (self.paintable.presented if self.paintable else 0)
         if self.paintable:
             self.metrics['presented_cadence'] = cadence(self.paintable.presentations, now)
             self.metrics['preview_size'] = [self.paintable.get_intrinsic_width(),
@@ -185,6 +188,7 @@ class NativeMedia:
     def stop(self):
         if self.paintable:
             self.update_metrics()
+            self.presented += self.paintable.presented
             self.paintable.close()
             self.paintable = None
         self.generation = None

@@ -6,6 +6,20 @@ from gi.repository import GLib
 from qualify_media_stats import sample
 
 
+def presents_preview(metrics):
+    """The preview draws what it decodes, steadily, at the fixture's own rate.
+
+    Presentation cannot outrun decoding, and decoding follows the fixture
+    (a 30 fps video previews at 30 fps, a 60 fps one at up to 60 fps), so the
+    bar is relative: three quarters of the decoded frames drawn, no stall over
+    150 ms, and a decoded stream that is really moving.
+    """
+    decoded = metrics.get('decoded_cadence', {}).get('fps', 0)
+    presented = metrics.get('presented_cadence', {})
+    return (decoded >= 20 and presented.get('fps', 0) >= .75 * decoded
+            and 0 < presented.get('max_gap_ms', 0) < 150)
+
+
 class MediaQualification:
     def __init__(self, window, media, services, submit, layout, complete):
         self.window, self.media, self.services = window, media, services
@@ -16,9 +30,7 @@ class MediaQualification:
     def measure(self):
         self.media.update_metrics()
         self.report['steady_preview'] = dict(self.media.metrics)
-        cadence = self.media.metrics.get('presented_cadence', {})
-        passed = cadence.get('fps', 0) >= 45 and cadence.get('max_gap_ms', 10000) < 150
-        self.report['checks'].append({'sustained_preview_presentation': passed})
+        self.report['checks'].append({'sustained_preview_presentation': presents_preview(self.media.metrics)})
         self.submit(lambda: sample(self.services.engine, self.layout['media_target']), self.source_sampled)
         return False
 
@@ -107,7 +119,7 @@ class MediaQualification:
         self.media.update_metrics()
         self.report['resumed_preview'] = dict(self.media.metrics)
         passed = (self.window.sidebar.footer.player.get_visible() and self.media.generation is not None
-                  and self.media.metrics.get('presented_cadence', {}).get('fps', 0) >= 45)
+                  and presents_preview(self.media.metrics))
         self.report['checks'].append({'leaving_source_resumes_preview': passed})
         self.complete()
         return False
