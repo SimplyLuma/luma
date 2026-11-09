@@ -189,6 +189,13 @@ class ModemStoreSeed(unittest.TestCase):
         self.assertNotRegex(script, r'>\s*"\$device"')
         self.assertNotRegex(script, r"\b(blkdiscard|flash_erase|fastboot)\b")
 
+    def test_var_mount_is_read_from_mountinfo(self):
+        # prepare-root bind-mounts /var from the same filesystem; busybox
+        # mountpoint (st_dev of the directory and its parent) misses that.
+        code = "\n".join(line for line in HOOK.read_text().splitlines() if not line.lstrip().startswith("#"))
+        self.assertIn("/proc/self/mountinfo", code)
+        self.assertNotRegex(code, r"\bmountpoint\b")
+
     def test_boot_image_carries_the_seed(self):
         builder = BUILDER.read_text()
         self.assertIn('"$o/hooks-cleanup/60-luma-fp6-modem-store.sh"', builder)

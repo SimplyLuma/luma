@@ -110,7 +110,9 @@ fail() {
 
 [ "$(tr -d '\0' <"$sysfs/firmware/devicetree/base/model" 2>/dev/null)" = "$model" ] || exit 0
 [ -d "$var/lib" ] || exit 0
-[ -n "$T" ] || mountpoint -q "$var" || exit 0
+# The stateroot /var, as ostree-prepare-root mounted it (a bind mount from the
+# same filesystem, which busybox mountpoint cannot see).
+[ -n "$T" ] || awk -v m="$var" '$5 == m { f = 1 } END { exit !f }' /proc/self/mountinfo || exit 0
 
 if [ -e "$store" ] || [ -L "$store" ]; then
 	if [ -f "$marker" ]; then
