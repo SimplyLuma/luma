@@ -37,8 +37,8 @@ kit's filesystem in `/etc/luma/device-kit.conf`):
    device tree's `compatible`;
 2. copies the repository to `/var/lib/luma-device-layer/repo` and, with only
    that repository configured (no network needed, firmware included), runs
-   `rpm-ostree override replace --from repo=<id>` for `[device_repo] replace`
-   and `rpm-ostree install` for `[device_repo] install`;
+   one transaction: `rpm-ostree override replace --from repo=<id>` for
+   `[device_repo] replace` with `--install` for `[device_repo] install`;
 3. writes `/etc/yum.repos.d/<id>.repo` at `[device_repo] url`
    (`repo_gpgcheck=1`, `gpgcheck=1`) and restarts once. From then on
    `rpm-ostree upgrade` keeps the layer and follows the online repository,

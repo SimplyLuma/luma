@@ -72,7 +72,7 @@ class FakeSystem:
                                        "staged": True,
                                        "requested-packages": ["kernel-modules-luma-fp6", "luma-fp6-platform"]})
             return subprocess.CompletedProcess(argv, 0, json.dumps({"deployments": deployments}), "")
-        if argv[:2] == ["rpm-ostree", "install"]:
+        if argv[:2] == ["rpm-ostree", "install"] or argv[:3] == ["rpm-ostree", "override", "replace"]:
             self.repos_during_install = sorted(p.name for p in (self.root / "etc/yum.repos.d").glob("*.repo"))
             if self.fail_install:
                 return subprocess.CompletedProcess(argv, 1, "", "error: Packages not found: luma-fp6-platform")
@@ -121,16 +121,19 @@ class DeviceLayerTest(unittest.TestCase):
     def commands(self, prefix):
         return [c for c in self.system.calls if c[:len(prefix)] == prefix]
 
+    def transactions(self):
+        return [c for c in self.system.calls
+                if c[:2] == ["rpm-ostree", "install"] or c[:3] == ["rpm-ostree", "override", "replace"]]
+
     def repo_file(self):
         return (self.root / "etc/yum.repos.d/luma-fairphone-fp6.repo").read_text()
 
     def test_first_boot_layers_offline_and_restarts_once(self):
         self.assertEqual(self.layer.apply(), 0)
-        replace = self.commands(["rpm-ostree", "override", "replace"])
-        self.assertEqual(replace, [["rpm-ostree", "override", "replace", "--experimental", "--from",
-                                    "repo=luma-fairphone-fp6", "ModemManager"]])
-        self.assertEqual(self.commands(["rpm-ostree", "install"]),
-                         [["rpm-ostree", "install", "--idempotent", "kernel-modules-luma-fp6", "luma-fp6-platform"]])
+        # One transaction: the OS is assembled and deployed once.
+        self.assertEqual(self.transactions(), [[
+            "rpm-ostree", "override", "replace", "--experimental", "--from", "repo=luma-fairphone-fp6",
+            "ModemManager", "--install=kernel-modules-luma-fp6", "--install=luma-fp6-platform"]])
         # Only the device repository is configured during the transaction ...
         self.assertEqual(self.system.repos_during_install, ["luma-fairphone-fp6.repo"])
         # ... and afterwards every repository is back, the device one online.
@@ -183,13 +186,27 @@ class DeviceLayerTest(unittest.TestCase):
         with self.assertRaises(dl.LayerError):
             dl.librepo_import_key(bad, self.root / "gpgdir")
 
+    def test_install_only_kit_is_one_install(self):
+        (self.kit / "kit.json").write_text(kit_json(replace=[]))
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.transactions(),
+                         [["rpm-ostree", "install", "--idempotent", "kernel-modules-luma-fp6", "luma-fp6-platform"]])
+
+    def test_layer_staged_by_a_stopped_run_restarts_into_it(self):
+        """A run stopped after its transaction (timeout, power) left the layer staged."""
+        self.system.staged = "c" * 64
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.transactions(), [])
+        self.assertEqual(self.commands(["systemctl"]), [["systemctl", "--no-block", "reboot"]])
+        self.assertEqual(self.layer.load_state()["status"], "staged")
+
     def test_second_boot_marks_the_layer_and_does_nothing_else(self):
         self.layer.apply()
         self.system.boot_layered()
         self.system.calls.clear()
         self.assertEqual(self.layer.apply(), 0)
         self.assertTrue((self.root / "var/lib/luma-device-layer/layered").exists())
-        self.assertEqual(self.commands(["rpm-ostree", "install"]), [])
+        self.assertEqual(self.transactions(), [])
         self.assertEqual(self.commands(["systemctl"]), [])
         self.assertFalse((self.root / "var/lib/luma-device-layer/repo").exists())
         self.assertIn("baseurl=https://", self.repo_file())
@@ -204,12 +221,12 @@ class DeviceLayerTest(unittest.TestCase):
         self.system.staged = None
         self.system.calls.clear()
         self.assertEqual(self.layer.apply(), 1)
-        self.assertEqual(self.commands(["rpm-ostree", "install"]), [])
+        self.assertEqual(self.transactions(), [])
         self.assertEqual(self.commands(["systemctl"]), [])
         self.assertIn("not trying again", self.layer.load_state()["last_error"])
         self.system.calls.clear()
         self.assertEqual(self.layer.apply(retry=True), 0)
-        self.assertEqual(len(self.commands(["rpm-ostree", "install"])), 1)
+        self.assertEqual(len(self.transactions()), 1)
 
     def test_failed_transaction_restores_repositories_and_does_not_restart(self):
         self.system.fail_install = True

@@ -12,8 +12,9 @@ written to its LumaBoot filesystem. The image builder names that filesystem in
 3. copies the repository to /var/lib/luma-device-layer/repo, imports the
    rpm-gpg release key into its gpgdir/ (libdnf checks a file:// repository's
    repomd.xml there and never imports gpgkey= into it), and runs rpm-ostree
-   with only that repository configured (no network): override replace
-   --from repo=ID, then install;
+   with only that repository configured (no network): one transaction,
+   override replace --from repo=ID with --install for the packages layered on
+   top (two transactions would assemble and deploy the OS twice);
 4. points /etc/yum.repos.d/ID.repo at the device repository's https URL (with
    repo_gpgcheck=1), so rpm-ostree upgrades keep the layer, and restarts once.
 
@@ -444,7 +445,14 @@ class DeviceLayer:
             raise LayerError(f"{attempts} layered deployments were staged and none was booted "
                              "(rolled back or lost); not trying again. "
                              "`luma-device-layer apply --retry` starts over")
-        if any(d.get("staged") for d in deployments):
+        staged = next((d for d in deployments if d.get("staged")), None)
+        if staged is not None and set(kit.install) <= set(staged.get("requested-packages", [])):
+            # An earlier run (stopped before it restarted) staged the layer.
+            state.update(status="staged", staged=staged.get("checksum"), last_error=None)
+            self.save_state(state)
+            log(f"{staged.get('checksum', '')[:12]} with the {kit.device} layer is already staged")
+            return self._restart(reboot)
+        if staged is not None:
             raise LayerError("another update is staged; restart first")
         state.update(attempts=attempts + 1, status="layering", base=booted["checksum"], kit=kit.version)
         self.save_state(state)
@@ -454,8 +462,9 @@ class DeviceLayer:
         try:
             if kit.replace:
                 self.check(["rpm-ostree", "override", "replace", "--experimental", "--from",
-                            f"repo={kit.repo_id}", *kit.replace], "rpm-ostree override replace")
-            if kit.install:
+                            f"repo={kit.repo_id}", *kit.replace, *(f"--install={p}" for p in kit.install)],
+                           "rpm-ostree override replace")
+            else:
                 self.check(["rpm-ostree", "install", "--idempotent", *kit.install], "rpm-ostree install")
         finally:
             self.restore_repos()
@@ -467,6 +476,9 @@ class DeviceLayer:
         self.save_state(state)
         log(f"staged {pending.get('checksum', '')[:12]} with the {kit.device} layer (attempt "
             f"{attempts + 1} of {MAX_ATTEMPTS})")
+        return self._restart(reboot)
+
+    def _restart(self, reboot: bool) -> int:
         if reboot:
             log("restarting into it")
             self.unmount_kit()

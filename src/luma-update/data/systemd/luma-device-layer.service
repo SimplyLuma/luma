@@ -15,7 +15,10 @@ Before=display-manager.service luma-updated.service luma-update-check.service
 Type=oneshot
 ExecStart=/usr/libexec/luma-device-layer apply
 RemainAfterExit=yes
-TimeoutStartSec=30min
+# One rpm-ostree transaction (assemble, commit, deploy): minutes on a phone,
+# about half an hour under emulation. The limit only catches a hang; a stopped
+# run is picked up again on the next boot.
+TimeoutStartSec=2h
 StateDirectory=luma-device-layer
 StateDirectoryMode=0700
 
