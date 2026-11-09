@@ -28,11 +28,16 @@ case "$architecture" in
   *) printf 'error: unsupported FP6 platform build architecture: %s\n' "$architecture" >&2; exit 1 ;;
 esac
 export LUMA_RPM_BUILDER_ARCHITECTURE=$architecture
+export LUMA_RPM_BUILDER_NAME=${LUMA_RPM_BUILDER_NAME:-luma-fp6-platform-rpm-builder-f44}
 
 output_dir="$repo_root/build/packages/luma-fp6-platform"
 mkdir -p "$(dirname "$output_dir")"
 work_dir=$(mktemp -d "$output_dir.work.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT INT TERM
+# The RPM's directory modes come from this tree: drop a setgid bit and default
+# ACLs inherited from the checkout (00755: GNU chmod keeps setgid under 0755).
+chmod 00755 "$work_dir"
+if command -v setfacl >/dev/null 2>&1; then setfacl -b -k "$work_dir" 2>/dev/null || true; fi
 rpmbuild_dir="$work_dir/rpmbuild"
 source_dir="$work_dir/luma-fp6-platform"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$source_dir"
