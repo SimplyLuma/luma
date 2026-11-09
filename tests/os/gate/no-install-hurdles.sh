@@ -135,12 +135,39 @@ else
 fi
 
 # Snap.
+# snap_settle: wait (5 min at most) until snapd has no change in progress, so
+# an install does not queue behind seeding or snapd's own refresh.
+snap_settle() {
+  local _
+  for _ in $(seq 60); do
+    snap changes 2>/dev/null | awk 'NR > 1 && $2 ~ /^(Do|Doing|Undo|Undoing|Wait)$/ {busy = 1} END {exit !busy}' || return 0
+    sleep 5
+  done
+}
+# snap_install NAME: the Snap Store CDN can stall a download outright (snapd
+# fails it as "download too slow"); a person runs the command again. Only such
+# download failures are retried, twice at most.
+snap_install() {
+  local name=$1 attempt out code
+  for attempt in 1 2 3; do
+    snap_settle
+    out=$(timeout 1200 snap install "$name" 2>&1); code=$?
+    printf '%s\n' "$out"
+    [ "$code" = 0 ] && return 0
+    grep -Eq 'download too slow|unexpected EOF|connection reset by peer|i/o timeout|TLS handshake timeout' <<<"$out" || return "$code"
+    [ "$attempt" = 3 ] && return "$code"
+    printf 'attempt %s: Snap Store download failed; retrying\n' "$attempt"
+    # A failed prerequisite can leave the snap installed without its content snaps.
+    snap remove --purge "$name" >/dev/null 2>&1
+    sleep 30
+  done
+}
 run_check snap-seeded 'seed' sh -c 'timeout 300 snap wait system seed.loaded && echo seed.loaded'
 if [ "$quick" = 1 ]; then
-  run_check snap-install-hello-world 'installed' timeout 600 snap install hello-world
+  run_check snap-install-hello-world 'installed' snap_install hello-world
   snap remove --purge hello-world >/dev/null 2>&1
 else
-  run_check snap-install-firefox 'installed' timeout 1800 snap install firefox
+  run_check snap-install-firefox 'installed' snap_install firefox
   run_check snap-firefox-runs 'Mozilla Firefox' in_session snap run firefox --version
   snap remove --purge firefox >/dev/null 2>&1
 fi
