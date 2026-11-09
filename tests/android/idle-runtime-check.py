@@ -13,13 +13,13 @@ path every app takes. It fails when, during the window:
 - Android's framework restarts (zygote is killed and started again);
 - more than one com.android.settings process exists;
 - an app process outlives the zygote that started it (an orphan of init);
-- the system journal grows faster than --max-lines-per-hour;
+- Android and its host services log more than --max-lines-per-hour;
 - Android's payload cgroup has no memory ceiling.
 
 Each failure was seen on nightly 20261108.10: a refused notification crashed
 system_server about every 15 s, every restart left the previous generation of
 apps running (44 Settings processes in 45 minutes) and the journal took about
-16,000 lines an hour.
+16,000 lines an hour, nearly all of them Android's.
 """
 from __future__ import annotations
 
@@ -71,7 +71,15 @@ def orphaned_apps(processes, init_pid) -> list[str]:
 
 
 def journal_lines(since: str) -> int:
-    result = subprocess.run(["journalctl", "-q", "--no-pager", "-o", "cat", "--since", since],
+    # Android's init, libprocessgroup and the Binder driver log through the
+    # kernel; the host side logs from its units. Logins to run this check do not
+    # count.
+    result = subprocess.run(["journalctl", "-q", "--no-pager", "-o", "cat", "--since", since,
+                             "_TRANSPORT=kernel", "+",
+                             "_SYSTEMD_UNIT=waydroid-container.service", "+",
+                             "_SYSTEMD_UNIT=luma-waydroid-graphics-watchdog.service", "+",
+                             "_SYSTEMD_USER_UNIT=luma-android-session.service", "+",
+                             "_SYSTEMD_USER_UNIT=luma-android.service"],
                             capture_output=True, check=False, timeout=120)
     return result.stdout.count(b"\n")
 
@@ -83,18 +91,21 @@ def zygote_restarts(since: str) -> int:
     return result.stdout.count(b"\n")
 
 
-def notify() -> None:
-    subprocess.run([*LXC, "-u", "2000", "-g", "2000", "--", "/system/bin/sh", "-c",
-                    ANDROID_PATH + "cmd notification post -S bigtext luma-idle-check "
-                    "'Idle check' 'Android idle runtime check'"],
-                   capture_output=True, check=True, timeout=60)
+def notify() -> bool:
+    # A framework that dies while posting fails the command; the window below
+    # still records the restart.
+    result = subprocess.run([*LXC, "-u", "2000", "-g", "2000", "--", "/system/bin/sh", "-c",
+                             ANDROID_PATH + "cmd notification post -S bigtext luma-idle-check "
+                             "'Idle check' 'Android idle runtime check'"],
+                            capture_output=True, check=False, timeout=60)
+    return result.returncode == 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--minutes", type=float, default=30)
     parser.add_argument("--notify", action="store_true")
-    parser.add_argument("--max-lines-per-hour", type=int, default=1200)
+    parser.add_argument("--max-lines-per-hour", type=int, default=300)
     options = parser.parse_args()
 
     init_pid = container_init()
@@ -103,8 +114,8 @@ def main() -> int:
         return 1
     since = time.strftime("%Y-%m-%d %H:%M:%S")
     started = time.monotonic()
-    if options.notify:
-        notify()
+    if options.notify and not notify():
+        print("INFO Android did not accept the notification")
     most_settings = 0
     orphans: list[str] = []
     while True:
@@ -129,7 +140,7 @@ def main() -> int:
         ("framework restarts", restarts == 0, str(restarts)),
         ("most Settings processes", most_settings <= 1, str(most_settings)),
         ("orphaned app processes", not orphans, ", ".join(orphans) or "0"),
-        ("journal lines per hour", rate <= options.max_lines_per_hour, f"{rate:.0f}"),
+        ("Android journal lines per hour", rate <= options.max_lines_per_hour, f"{rate:.0f}"),
         ("Android memory ceiling", memory_max.isdigit(), memory_max),
     ]
     for name, passed, value in checks:
