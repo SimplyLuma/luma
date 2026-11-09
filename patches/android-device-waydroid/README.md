@@ -62,3 +62,19 @@ and split installs; every runtime permission microG requests is a default
 grant; `luma-microg-defaults` runs once to allow its overlay and
 cross-profile app-ops, and grants the runtime permissions on a device whose
 `/data` predates microG. Users can change each in microG's settings.
+
+`0006` installs `/vendor/etc/task_profiles.json` for a cgroup v2-only host.
+Waydroid on Luma gives Android one delegated cgroup2 hierarchy; the v1 cpuset,
+schedtune, blkio, cpu and memory controllers in Android's `cgroups.json` cannot
+be mounted (EPERM in a cgroup namespace, no v1 cpuset filesystem, no
+schedtune), so the 36 profiles that join them, set their attributes or use the
+unimplemented `SetClamps` failed and logged on every service start and process
+state change. libprocessgroup reads the vendor file last and replaces profiles
+by name, so these are emptied; timer slack, the cgroup2 freezer and the
+`uid_N/pid_N` process groups keep working, and thread nice values never went
+through cgroups. A vendor `cgroups.json` cannot help: declaring those
+controllers on the cgroup2 root would make libprocessgroup treat them as
+usable and move whole processes out of their `uid_N/pid_N` groups. The
+one-time mount failures at container start remain.
+`tests/android/cgroup-v2-task-profiles.py --source-root` checks the file
+against the tree.

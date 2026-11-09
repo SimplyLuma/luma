@@ -24,6 +24,7 @@ codec_patch="$repo_root/patches/android-device-waydroid/0002-luma-codec-services
 input_method_patch="$repo_root/patches/android-device-waydroid/0003-luma-input-method.patch"
 forced_density_patch="$repo_root/patches/android-device-waydroid/0004-luma-forced-display-density.patch"
 microg_patch="$repo_root/patches/android-device-waydroid/0005-luma-microg.patch"
+task_profiles_patch="$repo_root/patches/android-device-waydroid/0006-luma-cgroup-v2-task-profiles.patch"
 jelly_patch="$repo_root/patches/android-jelly/0001-luma-consume-handled-app-redirects.patch"
 vendor_extra_patch="$repo_root/patches/android-vendor-extra/0001-luma-idempotent-pc-feature-mask.patch"
 libhidl_patch="$repo_root/patches/android-system-libhidl/0001-luma-copy-service-manager-under-lock.patch"
@@ -62,6 +63,7 @@ lineage_admission_patch="$repo_root/patches/android-lineage-sdk/0003-luma-platfo
 lineage_clipboard_patch="$repo_root/patches/android-lineage-sdk/0004-luma-native-clipboard-reconnect.patch"
 lineage_reply_patch="$repo_root/patches/android-lineage-sdk/0005-luma-native-notification-replies.patch"
 lineage_icon_patch="$repo_root/patches/android-lineage-sdk/0006-luma-unmasked-adaptive-icons.patch"
+lineage_bridge_patch="$repo_root/patches/android-lineage-sdk/0007-luma-host-bridge-refusals-stay-local.patch"
 target_arch=${LUMA_WAYDROID_TARGET_ARCH:-x86_64}
 case "$target_arch" in
   x86_64) target_product=waydroid_x86_64 ;;
@@ -228,6 +230,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$source_root/lineage-sdk" apply "$lineage_clipboard_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_reply_patch"
   git -C "$source_root/lineage-sdk" apply "$lineage_icon_patch"
+  git -C "$source_root/lineage-sdk" apply "$lineage_bridge_patch"
   cmp "$repo_root/patches/android-lineage-sdk/java/HostCallerPolicy.java" \
     "$source_root/lineage-sdk/lineage/lib/main/java/org/lineageos/platform/internal/HostCallerPolicy.java"
   cmp "$repo_root/patches/android-lineage-sdk/java/NotificationReplyDispatcher.java" \
@@ -242,6 +245,7 @@ if [ "$incremental" = 0 ]; then
   git -C "$device_root" apply "$input_method_patch"
   git -C "$device_root" apply "$forced_density_patch"
   git -C "$device_root" apply "$microg_patch"
+  git -C "$device_root" apply "$task_profiles_patch"
   bash "$repo_root/scripts/android/fetch-microg.sh" "$device_root/microg"
   git -C "$source_root/packages/apps/Jelly" apply "$jelly_patch"
   git -C "$source_root/vendor/extra" apply "$vendor_extra_patch"

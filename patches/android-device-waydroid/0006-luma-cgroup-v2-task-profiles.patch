@@ -1,0 +1,171 @@
+diff --git a/configs/task_profiles.json b/configs/task_profiles.json
+new file mode 100644
+index 0000000..ea5ad92
+--- /dev/null
++++ b/configs/task_profiles.json
+@@ -0,0 +1,148 @@
++{
++  "Profiles": [
++    {
++      "Name": "HighEnergySaving",
++      "Actions": []
++    },
++    {
++      "Name": "NormalPerformance",
++      "Actions": []
++    },
++    {
++      "Name": "ServicePerformance",
++      "Actions": []
++    },
++    {
++      "Name": "HighPerformance",
++      "Actions": []
++    },
++    {
++      "Name": "MaxPerformance",
++      "Actions": []
++    },
++    {
++      "Name": "RealtimePerformance",
++      "Actions": []
++    },
++    {
++      "Name": "CameraServicePerformance",
++      "Actions": []
++    },
++    {
++      "Name": "NNApiHALPerformance",
++      "Actions": []
++    },
++    {
++      "Name": "Dex2oatPerformance",
++      "Actions": []
++    },
++    {
++      "Name": "CpuPolicySpread",
++      "Actions": []
++    },
++    {
++      "Name": "CpuPolicyPack",
++      "Actions": []
++    },
++    {
++      "Name": "VrKernelCapacity",
++      "Actions": []
++    },
++    {
++      "Name": "VrServiceCapacityLow",
++      "Actions": []
++    },
++    {
++      "Name": "VrServiceCapacityNormal",
++      "Actions": []
++    },
++    {
++      "Name": "VrServiceCapacityHigh",
++      "Actions": []
++    },
++    {
++      "Name": "VrProcessCapacityLow",
++      "Actions": []
++    },
++    {
++      "Name": "VrProcessCapacityNormal",
++      "Actions": []
++    },
++    {
++      "Name": "VrProcessCapacityHigh",
++      "Actions": []
++    },
++    {
++      "Name": "ProcessCapacityLow",
++      "Actions": []
++    },
++    {
++      "Name": "ProcessCapacityNormal",
++      "Actions": []
++    },
++    {
++      "Name": "ProcessCapacityHigh",
++      "Actions": []
++    },
++    {
++      "Name": "ProcessCapacityMax",
++      "Actions": []
++    },
++    {
++      "Name": "ServiceCapacityLow",
++      "Actions": []
++    },
++    {
++      "Name": "ServiceCapacityRestricted",
++      "Actions": []
++    },
++    {
++      "Name": "CameraServiceCapacity",
++      "Actions": []
++    },
++    {
++      "Name": "LowIoPriority",
++      "Actions": []
++    },
++    {
++      "Name": "NormalIoPriority",
++      "Actions": []
++    },
++    {
++      "Name": "HighIoPriority",
++      "Actions": []
++    },
++    {
++      "Name": "MaxIoPriority",
++      "Actions": []
++    },
++    {
++      "Name": "SFMainPolicy",
++      "Actions": []
++    },
++    {
++      "Name": "SFRenderEnginePolicy",
++      "Actions": []
++    },
++    {
++      "Name": "PerfBoost",
++      "Actions": []
++    },
++    {
++      "Name": "PerfClamp",
++      "Actions": []
++    },
++    {
++      "Name": "LowMemoryUsage",
++      "Actions": []
++    },
++    {
++      "Name": "HighMemoryUsage",
++      "Actions": []
++    },
++    {
++      "Name": "SystemMemoryProcess",
++      "Actions": []
++    }
++  ]
++}
+diff --git a/device.mk b/device.mk
+index d8f703d..fd14d77 100644
+--- a/device.mk
++++ b/device.mk
+@@ -149,6 +149,12 @@ PRODUCT_PACKAGES += \
+ PRODUCT_COPY_FILES += \
+     $(LOCAL_PATH)/configs/init.waydroid.vendor.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.waydroid.vendor.rc
+ 
++# Task profiles for a cgroup v2-only host (Waydroid on Luma). The v1 cpuset,
++# schedtune, blkio, cpu and memory controllers cannot be mounted there, so the
++# profiles that join them or set their attributes are emptied.
++PRODUCT_COPY_FILES += \
++    $(LOCAL_PATH)/configs/task_profiles.json:$(TARGET_COPY_OUT_VENDOR)/etc/task_profiles.json
++
+ # Keymaster
+ PRODUCT_PACKAGES += \
+     android.hardware.keymaster@4.0-service

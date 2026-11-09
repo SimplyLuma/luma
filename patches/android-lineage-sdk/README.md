@@ -60,6 +60,13 @@ already-masked icon. The background and foreground layers are composited over
 the visible square of the layer canvas instead, so the host's own mask gives
 every application the same silhouette. Other drawables export unchanged.
 
+`0007` lets no host bridge call throw into system_server. Binder delivers a
+host refusal as `SecurityException`, which the SDK wrappers did not catch: on
+nightly 20261108.10 a refused `getCapabilities` crashed system_server on every
+notification. Every `lineageos.waydroid` host call (notifications, user
+monitor, hardware, clipboard) and the task-removal window HAL call now catch
+`RuntimeException` as well as `RemoteException` and fail the same way.
+
 The dispatcher bounds queued calls, text and request receipts. A repeated UUID
 with the same grant and text cannot send twice; replacements, removals and host
 reset revoke grants. A five-second Binder wait cancels queued work, but an

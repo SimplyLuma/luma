@@ -21,6 +21,7 @@ jobs:
           PYTHONPATH=src/luma-android python3 -B -m unittest discover -s src/luma-android/tests -p 'test_recovery_launch.py'
           PYTHONPATH=src/luma-android python3 -B -m unittest discover -s src/luma-android/tests -p 'test_activation_budget.py'
           PYTHONPATH=src/luma-android python3 -B -m unittest discover -s src/luma-android/tests -p 'test_container_policy.py'
+          python3 -B tests/android/cgroup-v2-task-profiles.py
   shell-presentation-layout:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
