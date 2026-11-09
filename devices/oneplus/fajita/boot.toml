@@ -14,9 +14,12 @@ args = [
   "pmos_rootfsopts=defaults",
   "rw",
   "enforcing=0",
+  # The boot image is not rebuilt per deployment. The initramfs points
+  # /ostree/root.a and root.b at OSTree's default deployment on every boot.
+  "ostree=/ostree/root.a",
 ]
-# Filled in per image and per deployment by the image builder and libostree.
-generated = ["pmos_root_uuid", "pmos_boot_uuid", "ostree"]
+# Filled in per image by the image builder.
+generated = ["pmos_root_uuid", "pmos_boot_uuid"]
 forbidden = ["selinux=0", "lsm="]
 
 [avb]

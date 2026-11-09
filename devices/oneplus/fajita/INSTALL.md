@@ -48,13 +48,15 @@ postmarketOS packages them (`firmware-oneplus-sdm845`,
    modules with this kernel's. Add `ostree-prepare-root` and its Fedora 44
    libraries from the deployment. Run the OSTree root setup before the
    `/sysroot/etc/os-release` check, and do not mount the pmOS boot partition
-   over `/boot`. Kernel modules are overlaid from
+   over `/boot`. Before that, point `/ostree/root.a` and `/ostree/root.b` at
+   the deployment of the highest-version entry in `/boot/loader/entries`, so
+   one boot image keeps working after updates and `rpm-ostree install`. Kernel modules are overlaid from
    `/var/lib/luma/device-modules`, and the firmware loader path points at
    `/var/lib/luma/device-firmware`.
 3. Boot image: header v0, page size 4096, `Image.gz` with
    `qcom/sdm845-oneplus-fajita.dtb` appended, offsets from
    `socs/qcom/sdm845/soc.toml`, command line from `boot.toml` plus the
-   generated `pmos_root_uuid`, `pmos_boot_uuid` and `ostree` arguments.
+   generated `pmos_root_uuid` and `pmos_boot_uuid` arguments.
 4. Userdata image: a GPT with 4096-byte sectors inside `userdata`
    (`LumaBoot` FAT and `LumaRoot` ext4), the verified Luma commit deployed with
    `ostree admin deploy`, and the device files on `/var`.
