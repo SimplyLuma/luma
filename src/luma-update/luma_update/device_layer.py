@@ -5,8 +5,9 @@ A phone's disk is the one generic phone userdata image plus the device kit
 written to its LumaBoot filesystem. The image builder names that filesystem in
 /etc/luma/device-kit.conf. On the first boot this command:
 
-1. finds the kit (luma-device-kit/ on that filesystem) and checks kit.json and
-   the repository's repomd.xml against the Luma OS Release key in
+1. finds the kit (luma-device-kit/ on that filesystem, mounted read-only on
+   /run/luma-device-kit or read where it is already mounted) and checks
+   kit.json and the repository's repomd.xml against the Luma OS Release key in
    /etc/pki/ostree/luma-release.gpg;
 2. refuses a kit whose device-tree compatible list does not match this device;
 3. copies the repository to /var/lib/luma-device-layer/repo, imports the
@@ -32,6 +33,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -63,6 +65,7 @@ class Paths:
     rpm_key: str = "etc/pki/rpm-gpg/RPM-GPG-KEY-luma-os-release"
     compatible: str = "sys/firmware/devicetree/base/compatible"
     sysroot: str = "sysroot"
+    mountinfo: str = "proc/self/mountinfo"
 
     def __getattribute__(self, name: str):
         value = object.__getattribute__(self, name)
@@ -180,6 +183,22 @@ def parse_origin(text: str) -> tuple[set[str], dict[str, set[str]]]:
     return requested, replaced
 
 
+def _unescape(field: str) -> str:
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
+
+
+def parse_mountinfo(text: str) -> list[tuple[str, str, str, str]]:
+    """(major:minor, root within the filesystem, mount point, source) of every mount."""
+    mounts = []
+    for line in text.splitlines():
+        left, sep, right = line.partition(" - ")
+        fields, tail = left.split(), right.split()
+        if not sep or len(fields) < 5 or len(tail) < 2:
+            continue
+        mounts.append((fields[2], _unescape(fields[3]), _unescape(fields[4]), _unescape(tail[1])))
+    return mounts
+
+
 def layer_in(requested: set[str], replaced: dict[str, set[str]], kit: Kit) -> bool:
     return set(kit.install) <= requested and set(kit.replace) <= replaced.get(kit.repo_id, set())
 
@@ -228,6 +247,7 @@ class DeviceLayer:
         self.run = run
         self.sleep = sleep
         self.import_key = import_key
+        self.mounted = False  # whether paths.mount is a mount this process made
 
     # -- state -----------------------------------------------------------------
 
@@ -298,19 +318,59 @@ class DeviceLayer:
                 return None
             self.sleep(2)
 
+    @staticmethod
+    def device_number(source: Path) -> str | None:
+        try:
+            info = os.stat(source)
+        except OSError:
+            return None
+        if not stat.S_ISBLK(info.st_mode):
+            return None
+        return f"{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}"
+
+    def existing_mount(self, source: Path) -> Path | None:
+        """Where the whole filesystem on source is mounted already, if anywhere.
+
+        An initramfs may mount it (postmarketOS mounts its boot partition on
+        /boot when /etc/fstab is empty). Mounting it again with other flags
+        fails (a filesystem mounted read-write cannot also be mounted read-only),
+        so the kit is read from that mount, which stays as it is."""
+        try:
+            text = self.paths.mountinfo.read_text()
+        except OSError:
+            return None
+        number = self.device_number(source)
+        names = {str(source), os.path.realpath(source)}
+        for devno, root, target, mount_source in parse_mountinfo(text):
+            if root != "/" or not (devno == number or mount_source in names):
+                continue
+            path = self.paths.root / target.lstrip("/")
+            if path.is_dir():
+                return path
+        return None
+
     def mount_kit(self, source: Path) -> Path:
         if source.is_dir():
             return source
         mnt = self.paths.mount
+        existing = self.existing_mount(source)
+        if existing == mnt:
+            self.mounted = True  # left by an interrupted run of this command
+            return mnt
+        if existing is not None:
+            log(f"{source} is mounted on /{existing.relative_to(self.paths.root).as_posix()}; "
+                "reading the kit there")
+            return existing
         mnt.mkdir(parents=True, exist_ok=True)
-        if self.run(["mountpoint", "-q", str(mnt)]).returncode != 0:
-            self.check(["mount", "-o", "ro,nodev,nosuid,noexec", str(source), str(mnt)], f"mounting {source}")
+        self.check(["mount", "-o", "ro,nodev,nosuid,noexec", str(source), str(mnt)], f"mounting {source}")
+        self.mounted = True
         return mnt
 
     def unmount_kit(self) -> None:
-        mnt = self.paths.mount
-        if self.run(["mountpoint", "-q", str(mnt)]).returncode == 0:
-            self.run(["umount", str(mnt)])
+        """Unmount the kit if this command mounted it; never another mount."""
+        if self.mounted:
+            self.run(["umount", str(self.paths.mount)])
+            self.mounted = False
 
     def verify(self, data: Path) -> None:
         signature = data.with_name(data.name + ".asc")
