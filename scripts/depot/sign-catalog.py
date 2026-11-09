@@ -246,8 +246,8 @@ def refuse_icon_regression(document: dict, published: Path) -> None:
     A render that lost its icons -- a broken asset job, a schema change, a
     field dropped upstream -- would otherwise publish silently and take the
     artwork off every new installation. A run that adds entries without icons
-    is refused for the same reason: coverage is measured as a count, and the
-    count may only go up.
+    is refused for the same reason: coverage is measured over the entries both
+    documents list, and it may only go up.
     """
 
     covered, total, without = icon_coverage(document)
@@ -262,7 +262,13 @@ def refuse_icon_regression(document: dict, published: Path) -> None:
         return
     if not isinstance(previous, dict) or not isinstance(previous.get("applications"), list):
         return
-    before, _total, _missing = icon_coverage(previous)
+    # Measured over the entries both documents list: an app withdrawn or removed
+    # since the last run takes its icon with it, which is not a regression.
+    ids = lambda doc: {str(a.get("id")) for a in doc["applications"] if a.get("visibility") == "public"}
+    shared = ids(document) & ids(previous)
+    keep = lambda doc: {**doc, "applications": [a for a in doc["applications"] if str(a.get("id")) in shared]}
+    before, _total, _missing = icon_coverage(keep(previous))
+    covered, _total, without = icon_coverage(keep(document))
     if covered < before:
         raise CatalogRefused(
             f"icon coverage fell from {before} to {covered} entries; "
