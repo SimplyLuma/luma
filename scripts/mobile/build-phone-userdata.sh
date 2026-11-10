@@ -23,6 +23,13 @@
 # /etc/luma/device-kit.conf names LumaBoot as the device kit's filesystem.
 # One user, luma, password 1234. /etc/systemd/system/boot.automount is masked
 # (systemd-gpt-auto's /boot automount breaks shutdown on these phones).
+# /var/lib/systemd/timesync/clock carries the build time: a phone has no
+# battery-backed clock or network on its first boot, and systemd (PID 1) sets
+# the clock forward to that file's mtime as it starts (/var is mounted by the
+# initramfs), so signatures and keys made before the image are already valid.
+# The physical root (/, /boot, /ostree, ...) and /var/home get SELinux labels
+# from the deployment's policy (scripts/mobile/common/label-ostree-physical-root.py);
+# ostree labels only the deployment and /var.
 #
 # Writes FILE (Android sparse; zero blocks as FILL so a reflash overwrites the
 # previous install, scripts/mobile/img2simg.py) and FILE.manifest. Runs as root
@@ -123,7 +130,15 @@ chmod 0700 "$var/home/luma"
 : >"$deploy/etc/systemd/system/boot.automount"
 fc=$deploy/etc/selinux/targeted/contexts/files/file_contexts
 setfiles -r "$deploy" "$fc" "$deploy/etc" 2>/dev/null || true
-setfiles -r "$mnt/ostree/deploy/luma" "$fc" "$var/home" 2>/dev/null || true
+
+# The clock floor (systemd-timesyncd's file, which PID 1 also reads).
+install -d -m 0755 "$var/lib/systemd" "$var/lib/systemd/timesync"
+touch -d "@$(date -u +%s)" "$var/lib/systemd/timesync/clock"
+
+label=$repo_root/scripts/mobile/common/label-ostree-physical-root.py
+python3 "$label" --file-contexts "$fc" --var home --var lib/systemd "$mnt"
+python3 "$label" --file-contexts "$fc" --var home --var lib/systemd --check "$mnt" >&2 ||
+  fail "the physical root is not labeled"
 
 # The home directory is the skeleton and nothing else: no device presets.
 diff <(cd "$deploy/etc/skel" && find . | sort) <(cd "$var/home/luma" && find . | sort) >/dev/null ||
