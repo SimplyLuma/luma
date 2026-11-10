@@ -8,13 +8,14 @@
 # checks it against the manifest). Installed in /usr/lib/firmware, not in /var.
 # regulatory.db comes from wireless-regdb in the base image; the GMU and SQE
 # files move from postmarketos/ to the top level, where the msm driver looks.
-# Source2 adds the five files of packaging/rpm/luma-fp6-firmware-extra.manifest
+# Source2 adds the six files of packaging/rpm/luma-fp6-firmware-extra.manifest
 # (provenance in devices/fairphone/fp6/device.toml): the AudioReach topology and AW88261 amplifier
-# profile the sound card needs, and the modem platform, AT&T and T-Mobile
-# configurations luma-fp6-carrier-pdc loads.
+# profile the sound card needs, the modem platform, AT&T and T-Mobile
+# configurations luma-fp6-carrier-pdc loads, and the WCN6750 board file with
+# the Fairphone 6 calibration.
 Name:           luma-fp6-firmware
 Version:        20261002
-Release:        1.luma.3%{?dist}
+Release:        1.luma.4%{?dist}
 Summary:        Firmware for the Fairphone 6
 License:        LicenseRef-Fedora-Firmware AND BSD-3-Clause
 URL:            https://gitlab.postmarketos.org/postmarketOS/pmaports/-/tree/master/device/testing/firmware-fairphone-fp6
@@ -69,8 +70,8 @@ while IFS="$(printf '\t')" read -r kind mode digest relative target; do
   echo "$digest  $fw/$relative" | sha256sum -c --quiet -
   files=$((files + 1))
 done < %{SOURCE3}
-test "$files" = 270
-test "$(find "$fw" -type f | wc -l)" = 270
+test "$files" = 271
+test "$(find "$fw" -type f | wc -l)" = 271
 
 %files
 /usr/lib/firmware/ath11k/
@@ -83,6 +84,11 @@ test "$(find "$fw" -type f | wc -l)" = 270
 /usr/lib/firmware/luma/fp6-carrier-pdc/
 
 %changelog
+* Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 20261002-1.luma.4
+- Add ath11k/WCN6750/hw1.0/board-2.bin with the Fairphone 6 calibration
+  (variant Fairphone_Gen_6); with the generic board data the radio could not
+  transmit on 5 GHz or 6 GHz
+
 * Mon Nov 09 2026 Project Luma <maintainers@projectluma.org> - 20261002-1.luma.3
 - Add the T-Mobile commercial modem configuration luma-fp6-carrier-pdc loads
   for tmo-qrel1695
