@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.31%{?dist}
+Release:        1.luma.32%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -231,6 +231,13 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Mon Nov 09 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.32
+- luma-device-layer: load fuse.ko for the running kernel from the kit's
+  signed packages when /dev/fuse is missing (rofiles-fuse runs the package
+  scripts); relabel the staged deployment's /usr with its own file_contexts
+  when /usr/lib/systemd/systemd is not init_exec_t, and drop a staged
+  deployment that cannot be repaired instead of restarting into it.
+- luma-device-layer: read the kit where its filesystem is already mounted.
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.31
 - luma-device-layer.service: on an image that names a device kit
   (/etc/luma/device-kit.conf), layer the kit's signed device repository

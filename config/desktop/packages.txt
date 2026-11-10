@@ -86,8 +86,8 @@ luma-install-commands-0.1.0-1.luma.6.fc44.noarch
 luma-search-0.1.0-1.luma.10.fc44.noarch
 luma-home-widgets-0.1.0-1.luma.5.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.41.fc44.noarch
-luma-os-remote-1.0.0-1.luma.31.fc44.noarch
-luma-update-1.0.0-1.luma.31.fc44.noarch
+luma-os-remote-1.0.0-1.luma.32.fc44.noarch
+luma-update-1.0.0-1.luma.32.fc44.noarch
 prairie-core-apps-0.1.0-1.luma.131.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.47.fc44.noarch
