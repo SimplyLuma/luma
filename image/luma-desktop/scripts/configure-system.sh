@@ -42,6 +42,12 @@ if capability_enabled android_apps; then
 fi
 dconf update
 
+# Device-neutral modem policy: dbus-broker may receive ModemManager's eSIM
+# profile transport (luma-esim-broker). It is compiled into the image policy
+# here so that no package script changes the policy when a phone layers its
+# device packages.
+semodule -i "$src/config/desktop/selinux/luma_esim.cil"
+
 # Update and trust policy (ADR-030 sections 3 and 5). The image files are the
 # reviewed copies under image/luma-desktop/rootfs.
 (cd "$rootfs" && find . -type f -print0) | while IFS= read -r -d '' file; do
