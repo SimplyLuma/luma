@@ -4,18 +4,23 @@
 # Build luma-fp6-firmware from the Fairphone 6 firmware set (a tar of
 # usr/lib/firmware holding exactly devices/fairphone/fp6/firmware.manifest;
 # extracted from the postmarketOS fairphone-fp6 edge image 20261002-1221).
-# Firmware is not kept in Git.
+# EXTRA_TAR is a tar of usr/lib/firmware holding exactly
+# packaging/rpm/luma-fp6-firmware-extra.manifest (topology, amplifier profile,
+# modem configurations; provenance in devices/fairphone/fp6/device.toml). Firmware is not kept in Git.
 #
-#   build-luma-fp6-firmware.sh FIRMWARE_TAR
+#   build-luma-fp6-firmware.sh FIRMWARE_TAR EXTRA_TAR
 
 set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
-tar_file=$(realpath -e "${1:?usage: build-luma-fp6-firmware.sh FIRMWARE_TAR}")
+tar_file=$(realpath -e "${1:?usage: build-luma-fp6-firmware.sh FIRMWARE_TAR EXTRA_TAR}")
+extra_tar=$(realpath -e "${2:?usage: build-luma-fp6-firmware.sh FIRMWARE_TAR EXTRA_TAR}")
 manifest=$repo_root/devices/fairphone/fp6/firmware.manifest
+extra_manifest=$repo_root/packaging/rpm/luma-fp6-firmware-extra.manifest
 expected=$(sed -n 's/^manifest_sha256 = "\(.*\)"/\1/p' "$repo_root/devices/fairphone/fp6/device.toml")
 echo "$expected  $manifest" | sha256sum -c --quiet - || { echo "error: firmware.manifest does not match device.toml" >&2; exit 1; }
+[ "$(tar -tf "$extra_tar" | grep -vc '/$')" = 4 ] || { echo "error: the extra tar is not the 4-file set" >&2; exit 1; }
 [ "$(tar -tf "$tar_file" | grep -vc '/$')" = 281 ] || { echo "error: the tar is not the 267-file set (+14 links)" >&2; exit 1; }
 
 export LUMA_RPM_BUILDER_ARCHITECTURE=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}
@@ -32,6 +37,8 @@ rpmbuild_dir="$work_dir/rpmbuild"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 install -m 0644 "$tar_file" "$rpmbuild_dir/SOURCES/fp6-firmware.tar"
 install -m 0644 "$manifest" "$rpmbuild_dir/SOURCES/firmware.manifest"
+install -m 0644 "$extra_tar" "$rpmbuild_dir/SOURCES/fp6-firmware-extra.tar"
+install -m 0644 "$extra_manifest" "$rpmbuild_dir/SOURCES/firmware-extra.manifest"
 install -m 0644 "$repo_root/packaging/rpm/luma-fp6-firmware.spec" "$rpmbuild_dir/SPECS/"
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" "$rpmbuild_dir" "$builder_container" "
   set -euo pipefail
