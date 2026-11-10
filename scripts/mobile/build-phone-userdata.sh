@@ -156,6 +156,16 @@ EOF2
 chmod 0644 "$deploy/etc/systemd/system/luma-grow-root.service"
 install -d -m 0755 "$deploy/etc/systemd/system/local-fs.target.wants"
 ln -sfn ../luma-grow-root.service "$deploy/etc/systemd/system/local-fs.target.wants/luma-grow-root.service"
+# rpm-ostree refreshes every enabled repository whenever a layered deployment
+# is upgraded. A phone's layer comes from its kit and its device repository
+# only, so Fedora's repositories are off: with them on, an OS update needed
+# their mirrors and some 80 MB of metadata.
+for repo_file in "$deploy"/etc/yum.repos.d/*.repo; do
+  case $(basename "$repo_file") in
+    luma-*) ;;
+    *) sed -i 's/^enabled=1$/enabled=0/' "$repo_file" ;;
+  esac
+done
 fc=$deploy/etc/selinux/targeted/contexts/files/file_contexts
 setfiles -r "$deploy" "$fc" "$deploy/etc" 2>/dev/null || true
 

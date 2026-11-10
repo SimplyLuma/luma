@@ -72,6 +72,8 @@ class KitManifest(unittest.TestCase):
         self.assertIn("Before=local-fs.target luma-device-layer.service shutdown.target", text)
         self.assertIn('local-fs.target.wants/luma-grow-root.service', text)
         self.assertIn(': >"$deploy/etc/systemd/system/bootloader-update.service"', text)
+        self.assertIn("sed -i 's/^enabled=1$/enabled=0/' \"$repo_file\"", text)
+        self.assertIn("a non-Luma rpm repository is enabled", check)
 
     def test_login_screen_keeps_the_handheld_power_defaults(self):
         def keys(name):
