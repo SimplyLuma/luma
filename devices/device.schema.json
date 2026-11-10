@@ -123,9 +123,18 @@
           "boot_image": {"$ref": "#/$defs/url"},
           "boot_image_sha256": {"$ref": "#/$defs/sha256"},
           "system_image": {"$ref": "#/$defs/url"},
-          "system_image_sha256": {"$ref": "#/$defs/sha256"}
+          "system_image_sha256": {"$ref": "#/$defs/sha256"},
+          "kit_image": {"$ref": "#/$defs/url"},
+          "kit_image_sha256": {"$ref": "#/$defs/sha256"},
+          "dtbo_image": {"$ref": "#/$defs/url"},
+          "dtbo_image_sha256": {"$ref": "#/$defs/sha256"},
+          "guide": {"$ref": "#/$defs/url"}
         },
-        "dependentRequired": {"system_image": ["system_image_sha256"]}
+        "dependentRequired": {
+          "system_image": ["system_image_sha256"],
+          "kit_image": ["kit_image_sha256"],
+          "dtbo_image": ["dtbo_image_sha256"]
+        }
       }
     }
   },

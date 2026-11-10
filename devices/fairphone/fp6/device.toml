@@ -110,3 +110,15 @@ boot_image = "https://dl.simplyluma.com/mobile/fp6/alpha1/luma-mobile-alpha1-fp6
 boot_image_sha256 = "6b93fa901d85152efb29e9a58874d040e86fcad597c4dae0c9b11c897cf1051b"
 system_image = "https://dl.simplyluma.com/mobile/fp6/alpha1/luma-mobile-alpha1-fp6-userdata.sparse.zst"
 system_image_sha256 = "75ab6f59c6013017a4fe32d68768f20996b4c57aaf3bbc7a7e5da13c67ba251f"
+
+# Device kit only: userdata is the nightly's generic phone userdata image.
+[[releases]]
+name = "kit-20261109-2-fix3"
+date = "2026-11-10"
+boot_image = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/luma-fp6-20261109.2-fix3-boot.bin"
+boot_image_sha256 = "bde6146e38e3cb5f55ff69d6b77511a4747e138985eceaf268688ca61fba7545"
+kit_image = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/luma-fp6-20261109.2-fix3-kit.sparse"
+kit_image_sha256 = "5d8019855d86335a2177b1f2cdb45308fef65168b437c3df08d2e202ba6f5185"
+dtbo_image = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/dtbo-blank.bin"
+dtbo_image_sha256 = "75c91b29d5522c8a97c779e50bc33f11e07ed37b2baa31c8c727016e92915c1d"
+guide = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/FLASHING.md"
