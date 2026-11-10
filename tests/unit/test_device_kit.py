@@ -63,6 +63,26 @@ class KitManifest(unittest.TestCase):
         self.assertEqual((kit.LUMABOOT_OFFSET, kit.LUMABOOT_SIZE), (256 * 4096, 480 << 20))
         self.assertNotIn("wireplumber", text)
 
+    def test_userdata_image_grows_its_root_online(self):
+        text = (ROOT / "scripts/mobile/build-phone-userdata.sh").read_text()
+        check = (ROOT / "scripts/os/check-arm-disk-image.sh").read_text()
+        unit = "ExecStart=/usr/lib/systemd/systemd-growfs /sysroot"
+        self.assertIn(unit, text)
+        self.assertIn(unit, check)
+        self.assertIn("Before=local-fs.target luma-device-layer.service shutdown.target", text)
+        self.assertIn('local-fs.target.wants/luma-grow-root.service', text)
+        self.assertIn(': >"$deploy/etc/systemd/system/bootloader-update.service"', text)
+
+    def test_login_screen_keeps_the_handheld_power_defaults(self):
+        def keys(name):
+            lines = (ROOT / "config/mobile" / name).read_text().splitlines()
+            return {line for line in lines if line.startswith(("power-button-action=", "sleep-inactive-", "idle-delay="))}
+        greeter = keys("luma-greeter-handheld.dconf")
+        self.assertEqual(len(greeter), 4)
+        self.assertEqual(greeter, keys("luma-shell-handheld.dconf"))
+        spec = (ROOT / "packaging/rpm/luma-fp6-platform.spec").read_text()
+        self.assertIn("%{_sysconfdir}/dconf/db/gdm.d/10-luma-handheld", spec)
+
 
 class SparseImages(unittest.TestCase):
     def run_tool(self, *args):

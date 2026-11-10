@@ -9,7 +9,8 @@
 #   root         p2 ext4, UUID 03797c05-..., label LumaRoot, clean
 #   commit       one deployment of COMMIT with origin luma:REF, no hardware
 #                target, /ostree/root.a and root.b on it, device-kit.conf
-#                naming LumaBoot
+#                naming LumaBoot, bootloader-update.service masked and
+#                luma-grow-root.service wanted by local-fs.target
 #   generic      no device packages in the deployment
 #   labels       physical root, /var/home and /var/lib/systemd labeled
 #                (scripts/mobile/common/label-ostree-physical-root.py --check)
@@ -75,6 +76,10 @@ deployment() {
   [ -z "$(ostree --repo="$r/ostree/repo" show --print-metadata-key=org.projectluma.hardware-target "$commit" 2>/dev/null)" ] || { why="hardware target set"; return 1; }
   for s in a b; do [ "$(readlink -f "$r/ostree/root.$s")" = "$(readlink -f "$deploy")" ] || { why="root.$s"; return 1; }; done
   grep -qx "source=UUID=$boot_id" "$deploy/etc/luma/device-kit.conf" || { why="device-kit.conf"; return 1; }
+  [ -f "$deploy/etc/systemd/system/bootloader-update.service" ] && [ ! -s "$deploy/etc/systemd/system/bootloader-update.service" ] || { why="bootloader-update.service is not masked"; return 1; }
+  grep -qx 'ExecStart=/usr/lib/systemd/systemd-growfs /sysroot' "$deploy/etc/systemd/system/luma-grow-root.service" 2>/dev/null &&
+    [ "$(readlink "$deploy/etc/systemd/system/local-fs.target.wants/luma-grow-root.service")" = ../luma-grow-root.service ] &&
+    [ -x "$deploy/usr/lib/systemd/systemd-growfs" ] || { why="luma-grow-root.service"; return 1; }
   why="$ref"
 }
 generic() {
