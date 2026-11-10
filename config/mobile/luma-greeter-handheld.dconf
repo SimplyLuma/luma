@@ -12,3 +12,8 @@ power-button-action='nothing'
 # No system suspend from the login screen either: see luma-shell-handheld.dconf.
 sleep-inactive-ac-type='nothing'
 sleep-inactive-battery-type='nothing'
+
+[org/gnome/desktop/interface]
+# The handheld default appearance, so the login screen and its keyboard match
+# the session a person signs in to.
+color-scheme='prefer-dark'

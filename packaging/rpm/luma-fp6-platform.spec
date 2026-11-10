@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.13%{?dist}
+Release:        1.luma.14%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -69,8 +69,8 @@ grep -Fxq 'automatic_download = false' %{buildroot}%{_sysconfdir}/luma/update.co
 grep -Fxq 'ConditionFirmware=device-tree-compatible(fairphone,fp6)' %{buildroot}%{_unitdir}/luma-fp6-boot-success.service
 test ! -s %{buildroot}%{_unitdir}/boot.automount
 # The login screen keeps the signed-in session's power defaults.
-for key in power-button-action sleep-inactive-ac-type sleep-inactive-battery-type; do
-  line=$(grep -x "$key='nothing'" %{buildroot}%{_sysconfdir}/dconf/db/luma.d/10-luma-handheld)
+for key in power-button-action sleep-inactive-ac-type sleep-inactive-battery-type color-scheme; do
+  line=$(grep -x "$key='[a-z-]*'" %{buildroot}%{_sysconfdir}/dconf/db/luma.d/10-luma-handheld)
   grep -Fxq "$line" %{buildroot}%{_sysconfdir}/dconf/db/gdm.d/10-luma-handheld
 done
 if grep -rIl -e greetd -e phosh -e stevia %{buildroot}%{_unitdir} %{buildroot}%{_libexecdir}; then exit 1; fi
@@ -109,6 +109,10 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.14
+- The login screen uses the handheld default appearance (dark), as the
+  signed-in session does.
+
 * Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.13
 - The login screen gets the handheld power defaults (gdm dconf profile): no
   system suspend when idle and no power-off dialog on a short power press.
