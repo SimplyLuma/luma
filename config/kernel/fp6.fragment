@@ -1,0 +1,7 @@
+# Fairphone 6: merged over luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1
+# of the kernel tag (scripts/kernel/build-fp6.sh).
+#
+# Built in, so rofiles-fuse works before kernel-modules-luma-fp6 is layered:
+# rpm-ostree runs package scripts on a FUSE mount, including the transaction
+# that installs the device repository on a fresh phone.
+CONFIG_FUSE_FS=y

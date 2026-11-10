@@ -22,7 +22,10 @@
 # it copies the modem storage partitions into the private rmtfs store before
 # any normal boot lets the bootloader erase modemst.
 #
-# usage: build-fp6-boot-image.sh --alpha-boot FILE --output FILE
+# --kernel replaces the Alpha 1 kernel with a build of scripts/kernel/build-fp6.sh
+# (its Image.gz); kernel-modules-luma-fp6 must come from the same build.
+#
+# usage: build-fp6-boot-image.sh --alpha-boot FILE [--kernel FILE] --output FILE
 #
 # Needs AOSP's mkbootimg.py, unpack_bootimg.py and avbtool.py (MKBOOTIMG,
 # UNPACK_BOOTIMG, AVBTOOL, default: on PATH), cpio, gzip and python3.
@@ -37,11 +40,12 @@ fail() { printf 'build-fp6-boot-image: %s\n' "$*" >&2; exit 1; }
 root_uuid=03797c05-cf87-4eda-adc4-6ce111baf2d3
 boot_uuid=032D-57AD
 
-alpha="" output=""
+alpha="" output="" kernel=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --alpha-boot) alpha=$(realpath -e "${2:?}"); shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
+    --kernel) kernel=$(realpath -e "${2:?}"); shift 2 ;;
     *) sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2 ;;
   esac
 done
@@ -82,6 +86,11 @@ trap 'rm -rf "$work"' EXIT
 umask 022
 python3 "$unpack" --boot_img "$alpha" --out "$work/in" --format mkbootimg >"$work/args"
 echo "$ramdisk_sha256  $work/in/ramdisk" | sha256sum -c --quiet - || fail "the Alpha 1 ramdisk differs from device.toml"
+if [ -n "$kernel" ]; then
+  gzip -t "$kernel" || fail "$kernel is not a gzip-compressed kernel Image"
+else
+  kernel="$work/in/kernel"
+fi
 
 # The added archive: later files in the ramdisk replace earlier ones.
 o="$work/overlay"
@@ -101,11 +110,11 @@ for word in $forbidden androidboot.slot_suffix; do
 done
 
 # Same header as Alpha 1 (version, offsets, page size, OS version); only the
-# ramdisk and the command line change.
-python3 - "$work/args" "$work" "$cmdline" >"$work/mkargs" <<'PY'
+# ramdisk, the command line and, with --kernel, the kernel change.
+python3 - "$work/args" "$work" "$cmdline" "$kernel" >"$work/mkargs" <<'PY'
 import shlex, sys
 args = shlex.split(open(sys.argv[1]).read())
-work, cmdline = sys.argv[2], sys.argv[3]
+work, cmdline, kernel = sys.argv[2], sys.argv[3], sys.argv[4]
 out, i = [], 0
 while i < len(args):
     k, v = args[i], args[i + 1]
@@ -114,6 +123,8 @@ while i < len(args):
         v = cmdline
     elif k == "--ramdisk":
         v = work + "/ramdisk"
+    elif k == "--kernel":
+        v = kernel
     out += [k, v]
 print("\0".join(out), end="")
 PY
@@ -129,7 +140,7 @@ python3 "$avbtool" add_hash_footer --image "$work/boot.img" --partition_name boo
 # Check the result the way the bootloader and the initramfs will see it.
 python3 "$unpack" --boot_img "$work/boot.img" --out "$work/check" --format mkbootimg >"$work/check.args"
 grep -Fq -- "--cmdline '$cmdline'" "$work/check.args" || fail "command line not in the image"
-cmp -s "$work/check/kernel" "$work/in/kernel" && cmp -s "$work/check/dtb" "$work/in/dtb" || fail "kernel or DTB changed"
+cmp -s "$work/check/kernel" "$kernel" && cmp -s "$work/check/dtb" "$work/in/dtb" || fail "kernel or DTB changed"
 # Every archive in the ramdisk, in order, later entries replacing earlier ones.
 python3 - "$work/check/ramdisk" "$script" "$modem_store" <<'PY' || fail "the ramdisk lacks the OSTree boot pieces or the modem store seed"
 import gzip, sys
@@ -157,5 +168,6 @@ python3 "$avbtool" verify_image --image "$work/boot.img" >/dev/null
 [ "$(stat -c %s "$work/boot.img")" = "$partition_size" ] || fail "the image is not the boot partition's size"
 
 install -D -m 0644 "$work/boot.img" "$output"
-printf 'CMDLINE=%s\nBOOT_SHA256=%s\nALPHA_BOOT_SHA256=%s\nRAMDISK_OVERLAY_SHA256=%s\n' "$cmdline" \
-  "$(sha256sum "$output" | cut -d' ' -f1)" "$alpha_sha256" "$(sha256sum "$work/overlay.cpio.gz" | cut -d' ' -f1)"
+printf 'CMDLINE=%s\nBOOT_SHA256=%s\nALPHA_BOOT_SHA256=%s\nKERNEL_SHA256=%s\nRAMDISK_OVERLAY_SHA256=%s\n' "$cmdline" \
+  "$(sha256sum "$output" | cut -d' ' -f1)" "$alpha_sha256" "$(sha256sum "$kernel" | cut -d' ' -f1)" \
+  "$(sha256sum "$work/overlay.cpio.gz" | cut -d' ' -f1)"

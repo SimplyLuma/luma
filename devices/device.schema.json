@@ -28,7 +28,8 @@
         {"required": ["source_lock", "config"], "not": {"anyOf": [{"required": ["tag"]}, {"required": ["distribution"]}]}},
         {"required": ["distribution", "nevr"], "not": {"anyOf": [
           {"required": ["tag"]}, {"required": ["source_lock"]}, {"required": ["config"]},
-          {"required": ["branch"]}, {"required": ["rpm_version_release"]}, {"required": ["dtb_overlays"]}
+          {"required": ["branch"]}, {"required": ["rpm_version_release"]}, {"required": ["dtb_overlays"]},
+          {"required": ["config_fragments"]}
         ]}}
       ],
       "properties": {
@@ -40,6 +41,7 @@
         "release": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?[A-Za-z0-9._+-]*$"},
         "rpm_version_release": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?-[A-Za-z0-9._+-]+$"},
         "config": {"$ref": "#/$defs/relpath"},
+        "config_fragments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relpath"}, "description": "Kconfig fragments in this repository, merged over config in order."},
         "dtb": {"type": "string", "pattern": "^[a-z0-9_-]+/[A-Za-z0-9_.,+-]+\\.dtb$"},
         "dtb_overlays": {"$ref": "#/$defs/relpath"}
       }
