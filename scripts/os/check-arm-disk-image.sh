@@ -41,14 +41,17 @@ loop=$(losetup -b 4096 -r -fP --show "$work/disk.raw")
 for _ in 1 2 3 4 5; do [ -b "${loop}p2" ] && break; partx -u "$loop" 2>/dev/null || true; sleep 1; done
 
 layout() {
-  why=$(sfdisk --json "$loop" | python3 -c '
+  cat >"$work/layout.py" <<'EOF'
 import json, sys
 t = json.load(sys.stdin)["partitiontable"]; p = t["partitions"]
 ok = (t["label"] == "gpt" and t.get("sectorsize") == 4096 and len(p) == 2
       and p[0].get("name") == "LumaBoot" and p[0]["type"] == "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"
       and p[0]["start"] == 256 and p[0]["size"] == 480 * 256
       and p[1].get("name") == "LumaRoot" and p[1]["type"] == "0FC63DAF-8483-4772-8E79-3D69D8477DE4")
-print(" ".join(f"{x.get(\"name\")}:{x[\"start\"]}+{x[\"size\"]}" for x in p)); sys.exit(0 if ok else 1)')
+print(" ".join("%s:%d+%d" % (x.get("name"), x["start"], x["size"]) for x in p), "sector", t.get("sectorsize"))
+sys.exit(0 if ok else 1)
+EOF
+  why=$(sfdisk --json "$loop" | python3 "$work/layout.py")
 }
 boot() {
   [ "$(blkid -o value -s TYPE "${loop}p1")" = vfat ] && [ "$(blkid -o value -s UUID "${loop}p1")" = "$boot_id" ] || { why="not FAT $boot_id"; return 1; }
@@ -75,10 +78,11 @@ deployment() {
   why="$ref"
 }
 generic() {
-  local found
-  found=$(rpm --root "$deploy" --dbpath /usr/share/rpm -qa --qf '%{NAME}\n' 2>/dev/null |
-    grep -E '^(luma-(fp6|rpi5|rpi|pixel|titan|hibreak)-|kernel-luma-(rpi|fp6))' | paste -sd' ' || true)
-  why=${found:-"no device packages"}; [ -z "$found" ]
+  local names found
+  names=$(rpm --root "$deploy" --dbpath /usr/share/rpm -qa --qf '%{NAME}\n' 2>/dev/null || true)
+  [ "$(echo "$names" | grep -c .)" -ge 100 ] || { why="cannot read the deployment's package database"; return 1; }
+  found=$(echo "$names" | grep -E '^(luma-(fp6|rpi5|rpi|pixel|titan|hibreak)-|kernel-luma-(rpi|fp6))' | paste -sd' ' || true)
+  why=${found:-"no device packages in $(echo "$names" | grep -c .)"}; [ -z "$found" ]
 }
 labels() {
   local fc=$deploy/etc/selinux/targeted/contexts/files/file_contexts out
