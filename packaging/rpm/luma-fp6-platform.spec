@@ -65,7 +65,6 @@ ln -s ../luma-clock-save.timer %{buildroot}%{_unitdir}/timers.target.wants/luma-
 
 %check
 grep -Fxq 'LUMA_DEVICE_CLASS=handheld' %{buildroot}%{_prefix}/lib/environment.d/90-luma-handheld.conf
-%{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
 grep -Fxq 'automatic_download = false' %{buildroot}%{_sysconfdir}/luma/update.conf
 grep -Fxq 'ConditionFirmware=device-tree-compatible(fairphone,fp6)' %{buildroot}%{_unitdir}/luma-fp6-boot-success.service
 test ! -s %{buildroot}%{_unitdir}/boot.automount
@@ -93,6 +92,7 @@ dconf update || :
 %config(noreplace) %{_sysconfdir}/systemd/user/wireplumber.service.d/50-luma-fp6-camera.conf
 %config(noreplace) %{_sysconfdir}/wireplumber/wireplumber.conf.d/51-luma-fp6-audio.conf
 %{_prefix}/lib/environment.d/90-luma-handheld.conf
+%{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
 %{_prefix}/lib/systemd/system-preset/60-luma-fp6-platform.preset
 %{_prefix}/lib/systemd/system-sleep/90-luma-fp6-cellular
 %{_prefix}/lib/tmpfiles.d/luma-fp6-clock.conf
