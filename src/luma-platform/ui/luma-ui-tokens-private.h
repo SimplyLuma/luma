@@ -2294,6 +2294,33 @@
 #define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_HEIGHT 4
 #define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_GAP 12
 #define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_FADE_MS 300
+#define LUMA_UI_TV_TERMINAL__DOC "Terminal on a TV (luma_terminal/ui_tv.py; Design Center tv-luma/ Terminal board). The log is the screen: a session's live output in log_size monospace on the log panel, under the shared bar from log_top; the session rail (rail_height) is revealed above it, pushing it down by rail_height + rail_gap. Verb hues are the desktop's, lifted for a dark panel read at distance (ok, fail, warn, run), and the quiet ink is lighter than the desktop's, not darker: distance costs contrast. ansi is the 16-colour palette the log draws with (no dim blue). pick is the ember ring on the Compare pane Left/Right chose. Stop is held for hold_ms, never confirmed."
+#define LUMA_UI_TV_TERMINAL_LOG_SIZE 28
+#define LUMA_UI_TV_TERMINAL_LOG_TOP 150
+#define LUMA_UI_TV_TERMINAL_RAIL_HEIGHT 66
+#define LUMA_UI_TV_TERMINAL_RAIL_GAP 28
+#define LUMA_UI_TV_TERMINAL_BOTTOM 96
+#define LUMA_UI_TV_TERMINAL_EMPTY_TOP 380
+#define LUMA_UI_TV_TERMINAL_EMPTY_HEIGHT 220
+#define LUMA_UI_TV_TERMINAL_HINT_BOTTOM 40
+#define LUMA_UI_TV_TERMINAL_HINT_HEIGHT 36
+#define LUMA_UI_TV_TERMINAL_HOLD_MS 1100
+#define LUMA_UI_TV_TERMINAL_PANEL "#0e1013"
+#define LUMA_UI_TV_TERMINAL_LOG "#14171b"
+#define LUMA_UI_TV_TERMINAL_LOG_INK "#e8eaed"
+#define LUMA_UI_TV_TERMINAL_INK "#f2f4f6"
+#define LUMA_UI_TV_TERMINAL_QUIET "#9ba2aa"
+#define LUMA_UI_TV_TERMINAL_CHIP "#1c2026"
+#define LUMA_UI_TV_TERMINAL_SHEET "#1a1d22"
+#define LUMA_UI_TV_TERMINAL_TRACK "#2a2f36"
+#define LUMA_UI_TV_TERMINAL_SCRIM "rgba(0, 0, 0, 0.55)"
+#define LUMA_UI_TV_TERMINAL_OK "#49c68e"
+#define LUMA_UI_TV_TERMINAL_FAIL "#ff6f6b"
+#define LUMA_UI_TV_TERMINAL_WARN "#e3a53c"
+#define LUMA_UI_TV_TERMINAL_RUN "#64a4f2"
+#define LUMA_UI_TV_TERMINAL_PICK "#ff7a2e"
+#define LUMA_UI_TV_TERMINAL_ANSI { "#3a4049", "#ff6f6b", "#49c68e", "#e3a53c", "#64a4f2", "#c58af9", "#4dd0e1", "#d7dbe0", "#6b737e", "#ff8f8b", "#6fd9a6", "#f0bd62", "#8bbcf6", "#d6a9fb", "#7fe0ec", "#f2f4f6" }
+#define LUMA_UI_TV_TERMINAL_ANSI_LEN 16
 #define LUMA_UI_TV_SHEET_RADIUS 44
 #define LUMA_UI_TV_SHEET_PADDING 40
 #define LUMA_UI_TV_SHEET_GAP 22

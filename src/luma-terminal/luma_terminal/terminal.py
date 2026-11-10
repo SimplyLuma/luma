@@ -177,6 +177,17 @@ class TerminalWindow(AppWindow):
         self.connect("notify::css-classes", self._refresh_vte_palettes)
         self.connect("close-request", self._close_requested)
 
+        # On a TV the same app is read from across the room and driven by a
+        # remote: its TV presentation (ui_tv), and no desktop shell is started.
+        from luma_appkit.lumaui import tv_posture
+        self.tv = None
+        if self.fixture is None and tv_posture():
+            from .ui_tv import TerminalTV
+            self.tv = TerminalTV(self)
+            self.host = self.tv.stage
+            self.set_body(self.tv.stage)
+            return
+
         self.stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
         self.stage.set_name("tm-stage")
         self.host = ToastHost(self.stage)
@@ -230,6 +241,8 @@ class TerminalWindow(AppWindow):
                 Command("term.find", "Find", self.find, "search", shortcut=("Ctrl", "Shift", "F")),
                 Command("term.copy", "Copy", self.copy, "copy", shortcut=("Ctrl", "Shift", "C")),
                 Command("term.paste", "Paste", self.paste, "clipboard", shortcut=("Ctrl", "Shift", "V")),
+                # The TV never types: it runs what was saved here (tv_scripts).
+                Command("term.save-for-tv", "Save for TV", self.save_for_tv, "tv"),
             )),
             CommandGroup("", (
                 Command("term.zoom-in", "Zoom in", lambda: self.zoom(1), "zoom-in", shortcut=("Ctrl", "plus")),
@@ -1076,6 +1089,15 @@ class TerminalWindow(AppWindow):
                 Toast.show(self.host, "No matches", kind="warning")
         except GLib.Error as error:
             Toast.show(self.host, f"Search failed: {error.message}", kind="error")
+
+    def save_for_tv(self) -> None:
+        """Save the last command run here for Terminal on a TV, in this session's folder."""
+        if not self.history:
+            Toast.show(self.host, "Run a command first, then save it for the TV", kind="warning")
+            return
+        from .tv_scripts import save_script
+        script = save_script(self.history[-1], self.model.active.cwd)
+        Toast.show(self.host, f"Saved for the TV: {script['name']}", kind="done")
 
     def about(self) -> None:
         Adw.AboutDialog(application_name="Terminal", application_icon=APP_ID,

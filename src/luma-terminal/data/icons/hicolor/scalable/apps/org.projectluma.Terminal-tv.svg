@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+<!-- Terminal, wide: the TV tile of terminal-tv.svg on Luma's 16:9 TV plate (1600x900, rx 190, as the
+     Tide and Weather tiles). The plate fills the tile; the prompt (chevron and cursor, untouched) spans
+     about 30% of its width, as the other tiles' art does - not the 5:3 icon blown up to cover. -->
+<defs>
+  <linearGradient id="tv-pl" x1="0.14" y1="0" x2="0.86" y2="1">
+    <stop offset="0" stop-color="#4b4f59"/><stop offset="1" stop-color="#1c1e23"/></linearGradient>
+  <radialGradient id="tv-plh" cx="0.22" cy="0.1" r="0.85">
+    <stop offset="0" stop-color="#fff" stop-opacity="0.2"/>
+    <stop offset="0.55" stop-color="#fff" stop-opacity="0.05"/>
+    <stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <linearGradient id="tv-rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity="0.42"/>
+    <stop offset="0.12" stop-color="#fff" stop-opacity="0"/>
+    <stop offset="0.84" stop-color="#040507" stop-opacity="0"/>
+    <stop offset="1" stop-color="#040507" stop-opacity="0.35"/></linearGradient>
+  <linearGradient id="tv-white" x1="0.1" y1="0.05" x2="0.9" y2="0.95">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="0.62" stop-color="#f4f6fa"/>
+    <stop offset="1" stop-color="#e2e6ed"/></linearGradient>
+  <linearGradient id="tv-ember" x1="0.1" y1="0.05" x2="0.9" y2="0.95">
+    <stop offset="0" stop-color="#ffa262"/><stop offset="1" stop-color="#FE6819"/></linearGradient>
+  <clipPath id="tv-clip"><rect width="1600" height="900" rx="190"/></clipPath>
+  <filter id="tv-amb" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+    <feGaussianBlur stdDeviation="51"/></filter>
+  <filter id="tv-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+    <feGaussianBlur stdDeviation="35"/></filter>
+  <filter id="tv-sh" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+    <feGaussianBlur stdDeviation="26"/></filter>
+</defs>
+<g id="plate">
+  <rect width="1600" height="900" rx="190" fill="url(#tv-pl)"/>
+  <rect width="1600" height="900" rx="190" fill="url(#tv-plh)"/>
+</g>
+<g id="cursor-glow" clip-path="url(#tv-clip)">
+  <ellipse cx="916" cy="574" rx="174" ry="86" fill="#FE6819" opacity="0.28" filter="url(#tv-glow)"/>
+</g>
+<g id="prompt" transform="translate(800 450) scale(0.93) translate(-547 -506.5)">
+  <g id="chevron">
+    <g opacity="0.32" filter="url(#tv-sh)">
+      <path d="M288 376.8L438 522.8A43 43 0 0 0 498 461.2L348 315.2A43 43 0 0 0 288 376.8ZM438 461.2L288 607.2A43 43 0 0 0 348 668.8L498 522.8A43 43 0 0 0 438 461.2Z" transform="translate(0 30)" fill="#040507" stroke="#040507" stroke-width="2" stroke-linejoin="round"/>
+    </g>
+    <path d="M288 376.8L438 522.8A43 43 0 0 0 498 461.2L348 315.2A43 43 0 0 0 288 376.8ZM438 461.2L288 607.2A43 43 0 0 0 348 668.8L498 522.8A43 43 0 0 0 438 461.2Z" transform="translate(0 6)" fill="#b4bac5" stroke="#b4bac5" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M288 376.8L438 522.8A43 43 0 0 0 498 461.2L348 315.2A43 43 0 0 0 288 376.8ZM438 461.2L288 607.2A43 43 0 0 0 348 668.8L498 522.8A43 43 0 0 0 438 461.2Z" fill="url(#tv-white)" stroke="url(#tv-white)" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+  <!-- Grown from the square icon's 186×80 to 230×92, and moved onto the
+       chevron's baseline rather than floating under its point. -->
+  <g id="cursor">
+    <g opacity="0.32" filter="url(#tv-sh)">
+      <path d="M576 606H760A46 46 0 0 1 806 652V652A46 46 0 0 1 760 698H576A46 46 0 0 1 530 652V652A46 46 0 0 1 576 606Z" transform="translate(0 28)" fill="#040507" stroke="#040507" stroke-width="2" stroke-linejoin="round"/>
+    </g>
+    <path d="M576 606H760A46 46 0 0 1 806 652V652A46 46 0 0 1 760 698H576A46 46 0 0 1 530 652V652A46 46 0 0 1 576 606Z" transform="translate(0 6)" fill="#c85414" stroke="#c85414" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M576 606H760A46 46 0 0 1 806 652V652A46 46 0 0 1 760 698H576A46 46 0 0 1 530 652V652A46 46 0 0 1 576 606Z" fill="url(#tv-ember)" stroke="url(#tv-ember)" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+</g>
+
+<g id="rim" clip-path="url(#tv-clip)">
+  <rect width="1600" height="900" rx="190" fill="none" stroke="url(#tv-rim)" stroke-width="12"/>
+</g>
+</svg>
