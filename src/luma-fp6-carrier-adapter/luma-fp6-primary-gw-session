@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Restore the volatile primary GSM/UMTS provisioning session for the enabled
+# FP6 SIM or eUICC profile before ModemManager starts. Subscriber identifiers remain
+# inside this root-only process and are never printed or persisted.
+
+set -Eeuo pipefail
+umask 077
+
+qmi_device=qrtr://0
+modem_state=/run/luma/fp6-modem-state.json
+
+event() { printf 'event=luma_fp6_primary_gw_session %s\n' "$*"; }
+fail() { event "state=failed reason=$1 identifiers_logged=0" >&2; exit 1; }
+
+# Every modem request is bounded: a modem without its EFS can leave a call
+# unanswered, and this unit runs before ModemManager and Settings.
+qmicli() { timeout --kill-after=5 20 /usr/bin/qmicli "$@"; }
+
+[[ $(id -u) -eq 0 ]] || fail not_root
+[[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == 'The Fairphone (Gen. 6)' ]] || \
+  fail model
+# luma-fp6-modem-store found blank modemst: no IMEI and no SIM until Android
+# has run once. Settings explains that; do not hold up ModemManager.
+if grep -q '"state": *"efs-missing"' "$modem_state" 2>/dev/null; then
+  event 'state=skipped reason=efs_missing identifiers_logged=0'
+  exit 0
+fi
+
+deadline=$((SECONDS + 90))
+until qmicli -d "$qmi_device" --device-open-qmi --dms-get-operating-mode >/dev/null 2>&1; do
+  (( SECONDS < deadline )) || fail modem_timeout
+  sleep 1
+done
+mode=$(qmicli -d "$qmi_device" --device-open-qmi --dms-get-operating-mode) || \
+  fail modem_timeout
+if ! grep -q "Mode: 'online'" <<<"$mode"; then
+  qmicli -d "$qmi_device" --device-open-qmi --dms-set-operating-mode=online \
+    >/dev/null || fail modem_online
+fi
+unset mode
+
+# DMS becomes reachable before the eUICC finishes ATR/application discovery.
+# Wait for either the already-active session or a usable USIM instead of
+# treating that normal boot window as a missing profile.
+status=
+deadline=$((SECONDS + 90))
+while (( SECONDS < deadline )); do
+  status=$(qmicli -d "$qmi_device" --device-open-qmi --uim-get-card-status \
+    2>/dev/null || true)
+  if grep -Eq "Primary GW:[[:space:]]+slot '[12]', application '[0-9]+'" <<<"$status" ||
+     grep -q "Application type:.*usim" <<<"$status"; then
+    break
+  fi
+  sleep 1
+done
+[[ -n $status ]] || fail card_status
+
+if grep -Eq "Primary GW:[[:space:]]+slot '[12]', application '[0-9]+'" <<<"$status"; then
+  unset status
+  event 'state=already-active identifiers_logged=0'
+  exit 0
+fi
+
+selection=$(awk '
+  /^[[:space:]]*Slot \[[12]\]:/ {
+    slot=$0; sub(/^.*\[/, "", slot); sub(/\].*$/, "", slot)
+    wanted=0; awaiting=0; next
+  }
+  /^[[:space:]]*Slot \[/ { slot=0; wanted=0; awaiting=0; next }
+  /Application \[[0-9]+\]:/ { wanted=0; awaiting=0; next }
+  /Application type:/ { wanted=($0 ~ /usim/ && $0 !~ /isim/); next }
+  wanted && /Application ID:/ { awaiting=1; next }
+  awaiting {
+    awaiting=0
+    candidate=$0; gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)
+    if (candidate !~ /^[0-9A-Fa-f][0-9A-Fa-f](:[0-9A-Fa-f][0-9A-Fa-f])+$/) next
+    gsub(/:/, "", candidate)
+    if (slot >= 1 && slot <= 2 && length(candidate) >= 16 && length(candidate) <= 64) {
+      count++; selected_slot=slot; selected_aid=candidate
+    }
+  }
+  END { if (count != 1) exit 1; print selected_slot, selected_aid }
+' <<<"$status") || fail usim_missing_or_ambiguous
+read -r slot aid <<<"$selection"
+unset selection
+case "$slot" in 1|2) ;; *) fail usim_slot ;; esac
+unset status
+[[ ${#aid} -ge 16 && ${#aid} -le 64 ]] || fail usim_identity
+
+qmicli -d "$qmi_device" --device-open-qmi \
+  --uim-change-provisioning-session="session-type=primary-gw-provisioning,activate=yes,slot=$slot,aid=$aid" \
+  >/dev/null || fail activation
+unset aid
+
+verify=$(qmicli -d "$qmi_device" --device-open-qmi --uim-get-card-status) || \
+  fail verification
+grep -Eq "Primary GW:[[:space:]]+slot '$slot', application '[0-9]+'" <<<"$verify" || \
+  fail inactive_after_activation
+unset verify
+
+event 'state=active identifiers_logged=0'
