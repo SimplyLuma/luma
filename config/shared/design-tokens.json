@@ -583,7 +583,7 @@
       "search_gap": 40,
       "field_width": 900,
       "field_height": 88,
-      "field_radius": 28,
+      "field_radius": 28, "field_ring": 4,
       "field_padding_x": 32,
       "field_size": 32,
       "field_icon": 34,
@@ -880,11 +880,11 @@
       "home_hold_ms": 500
     },
     "app_switcher": {
-      "_doc": "The app switcher (tvAppSwitcher.js): the TV posture of the shell's running apps (Shell.AppSystem, newest first as Alt+Tab orders them), opened by pressing Home twice within double_ms. Cards of card_width (16:9) in one row from the side safe line, each its window's latest picture (a clone, corners card_radius) or the app's TV tile, the app's icon and name above; over the scrim, the shared bar staying. The row scrolls only as far as the focused card needs, plus peek. Up or a held OK (focus.hold_ms) drops the item menu (tv.menu) above the card: Close asks the app to quit, as the desktop's Quit; a card still running after force_after_ms offers Force Close. A running app's TV home tile carries a running_dot before its name. Design Center mockups/luma-tv-app-switcher.html.",
+      "_doc": "The app switcher (tvAppSwitcher.js): the TV posture of the shell's running apps (Shell.AppSystem, newest first as Alt+Tab orders them), opened by pressing Home twice within double_ms. Cards of card_width (16:9) in one row from the side safe line, each its window's latest picture (a clone, corners card_radius) or the app's TV tile, the app's icon and name above; over the scrim, the shared bar staying. The row scrolls only as far as the focused card needs, plus peek. Up or a held OK (focus.hold_ms) drops the item menu (tv.menu) above the card: Close asks the app to quit, as the desktop's Quit; a card still running after force_after_ms offers Force Close. A running app's TV home tile carries its running light: a short soft line of running_light_width under its centred name (running_light_gap below it), fading in over running_light_fade_ms; on the focused tile it widens to running_light_focus_width and brightens to ink. Its room is always kept, so names never move as apps start and quit. An app counts as running only while it has a window: a prepared app or a background service is not open. Design Center mockups/luma-tv-app-switcher.html.",
       "double_ms": 350, "row_top": 318, "card_width": 540, "card_gap": 48, "card_radius": 20, "peek": 72,
       "caption_height": 44, "caption_icon": 44, "caption_gap": 14, "caption_below": 18, "caption_size": 26, "caption_weight": 650,
       "state_size": 20, "state_weight": 600, "menu_gap": 18, "closing_opacity": 0.45, "force_after_ms": 3000,
-      "empty_size": 30, "empty_weight": 700, "running_dot": 8, "running_gap": 10
+      "empty_size": 30, "empty_weight": 700, "running_light_width": 24, "running_light_focus_width": 44, "running_light_height": 4, "running_light_gap": 12, "running_light_fade_ms": 300
     },
     "sheet": {
       "radius": 44,

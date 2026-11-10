@@ -175,3 +175,35 @@ export function remoteAction(name) {
         return null;
     }
 }
+
+// The colour at an icon's edge, for an app with no wide TV tile: its icon
+// fills the tile's height on this colour, so the tile reads as one banner.
+// Walking in from both ends of every row and column to the first opaque pixel
+// (alpha >= 200), it averages the two pixels just inside the outline. Returns
+// [r, g, b], or null when the icon has no opaque edge (an empty image).
+export function edgeColour(pixels, width, height, channels, stride, hasAlpha) {
+    const opaque = (x, y) => !hasAlpha || pixels[y * stride + x * channels + 3] >= 200;
+    let r = 0, g = 0, b = 0, count = 0;
+    const scan = (length, across, at) => {
+        for (let line = 0; line < across; line++) {
+            for (const forward of [true, false]) {
+                for (let step = 0; step < length; step++) {
+                    const pos = forward ? step : length - 1 - step;
+                    if (!opaque(...at(pos, line))) continue;
+                    for (const inward of [1, 2]) {
+                        const inner = forward ? pos + inward : pos - inward;
+                        if (inner < 0 || inner >= length) continue;
+                        const [x, y] = at(inner, line);
+                        if (!opaque(x, y)) continue;
+                        const i = y * stride + x * channels;
+                        r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; count++;
+                    }
+                    break;
+                }
+            }
+        }
+    };
+    scan(width, height, (pos, line) => [pos, line]);
+    scan(height, width, (pos, line) => [line, pos]);
+    return count ? [Math.round(r / count), Math.round(g / count), Math.round(b / count)] : null;
+}

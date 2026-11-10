@@ -2,7 +2,7 @@
 // The TV home's pure rules: opt-in, search, the tile grid, spatial focus, keys.
 import assert from 'node:assert/strict';
 import {tv} from '../../src/luma-shell-presentation/tvTokens.js';
-import {nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit, weatherGlyph, greetingPart}
+import {edgeColour, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit, weatherGlyph, greetingPart}
     from '../../src/luma-shell-presentation/tvModel.js';
 
 // One unit is a pixel of 1920x1080, whatever the screen.
@@ -75,3 +75,18 @@ assert.equal(greetingPart(20), 'evening');
 assert.ok(['up', 'down', 'left', 'right'].every(repeatAllowed));
 assert.ok(!repeatAllowed('ok') && !repeatAllowed('back') && !repeatAllowed('menu'));
 console.log('tv-model: ok');
+
+// An app with no wide tile: its icon's edge colour fills the tile. A 6x6 RGBA
+// icon: transparent margin, a red ring two pixels deep, a white centre.
+{
+    const size = 6, px = new Uint8Array(size * size * 4);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4, ring = Math.min(x, y, size - 1 - x, size - 1 - y);
+        if (ring === 0) continue;                       // transparent margin
+        const [r, g, b] = ring <= 2 ? [200, 20, 20] : [255, 255, 255];
+        px.set([r, g, b, 255], i);
+    }
+    assert.deepEqual(edgeColour(px, size, size, 4, size * 4, true), [200, 20, 20]);
+    assert.equal(edgeColour(new Uint8Array(16), 2, 2, 4, 8, true), null);   // no opaque edge
+    assert.deepEqual(edgeColour(new Uint8Array([9, 8, 7, 9, 8, 7, 9, 8, 7]), 3, 1, 3, 9, false), [9, 8, 7]);
+}
