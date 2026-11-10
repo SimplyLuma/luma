@@ -20,7 +20,7 @@ manifest=$repo_root/devices/fairphone/fp6/firmware.manifest
 extra_manifest=$repo_root/packaging/rpm/luma-fp6-firmware-extra.manifest
 expected=$(sed -n 's/^manifest_sha256 = "\(.*\)"/\1/p' "$repo_root/devices/fairphone/fp6/device.toml")
 echo "$expected  $manifest" | sha256sum -c --quiet - || { echo "error: firmware.manifest does not match device.toml" >&2; exit 1; }
-[ "$(tar -tf "$extra_tar" | grep -vc '/$')" = 4 ] || { echo "error: the extra tar is not the 4-file set" >&2; exit 1; }
+[ "$(tar -tf "$extra_tar" | grep -vc '/$')" = 5 ] || { echo "error: the extra tar is not the 5-file set" >&2; exit 1; }
 [ "$(tar -tf "$tar_file" | grep -vc '/$')" = 281 ] || { echo "error: the tar is not the 267-file set (+14 links)" >&2; exit 1; }
 
 export LUMA_RPM_BUILDER_ARCHITECTURE=${LUMA_TARGET_ARCHITECTURE:-$(uname -m)}

@@ -1,0 +1,22 @@
+[Unit]
+Description=Project Luma FP6 carrier settings from the active SIM
+After=luma-fp6-primary-gw-session.service rmtfs.service tqftpserv.service
+Before=ModemManager.service luma-fp6-cellular-link.service luma-fp6-imsd.service
+ConditionPathExists=/sys/firmware/devicetree/base/model
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-fp6-carrier-select
+RemainAfterExit=yes
+TimeoutStartSec=300
+RuntimeDirectory=luma
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_QIPCRTR

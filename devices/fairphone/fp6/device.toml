@@ -58,11 +58,13 @@ files = 267
 #    it the card does not instantiate.
 #  - qcom/milos/fairphone/fp6/aw88261_acf.bin: AW88261 speaker amplifier profile,
 #    from the same package.
-#  - luma/fp6-carrier-pdc/{dsds-la-milos,att-volte-qrel1695}.mbn: the DSDS
-#    platform and AT&T VoLTE modem configurations from the Fairphone 6 QREL1695
-#    modem partition (modem_pr/mcfg/configs/mcfg_hw/generic/common/Milos/
-#    STANDALONE/LA/DSDS/mcfg_hw.mbn, mcfg_sw/generic/NA/ATT/VoLTE/mcfg_sw.mbn),
-#    which luma-fp6-carrier-pdc loads.
+#  - luma/fp6-carrier-pdc/{dsds-la-milos,att-volte-qrel1695,
+#    tmo-commercial-qrel1695}.mbn: the DSDS platform, AT&T VoLTE and T-Mobile
+#    commercial modem configurations from the Fairphone 6 QREL1695 modem
+#    partition (modem_pr/mcfg/configs/mcfg_hw/generic/common/Milos/STANDALONE/
+#    LA/DSDS/mcfg_hw.mbn, mcfg_sw/generic/NA/ATT/VoLTE/mcfg_sw.mbn,
+#    mcfg_sw/generic/NA/TMO/Commercial/mcfg_sw.mbn), which
+#    luma-fp6-carrier-pdc loads.
 # luma-fp6-firmware from the device repository, in the deployment's
 # /usr/lib/firmware. Alpha 1 kept it in shared /var/lib/luma/device-firmware;
 # the initramfs still verifies and uses that store when it exists.
