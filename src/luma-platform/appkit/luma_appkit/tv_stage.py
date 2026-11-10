@@ -105,6 +105,15 @@ def _sheet(opaque: bool) -> str:
 .tv-tab.tv-key {{ color: {m('key_ink')}; }}
 .tv-clock {{ font-size: {bar['clock_size']}tv; font-weight: {bar['clock_weight']}; color: {m('ink')};
   font-feature-settings: "tnum"; }}
+.tv-cluster {{ border-spacing: {bar['now_gap']}tv; }}
+.tv-weather {{ border-spacing: {bar['now_icon_gap']}tv; }}
+.tv-weather image {{ -gtk-icon-size: {bar['tab_icon'] + 2}tv; color: {m('ink')}; }}
+.tv-weather image.tv-weather-sun {{ color: {m('sun')}; }}
+.tv-weather image.tv-weather-moon {{ color: {m('moon')}; }}
+.tv-divider {{ min-width: {bar['divider_width']}tv; min-height: {bar['divider_height']}tv;
+  background-color: {m('divider')}; border-radius: {bar['divider_width']}tv; }}
+.tv-cluster.tv-focus .tv-weather image {{ color: {m('key_ink')}; }}
+.tv-cluster.tv-focus .tv-divider {{ background-color: {m('key_ink')}; opacity: 0.35; }}
 /* the bar's cluster (the clock): a key with the TV home's padding when focused; the clock stays put */
 .tv-cluster {{ min-height: {qp['cluster_height']}tv; padding: 0 {qp['cluster_padding_x']}tv;
   margin-right: -{qp['cluster_padding_x']}tv; border-radius: {qp['cluster_radius']}tv; }}

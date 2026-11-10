@@ -43,6 +43,10 @@ posture for tests, reviews and capture harnesses. Without the shell-state
 service or schema (another distribution, a sandbox without the bus name) the
 posture is never TV.
 
+A TV is watched, not touched: while the posture is TV the session's idle
+default is never (`presentation_idle_default("tv")` is 0), so the screen does
+not dim or blank on its own. A delay the person chose is kept.
+
 ## What every window gets in TV posture
 
 - The shell runs the window full screen. LumaUI drops the title row and window
@@ -149,7 +153,10 @@ TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
   Left/Right and Backspace, so a real keyboard and the system's TV keyboard
   type straight in. Back nothing takes falls through to the window (the TV
   home at the app's top level).
-- **TvTopBar / TvTab**: the track of tabs and the clock; the open tab is the
+- **TvTopBar / TvTab**: the track of tabs and the clock, with Home's weather
+  before it (weather | time, as on the TV home), read from the shell-state
+  `Weather` property (`a{ss}`: value, description, title, unit) and hidden
+  without a reading; the open tab is the
   key unless another tab holds the focus.
 - **TvButton**: 66 tall, chip at rest, key with the focus; `danger=True`.
 - **TvField**: a recessed field around a real `Gtk.Text`; `action=` labels the
@@ -202,7 +209,9 @@ shelf = TvSlide(row, orientation=Gtk.Orientation.HORIZONTAL, clip=False)
   stays smooth. A shade keeps the bar and text legible.
 - **TvSlide**: a row or page that slides to keep the focus in view (call
   `reveal(widget)` from `TvFocus`'s change callback), only as far as needed,
-  with `peek` of the next item; no scrollbars.
+  with `peek` of the next item; no scrollbars. A clipping slide clips itself
+  `SLIDE_BLEED` (56) beyond its edges, so a focused cover's lift and shadow
+  are never cut at the top of a page or the ends of a shelf.
 - `.tv-playing` colours the playing song (its title, number, equaliser).
 
 Values come from the `tv` block of `config/shared/design-tokens.json`

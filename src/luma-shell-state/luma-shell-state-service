@@ -50,6 +50,7 @@ INTROSPECTION_XML = """
     <property name="Presentation" type="s" access="read"/>
     <property name="Posture" type="s" access="read"/>
     <property name="InputCapabilities" type="a{sb}" access="read"/>
+    <property name="Weather" type="a{ss}" access="read"/>
     <method name="GetSnapshot">
       <arg name="snapshot" type="s" direction="out"/>
     </method>
@@ -129,10 +130,47 @@ class ShellStateService:
         )
         for settings, group in watched:
             settings.connect("changed", self._on_settings_changed, group)
+        self._weather_model = None
+        self._weather = {}
+        self._watch_weather()
         self._sync_gtk3_theme()
         self._project_favorites_to_phosh()
         self._sync_idle_default()
         self._sync_button_layout()
+
+    # Home's weather (the shell's widget model: the Weather app's saved city and
+    # cache), for TV apps' bars: the same reading Home's bar shows beside the time.
+    def _watch_weather(self) -> None:
+        try:
+            import gi
+            gi.require_version("LumaWidgets", "1.0")
+            from gi.repository import LumaWidgets
+            self._weather_model = LumaWidgets.Model.new("org.gnome.Shell.CalendarServer")
+        except (ImportError, ValueError, GLib.Error) as error:
+            print(f"luma-shell-state: no weather for TV apps: {error}", file=sys.stderr)
+            return
+        self._weather_model.connect("changed", lambda *_a: self._on_weather_changed())
+        self._weather = self._read_weather()
+
+    def _read_weather(self) -> dict[str, str]:
+        try:
+            data = json.loads(self._weather_model.dup_snapshot()).get("weather") or {}
+        except (ValueError, GLib.Error):
+            return {}
+        value = data.get("value") or ""
+        if not value or value == "\u2014":
+            return {}
+        return {key: str(data.get(key) or "") for key in ("value", "description", "title", "unit")}
+
+    def _on_weather_changed(self) -> None:
+        weather = self._read_weather()
+        if weather == self._weather:
+            return
+        self._weather = weather
+        if self._connection is not None:
+            self._connection.emit_signal(None, OBJECT_PATH,
+                "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                GLib.Variant("(sa{sv}as)", (INTERFACE, {"Weather": GLib.Variant("a{ss}", weather)}, [])))
 
     def _presentation(self):
         return presentation_state(self._luma.get_string("presentation-mode"), profile=self._profile,
@@ -171,7 +209,8 @@ class ShellStateService:
     def _sync_idle_default(self) -> None:
         if not self._luma.props.settings_schema.has_key("presentation-idle-default"):
             return
-        mode = self._presentation()["effective"]
+        # TV posture sits above the presentation and never idles.
+        mode = self._posture()["effective"]
         current = self._session.get_user_value("idle-delay")
         value = presentation_idle_default(mode, current.get_uint32() if current is not None else None,
             self._luma.get_int("presentation-idle-default"))
@@ -336,13 +375,14 @@ class ShellStateService:
             "Posture": GLib.Variant("s", self._posture(state)["effective"]),
             "InputCapabilities": GLib.Variant("a{sb}", {
                 key: value for key, value in state["capabilities"].items() if value is not None}),
+            "Weather": GLib.Variant("a{ss}", self._weather),
         }
 
     def _on_get_property(self, _connection, _sender, _path, _interface, name):
         return self._context_properties().get(name)
 
     def _on_settings_changed(self, _settings: Gio.Settings, key: str, group: str) -> None:
-        if (group == "luma" and key == "presentation-mode") or group == "presentation":
+        if (group == "luma" and key in {"presentation-mode", "posture"}) or group == "presentation":
             self._sync_idle_default()
             self._sync_button_layout()
         if group == "wm" and key == "button-layout":
