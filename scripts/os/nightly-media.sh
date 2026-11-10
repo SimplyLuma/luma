@@ -323,7 +323,7 @@ step verify_update
 previous=$(find "$media_root/$channel" -mindepth 2 -maxdepth 2 -regextype posix-extended \
   -regex ".*/[0-9]{8}\.[0-9]+/luma-$channel-[0-9]{8}\.[0-9]+\.iso" ! -path "*/$build_id/*" -printf '%h\n' |
   while read -r d; do
-    python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("result") == "pass" else 1)' "$d/result.json" 2>/dev/null && basename "$d"
+    python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("result") == "pass" else 1)' "$d/result.json" 2>/dev/null && basename "$d" || true
   done | sort -t. -k1,1n -k2,2n | tail -n 1)
 if [ -n "$candidate" ]; then
   # Before publication there is nothing on the origin to update to; the gate's
