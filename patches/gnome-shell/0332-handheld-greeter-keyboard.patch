@@ -1,0 +1,74 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: fit the handheld greeter
+
+On a handheld's greeter the keyboard's bottom row was below the screen and
+the password field was behind the keyboard.
+
+The greeter builds no presentation, so the keyboard had no bottom inset
+there. Without one it now takes Keycap's standalone inset: the thumb gap on
+a handheld's phone-width screen, nothing elsewhere.
+
+A key's minimum height came from its label. The square root on the second
+symbols layer falls back to a font with tall line metrics, which raised
+every row of every layer (they share one bin) above the height the Keycap
+rule sets, by 24 px on a 372 px wide screen. Keys report no minimum height;
+rows take the height the rule gives them.
+
+The login dialog lays its content out in the height the keyboard leaves,
+as the unlock dialog does.
+
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -731,6 +731,7 @@
+         // focus later
+         Main.layoutManager.connectObject('startup-complete',
+             this._updateDisableUserList.bind(this), this);
++        Main.keyboard.connectObject('visibility-changed', () => this.queue_relayout(), this);
+     }
+ 
+     _getBannerAllocation(dialogBox) {
+@@ -839,7 +840,13 @@
+         this._prairieBackgrounds.allocate(backgroundAllocation);
+ 
+         const width = dialogBox.x2 - dialogBox.x1;
+-        const height = dialogBox.y2 - dialogBox.y1;
++        const fullHeight = dialogBox.y2 - dialogBox.y1;
++        // The prompt stays above an open on-screen keyboard, as on the lock
++        // screen: the content is laid out in the height the keyboard leaves.
++        const keyboard = Main.keyboard?.visible &&
++            Main.layoutManager.keyboardIndex === Main.layoutManager.primaryIndex
++            ? Main.layoutManager.keyboardBox.height : 0;
++        const height = Math.max(fullHeight / 2, fullHeight - keyboard);
+         const scale = St.ThemeContext.get_for_stage(global.stage).scaleFactor;
+         if (PrairieLogin.compactLogin(width, scale)) {
+             Main.panel.hide();
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -366,6 +366,14 @@
+         this._extendedKeyboard = null;
+         this._alternatives = [];
+         this._hasAction = hasAction;
++    }
++
++    // Rows take the height the Keycap rule gives them. A label whose glyph
++    // comes from a fallback font with tall line metrics (the square root on
++    // the symbols layer) must not raise every row of the keyboard above it.
++    vfunc_get_preferred_height(forWidth) {
++        const [, nat] = super.vfunc_get_preferred_height(forWidth);
++        return [0, nat];
+     }
+ 
+     get iconName() {
+@@ -3605,7 +3613,11 @@
+             this._tvRelayout(monitor, rows || 5);
+             return;
+         }
+-        const inset = Main.presentation?.keyboardInset?.() ?? 0;
++        // The greeter has no presentation; a handheld keeps the thumb gap there.
++        const inset = Main.presentation
++            ? Main.presentation.keyboardInset?.() ?? 0
++            : Keycap.standaloneInset({width: monitor.width / scale, height: monitor.height / scale},
++                GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld');
+         const height = Keycap.keyboardHeight({width: monitor.width / scale, height: monitor.height / scale},
+             rows || 4, columns || 10, inset) * scale;
+         // Writes only what changed: a new style or size re-renders the

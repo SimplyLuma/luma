@@ -578,3 +578,13 @@ closes the menu. The calendar server adds each
 event's location and its calendar's colour to the extras dictionary.
 `optionsSurface.css` styles the panel: today filled, the chosen day a ring,
 hover a tint. Test: `date-menu-panel-policy.js` in %check. Shell .165.
+
+`0332-handheld-greeter-keyboard.patch`: the on-screen keyboard fits a
+handheld's greeter. The greeter builds no presentation, so the keyboard takes
+Keycap's `standaloneInset` there (the thumb gap on a phone-width handheld
+screen). Keys report no minimum height, so one label's fallback font (the
+square root on the second symbols layer) no longer raises every row above the
+Keycap rule and pushes the bottom row off a narrow screen. The login dialog
+lays its content out in the height the keyboard leaves, as the unlock dialog
+does. Test: `keycap-policy.js` (now also given `js/gdm/loginDialog.js`) in
+%check. Shell .168.

@@ -379,6 +379,12 @@ export function bottomInset(monitor, phone, gesture = 0) {
     return Math.max(gesture, keycap.geometry.thumb_gap);
 }
 
+// The same inset where no presentation runs (the greeter): a handheld whose
+// screen (logical size) is phone width keeps the thumb gap, nothing else does.
+export function standaloneInset(monitor, handheld) {
+    return bottomInset(monitor, handheld && monitor.width < keycap.geometry.compact_width);
+}
+
 // Horizontal drag on space moves the caret one character per step once the
 // drag is clearly sideways; returns the caret steps not yet sent.
 export function spaceCursorSteps(dx, dy, sent) {
