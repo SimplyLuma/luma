@@ -65,6 +65,14 @@ files = 267
 #    LA/DSDS/mcfg_hw.mbn, mcfg_sw/generic/NA/ATT/VoLTE/mcfg_sw.mbn,
 #    mcfg_sw/generic/NA/TMO/Commercial/mcfg_sw.mbn), which
 #    luma-fp6-carrier-pdc loads.
+#  - ath11k/WCN6750/hw1.0/board-2.bin: linux-firmware's WCN6750 board file
+#    (the board-2.bin.zst of the set above) with one entry appended by
+#    scripts/packages/ath11k-board-add.py:
+#    bus=ahb,qmi-chip-id=1,qmi-board-id=255,variant=Fairphone_Gen_6, holding
+#    image/qca6750/bdwlan.elf of the same modem partition (sha256 def4230e...
+#    936ff1). The kernel asks for that variant; without the entry ath11k falls
+#    back to the generic board data and cannot transmit on 5 GHz or 6 GHz.
+#    The loader prefers the uncompressed file over board-2.bin.zst.
 # luma-fp6-firmware from the device repository, in the deployment's
 # /usr/lib/firmware. Alpha 1 kept it in shared /var/lib/luma/device-firmware;
 # the initramfs still verifies and uses that store when it exists.
