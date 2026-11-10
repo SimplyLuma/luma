@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .apk import inspect_android_package, stage_android_package, staged_package_root
 from .config import device_class, load_runtime_config
-from .engine import WaydroidEngine
+from .engine import WaydroidEngine, fp6_gate_closed
 from .errors import LumaAndroidError
 from .kernel import (
     ANDROID_RUNTIME_PAGE_SIZE, fp6_kernel_admission,
@@ -83,6 +83,7 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
     commands.add_parser("status")
     commands.add_parser("doctor")
+    commands.add_parser("gate")
     inspect = commands.add_parser("inspect-apk")
     inspect.add_argument("apk", type=Path)
     install = commands.add_parser("install")
@@ -103,6 +104,14 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
+    if arguments.command == "gate":
+        # ExecCondition= of the session units: 69 skips them, unfailed. It
+        # reads no configuration, so only the gate itself can skip Android.
+        reason = fp6_gate_closed()
+        if reason:
+            print(f"Android stays off on this hardware: {reason}", file=sys.stderr)
+            return 69
+        return 0
     config = load_runtime_config()
     engine = WaydroidEngine(config.engine)
     try:

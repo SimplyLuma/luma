@@ -2,6 +2,8 @@
 Description=Restart Android after its graphics services restart
 Documentation=https://project-luma.local/android
 PartOf=waydroid-container.service
+# Wants= alone starts this even when the container is refused or skipped.
+BindsTo=waydroid-container.service
 After=waydroid-container.service
 
 [Service]

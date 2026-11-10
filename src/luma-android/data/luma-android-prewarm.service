@@ -11,6 +11,8 @@ ConditionPathExists=/var/lib/waydroid/waydroid.cfg
 
 [Service]
 Type=oneshot
+# Hardware that may not run Android skips the session instead of failing it.
+ExecCondition=/usr/bin/luma-android gate
 # The same readiness pass as a cold launch: boot Android, apply the session
 # policy and stamp it, so the first app launch is a warm one.
 ExecStart=/usr/bin/luma-android resume

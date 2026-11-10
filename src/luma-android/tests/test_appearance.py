@@ -95,3 +95,16 @@ class AppearanceTests(unittest.TestCase):
         service.sync_appearance_changes()
         service.engine.sync_host_appearance.assert_not_called()
         service.engine.ensure_ready.assert_not_called()
+
+    @unittest.skipIf(Service is None, "packaged runtime provides PyGObject")
+    def test_closed_hardware_gate_is_never_asked_for_status(self):
+        # The status query activates the container service over D-Bus.
+        service = Service.__new__(Service)
+        service.engine = mock.Mock()
+        service.engine.status.return_value = {"session": "RUNNING"}
+        with mock.patch("luma_android.service.fp6_gate_closed",
+                        return_value="kernel-not-admitted"):
+            self.assertFalse(service.session_running())
+        service.engine.status.assert_not_called()
+        with mock.patch("luma_android.service.fp6_gate_closed", return_value=""):
+            self.assertTrue(service.session_running())
