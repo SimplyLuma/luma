@@ -126,6 +126,18 @@ def fragments_at(repo, rev):
     return {line for line in out.splitlines() if line.endswith(".md") and "/" not in line[len("changes/"):]}
 
 
+def spec_subpackages(repo, rev, name):
+    """Binary packages packaging/rpm/NAME.spec declares with %package at REV."""
+    try:
+        spec = git(repo, "show", f"{rev}:packaging/rpm/{name}.spec")
+    except subprocess.CalledProcessError:
+        return set()
+    subs = set()
+    for match in re.finditer(r"^%package\s+(-n\s+)?(\S+)\s*$", spec, re.M):
+        subs.add(match[2] if match[1] else f"{name}-{match[2]}")
+    return subs
+
+
 def manifest_pins(path):
     pins = {}
     for line in Path(path).read_text(encoding="utf-8").splitlines():
@@ -200,6 +212,12 @@ def cmd_build(args):
                 name, vr, reason = (line.split(None, 2) + [""])[:3]
                 exceptions[(name, vr)] = reason
     covered = {p for f in fragments for p in f["packages"]}
+    # A subpackage built from a named package's spec in the same build (luma-os-remote
+    # from luma-update) is covered by that package's fragment.
+    for parent in sorted(covered):
+        for sub in spec_subpackages(repo, args.to_rev, parent):
+            if current.get(sub) is not None and current.get(sub) == current.get(parent):
+                covered.add(sub)
     uncovered = []
     for name in changed:
         if name in covered or (name, current.get(name) or "removed") in exceptions:
