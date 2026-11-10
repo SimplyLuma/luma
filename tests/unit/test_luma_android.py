@@ -1057,6 +1057,58 @@ class EngineTests(unittest.TestCase):
         )
         policy.assert_not_called()
 
+    def test_tv_windows_take_the_handheld_policy_with_no_bar_insets(self) -> None:
+        # On a TV each Android app fills its own window as on a phone: no
+        # freeform title bar, resizable, no host frame; the shell's TV posture
+        # takes the window full screen and draws no bars, so none are reserved.
+        engine = WaydroidEngine("waydroid")
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            os.environ, {"LUMA_DEVICE_CLASS": "desktop", "XDG_STATE_HOME": directory},
+        ), mock.patch.object(
+            engine, "status", return_value={"session": "RUNNING", "wayland_display": "wayland-0"},
+        ), mock.patch.object(engine, "wait_for_boot_completion"), mock.patch.object(
+            engine, "wait_for_application_service"
+        ), mock.patch.object(engine, "_run") as run, mock.patch.object(
+            engine, "_run_as_android_package_manager"
+        ), mock.patch("luma_android.engine.current_presentation", return_value="tv"), mock.patch(
+            "luma_android.engine._ready_stamp", return_value=None
+        ), mock.patch("luma_android.engine._write_ready_stamp"), mock.patch.object(
+            engine, "sync_host_bar_insets"
+        ) as insets, mock.patch.object(engine, "sync_presentation_density"), mock.patch.object(
+            engine, "sync_host_appearance"
+        ):
+            engine.ensure_ready(multi_window=True, detached=True)
+        run.assert_any_call("prop", "set", "persist.luma.device_class", "handheld", timeout=30)
+        run.assert_any_call("prop", "set", "persist.luma.host_window_chrome", "false", timeout=30)
+        insets.assert_called_once_with("desktop")
+
+    def test_only_apps_the_person_installed_reach_the_tv_home(self) -> None:
+        engine = WaydroidEngine("waydroid")
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            os.environ, {"XDG_DATA_HOME": directory}
+        ), mock.patch("luma_android.engine.user_installed_packages", return_value={"tv.example.player"}):
+            application_root = Path(directory) / "applications"
+            application_root.mkdir()
+            for package in ("tv.example.player", "com.android.calculator2"):
+                (application_root / f"waydroid.{package}.desktop").write_text(
+                    f"[Desktop Entry]\nName={package}\nExec=waydroid app launch {package}\n", encoding="utf-8")
+            engine.synchronize_launchers()
+            player = (application_root / "waydroid.tv.example.player.desktop").read_text(encoding="utf-8")
+            calculator = (application_root / "waydroid.com.android.calculator2.desktop").read_text(encoding="utf-8")
+        self.assertIn("X-Luma-TV=true", player)
+        self.assertNotIn("X-Luma-TV", calculator)
+
+    def test_user_installed_packages_are_read_from_androids_own_data(self) -> None:
+        from luma_android.engine import user_installed_packages
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "app/~~a1==/tv.twitch.android.app--sTtt2Z7SuKSde3YCTW-Rg==").mkdir(parents=True)
+            (root / "app/~~b2==/com.netflix.mediaclient-bqd9gVIT8D2nyIVDg-3KAA==").mkdir(parents=True)
+            (root / "app/~~c3==/not a package").mkdir(parents=True)
+            self.assertEqual(user_installed_packages(root),
+                             {"tv.twitch.android.app", "com.netflix.mediaclient"})
+            self.assertEqual(user_installed_packages(root / "absent"), set())
+
     def test_charger_boot_promotes_android_before_application_wait(self) -> None:
         engine = WaydroidEngine("waydroid")
         with tempfile.TemporaryDirectory() as directory:

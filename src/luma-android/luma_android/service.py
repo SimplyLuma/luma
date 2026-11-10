@@ -125,9 +125,11 @@ class Service:
     def on_presentation_changed(self, _connection, _sender, _path, _interface, _signal,
                                 parameters) -> None:
         _name, changed, _invalidated = parameters.unpack()
-        presentation = changed.get("Presentation")
-        if presentation is None:
+        # TV posture sits above the presentation: on either change, read both
+        # live (current_presentation) rather than trusting the presentation.
+        if "Presentation" not in changed and "Posture" not in changed:
             return
+        presentation = "live"
         with self.presentation_lock:
             self.presentation_pending = presentation
             if self.presentation_worker is None:
@@ -147,7 +149,7 @@ class Service:
                     return
             try:
                 if self.engine.status().get("session") == "RUNNING":
-                    self.engine.sync_presentation_density(presentation)
+                    self.engine.sync_presentation_density()
             except (LumaAndroidError, OSError):
                 pass
 

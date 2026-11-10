@@ -279,6 +279,17 @@ installer's seed are exports of it. `action` names a desktop action of the
 app (Steam's `BigPicture`) that TV Mode should launch instead of the plain
 app; Depots that do not know it ignore it.
 
+## Android apps on a TV
+
+An Android app the person installed (Android records it under its own
+`/data/app`) reaches the TV home; the Android image's own apps (Calculator,
+Contacts, Play services) stay in the desktop's app grid. In TV posture
+Android's windows take the handheld policy a phone uses: each app fills its
+own window, with no freeform title bar and no host frame, and the TV takes it
+full screen with no bars reserved. Android draws at Android TV's density, 320
+at 1080p (scaled with the display). Changing posture changes the policy the
+next time an app opens (the readiness stamp includes it).
+
 ## Remotes and gamepads
 
 Every controller drives TV Mode through the same keys, so an application

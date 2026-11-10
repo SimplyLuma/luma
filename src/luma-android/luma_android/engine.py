@@ -204,11 +204,13 @@ def _ready_stamp_path() -> Path:
     return Path(runtime) / "luma-android" / "ready"
 
 
-def _ready_key(idle_freeze: bool, multi_window: bool) -> str | None:
+def _ready_key(idle_freeze: bool, multi_window: bool, tv: bool = False) -> str | None:
     identity = _session_identity()
     if identity is None:
         return None
-    return json.dumps([identity, idle_freeze, device_class(), multi_window, surface_treatment()])
+    # TV posture changes Android's window policy, so it is part of the key: a
+    # launch after the posture changed applies the new policy.
+    return json.dumps([identity, idle_freeze, device_class(), multi_window, surface_treatment(), tv])
 
 
 def _ready_stamp() -> str | None:
@@ -286,6 +288,7 @@ class WaydroidEngine:
 
         changed = 0
         installed = self._installed_packages_if_available()
+        user_packages = user_installed_packages()
         launch_pattern = re.compile(
             r"^Exec=(?:/usr/bin/)?waydroid app launch "
             r"(?P<package>[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)$"
@@ -320,6 +323,12 @@ class WaydroidEngine:
             prepared_icon = prepare_tile_icon(Path(source_icon), data_root) if source_icon else None
             in_main_entry = False
             has_luma_marker = "X-Luma-Android=true" in original.splitlines()
+            # An app the person installed reaches the TV home; the image's own
+            # apps (Calculator, Contacts, Play services) stay in the desktop's
+            # app grid. A launcher that already says either way is left alone.
+            has_tv_marker = any(line.startswith("X-Luma-TV=") for line in original.splitlines())
+            if not has_tv_marker and package not in user_packages:
+                has_tv_marker = True
             has_startup_notify = any(
                 line.startswith("StartupNotify=") for line in original.splitlines()
             )
@@ -348,6 +357,8 @@ class WaydroidEngine:
                         lines.append('X-Luma-Original-Icon=' + source_icon + '\n')
                     if not has_luma_marker:
                         lines.append("X-Luma-Android=true\n")
+                    if not has_tv_marker:
+                        lines.append("X-Luma-TV=true\nX-Luma-TV-Presentation=fullscreen\n")
                     if not has_startup_notify:
                         lines.append("StartupNotify=true\n")
             updated = "".join(lines)
@@ -441,7 +452,10 @@ class WaydroidEngine:
         if os.environ.get(FP6_SOFTWARE_PRESENTATION_ENV) == "1":
             multi_window = False
         deadline = time.monotonic() + timeout
-        ready_key = _ready_key(runtime_config.idle_freeze, multi_window)
+        # TV posture sits above the device class: Android's windows take the
+        # handheld policy there (see below).
+        tv = current_presentation(device_class()) == "tv"
+        ready_key = _ready_key(runtime_config.idle_freeze, multi_window, tv)
         if ready_key is not None and _ready_stamp() == ready_key:
             # This exact session already passed the readiness and policy work
             # below; a warm launch needs none of its Waydroid round trips.
@@ -583,25 +597,30 @@ class WaydroidEngine:
         self._run("prop", "set", "persist.waydroid.suspend",
                   "true" if runtime_config.idle_freeze else "false", timeout=30)
         runtime_device_class = device_class()
+        # TV: Android's windows take the handheld policy (each app fills its
+        # host window, no freeform title bar, resizable), as on a phone. The
+        # shell's TV posture takes those windows full screen and draws no bars
+        # over them, so no bar space is reserved; input keeps the device's own.
+        window_class = "handheld" if tv else runtime_device_class
         self._run(
             "prop",
             "set",
             "persist.luma.device_class",
-            runtime_device_class,
+            window_class,
             timeout=30,
         )
         self.set_multi_window_policy(multi_window)
-        if started_session and multi_window and runtime_device_class != "desktop":
+        if started_session and multi_window and window_class != "desktop":
             self.set_force_resizable()
         self._run(
             "prop",
             "set",
             "persist.luma.host_window_chrome",
             # Presentation is independent of SurfaceFlinger composition.
-            "false" if runtime_device_class == "handheld" else "true",
+            "false" if window_class == "handheld" else "true",
             timeout=30,
         )
-        self.sync_host_bar_insets(runtime_device_class)
+        self.sync_host_bar_insets("desktop" if tv else runtime_device_class)
         self.sync_presentation_density()
         self.sync_host_appearance()
         # Android already exposes its soft keyboard alongside Waydroid's
@@ -624,7 +643,7 @@ class WaydroidEngine:
                     "Android input policy is not ready; installation may continue: %s",
                     error,
                 )
-        _write_ready_stamp(_ready_key(runtime_config.idle_freeze, multi_window))
+        _write_ready_stamp(_ready_key(runtime_config.idle_freeze, multi_window, tv))
         return started_session
 
     def sync_presentation_density(self, presentation: str | None = None) -> None:
@@ -1397,6 +1416,23 @@ def _fp6_software_viewer_arguments(local_username: str) -> list[str]:
         "/wm-class:org.projectluma.Android",
         "/network:lan",
     ]
+
+
+def user_installed_packages(data_root: Path | None = None) -> set[str]:
+    """Packages the person installed, as Android itself records them: each one
+    lives under /data/app/<random>/<package>-<random>/ in Waydroid's data,
+    while the image's own apps live in its system partition. Read without
+    privilege; empty when Android has not started yet."""
+    root = (data_root or Path.home() / ".local/share/waydroid/data") / "app"
+    packages = set()
+    try:
+        for install in root.glob("*/*"):
+            package = install.name.split("-", 1)[0]
+            if re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+", package):
+                packages.add(package)
+    except OSError:
+        return set()
+    return packages
 
 
 def _validate_package_name(package: str) -> None:
