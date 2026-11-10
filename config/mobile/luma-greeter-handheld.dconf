@@ -1,0 +1,14 @@
+# Handheld login screen. GDM's greeter reads its own dconf profile (gdm), not
+# the luma profile the signed-in session uses, so the handheld power defaults
+# in luma-shell-handheld.dconf never reach it. Keep these keys equal to that
+# file's.
+
+[org/gnome/desktop/session]
+idle-delay=uint32 60
+
+[org/gnome/settings-daemon/plugins/power]
+# A short press is display sleep/wake, not the power-off dialog.
+power-button-action='nothing'
+# No system suspend from the login screen either: see luma-shell-handheld.dconf.
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
