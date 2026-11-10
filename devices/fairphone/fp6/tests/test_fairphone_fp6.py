@@ -59,6 +59,15 @@ class FairphoneFp6(unittest.TestCase):
         self.assertIn("enforcing=1", self.boot["cmdline"]["args"])
         self.assertTrue(self.device["kernel"]["release"].endswith(".selinux1"))
 
+    def test_fuse_is_built_in(self):
+        # rpm-ostree runs package scripts under rofiles-fuse, before
+        # kernel-modules-luma-fp6 (which would carry fuse.ko) is layered.
+        fragments = self.device["kernel"]["config_fragments"]
+        text = "".join((ROOT / f).read_text() for f in fragments)
+        self.assertRegex(text, r"(?m)^CONFIG_FUSE_FS=y$")
+        spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
+        self.assertIn("test ! -e $m/kernel/fs/fuse/fuse.ko.zst", spec)
+
     def test_uses_the_shared_milos_kernel(self):
         self.assertEqual(self.device["soc"], "qcom/milos")
         self.assertEqual(self.soc["kernel"]["branch"], "milos")

@@ -15,6 +15,8 @@ fastboot_product = "FP6"
 tag = "luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1"
 release = "7.1.2-luma-fp-ims1.gmu2.selinux1"
 config = "luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1"
+# Merged over config in order (scripts/kernel/build-fp6.sh).
+config_fragments = ["config/kernel/fp6.fragment"]
 dtb = "qcom/milos-fairphone-fp6.dtb"
 dtb_overlays = "luma/fp6/alpha1/dtb"
 
