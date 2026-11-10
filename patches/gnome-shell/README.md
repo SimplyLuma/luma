@@ -588,3 +588,20 @@ Keycap rule and pushes the bottom row off a narrow screen. The login dialog
 lays its content out in the height the keyboard leaves, as the unlock dialog
 does. Test: `keycap-policy.js` (now also given `js/gdm/loginDialog.js`) in
 %check. Shell .168.
+
+`0333-cellular-status-indicator.patch`: the status area shows the modem's
+state whenever the device has one. The network indicator draws a modem only
+while mobile data is the primary connection, so a phone that was registered
+without data, searching, or without a SIM showed nothing. `status/cellular.js`
+reads ModemManager's modems over its object manager (never starting it) and
+`lumaPresentation/cellularStatus.js` maps state, failed reason, SIM, 3GPP
+registration and signal quality to one icon: GNOME's signal names while
+registered (the handheld status bar redraws them as the Lucide signal glyphs),
+`luma-cellular-no-service-symbolic` otherwise, `luma-cellular-no-sim-symbolic`
+for a missing SIM. A searching modem still reports its last signal, so the
+signal is drawn only once registered. While mobile data is the primary
+connection the network indicator leaves the signal to this one. The two new
+glyphs are Lucide's radio-off and card-sim (`vendor/lucide-shell-status`),
+geometry unchanged, as symbolic strokes at the 1.6 status weight. Without a
+modem nothing is drawn. Test: `tests/gnome-shell/presentation/cellular-status.js`
+(source checks). Shell .169.
