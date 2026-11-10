@@ -34,6 +34,12 @@ class FixtureSource:
         self._album_ids = {}
         self._album_names = {}
         self._new_ids = itertools.count(1)
+        # Optional: the sources a fixture's photographs live on, and their reachability.
+        self._sources = {}
+        for raw_source in self.document.get('sources', []):
+            self._sources[raw_source['id']] = SourceRecord(
+                raw_source['id'], raw_source['name'], Path(raw_source.get('root', raw_source['id'])),
+                raw_source.get('kind', 'folder'), bool(raw_source.get('reachable', True)), self.now, 0)
         for raw in self.document['photos']:
             identifier = str(raw['id'])
             if identifier in self._records:
@@ -42,11 +48,17 @@ class FixtureSource:
             if not path.is_relative_to(self.asset_root):
                 raise ValueError('Fixture image must be within its asset root')
             moment = datetime.strptime(raw['date'] + ' ' + raw['time'], '%Y-%m-%d %I:%M %p').replace(tzinfo=timezone.utc)
-            copy = MediaCopy(f'fixture-copy-{identifier}', identifier, 'fixture', path, path.as_uri(),
-                             True, 0, moment, 'image/png' if raw['wallpaper'] else 'image/webp')
+            mime = 'image/png' if raw['wallpaper'] else 'image/webp'
+            held = [s for s in raw.get('copies', []) if s in self._sources]
+            if held:
+                copies = tuple(MediaCopy(f'fixture-copy-{identifier}-{s}', identifier, s, path, path.as_uri(),
+                                         self._sources[s].reachable, 0, moment, mime) for s in held)
+            else:
+                copies = (MediaCopy(f'fixture-copy-{identifier}', identifier, 'fixture', path, path.as_uri(),
+                                    True, 0, moment, mime),)
             record = PhotoRecord(path, moment, 0, id=identifier, display_name=raw['title'],
-                                 mime_type=copy.mime_type, captured=moment, favorite=raw['favourite'],
-                                 place=raw['place'], copies=(copy,))
+                                 mime_type=mime, captured=moment, favorite=raw['favourite'],
+                                 place=raw['place'], copies=copies)
             self._records[identifier] = record
             self._labels[identifier] = dict(raw)
         for album in self.document.get('albums', []):
@@ -108,6 +120,11 @@ class FixtureSource:
         return ()  # No filesystem scan, including the fixture's image directory.
 
     def sources(self):
+        if self._sources:
+            rows = self.rows()
+            return tuple(SourceRecord(s.id, s.name, s.root, s.kind, s.reachable, s.last_seen,
+                                      sum(any(c.source_id == s.id for c in p.copies) for p in rows))
+                         for s in self._sources.values())
         # Non-reachable source prevents a live directory monitor. Photo copies
         # resolve individually to fixture images for display.
         return (SourceRecord('fixture','This computer',self.asset_root,'fixture',False,self.now,len(self.rows())),)

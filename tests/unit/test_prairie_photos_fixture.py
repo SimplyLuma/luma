@@ -28,6 +28,27 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual([p.id for p in source.rows(query='PINK COAT')], ['17'])
         self.assertEqual(source.labels('0')['day_subtitle'], 'Tuesday, September 22')
 
+    def test_sources_and_copies_carry_reachability(self):
+        # A fixture may say where its photographs live (Photos on a TV's model):
+        # a photograph whose only copies are on an unplugged card is still in
+        # the library, unavailable, and every count is derived from copies.
+        document = json.loads(FIXTURE.read_text())
+        document['sources'] = [{'id': 'mac', 'name': 'This computer', 'reachable': True},
+                               {'id': 'card', 'name': 'Field Card', 'kind': 'removable', 'reachable': False}]
+        for raw in document['photos']:
+            raw['copies'] = ['card'] if raw['id'] in ('0', '1') else ['mac', 'card']
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'photos.json'
+            path.write_text(json.dumps(document))
+            source = FixtureSource(path, assets=FIXTURE.parent)
+        self.assertFalse(source.asset('0').available)
+        self.assertTrue(source.asset('2').available)
+        by_id = {s.id: s for s in source.sources()}
+        self.assertFalse(by_id['card'].reachable)
+        self.assertEqual(by_id['card'].asset_count, len(source.rows()))
+        self.assertEqual(by_id['mac'].asset_count, len(source.rows()) - 2)
+        self.assertEqual(sum(not p.available for p in source.rows()), 2)
+
     def test_page_filters_before_limit_and_cancellation(self):
         source = FixtureSource(FIXTURE)
         page, total = source.page(collection='favorites',offset=2,limit=2)
