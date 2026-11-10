@@ -9,7 +9,7 @@
 # OUTPUT_DIR receives:
 #   Image.gz  the kernel for the boot image (scripts/mobile/build-fp6-boot-image.sh --kernel)
 #   config    the merged configuration
-#   modules/  modules_install tree (scripts/packages/build-kernel-modules-luma-fp6.sh --tree)
+#   modules/  stripped modules_install tree (scripts/packages/build-kernel-modules-luma-fp6.sh --tree)
 #   obj/      the build tree; a second run with the same OUTPUT_DIR is incremental
 #
 # usage: build-fp6.sh [--source DIR] OUTPUT_DIR
@@ -84,7 +84,8 @@ done
 
 "${K[@]}" -j"${JOBS:-16}" vmlinuz.efi modules "$dtb"
 rm -rf "$out/modules"
-"${K[@]}" INSTALL_MOD_PATH="$out/modules" modules_install
+# Debug info stripped, as the Alpha 1 modules were; BTF stays.
+"${K[@]}" INSTALL_MOD_STRIP=1 INSTALL_MOD_PATH="$out/modules" modules_install
 rm -f "$out/modules/lib/modules/$release/build" "$out/modules/lib/modules/$release/source"
 install -m 0644 "$obj/arch/arm64/boot/vmlinuz" "$out/Image.gz"
 install -m 0644 "$obj/.config" "$out/config"
