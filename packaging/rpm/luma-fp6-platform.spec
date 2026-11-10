@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.14%{?dist}
+Release:        1.luma.15%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -68,6 +68,7 @@ grep -Fxq 'LUMA_DEVICE_CLASS=handheld' %{buildroot}%{_prefix}/lib/environment.d/
 grep -Fxq 'automatic_download = false' %{buildroot}%{_sysconfdir}/luma/update.conf
 grep -Fxq 'ConditionFirmware=device-tree-compatible(fairphone,fp6)' %{buildroot}%{_unitdir}/luma-fp6-boot-success.service
 test ! -s %{buildroot}%{_unitdir}/boot.automount
+grep -Fxq 'wifi.powersave=2' %{buildroot}%{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
 # The login screen keeps the signed-in session's power defaults.
 for key in power-button-action sleep-inactive-ac-type sleep-inactive-battery-type color-scheme; do
   line=$(grep -x "$key='[a-z-]*'" %{buildroot}%{_sysconfdir}/dconf/db/luma.d/10-luma-handheld)
@@ -91,6 +92,7 @@ dconf update || :
 %config(noreplace) %{_sysconfdir}/systemd/user/wireplumber.service.d/50-luma-fp6-camera.conf
 %config(noreplace) %{_sysconfdir}/wireplumber/wireplumber.conf.d/51-luma-fp6-audio.conf
 %{_prefix}/lib/environment.d/90-luma-handheld.conf
+%{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
 %{_prefix}/lib/systemd/system-preset/60-luma-fp6-platform.preset
 %{_prefix}/lib/systemd/system-sleep/90-luma-fp6-cellular
 %{_prefix}/lib/tmpfiles.d/luma-fp6-clock.conf
@@ -109,6 +111,9 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.15
+- Wi-Fi power save off: the link stopped receiving after a few minutes idle.
+
 * Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.14
 - The login screen uses the handheld default appearance (dark), as the
   signed-in session does.
