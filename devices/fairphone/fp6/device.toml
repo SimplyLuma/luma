@@ -17,6 +17,11 @@ release = "7.1.2-luma-fp-ims1.gmu2.selinux1"
 config = "luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1"
 # Merged over config in order (scripts/kernel/build-fp6.sh).
 config_fragments = ["config/kernel/fp6.fragment"]
+# Applied over the tag in order (scripts/kernel/build-fp6.sh).
+patches = [
+  "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch",
+  "patches/linux-milos/0042-Input-eswin_eph861x-reset-the-controller-before-unmasking.patch",
+]
 dtb = "qcom/milos-fairphone-fp6.dtb"
 dtb_overlays = "luma/fp6/alpha1/dtb"
 
