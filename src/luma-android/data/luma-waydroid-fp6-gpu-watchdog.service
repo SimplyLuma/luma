@@ -5,6 +5,9 @@ PartOf=waydroid-container.service
 
 [Service]
 Type=simple
+# A closed gate is a decision, not a fault. Skip, so the unit ends inactive
+# rather than failed; the container is bound to this unit and stays stopped.
+ExecCondition=/usr/libexec/luma-waydroid-fp6-gpu-watchdog --check
 ExecStart=/usr/libexec/luma-waydroid-fp6-gpu-watchdog
 # Status 71 means containment disappeared and the watchdog successfully
 # stopped the container.  This is also the expected race-free result when a
