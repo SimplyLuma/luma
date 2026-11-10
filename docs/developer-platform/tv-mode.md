@@ -605,6 +605,28 @@ is no second app model: the apps are `Shell.AppSystem`'s (with
 - A held OK opens a menu once; the menu acts only on a new press, and a key's
   repeat never activates anything.
 
+## Opening at once: prepared TV apps
+
+On a TV, opening an app is a present, not a start. At sign-in in TV posture
+`luma-native-app-prewarm` starts each TV app listed in
+`/usr/share/luma-app-host/tv.json` (in that order, each waiting until the last
+owns its bus name, while at least 2 GB is free) as
+`luma-app-prepared@<app id>.service`. The app runs with `LUMA_APP_PREPARE=1`:
+C apps through `libluma-app-prepare.so`, Python apps through
+`luma_appkit.prepare`, which the kit installs when it is imported with that
+variable. The app runs as its D-Bus service (whatever its own argv), holds
+itself and runs its own `activate` once: its window is built, styled and
+realized, never mapped. A launch (D-Bus Activate) then only maps that window;
+one that arrives while the app is still preparing is kept and shown as soon as
+it is ready. A prepared app that is closed is prepared again; one already
+running, or a session that is no longer a TV, is left alone. A Flatpak's data
+check (`luma_appkit.migration_startup`) that fails while preparing leaves
+quietly (exit 75) and shows its repair screen only to a real launch.
+
+Nothing is needed from an app beyond the TV opt-in below and being a
+`GApplication` that presents its window from `activate`. List it in `tv.json`
+to have it prepared.
+
 ## Appearing on the TV home
 
 Only applications that opt in appear on the TV home. Declare TV support in

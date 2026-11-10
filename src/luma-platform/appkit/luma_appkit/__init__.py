@@ -8,6 +8,16 @@ runtime rather than by shipping a second application.
 from .commands import Command, CommandGroup, CommandRegistry
 from .context import AppContext, InputMode, PresentationMode
 
+# Started to be prepared (LUMA_APP_PREPARE=1: a TV keeps its apps loaded,
+# windows built but not shown), the app's run and present follow Luma's
+# prepared-launch protocol. Every Luma Python app loads the kit before it
+# runs, as every C app loads libluma-app-prepare.so; an app that is never
+# prepared never loads the module.
+import os as _os
+if _os.environ.get("LUMA_APP_PREPARE") == "1":
+    from . import prepare as _prepare
+    _prepare.install()
+
 
 __all__ = [
     "DialKey",
