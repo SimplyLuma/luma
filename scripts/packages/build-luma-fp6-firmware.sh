@@ -5,8 +5,8 @@
 # usr/lib/firmware holding exactly devices/fairphone/fp6/firmware.manifest;
 # extracted from the postmarketOS fairphone-fp6 edge image 20261002-1221).
 # EXTRA_TAR is a tar of usr/lib/firmware holding exactly
-# devices/fairphone/fp6/firmware-extra.manifest (topology, amplifier profile,
-# modem configurations; provenance in device.toml). Firmware is not kept in Git.
+# packaging/rpm/luma-fp6-firmware-extra.manifest (topology, amplifier profile,
+# modem configurations; provenance in devices/fairphone/fp6/device.toml). Firmware is not kept in Git.
 #
 #   build-luma-fp6-firmware.sh FIRMWARE_TAR EXTRA_TAR
 
@@ -17,11 +17,9 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 tar_file=$(realpath -e "${1:?usage: build-luma-fp6-firmware.sh FIRMWARE_TAR EXTRA_TAR}")
 extra_tar=$(realpath -e "${2:?usage: build-luma-fp6-firmware.sh FIRMWARE_TAR EXTRA_TAR}")
 manifest=$repo_root/devices/fairphone/fp6/firmware.manifest
-extra_manifest=$repo_root/devices/fairphone/fp6/firmware-extra.manifest
+extra_manifest=$repo_root/packaging/rpm/luma-fp6-firmware-extra.manifest
 expected=$(sed -n 's/^manifest_sha256 = "\(.*\)"/\1/p' "$repo_root/devices/fairphone/fp6/device.toml")
 echo "$expected  $manifest" | sha256sum -c --quiet - || { echo "error: firmware.manifest does not match device.toml" >&2; exit 1; }
-expected_extra=$(sed -n 's/^extra_manifest_sha256 = "\(.*\)"/\1/p' "$repo_root/devices/fairphone/fp6/device.toml")
-echo "$expected_extra  $extra_manifest" | sha256sum -c --quiet - || { echo "error: firmware-extra.manifest does not match device.toml" >&2; exit 1; }
 [ "$(tar -tf "$extra_tar" | grep -vc '/$')" = 4 ] || { echo "error: the extra tar is not the 4-file set" >&2; exit 1; }
 [ "$(tar -tf "$tar_file" | grep -vc '/$')" = 281 ] || { echo "error: the tar is not the 267-file set (+14 links)" >&2; exit 1; }
 

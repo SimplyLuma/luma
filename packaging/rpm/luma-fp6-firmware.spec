@@ -8,8 +8,8 @@
 # checks it against the manifest). Installed in /usr/lib/firmware, not in /var.
 # regulatory.db comes from wireless-regdb in the base image; the GMU and SQE
 # files move from postmarketos/ to the top level, where the msm driver looks.
-# Source2 adds the four files of devices/fairphone/fp6/firmware-extra.manifest
-# (provenance in device.toml): the AudioReach topology and AW88261 amplifier
+# Source2 adds the four files of packaging/rpm/luma-fp6-firmware-extra.manifest
+# (provenance in devices/fairphone/fp6/device.toml): the AudioReach topology and AW88261 amplifier
 # profile the sound card needs, and the modem platform and AT&T configurations
 # luma-fp6-carrier-pdc loads.
 Name:           luma-fp6-firmware

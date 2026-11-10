@@ -47,7 +47,8 @@ ostree_source = "config/mobile/fp6-ostree-source.json"
 manifest = "firmware.manifest"
 manifest_sha256 = "79a3c9b336f43dc341953426f1e8fc1ebf6c07d24a997dfe5c04370f31c80d7b"
 files = 267
-# Files no postmarketOS firmware package carries, also in luma-fp6-firmware:
+# Files no postmarketOS firmware package carries, also in luma-fp6-firmware
+# (listed in packaging/rpm/luma-fp6-firmware-extra.manifest):
 #  - qcom/milos/Fairphone (Gen. 6)-tplg.bin: AudioReach topology, BSD-3-Clause,
 #    built from Catcrafts/audioreach-topology (branch fp6) and shipped as
 #    fp6-tplg.bin by Catcrafts/fp6-img soc-fairphone-fp6-audio (pkgver 3,
@@ -60,9 +61,6 @@ files = 267
 #    modem partition (modem_pr/mcfg/configs/mcfg_hw/generic/common/Milos/
 #    STANDALONE/LA/DSDS/mcfg_hw.mbn, mcfg_sw/generic/NA/ATT/VoLTE/mcfg_sw.mbn),
 #    which luma-fp6-carrier-pdc loads.
-extra_manifest = "firmware-extra.manifest"
-extra_manifest_sha256 = "15f9362a678fc9d11b6936982e611b2eb6e5cb7492cd2b6eab68f11f8de4dcb6"
-extra_files = 4
 # luma-fp6-firmware from the device repository, in the deployment's
 # /usr/lib/firmware. Alpha 1 kept it in shared /var/lib/luma/device-firmware;
 # the initramfs still verifies and uses that store when it exists.
