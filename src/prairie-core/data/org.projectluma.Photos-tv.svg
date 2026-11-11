@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900">
+<!-- Photos, wide: the TV tile of photos-tv.svg (from photos-c, the shipped icon) on Luma's 16:9 TV plate
+     (1600x900, rx 190, as the Tide and Weather tiles); the 5:3 plate covers the tile, clipped to its corners. -->
+<defs><clipPath id="ph-tile-clip"><rect width="1600" height="900" rx="190"/></clipPath></defs>
+<g clip-path="url(#ph-tile-clip)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 20 760 440" width="1600" height="900" preserveAspectRatio="xMidYMid slice">
+<defs>
+  <linearGradient id="ptv-pl" x1="0.2" y1="0" x2="0.8" y2="1">
+    <stop offset="0" stop-color="#ffd27a"/><stop offset="1" stop-color="#ff7d62"/></linearGradient>
+  <radialGradient id="ptv-plh" cx="0.24" cy="0.1" r="0.85">
+    <stop offset="0" stop-color="#fff" stop-opacity="0.2"/>
+    <stop offset="0.55" stop-color="#fff" stop-opacity="0.05"/>
+    <stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <linearGradient id="ptv-rim" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity="0.42"/>
+    <stop offset="0.12" stop-color="#fff" stop-opacity="0"/>
+    <stop offset="0.86" stop-color="#5a0f3a" stop-opacity="0"/>
+    <stop offset="1" stop-color="#5a0f3a" stop-opacity="0.35"/></linearGradient>
+  <radialGradient id="ptv-sun" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#fffdf2"/><stop offset="0.65" stop-color="#fff1c4"/>
+    <stop offset="1" stop-color="#ffd98a"/></radialGradient>
+  <linearGradient id="ptv-l1" x1="0" y1="0" x2="0.5" y2="1">
+    <stop offset="0" stop-color="#ff8f8f"/><stop offset="1" stop-color="#f0607c"/></linearGradient>
+  <linearGradient id="ptv-l2" x1="0" y1="0" x2="0.5" y2="1">
+    <stop offset="0" stop-color="#d9528a"/><stop offset="1" stop-color="#b43a7e"/></linearGradient>
+  <linearGradient id="ptv-l3" x1="0" y1="0" x2="0.5" y2="1">
+    <stop offset="0" stop-color="#8e3aa0"/><stop offset="1" stop-color="#6a2584"/></linearGradient>
+  <clipPath id="ptv-clip"><rect x="20" y="20" width="760" height="440" rx="84"/></clipPath>
+  <filter id="ptv-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+    <feGaussianBlur stdDeviation="26"/></filter>
+  <filter id="ptv-ls" x="-30%" y="-40%" width="160%" height="180%" color-interpolation-filters="sRGB">
+    <feDropShadow dx="0" dy="-4" stdDeviation="8" flood-color="#5a0f3a" flood-opacity="0.35"/></filter>
+  <filter id="ptv-fs" x="-30%" y="-30%" width="160%" height="170%" color-interpolation-filters="sRGB">
+    <feDropShadow dx="0" dy="3" stdDeviation="7" flood-color="#5a0f3a" flood-opacity="0.3"/></filter>
+</defs>
+
+<g id="plate">
+  <rect x="20" y="20" width="760" height="440" rx="84" fill="url(#ptv-pl)"/>
+  <rect x="20" y="20" width="760" height="440" rx="84" fill="url(#ptv-plh)"/>
+</g>
+
+<g id="object-main" clip-path="url(#ptv-clip)">
+  <circle cx="400" cy="212" r="116" fill="#fff4cf" opacity="0.55" filter="url(#ptv-glow)"/>
+  <circle id="sun" cx="400" cy="212" r="80" fill="url(#ptv-sun)"/>
+  <g id="hills">
+    <g filter="url(#ptv-ls)">
+      <path d="M20 298C168 251 310 258 448 291S678 280 780 254V460H20Z" fill="url(#ptv-l1)"/></g>
+    <path d="M20 298C168 251 310 258 448 291S678 280 780 254" fill="none"
+      stroke="#fff" stroke-opacity="0.35" stroke-width="5" stroke-linecap="round"/>
+    <g filter="url(#ptv-ls)">
+      <path d="M20 336C156 299 283 305 407 330S655 331 780 305V460H20Z" fill="url(#ptv-l2)"/></g>
+    <path d="M20 336C156 299 283 305 407 330S655 331 780 305" fill="none"
+      stroke="#fff" stroke-opacity="0.28" stroke-width="5" stroke-linecap="round"/>
+    <g filter="url(#ptv-ls)">
+      <path d="M20 383C186 345 363 355 513 382S708 387 780 372V460H20Z" fill="url(#ptv-l3)"/></g>
+    <path d="M20 383C186 345 363 355 513 382S708 387 780 372" fill="none"
+      stroke="#fff" stroke-opacity="0.22" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</g>
+
+<g id="frame" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round"
+   stroke-linejoin="round" filter="url(#ptv-fs)">
+  <path d="M104 162V124Q104 104 124 104H168"/>
+  <path d="M696 162V124Q696 104 676 104H632"/>
+  <path d="M104 318V356Q104 376 124 376H168"/>
+  <path d="M696 318V356Q696 376 676 376H632"/>
+</g>
+
+<g id="plate-rim" clip-path="url(#ptv-clip)">
+  <rect x="20" y="20" width="760" height="440" rx="84" fill="none" stroke="url(#ptv-rim)" stroke-width="7"/>
+</g>
+</svg>
+
+</g>
+</svg>

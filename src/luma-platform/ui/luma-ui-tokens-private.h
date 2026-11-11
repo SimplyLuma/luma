@@ -2321,6 +2321,46 @@
 #define LUMA_UI_TV_TERMINAL_INK "#e8eaed"
 #define LUMA_UI_TV_TERMINAL_ANSI { "#3a4049", "#ff6f6b", "#49c68e", "#e3a53c", "#64a4f2", "#c58af9", "#4dd0e1", "#d7dbe0", "#6b737e", "#ff8f8b", "#6fd9a6", "#f0bd62", "#8bbcf6", "#d6a9fb", "#7fe0ec", "#f2f4f6" }
 #define LUMA_UI_TV_TERMINAL_ANSI_LEN 16
+#define LUMA_UI_TV_PHOTOS__DOC "Photos on a TV (prairie_apps/photos_tv.py; Design Center tv-luma/ Photos board). Days are rows: the focused day's photographs at day_tile with its full header, the others quiet at quiet_tile; sets and albums in grid_columns of grid_tile. A photograph out of reach is dimmed (gone_opacity) and badged with where it lives, never hidden. The viewer is full bleed and contain, its chrome leaving after chrome_seconds; Up shows where it lives in a panel of info_panel. The slideshow holds each photograph for slide_seconds. pick is the ember focus ring."
+#define LUMA_UI_TV_PHOTOS_CONTENT_TOP 150
+#define LUMA_UI_TV_PHOTOS_DAY_TILE_0 300
+#define LUMA_UI_TV_PHOTOS_DAY_TILE_1 200
+#define LUMA_UI_TV_PHOTOS_DAY_TILE_LEN 2
+#define LUMA_UI_TV_PHOTOS_QUIET_TILE_0 200
+#define LUMA_UI_TV_PHOTOS_QUIET_TILE_1 133
+#define LUMA_UI_TV_PHOTOS_QUIET_TILE_LEN 2
+#define LUMA_UI_TV_PHOTOS_GAP 20
+#define LUMA_UI_TV_PHOTOS_GRID_COLUMNS 6
+#define LUMA_UI_TV_PHOTOS_GRID_TILE_0 264
+#define LUMA_UI_TV_PHOTOS_GRID_TILE_1 176
+#define LUMA_UI_TV_PHOTOS_GRID_TILE_LEN 2
+#define LUMA_UI_TV_PHOTOS_GRID_GAP 28
+#define LUMA_UI_TV_PHOTOS_RAIL_HEIGHT 132
+#define LUMA_UI_TV_PHOTOS_CHROME_SECONDS 4
+#define LUMA_UI_TV_PHOTOS_SLIDE_SECONDS 6.4
+#define LUMA_UI_TV_PHOTOS_INFO_PANEL 524
+#define LUMA_UI_TV_PHOTOS_GONE_OPACITY 0.38
+#define LUMA_UI_TV_PHOTOS_PANEL "#0e1013"
+#define LUMA_UI_TV_PHOTOS_INK "#f2f4f6"
+#define LUMA_UI_TV_PHOTOS_INK_2 "#d7dbe0"
+#define LUMA_UI_TV_PHOTOS_INK_SOFT "#c7ccd2"
+#define LUMA_UI_TV_PHOTOS_QUIET "#9ba2aa"
+#define LUMA_UI_TV_PHOTOS_COPY "#e8eaed"
+#define LUMA_UI_TV_PHOTOS_CHIP "#1c2026"
+#define LUMA_UI_TV_PHOTOS_CARD "#1a1d22"
+#define LUMA_UI_TV_PHOTOS_CARD_FOCUS "#2a2f36"
+#define LUMA_UI_TV_PHOTOS_INFO "#14171b"
+#define LUMA_UI_TV_PHOTOS_BLACK "#000000"
+#define LUMA_UI_TV_PHOTOS_WHITE "#ffffff"
+#define LUMA_UI_TV_PHOTOS_BADGE "rgba(14, 16, 19, 0.82)"
+#define LUMA_UI_TV_PHOTOS_INTRO "rgba(14, 16, 19, 0.9)"
+#define LUMA_UI_TV_PHOTOS_CAPTION "rgba(0, 0, 0, 0.78)"
+#define LUMA_UI_TV_PHOTOS_HAIR "rgba(255, 255, 255, 0.12)"
+#define LUMA_UI_TV_PHOTOS_OK "#49c68e"
+#define LUMA_UI_TV_PHOTOS_WARN "#e3a53c"
+#define LUMA_UI_TV_PHOTOS_OFF "#ff6f6b"
+#define LUMA_UI_TV_PHOTOS_STAR "#ffd34d"
+#define LUMA_UI_TV_PHOTOS_PICK "#ff7a2e"
 #define LUMA_UI_TV_SHEET_RADIUS 44
 #define LUMA_UI_TV_SHEET_PADDING 40
 #define LUMA_UI_TV_SHEET_GAP 22

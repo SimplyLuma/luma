@@ -11,3 +11,7 @@ Keywords=Photo;Picture;Image;Gallery;
 StartupNotify=true
 DBusActivatable=false
 X-Purism-FormFactor=Workstation;Mobile;
+# TV home opt-in (docs/developer-platform/tv-mode.md): its TV presentation is prairie_apps/photos_tv.py.
+X-Luma-TV=true
+X-Luma-TV-Tile=org.projectluma.Photos-tv
+X-Luma-TV-Presentation=tv

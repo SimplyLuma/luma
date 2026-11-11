@@ -172,6 +172,13 @@ class PhotosWindow(AppWindow):
         super().__init__(application=application,app_id=APPLICATION_ID,title='Photos',icon_name=APPLICATION_ID,
                          commands=self._commands(),default_width=1180,default_height=740,
                          minimum_width=360,minimum_height=420)
+        # On a TV the same app is browsed from the sofa with a remote: its TV
+        # presentation (photos_tv), the photograph full bleed, no editing. A
+        # sandbox learns the posture just after start, so it follows it live.
+        self.tv=None
+        self._tv_library=library
+        self.connect('notify::tv-posture',lambda *_:self._apply_tv_posture())
+        GLib.idle_add(lambda:(self._apply_tv_posture(),False)[1])
         self.content=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,hexpand=True,vexpand=True)
         self.sidebar=NavigationSidebar(variant='destinations')
         self.sidebar.set_size_request(212,-1)
@@ -253,6 +260,13 @@ class PhotosWindow(AppWindow):
         bind_navigation_input(self,self._go_back,lambda:False)
         self.connect('close-request',self._close_requested)
         self._load()
+
+    def _apply_tv_posture(self):
+        """In TV posture, the window shows Photos' TV presentation (built once)."""
+        if self.tv_posture and self.tv is None:
+            from .photos_tv import PhotosTV
+            self.tv=PhotosTV(self,self._tv_library)
+            self.set_body(self.tv.stage)
 
     def _commands(self):
         return CommandRegistry((CommandGroup('',(

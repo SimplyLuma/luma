@@ -34,6 +34,7 @@
         "chmod 755 /app/bin/prairie-photos",
         "install -Dm644 src/prairie-core/data/org.projectluma.Photos.desktop /app/share/applications/org.projectluma.Photos.desktop",
         "install -Dm644 depot-icon.svg /app/share/icons/hicolor/scalable/apps/org.projectluma.Photos.svg",
+        "install -Dm644 src/prairie-core/data/org.projectluma.Photos-tv.svg /app/share/luma-tv/org.projectluma.Photos-tv.svg",
         "cp -a --no-preserve=ownership src/prairie-core/style/. /app/share/prairie-core/",
         "install -Dm644 depot.metainfo.xml /app/share/metainfo/org.projectluma.Photos.metainfo.xml",
         "install -Dm644 depot-media/39f76e9a097324ccab7b6e1827f7991a3b104ed61fffc6212591bd96ddbbd3fd.png /app/share/luma-app-media/39f76e9a097324ccab7b6e1827f7991a3b104ed61fffc6212591bd96ddbbd3fd.png",

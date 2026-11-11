@@ -176,6 +176,8 @@ install -D -m 0644 data/org.projectluma.Notes.svg \
 # Weather's wide TV tile, named by X-Luma-TV-Tile in its desktop entry.
 install -D -m 0644 data/org.projectluma.Weather-tv.svg \
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Weather-tv.svg
+install -D -m 0644 data/org.projectluma.Photos-tv.svg \
+  %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Photos-tv.svg
 # Notes' folder glyph. It goes into the system icon theme the way the kit's
 # own symbolics do, so a packaged Notes finds it without a search path.
 for glyph in folder pin; do
@@ -667,6 +669,7 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Messages.svg
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Notes.svg
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Weather-tv.svg
+%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Photos-tv.svg
 %{_datadir}/icons/hicolor/scalable/actions/luma-folder-symbolic.svg
 %{_datadir}/icons/hicolor/scalable/actions/luma-pin-symbolic.svg
 %{_datadir}/icons/hicolor/scalable/actions/luma-clock-world-symbolic.svg
