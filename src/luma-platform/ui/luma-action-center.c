@@ -7,6 +7,7 @@
 #include "luma-controls.h"
 #include "luma-layer-host.h"
 #include "luma-ui-private.h"
+#include "luma-tv-frame-private.h"
 
 #include <string.h>
 
@@ -436,9 +437,16 @@ static void center_item_pressed(LumaActionCenter *self, LumaBarItem *item, GtkWi
 
 static void item_clicked(GtkButton *button, gpointer user_data) {
   g_object_ref(button);
-  g_signal_emit(user_data, item_signals[ITEM_ACTIVATED], 0);
   GtkWidget *center = gtk_widget_get_ancestor(GTK_WIDGET(button), LUMA_TYPE_ACTION_CENTER);
-  if (center != NULL)
+  GtkWidget *owner = center != NULL ? center : g_object_get_data(G_OBJECT(button), "lumaui-action-center");
+  LumaBarItem *item = LUMA_BAR_ITEM(user_data);
+  /* On a TV the bar on demand goes once an action has acted (a panel or a field keeps it up). */
+  gboolean tv_done = LUMA_IS_ACTION_CENTER(owner) && luma_action_center_get_tv_open(LUMA_ACTION_CENTER(owner)) &&
+                     item->panel_func == NULL && item->kind == LUMA_BAR_ITEM_ACTION;
+  if (tv_done)
+    luma_action_center_tv_close(LUMA_ACTION_CENTER(owner));
+  g_signal_emit(user_data, item_signals[ITEM_ACTIVATED], 0);
+  if (center != NULL && !tv_done)
     center_item_pressed(LUMA_ACTION_CENTER(center), user_data, GTK_WIDGET(button));
   g_object_unref(button);
 }
@@ -1189,6 +1197,9 @@ struct _LumaActionCenter {
   guint safe_source;
   GPtrArray *shown_items; /* own every displayed item while its control is parented */
   GPtrArray *bar_controls; /* borrowed children, reset before each bar rebuild */
+  /* TV: the bar on demand (luma-tv-frame.c) */
+  gboolean tv_demand, tv_open;
+  GtkWidget *tv_from; /* weak: what the remote was on when the bar came up */
 };
 
 G_DEFINE_FINAL_TYPE(LumaActionCenter, luma_action_center, GTK_TYPE_BOX)
@@ -1763,7 +1774,7 @@ static void center_set_state(LumaActionCenter *self, const char *state) {
   for (guint i = 0; ac_states[i] != NULL; i++)
     if (g_str_equal(ac_states[i], state))
       self->state = ac_states[i];
-  gtk_widget_set_visible(GTK_WIDGET(self), !g_str_equal(state, "hidden"));
+  gtk_widget_set_visible(GTK_WIDGET(self), !g_str_equal(state, "hidden") && (!self->tv_demand || self->tv_open));
   gtk_widget_set_visible(self->bar, g_str_equal(state, "bar") || g_str_equal(state, "double"));
   gtk_widget_set_visible(self->card, g_str_equal(state, "editor"));
   gtk_widget_set_visible(self->split, g_str_equal(state, "split"));
@@ -1871,6 +1882,11 @@ static void bar_search_activated(GtkSearchEntry *entry, gpointer user_data) {
   LumaBarItem *item = LUMA_BAR_ITEM(user_data);
   g_signal_emit(item, item_signals[ITEM_SEARCH_ACTIVATED], 0,
                 gtk_editable_get_text(GTK_EDITABLE(entry)));
+  /* On a TV, Search (Enter, the keyboard's Done) takes you to the results: the bar on demand goes, and the remote
+   * goes to the page (the item it came from has gone with the search) */
+  LumaActionCenter *center = luma_action_center_find(GTK_WIDGET(entry));
+  if (center != NULL && center->tv_open && gtk_editable_get_text(GTK_EDITABLE(entry))[0] != '\0')
+    luma_action_center_tv_close(center);
 }
 
 static gboolean bar_search_key(GtkEventControllerKey *keys G_GNUC_UNUSED, guint keyval,
@@ -1989,6 +2005,8 @@ void luma_action_center_show_bar(LumaActionCenter *self, LumaBarItem *const *ite
       g_set_object(&self->search_item, item);
     g_ptr_array_add(self->items, g_object_ref(item));
     if (control != NULL) g_object_set_data(G_OBJECT(control), "luma-bar-item-ref", item);
+    /* the bar it belongs to, even once an action has rebuilt the bar under it (the TV bar on demand) */
+    if (control != NULL) g_object_set_data(G_OBJECT(control), "lumaui-action-center", self);
     g_ptr_array_add(self->bar_controls, control);
     if (control == NULL)
       continue;
@@ -2232,6 +2250,49 @@ static gboolean center_can_grow(LumaActionCenter *self) {
   return FALSE;
 }
 
+/* On a TV a grown row that holds chips or tiles, not rows (Sort by's orders, Copy to's destinations), is the
+ * mockups' grown row (.tv-ab.grown > .tv-ab-row.top): one centred line, its heading first, each tile a chip
+ * with its words and its quiet second line side by side. A panel of rows keeps its list. The panel is built
+ * afresh each time it grows, so nothing needs undoing. */
+static void tv_panel_row(GtkWidget *panel) {
+  if (!GTK_IS_BOX(panel) || !gtk_widget_has_css_class(panel, "lumaui-panel-list"))
+    return;
+  for (GtkWidget *c = gtk_widget_get_first_child(panel); c != NULL; c = gtk_widget_get_next_sibling(c))
+    if (!gtk_widget_has_css_class(c, "lumaui-panel-heading") && !gtk_widget_has_css_class(c, "lumaui-panel-choices") &&
+        !gtk_widget_has_css_class(c, "lumaui-bar-tiles") && !gtk_widget_has_css_class(c, "lumaui-panel-note"))
+      return;
+  gtk_orientable_set_orientation(GTK_ORIENTABLE(panel), GTK_ORIENTATION_HORIZONTAL);
+  gtk_widget_set_halign(panel, GTK_ALIGN_CENTER);
+  gtk_widget_add_css_class(panel, "lumaui-tv-row");
+  for (GtkWidget *c = gtk_widget_get_first_child(panel); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    gtk_widget_set_valign(c, GTK_ALIGN_CENTER);
+    if (!gtk_widget_has_css_class(c, "lumaui-bar-tiles"))
+      continue;
+    /* the tiles in one line at their own widths, each glyph and words side by side */
+    g_object_set(c, "column-homogeneous", FALSE, "hexpand", FALSE, NULL);
+    GPtrArray *tiles = g_ptr_array_new_with_free_func(g_object_unref);
+    for (GtkWidget *t = gtk_widget_get_first_child(c); t != NULL; t = gtk_widget_get_next_sibling(t))
+      if (gtk_widget_has_css_class(t, "lumaui-bar-tile"))
+        g_ptr_array_add(tiles, g_object_ref(t));
+    GtkWidget *spacer = g_object_get_data(G_OBJECT(c), "lumaui-tile-spacer");
+    if (spacer != NULL)
+      gtk_widget_set_visible(spacer, FALSE);
+    for (guint i = 0; i < tiles->len; i++) {
+      GtkWidget *t = tiles->pdata[i];
+      gtk_grid_remove(GTK_GRID(c), t);
+      gtk_grid_attach(GTK_GRID(c), t, (int)i, 0, 1, 1);
+      gtk_widget_set_hexpand(t, FALSE);
+      GtkWidget *stack = gtk_button_get_child(GTK_BUTTON(t));
+      if (GTK_IS_BOX(stack))
+        gtk_orientable_set_orientation(GTK_ORIENTABLE(stack), GTK_ORIENTATION_HORIZONTAL);
+      for (GtkWidget *w = stack != NULL ? gtk_widget_get_first_child(stack) : NULL; w != NULL; w = gtk_widget_get_next_sibling(w))
+        if (GTK_IS_LABEL(w))
+          gtk_label_set_wrap(GTK_LABEL(w), FALSE);
+    }
+    g_ptr_array_unref(tiles);
+  }
+}
+
 static void center_open_panel(LumaActionCenter *self, const char *key, GtkWidget *panel, GtkWidget *entry) {
   luma_action_center_set_panel_padding(self, TRUE);
   if (panel != NULL)
@@ -2245,6 +2306,8 @@ static void center_open_panel(LumaActionCenter *self, const char *key, GtkWidget
   panel_clear(self);
   if (panel != NULL) {
     gtk_widget_add_css_class(panel, "lumaui-ac-panel-content");
+    if (self->tv_demand)
+      tv_panel_row(panel);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(self->panel_slot), panel);
     luma_ui_on_next_frame(self->panel_slot, panel_shown, self->panel_slot);
   }
@@ -2331,6 +2394,11 @@ void luma_action_center_grow_panel(LumaActionCenter *self, const char *key, GtkW
     return;
   }
   center_open_panel(self, key, panel, NULL);
+  if (self->tv_demand && !self->tv_open) {
+    /* on a TV an app growing its bar (Filer's Info: Copy to…) brings the bar up, the remote on the row */
+    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(self));
+    luma_action_center_tv_open(self, root != NULL ? gtk_root_get_focus(root) : NULL);
+  }
 }
 
 void luma_action_center_grow_entry(LumaActionCenter *self, const char *key, GtkWidget *panel, GtkWidget *entry) {
@@ -2375,9 +2443,12 @@ static void center_item_pressed(LumaActionCenter *self, LumaBarItem *item, GtkWi
 
 static void panel_row_clicked(GtkButton *button, gpointer user_data G_GNUC_UNUSED) {
   LumaActionCenter *center = luma_action_center_find(GTK_WIDGET(button));
-  /* GtkActionable already ran its action; the panel closes after an action (v71). */
+  /* GtkActionable already ran its action; the panel closes after an action (v71), and on a TV the
+   * bar on demand with it. */
   if (center != NULL && center->grown_key != NULL)
-    center_fold_panel(center, TRUE);
+    center_fold_panel(center, !center->tv_open);
+  if (center != NULL && center->tv_open)
+    luma_action_center_tv_close(center);
 }
 
 GtkWidget *luma_bar_panel_new(const char *heading) {
@@ -3100,7 +3171,9 @@ void luma_action_center_grow_menu(LumaActionCenter *self, const char *key, GMenu
 static void fold_from(GtkWidget *widget) {
   LumaActionCenter *center = luma_action_center_find(widget);
   if (center != NULL && center->grown_key != NULL)
-    center_fold_panel(center, TRUE);
+    center_fold_panel(center, !center->tv_open);
+  if (center != NULL && center->tv_open) /* on a TV the bar on demand goes with it, as after a panel row */
+    luma_action_center_tv_close(center);
 }
 
 void luma_bar_panel_row_set_person(GtkWidget *row, gboolean person) {
@@ -3438,4 +3511,100 @@ void luma_action_center_set_head(LumaActionCenter *self, GtkWidget *head) {
   luma_ui_set_css_class(self->bar, "headed", head != NULL);
   luma_ui_set_css_class(self->bar, "wide", gtk_widget_has_css_class(self->bar, "wide") || head != NULL);
   center_schedule_safe(self);
+}
+
+/* ── TV: the bar on demand (luma-tv-frame.c; docs/developer-platform/tv-mode.md "The action bar") ── */
+
+static void center_tv_show(LumaActionCenter *self) {
+  gtk_widget_set_visible(GTK_WIDGET(self), !g_str_equal(self->state, "hidden") && (!self->tv_demand || self->tv_open));
+}
+
+void luma_action_center_set_tv_demand(LumaActionCenter *self, gboolean demand) {
+  g_return_if_fail(LUMA_IS_ACTION_CENTER(self));
+  if (self->tv_demand == !!demand)
+    return;
+  self->tv_demand = !!demand;
+  self->tv_open = FALSE;
+  g_clear_weak_pointer(&self->tv_from);
+  luma_ui_set_css_class(GTK_WIDGET(self), "lumaui-tv-demand", self->tv_demand);
+  center_tv_show(self);
+}
+
+gboolean luma_action_center_get_tv_demand(LumaActionCenter *self) {
+  g_return_val_if_fail(LUMA_IS_ACTION_CENTER(self), FALSE);
+  return self->tv_demand;
+}
+
+gboolean luma_action_center_get_tv_open(LumaActionCenter *self) {
+  g_return_val_if_fail(LUMA_IS_ACTION_CENTER(self), FALSE);
+  return self->tv_open;
+}
+
+/* The bar's first button that is not part of a field: landing in a field would bring the keyboard up
+ * before anyone asked to type (the search field is chosen with the remote like any other control). */
+static GtkWidget *center_first_button(GtkWidget *w) {
+  if (GTK_IS_EDITABLE(w) || !gtk_widget_get_mapped(w))
+    return NULL;
+  if (GTK_IS_BUTTON(w) && gtk_widget_get_focusable(w) && gtk_widget_is_sensitive(w))
+    return w;
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    GtkWidget *found = center_first_button(c);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
+static gboolean center_tv_focus(gpointer data) {
+  LumaActionCenter *self = data;
+  GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(self));
+  GtkWidget *focus = root != NULL ? gtk_root_get_focus(root) : NULL;
+  if (!self->tv_open || (focus != NULL && gtk_widget_is_ancestor(focus, GTK_WIDGET(self))))
+    return G_SOURCE_REMOVE;
+  /* the bar has just been shown: wait for it to be on screen (a frame or two), then the first button */
+  GtkWidget *button = center_first_button(self->bar != NULL ? self->bar : GTK_WIDGET(self));
+  if (button != NULL && gtk_widget_get_mapped(button) && gtk_widget_grab_focus(button))
+    return G_SOURCE_REMOVE;
+  int tries = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(self), "lumaui-tv-focus-tries"));
+  g_object_set_data(G_OBJECT(self), "lumaui-tv-focus-tries", GINT_TO_POINTER(tries + 1));
+  return tries < 30 ? G_SOURCE_CONTINUE : G_SOURCE_REMOVE;
+}
+
+void luma_action_center_tv_open(LumaActionCenter *self, GtkWidget *from) {
+  g_return_if_fail(LUMA_IS_ACTION_CENTER(self));
+  if (!self->tv_demand || self->tv_open || g_str_equal(self->state, "hidden"))
+    return;
+  g_clear_weak_pointer(&self->tv_from);
+  if (from != NULL)
+    g_set_weak_pointer(&self->tv_from, from);
+  self->tv_open = TRUE;
+  center_tv_show(self);
+  /* the remote lands on the bar's first control, once the bar is on screen */
+  g_object_set_data(G_OBJECT(self), "lumaui-tv-focus-tries", NULL);
+  g_timeout_add_full(G_PRIORITY_DEFAULT, 16, center_tv_focus, g_object_ref(self), g_object_unref);
+}
+
+void luma_action_center_tv_close(LumaActionCenter *self) {
+  g_return_if_fail(LUMA_IS_ACTION_CENTER(self));
+  if (!self->tv_open)
+    return;
+  if (self->grown_key != NULL)
+    center_fold_panel(self, FALSE);
+  if (self->searching)
+    center_close_search(self);
+  self->tv_open = FALSE;
+  GtkWidget *from = self->tv_from;
+  g_clear_weak_pointer(&self->tv_from);
+  /* Back returns the remote to what it was on (a file, a row); the bar steps away. When that is gone
+   * (the action changed the page: another view, another folder), the page takes it, never a field. */
+  GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(self));
+  GtkWidget *focus = root != NULL ? gtk_root_get_focus(root) : NULL;
+  gboolean inside = focus != NULL && gtk_widget_is_ancestor(focus, GTK_WIDGET(self));
+  center_tv_show(self);
+  if (from != NULL && gtk_widget_get_mapped(from) && gtk_widget_grab_focus(from))
+    return;
+  /* the focus is still on the bar (an action redrew the page first): the page takes it from the top */
+  if (root != NULL && (inside || focus == NULL) && self->host != NULL) {
+    gtk_root_set_focus(root, NULL);
+    gtk_widget_child_focus(self->host, GTK_DIR_TAB_FORWARD);
+  }
 }

@@ -96,6 +96,7 @@ ui_sources = files(
   'luma-adaptive-scaffold.c',
   'luma-application-window.c',
   'luma-tv-frame.c',
+  'luma-tv-fade.c',
   'luma-tv-keyboard.c',
   'luma-native-app-updates.c',
   'luma-pane.c',

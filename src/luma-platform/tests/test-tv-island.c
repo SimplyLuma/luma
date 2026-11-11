@@ -10,6 +10,7 @@
 #include <adwaita.h>
 #include <math.h>
 #include "luma-tv-frame-private.h"
+#include "luma-ui-tokens-private.h"
 
 static gboolean show_only;
 static int failures;
@@ -214,6 +215,10 @@ static void check_tv(GtkApplication *app) {
   GtkListBox *list = luma_navigation_sidebar_get_list(LUMA_NAVIGATION_SIDEBAR(sidebar));
   CHECK(gtk_widget_has_css_class(window, "lumaui-tv"));
   CHECK(luma_tv_frame_is_active(GTK_WINDOW(window)));
+  /* The island's list scrolls behind the fades (luma-tv-fade.c), the list itself untouched inside them. */
+  GtkWidget *scroll = gtk_widget_get_ancestor(GTK_WIDGET(list), GTK_TYPE_SCROLLED_WINDOW);
+  CHECK(scroll != NULL && LUMA_IS_TV_FADE(gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(scroll))));
+  CHECK(scroll != NULL && gtk_widget_is_ancestor(GTK_WIDGET(list), gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(scroll))));
   CHECK(any_with_class(window, "lumaui-tv-frame", G_TYPE_NONE));
   CHECK(!section_heading_visible(sidebar));                       /* a section is a hairline */
   CHECK(any_with_class(page, "lumaui-part-group", ADW_TYPE_PREFERENCES_GROUP));
@@ -241,12 +246,12 @@ static void check_tv(GtkApplication *app) {
   CHECK(gtk_list_box_row_get_index(gtk_list_box_get_selected_row(list)) == 3);
   CHECK(g_str_equal(gtk_label_get_text(GTK_LABEL(page_title)), "Timers"));
 
-  /* Right steps into the page and folds the island to the rail. */
+  /* Right steps into the page; the island stays open beside it (it never folds on its own). */
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Right));
   spin(100);
   focus = gtk_root_get_focus(GTK_ROOT(window));
   CHECK(focus != NULL && gtk_widget_is_ancestor(focus, page));
-  CHECK(gtk_widget_has_css_class(sidebar, "lumaui-tv-rail"));
+  CHECK(!gtk_widget_has_css_class(sidebar, "lumaui-tv-rail"));
   /* Down moves through the rows; Back returns to the island. */
   CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Down));
   spin(50);
@@ -280,7 +285,7 @@ static void check_tv(GtkApplication *app) {
     CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Up));     /* the page's top row: the cluster */
     spin(50);
     CHECK(gtk_root_get_focus(GTK_ROOT(window)) == cluster);
-    CHECK(gtk_widget_has_css_class(sidebar, "lumaui-tv-rail"));    /* the island stays folded */
+    CHECK(!gtk_widget_has_css_class(sidebar, "lumaui-tv-rail"));   /* the island stays open */
     spin(700);                                                     /* past the frame's OK guard */
     CHECK(luma_tv_frame_key(GTK_WINDOW(window), GDK_KEY_Return));  /* the quick panel, asked */
     spin(50);
@@ -375,6 +380,17 @@ static void check_tv(GtkApplication *app) {
   for (int i = 0; i < 24; i++)
     luma_navigation_sidebar_append_row(LUMA_NAVIGATION_SIDEBAR(sidebar), GTK_LIST_BOX_ROW(row_new("More", "timer")));
   spin(200);
+  /* The remote never rests in a fade: a row the list scrolls to is whole, the fade's length clear of the edge. */
+  GtkListBoxRow *far = gtk_list_box_get_row_at_index(list, 20);
+  gtk_widget_grab_focus(GTK_WIDGET(far));
+  spin(200);
+  {
+    graphene_rect_t row_box, list_box;
+    GtkWidget *shown = gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(scroll));
+    CHECK(gtk_widget_compute_bounds(GTK_WIDGET(far), shown, &row_box) && gtk_widget_compute_bounds(shown, shown, &list_box));
+    double u = frame_unit(window);
+    CHECK(row_box.origin.y + row_box.size.height <= list_box.size.height - LUMA_UI_TV_SCROLL_FADE_TOP * u * 0.9);
+  }
   CHECK(gtk_widget_compute_bounds(sidebar, window, &isle));
   CHECK(isle.origin.y + isle.size.height < gtk_widget_get_height(window));
   CHECK(isle.size.height > gtk_widget_get_height(window) / 2);
@@ -386,6 +402,8 @@ static void check_tv(GtkApplication *app) {
   CHECK(!any_with_class(window, "lumaui-part-row", G_TYPE_NONE));
   CHECK(!any_with_class(window, "lumaui-part-group", G_TYPE_NONE));
   CHECK(!gtk_widget_has_css_class(sidebar, "lumaui-tv-rail"));
+  CHECK(!LUMA_IS_TV_FADE(gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(scroll))));   /* the fades are gone */
+  CHECK(gtk_widget_get_ancestor(GTK_WIDGET(list), GTK_TYPE_SCROLLED_WINDOW) == scroll);
   CHECK(section_heading_visible(sidebar));
   CHECK(adw_clamp_get_maximum_size(find_clamp(page)) == 600);
   CHECK(gtk_widget_get_valign(sidebar) == GTK_ALIGN_FILL);
