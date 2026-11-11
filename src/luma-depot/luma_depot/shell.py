@@ -76,13 +76,15 @@ class DepotShell(AppWindow):
             # The approved sample: the design fixture, a preview, a screenshot run.
             # The sample's own device is the one it runs on: the phone on a phone, else the computer (the mockup's here()).
             from luma_appkit import lumaui
-            here = os.environ.get("LUMA_DEPOT_HERE") or ("fp6" if lumaui.mobile_form_factor() else "xps")
+            here = os.environ.get("LUMA_DEPOT_HERE") or ("tv" if lumaui.tv_posture() else
+                                                         "fp6" if lumaui.mobile_form_factor() else "xps")
             self.store = SampleStore(load_fixture(fixture if fixture.endswith(".json") else default_fixture(),
                                                   here=here))
         else:
             from .model.live import LiveStore
             self.store = LiveStore(self._world_changed)
         self.world = self.store.world
+        self.tv = None  # Depot's TV presentation while the shell is in TV posture (_apply_posture)
         super().__init__(application=application, app_id=application.get_application_id() or "org.projectluma.Depot",
                          title="Depot", icon_name=ICON_NAME, commands=self._commands(), default_width=1180,
                          default_height=740, minimum_width=360, minimum_height=440)
@@ -119,8 +121,32 @@ class DepotShell(AppWindow):
         keys.connect("key-pressed", self._key)
         self.add_controller(keys)
         self.show_place("today")
+        # TV posture: the same world and store drawn for the room (tv_views), followed live, since a
+        # sandbox learns the posture just after it starts.
+        self.connect("notify::tv-posture", lambda *_a: self._apply_posture())
+        self._apply_posture()
         if os.environ.get("LUMA_DEPOT_STATE"):
             GLib.idle_add(self._stage_state, os.environ["LUMA_DEPOT_STATE"])
+
+    def _apply_posture(self) -> None:
+        tv = bool(self.tv_posture)
+        if tv == (self.tv is not None):
+            return
+        rebuild = getattr(self.store, "rebuild", None)  # the live world's device becomes a TV, or stops being one
+        if tv:
+            from .tv_views import DepotTV
+            self._desktop_body = self.body.get_first_child()
+            if rebuild is not None:
+                rebuild()
+            self.tv = DepotTV(self)
+            self.set_body(self.tv.stage)
+        else:
+            self.tv.close()
+            self.tv = None
+            self.set_body(self._desktop_body)
+            if rebuild is not None:
+                rebuild()
+            self._render()
 
     def _stage_state(self, spec: str) -> bool:
         """A measured state for tools/lumaui-conform: "place:apps;item:app:tide;demo:filters;query:photo"."""
@@ -248,6 +274,9 @@ class DepotShell(AppWindow):
 
     def go(self, place: str) -> None:
         """A sidebar place: the history clears and the place's filters reset (2.3)."""
+        if self.tv is not None:
+            self.tv.show_place(place)
+            return
         if self.item is not None:
             self.pages["item"].reset()
         self.history.clear()
@@ -260,6 +289,9 @@ class DepotShell(AppWindow):
         self._render(scroll=scroll)
 
     def open_item(self, kind: str, item_id: str) -> None:
+        if self.tv is not None:
+            self.tv.open_item(kind, item_id)
+            return
         self.history.append(self._visit())
         self.item = (kind, item_id)
         self.pages["item"].reset()
@@ -401,6 +433,9 @@ class DepotShell(AppWindow):
         self._render(scroll=self.scroller.get_vadjustment().get_value())
 
     def toast(self, message: str, kind: str = "done") -> None:
+        if self.tv is not None:
+            self.tv.toast(message, lead="circle-alert" if kind == "error" else "check")
+            return
         Toast.show(self.host, message, kind=kind)
 
     # ── links and views (luma-depot://, appstream://, --view) ─────────────
@@ -451,6 +486,9 @@ class DepotShell(AppWindow):
                 installer.force_update_check = True  # the run is over: ask the remotes again
             self.store.reload()
         self._app_updates_seen = done
+        if self.tv is not None:
+            self.tv.changed()
+            return
         if self.place == "updates" and self.item is None and self.center.grown is None:
             self.refresh_bar()
             self.refresh_body()
@@ -466,6 +504,9 @@ class DepotShell(AppWindow):
         if not hasattr(self, "pages"):
             return
         self.set_world(world)
+        if self.tv is not None:
+            self.tv.changed()
+            return
         if self.center.grown is None and self.place != "search":
             self.refresh_body()
 

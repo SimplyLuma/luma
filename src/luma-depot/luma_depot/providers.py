@@ -188,6 +188,8 @@ class App:
     category_key: str = ""
     #: Screenshot keys: <id>-desktop-dark, -desktop-light, -phone-dark (resolved by the pictures module).
     shot_keys: tuple[str, ...] = ()
+    #: How it is driven on a TV, the catalogue's `tv.input`: remote · controller · keyboard ("" unsaid).
+    tv_input: str = ""
 
     @property
     def version(self) -> str:

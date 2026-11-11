@@ -48,11 +48,25 @@ def device_name() -> str:
 
 
 def _form() -> str:
+    """This device's form, as Depot's events name it: a TV in TV posture, a phone, else a computer."""
     try:
         from luma_appkit import lumaui
     except ImportError:  # a package check without the kit
         return "desktop"
-    return "phone" if lumaui.mobile_form_factor() else "desktop"
+    return "tv" if lumaui.tv_posture() else "phone" if lumaui.mobile_form_factor() else "desktop"
+
+
+def _runs_on_tv(app: App) -> bool:
+    """An installed app's own word that it runs on a TV (its TV opt-in, or AppStream controls), used where
+    the catalogue says nothing about a TV (tv_facts; the Hub leaves an unset `tv` to the app's own data)."""
+    try:
+        from .. import tv_facts
+        info = tv_facts.desktop_info(app)
+        component = tv_facts.component_id(app) or (info.get_id().removesuffix(".desktop") if info else "")
+        facts = tv_facts.resolve(None, info, tv_facts.appstream(component))
+    except Exception:  # noqa: BLE001 - no metadata here: the catalogue alone decides
+        return False
+    return bool(facts and facts.runs)
 
 
 def _size(n: int) -> str:
@@ -168,9 +182,11 @@ def world_from(catalogue: Catalogue | None, installed: dict[str, InstalledApp], 
     for app in merged:
         if app.unlisted:
             continue
+        runs = app.runs or ("desktop", "tablet")
+        if "tv" not in runs and app.app_id in installed and _runs_on_tv(app):
+            runs = (*runs, "tv")
         apps.append(replace(app, category_key=_category(app), package_kind=_package_kind(app),
-                            size_label=app.size_label or _size(app.download_bytes),
-                            runs=app.runs or ("desktop", "tablet")))
+                            size_label=app.size_label or _size(app.download_bytes), runs=runs))
     pending = tuple(PendingUpdate(app_id, ("here",), record.version, record.update_version,
                                   _size(record.update_bytes),
                                   (record.update_summary,) if record.update_summary else ())
@@ -205,11 +221,11 @@ class LiveStore(Store):
         self.listings = None
         self.curated: tuple[str, ...] = ()
         from .catalogue_v1 import MediaCache
-        self.media = MediaCache(on_ready=self._rebuild)
+        self.media = MediaCache(on_ready=self.rebuild)
         self._load_listings()
         try:
             from ..system_updates import SystemUpdates
-            self.system = SystemUpdates(self._rebuild)
+            self.system = SystemUpdates(self.rebuild)
         except Exception:  # noqa: BLE001 - a missing agent leaves Luma's card out, nothing more
             self.system = None
         super().__init__(world_from(None, {}))
@@ -224,12 +240,12 @@ class LiveStore(Store):
     def _catalogue(self, result: Result) -> None:
         if result.ok:
             self.catalogue = result.value
-            self._rebuild()
+            self.rebuild()
 
     def _installed(self, result: Result) -> None:
         if result.ok:
             self.installed = {record.app_id: record for record in result.value}
-            self._rebuild()
+            self.rebuild()
 
     def _load_listings(self) -> None:
         """The signed v1 catalogue in the background; without it the AppStream data stands alone."""
@@ -251,9 +267,10 @@ class LiveStore(Store):
         urls = [a.icon_url for a in apps] + [s for a in apps for s in a.shot_keys] + [a.mark for a in apps]
         urls += [x.art for x in looks] + [listings[3].get("art", "")]
         self.media.prefetch(urls)
-        self._rebuild()
+        self.rebuild()
 
-    def _rebuild(self) -> None:
+    def rebuild(self) -> None:
+        """Draw the world again from what is held (the device it is drawn for may have changed: a TV)."""
         self.world = world_from(self.catalogue, self.installed, self.system.state if self.system else None,
                                 listings=self.listings, media=self.media.path, curated=self.curated)
         self.on_world(self.world)

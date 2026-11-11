@@ -228,7 +228,8 @@ def _app(entry: dict) -> App:
         mark_colour=_text(mark.get("bg") if isinstance(mark, dict) else ""),
         package_kind=_text(_get(entry, "format", "pk", default="flatpak")).casefold(), size_label=_size(entry.get("size")),
         reviews=tuple(tuple(r) for r in entry.get("reviews") or [] if isinstance(r, (list, tuple)) and len(r) == 5),
-        reach=reach, alternatives=tuple(entry.get("alt") or ()), installs_total=int(entry.get("downloads", 0) or 0),
+        reach=reach, alternatives=tuple(entry.get("alt") or ()),
+        tv_input=_text(entry["tv"].get("input")) if isinstance(entry.get("tv"), dict) else "", installs_total=int(entry.get("downloads", 0) or 0),
     )
 
 

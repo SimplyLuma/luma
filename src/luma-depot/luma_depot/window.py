@@ -293,26 +293,9 @@ class DepotWindow(UpdatesPage, AppWindow):
         self.connect('unmap', lambda *_args: self._cancel_pending_open())
         self._watch_for_app_metadata()
         self._ask_for_app_metadata()
-        # TV posture shows Depot's TV presentation (tv_views) in this same
-        # window, over the same catalogue, installation and update agent.
-        self.tv = None
-        self.connect("notify::tv-posture", lambda *_args: self._apply_posture())
-        self._apply_posture()
         self.reload()
         if self.fixture and self.view == "search":
             self.catalogue_provider.search(self.view_argument, self._search_done)
-
-    def _apply_posture(self) -> None:
-        if self.tv_posture and self.tv is None:
-            from .tv_views import DepotTV
-            self.tv = DepotTV(self)
-            self._desktop_body = self.body.get_first_child()
-            self.set_body(self.tv.stage)
-        elif not self.tv_posture and self.tv is not None:
-            self.tv.close()
-            self.tv = None
-            self.set_body(self._desktop_body)
-            self.render()
 
     def _close_requested(self, *_args):
         updates = getattr(self.get_application(), "app_updates", None)
@@ -769,10 +752,6 @@ class DepotWindow(UpdatesPage, AppWindow):
     # ── Rendering ────────────────────────────────────────────────────────
 
     def render(self, *, restore=None) -> None:
-        if getattr(self, "tv", None) is not None:
-            # In TV posture the TV presentation draws the same state.
-            self.tv.changed()
-            return
         position = self.content_scroll.get_vadjustment().get_value() if restore is None else restore
         self._render_serial += 1
         serial = self._render_serial
@@ -2126,8 +2105,6 @@ class DepotWindow(UpdatesPage, AppWindow):
         job.progress = progress
         for update in tuple(self._progress_views.get(progress.app_id, ())):
             update(progress)
-        if getattr(self, "tv", None) is not None:
-            self.tv.progress(progress)
         # Progress changes the existing controls, never the page's widget tree,
         # image loaders, measured height, or current scroll position.
         self._refresh_sidebar_counts()
@@ -2342,12 +2319,6 @@ class DepotWindow(UpdatesPage, AppWindow):
                               cancellable=job.cancellable)
 
     def _removed(self, result: Result, name: str = "App", removed_data: bool = False) -> None:
-        if getattr(self, "tv", None) is not None and result.ok and not (
-                isinstance(result.value, dict) and result.value.get("data_removal_error")):
-            self.tv.toast(f"{name} uninstalled" + (" with its data" if removed_data else ". Its data is kept"),
-                          lead="trash-2")
-            self.installer.installed(self._installed_loaded)
-            return
         if not result.ok:
             self._report("That app was not removed", result.error.hint or str(result.error))
         elif isinstance(result.value, dict) and result.value.get("data_removal_error"):
@@ -3757,10 +3728,6 @@ class DepotWindow(UpdatesPage, AppWindow):
             if self.installed else "Nothing installed")
 
     def _report(self, heading: str, body: str) -> None:
-        if getattr(self, "tv", None) is not None:
-            # On a TV the shared toast says it; the desktop alert has no remote path.
-            self.tv.toast(heading, lead="circle-alert")
-            return
         dialog = Adw.AlertDialog(heading=heading, body=body)
         dialog.add_response("close", "Close")
         dialog.present(self)
@@ -3777,7 +3744,7 @@ class DepotWindow(UpdatesPage, AppWindow):
 def use_redesign() -> bool:
     """The redesigned Depot (7 Nov 2026) is the window, except where it can't be yet:
 
-    - TV posture keeps Depot's TV presentation (tv_views, the 10-foot design), which this window hosts;
+    - TV posture: the redesign hosts Depot's TV presentation (tv_views) and follows the posture live;
     - a runtime whose LumaUI predates the parts the redesign is built from (API level 11);
     - the v70 design fixture and the old preview, which measure and exercise this window;
     - LUMA_DEPOT_LEGACY=1, the way back for one release.
@@ -3792,7 +3759,7 @@ def use_redesign() -> bool:
         return False
     try:
         from luma_appkit import lumaui
-        if lumaui.tv_posture() or lumaui.LUMAUI_API_LEVEL < 12:
+        if lumaui.LUMAUI_API_LEVEL < 12:
             return False
         from luma_appkit import Button, Disclosure, EdgeFadeScroller, FramedPicture, Inset  # noqa: F401
     except (ImportError, AttributeError):

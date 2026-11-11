@@ -235,6 +235,28 @@ class SignedCatalogue(unittest.TestCase):
         self.assertEqual(rules.bar_for(item, world).buttons[0].label, "Not available yet")
 
 
+class OnATv(unittest.TestCase):
+    """Depot on a TV draws the same world, with this TV as its device (tv_views over model.rules)."""
+
+    def test_a_tv_lists_only_what_runs_on_a_tv(self) -> None:
+        world = load_fixture(FIXTURE, here="tv")
+        self.assertEqual(world.this_device.form, "tv")
+        popular = rules.today_popular(world, count=50)
+        self.assertTrue(popular)
+        self.assertTrue(all("tv" in it.runs for it in popular))
+        desktop = load_fixture(FIXTURE)
+        self.assertGreater(len(rules.today_popular(desktop, count=50)), len(popular))
+
+    def test_the_catalogue_says_how_an_app_is_driven_on_a_tv(self) -> None:
+        from luma_depot.model import catalogue_v1
+        apps, _looks, _tweaks, _story = catalogue_v1.parse({"items": [
+            {"id": "com.valvesoftware.Steam", "kind": "app", "name": "Steam", "runs": ["desktop", "tablet", "tv"],
+             "tv": {"runs": True, "input": "controller", "action": "BigPicture"}},
+            {"id": "org.example.Paint", "kind": "app", "name": "Paint", "runs": ["desktop"], "tv": None}]})
+        self.assertEqual({a.app_id: a.tv_input for a in apps},
+                         {"com.valvesoftware.Steam": "controller", "org.example.Paint": ""})
+
+
 class World(unittest.TestCase):
     def test_updates_badge_counts_every_device_and_luma(self) -> None:
         self.assertEqual(load_fixture(FIXTURE).update_count(), 11)
