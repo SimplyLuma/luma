@@ -93,3 +93,13 @@ GLES Mesa Mali-G715 MC7 (Panfrost) 26.3, `/storage/emulated` mounted, network va
 system_server start, TikTok and X full screen from their launcher entries.
 
 Not verified: SMS/MMS in, camera, suspend, GNSS, sensors. Display mode is 60 Hz only.
+
+## Luma ARM image (arm1)
+
+The Pixel 9 installs the nightly's Luma ARM image (the same file for every ARM phone) to `userdata` and its own boot
+image to `boot_a`. `make-arm1-inputs.sh MAIN_CHECKOUT` derives `tokay-luma-initramfs-arm1` from the Alpha 1 inputs:
+it adds the shared OSTree boot resolver from main (`scripts/mobile/common/initramfs`) and keeps `/boot` on LumaRoot.
+`build-tokay-arm1.sh` builds the boot image with `ostree=/ostree/root.a`; the resolver points that slot link at
+ostree's default deployment on every boot, so one boot image serves every nightly, `rpm-ostree upgrade` and rollback.
+The Pixel 9 files (hook 86) still come from the boot image, so the OS commit has nothing device-specific.
+`build-tokay-arm1-dev.sh` is the same with the lab SSH key, for testing only.
