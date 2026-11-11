@@ -2294,31 +2294,31 @@
 #define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_HEIGHT 4
 #define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_GAP 12
 #define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_FADE_MS 300
-#define LUMA_UI_TV_TERMINAL__DOC "Terminal on a TV (luma_terminal/ui_tv.py; Design Center tv-luma/ Terminal board). The log is the screen: a session's live output in log_size monospace on the log panel, under the shared bar from log_top; the session rail (rail_height) is revealed above it, pushing it down by rail_height + rail_gap. Verb hues are the desktop's, lifted for a dark panel read at distance (ok, fail, warn, run), and the quiet ink is lighter than the desktop's, not darker: distance costs contrast. ansi is the 16-colour palette the log draws with (no dim blue). pick is the ember ring on the Compare pane Left/Right chose. Stop is held for hold_ms, never confirmed."
-#define LUMA_UI_TV_TERMINAL_LOG_SIZE 28
-#define LUMA_UI_TV_TERMINAL_LOG_TOP 150
-#define LUMA_UI_TV_TERMINAL_RAIL_HEIGHT 66
-#define LUMA_UI_TV_TERMINAL_RAIL_GAP 28
-#define LUMA_UI_TV_TERMINAL_BOTTOM 96
-#define LUMA_UI_TV_TERMINAL_EMPTY_TOP 380
-#define LUMA_UI_TV_TERMINAL_EMPTY_HEIGHT 220
-#define LUMA_UI_TV_TERMINAL_HINT_BOTTOM 40
-#define LUMA_UI_TV_TERMINAL_HINT_HEIGHT 36
-#define LUMA_UI_TV_TERMINAL_HOLD_MS 1100
-#define LUMA_UI_TV_TERMINAL_PANEL "#0e1013"
-#define LUMA_UI_TV_TERMINAL_LOG "#14171b"
-#define LUMA_UI_TV_TERMINAL_LOG_INK "#e8eaed"
-#define LUMA_UI_TV_TERMINAL_INK "#f2f4f6"
-#define LUMA_UI_TV_TERMINAL_QUIET "#9ba2aa"
-#define LUMA_UI_TV_TERMINAL_CHIP "#1c2026"
-#define LUMA_UI_TV_TERMINAL_SHEET "#1a1d22"
-#define LUMA_UI_TV_TERMINAL_TRACK "#2a2f36"
-#define LUMA_UI_TV_TERMINAL_SCRIM "rgba(0, 0, 0, 0.55)"
-#define LUMA_UI_TV_TERMINAL_OK "#49c68e"
-#define LUMA_UI_TV_TERMINAL_FAIL "#ff6f6b"
-#define LUMA_UI_TV_TERMINAL_WARN "#e3a53c"
-#define LUMA_UI_TV_TERMINAL_RUN "#64a4f2"
-#define LUMA_UI_TV_TERMINAL_PICK "#ff7a2e"
+#define LUMA_UI_TV_ACTION_BAR__DOC "The TV action bar (Design Center mockups/tv/lumaui-tv.css .tv-ab): the desktop's floating bar, grown for the couch. A bar material panel centred on the bottom safe line (bottom), height tall with padding inside, its items item_height buttons (an icon-only item is item_min_width square) with gap between them; a divider (divider_width by divider_height, divider_margin each side) separates groups. The focused item is the key, the rest stay quiet (ink_2) until chosen. Python: tv_parts.TvActionBar."
+#define LUMA_UI_TV_ACTION_BAR_BOTTOM 56
+#define LUMA_UI_TV_ACTION_BAR_HEIGHT 96
+#define LUMA_UI_TV_ACTION_BAR_PADDING 10
+#define LUMA_UI_TV_ACTION_BAR_RADIUS 32
+#define LUMA_UI_TV_ACTION_BAR_GAP 6
+#define LUMA_UI_TV_ACTION_BAR_ITEM_HEIGHT 76
+#define LUMA_UI_TV_ACTION_BAR_ITEM_MIN_WIDTH 76
+#define LUMA_UI_TV_ACTION_BAR_ITEM_PADDING_X 24
+#define LUMA_UI_TV_ACTION_BAR_ITEM_RADIUS 22
+#define LUMA_UI_TV_ACTION_BAR_ITEM_SIZE 24
+#define LUMA_UI_TV_ACTION_BAR_ITEM_WEIGHT 650
+#define LUMA_UI_TV_ACTION_BAR_ICON 32
+#define LUMA_UI_TV_ACTION_BAR_DIVIDER_WIDTH 1.5
+#define LUMA_UI_TV_ACTION_BAR_DIVIDER_HEIGHT 48
+#define LUMA_UI_TV_ACTION_BAR_DIVIDER_MARGIN 10
+#define LUMA_UI_TV_TERMINAL__DOC "Terminal on a TV is the same Terminal (luma_terminal/tv.py; Design Center mockups/luma-tv-terminal.html): its sessions' shell straight on the room, no card, read across the room and typed into with the system keyboard or a keyboard plugged into the TV. text_size is the shell's text at 1080 (the desktop's mono is scaled to it); the text sits inside the safe area from text_top, and above the action bar by text_bottom (the bar's 96 on its 56 line, and a gap); while the system keyboard is up it stops keyboard_gap above it. shade holds the room down behind the text (top and bottom alpha of black). ink and ansi are the colours the shell draws with: the desktop's hues lifted to read over a dimmed picture at distance (no dim blue)."
+#define LUMA_UI_TV_TERMINAL_TEXT_SIZE 28
+#define LUMA_UI_TV_TERMINAL_TEXT_TOP 150
+#define LUMA_UI_TV_TERMINAL_TEXT_BOTTOM 186
+#define LUMA_UI_TV_TERMINAL_KEYBOARD_GAP 28
+#define LUMA_UI_TV_TERMINAL_SHADE_0 0.42
+#define LUMA_UI_TV_TERMINAL_SHADE_1 0.62
+#define LUMA_UI_TV_TERMINAL_SHADE_LEN 2
+#define LUMA_UI_TV_TERMINAL_INK "#e8eaed"
 #define LUMA_UI_TV_TERMINAL_ANSI { "#3a4049", "#ff6f6b", "#49c68e", "#e3a53c", "#64a4f2", "#c58af9", "#4dd0e1", "#d7dbe0", "#6b737e", "#ff8f8b", "#6fd9a6", "#f0bd62", "#8bbcf6", "#d6a9fb", "#7fe0ec", "#f2f4f6" }
 #define LUMA_UI_TV_TERMINAL_ANSI_LEN 16
 #define LUMA_UI_TV_SHEET_RADIUS 44

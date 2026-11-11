@@ -72,6 +72,10 @@ box.tm-vte-wrap {
   background: @luma_terminal_pane;
 }
 vte-terminal.tm-vte { background: @luma_terminal_pane; color: @luma_ink; }
+/* On a TV the shell sits on the room (luma_terminal/tv.py): the panes give up their surfaces. */
+.lumaui-tv-stage scrolledwindow.tm-pane-scroll,
+.lumaui-tv-stage box.tm-vte-wrap,
+.lumaui-tv-stage vte-terminal.tm-vte { background: none; }
 
 /* Phone keys row (v71 .tmkeys): Terminal's own strip, laid out with the bar's tokens. */
 scrolledwindow.tm-keys { background: none; }

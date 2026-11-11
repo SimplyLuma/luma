@@ -121,6 +121,8 @@ __all__ = [
     # wide tiles and app surfaces (API level 10)
     "TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvShot", "TvScreenshotViewer", "TvEmptyState",
     "compose_wide_tile", "wide_tile_art",
+    # the TV action bar, a console under the remote, the wallpaper room (API level 13)
+    "TvActionBar", "desktop_wallpaper",
     # the system's TV keyboard: action label, height
     "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
     # remotes and gamepads: an app that reads the pad itself claims it
@@ -402,7 +404,7 @@ def __getattr__(name: str):
     if name == "tv_nearest":
         from .tv_focus import nearest
         return nearest
-    if name in {"TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow"}:
+    if name in {"TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow", "TvActionBar"}:
         from . import tv_parts
         return getattr(tv_parts, name)
     if name == "TvToast":
@@ -414,7 +416,8 @@ def __getattr__(name: str):
     if name == "TvIdle":
         from .tv_idle import TvIdle
         return TvIdle
-    if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide"}:
+    if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
+                "desktop_wallpaper"}:
         from . import tv_media
         return getattr(tv_media, name)
     if name in {"TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvShot", "TvScreenshotViewer",

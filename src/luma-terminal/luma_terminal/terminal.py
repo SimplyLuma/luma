@@ -166,6 +166,7 @@ class TerminalWindow(AppWindow):
         self._fetch_logo: Gtk.Widget | None = None
         self._fetch_layouts: dict[int, list[Gtk.Stack]] = {}
         self._session_menu: FloatingMenu | None = None
+        self.tv = None  # tv.TerminalOnTv, made once the window is built
         self._command: BarEntry | None = None
         self._bar_kind = ""
         self._bar_key: tuple | None = None
@@ -176,17 +177,6 @@ class TerminalWindow(AppWindow):
                          minimum_width=360, minimum_height=420)
         self.connect("notify::css-classes", self._refresh_vte_palettes)
         self.connect("close-request", self._close_requested)
-
-        # On a TV the same app is read from across the room and driven by a
-        # remote: its TV presentation (ui_tv), and no desktop shell is started.
-        from luma_appkit.lumaui import tv_posture
-        self.tv = None
-        if self.fixture is None and tv_posture():
-            from .ui_tv import TerminalTV
-            self.tv = TerminalTV(self)
-            self.host = self.tv.stage
-            self.set_body(self.tv.stage)
-            return
 
         self.stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
         self.stage.set_name("tm-stage")
@@ -201,10 +191,27 @@ class TerminalWindow(AppWindow):
             self.connect("map", lambda *_args: self._focus_active_terminal())
         # v71 tiers: under 560 the bar is the phone's keys, command line and sessions panel.
         self.tier_watch.connect("tier-changed", self._tier_changed)
+        # On a TV it is this same Terminal, its shell read across the room (tv.TerminalOnTv).
+        from .tv import TerminalOnTv
+        self.tv = TerminalOnTv(self)
+        self.tv.follow()
 
     @property
     def _phone(self) -> bool:
         return self.tier == "phone"
+
+    def tv_presentation_changed(self) -> None:
+        """The window entered or left its TV presentation: the shells' size and colours follow."""
+        for terminal in self.terminals.values():
+            self._set_vte_scale(terminal)
+            self._set_vte_palette(terminal)
+        self._bar_key = None
+        if not self.tv.active:
+            self._show_prompt()
+
+    def _set_vte_scale(self, terminal: Gtk.Widget) -> None:
+        from .tv import tv_font_scale
+        terminal.set_font_scale(tv_font_scale(self.get_height()) if self.tv is not None and self.tv.active else 1.0)
 
     def _tier_changed(self, _watch, tier: str) -> None:
         self._sync_tier()
@@ -241,8 +248,6 @@ class TerminalWindow(AppWindow):
                 Command("term.find", "Find", self.find, "search", shortcut=("Ctrl", "Shift", "F")),
                 Command("term.copy", "Copy", self.copy, "copy", shortcut=("Ctrl", "Shift", "C")),
                 Command("term.paste", "Paste", self.paste, "clipboard", shortcut=("Ctrl", "Shift", "V")),
-                # The TV never types: it runs what was saved here (tv_scripts).
-                Command("term.save-for-tv", "Save for TV", self.save_for_tv, "tv"),
             )),
             CommandGroup("", (
                 Command("term.zoom-in", "Zoom in", lambda: self.zoom(1), "zoom-in", shortcut=("Ctrl", "plus")),
@@ -423,6 +428,8 @@ class TerminalWindow(AppWindow):
         terminal = self._vte().Terminal()
         terminal.add_css_class("tm-vte")
         terminal.set_font(type_font("mono"))
+        if self.tv is not None:
+            self._set_vte_scale(terminal)
         terminal.set_allow_hyperlink(True)
         if self.profile and self.profile.limit_scrollback:
             terminal.set_scrollback_lines(self.profile.scrollback_lines)
@@ -459,6 +466,14 @@ class TerminalWindow(AppWindow):
     def _set_vte_palette(self, terminal: Gtk.Widget) -> None:
         # VTE paints its own cells, so GTK CSS alone cannot change their black
         # default. Resolve the same LumaUI role as the surrounding canvas.
+        if getattr(self, "tv", None) is not None and self.tv.active:
+            # on a TV the text sits on the room in the TV palette (tv.terminal.ink, ansi)
+            from .tv import tv_colours
+            ink, clear, palette = tv_colours()
+            terminal.set_colors(ink, clear, palette)
+            terminal.set_clear_background(False)
+            return
+        terminal.set_clear_background(True)
         terminal.set_color_background(colour(terminal, "luma_terminal_pane"))
         terminal.set_color_foreground(colour(terminal, "luma_ink"))
 
@@ -688,6 +703,10 @@ class TerminalWindow(AppWindow):
             Toast.show(self.host, f"Link could not open: {error.message}", kind="error")
 
     def _show_prompt(self) -> None:
+        if getattr(self, "tv", None) is not None and self.tv.active:
+            self.tv.show_bar()
+            self.tv.follow_shell()
+            return
         session = self.model.current
         pane = self.model.active
         key = (self._phone, session.display_name, len(self.model.sessions), pane.id, pane.cwd)
@@ -1089,15 +1108,6 @@ class TerminalWindow(AppWindow):
                 Toast.show(self.host, "No matches", kind="warning")
         except GLib.Error as error:
             Toast.show(self.host, f"Search failed: {error.message}", kind="error")
-
-    def save_for_tv(self) -> None:
-        """Save the last command run here for Terminal on a TV, in this session's folder."""
-        if not self.history:
-            Toast.show(self.host, "Run a command first, then save it for the TV", kind="warning")
-            return
-        from .tv_scripts import save_script
-        script = save_script(self.history[-1], self.model.active.cwd)
-        Toast.show(self.host, f"Saved for the TV: {script['name']}", kind="done")
 
     def about(self) -> None:
         Adw.AboutDialog(application_name="Terminal", application_icon=APP_ID,

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -50,7 +51,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from . import lumaui_tokens as tokens  # noqa: E402
 
@@ -927,11 +928,41 @@ def _room_from_file(path: str) -> Gdk.Texture:
     return _room_texture_from_pixels(pixels, side)
 
 
+#: Luma's own wallpaper (config/desktop/dconf luma.d), the room when the person's is unset or out of reach.
+DEFAULT_WALLPAPER = "/usr/share/backgrounds/luma/prism.png"
+
+
+def desktop_wallpaper() -> str | None:
+    """The person's desktop background as a readable file, or Luma's own.
+
+    Read from org.gnome.desktop.background (picture-uri-dark in dark style), as
+    the C kit's TV room does; inside a Flatpak the host's files are reached
+    through /run/host.
+    """
+    candidates = []
+    source = Gio.SettingsSchemaSource.get_default()
+    schema = source.lookup("org.gnome.desktop.background", True) if source else None
+    if schema is not None:
+        dark = Adw.StyleManager.get_default().get_dark() and schema.has_key("picture-uri-dark")
+        uri = Gio.Settings.new("org.gnome.desktop.background").get_string("picture-uri-dark" if dark else "picture-uri")
+        if uri:
+            try:
+                candidates.append(GLib.filename_from_uri(uri)[0])
+            except GLib.Error:
+                pass
+    candidates.append(DEFAULT_WALLPAPER)
+    for path in candidates:
+        for real in (path, "/run/host" + path):
+            if os.path.isfile(real):
+                return real
+    return None
+
+
 class TvRoom(Gtk.Widget):
     """The room: the focused or playing item's own art, blurred, filling the screen, cross-faded.
 
     `set_artwork(path)` (or `hues=` for an item without art) changes it over
-    1.1 s. The art is blurred once off the main loop and drawn as a texture,
+    1.1 s; `set_wallpaper()` shows the person's desktop background. The art is blurred once off the main loop and drawn as a texture,
     never with a live blur. A shade (darker top and bottom) keeps the bar and
     text legible. Place it first on the stage: `stage.place(room, fill=True)`.
     """
@@ -965,6 +996,13 @@ class TvRoom(Gtk.Widget):
             return
         self._key = key
         _RoomCache.shared().get(key, make, lambda texture, k=key: self._arrived(k, texture))
+
+    def set_wallpaper(self) -> None:
+        """The person's desktop background as the room (`desktop_wallpaper`), for a screen with
+        no art of its own (a terminal)."""
+        path = desktop_wallpaper()
+        if path:
+            self.set_artwork(path)
 
     def _arrived(self, key: str, texture: Gdk.Texture | None) -> None:
         if texture is None or key != self._key or texture is self._current:
