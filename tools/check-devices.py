@@ -232,6 +232,16 @@ class Checker:
                 if line and not KCONFIG_LINE.fullmatch(line):
                     self.error(path, f"line {number} is not a Kconfig assignment or comment")
 
+    def check_kernel_patches(self, device_dir: Path, kernel: dict) -> None:
+        """Kernel patches are repository files holding a unified diff."""
+        where = device_dir / "device.toml"
+        for patch in kernel.get("patches", []):
+            path = (self.root / patch).resolve()
+            if not path.is_relative_to(self.root.resolve()) or not path.is_file():
+                self.error(where, f"kernel patch {patch} must name a repository file")
+            elif "\ndiff --git a/" not in path.read_text():
+                self.error(path, "has no diff --git section")
+
     def check_kernel_source(self, device_dir: Path, kernel: dict) -> None:
         source = kernel.get("source_lock")
         if not source:
@@ -419,6 +429,7 @@ class Checker:
                     self.error(device_dir / "device.toml", "kernel.tag must end with the kernel release")
                 self.check_kernel_source(device_dir, device.get("kernel", {}))
                 self.check_kernel_fragments(device_dir, device.get("kernel", {}))
+                self.check_kernel_patches(device_dir, device.get("kernel", {}))
                 self.check_distribution_kernel(device_dir, device.get("kernel", {}), soc)
                 self.check_initramfs(device_dir, device.get("initramfs"))
                 if (device_dir / "firmware.manifest").is_file():

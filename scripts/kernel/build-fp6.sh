@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Build the Fairphone 6 kernel: the SimplyLuma/linux tag in
-# devices/fairphone/fp6/device.toml [kernel], its config with the
-# config_fragments merged over it, cross-compiled as luma/fp6/alpha1/BUILD.md
-# in that tag describes (clang/LLVM/LLD 22.1.8 and pahole 1.30 on Fedora 44).
+# devices/fairphone/fp6/device.toml [kernel] with its patches applied, its
+# config with the config_fragments merged over it, cross-compiled as
+# luma/fp6/alpha1/BUILD.md in that tag describes (clang/LLVM/LLD 22.1.8 and
+# pahole 1.30 on Fedora 44).
 #
 # OUTPUT_DIR receives:
 #   Image.gz  the kernel for the boot image (scripts/mobile/build-fp6-boot-image.sh --kernel)
@@ -14,7 +15,8 @@
 #
 # usage: build-fp6.sh [--source DIR] OUTPUT_DIR
 #   --source  an unpacked tree of the tag (default: fetched and exported without
-#             .git, so the kernel release carries no -g<commit> suffix)
+#             .git, so the kernel release carries no -g<commit> suffix); patches
+#             it does not carry yet are applied to it
 #
 # JOBS (default 16), KBUILD_BUILD_VERSION and KBUILD_BUILD_TIMESTAMP override
 # the build defaults below.
@@ -39,6 +41,7 @@ import shlex, sys, tomllib
 k = tomllib.load(open(sys.argv[1], "rb"))["kernel"]
 print(f"tag={shlex.quote(k['tag'])} release={shlex.quote(k['release'])} config={shlex.quote(k['config'])}")
 print(f"dtb={shlex.quote(k['dtb'])} fragments=({' '.join(shlex.quote(f) for f in k.get('config_fragments', []))})")
+print(f"patches=({' '.join(shlex.quote(f) for f in k.get('patches', []))})")
 PY
 )"
 
@@ -54,6 +57,11 @@ if [ -z "$source_dir" ]; then
 fi
 [ ! -e "$source_dir/.git" ] || fail "$source_dir is a git checkout; export it so the release has no -g<commit> suffix"
 [ -f "$source_dir/$config" ] || fail "$source_dir has no $config (not the $tag tree)"
+for p in "${patches[@]}"; do
+  # Already applied when it reverses cleanly.
+  patch -d "$source_dir" -p1 -R -f -s --dry-run <"$repo_root/$p" >/dev/null 2>&1 && continue
+  patch -d "$source_dir" -p1 -N -s <"$repo_root/$p" || fail "$p does not apply to $source_dir"
+done
 
 obj="$out/obj"
 mkdir -p "$obj"
@@ -92,6 +100,7 @@ install -m 0644 "$obj/.config" "$out/config"
 {
   printf 'TAG=%s\nRELEASE=%s\n' "$tag" "$release"
   printf 'FRAGMENTS=%s\n' "${fragments[*]}"
+  printf 'PATCHES=%s\n' "${patches[*]}"
   printf 'IMAGE_SHA256=%s\n' "$(sha256sum "$out/Image.gz" | cut -d' ' -f1)"
   printf 'CONFIG_SHA256=%s\n' "$(sha256sum "$out/config" | cut -d' ' -f1)"
   printf 'SIGNING_CERT_SHA256=%s\n' "$(sha256sum "$obj/certs/signing_key.x509" | cut -d' ' -f1)"
