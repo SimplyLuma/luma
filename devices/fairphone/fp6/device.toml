@@ -135,3 +135,15 @@ kit_image_sha256 = "5d8019855d86335a2177b1f2cdb45308fef65168b437c3df08d2e202ba6f
 dtbo_image = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/dtbo-blank.bin"
 dtbo_image_sha256 = "75c91b29d5522c8a97c779e50bc33f11e07ed37b2baa31c8c727016e92915c1d"
 guide = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/FLASHING.md"
+
+# Kernel patches 0041/0042 (system suspend), luma-fp6-platform 16, firmware 4.
+[[releases]]
+name = "kit-20261111-1"
+date = "2026-11-11"
+boot_image = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/luma-fp6-20261111.1-boot.bin"
+boot_image_sha256 = "62ece6566207a81327a4d1883a383a53e97beacd4591e48aa9cd779a8dfba8af"
+kit_image = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/luma-fp6-20261111.1-kit.sparse"
+kit_image_sha256 = "e67160cf9ef9adae743cdbe362a73bc447412b05b4c3fc59e5a4603b8c9caf30"
+dtbo_image = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/dtbo-blank.bin"
+dtbo_image_sha256 = "75c91b29d5522c8a97c779e50bc33f11e07ed37b2baa31c8c727016e92915c1d"
+guide = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/FLASHING.md"
