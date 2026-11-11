@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.15%{?dist}
+Release:        1.luma.16%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -69,6 +69,8 @@ grep -Fxq 'automatic_download = false' %{buildroot}%{_sysconfdir}/luma/update.co
 grep -Fxq 'ConditionFirmware=device-tree-compatible(fairphone,fp6)' %{buildroot}%{_unitdir}/luma-fp6-boot-success.service
 test ! -s %{buildroot}%{_unitdir}/boot.automount
 grep -Fxq 'wifi.powersave=2' %{buildroot}%{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
+grep -Fxq 'MemorySleepMode=s2idle' %{buildroot}%{_prefix}/lib/systemd/sleep.conf.d/50-luma-fp6.conf
+grep -Fq 'KERNEL=="890000.serial", ATTR{power/wakeup}="disabled"' %{buildroot}%{_prefix}/lib/udev/rules.d/60-luma-fp6-wakeup.rules
 # The login screen keeps the signed-in session's power defaults.
 for key in power-button-action sleep-inactive-ac-type sleep-inactive-battery-type color-scheme; do
   line=$(grep -x "$key='[a-z-]*'" %{buildroot}%{_sysconfdir}/dconf/db/luma.d/10-luma-handheld)
@@ -94,8 +96,10 @@ dconf update || :
 %{_prefix}/lib/environment.d/90-luma-handheld.conf
 %{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
 %{_prefix}/lib/systemd/system-preset/60-luma-fp6-platform.preset
+%{_prefix}/lib/systemd/sleep.conf.d/50-luma-fp6.conf
 %{_prefix}/lib/systemd/system-sleep/90-luma-fp6-cellular
 %{_prefix}/lib/tmpfiles.d/luma-fp6-clock.conf
+%{_prefix}/lib/udev/rules.d/60-luma-fp6-wakeup.rules
 %{_unitdir}/boot.automount
 %{_unitdir}/luma-clock-restore.service
 %{_unitdir}/luma-clock-save.service
@@ -111,6 +115,11 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.16
+- System suspend works: s2idle by default (the firmware returns at once from
+  deep), and the Bluetooth UART RX line is no longer a wakeup source (it
+  aborted every suspend attempt).
+
 * Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.15
 - Wi-Fi power save off: the link stopped receiving after a few minutes idle.
 
