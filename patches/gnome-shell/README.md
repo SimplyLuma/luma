@@ -636,6 +636,7 @@ so the handheld power button (a short press blanks or wakes the display) did
 nothing there. main.js builds a `HandheldPowerButton` of its own in greeter
 mode, and the button (powerButton.js) skips the screen-shield lock when there
 is no session to secure. Handheld device class only. The greeter's dconf (GDM
-profile) must also set media-keys `power-static=@as []`, as
-luma-shell-handheld.dconf does for the session, or gsd-media-keys takes the
-key first at boot. Shell .175.
+profile) also sets media-keys `power-static=@as []`
+(config/mobile/luma-greeter-handheld.dconf), as luma-shell-handheld.dconf
+does for the session, or gsd-media-keys takes the key first at boot.
+Shell .175.
