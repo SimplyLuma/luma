@@ -20,6 +20,7 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from luma_appkit import lumaui_tokens  # noqa: E402
 from luma_appkit.tv_focus import DOWN, LEFT, RIGHT, UP, nearest  # noqa: E402
+from luma_appkit.tv_parts import weather_glyph  # noqa: E402
 from luma_appkit.tv_stage import tv_css, tv_material  # noqa: E402
 
 HAS_DISPLAY = Gtk.init_check() if hasattr(Gtk, "init_check") else Gdk.Display.get_default() is not None
@@ -385,3 +386,49 @@ class BarCluster(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Weather(unittest.TestCase):
+    """An app's TV bar shows Home's weather beside the time, drawn as the home's bar draws it."""
+
+    def test_glyph_matches_the_home_bar(self):
+        # tvModel.js weatherGlyph: the same conditions, the same icons and tints.
+        cases = {("Thunderstorms", 12): ("lumaui-cloud-lightning-symbolic", None),
+                 ("Light snow", 12): ("lumaui-snowflake-symbolic", None),
+                 ("Rain", 23): ("lumaui-cloud-rain-symbolic", None),
+                 ("Fog", 8): ("lumaui-cloud-fog-symbolic", None),
+                 ("Cloudy", 8): ("lumaui-cloud-symbolic", None),
+                 ("Partly cloudy", 12): ("lumaui-cloud-sun-symbolic", "sun"),
+                 ("Fair", 22): ("lumaui-cloud-moon-symbolic", "moon"),
+                 ("Clear", 6): ("lumaui-sun-symbolic", "sun"),
+                 ("Clear", 19): ("lumaui-moon-symbolic", "moon"),
+                 ("", 3): ("lumaui-moon-symbolic", "moon")}
+        for (condition, hour), expected in cases.items():
+            self.assertEqual(weather_glyph(condition, hour), expected, (condition, hour))
+
+    @unittest.skipUnless(HAS_DISPLAY, "needs a display")
+    def test_bar_shows_a_reading_and_hides_without_one(self):
+        from luma_appkit.tv_parts import TvTopBar
+        bar = TvTopBar()
+        bar.show_weather({})
+        self.assertFalse(bar.weather.get_visible() or bar.divider.get_visible())
+        bar.show_weather({"value": "57\u00b0", "description": "Clear"})
+        self.assertTrue(bar.weather.get_visible() and bar.divider.get_visible())
+        self.assertEqual(bar.weather_label.get_label(), "57\u00b0")
+        # The weather sits in the cluster before the clock: weather | time.
+        self.assertIs(bar.weather.get_next_sibling(), bar.divider)
+        self.assertIs(bar.divider.get_next_sibling(), bar.clock)
+
+
+class SlideBleed(unittest.TestCase):
+    @unittest.skipUnless(HAS_DISPLAY, "needs a display")
+    def test_a_clipping_slide_leaves_room_for_a_lifted_cover(self):
+        # A focused cover lifts and casts its shadow past the slide's box; the
+        # slide clips itself with SLIDE_BLEED of room, never at its own edge.
+        from luma_appkit.tv_media import SLIDE_BLEED, TvSlide
+        slide = TvSlide(Gtk.Box(), orientation=Gtk.Orientation.HORIZONTAL)
+        self.assertEqual(slide.get_overflow(), Gtk.Overflow.VISIBLE)
+        self.assertTrue(slide._clip)
+        cover = lumaui_tokens.TV["cover"]
+        self.assertGreaterEqual(SLIDE_BLEED, cover["square"] * (cover["focus_scale"] - 1) / 2 + cover["ring"])
+

@@ -28,7 +28,8 @@
         {"required": ["source_lock", "config"], "not": {"anyOf": [{"required": ["tag"]}, {"required": ["distribution"]}]}},
         {"required": ["distribution", "nevr"], "not": {"anyOf": [
           {"required": ["tag"]}, {"required": ["source_lock"]}, {"required": ["config"]},
-          {"required": ["branch"]}, {"required": ["rpm_version_release"]}, {"required": ["dtb_overlays"]}
+          {"required": ["branch"]}, {"required": ["rpm_version_release"]}, {"required": ["dtb_overlays"]},
+          {"required": ["config_fragments"]}, {"required": ["patches"]}
         ]}}
       ],
       "properties": {
@@ -40,6 +41,8 @@
         "release": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?[A-Za-z0-9._+-]*$"},
         "rpm_version_release": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?-[A-Za-z0-9._+-]+$"},
         "config": {"$ref": "#/$defs/relpath"},
+        "config_fragments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relpath"}, "description": "Kconfig fragments in this repository, merged over config in order."},
+        "patches": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relpath"}, "description": "Kernel patches in this repository, applied over the tag in order."},
         "dtb": {"type": "string", "pattern": "^[a-z0-9_-]+/[A-Za-z0-9_.,+-]+\\.dtb$"},
         "dtb_overlays": {"$ref": "#/$defs/relpath"}
       }
@@ -121,9 +124,18 @@
           "boot_image": {"$ref": "#/$defs/url"},
           "boot_image_sha256": {"$ref": "#/$defs/sha256"},
           "system_image": {"$ref": "#/$defs/url"},
-          "system_image_sha256": {"$ref": "#/$defs/sha256"}
+          "system_image_sha256": {"$ref": "#/$defs/sha256"},
+          "kit_image": {"$ref": "#/$defs/url"},
+          "kit_image_sha256": {"$ref": "#/$defs/sha256"},
+          "dtbo_image": {"$ref": "#/$defs/url"},
+          "dtbo_image_sha256": {"$ref": "#/$defs/sha256"},
+          "guide": {"$ref": "#/$defs/url"}
         },
-        "dependentRequired": {"system_image": ["system_image_sha256"]}
+        "dependentRequired": {
+          "system_image": ["system_image_sha256"],
+          "kit_image": ["kit_image_sha256"],
+          "dtbo_image": ["dtbo_image_sha256"]
+        }
       }
     }
   },

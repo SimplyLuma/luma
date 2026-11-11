@@ -1,0 +1,45 @@
+<node>
+  <!-- Source contract: native Settings client; no subscriber identifiers or
+       activation secrets in arguments, properties, signals or error text. -->
+  <interface name="org.projectluma.ESim1">
+    <method name="ListProfiles">
+      <arg name="generation" type="s" direction="out"/>
+      <arg name="profiles" type="aa{sv}" direction="out"/>
+    </method>
+    <method name="SetEnabled">
+      <arg name="generation" type="s" direction="in"/>
+      <arg name="profile" type="s" direction="in"/>
+      <arg name="enabled" type="b" direction="in"/>
+    </method>
+    <method name="Rename">
+      <arg name="generation" type="s" direction="in"/>
+      <arg name="profile" type="s" direction="in"/>
+      <arg name="name" type="s" direction="in"/>
+    </method>
+    <method name="Delete">
+      <arg name="generation" type="s" direction="in"/>
+      <arg name="profile" type="s" direction="in"/>
+      <arg name="confirmed" type="b" direction="in"/>
+    </method>
+    <method name="Download">
+      <!-- Exactly one bounded activation-code line through a private pipe.
+           The broker consumes/closes the FD. Never automatically enable. -->
+      <arg name="activation_code" type="h" direction="in"/>
+    </method>
+    <!-- Cancels only this exact unique sender's active request. Never a rollback. -->
+    <method name="CancelOperation"/>
+    <!-- Native IMS only: exact captured unique owner and opaque lease token.
+         Acknowledges cancellation, never hardware retirement or rollback. -->
+    <method name="CancelReservation"><arg name="token" type="s" direction="in"/><arg name="accepted" type="b" direction="out"/></method>
+    <signal name="ProfilesChanged"/>
+  <method name="CheckNativeChannelLifecycle">
+      <arg name="passed" type="b" direction="out" />
+    </method>
+    
+<method name="CheckNativeReadonlyEuicc"><arg name="passed" type="b" direction="out" /></method>
+  
+<method name="CheckNativeUncertainOpenRecovery"><arg name="verified" type="b" direction="out"/></method>
+<method name="CheckNativeCandidateBinding"><arg name="verified" type="b" direction="out" /></method>
+
+</interface>
+</node>

@@ -71,6 +71,11 @@ class LiveLibrary:
                       value.repeat != RepeatMode.OFF, self._queue_ids,
                       'This computer', (('This computer', 'monitor', 'System audio output'),))
 
+    @property
+    def playback_error(self):
+        """Why the current song can't play (the controller's message), or None."""
+        return self.controller.snapshot.error or None
+
     def load(self):
         sources = self.store.sources()
         signed_out = {s.id for s in sources if s.state == SourceState.AUTH_REQUIRED}

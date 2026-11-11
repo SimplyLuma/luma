@@ -177,6 +177,15 @@ class SecretServiceStore:
                         raise CredentialUnavailable("Unlock the keyring and sync again.")
                 if self._keyring_locked():
                     raise CredentialUnavailable("Unlock the keyring and sync again.")
+                # Inside a Flatpak, libsecret keeps sign-ins in the app's own
+                # keyring file (its key comes through the Secret portal), which
+                # the host service search above never sees: store() wrote there.
+                # The keyring is unlocked (checked above) and that backend never
+                # prompts, so read it the way store() wrote it.
+                for schema in (self.schema, self._legacy_schema):
+                    value = self.Secret.password_lookup_sync(schema, self._attributes(reference), None)
+                    if value is not None:
+                        return value
                 return None
             except self.GLib.Error:
                 raise CredentialUnavailable("Tide couldn't read the saved sign-in. Unlock the keyring and sync again.") from None

@@ -1022,6 +1022,11 @@ def _black(alpha: float) -> Gdk.RGBA:
 
 # ── Sliding collections ──────────────────────────────────────────────────────
 
+#: Room a clipping slide leaves for a focused item drawn past its edge, in TV units:
+#: a cover lifts 8% and casts its shadow (blur 50 at y 24) beyond its box.
+SLIDE_BLEED = 56
+
+
 class TvSlide(Gtk.Widget):
     """A row or page that slides to keep the remote's focus in view; no scrollbars, no pointer.
 
@@ -1042,11 +1047,14 @@ class TvSlide(Gtk.Widget):
     def __init__(self, child: Gtk.Widget, *, orientation: Gtk.Orientation = Gtk.Orientation.VERTICAL,
                  peek: float = 120, lead: float = 40, clip: bool = True, fade_top: bool = True,
                  fade_bottom: bool = False) -> None:
-        super().__init__(overflow=Gtk.Overflow.HIDDEN if clip else Gtk.Overflow.VISIBLE,
+        # A clipping slide clips itself in do_snapshot (not Overflow.HIDDEN at
+        # its box): a focused item's lift and shadow keep SLIDE_BLEED of room.
+        super().__init__(overflow=Gtk.Overflow.VISIBLE,
                          hexpand=orientation == Gtk.Orientation.HORIZONTAL or clip,
                          vexpand=orientation == Gtk.Orientation.VERTICAL)
         self.child = child
         self.orientation = orientation
+        self._clip = clip
         self.peek, self.lead = peek, lead
         self.offset = 0.0
         self._length = 0.0  # the content's length along the slide, as last allocated
@@ -1163,6 +1171,24 @@ class TvSlide(Gtk.Widget):
                  if self._fades[1] else 0.0)
         top = min(0.45 * height, scroll["fade_top"] * u) if above > 1e-3 else 0.0
         bottom = min(0.45 * height, scroll["fade_bottom"] * u) if below > 1e-3 else 0.0
+        bleed = SLIDE_BLEED * u if self._clip else 0.0
+        if self.orientation == Gtk.Orientation.VERTICAL:
+            # Room above the first row only while the page sits at its top; once it
+            # scrolls, the top edge fades as before (and `lead` keeps the room).
+            head = bleed * (1.0 - above)
+            bounds = Graphene.Rect().init(0, -head, width, height + head)
+        else:
+            head = 0.0
+            bounds = Graphene.Rect().init(0, -bleed, width, height + 2 * bleed)
+        if self._clip:
+            snapshot.push_clip(bounds)
+        try:
+            self._snapshot_faded(snapshot, child, width, height, top, bottom, above, below, head, scroll)
+        finally:
+            if self._clip:
+                snapshot.pop()
+
+    def _snapshot_faded(self, snapshot, child, width, height, top, bottom, above, below, head, scroll) -> None:
         if top <= 0 and bottom <= 0 or width <= 0 or height <= 0:
             self.snapshot_child(child, snapshot)
             return
@@ -1173,7 +1199,8 @@ class TvSlide(Gtk.Widget):
         node = recorder.to_node()
         if node is None:
             return
-        middle = Graphene.Rect().init(0, top, width, height - top - bottom)
+        start = top if top > 0 else -head
+        middle = Graphene.Rect().init(0, start, width, height - bottom - start)
         snapshot.push_clip(middle)
         snapshot.append_node(node)
         snapshot.pop()

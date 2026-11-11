@@ -1,0 +1,37 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] Input: eswin_eph861x: reset the controller before unmasking its interrupt
+
+With eswin,suspend-mode = <2> (EPH_SUSPEND_REGULATOR) on SPI, eph_stop()
+only calls disable_irq(): the regulators stay on and the controller keeps
+running for the whole suspend with nobody reading its reports. eph_start()
+then only calls enable_irq(). On the Fairphone 6 no further interrupts
+arrive after a system resume.
+
+The vendor driver has no dev_pm_ops. Its panel-notifier wake path
+(eph_dev_enter_normal_mode) pulses the reset line before enable_irq() on
+every wake. Do the same in eph_start(), which eph_resume() and input open
+both reach while the interrupt is still masked, and log the CHG level
+after the reset.
+---
+ drivers/input/touchscreen/eswin_touch/eswin_eph861x.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/input/touchscreen/eswin_touch/eswin_eph861x.c b/drivers/input/touchscreen/eswin_touch/eswin_eph861x.c
+--- a/drivers/input/touchscreen/eswin_touch/eswin_eph861x.c
++++ b/drivers/input/touchscreen/eswin_touch/eswin_eph861x.c
+@@ -1464,6 +1464,15 @@ static int eph_start(struct eph_data *ephdata)
+     switch (ephdata->ephplatform->suspend_mode)
+     {
+         case EPH_SUSPEND_REGULATOR:
++            #if (ESWIN_EPH861X_SPI)
++            /*
++             * eph_stop() only masked the interrupt: the controller kept
++             * running and may hold a report nobody read. Reset it before
++             * unmasking, as the vendor wake path does.
++             */
++            eph_reset_device(ephdata);
++            dev_info(&commsdevice->dev, "%s, reset done, chg %d\n", __func__, eph_read_chg(ephdata));
++            #endif
+             enable_irq(ephdata->chg_irq);
+             #if (ESWIN_EPH861X_I2C)
+             /* TODO Pixel4XL specific - Temporary comment out diabling/enable of regulator due to demo handset specific issues */

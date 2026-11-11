@@ -1,0 +1,3 @@
+# The Bluetooth UART RX wake line (GPIO 51) fires during every suspend
+# attempt and aborts it. The power key and RTC alarms still wake the phone.
+ACTION=="bind", SUBSYSTEM=="platform", KERNEL=="890000.serial", ATTR{power/wakeup}="disabled"

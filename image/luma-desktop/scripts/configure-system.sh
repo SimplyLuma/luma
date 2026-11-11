@@ -42,6 +42,19 @@ if capability_enabled android_apps; then
 fi
 dconf update
 
+# Device-neutral modem policy: dbus-broker may receive ModemManager's eSIM
+# profile transport (luma-esim-broker). It is compiled into the image policy
+# here so that no package script changes the policy when a phone layers its
+# device packages.
+# The rebuild regenerates the home-directory contexts from useradd's HOME; give
+# it /var/home so the image ships /var/home rules (luma-selinux-homedirs repairs
+# the same thing at boot for later local rebuilds).
+sed -i 's|^HOME=.*|HOME=/var/home|' /etc/default/useradd
+semodule -i "$src/config/desktop/selinux/luma_esim.cil"
+install -D -m 0644 "$src/config/desktop/useradd" /etc/default/useradd
+grep -q '^/var/home' /etc/selinux/targeted/contexts/files/file_contexts.homedirs ||
+  fail 'the policy rebuild lost the /var/home home-directory contexts'
+
 # Update and trust policy (ADR-030 sections 3 and 5). The image files are the
 # reviewed copies under image/luma-desktop/rootfs.
 (cd "$rootfs" && find . -type f -print0) | while IFS= read -r -d '' file; do

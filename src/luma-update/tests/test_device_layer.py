@@ -100,6 +100,8 @@ class DeviceLayerTest(unittest.TestCase):
         compatible = self.root / "sys/firmware/devicetree/base/compatible"
         compatible.parent.mkdir(parents=True)
         compatible.write_bytes(b"fairphone,fp6\0qcom,milos\0")
+        (self.root / "dev").mkdir()
+        (self.root / "dev/fuse").write_text("")
         self.kit = self.root / "kitfs/luma-device-kit"
         (self.kit / "repo/repodata").mkdir(parents=True)
         (self.kit / "repo/repodata/repomd.xml").write_text("<repomd/>")
@@ -340,6 +342,160 @@ class DeviceLayerTest(unittest.TestCase):
         self.assertEqual(self.layer.apply(), 0)
         self.assertEqual(self.commands(["mount"]), [])
         self.assertEqual(self.commands(["umount"]), [["umount", str(self.root / "run/luma-device-kit")]])
+
+    # -- fuse ------------------------------------------------------------------
+
+    RELEASE = "7.1.2-luma-fp-ims1.gmu2.selinux1"
+
+    def fuse_system(self, signed=True, modprobe=False):
+        """No /dev/fuse; fuse.ko only in the kit's kernel-modules package."""
+        (self.root / "dev/fuse").unlink()
+        (self.root / "proc/sys/kernel").mkdir(parents=True)
+        (self.root / "proc/sys/kernel/osrelease").write_text(self.RELEASE + "\n")
+        packages = self.kit / "repo/Packages"
+        packages.mkdir()
+        (packages / "luma-fp6-platform.rpm").write_bytes(b"rpm")
+        (packages / "kernel-modules-luma-fp6.rpm").write_bytes(b"rpm")
+        member = f"/usr/lib/modules/{self.RELEASE}/kernel/fs/fuse/fuse.ko"
+        call = self.system.__call__
+        root = self.root
+
+        def run(argv):
+            argv = list(argv)
+            if argv[0] == "modprobe":
+                self.system.calls.append(argv)
+                if modprobe:
+                    (root / "dev/fuse").write_text("")
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                return subprocess.CompletedProcess(argv, 1, "", "modprobe: FATAL: Module fuse not found")
+            if argv[:2] == ["rpm", "-qp"]:
+                self.system.calls.append(argv)
+                files = (f"/usr/lib/modules/{self.RELEASE}/kernel/drivers/x.ko\n{member}\n"
+                         "/usr/lib/modules/6.0.0/kernel/fs/fuse/fuse.ko\n"
+                         if argv[-1].endswith("kernel-modules-luma-fp6.rpm") else "/usr/libexec/x\n")
+                return subprocess.CompletedProcess(argv, 0, files, "")
+            if argv[:1] == ["rpmkeys"] and "-K" in argv:
+                self.system.calls.append(argv)
+                out = "digests signatures OK" if signed else "digests SIGNATURES NOT OK"
+                return subprocess.CompletedProcess(argv, 0 if signed else 1, f"{argv[-1]}: {out}\n", "")
+            if argv[:2] == ["sh", "-c"] and "rpm2cpio" in argv[2]:
+                self.system.calls.append(argv)
+                target = Path(argv[5]) / argv[6].lstrip("./")
+                target.parent.mkdir(parents=True)
+                target.write_bytes(b"\x7fELF fuse")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[0] == "insmod":
+                self.system.calls.append(argv)
+                self.insmodded = Path(argv[1]).read_bytes()
+                (root / "dev/fuse").write_text("")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            return call(argv)
+
+        self.layer.run = run
+
+    def test_missing_fuse_is_loaded_from_the_kit_before_the_transaction(self):
+        self.fuse_system()
+        self.assertEqual(self.layer.apply(), 0)
+        names = [c[0] if c[0] != "rpm-ostree" else " ".join(c[:3]) for c in self.system.calls]
+        self.assertLess(names.index("insmod"), names.index("rpm-ostree override replace"))
+        self.assertEqual(self.insmodded, b"\x7fELF fuse")
+        verified = [c for c in self.system.calls if c[0] == "rpmkeys" and "-K" in c]
+        self.assertEqual(len(verified), 1)
+        self.assertTrue(verified[0][-1].endswith("var/lib/luma-device-layer/repo/Packages/kernel-modules-luma-fp6.rpm"))
+        self.assertFalse((self.root / "var/lib/luma-device-layer/fuse.ko").exists())
+        self.assertEqual(len(self.transactions()), 1)
+
+    def test_fuse_from_the_running_system_needs_no_kit_package(self):
+        self.fuse_system(modprobe=True)
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.commands(["insmod"]), [])
+        self.assertEqual(len(self.transactions()), 1)
+
+    def test_unsigned_fuse_package_is_refused(self):
+        self.fuse_system(signed=False)
+        self.assertEqual(self.layer.apply(), 1)
+        self.assertEqual(self.commands(["insmod"]), [])
+        self.assertEqual(self.transactions(), [])
+        self.assertIn("not signed", self.layer.load_state()["last_error"])
+
+    def test_no_fuse_for_the_running_kernel_is_an_error_before_the_transaction(self):
+        self.fuse_system()
+        (self.root / "proc/sys/kernel/osrelease").write_text("7.9.9\n")
+        self.assertEqual(self.layer.apply(), 1)
+        self.assertEqual(self.transactions(), [])
+        self.assertIn("no package in the kit has fuse.ko for 7.9.9", self.layer.load_state()["last_error"])
+
+    @unittest.skipUnless(hasattr(dl, "decompress"), "no decompress")
+    def test_module_decompression(self):
+        import gzip
+        import lzma
+        self.assertEqual(dl.decompress(gzip.compress(b"ko"), ".gz"), b"ko")
+        self.assertEqual(dl.decompress(lzma.compress(b"ko"), ".xz"), b"ko")
+        self.assertEqual(dl.decompress(b"ko", ""), b"ko")
+        try:
+            from compression import zstd
+        except ImportError:
+            return
+        self.assertEqual(dl.decompress(zstd.compress(b"ko"), ".zst"), b"ko")
+
+    # -- staged deployment labels ----------------------------------------------
+
+    def labelled(self, labels):
+        """SELinux on; /usr/lib/systemd/systemd of the staged deployment reads as labels[i]."""
+        (self.root / "sys/fs/selinux").mkdir(parents=True)
+        (self.root / "sys/fs/selinux/enforce").write_text("1")
+        top = self.root / "sysroot/ostree/deploy/luma/deploy" / f"{LAYERED}.0"
+        (top / "usr/lib/systemd").mkdir(parents=True)
+        (top / "usr/lib/systemd/systemd").write_text("")
+        (top / "usr/etc/selinux/targeted/contexts/files").mkdir(parents=True)
+        (top / "usr/etc/selinux/config").write_text("SELINUX=enforcing\nSELINUXTYPE=targeted\n")
+        (top / "usr/etc/selinux/targeted/contexts/files/file_contexts").write_text("")
+        seen = []
+
+        def label(path):
+            seen.append(path)
+            relabelled = bool(self.commands(["unshare"]))
+            return labels[1 if relabelled else 0]
+
+        self.layer.label = label
+        return top, seen
+
+    def test_correct_labels_are_left_alone(self):
+        top, seen = self.labelled(["system_u:object_r:init_exec_t:s0", None])
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(seen, [top / "usr/lib/systemd/systemd"])
+        self.assertEqual(self.commands(["unshare"]), [])
+        self.assertEqual(self.commands(["systemctl"]), [["systemctl", "--no-block", "reboot"]])
+
+    def test_mislabelled_staged_usr_is_relabelled_before_the_restart(self):
+        top, _ = self.labelled(["system_u:object_r:system_conf_t:s0", "system_u:object_r:init_exec_t:s0"])
+        self.assertEqual(self.layer.apply(), 0)
+        relabel = self.commands(["unshare"])
+        self.assertEqual(len(relabel), 1)
+        self.assertEqual(relabel[0][-3:], ["/sysroot", str(top),
+                                           str(top / "usr/etc/selinux/targeted/contexts/files/file_contexts")])
+        self.assertIn('setfiles -F -r "$2" "$3" "$2/usr"', relabel[0][6])
+        self.assertLess(self.system.calls.index(relabel[0]),
+                        self.system.calls.index(["systemctl", "--no-block", "reboot"]))
+
+    def test_layer_staged_by_a_stopped_run_is_label_checked_too(self):
+        self.system.staged = LAYERED
+        self.labelled([None, "system_u:object_r:init_exec_t:s0"])
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(len(self.commands(["unshare"])), 1)
+        self.assertEqual(self.transactions(), [])
+
+    def test_unrepairable_labels_drop_the_staged_deployment_and_do_not_restart(self):
+        self.labelled(["system_u:object_r:system_conf_t:s0", "system_u:object_r:system_conf_t:s0"])
+        self.assertEqual(self.layer.apply(), 1)
+        self.assertEqual(self.commands(["rpm-ostree", "cleanup"]), [["rpm-ostree", "cleanup", "--pending"]])
+        self.assertEqual(self.commands(["systemctl"]), [])
+        self.assertIn("still system_u:object_r:system_conf_t:s0", self.layer.load_state()["last_error"])
+
+    def test_selinux_config_parser(self):
+        self.assertEqual(dl.selinux_type("SELINUX=enforcing\nSELINUXTYPE=mls\n"), "mls")
+        self.assertEqual(dl.selinux_type("SELINUXTYPE=../x\n"), "targeted")
+        self.assertEqual(dl.selinux_type(""), "targeted")
 
     def test_mountinfo_parser(self):
         self.assertEqual(dl.parse_mountinfo(

@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.111%{?dist}
+Release:        1.luma.112%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -222,6 +222,11 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-android-recover@.service
 
 %changelog
+* Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.112
+- Skip the FP6 GPU watchdog and the container when the hardware gate is closed instead of failing them
+- Skip the Android session and its sign-in start on gated hardware; stop status probes from starting the container there
+- Bind the graphics watchdog to an active container
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.111
 - Serve Android's session Binder services outside a user namespace so system_server's UID is admitted
 - Give Android a writable cgroup namespace so framework restarts end every app process

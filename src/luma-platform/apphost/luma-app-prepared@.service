@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# A TV app kept prepared: loaded, its window built but not shown, so opening it
+# from the TV home is a present, not a cold start. Started by
+# luma-native-app-prewarm in TV posture (apps listed in luma-app-host/tv.json).
+[Unit]
+Description=Prepared %I
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionEnvironment=!XDG_SESSION_CLASS=greeter
+
+[Service]
+# Already open (started normally), or no longer a TV: nothing to prepare.
+ExecCondition=/usr/libexec/luma-native-app-prewarm --wanted %I
+ExecStart=/usr/libexec/luma-native-app-prewarm --prepared %I
+# Closed by the person: prepared again, as a TV keeps its apps ready.
+Restart=always
+RestartSec=2
+RestartPreventExitStatus=75
+Nice=5

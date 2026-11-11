@@ -14,6 +14,8 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
+# Hardware that may not run Android skips the session instead of failing it.
+ExecCondition=/usr/bin/luma-android gate
 # Launcher reconciliation publishes rounded application icons here.
 ExecStartPre=/usr/bin/mkdir -p %h/.local/share/luma/icons
 ExecStart=/usr/bin/luma-android-session

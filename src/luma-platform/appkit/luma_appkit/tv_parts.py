@@ -97,6 +97,19 @@ class TvTopBar(Gtk.Box):
         self.cluster.add_css_class("tv-cluster")
         self.cluster.update_property([Gtk.AccessibleProperty.LABEL], ["Quick panel"])
         self.end.append(self.cluster)
+        # weather | time, as the TV home's bar: Home's reading, published by
+        # the shell-state service; hidden until there is one.
+        self.weather = Gtk.Box(valign=Gtk.Align.CENTER, visible=False)
+        self.weather.add_css_class("tv-weather")
+        self.weather_icon = Gtk.Image()
+        self.weather_label = Gtk.Label(valign=Gtk.Align.CENTER)
+        self.weather_label.add_css_class("tv-clock")
+        self.weather.append(self.weather_icon)
+        self.weather.append(self.weather_label)
+        self.divider = Gtk.Box(valign=Gtk.Align.CENTER, visible=False)
+        self.divider.add_css_class("tv-divider")
+        self.cluster.append(self.weather)
+        self.cluster.append(self.divider)
         self.clock = Gtk.Label(valign=Gtk.Align.CENTER)
         self.clock.add_css_class("tv-clock")
         self.cluster.append(self.clock)
@@ -111,6 +124,7 @@ class TvTopBar(Gtk.Box):
             self._tick()
             self.connect("map", lambda *_a: self._start_clock())
             self.connect("unmap", lambda *_a: self._stop_clock())
+            _weather_feed().watch(self)
 
     def set_tabs(self, tabs: Sequence[TvTab]) -> None:
         while child := self.track.get_first_child():
@@ -147,7 +161,86 @@ class TvTopBar(Gtk.Box):
 
     def _tick(self) -> bool:
         self.clock.set_label(clock_text())
+        self.show_weather(_weather_feed().reading)
         return True
+
+    def show_weather(self, reading: dict) -> None:
+        value = (reading or {}).get("value", "")
+        self.weather.set_visible(bool(value))
+        self.divider.set_visible(bool(value))
+        if not value:
+            return
+        icon, tint = weather_glyph(reading.get("description", ""), GLib.DateTime.new_now_local().get_hour())
+        self.weather_icon.set_from_icon_name(icon)
+        for name in ("tv-weather-sun", "tv-weather-moon"):
+            self.weather_icon.remove_css_class(name)
+        if tint:
+            self.weather_icon.add_css_class(f"tv-weather-{tint}")
+        self.weather_label.set_label(value)
+        description = reading.get("description", "")
+        self.weather.update_property([Gtk.AccessibleProperty.LABEL],
+                                     [f"{value}, {description}" if description else value])
+
+
+def weather_glyph(condition: str, hour: int) -> tuple[str, str | None]:
+    """The weather's icon and tint, as the TV home's bar draws it (tvModel.js weatherGlyph)."""
+    day = 6 <= hour < 19
+    text = (condition or "").lower()
+    if "thunder" in text:
+        return "lumaui-cloud-lightning-symbolic", None
+    if "snow" in text or "sleet" in text:
+        return "lumaui-snowflake-symbolic", None
+    if "rain" in text:
+        return "lumaui-cloud-rain-symbolic", None
+    if "fog" in text:
+        return "lumaui-cloud-fog-symbolic", None
+    if text.startswith("cloudy"):
+        return "lumaui-cloud-symbolic", None
+    if "partly" in text or "fair" in text:
+        return ("lumaui-cloud-sun-symbolic", "sun") if day else ("lumaui-cloud-moon-symbolic", "moon")
+    return ("lumaui-sun-symbolic", "sun") if day else ("lumaui-moon-symbolic", "moon")
+
+
+class _WeatherFeed:
+    """Home's weather from the shell-state service (org.project_luma.ShellState1
+    Weather), shared by every bar in the app; nothing when the service or the
+    reading is absent, so the bar is the clock alone."""
+
+    def __init__(self) -> None:
+        self.reading: dict = {}
+        self._bars: "weakref.WeakSet[TvTopBar]" = weakref.WeakSet()
+        self._proxy = None
+        Gio.DBusProxy.new_for_bus(Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, None,
+                                  "org.project_luma.ShellState1", "/org/project_luma/ShellState1",
+                                  "org.project_luma.ShellState1", None, self._on_proxy)
+
+    def watch(self, bar: "TvTopBar") -> None:
+        self._bars.add(bar)
+        bar.show_weather(self.reading)
+
+    def _on_proxy(self, _source, result) -> None:
+        try:
+            self._proxy = Gio.DBusProxy.new_for_bus_finish(result)
+        except GLib.Error:
+            return
+        self._proxy.connect("g-properties-changed", lambda *_a: self._read())
+        self._read()
+
+    def _read(self) -> None:
+        value = self._proxy.get_cached_property("Weather") if self._proxy else None
+        self.reading = dict(value.unpack()) if value is not None else {}
+        for bar in list(self._bars):
+            bar.show_weather(self.reading)
+
+
+_FEED: _WeatherFeed | None = None
+
+
+def _weather_feed() -> _WeatherFeed:
+    global _FEED
+    if _FEED is None:
+        _FEED = _WeatherFeed()
+    return _FEED
 
 
 def _interface_settings():

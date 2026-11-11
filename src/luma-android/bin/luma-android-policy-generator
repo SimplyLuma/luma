@@ -113,6 +113,12 @@ def main(argv: list[str]) -> int:
                 else ""
             )
             + "[Service]\n"
+            # A closed gate skips the container; it is never a failed start.
+            + (
+                "ExecCondition=/usr/libexec/luma-waydroid-fp6-gpu-watchdog --check\n"
+                if fp6_graphics
+                else ""
+            )
             + (
                 "ExecStartPre=\n"
                 "ExecStartPre=/usr/libexec/luma-waydroid-binder-compat\n"
@@ -120,7 +126,6 @@ def main(argv: list[str]) -> int:
                 else ""
             )
             + (
-                "ExecStartPre=/usr/libexec/luma-waydroid-fp6-gpu-watchdog --check\n"
                 "ExecStartPre=/usr/libexec/luma-waydroid-fp6-graphics-compat\n"
                 if fp6_graphics
                 else ""

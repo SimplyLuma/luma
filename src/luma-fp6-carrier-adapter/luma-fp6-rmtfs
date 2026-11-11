@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Choose the FP6 rmtfs backend: the private file store seeded by
+# luma-fp6-modem-store when it is complete, otherwise the read-only partition
+# backend. Neither backend writes a modem partition.
+
+store=/var/lib/luma/rmtfs
+complete=true
+# The store is promoted by an atomic rename, so its presence means it is complete.
+# Stores made earlier by migrate-fp6-rmtfs-file-store-remote.sh have no manifest.
+for file in modem_fs1 modem_fs2 modem_fsc modem_fsg modem_study modem_tunning; do
+  [[ -f $store/$file && ! -L $store/$file ]] || complete=false
+done
+if [[ -d $store && ! -L $store && $complete == true ]]; then
+  exec /usr/bin/rmtfs -o /var/lib/luma/rmtfs -s
+fi
+printf 'event=luma_fp6_rmtfs backend=read-only reason=no_complete_store\n' >&2
+exec /usr/bin/rmtfs -r -P -s
