@@ -146,4 +146,4 @@ kit_image = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/luma-fp6-202
 kit_image_sha256 = "e67160cf9ef9adae743cdbe362a73bc447412b05b4c3fc59e5a4603b8c9caf30"
 dtbo_image = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/dtbo-blank.bin"
 dtbo_image_sha256 = "75c91b29d5522c8a97c779e50bc33f11e07ed37b2baa31c8c727016e92915c1d"
-guide = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/FLASHING.md"
+guide = "https://media.simplyluma.com/mobile/fp6/kit-20261111.1/INSTALL.md"
