@@ -47,6 +47,8 @@ class Materials(unittest.TestCase):
         self.assertEqual((tv["button"]["height"], tv["button"]["radius"]), (66, 22))
         self.assertEqual((tv["toast"]["bottom"], tv["toast"]["above_action_bar"], tv["toast"]["above_keyboard"]),
                          (56, 172, 586))
+        ab = tv["action_bar"]
+        self.assertEqual((ab["bottom"], ab["height"], ab["item_height"], ab["radius"]), (56, 96, 76, 32))
 
 
 class Spatial(unittest.TestCase):
@@ -164,6 +166,57 @@ class Widgets(unittest.TestCase):
         self.assertFalse(focus.handle(Gdk.KEY_Left))
         self.assertTrue(focus.handle(Gdk.KEY_Return))
         self.assertEqual(activated, [True])
+
+    def test_a_console_takes_every_key_but_back(self):
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        shell, key = Gtk.Box(height_request=300), Gtk.Box(height_request=60)
+        stage.place(shell, left=96, top=150, width=600)
+        stage.place(key, left=96, top=900, width=100)
+        backs = []
+
+        def back():
+            backs.append(True)
+            focus.focus(key)
+            return True
+        focus = TvFocus(stage, on_back=back)
+        focus.add(shell, console=True)
+        focus.add(key)
+        focus.focus(shell)
+        for keyval in (Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Left, Gdk.KEY_Return, Gdk.KEY_space, Gdk.KEY_BackSpace,
+                       Gdk.KEY_a, Gdk.KEY_Menu):
+            self.assertFalse(focus.handle(keyval), Gdk.keyval_name(keyval))   # the shell's: history, Enter, typing
+        self.assertIs(focus.focused, shell)
+        self.assertTrue(focus.handle(Gdk.KEY_Escape))                          # Back leaves, through on_back
+        self.assertEqual(backs, [True])
+        self.assertIs(focus.focused, key)
+
+    def test_action_bar_items_are_quiet_until_focused(self):
+        from luma_appkit.tv_parts import TvActionBar
+        bar = TvActionBar("Terminal")
+        session = bar.add_item("Home", icon="house")
+        bar.add_divider()
+        up = bar.add_item(icon="arrow-up", label_for="Up")
+        esc = bar.add_item("esc", mono=True)
+        self.assertEqual(bar.items(), [session, up, esc])
+        self.assertTrue(bar.has_css_class("tv-ab") and bar.has_css_class("tv-bar"))
+        self.assertTrue(up.has_css_class("tv-ab-icon") and not session.has_css_class("tv-ab-icon"))
+        self.assertTrue(esc.has_css_class("tv-ab-mono"))
+        self.assertFalse(any(i.has_css_class("tv-key") for i in bar.items()))
+        up.set_tv_focus(True)
+        self.assertTrue(up.has_css_class("tv-key"))
+        self.assertEqual(TvActionBar.PIN["bottom"], lumaui_tokens.TV["action_bar"]["bottom"])
+
+    def test_an_island_on_a_tv_stage_has_no_card(self):
+        from luma_appkit.tv_stage import TvStage
+        from luma_appkit.widgets import Island, _on_tv_stage
+        stage, island = TvStage(), Island()
+        self.assertFalse(_on_tv_stage(island))
+        holder = Gtk.Box()
+        holder.append(island)
+        stage.place(holder, fill=True)
+        self.assertTrue(_on_tv_stage(island))
 
     def test_leaving_a_field_takes_gtk_focus_with_it(self):
         from luma_appkit.tv_focus import TvFocus

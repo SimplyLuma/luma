@@ -151,14 +151,23 @@ TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
   a row land on its chosen item; `push_scope()` confines focus to a sheet and
   returns it on Back. `editable=True` items (a `TvField`'s `text`) keep typing,
   Left/Right and Backspace, so a real keyboard and the system's TV keyboard
-  type straight in. Back nothing takes falls through to the window (the TV
-  home at the app's top level).
+  type straight in. A `console=True` item (a terminal) takes every key itself,
+  arrows, Enter and repeats included; only Escape or Back leave it, through
+  `on_back`. Back nothing takes falls through to the window (the TV home at the
+  app's top level).
 - **TvTopBar / TvTab**: the track of tabs and the clock, with Home's weather
   before it (weather | time, as on the TV home), read from the shell-state
   `Weather` property (`a{ss}`: value, description, title, unit) and hidden
   without a reading; the open tab is the
   key unless another tab holds the focus.
 - **TvButton**: 66 tall, chip at rest, key with the focus; `danger=True`.
+- **TvActionBar**: the desktop's floating action bar grown for the couch
+  (`tv.action_bar`): a bar-material panel centred on the bottom safe line
+  (`stage.place(bar, **TvActionBar.PIN)`), items 76 tall, quiet until the
+  remote reaches one (`add_item(label, icon=, label_for=, mono=)`, registered
+  with `TvFocus`), groups split by `add_divider()`. While it is placed the
+  stage is docked `"action-bar"`, so a toast rises above it. An `Island`
+  placed on a TV stage draws no card: it sits on the room.
 - **TvField**: a recessed field around a real `Gtk.Text`; `action=` labels the
   TV keyboard's action key (see "Typing").
 - **TvToast**: lead, kicker, title, value, sub, tint, ms; one at a time.
@@ -178,6 +187,7 @@ from luma_appkit import TvCover, TvTransportButton, TvNowPlayingPill, TvProgress
 
 room = stage.place(TvRoom(), fill=True)             # first: the item's own art, blurred, as the room
 room.set_artwork(path)                              # cross-fades over 1.1 s; hues=(h1, h2, h3) without art
+room.set_wallpaper()                                # or the person's desktop background (a screen without art)
 cover = TvCover(shape="square", artwork=path, title="Album", subtitle="Artist")
 focus.add(cover, on_activate=open_album)            # lifts 1.08, white ring on the art only
 play = TvTransportButton("play", main=True, label="Play")   # round: 108 main, 84 otherwise
@@ -255,6 +265,18 @@ TvEmptyState("No results", "Try a different word, or browse a category.", icon="
   with the 112 tile, a 34/700 title and one sentence; optional TV buttons.
 - `TvMenu.open(..., title=, first=)` drops a question as a list (the question
   on top, the focus on Cancel), as Depot's Remove asks about the app's data.
+
+### Terminal on a TV
+
+Terminal is the same app on a TV (`luma_terminal/tv.py`): its sessions and
+shells, drawn on a `TvStage` whose room is the wallpaper (`set_wallpaper()`)
+under a shade, the shared top bar with only the clock, the shell's text straight
+on the room at `tv.terminal.text_size`, and a `TvActionBar` with the session
+(OK lists the sessions), New session and the keys a remote lacks (esc, tab,
+⌃C, ↑, ↓). The shell is a `console=True` item: the system keyboard docks for it
+and the text stops above the keyboard; a keyboard plugged into the TV types
+straight in. Escape or Back goes down to the bar, Up returns to the shell, Back
+from the bar leaves for the TV home.
 
 ### Depot on a TV
 

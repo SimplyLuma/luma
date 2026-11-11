@@ -8,3 +8,7 @@ Terminal=false
 Categories=System;TerminalEmulator;
 StartupNotify=true
 DBusActivatable=true
+# TV home opt-in (docs/developer-platform/tv-mode.md): its TV presentation is luma_terminal/tv.py.
+X-Luma-TV=true
+X-Luma-TV-Tile=org.projectluma.Terminal-tv
+X-Luma-TV-Presentation=tv

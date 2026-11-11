@@ -60,6 +60,9 @@ mv %{buildroot}%{_bindir}/%{name} %{buildroot}%{_libexecdir}/luma-app-launchers/
 ln -s %{_libexecdir}/luma-app-launch %{buildroot}%{_bindir}/%{name}
 install -D -m 0644 $app/data/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg \
   %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg
+# The wide tile the TV home shows (X-Luma-TV-Tile).
+install -D -m 0644 $app/data/icons/hicolor/scalable/apps/org.projectluma.Terminal-tv.svg \
+  %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal-tv.svg
 # The checkout's entry runs `python3 -m luma_terminal` from the tree; the
 # installed one runs the launcher, which finds the package where it lives.
 sed 's|^Exec=.*|Exec=%{name} %U|' $app/data/applications/org.projectluma.Terminal.desktop \
@@ -73,6 +76,7 @@ install -D -m 0644 $app/data/dbus-1/services/org.projectluma.Terminal.service \
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.projectluma.Terminal.desktop
 grep -Fxq 'Name=Terminal' %{buildroot}%{_datadir}/applications/org.projectluma.Terminal.desktop
+grep -Fxq 'X-Luma-TV-Tile=org.projectluma.Terminal-tv' %{buildroot}%{_datadir}/applications/org.projectluma.Terminal.desktop
 test -f %{buildroot}%{_datadir}/%{name}/style/terminal.css
 %{python3} counted-unittest.py --self-test
 dbus-run-session -- xvfb-run -a --server-args="-screen 0 1280x800x24" env GSK_RENDERER=cairo GDK_DEBUG=no-portals PYTHONPATH=$PWD/src/luma-terminal %{python3} counted-unittest.py src/luma-terminal/tests 8
@@ -102,6 +106,7 @@ SHELL=/bin/bash XDG_DATA_HOME="$open_data" PYTHONPATH=$PWD GSK_RENDERER=cairo xv
 %{_datadir}/applications/org.projectluma.Terminal.desktop
 %{_datadir}/dbus-1/services/org.projectluma.Terminal.service
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal.svg
+%{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal-tv.svg
 
 %changelog
 * Sat Oct 31 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.9

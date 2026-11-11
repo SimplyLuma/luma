@@ -107,6 +107,7 @@ class _Item:
     on_blur: Callable[[], None] | None = None
     on_key: Callable[[str], bool] | None = None
     editable: bool = False
+    console: bool = False        # takes every key but Back itself (a terminal)
     menu: object = None          # a CommandRegistry, or a callable returning one
     menu_empty: str = ""         # the toast when the menu has nothing to offer
 
@@ -149,7 +150,7 @@ class TvFocus:
     # ── registration ────────────────────────────────────────────────────
 
     def add(self, widget: Gtk.Widget, *, group: str = "", on_activate=None, on_focus=None,
-            on_blur=None, on_key=None, editable: bool = False, menu=None,
+            on_blur=None, on_key=None, editable: bool = False, console: bool = False, menu=None,
             menu_empty: str = "") -> Gtk.Widget:
         """Make `widget` focusable by the remote.
 
@@ -159,6 +160,11 @@ class TvFocus:
         real keyboard and the system's on-screen keyboard type straight in; Up
         and Down still move, OK calls `on_activate`, Back steps out.
 
+        `console=True` marks a widget that takes every key itself (a terminal:
+        arrows walk its history, OK is Enter, Space and BackSpace type), so it
+        holds GTK focus and only Escape or Back leave it, through `on_back`.
+        Its keys row (esc, the arrows) belongs in the screen's action bar.
+
         `menu` is the item's command model (the `CommandRegistry` its desktop
         context menu uses, or a callable returning one). Holding OK for
         `tv.focus.hold_ms`, or pressing Menu, opens it as a `TvMenu`; on such an
@@ -166,8 +172,8 @@ class TvFocus:
         menu has nothing to offer, a TV toast says so (`menu_empty`, or "No
         options here").
         """
-        self._items[widget] = _Item(widget, group, on_activate, on_focus, on_blur, on_key, editable, menu,
-                                    menu_empty)
+        self._items[widget] = _Item(widget, group, on_activate, on_focus, on_blur, on_key, editable or console,
+                                    console, menu, menu_empty)
         # GTK focus follows the remote onto every item. That is what moves it off a
         # text field when the remote leaves one, so the system keyboard closes and
         # OK reaches the item instead of reopening the keyboard on the field.
@@ -262,6 +268,11 @@ class TvFocus:
     def _key_pressed(self, controller, keyval: int, _keycode: int, state: Gdk.ModifierType) -> bool:
         if not self.root.get_mapped():
             return False
+        # A console (a terminal) takes its keys as they come, repeats and Enter included;
+        # only the filters (the idle hook) see them first, and Escape or Back leave it.
+        item = self._items.get(self._focused) if self._focused is not None else None
+        if item is not None and item.console and self._grab is None and keyval not in (Gdk.KEY_Escape, Gdk.KEY_Back):
+            return any(handler(keyval, state) for handler in list(self._filters))
         # A held OK or Menu repeats (Wayland clients repeat held keys themselves). A
         # repeat belongs to the press that started it: it must not activate what that
         # press opened, so only a new press acts. A press long after the last event
@@ -288,6 +299,8 @@ class TvFocus:
         """Act on one remote key as if pressed (tests, scripted reviews)."""
         direction = direction_for(keyval)
         item = self._items.get(self._focused) if self._focused is not None else None
+        if item is not None and item.console and keyval not in (Gdk.KEY_Escape, Gdk.KEY_Back):
+            return False
         if item is not None and item.editable:
             if direction in (LEFT, RIGHT) or keyval in (Gdk.KEY_BackSpace, Gdk.KEY_space):
                 return False
