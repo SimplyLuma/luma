@@ -28,7 +28,7 @@ Requires:       python3
 Requires:       python3-gobject
 Requires:       gtk4
 Requires:       libadwaita
-Requires:       luma-developer-platform >= 0.1.0-1.luma.121
+Requires:       luma-developer-platform >= 0.1.0-1.luma.126
 Requires:       vte291-gtk4
 
 %description
