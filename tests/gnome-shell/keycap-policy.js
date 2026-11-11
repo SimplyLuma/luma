@@ -18,6 +18,8 @@ function assert(value, message) {
 }
 
 const Keycap = await import(`file://${absolute(args[0])}`);
+// safeAreas.js sits next to keycap.js (js/ui/lumaPresentation/).
+const SafeAreas = await import(`file://${absolute(args[0]).replace(/[^/]*$/, 'safeAreas.js')}`);
 const keyboard = read(args[1]);
 const loginDialog = args[2] ? read(args[2]) : null;
 
@@ -170,6 +172,30 @@ assert(Keycap.standaloneInset({width: 828, height: 372}, true) === 0 &&
     Keycap.standaloneInset({width: 1038, height: 1076}, true) === 0 &&
     Keycap.standaloneInset({width: 372, height: 828}, false) === 0,
     'no standalone inset on a phone on its side, a wide handheld screen or a desktop');
+// A panel's rounded bottom corners (its display profile) keep the outer keys
+// clear wherever the thumb gap does not already.
+{
+    // config/mobile/display-geometry/google-comet.json, outer panel (bottom corners only).
+    const profile = SafeAreas.selectDisplayProfile(SafeAreas.readDisplayProfiles(JSON.stringify({
+        schema: 1, connector: 'DSI-1', nativeWidth: 1080, nativeHeight: 2424,
+        cutouts: [{x: 0, y: 2376, width: 48, height: 48}, {x: 1032, y: 2376, width: 48, height: 48}],
+    })), 'DSI-1', true);
+    const phone = {width: 360, height: 808};
+    const corner = SafeAreas.bottomCornerClearance(profile, phone);
+    assert(corner === 16, `comet's 48 px corner squares are 16 logical px at 300% (${corner})`);
+    assert(SafeAreas.bottomCornerClearance(null, phone) === 0, 'no profile, no corner clearance');
+    assert(Keycap.bottomInset(phone, true, 0, corner) === g.thumb_gap &&
+        Keycap.bottomInset(phone, false, 0, corner) === 16 &&
+        Keycap.bottomInset(phone, false, 28, corner) === 28 &&
+        Keycap.bottomInset({width: 808, height: 360}, true, 0, corner) === 16,
+        'corners, gesture zone and thumb gap: the largest wins');
+    assert(Keycap.controlRow(Keycap.bottomInset(phone, true, 0, corner)) === g.min_row,
+        'the corners leave the thumb gap and its control row as they are');
+    assert(Keycap.standaloneInset(phone, true, corner) === g.thumb_gap &&
+        Keycap.standaloneInset(phone, false, corner) === 16 &&
+        Keycap.standaloneInset(phone, false) === 0,
+        'the greeter keeps a profiled panel\'s corners where it keeps no thumb gap');
+}
 assert(Keycap.keyboardHeight({width: 432, height: 970}, 4, 11.5, Keycap.bottomInset({width: 432, height: 970}, true, 28)) <= 970 / 2,
     'the thumb gap fits within half the screen');
 assert(Keycap.keyboardHeight({width: 404, height: 908}, 4, 11.5) < 908 / 3, 'tall phones are not sized by screen height');
@@ -188,7 +214,8 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
 {
     const at = keyboard.indexOf('    _relayout() {');
     const body = keyboard.slice(keyboard.indexOf('{', at) + 1, keyboard.indexOf('\n    }', at));
-    const relayout = new Function('Main', 'St', 'Keycap', 'global', 'GLib', body);
+    const relayout = new Function('Main', 'St', 'Keycap', 'global', 'GLib',
+        'panelProfile', 'bottomCornerClearance', body);
     let style = null, styleWrites = 0, sizeWrites = 0, toolSyncs = 0;
     const sized = {};
     const actor = {_currentPage: {getRatio: () => [11.5, 4]},
@@ -233,9 +260,11 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
     assert(!actor._controls.visible && toolSyncs === writes[2] + 1, 'a tablet returns the controls to the strip');
     // The greeter has no presentation: a handheld keeps the thumb gap below
     // the keys there, a desktop greeter keeps nothing.
-    const greeter = deviceClass => relayout.call(actor, {layoutManager: {keyboardMonitor: {width: 372, height: 828}},
-        presentation: null}, {ThemeContext: {get_for_stage: () => ({scale_factor: 1})}}, Keycap, {stage: {}},
-    {getenv: name => (name === 'LUMA_DEVICE_CLASS' ? deviceClass : null)});
+    const greeter = (deviceClass, profile = null) => relayout.call(actor,
+        {layoutManager: {keyboardMonitor: {width: 372, height: 828}}, presentation: null},
+        {ThemeContext: {get_for_stage: () => ({scale_factor: 1})}}, Keycap, {stage: {}},
+        {getenv: name => (name === 'LUMA_DEVICE_CLASS' ? deviceClass : null)},
+        () => profile, SafeAreas.bottomCornerClearance);
     greeter('handheld');
     assert(style === `padding-bottom: ${g.thumb_gap - g.min_row}px;` && actor._controls.visible &&
         actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5, g.thumb_gap),
@@ -243,6 +272,17 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
     greeter(null);
     assert(style === null && !actor._controls.visible && actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5),
         'a greeter that is not a handheld keeps no inset');
+    // A profiled panel: a handheld keeps its thumb gap and control row, which
+    // already clear the corners; a greeter without one sits just above them.
+    const panel = {nativeWidth: 372, nativeHeight: 828,
+        cutouts: [{x: 0, y: 808, width: 20, height: 20}, {x: 352, y: 808, width: 20, height: 20}]};
+    greeter('handheld', panel);
+    assert(style === `padding-bottom: ${g.thumb_gap - g.min_row}px;` && actor._controls.visible,
+        `a profiled handheld greeter keeps the thumb gap and its controls (${style})`);
+    greeter(null, panel);
+    assert(style === 'padding-bottom: 20px;' && !actor._controls.visible &&
+        actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5, 20),
+        `the greeter keyboard clears the panel's corners (${style}, ${actor.height})`);
 }
 
 // The thumb gap's control row: one touch row, only where the thumb gap is,

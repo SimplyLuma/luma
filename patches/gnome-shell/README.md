@@ -621,3 +621,12 @@ both leave the tool strip there. The gap was an empty keyboard-coloured band,
 and hide lived only in the strip, which suggestions replace while a word is
 typed. Other insets (tablet, landscape, Desktop, TV) are unchanged. Test:
 `keycap-policy.js` in %check. Shell .170.
+
+`0336-keycap-panel-corners.patch`: the keyboard keeps its outer keys above a
+panel's rounded bottom corners. `bottomCornerClearance()` (safeAreas.js)
+reads the display profile's corner exclusions on the bottom edge, in logical
+pixels, and `bottomInset()` (keycap.js) keeps the keys above them in every
+mode, Desktop included; where a phone's thumb gap is taller the gap and its
+control row are unchanged. The greeter, which has no presentation, reads the
+built-in panel's profile in keyboard.js and passes the clearance to
+`Keycap.standaloneInset`. Test: `keycap-policy.js` in %check. Shell .172.
