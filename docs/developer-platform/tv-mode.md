@@ -258,6 +258,14 @@ TvEmptyState("No results", "Try a different word, or browse a category.", icon="
 
 ### Depot on a TV
 
+Depot on a TV is the same Depot (`luma_depot.tv_views`, hosted by the redesign's
+`DepotShell` and following the posture live): the desktop's places, in the same
+order (Today, Apps, Looks, Tweaks, Library, Updates, then Search), drawn from
+the same `World`, `Store` and `model.rules`, with this TV as the world's device
+(its form is `tv`), so every rule filters to the TV as it filters to a phone on
+a phone. Someone who knows Depot on a computer finds the same places; there are
+no TV-only categories.
+
 Depot lists only apps that run on a TV (`luma_depot.tv_facts`). Two facts per
 app, from data, never from a list in code:
 
@@ -270,10 +278,10 @@ app, from data, never from a list in code:
 
 An app with no TV facts is not listed. An installed app is listed in its
 installed state (Open, Remove). An app that is not installed is offered on a
-TV only when the catalogue carries `tv` for it and it has a build for this
-machine; no entry does yet, so today Depot on a TV lists the installed apps,
-their real updates and the system update. Publishing `tv` for an entry turns
-its download on, with no change in Depot.
+TV only when the catalogue carries `tv` for it (its `runs` then include `tv`)
+and it has a build for this machine. Publishing `tv` for an entry turns its
+download on, with no change in Depot; `tv.input` shows on its page as how it
+is driven (remote, controller, keyboard).
 
 Catalogue schema 4, optional and additive (malformed values are ignored):
 
