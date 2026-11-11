@@ -15,8 +15,16 @@ written to its LumaBoot filesystem. The image builder names that filesystem in
    repomd.xml there and never imports gpgkey= into it), and runs rpm-ostree
    with only that repository configured (no network): one transaction,
    override replace --from repo=ID with --install for the packages layered on
-   top (two transactions would assemble and deploy the OS twice);
-4. points /etc/yum.repos.d/ID.repo at the device repository's https URL (with
+   top (two transactions would assemble and deploy the OS twice). rpm-ostree
+   runs package scripts through rofiles-fuse, so when /dev/fuse is missing
+   (a kernel with CONFIG_FUSE_FS=m and no fuse module in the base image) the
+   fuse module for the running kernel is loaded from the kit's signed
+   packages first;
+4. checks the SELinux label of the staged deployment's systemd (init_exec_t)
+   and, when it is wrong, relabels the deployment's /usr with its own
+   file_contexts before restarting: a mislabelled /usr boots systemd as
+   kernel_t, which cannot mount the API filesystems;
+5. points /etc/yum.repos.d/ID.repo at the device repository's https URL (with
    repo_gpgcheck=1), so rpm-ostree upgrades keep the layer, and restarts once.
 
 A boot whose deployment already carries the layer writes
@@ -66,6 +74,9 @@ class Paths:
     compatible: str = "sys/firmware/devicetree/base/compatible"
     sysroot: str = "sysroot"
     mountinfo: str = "proc/self/mountinfo"
+    fuse: str = "dev/fuse"
+    osrelease: str = "proc/sys/kernel/osrelease"
+    selinuxfs: str = "sys/fs/selinux/enforce"
 
     def __getattribute__(self, name: str):
         value = object.__getattribute__(self, name)
@@ -199,6 +210,43 @@ def parse_mountinfo(text: str) -> list[tuple[str, str, str, str]]:
     return mounts
 
 
+FUSE_MODULE = re.compile(r"^/usr/lib/modules/(?P<release>[^/]+)/(?:.*/)?fuse\.ko(?P<ext>\.zst|\.xz|\.gz)?$")
+SYSTEMD = "usr/lib/systemd/systemd"
+INIT_EXEC = "init_exec_t"
+
+
+def read_label(path: Path) -> str | None:
+    """The SELinux label of path itself (not a symlink's target); None without one."""
+    try:
+        return os.getxattr(path, "security.selinux", follow_symlinks=False).rstrip(b"\0").decode()
+    except OSError:
+        return None
+
+
+def decompress(data: bytes, ext: str) -> bytes:
+    if ext == ".zst":
+        try:
+            from compression import zstd  # Python 3.14
+        except ImportError:
+            return subprocess.run(["zstd", "-dc"], input=data, capture_output=True, check=True).stdout
+        return zstd.decompress(data)
+    if ext == ".xz":
+        import lzma
+        return lzma.decompress(data)
+    if ext == ".gz":
+        import gzip
+        return gzip.decompress(data)
+    return data
+
+
+def selinux_type(config: str) -> str:
+    for line in config.splitlines():
+        key, _, value = line.strip().partition("=")
+        if key == "SELINUXTYPE" and re.match(r"^[A-Za-z0-9_-]+$", value.strip()):
+            return value.strip()
+    return "targeted"
+
+
 def layer_in(requested: set[str], replaced: dict[str, set[str]], kit: Kit) -> bool:
     return set(kit.install) <= requested and set(kit.replace) <= replaced.get(kit.repo_id, set())
 
@@ -242,11 +290,13 @@ def repo_file_text(kit: Kit, baseurl: str, rpm_key: str) -> str:
 class DeviceLayer:
     def __init__(self, paths: Paths | None = None, run: Callable = default_run,
                  sleep: Callable[[float], None] = time.sleep,
-                 import_key: Callable[[Path, Path], None] = librepo_import_key):
+                 import_key: Callable[[Path, Path], None] = librepo_import_key,
+                 label: Callable[[Path], str | None] = read_label):
         self.paths = paths or Paths()
         self.run = run
         self.sleep = sleep
         self.import_key = import_key
+        self.label = label
         self.mounted = False  # whether paths.mount is a mount this process made
 
     # -- state -----------------------------------------------------------------
@@ -414,6 +464,103 @@ class DeviceLayer:
         self.run(["restorecon", "-R", str(target)])
         return target
 
+    # -- fuse --------------------------------------------------------------------
+
+    def ensure_fuse(self, repo: Path) -> None:
+        """Make /dev/fuse exist before the transaction (rofiles-fuse runs the
+        package scripts). The module comes from the running system if it has
+        one, else from a signature-checked package of the staged repository."""
+        if self.paths.fuse.exists():
+            return
+        if self.run(["modprobe", "fuse"]).returncode == 0 and self.wait_fuse():
+            return
+        release = self.paths.osrelease.read_text().strip()
+        module = self.fuse_from_repo(repo, release)
+        if module is None:
+            raise LayerError(f"/dev/fuse is missing and no package in the kit has fuse.ko for {release}")
+        self.check(["insmod", str(module)], f"loading {module.name}")
+        module.unlink(missing_ok=True)
+        if not self.wait_fuse():
+            raise LayerError("/dev/fuse did not appear after loading fuse.ko")
+        log(f"loaded fuse.ko for {release} from the kit")
+
+    def wait_fuse(self) -> bool:
+        for _ in range(10):
+            if self.paths.fuse.exists():
+                return True
+            self.sleep(0.2)
+        return self.paths.fuse.exists()
+
+    def fuse_from_repo(self, repo: Path, release: str) -> Path | None:
+        for package in sorted((repo / "Packages").glob("*.rpm")) + sorted(repo.glob("*.rpm")):
+            listing = self.run(["rpm", "-qp", "--nosignature", "--qf", "[%{FILENAMES}\n]", str(package)])
+            if listing.returncode != 0:
+                continue
+            member = next((m for m in (FUSE_MODULE.match(line.strip()) for line in listing.stdout.splitlines())
+                           if m and m.group("release") == release), None)
+            if member is None:
+                continue
+            self.check_package_signature(package)
+            work = self.paths.state_dir / "fuse"
+            shutil.rmtree(work, ignore_errors=True)
+            work.mkdir(parents=True)
+            self.check(["sh", "-c", 'rpm2cpio "$1" | (cd "$2" && cpio -idm --quiet "$3")', "sh",
+                        str(package), str(work), "." + member.group(0)], f"unpacking {package.name}")
+            packed = work / member.group(0).lstrip("/")
+            if not packed.is_file():
+                raise LayerError(f"{package.name} did not unpack {member.group(0)}")
+            module = self.paths.state_dir / "fuse.ko"
+            module.write_bytes(decompress(packed.read_bytes(), member.group("ext") or ""))
+            shutil.rmtree(work, ignore_errors=True)
+            return module
+        return None
+
+    def check_package_signature(self, package: Path) -> None:
+        """rpm -K against a keyring holding only the Luma OS Release key."""
+        db = self.paths.state_dir / "rpmdb-check"
+        shutil.rmtree(db, ignore_errors=True)
+        db.mkdir(parents=True)
+        try:
+            self.check(["rpmkeys", "--dbpath", str(db), "--import", str(self.paths.rpm_key)],
+                       "importing the release key")
+            result = self.run(["rpmkeys", "--dbpath", str(db), "-K", str(package)])
+            if result.returncode != 0 or "signatures OK" not in (result.stdout or ""):
+                raise LayerError(f"{package.name} is not signed by the Luma OS Release key")
+        finally:
+            shutil.rmtree(db, ignore_errors=True)
+
+    # -- staged deployment labels -----------------------------------------------
+
+    def deployment_dir(self, deployment: dict) -> Path:
+        return (self.paths.sysroot / "ostree/deploy" / deployment["osname"] / "deploy"
+                / f"{deployment['checksum']}.{deployment['serial']}")
+
+    def check_labels(self, deployment: dict) -> None:
+        """Spot-check the staged deployment's /usr labels; relabel it if wrong."""
+        if not self.paths.selinuxfs.exists():
+            return  # SELinux disabled: nothing is labelled
+        top = self.deployment_dir(deployment)
+        systemd = top / SYSTEMD
+        label = self.label(systemd)
+        if label is not None and f":{INIT_EXEC}:" in label:
+            return
+        try:
+            policy = selinux_type((top / "usr/etc/selinux/config").read_text())
+        except OSError:
+            policy = "targeted"
+        contexts = top / f"usr/etc/selinux/{policy}/contexts/files/file_contexts"
+        if not contexts.is_file():
+            raise LayerError(f"the staged deployment has no {contexts.name} to relabel /usr with")
+        log(f"/{SYSTEMD} in the staged deployment is {label or 'unlabelled'}; relabelling its /usr")
+        sysroot = "/" + self.paths.sysroot.relative_to(self.paths.root).as_posix()
+        self.check(["unshare", "-m", "--propagation", "private", "sh", "-c",
+                    'mount -o remount,rw "$1" && setfiles -F -r "$2" "$3" "$2/usr"', "sh",
+                    sysroot, str(top), str(contexts)], "relabelling the staged deployment")
+        label = self.label(systemd)
+        if label is None or f":{INIT_EXEC}:" not in label:
+            raise LayerError(f"/{SYSTEMD} in the staged deployment is still {label or 'unlabelled'} "
+                             "after relabelling")
+
     # -- repositories ------------------------------------------------------------
 
     # Other repositories are renamed in place (dnf and rpm-ostree read only
@@ -508,6 +655,7 @@ class DeviceLayer:
         staged = next((d for d in deployments if d.get("staged")), None)
         if staged is not None and set(kit.install) <= set(staged.get("requested-packages", [])):
             # An earlier run (stopped before it restarted) staged the layer.
+            self.check_staged(staged)
             state.update(status="staged", staged=staged.get("checksum"), last_error=None)
             self.save_state(state)
             log(f"{staged.get('checksum', '')[:12]} with the {kit.device} layer is already staged")
@@ -518,6 +666,7 @@ class DeviceLayer:
         self.save_state(state)
         repo = self.stage_repo(kit)
         self.write_repo(kit, "file://" + "/" + repo.relative_to(self.paths.root).as_posix())
+        self.ensure_fuse(repo)
         self.set_repos_aside(f"{kit.repo_id}.repo")
         try:
             if kit.replace:
@@ -532,11 +681,20 @@ class DeviceLayer:
         pending = next((d for d in self.status().get("deployments", []) if d.get("staged")), None)
         if pending is None or not set(kit.install) <= set(pending.get("requested-packages", [])):
             raise LayerError("rpm-ostree staged no deployment with the device packages")
+        self.check_staged(pending)
         state.update(status="staged", staged=pending.get("checksum"), last_error=None)
         self.save_state(state)
         log(f"staged {pending.get('checksum', '')[:12]} with the {kit.device} layer (attempt "
             f"{attempts + 1} of {MAX_ATTEMPTS})")
         return self._restart(reboot)
+
+    def check_staged(self, deployment: dict) -> None:
+        """A staged deployment that would not boot is dropped, never restarted into."""
+        try:
+            self.check_labels(deployment)
+        except LayerError:
+            self.run(["rpm-ostree", "cleanup", "--pending"])
+            raise
 
     def _restart(self, reboot: bool) -> int:
         if reboot:

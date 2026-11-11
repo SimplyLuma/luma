@@ -243,6 +243,12 @@ class ShellStateModelTests(unittest.TestCase):
         with self.assertRaises(state.InvalidState):
             state.presentation_idle_default("automatic", None)
 
+    def test_a_tv_never_idles_unless_its_owner_chose_a_delay(self):
+        # A TV is watched, not touched: its default is never blank the screen.
+        self.assertEqual(state.presentation_idle_default("tv", None), 0)
+        self.assertEqual(state.presentation_idle_default("tv", 300, 300), 0)
+        self.assertIsNone(state.presentation_idle_default("tv", 900))
+
     def test_handheld_presentations_hide_window_controls_and_desktop_restores(self):
         layout = state.presentation_button_layout
         for mode in ("tablet", "mobile"):

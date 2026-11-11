@@ -22,7 +22,9 @@
 # /ostree/root.a and root.b point at the deployment (the aboot slot links).
 # /etc/luma/device-kit.conf names LumaBoot as the device kit's filesystem.
 # One user, luma, password 1234. /etc/systemd/system/boot.automount is masked
-# (systemd-gpt-auto's /boot automount breaks shutdown on these phones).
+# (systemd-gpt-auto's /boot automount breaks shutdown on these phones), and so
+# is bootloader-update.service (no EFI system partition). luma-grow-root.service
+# grows LumaRoot online on every start, in case the initramfs could not.
 # /var/lib/systemd/timesync/clock carries the build time: a phone has no
 # battery-backed clock or network on its first boot, and systemd (PID 1) sets
 # the clock forward to that file's mtime as it starts (/var is mounted by the
@@ -128,6 +130,42 @@ cp -a "$deploy/etc/skel" "$var/home/luma"
 chown -R 1000:1000 "$var/home/luma"
 chmod 0700 "$var/home/luma"
 : >"$deploy/etc/systemd/system/boot.automount"
+# A phone has no EFI system partition for bootupd to update.
+: >"$deploy/etc/systemd/system/bootloader-update.service"
+# LumaRoot fills userdata. The initramfs grows the partition and then the
+# filesystem, but its offline resize2fs refuses a filesystem mounted since its
+# last full check; this grows it online on every start (a no-op once it fits),
+# before the device kit is layered.
+cat >"$deploy/etc/systemd/system/luma-grow-root.service" <<'EOF2'
+[Unit]
+Description=Grow the root file system to fill its partition
+DefaultDependencies=no
+ConditionPathExists=/run/ostree-booted
+After=systemd-remount-fs.service
+Before=local-fs.target luma-device-layer.service shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/systemd/systemd-growfs /sysroot
+
+[Install]
+WantedBy=local-fs.target
+EOF2
+chmod 0644 "$deploy/etc/systemd/system/luma-grow-root.service"
+install -d -m 0755 "$deploy/etc/systemd/system/local-fs.target.wants"
+ln -sfn ../luma-grow-root.service "$deploy/etc/systemd/system/local-fs.target.wants/luma-grow-root.service"
+# rpm-ostree refreshes every enabled repository whenever a layered deployment
+# is upgraded. A phone's layer comes from its kit and its device repository
+# only, so Fedora's repositories are off: with them on, an OS update needed
+# their mirrors and some 80 MB of metadata.
+for repo_file in "$deploy"/etc/yum.repos.d/*.repo; do
+  case $(basename "$repo_file") in
+    luma-*) ;;
+    *) sed -i 's/^enabled=1$/enabled=0/' "$repo_file" ;;
+  esac
+done
 fc=$deploy/etc/selinux/targeted/contexts/files/file_contexts
 setfiles -r "$deploy" "$fc" "$deploy/etc" 2>/dev/null || true
 

@@ -19,7 +19,7 @@ own sheet gives every TV app the shared scale and materials:
     type        .tv-h1 52/750 · .tv-h2 30/700 · .tv-body 26/500 · .tv-meta 20/600
                 .tv-caption 22/650 · .tv-caption-meta 19
     materials   .tv-well recessed · .tv-chip chosen · .tv-key the focus · .tv-bar floating
-    parts       .tv-btn (66 tall), .tv-sheet, .tv-field, .tv-row, .tv-action, .tv-ring
+    parts       .tv-btn (66 tall), .tv-sheet, .tv-field, .tv-row, .tv-action, .tv-ring, .tv-ab (the action bar)
 
 Materials are translucent over the room. Reduce Transparency and High
 Contrast make them opaque, as on the shell's TV home. All values come from
@@ -66,7 +66,7 @@ def tv_material(name: str, *, opaque: bool = False) -> str:
 def _sheet(opaque: bool) -> str:
     m = lambda name: tv_material(name, opaque=opaque)  # noqa: E731
     ty, bar, btn, sheet, qp = TV["type"], TV["bar"], TV["button"], TV["sheet"], TV["quick_panel"]
-    focus = TV["focus"]
+    focus, ab = TV["focus"], TV["action_bar"]
     return f"""
 .lumaui-tv-stage {{ font-family: Figtree, sans-serif; color: {m('ink')}; }}
 .lumaui-tv-stage label {{ color: inherit; }}
@@ -105,6 +105,15 @@ def _sheet(opaque: bool) -> str:
 .tv-tab.tv-key {{ color: {m('key_ink')}; }}
 .tv-clock {{ font-size: {bar['clock_size']}tv; font-weight: {bar['clock_weight']}; color: {m('ink')};
   font-feature-settings: "tnum"; }}
+.tv-cluster {{ border-spacing: {bar['now_gap']}tv; }}
+.tv-weather {{ border-spacing: {bar['now_icon_gap']}tv; }}
+.tv-weather image {{ -gtk-icon-size: {bar['tab_icon'] + 2}tv; color: {m('ink')}; }}
+.tv-weather image.tv-weather-sun {{ color: {m('sun')}; }}
+.tv-weather image.tv-weather-moon {{ color: {m('moon')}; }}
+.tv-divider {{ min-width: {bar['divider_width']}tv; min-height: {bar['divider_height']}tv;
+  background-color: {m('divider')}; border-radius: {bar['divider_width']}tv; }}
+.tv-cluster.tv-focus .tv-weather image {{ color: {m('key_ink')}; }}
+.tv-cluster.tv-focus .tv-divider {{ background-color: {m('key_ink')}; opacity: 0.35; }}
 /* the bar's cluster (the clock): a key with the TV home's padding when focused; the clock stays put */
 .tv-cluster {{ min-height: {qp['cluster_height']}tv; padding: 0 {qp['cluster_padding_x']}tv;
   margin-right: -{qp['cluster_padding_x']}tv; border-radius: {qp['cluster_radius']}tv; }}
@@ -151,6 +160,22 @@ def _sheet(opaque: bool) -> str:
 .tv-key .tv-switch:not(.on) {{ background-color: rgba(0, 0, 0, 0.14); }}
 .tv-action {{ min-height: {sheet['action_height']}tv; border-radius: {sheet['action_radius']}tv;
   font-size: {sheet['action_size']}tv; font-weight: 650; }}
+
+/* an island on a TV stage sits on the room: no card (its rim is skipped in Island.do_snapshot) */
+.lumaui-tv-stage .luma-island {{ background: none; box-shadow: none; border-radius: 0; }}
+
+/* the action bar (tv_parts.TvActionBar): the desktop's floating bar, grown for the couch */
+.tv-ab {{ min-height: {ab['height'] - 2 * ab['padding']}tv; padding: {ab['padding']}tv; border-radius: {ab['radius']}tv;
+  border-spacing: {ab['gap']}tv; }}
+.tv-ab-item {{ min-height: {ab['item_height']}tv; min-width: {ab['item_min_width']}tv; padding: 0 {ab['item_padding_x']}tv;
+  border-radius: {ab['item_radius']}tv; font-size: {ab['item_size']}tv; font-weight: {ab['item_weight']}; color: {m('ink_2')}; }}
+.tv-ab-item > box {{ border-spacing: 12tv; }}
+.tv-ab-item image {{ -gtk-icon-size: {ab['icon']}tv; }}
+.tv-ab-item.tv-ab-icon {{ padding: 0; }}
+.tv-ab-item.tv-ab-mono {{ font-family: "IBM Plex Mono", monospace; }}
+.tv-ab-item.tv-key {{ color: {m('key_ink')}; }}
+.tv-ab-divider {{ min-width: {ab['divider_width']}tv; min-height: {ab['divider_height']}tv; margin: 0 {ab['divider_margin']}tv;
+  background-color: {m('divider')}; opacity: 0.4; }}
 """
 
 

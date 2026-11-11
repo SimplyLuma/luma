@@ -18,7 +18,7 @@ from .apk import local_android_package_from_uri, supports_content_type
 from .appearance import settings as appearance_settings
 from .appearance import accessibility_settings, surface_treatment, treatment_settings
 from .config import device_class, load_device_profile, load_runtime_config
-from .engine import WaydroidEngine, host_bars_path
+from .engine import WaydroidEngine, fp6_gate_closed, host_bars_path
 from .activation import activate_for_caller
 from .errors import LumaAndroidError
 from .installer_activation import launch_installer
@@ -125,9 +125,11 @@ class Service:
     def on_presentation_changed(self, _connection, _sender, _path, _interface, _signal,
                                 parameters) -> None:
         _name, changed, _invalidated = parameters.unpack()
-        presentation = changed.get("Presentation")
-        if presentation is None:
+        # TV posture sits above the presentation: on either change, read both
+        # live (current_presentation) rather than trusting the presentation.
+        if "Presentation" not in changed and "Posture" not in changed:
             return
+        presentation = "live"
         with self.presentation_lock:
             self.presentation_pending = presentation
             if self.presentation_worker is None:
@@ -135,6 +137,11 @@ class Service:
                     target=self.sync_presentation_changes, daemon=True,
                     name="android-presentation")
                 self.presentation_worker.start()
+
+    def session_running(self) -> bool:
+        # The status query activates the container service over D-Bus. Do not
+        # ask a runtime the FP6 gate keeps closed: each probe would start it.
+        return not fp6_gate_closed() and self.engine.status().get("session") == "RUNNING"
 
     def sync_presentation_changes(self) -> None:
         # Coalesced like appearance: never wake a stopped runtime for it.
@@ -146,8 +153,8 @@ class Service:
                     self.presentation_worker = None
                     return
             try:
-                if self.engine.status().get("session") == "RUNNING":
-                    self.engine.sync_presentation_density(presentation)
+                if self.session_running():
+                    self.engine.sync_presentation_density()
             except (LumaAndroidError, OSError):
                 pass
 
@@ -172,7 +179,7 @@ class Service:
                     self.appearance_worker = None
                     return
             try:
-                if self.engine.status().get("session") == "RUNNING":
+                if self.session_running():
                     self.engine.sync_host_appearance(appearance)
             except (LumaAndroidError, OSError):
                 pass
@@ -209,7 +216,7 @@ class Service:
                     return
                 self.bars_pending = False
             try:
-                if self.engine.status().get("session") == "RUNNING":
+                if self.session_running():
                     self.engine.sync_host_bar_insets(device_class())
             except (LumaAndroidError, OSError):
                 pass

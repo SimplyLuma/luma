@@ -1,0 +1,40 @@
+From: Project Luma <luma@local>
+Subject: [PATCH] scsi: ufs: qcom: Power down UFS during system suspend on Milos
+
+Backport of mainline fb2a238f15f0.
+
+On Milos the UFS PHY GDSC is turned off on every system suspend and the PHY
+loses its register state, so exiting hibern8 on resume fails and the error
+handler resets the host:
+
+  ufshcd-qcom 1d84000.ufshc: ufshcd_uic_hibern8_exit: hibern8 exit failed. ret = 5
+  ufshcd-qcom 1d84000.ufshc: __ufshcd_wl_resume: hibern8 exit failed 5
+
+Set no_phy_retention so system suspend uses UFS_PM_LVL_5 (device powered
+down, link off) and the link is brought up again on resume.
+---
+ drivers/ufs/host/ufs-qcom.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/ufs/host/ufs-qcom.c b/drivers/ufs/host/ufs-qcom.c
+--- a/drivers/ufs/host/ufs-qcom.c
++++ b/drivers/ufs/host/ufs-qcom.c
+@@ -2982,6 +2982,10 @@ static void ufs_qcom_remove(struct platform_device *pdev)
+ 		platform_device_msi_free_irqs_all(hba->dev);
+ }
+ 
++static const struct ufs_qcom_drvdata ufs_qcom_milos_drvdata = {
++	.no_phy_retention = true,
++};
++
+ static const struct ufs_qcom_drvdata ufs_qcom_sm8550_drvdata = {
+ 	.quirks = UFSHCD_QUIRK_BROKEN_LSDBS_CAP,
+ 	.no_phy_retention = true,
+@@ -2993,6 +2997,7 @@ static const struct ufs_qcom_drvdata ufs_qcom_sa8255p_drvdata = {
+ 
+ static const struct of_device_id ufs_qcom_of_match[] __maybe_unused = {
+ 	{ .compatible = "qcom,ufshc" },
++	{ .compatible = "qcom,milos-ufshc", .data = &ufs_qcom_milos_drvdata },
+ 	{ .compatible = "qcom,sm8550-ufshc", .data = &ufs_qcom_sm8550_drvdata },
+ 	{ .compatible = "qcom,sm8650-ufshc", .data = &ufs_qcom_sm8550_drvdata },
+ 	{ .compatible = "qcom,sa8255p-ufshc", .data = &ufs_qcom_sa8255p_drvdata },

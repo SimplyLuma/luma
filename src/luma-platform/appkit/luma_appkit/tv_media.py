@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
@@ -50,7 +51,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Gsk", "4.0")
 gi.require_version("Graphene", "1.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from . import lumaui_tokens as tokens  # noqa: E402
 
@@ -927,11 +928,41 @@ def _room_from_file(path: str) -> Gdk.Texture:
     return _room_texture_from_pixels(pixels, side)
 
 
+#: Luma's own wallpaper (config/desktop/dconf luma.d), the room when the person's is unset or out of reach.
+DEFAULT_WALLPAPER = "/usr/share/backgrounds/luma/prism.png"
+
+
+def desktop_wallpaper() -> str | None:
+    """The person's desktop background as a readable file, or Luma's own.
+
+    Read from org.gnome.desktop.background (picture-uri-dark in dark style), as
+    the C kit's TV room does; inside a Flatpak the host's files are reached
+    through /run/host.
+    """
+    candidates = []
+    source = Gio.SettingsSchemaSource.get_default()
+    schema = source.lookup("org.gnome.desktop.background", True) if source else None
+    if schema is not None:
+        dark = Adw.StyleManager.get_default().get_dark() and schema.has_key("picture-uri-dark")
+        uri = Gio.Settings.new("org.gnome.desktop.background").get_string("picture-uri-dark" if dark else "picture-uri")
+        if uri:
+            try:
+                candidates.append(GLib.filename_from_uri(uri)[0])
+            except GLib.Error:
+                pass
+    candidates.append(DEFAULT_WALLPAPER)
+    for path in candidates:
+        for real in (path, "/run/host" + path):
+            if os.path.isfile(real):
+                return real
+    return None
+
+
 class TvRoom(Gtk.Widget):
     """The room: the focused or playing item's own art, blurred, filling the screen, cross-faded.
 
     `set_artwork(path)` (or `hues=` for an item without art) changes it over
-    1.1 s. The art is blurred once off the main loop and drawn as a texture,
+    1.1 s; `set_wallpaper()` shows the person's desktop background. The art is blurred once off the main loop and drawn as a texture,
     never with a live blur. A shade (darker top and bottom) keeps the bar and
     text legible. Place it first on the stage: `stage.place(room, fill=True)`.
     """
@@ -965,6 +996,13 @@ class TvRoom(Gtk.Widget):
             return
         self._key = key
         _RoomCache.shared().get(key, make, lambda texture, k=key: self._arrived(k, texture))
+
+    def set_wallpaper(self) -> None:
+        """The person's desktop background as the room (`desktop_wallpaper`), for a screen with
+        no art of its own (a terminal)."""
+        path = desktop_wallpaper()
+        if path:
+            self.set_artwork(path)
 
     def _arrived(self, key: str, texture: Gdk.Texture | None) -> None:
         if texture is None or key != self._key or texture is self._current:
@@ -1022,6 +1060,11 @@ def _black(alpha: float) -> Gdk.RGBA:
 
 # ── Sliding collections ──────────────────────────────────────────────────────
 
+#: Room a clipping slide leaves for a focused item drawn past its edge, in TV units:
+#: a cover lifts 8% and casts its shadow (blur 50 at y 24) beyond its box.
+SLIDE_BLEED = 56
+
+
 class TvSlide(Gtk.Widget):
     """A row or page that slides to keep the remote's focus in view; no scrollbars, no pointer.
 
@@ -1042,11 +1085,14 @@ class TvSlide(Gtk.Widget):
     def __init__(self, child: Gtk.Widget, *, orientation: Gtk.Orientation = Gtk.Orientation.VERTICAL,
                  peek: float = 120, lead: float = 40, clip: bool = True, fade_top: bool = True,
                  fade_bottom: bool = False) -> None:
-        super().__init__(overflow=Gtk.Overflow.HIDDEN if clip else Gtk.Overflow.VISIBLE,
+        # A clipping slide clips itself in do_snapshot (not Overflow.HIDDEN at
+        # its box): a focused item's lift and shadow keep SLIDE_BLEED of room.
+        super().__init__(overflow=Gtk.Overflow.VISIBLE,
                          hexpand=orientation == Gtk.Orientation.HORIZONTAL or clip,
                          vexpand=orientation == Gtk.Orientation.VERTICAL)
         self.child = child
         self.orientation = orientation
+        self._clip = clip
         self.peek, self.lead = peek, lead
         self.offset = 0.0
         self._length = 0.0  # the content's length along the slide, as last allocated
@@ -1163,6 +1209,24 @@ class TvSlide(Gtk.Widget):
                  if self._fades[1] else 0.0)
         top = min(0.45 * height, scroll["fade_top"] * u) if above > 1e-3 else 0.0
         bottom = min(0.45 * height, scroll["fade_bottom"] * u) if below > 1e-3 else 0.0
+        bleed = SLIDE_BLEED * u if self._clip else 0.0
+        if self.orientation == Gtk.Orientation.VERTICAL:
+            # Room above the first row only while the page sits at its top; once it
+            # scrolls, the top edge fades as before (and `lead` keeps the room).
+            head = bleed * (1.0 - above)
+            bounds = Graphene.Rect().init(0, -head, width, height + head)
+        else:
+            head = 0.0
+            bounds = Graphene.Rect().init(0, -bleed, width, height + 2 * bleed)
+        if self._clip:
+            snapshot.push_clip(bounds)
+        try:
+            self._snapshot_faded(snapshot, child, width, height, top, bottom, above, below, head, scroll)
+        finally:
+            if self._clip:
+                snapshot.pop()
+
+    def _snapshot_faded(self, snapshot, child, width, height, top, bottom, above, below, head, scroll) -> None:
         if top <= 0 and bottom <= 0 or width <= 0 or height <= 0:
             self.snapshot_child(child, snapshot)
             return
@@ -1173,7 +1237,8 @@ class TvSlide(Gtk.Widget):
         node = recorder.to_node()
         if node is None:
             return
-        middle = Graphene.Rect().init(0, top, width, height - top - bottom)
+        start = top if top > 0 else -head
+        middle = Graphene.Rect().init(0, start, width, height - bottom - start)
         snapshot.push_clip(middle)
         snapshot.append_node(node)
         snapshot.pop()

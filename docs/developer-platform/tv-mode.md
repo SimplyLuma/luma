@@ -43,6 +43,10 @@ posture for tests, reviews and capture harnesses. Without the shell-state
 service or schema (another distribution, a sandbox without the bus name) the
 posture is never TV.
 
+A TV is watched, not touched: while the posture is TV the session's idle
+default is never (`presentation_idle_default("tv")` is 0), so the screen does
+not dim or blank on its own. A delay the person chose is kept.
+
 ## What every window gets in TV posture
 
 - The shell runs the window full screen. LumaUI drops the title row and window
@@ -147,11 +151,23 @@ TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
   a row land on its chosen item; `push_scope()` confines focus to a sheet and
   returns it on Back. `editable=True` items (a `TvField`'s `text`) keep typing,
   Left/Right and Backspace, so a real keyboard and the system's TV keyboard
-  type straight in. Back nothing takes falls through to the window (the TV
-  home at the app's top level).
-- **TvTopBar / TvTab**: the track of tabs and the clock; the open tab is the
+  type straight in. A `console=True` item (a terminal) takes every key itself,
+  arrows, Enter and repeats included; only Escape or Back leave it, through
+  `on_back`. Back nothing takes falls through to the window (the TV home at the
+  app's top level).
+- **TvTopBar / TvTab**: the track of tabs and the clock, with Home's weather
+  before it (weather | time, as on the TV home), read from the shell-state
+  `Weather` property (`a{ss}`: value, description, title, unit) and hidden
+  without a reading; the open tab is the
   key unless another tab holds the focus.
 - **TvButton**: 66 tall, chip at rest, key with the focus; `danger=True`.
+- **TvActionBar**: the desktop's floating action bar grown for the couch
+  (`tv.action_bar`): a bar-material panel centred on the bottom safe line
+  (`stage.place(bar, **TvActionBar.PIN)`), items 76 tall, quiet until the
+  remote reaches one (`add_item(label, icon=, label_for=, mono=)`, registered
+  with `TvFocus`), groups split by `add_divider()`. While it is placed the
+  stage is docked `"action-bar"`, so a toast rises above it. An `Island`
+  placed on a TV stage draws no card: it sits on the room.
 - **TvField**: a recessed field around a real `Gtk.Text`; `action=` labels the
   TV keyboard's action key (see "Typing").
 - **TvToast**: lead, kicker, title, value, sub, tint, ms; one at a time.
@@ -171,6 +187,7 @@ from luma_appkit import TvCover, TvTransportButton, TvNowPlayingPill, TvProgress
 
 room = stage.place(TvRoom(), fill=True)             # first: the item's own art, blurred, as the room
 room.set_artwork(path)                              # cross-fades over 1.1 s; hues=(h1, h2, h3) without art
+room.set_wallpaper()                                # or the person's desktop background (a screen without art)
 cover = TvCover(shape="square", artwork=path, title="Album", subtitle="Artist")
 focus.add(cover, on_activate=open_album)            # lifts 1.08, white ring on the art only
 play = TvTransportButton("play", main=True, label="Play")   # round: 108 main, 84 otherwise
@@ -202,7 +219,9 @@ shelf = TvSlide(row, orientation=Gtk.Orientation.HORIZONTAL, clip=False)
   stays smooth. A shade keeps the bar and text legible.
 - **TvSlide**: a row or page that slides to keep the focus in view (call
   `reveal(widget)` from `TvFocus`'s change callback), only as far as needed,
-  with `peek` of the next item; no scrollbars.
+  with `peek` of the next item; no scrollbars. A clipping slide clips itself
+  `SLIDE_BLEED` (56) beyond its edges, so a focused cover's lift and shadow
+  are never cut at the top of a page or the ends of a shelf.
 - `.tv-playing` colours the playing song (its title, number, equaliser).
 
 Values come from the `tv` block of `config/shared/design-tokens.json`
@@ -247,6 +266,18 @@ TvEmptyState("No results", "Try a different word, or browse a category.", icon="
 - `TvMenu.open(..., title=, first=)` drops a question as a list (the question
   on top, the focus on Cancel), as Depot's Remove asks about the app's data.
 
+### Terminal on a TV
+
+Terminal is the same app on a TV (`luma_terminal/tv.py`): its sessions and
+shells, drawn on a `TvStage` whose room is the wallpaper (`set_wallpaper()`)
+under a shade, the shared top bar with only the clock, the shell's text straight
+on the room at `tv.terminal.text_size`, and a `TvActionBar` with the session
+(OK lists the sessions), New session and the keys a remote lacks (esc, tab,
+⌃C, ↑, ↓). The shell is a `console=True` item: the system keyboard docks for it
+and the text stops above the keyboard; a keyboard plugged into the TV types
+straight in. Escape or Back goes down to the bar, Up returns to the shell, Back
+from the bar leaves for the TV home.
+
 ### Depot on a TV
 
 Depot lists only apps that run on a TV (`luma_depot.tv_facts`). Two facts per
@@ -278,6 +309,17 @@ action, and Search words), like every other listing field; the catalog and the
 installer's seed are exports of it. `action` names a desktop action of the
 app (Steam's `BigPicture`) that TV Mode should launch instead of the plain
 app; Depots that do not know it ignore it.
+
+## Android apps on a TV
+
+An Android app the person installed (Android records it under its own
+`/data/app`) reaches the TV home; the Android image's own apps (Calculator,
+Contacts, Play services) stay in the desktop's app grid. In TV posture
+Android's windows take the handheld policy a phone uses: each app fills its
+own window, with no freeform title bar and no host frame, and the TV takes it
+full screen with no bars reserved. Android draws at Android TV's density, 320
+at 1080p (scaled with the display). Changing posture changes the policy the
+next time an app opens (the readiness stamp includes it).
 
 ## Remotes and gamepads
 
@@ -619,6 +661,28 @@ is no second app model: the apps are `Shell.AppSystem`'s (with
   icon's own edge (`tvModel.edgeColour`).
 - A held OK opens a menu once; the menu acts only on a new press, and a key's
   repeat never activates anything.
+
+## Opening at once: prepared TV apps
+
+On a TV, opening an app is a present, not a start. At sign-in in TV posture
+`luma-native-app-prewarm` starts each TV app listed in
+`/usr/share/luma-app-host/tv.json` (in that order, each waiting until the last
+owns its bus name, while at least 2 GB is free) as
+`luma-app-prepared@<app id>.service`. The app runs with `LUMA_APP_PREPARE=1`:
+C apps through `libluma-app-prepare.so`, Python apps through
+`luma_appkit.prepare`, which the kit installs when it is imported with that
+variable. The app runs as its D-Bus service (whatever its own argv), holds
+itself and runs its own `activate` once: its window is built, styled and
+realized, never mapped. A launch (D-Bus Activate) then only maps that window;
+one that arrives while the app is still preparing is kept and shown as soon as
+it is ready. A prepared app that is closed is prepared again; one already
+running, or a session that is no longer a TV, is left alone. A Flatpak's data
+check (`luma_appkit.migration_startup`) that fails while preparing leaves
+quietly (exit 75) and shows its repair screen only to a real launch.
+
+Nothing is needed from an app beyond the TV opt-in below and being a
+`GApplication` that presents its window from `activate`. List it in `tv.json`
+to have it prepared.
 
 ## Appearing on the TV home
 

@@ -373,6 +373,8 @@ class Island(Gtk.Box):
         if isinstance(root, Gtk.Widget) and root.has_css_class("lumaui-tv") and self.has_css_class("luma-island") and \
                 self.get_parent() is not None and self.get_parent().has_css_class("lumaui-tv-frame"):
             return  # on a TV the page has no island rim
+        if _on_tv_stage(self):
+            return  # nor on a TV stage, where it sits on the room (Terminal's panes)
         width, height = self.get_width(), self.get_height()
         if width <= 0 or height <= 0 or self.has_css_class("compact") or self.has_css_class("drawer"):
             return
@@ -390,6 +392,16 @@ class Island(Gtk.Box):
             found, colour = context.lookup_color(token)
             if found and colour.alpha > 0:
                 snapshot.append_inset_shadow(outline, colour, dx, dy, spread, blur)
+
+
+
+def _on_tv_stage(widget: Gtk.Widget) -> bool:
+    parent = widget.get_parent()
+    while parent is not None:
+        if parent.has_css_class("lumaui-tv-stage"):
+            return True
+        parent = parent.get_parent()
+    return False
 
 
 def _islands_breathe(split_view: Gtk.Widget, pages: tuple[Gtk.Widget | None, ...], collapsed: bool) -> None:

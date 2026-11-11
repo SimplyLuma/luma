@@ -1,0 +1,27 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Tell the person, once per boot, when the FP6 modem has no EFS yet (blank
+# modemst after a factory flash): no IMEI and no SIM until Android has run once.
+# luma-fp6-modem-store writes the state; Settings shows the same text.
+
+state=/run/luma/fp6-modem-state.json
+grep -q '"state": *"efs-missing"' "$state" 2>/dev/null || exit 0
+marker=${XDG_RUNTIME_DIR:?}/luma-fp6-modem-state-notified
+[[ -e $marker ]] && exit 0
+# Runs after graphical-session.target, so the shell normally serves
+# notifications already. A few short tries, never a long wait; Settings shows
+# the same text if this notice is missed.
+for _ in 1 2 3 4 5; do
+  if gdbus call --session --timeout 5 --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.Notify \
+    "Settings" 0 "network-cellular-offline-symbolic" \
+    "Mobile network isn't set up yet" \
+    "Your phone's modem settings are missing. Reinstall Fairphone's firmware, turn on your SIM or eSIM in Android, use mobile data for a few minutes and restart Android once, then reinstall Luma." \
+    "[]" "{'desktop-entry': <'org.gnome.Settings'>, 'urgency': <byte 1>}" 0 >/dev/null 2>&1; then
+    : >"$marker"
+    exit 0
+  fi
+  sleep 2
+done

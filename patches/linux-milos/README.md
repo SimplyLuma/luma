@@ -130,3 +130,17 @@ sync series (`8ed47c2`, `2fd346e`, `5c9c899`, `9df8d66`, `e9a6b53`,
 Luma must backport that exact series to its running ABI, RAM-boot it, and pass
 capture/call acceptance. Do not represent working speaker output or an
 enumerated capture PCM as microphone or call-audio support.
+
+## FP6 suspend and resume
+
+`devices/fairphone/fp6/device.toml` `[kernel] patches` lists the patches
+`scripts/kernel/build-fp6.sh` applies over the kernel tag. Both touch built-in
+code, so the kernel release and `kernel-modules-luma-fp6` are unchanged.
+
+- `0041`: backport of mainline `fb2a238f15f0`. The Milos UFS PHY loses its
+  register state in system suspend; with the default suspend level every
+  resume failed to leave hibern8 and reset the host. System suspend now powers
+  the device down and takes the link off.
+- `0042`: the EPH861x driver left the touch controller running with its
+  interrupt masked during suspend and unmasked it again on resume. It now
+  pulses the reset line first, as the vendor driver's wake path does.

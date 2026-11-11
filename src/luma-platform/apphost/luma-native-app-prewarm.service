@@ -11,4 +11,5 @@ ConditionEnvironment=!XDG_SESSION_CLASS=greeter
 Type=oneshot
 ExecStart=/usr/libexec/luma-native-app-prewarm
 KillMode=process
-TimeoutStartSec=30
+# A TV prepares its apps one after another (each waits for the last).
+TimeoutStartSec=150

@@ -53,9 +53,14 @@ class DeviceIdentity(unittest.TestCase):
     def test_fp6_requires_target_and_actual_arm_architecture(self):
         self.paths.device_tree_compatible.write_bytes(b"fairphone,fp6\0qcom,milos\0")
         require_device_target(self.paths, FP6, "aarch64")
-        for target, arch in (("", "aarch64"), (FP6, "x86_64"), ("other", "aarch64")):
+        for target, arch in ((FP6, "x86_64"), ("other", "aarch64")):
             with self.subTest(target=target, arch=arch), self.assertRaises(ValueError):
                 require_device_target(self.paths, target, arch)
+
+    def test_fp6_may_follow_the_generic_arm_image(self):
+        # The generic ARM commit plus the Fairphone 6 device repository layer.
+        self.paths.device_tree_compatible.write_bytes(b"fairphone,fp6\0qcom,milos\0")
+        require_device_target(self.paths, "", "aarch64")
 
     def test_titan_requires_its_target_and_arm_architecture(self):
         self.paths.device_tree_compatible.write_bytes(b"unihertz,titan2-elite\0mediatek,mt6878\0")

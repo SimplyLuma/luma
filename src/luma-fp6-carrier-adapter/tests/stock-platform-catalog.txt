@@ -1,0 +1,81 @@
+Total configurations: 10
+Configuration 1:
+	Description: DSDS_CDMALess-LA-Milos
+	Type:        platform
+	Size:        29524
+	Status:      Active
+	Version:     0xA001900
+	ID:          20:3D:49:15:25:FD:DE:79:14:49:D1:E3:67:48:7B:24:DF:29:24:7A
+
+Configuration 2:
+	Description: DSDS-LA-Milos
+	Type:        platform
+	Size:        31092
+	Status:      Inactive
+	Version:     0xA001900
+	ID:          00:B4:21:7C:22:73:7E:3F:C6:4D:DE:A9:78:A4:21:8C:42:82:76:9E
+
+Configuration 3:
+	Description: SS_SAOnly-LA-Milos
+	Type:        platform
+	Size:        23288
+	Status:      Inactive
+	Version:     0xA000000
+	ID:          BB:3E:7E:AE:62:30:3E:55:1D:1F:72:53:1B:4D:7A:8B:4C:39:28:E3
+
+Configuration 4:
+	Description: SS_CDMALess-LA-Milos
+	Type:        platform
+	Size:        22264
+	Status:      Inactive
+	Version:     0xA000000
+	ID:          A2:25:F3:6A:85:A7:FB:1F:7A:32:29:BE:45:32:A3:FF:0B:53:F1:92
+
+Configuration 5:
+	Description: SS-LA-Milos
+	Type:        platform
+	Size:        22452
+	Status:      Inactive
+	Version:     0xA000000
+	ID:          1D:18:72:79:A2:E1:8F:32:A1:0E:37:3E:3D:A8:5A:A5:BB:B6:E3:18
+
+Configuration 6:
+	Description: DSDS_SAOnly-LA-Milos
+	Type:        platform
+	Size:        30260
+	Status:      Inactive
+	Version:     0xA001900
+	ID:          2A:6B:EB:AB:29:E3:68:CB:CE:A7:31:03:1B:8E:24:A5:D1:EA:A1:88
+
+Configuration 7:
+	Description: DSDS-LA-Milos
+	Type:        platform
+	Size:        29448
+	Status:      Inactive
+	Version:     0xA001900
+	ID:          2A:A0:16:53:78:7C:2F:6B:41:EF:C8:06:F8:7C:9B:F6:28:6F:18:72
+
+Configuration 8:
+	Description: DSDA_Hybrid_SAOnly-LA-Milos
+	Type:        platform
+	Size:        35944
+	Status:      Inactive
+	Version:     0xA001900
+	ID:          A6:A9:EB:4A:B3:EA:95:E6:BE:A8:2B:59:3A:26:5F:4D:28:19:9C:BC
+
+Configuration 9:
+	Description: DSDA_Hybrid_CDMALess-LA-Milos
+	Type:        platform
+	Size:        34288
+	Status:      Inactive
+	Version:     0xA001900
+	ID:          1D:11:06:53:7B:39:27:06:39:93:D8:5A:BE:5A:97:F6:E8:1B:92:21
+
+Configuration 10:
+	Description: DSDA_Hybrid-LA-Milos
+	Type:        platform
+	Size:        35128
+	Status:      Inactive
+	Version:     0xA001900
+	ID:          4D:D9:E9:81:00:9A:56:98:67:85:A9:8F:1B:0B:AD:3C:F4:49:0C:D8
+

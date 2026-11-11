@@ -835,6 +835,7 @@ The platform is a **0.x preview**. The C libraries use the `-1` namespace so
 | 8 | The C kit's TV island: `luma_ui_tv_posture`, `luma_ui_tv_unit`, `luma_ui_set_part`, `luma_ui_set_keyboard_action` | Preview |
 | 9 | `device_noun()`; the floating island for every window: `luma_window_set_tv_frame`, `luma_window_set_tv_active` | Preview |
 | 10 | TV wide tiles and app surfaces | Preview |
+| 13 | The TV action bar: `TvActionBar`; `TvFocus.add(console=)`; `TvRoom.set_wallpaper()`, `desktop_wallpaper` | Preview |
 
 Read the [changelog](../CHANGELOG.md) before moving to a new platform release.
 
@@ -842,6 +843,7 @@ Read the [changelog](../CHANGELOG.md) before moving to a new platform release.
 
 | Date | Change |
 | --- | --- |
+| 11 Nov 2026 | Preview: the TV action bar (`TvActionBar`), consoles under the remote (`TvFocus.add(console=)`), the wallpaper as a TV room; an island on a TV stage draws no card |
 | 2 Nov 2026 | Preview: floating island for sidebar apps on TV (C and Python); TV system dialogs, quick panel and app switcher; TV wide tiles, shelves and grids; key repeat never activates on a TV |
 | 1 Nov 2026 | Preview: TV posture, the TV scale and materials, `TvFocus`, the TV toast, idle views, TV media parts, the system TV keyboard, remotes, gamepads and HDMI-CEC, `[tv]` in `luma-app.toml` |
 | 30 Oct 2026 | One on-screen keyboard: the Keycap keyboard on the shell; Tablet hides window controls |

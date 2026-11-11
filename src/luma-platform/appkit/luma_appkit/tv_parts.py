@@ -16,6 +16,9 @@ the home's padding while focused; its clock never moves.
 `TvButton` is the 66-tall button (chip at rest, key when focused).
 `TvField` is the recessed text field (a real Gtk.Text: keyboards type into it).
 `TvSwitchRow` is a row with a title and a switch at its end; OK flips it.
+`TvActionBar` is the TV action bar (tv.action_bar): the desktop's floating bar
+grown for the couch, centred on the bottom safe line, its items quiet until the
+remote reaches one (then the key).
 """
 from __future__ import annotations
 
@@ -30,7 +33,7 @@ from gi.repository import GLib, Gio, Gtk  # noqa: E402
 from . import icons  # noqa: E402
 from . import lumaui_tokens as tokens  # noqa: E402
 
-__all__ = ["TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow", "top_bars"]
+__all__ = ["TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow", "TvActionBar", "top_bars"]
 
 TV = tokens.TV
 # Every TV bar alive, for TvFocus to adopt its cluster.
@@ -97,6 +100,19 @@ class TvTopBar(Gtk.Box):
         self.cluster.add_css_class("tv-cluster")
         self.cluster.update_property([Gtk.AccessibleProperty.LABEL], ["Quick panel"])
         self.end.append(self.cluster)
+        # weather | time, as the TV home's bar: Home's reading, published by
+        # the shell-state service; hidden until there is one.
+        self.weather = Gtk.Box(valign=Gtk.Align.CENTER, visible=False)
+        self.weather.add_css_class("tv-weather")
+        self.weather_icon = Gtk.Image()
+        self.weather_label = Gtk.Label(valign=Gtk.Align.CENTER)
+        self.weather_label.add_css_class("tv-clock")
+        self.weather.append(self.weather_icon)
+        self.weather.append(self.weather_label)
+        self.divider = Gtk.Box(valign=Gtk.Align.CENTER, visible=False)
+        self.divider.add_css_class("tv-divider")
+        self.cluster.append(self.weather)
+        self.cluster.append(self.divider)
         self.clock = Gtk.Label(valign=Gtk.Align.CENTER)
         self.clock.add_css_class("tv-clock")
         self.cluster.append(self.clock)
@@ -111,6 +127,7 @@ class TvTopBar(Gtk.Box):
             self._tick()
             self.connect("map", lambda *_a: self._start_clock())
             self.connect("unmap", lambda *_a: self._stop_clock())
+            _weather_feed().watch(self)
 
     def set_tabs(self, tabs: Sequence[TvTab]) -> None:
         while child := self.track.get_first_child():
@@ -147,7 +164,86 @@ class TvTopBar(Gtk.Box):
 
     def _tick(self) -> bool:
         self.clock.set_label(clock_text())
+        self.show_weather(_weather_feed().reading)
         return True
+
+    def show_weather(self, reading: dict) -> None:
+        value = (reading or {}).get("value", "")
+        self.weather.set_visible(bool(value))
+        self.divider.set_visible(bool(value))
+        if not value:
+            return
+        icon, tint = weather_glyph(reading.get("description", ""), GLib.DateTime.new_now_local().get_hour())
+        self.weather_icon.set_from_icon_name(icon)
+        for name in ("tv-weather-sun", "tv-weather-moon"):
+            self.weather_icon.remove_css_class(name)
+        if tint:
+            self.weather_icon.add_css_class(f"tv-weather-{tint}")
+        self.weather_label.set_label(value)
+        description = reading.get("description", "")
+        self.weather.update_property([Gtk.AccessibleProperty.LABEL],
+                                     [f"{value}, {description}" if description else value])
+
+
+def weather_glyph(condition: str, hour: int) -> tuple[str, str | None]:
+    """The weather's icon and tint, as the TV home's bar draws it (tvModel.js weatherGlyph)."""
+    day = 6 <= hour < 19
+    text = (condition or "").lower()
+    if "thunder" in text:
+        return "lumaui-cloud-lightning-symbolic", None
+    if "snow" in text or "sleet" in text:
+        return "lumaui-snowflake-symbolic", None
+    if "rain" in text:
+        return "lumaui-cloud-rain-symbolic", None
+    if "fog" in text:
+        return "lumaui-cloud-fog-symbolic", None
+    if text.startswith("cloudy"):
+        return "lumaui-cloud-symbolic", None
+    if "partly" in text or "fair" in text:
+        return ("lumaui-cloud-sun-symbolic", "sun") if day else ("lumaui-cloud-moon-symbolic", "moon")
+    return ("lumaui-sun-symbolic", "sun") if day else ("lumaui-moon-symbolic", "moon")
+
+
+class _WeatherFeed:
+    """Home's weather from the shell-state service (org.project_luma.ShellState1
+    Weather), shared by every bar in the app; nothing when the service or the
+    reading is absent, so the bar is the clock alone."""
+
+    def __init__(self) -> None:
+        self.reading: dict = {}
+        self._bars: "weakref.WeakSet[TvTopBar]" = weakref.WeakSet()
+        self._proxy = None
+        Gio.DBusProxy.new_for_bus(Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, None,
+                                  "org.project_luma.ShellState1", "/org/project_luma/ShellState1",
+                                  "org.project_luma.ShellState1", None, self._on_proxy)
+
+    def watch(self, bar: "TvTopBar") -> None:
+        self._bars.add(bar)
+        bar.show_weather(self.reading)
+
+    def _on_proxy(self, _source, result) -> None:
+        try:
+            self._proxy = Gio.DBusProxy.new_for_bus_finish(result)
+        except GLib.Error:
+            return
+        self._proxy.connect("g-properties-changed", lambda *_a: self._read())
+        self._read()
+
+    def _read(self) -> None:
+        value = self._proxy.get_cached_property("Weather") if self._proxy else None
+        self.reading = dict(value.unpack()) if value is not None else {}
+        for bar in list(self._bars):
+            bar.show_weather(self.reading)
+
+
+_FEED: _WeatherFeed | None = None
+
+
+def _weather_feed() -> _WeatherFeed:
+    global _FEED
+    if _FEED is None:
+        _FEED = _WeatherFeed()
+    return _FEED
 
 
 def _interface_settings():
@@ -286,3 +382,78 @@ class TvSwitchRow(Gtk.Box):
 
     def set_tv_focus(self, on: bool) -> None:
         _set(self, "tv-key", on)
+
+
+class TvActionBar(Gtk.Box):
+    """The TV action bar: a bar-material panel of items, centred on the bottom safe line.
+
+    The desktop's floating action bar, grown for the couch (Design Center
+    mockups/tv/lumaui-tv.css `.tv-ab`; sizes `tv.action_bar`). Items are quiet
+    at rest and the bright key while the remote is on one; `add_divider()`
+    separates groups. Place it with `stage.place(bar, **TvActionBar.PIN)` and
+    register each item with `TvFocus.add(item, on_activate=...)`; while it is
+    placed the stage is docked "action-bar", so a toast rises above it.
+
+        bar = TvActionBar("Terminal")
+        focus.add(bar.add_item("New session", icon="plus"), on_activate=new_session)
+        bar.add_divider()
+        focus.add(bar.add_item(icon="arrow-up", label_for="Up"), on_activate=up)
+    """
+
+    __gtype_name__ = "LumaUITvActionBar"
+
+    #: Where every TV screen pins its action bar (TvStage.place(bar, **TvActionBar.PIN)).
+    PIN = {"bottom": TV["action_bar"]["bottom"], "center_x": True, "height": TV["action_bar"]["height"]}
+
+    def __init__(self, label: str = "") -> None:
+        super().__init__(valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.TOOLBAR)
+        for name in ("tv-ab", "tv-bar"):
+            self.add_css_class(name)
+        if label:
+            self.update_property([Gtk.AccessibleProperty.LABEL], [label])
+        self.connect("realize", lambda *_a: self._dock(True))
+        self.connect("unrealize", lambda *_a: self._dock(False))
+
+    def _dock(self, on: bool) -> None:
+        stage = self.get_parent()
+        if stage is None or not hasattr(stage, "docked"):
+            return
+        if on and stage.docked == "":
+            stage.docked = "action-bar"
+        elif not on and stage.docked == "action-bar":
+            stage.docked = ""
+
+    def add_item(self, label: str = "", *, icon: str | None = None, label_for: str = "",
+                 mono: bool = False) -> Gtk.Box:
+        """An item: an icon, a label or both. `label_for` names an icon-only item for
+        accessibility; `mono` sets a key's label in the monospace face (esc, tab, ⌃C)."""
+        item = Gtk.Box(valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.BUTTON)
+        item.add_css_class("tv-ab-item")
+        if not label:
+            item.add_css_class("tv-ab-icon")
+        if mono:
+            item.add_css_class("tv-ab-mono")
+        inner = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, hexpand=True)
+        if icon:
+            inner.append(icons.image(icon))
+        item.label = Gtk.Label(label=label, visible=bool(label))
+        inner.append(item.label)
+        item.append(inner)
+        item.update_property([Gtk.AccessibleProperty.LABEL], [label or label_for])
+        item.set_tv_focus = lambda on, i=item: _set(i, "tv-key", on)
+        self.append(item)
+        return item
+
+    def add_divider(self) -> Gtk.Widget:
+        divider = Gtk.Box(valign=Gtk.Align.CENTER, accessible_role=Gtk.AccessibleRole.SEPARATOR)
+        divider.add_css_class("tv-ab-divider")
+        self.append(divider)
+        return divider
+
+    def items(self) -> list[Gtk.Widget]:
+        found, child = [], self.get_first_child()
+        while child is not None:
+            if child.has_css_class("tv-ab-item"):
+                found.append(child)
+            child = child.get_next_sibling()
+        return found

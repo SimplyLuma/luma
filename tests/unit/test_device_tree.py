@@ -25,7 +25,7 @@ class DeviceTree(unittest.TestCase):
         for name in ("scripts/mobile/fp6-native-init-functions.sh", "config/mobile/fp6-ostree-source.json"):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / name, self.root / name)
-        for name in ("config/kernel", "patches/linux-surface-pro12"):
+        for name in ("config/kernel", "patches/linux-milos", "patches/linux-surface-pro12"):
             shutil.copytree(ROOT / name, self.root / name)
         self.fp6 = self.root / "devices" / "fairphone" / "fp6"
 
@@ -48,6 +48,13 @@ class DeviceTree(unittest.TestCase):
 
     def test_real_tree_is_valid(self):
         self.assertEqual(self.errors(), [])
+
+    def test_kernel_patches_must_be_repository_diffs(self):
+        patch = "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch"
+        (self.root / patch).write_text("no diff here\n")
+        self.assertRejected("has no diff --git section")
+        (self.root / patch).unlink()
+        self.assertRejected(f"kernel patch {patch} must name a repository file")
 
     def test_userspace_requirements_reject_dnf_options(self):
         surface = self.root / 'devices/microsoft/sp12in/device.toml'

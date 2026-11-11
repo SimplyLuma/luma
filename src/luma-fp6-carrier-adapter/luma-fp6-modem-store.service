@@ -1,0 +1,25 @@
+[Unit]
+Description=Project Luma FP6 private modem store (first boot)
+Documentation=file:///usr/share/doc/luma-fp6-carrier-adapter/fp6-fresh-install-modem-efs.md
+After=local-fs.target
+Before=rmtfs.service
+ConditionPathExists=/sys/firmware/devicetree/base/model
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-fp6-modem-store
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/luma
+RuntimeDirectory=luma
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX

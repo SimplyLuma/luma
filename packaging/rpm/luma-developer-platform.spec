@@ -121,6 +121,7 @@ install -D -m 0644 apphost/80-luma-app-host.preset \
   %{buildroot}%{_userpresetdir}/80-luma-app-host.preset
 
 install -m 0644 apphost/luma-native-app-prewarm.service apphost/luma-native-app-prewarm.timer \
+  apphost/luma-app-prepared@.service \
   %{buildroot}%{_userunitdir}/
 install -d %{buildroot}%{_datadir}/luma-app-host/preload.d
 
@@ -327,6 +328,8 @@ done
 %{_libexecdir}/luma-native-app-prewarm
 %{_libdir}/libluma-app-prepare.so
 %{_datadir}/luma-app-host/native.json
+%{_datadir}/luma-app-host/tv.json
+%{_userunitdir}/luma-app-prepared@.service
 %{_userunitdir}/luma-native-app-prewarm.service
 %{_userunitdir}/luma-native-app-prewarm.timer
 %dir %{_datadir}/luma-app-host

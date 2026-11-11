@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
+import io
 import json
 import os
 import stat
@@ -33,6 +36,7 @@ from luma_android.config import (  # noqa: E402
     load_runtime_config,
 )
 from luma_android.cli import _application_name, _report_launch_failure  # noqa: E402
+from luma_android.cli import main as cli_main  # noqa: E402
 from luma_android.engine import (  # noqa: E402
     AndroidApplication,
     AndroidDeviceProfile,
@@ -45,6 +49,7 @@ from luma_android.engine import (  # noqa: E402
     _host_booted_in_charger_mode,
     _prepare_interactive_windowing,
     _validate_package_name,
+    fp6_gate_closed,
     select_compatible_splits,
 )
 from luma_android.errors import (  # noqa: E402
@@ -79,6 +84,21 @@ def package_set(path: Path, members: dict[str, Path]) -> None:
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, source in members.items():
             archive.write(source, name)
+
+
+def _load_script(name: str):
+    loader = importlib.machinery.SourceFileLoader(
+        name.replace("-", "_"), str(REPO_ROOT / "src/luma-android/bin" / name)
+    )
+    module = importlib.util.module_from_spec(
+        importlib.util.spec_from_loader(loader.name, loader)
+    )
+    bytecode, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = bytecode
+    return module
 
 
 class ApkTests(unittest.TestCase):
@@ -344,8 +364,13 @@ class PolicyTests(unittest.TestCase):
             ).read_text(encoding="utf-8")
             self.assertNotIn("luma-waydroid-binder-compat", text)
             self.assertIn("luma-waydroid-fp6-graphics-compat", text)
-            self.assertIn("luma-waydroid-fp6-gpu-watchdog --check", text)
             self.assertIn("BindsTo=luma-waydroid-fp6-gpu-watchdog.service", text)
+            self.assertIn("After=luma-waydroid-fp6-gpu-watchdog.service", text)
+            # A closed gate skips the container; ExecStartPre= would fail it.
+            self.assertIn(
+                "ExecCondition=/usr/libexec/luma-waydroid-fp6-gpu-watchdog --check\n", text
+            )
+            self.assertNotIn("ExecStartPre=/usr/libexec/luma-waydroid-fp6-gpu-watchdog", text)
 
     def test_fp6_graphics_helper_preserves_explicit_overrides(self) -> None:
         helper = REPO_ROOT / "src/luma-android/bin/luma-waydroid-fp6-graphics-compat"
@@ -463,6 +488,81 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("SuccessExitStatus=71", unit)
         self.assertNotIn("SuccessExitStatus=70", unit)
 
+    def test_fp6_watchdog_skips_on_a_closed_gate_and_still_fails_on_a_fault(self) -> None:
+        lines = (
+            REPO_ROOT
+            / "src/luma-android/data/luma-waydroid-fp6-gpu-watchdog.service"
+        ).read_text().splitlines()
+        self.assertIn(
+            "ExecCondition=/usr/libexec/luma-waydroid-fp6-gpu-watchdog --check", lines
+        )
+        self.assertIn("Restart=no", lines)
+        # Only the containment stop is a success: a GPU fault (70), a lost
+        # journal (72) and a gate that closes after the condition (69) fail.
+        self.assertEqual(
+            [line for line in lines if line.startswith("SuccessExitStatus=")],
+            ["SuccessExitStatus=71"],
+        )
+
+    def test_fp6_gate_check_exits_with_a_skip_status(self) -> None:
+        watchdog = _load_script("luma-waydroid-fp6-gpu-watchdog")
+        closed = KernelAdmission(False, "a" * 64, "kernel-not-admitted")
+        for admission, software, expected in (
+            (closed, False, 69),
+            (closed, True, 0),
+            (KernelAdmission(False, reason="gpu-fault-latched"), True, 69),
+            (KernelAdmission(False, reason="kernel-identity-unavailable"), True, 69),
+            (KernelAdmission(True, "b" * 64, "verified-kernel"), False, 0),
+        ):
+            with self.subTest(reason=admission.reason, software=software), mock.patch.object(
+                watchdog, "is_fp6", return_value=True
+            ), mock.patch.object(
+                watchdog, "fp6_kernel_admission", return_value=admission
+            ), mock.patch.object(
+                watchdog, "fp6_software_service_admitted", return_value=software
+            ), mock.patch.object(
+                watchdog.sys, "argv", ["luma-waydroid-fp6-gpu-watchdog", "--check"]
+            ), mock.patch.object(watchdog.sys, "stderr", io.StringIO()) as stderr:
+                status = watchdog.main()
+                self.assertEqual(status, expected)
+                # ExecCondition= skips on 1-254; 255 would fail the unit.
+                self.assertIn(status, range(0, 255))
+                self.assertEqual(admission.reason in stderr.getvalue(), expected != 0)
+
+    def test_fp6_runtime_fault_still_latches_and_stops_the_container(self) -> None:
+        watchdog = _load_script("luma-waydroid-fp6-gpu-watchdog")
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            watchdog, "FP6_GPU_FAULT_MARKER", Path(directory) / "fault"
+        ), mock.patch.object(watchdog.subprocess, "run") as run:
+            watchdog.latch_fault(b"msm_dpu: hangcheck detected gpu lockup\n")
+            self.assertIn(
+                "hangcheck detected gpu lockup", (Path(directory) / "fault").read_text()
+            )
+        run.assert_called_once_with(
+            ["/usr/bin/systemctl", "--no-block", "stop", "waydroid-container.service"],
+            check=False,
+            timeout=5,
+        )
+
+    def test_session_units_skip_when_the_hardware_gate_is_closed(self) -> None:
+        for name in ("luma-android-session.service", "luma-android-prewarm.service"):
+            lines = (REPO_ROOT / "src/luma-android/data" / name).read_text().splitlines()
+            service = lines[lines.index("[Service]"):]
+            self.assertIn("ExecCondition=/usr/bin/luma-android gate", service, name)
+
+    def test_graphics_watchdog_runs_only_beside_an_active_container(self) -> None:
+        # The container Wants= this unit; without BindsTo= + After= it starts
+        # and keeps polling when the container itself was refused.
+        unit = (
+            REPO_ROOT / "src/luma-android/data/luma-waydroid-graphics-watchdog.service"
+        ).read_text().split("[Service]", 1)[0].splitlines()
+        for line in (
+            "BindsTo=waydroid-container.service",
+            "After=waydroid-container.service",
+            "PartOf=waydroid-container.service",
+        ):
+            self.assertIn(line, unit)
+
 
 class EngineTests(unittest.TestCase):
     def test_framework_freeze_tracks_explicit_runtime_idle_policy(self):
@@ -555,6 +655,43 @@ class EngineTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(LumaAndroidError, "has not passed"):
                 _prepare_interactive_windowing()
+
+    def test_fp6_closed_gate_skips_android_except_for_an_authorized_lab(self) -> None:
+        closed = KernelAdmission(False, "a" * 64, "kernel-not-admitted")
+        for fp6, admission, lab, expected in (
+            (False, closed, False, ""),
+            (True, KernelAdmission(True, "b" * 64, "verified-kernel"), False, ""),
+            (True, closed, False, "kernel-not-admitted"),
+            (True, closed, True, ""),
+            (True, KernelAdmission(False, reason="gpu-fault-latched"), True,
+             "gpu-fault-latched"),
+            (True, KernelAdmission(False, reason="kernel-identity-unavailable"), True,
+             "kernel-identity-unavailable"),
+        ):
+            with self.subTest(fp6=fp6, reason=admission.reason, lab=lab), mock.patch(
+                "luma_android.engine.is_fp6", return_value=fp6
+            ), mock.patch(
+                "luma_android.engine.fp6_kernel_admission", return_value=admission
+            ), mock.patch(
+                "luma_android.engine._fp6_software_lab_authorized", return_value=lab
+            ):
+                self.assertEqual(fp6_gate_closed(), expected)
+
+    def test_gate_command_skips_only_for_a_closed_gate(self) -> None:
+        # ExecCondition= skips on any status from 1 to 254: neither the
+        # configuration nor the engine may turn into a skipped session.
+        with mock.patch(
+            "luma_android.cli.load_runtime_config", side_effect=LumaAndroidError("unreadable")
+        ) as config, mock.patch("luma_android.cli.WaydroidEngine") as engine:
+            with mock.patch(
+                "luma_android.cli.fp6_gate_closed", return_value="kernel-not-admitted"
+            ), mock.patch("sys.stderr", io.StringIO()) as stderr:
+                self.assertEqual(cli_main(["gate"]), 69)
+            self.assertIn("kernel-not-admitted", stderr.getvalue())
+            with mock.patch("luma_android.cli.fp6_gate_closed", return_value=""):
+                self.assertEqual(cli_main(["gate"]), 0)
+        config.assert_not_called()
+        engine.assert_not_called()
 
     def test_fp6_interactive_windowing_admits_verified_ifpc_kernel(self) -> None:
         with mock.patch("luma_android.engine.is_fp6", return_value=True), mock.patch(
@@ -1056,6 +1193,58 @@ class EngineTests(unittest.TestCase):
             run.call_args_list,
         )
         policy.assert_not_called()
+
+    def test_tv_windows_take_the_handheld_policy_with_no_bar_insets(self) -> None:
+        # On a TV each Android app fills its own window as on a phone: no
+        # freeform title bar, resizable, no host frame; the shell's TV posture
+        # takes the window full screen and draws no bars, so none are reserved.
+        engine = WaydroidEngine("waydroid")
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            os.environ, {"LUMA_DEVICE_CLASS": "desktop", "XDG_STATE_HOME": directory},
+        ), mock.patch.object(
+            engine, "status", return_value={"session": "RUNNING", "wayland_display": "wayland-0"},
+        ), mock.patch.object(engine, "wait_for_boot_completion"), mock.patch.object(
+            engine, "wait_for_application_service"
+        ), mock.patch.object(engine, "_run") as run, mock.patch.object(
+            engine, "_run_as_android_package_manager"
+        ), mock.patch("luma_android.engine.current_presentation", return_value="tv"), mock.patch(
+            "luma_android.engine._ready_stamp", return_value=None
+        ), mock.patch("luma_android.engine._write_ready_stamp"), mock.patch.object(
+            engine, "sync_host_bar_insets"
+        ) as insets, mock.patch.object(engine, "sync_presentation_density"), mock.patch.object(
+            engine, "sync_host_appearance"
+        ):
+            engine.ensure_ready(multi_window=True, detached=True)
+        run.assert_any_call("prop", "set", "persist.luma.device_class", "handheld", timeout=30)
+        run.assert_any_call("prop", "set", "persist.luma.host_window_chrome", "false", timeout=30)
+        insets.assert_called_once_with("desktop")
+
+    def test_only_apps_the_person_installed_reach_the_tv_home(self) -> None:
+        engine = WaydroidEngine("waydroid")
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            os.environ, {"XDG_DATA_HOME": directory}
+        ), mock.patch("luma_android.engine.user_installed_packages", return_value={"tv.example.player"}):
+            application_root = Path(directory) / "applications"
+            application_root.mkdir()
+            for package in ("tv.example.player", "com.android.calculator2"):
+                (application_root / f"waydroid.{package}.desktop").write_text(
+                    f"[Desktop Entry]\nName={package}\nExec=waydroid app launch {package}\n", encoding="utf-8")
+            engine.synchronize_launchers()
+            player = (application_root / "waydroid.tv.example.player.desktop").read_text(encoding="utf-8")
+            calculator = (application_root / "waydroid.com.android.calculator2.desktop").read_text(encoding="utf-8")
+        self.assertIn("X-Luma-TV=true", player)
+        self.assertNotIn("X-Luma-TV", calculator)
+
+    def test_user_installed_packages_are_read_from_androids_own_data(self) -> None:
+        from luma_android.engine import user_installed_packages
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "app/~~a1==/tv.twitch.android.app--sTtt2Z7SuKSde3YCTW-Rg==").mkdir(parents=True)
+            (root / "app/~~b2==/com.netflix.mediaclient-bqd9gVIT8D2nyIVDg-3KAA==").mkdir(parents=True)
+            (root / "app/~~c3==/not a package").mkdir(parents=True)
+            self.assertEqual(user_installed_packages(root),
+                             {"tv.twitch.android.app", "com.netflix.mediaclient"})
+            self.assertEqual(user_installed_packages(root / "absent"), set())
 
     def test_charger_boot_promotes_android_before_application_wait(self) -> None:
         engine = WaydroidEngine("waydroid")

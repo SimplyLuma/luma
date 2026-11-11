@@ -34,6 +34,10 @@ jobs:
           gjs -m tests/gnome-shell/presentation/compact-layout.js
           gjs -m tests/gnome-shell/presentation/density.js
           gjs -m tests/gnome-shell/presentation/home-catalog.js
+      - name: Status glyphs and the cellular indicator's states
+        run: |
+          gjs -m tests/gnome-shell/presentation/status-glyphs.js
+          gjs -m tests/gnome-shell/presentation/cellular-status.js
   public-source-contracts:
     strategy:
       fail-fast: false

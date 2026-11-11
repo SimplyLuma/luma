@@ -20,6 +20,7 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from luma_appkit import lumaui_tokens  # noqa: E402
 from luma_appkit.tv_focus import DOWN, LEFT, RIGHT, UP, nearest  # noqa: E402
+from luma_appkit.tv_parts import weather_glyph  # noqa: E402
 from luma_appkit.tv_stage import tv_css, tv_material  # noqa: E402
 
 HAS_DISPLAY = Gtk.init_check() if hasattr(Gtk, "init_check") else Gdk.Display.get_default() is not None
@@ -46,6 +47,8 @@ class Materials(unittest.TestCase):
         self.assertEqual((tv["button"]["height"], tv["button"]["radius"]), (66, 22))
         self.assertEqual((tv["toast"]["bottom"], tv["toast"]["above_action_bar"], tv["toast"]["above_keyboard"]),
                          (56, 172, 586))
+        ab = tv["action_bar"]
+        self.assertEqual((ab["bottom"], ab["height"], ab["item_height"], ab["radius"]), (56, 96, 76, 32))
 
 
 class Spatial(unittest.TestCase):
@@ -163,6 +166,57 @@ class Widgets(unittest.TestCase):
         self.assertFalse(focus.handle(Gdk.KEY_Left))
         self.assertTrue(focus.handle(Gdk.KEY_Return))
         self.assertEqual(activated, [True])
+
+    def test_a_console_takes_every_key_but_back(self):
+        from luma_appkit.tv_focus import TvFocus
+        from luma_appkit.tv_stage import TvStage
+        stage = TvStage()
+        shell, key = Gtk.Box(height_request=300), Gtk.Box(height_request=60)
+        stage.place(shell, left=96, top=150, width=600)
+        stage.place(key, left=96, top=900, width=100)
+        backs = []
+
+        def back():
+            backs.append(True)
+            focus.focus(key)
+            return True
+        focus = TvFocus(stage, on_back=back)
+        focus.add(shell, console=True)
+        focus.add(key)
+        focus.focus(shell)
+        for keyval in (Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Left, Gdk.KEY_Return, Gdk.KEY_space, Gdk.KEY_BackSpace,
+                       Gdk.KEY_a, Gdk.KEY_Menu):
+            self.assertFalse(focus.handle(keyval), Gdk.keyval_name(keyval))   # the shell's: history, Enter, typing
+        self.assertIs(focus.focused, shell)
+        self.assertTrue(focus.handle(Gdk.KEY_Escape))                          # Back leaves, through on_back
+        self.assertEqual(backs, [True])
+        self.assertIs(focus.focused, key)
+
+    def test_action_bar_items_are_quiet_until_focused(self):
+        from luma_appkit.tv_parts import TvActionBar
+        bar = TvActionBar("Terminal")
+        session = bar.add_item("Home", icon="house")
+        bar.add_divider()
+        up = bar.add_item(icon="arrow-up", label_for="Up")
+        esc = bar.add_item("esc", mono=True)
+        self.assertEqual(bar.items(), [session, up, esc])
+        self.assertTrue(bar.has_css_class("tv-ab") and bar.has_css_class("tv-bar"))
+        self.assertTrue(up.has_css_class("tv-ab-icon") and not session.has_css_class("tv-ab-icon"))
+        self.assertTrue(esc.has_css_class("tv-ab-mono"))
+        self.assertFalse(any(i.has_css_class("tv-key") for i in bar.items()))
+        up.set_tv_focus(True)
+        self.assertTrue(up.has_css_class("tv-key"))
+        self.assertEqual(TvActionBar.PIN["bottom"], lumaui_tokens.TV["action_bar"]["bottom"])
+
+    def test_an_island_on_a_tv_stage_has_no_card(self):
+        from luma_appkit.tv_stage import TvStage
+        from luma_appkit.widgets import Island, _on_tv_stage
+        stage, island = TvStage(), Island()
+        self.assertFalse(_on_tv_stage(island))
+        holder = Gtk.Box()
+        holder.append(island)
+        stage.place(holder, fill=True)
+        self.assertTrue(_on_tv_stage(island))
 
     def test_leaving_a_field_takes_gtk_focus_with_it(self):
         from luma_appkit.tv_focus import TvFocus
@@ -385,3 +439,49 @@ class BarCluster(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Weather(unittest.TestCase):
+    """An app's TV bar shows Home's weather beside the time, drawn as the home's bar draws it."""
+
+    def test_glyph_matches_the_home_bar(self):
+        # tvModel.js weatherGlyph: the same conditions, the same icons and tints.
+        cases = {("Thunderstorms", 12): ("lumaui-cloud-lightning-symbolic", None),
+                 ("Light snow", 12): ("lumaui-snowflake-symbolic", None),
+                 ("Rain", 23): ("lumaui-cloud-rain-symbolic", None),
+                 ("Fog", 8): ("lumaui-cloud-fog-symbolic", None),
+                 ("Cloudy", 8): ("lumaui-cloud-symbolic", None),
+                 ("Partly cloudy", 12): ("lumaui-cloud-sun-symbolic", "sun"),
+                 ("Fair", 22): ("lumaui-cloud-moon-symbolic", "moon"),
+                 ("Clear", 6): ("lumaui-sun-symbolic", "sun"),
+                 ("Clear", 19): ("lumaui-moon-symbolic", "moon"),
+                 ("", 3): ("lumaui-moon-symbolic", "moon")}
+        for (condition, hour), expected in cases.items():
+            self.assertEqual(weather_glyph(condition, hour), expected, (condition, hour))
+
+    @unittest.skipUnless(HAS_DISPLAY, "needs a display")
+    def test_bar_shows_a_reading_and_hides_without_one(self):
+        from luma_appkit.tv_parts import TvTopBar
+        bar = TvTopBar()
+        bar.show_weather({})
+        self.assertFalse(bar.weather.get_visible() or bar.divider.get_visible())
+        bar.show_weather({"value": "57\u00b0", "description": "Clear"})
+        self.assertTrue(bar.weather.get_visible() and bar.divider.get_visible())
+        self.assertEqual(bar.weather_label.get_label(), "57\u00b0")
+        # The weather sits in the cluster before the clock: weather | time.
+        self.assertIs(bar.weather.get_next_sibling(), bar.divider)
+        self.assertIs(bar.divider.get_next_sibling(), bar.clock)
+
+
+class SlideBleed(unittest.TestCase):
+    @unittest.skipUnless(HAS_DISPLAY, "needs a display")
+    def test_a_clipping_slide_leaves_room_for_a_lifted_cover(self):
+        # A focused cover lifts and casts its shadow past the slide's box; the
+        # slide clips itself with SLIDE_BLEED of room, never at its own edge.
+        from luma_appkit.tv_media import SLIDE_BLEED, TvSlide
+        slide = TvSlide(Gtk.Box(), orientation=Gtk.Orientation.HORIZONTAL)
+        self.assertEqual(slide.get_overflow(), Gtk.Overflow.VISIBLE)
+        self.assertTrue(slide._clip)
+        cover = lumaui_tokens.TV["cover"]
+        self.assertGreaterEqual(SLIDE_BLEED, cover["square"] * (cover["focus_scale"] - 1) / 2 + cover["ring"])
+

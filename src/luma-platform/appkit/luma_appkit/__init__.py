@@ -8,6 +8,16 @@ runtime rather than by shipping a second application.
 from .commands import Command, CommandGroup, CommandRegistry
 from .context import AppContext, InputMode, PresentationMode
 
+# Started to be prepared (LUMA_APP_PREPARE=1: a TV keeps its apps loaded,
+# windows built but not shown), the app's run and present follow Luma's
+# prepared-launch protocol. Every Luma Python app loads the kit before it
+# runs, as every C app loads libluma-app-prepare.so; an app that is never
+# prepared never loads the module.
+import os as _os
+if _os.environ.get("LUMA_APP_PREPARE") == "1":
+    from . import prepare as _prepare
+    _prepare.install()
+
 
 __all__ = [
     "DialKey",
@@ -111,6 +121,8 @@ __all__ = [
     # wide tiles and app surfaces (API level 10)
     "TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvShot", "TvScreenshotViewer", "TvEmptyState",
     "compose_wide_tile", "wide_tile_art",
+    # the TV action bar, a console under the remote, the wallpaper room (API level 13)
+    "TvActionBar", "desktop_wallpaper",
     # the system's TV keyboard: action label, height
     "set_keyboard_action", "watch_tv_keyboard", "tv_keyboard_state",
     # remotes and gamepads: an app that reads the pad itself claims it
@@ -392,7 +404,7 @@ def __getattr__(name: str):
     if name == "tv_nearest":
         from .tv_focus import nearest
         return nearest
-    if name in {"TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow"}:
+    if name in {"TvTopBar", "TvTab", "TvButton", "TvField", "TvSwitchRow", "TvActionBar"}:
         from . import tv_parts
         return getattr(tv_parts, name)
     if name == "TvToast":
@@ -404,7 +416,8 @@ def __getattr__(name: str):
     if name == "TvIdle":
         from .tv_idle import TvIdle
         return TvIdle
-    if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide"}:
+    if name in {"TvCover", "TvTransportButton", "TvNowPlayingPill", "TvEqualizer", "TvProgress", "TvRoom", "TvSlide",
+                "desktop_wallpaper"}:
         from . import tv_media
         return getattr(tv_media, name)
     if name in {"TvWideTile", "TvShelf", "TvTileGrid", "TvPage", "TvProgressButton", "TvShot", "TvScreenshotViewer",

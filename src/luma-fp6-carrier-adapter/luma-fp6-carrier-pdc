@@ -1,0 +1,304 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Ensure the FP6 platform PDC configuration and select the configured, physically
+# accepted carrier PDC profile in the
+# modem's normal private file-backed rmtfs store before subscriber provisioning starts.
+# No modem partition is written by this adapter.
+
+set -Eeuo pipefail
+umask 077
+
+config=/etc/luma/fp6-carrier-pdc.conf
+# Written by luma-fp6-carrier-select from the active SIM; /etc wins over it.
+selection=/run/luma/fp6-carrier.json
+qmicli=/usr/bin/qmicli
+att_profile=/usr/lib/firmware/luma/fp6-carrier-pdc/att-volte-qrel1695.mbn
+tmo_profile=/usr/lib/firmware/luma/fp6-carrier-pdc/tmo-commercial-qrel1695.mbn
+platform_profile=/usr/lib/firmware/luma/fp6-carrier-pdc/dsds-la-milos.mbn
+platform_id=00b4217c22737e3fc64ddea978a4218c4282769e
+att_id=444954dcfbd6d5bf196cd8fecf6770ff3c6b34fc
+tmo_id=88f589369ff3a066511dd1b21ed42cf3496686a3
+# Commercial-TMO as a modem that Android provisioned reports it (FP6 modem
+# MPSS.DE.3.1.4.c4-00099); the same carrier configuration, accepted as active.
+tmo_stock_id=4ea00db36530421c79794b4ba87686fa0a31f31b
+att_sha=32e7f3d9059e63323f70cf113b1ecc040dc7e9c82238a1d5bde2b21ca2eb7d6e
+tmo_sha=817e5f33a18a176a14859184de88c60921318864dea994a845133bc841e3edda
+platform_sha=281cf305a5bcd98b709a0446f9733d1859cb423a791b2af17ab9776ffeaf0400
+
+event() { printf 'event=luma_fp6_carrier_pdc %s\n' "$*"; }
+# Conditions a retry cannot change exit 3 (RestartPreventExitStatus=3 in the
+# unit): they are reported once instead of restarting in a loop.
+fail() {
+  case "$1" in
+    not_root|model|slot|kernel|qmicli_missing|config_permissions|config_shape|\
+    unsupported_profile|rmtfs_backend|platform_profile_missing|platform_profile_hash|\
+    selected_profile_missing|profile_hash|\
+    unexpected_platform|unexpected_software|platform_catalog_*|software_catalog_*)
+      event "state=unavailable reason=$1 identifiers_logged=0" >&2; exit 3 ;;
+  esac
+  event "state=failed reason=$1 identifiers_logged=0" >&2; exit 1
+}
+hash() { sha256sum "$1" | awk '{print $1}'; }
+compact_ids() {
+  sed -n 's/^[[:space:]]*ID:[[:space:]]*//p' | tr -d ':' |
+    tr '[:upper:]' '[:lower:]'
+}
+# The configuration the modem will use after it restarts (Pending) or uses now.
+selected_id() {
+  awk '
+    /^[[:space:]]*Status:[[:space:]]*(Pending|Active)/ { selected=1; next }
+    selected && /^[[:space:]]*ID:/ {
+      sub(/^[^:]*:[[:space:]]*/, "")
+      print
+      exit
+    }
+  ' | tr -d ':' | tr '[:upper:]' '[:lower:]'
+}
+wait_modem() {
+  for _ in $(seq 1 120); do
+    "$qmicli" -d qrtr://0 --device-open-qmi --dms-get-operating-mode \
+      >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+active_id() {
+  awk '
+    /^[[:space:]]*Status:[[:space:]]*Active/ { active=1; next }
+    active && /^[[:space:]]*ID:/ {
+      sub(/^[^:]*:[[:space:]]*/, "")
+      print
+      exit
+    }
+  ' | tr -d ':' | tr '[:upper:]' '[:lower:]'
+}
+
+# Exact stock Milos platform identities observed in the retained native catalog.
+# Inactive stock profiles are preserved; selection never deletes a profile.
+validate_platform_catalog() {
+  local catalog=$1 count id
+  local -a ids
+  count=$(grep -c '^Configuration ' <<<"$catalog" || true)
+  mapfile -t ids < <(compact_ids <<<"$catalog")
+  [[ $count -le 10 && ${#ids[@]} -eq $count ]] || fail platform_catalog_shape
+  [[ $(printf '%s\n' "${ids[@]}" | sed '/^$/d' | sort -u | wc -l) -eq $count ]] || fail platform_catalog_duplicate
+  [[ $(grep -c '^[[:space:]]*Status:[[:space:]]*Active' <<<"$catalog" || true) -le 1 ]] || fail platform_catalog_active
+  # One configuration may be Pending until the modem restarts; the caller
+  # still requires the selected platform to end up Active.
+  [[ $(grep -c '^[[:space:]]*Status:[[:space:]]*Pending' <<<"$catalog" || true) -le 1 ]] || fail platform_catalog_pending
+  [[ $(grep -Ec '^[[:space:]]*Status:[[:space:]]*(Active|Inactive|Pending)[[:space:]]*$' <<<"$catalog" || true) -eq $count ]] || fail platform_catalog_status
+  for id in "${ids[@]}"; do
+    case "$id" in
+      203d491525fdde791449d1e367487b24df29247a|\
+      00b4217c22737e3fc64ddea978a4218c4282769e|\
+      bb3e7eae62303e551d1f72531b4d7a8b4c3928e3|\
+      a225f36a85a7fb1f7a3229be4532a3ff0b53f192|\
+      1d187279a2e18f32a10e373e3da85aa5bbb6e318|\
+      2a6bebab29e368cbcea731031b8e24a5d1eaa188|\
+      2aa01653787c2f6b41efc806f87c9bf6286f1872|\
+      a6a9eb4ab3ea95e6bea82b593a265f4d28199cbc|\
+      1d1106537b3927063993d85abe5a97f6e81b9221|\
+      4dd9e981009a56986785a98f1b0bad3cf4490cd8) ;;
+      *) fail unexpected_platform ;;
+    esac
+  done
+}
+
+# Exact stock Milos software identities observed in the retained native catalog.
+# Inactive stock profiles are preserved; selection never deletes a profile.
+validate_software_catalog() {
+  local catalog=$1 count id
+  local -a ids
+  count=$(grep -c '^Configuration ' <<<"$catalog" || true)
+  mapfile -t ids < <(compact_ids <<<"$catalog")
+  [[ $count -le 26 && ${#ids[@]} -eq $count ]] || fail software_catalog_shape
+  [[ $(printf '%s\n' "${ids[@]}" | sed '/^$/d' | sort -u | wc -l) -eq $count ]] || fail software_catalog_duplicate
+  [[ $(grep -c '^[[:space:]]*Status:[[:space:]]*Active' <<<"$catalog" || true) -le 1 ]] || fail software_catalog_active
+  [[ $(grep -Ec '^[[:space:]]*Status:[[:space:]]*(Active|Inactive)[[:space:]]*$' <<<"$catalog" || true) -eq $count ]] || fail software_catalog_status
+  for id in "${ids[@]}"; do
+    case "$id" in
+      88f589369ff3a066511dd1b21ed42cf3496686a3|\
+      4ea00db36530421c79794b4ba87686fa0a31f31b|\
+      90ab0f95e11f2283b19d7e28f2abd9ddbe08a1bd|\
+      4e264b0ba0ec9b0ccaad959f500989730aa2f32d|\
+      0f2d3f6dac1cab54e3ee9259beb0091e74f9d596|\
+      d50bbd21f4cbd94f25d5a53278124bbb2b1d6731|\
+      b10f0be5557a50b72102bdbdf846fdfd3851fd4e|\
+      6e40374126e799b44befd2b2aa5d4571887b7630|\
+      8ffd89e9a5666c0414245bbc94bca8b1820827e5|\
+      4e915573cd9f5c4b1217c70eabdd795482c35ae1|\
+      39ebc27ea967bbcbae656813089fbf490beb46e0|\
+      e4197a805795fe923836516a86535b11eb2df2b1|\
+      e505c1722f4543e0bf38f40b1bf9958fb70a8b93|\
+      95c122a9c160f3ed41269ca3df4eb4798c47fa99|\
+      6354c4e4369b031506d8b1493c702b2e15ae351a|\
+      536b53d4cef964f8264cf1f9c0d55b91a0f4f70a|\
+      7acb3ee50b021aa4c5eb1dfd25161bbd01e67022|\
+      15d36e8a0e17754761f1da8b999f3adeeea9402d|\
+      3a2ade58420c37017671a75d847f1c4e47239cdd|\
+      1ab50852ef19a536c62957434cb4f0bd4bd6c178|\
+      a7275faf49ed73fd22792072e9f881dd93d9c0a5|\
+      40160826f31e90bc46f7f5fc9684cddfbd176fb1|\
+      5f9b2881543bc315411a11674046852bbbf8b154|\
+      9b42b53d8a5b1c175a7ff4b50201b0f07a3d1211|\
+      41ff7dff36133c8bfc714a88e31cf78fd7f54d0c|\
+      d79404b5091c0a025bc688b052fdcd3c57a1d514|\
+      444954dcfbd6d5bf196cd8fecf6770ff3c6b34fc) ;;
+      *) fail unexpected_software ;;
+    esac
+  done
+}
+
+# These exact native builds preserve the same modem ABI and rmtfs policy.
+# A version prefix, arbitrary suffix, or stock Android kernel is not accepted.
+supported_kernel() {
+  case "$1" in
+    7.1.2-luma-fp-ims1|7.1.2-luma-fp-ims1.gmu1|7.1.2-luma-fp-ims1.gmu2|7.1.2-luma-fp-ims1.gmu2.selinux1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+supported_slot() {
+  local -a slots
+  mapfile -t slots < <(awk '{for(i=1;i<=NF;i++) if ($i ~ /^androidboot.slot_suffix=/) {sub(/^androidboot.slot_suffix=/,"",$i);print $i}}' <<<"$1")
+  [[ ${#slots[@]} -eq 1 ]] || return 1
+  [[ ${slots[0]} == _a || ${slots[0]} == _b ]]
+}
+
+main() {
+  [[ $(id -u) -eq 0 ]] || fail not_root
+  # Without a carrier profile only the platform configuration is ensured.
+  configured=false
+  if [[ -e $config ]]; then
+    configured=true
+    [[ -f $config ]] || fail config_shape
+    [[ $(stat -c '%u:%g:%a' "$config") == 0:0:644 ]] || fail config_permissions
+  fi
+  [[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == 'The Fairphone (Gen. 6)' ]] ||
+    fail model
+  supported_slot "$(cat /proc/cmdline)" || fail slot
+  supported_kernel "$(uname -r)" || fail kernel
+  [[ -x $qmicli ]] || fail qmicli_missing
+  for _ in $(seq 1 120); do
+    systemctl is-active --quiet rmtfs.service && break
+    sleep 1
+  done
+  systemctl is-active --quiet rmtfs.service || fail rmtfs_inactive
+  if [[ $(tr '\0' '\n' </proc/$(systemctl show -p MainPID --value rmtfs.service)/cmdline |
+    paste -sd' ' -) != '/usr/bin/rmtfs -o /var/lib/luma/rmtfs -s' ]]; then
+    # Activations would not survive the read-only backend.
+    [[ $configured == true ]] && fail rmtfs_backend
+    event "state=skipped reason=read_only_backend identifiers_logged=0"
+    exit 0
+  fi
+
+  if [[ $configured == true ]]; then
+    profile=$(sed -n 's/^PROFILE=//p' "$config")
+    [[ $(grep -c '^PROFILE=' "$config") -eq 1 ]] || fail config_shape
+  elif [[ -f $selection && ! -L $selection ]]; then
+    profile=$(sed -n 's/.*"mcfg": "\([a-z0-9-]*\)".*/\1/p' "$selection")
+    [[ $profile == factory ]] && profile=
+    [[ -n $profile ]] && configured=true
+  fi
+  if [[ $configured == true ]]; then
+    case "$profile" in
+      att-qrel1695) selected_id=$att_id ;;
+      tmo-qrel1695) selected_id=$tmo_id ;;
+      *) fail unsupported_profile ;;
+    esac
+  fi
+
+  wait_modem || fail modem_timeout
+
+  platform=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=platform) ||
+    fail platform_list
+  platform_count=$(grep -c '^Configuration ' <<<"$platform" || true)
+  validate_platform_catalog "$platform"
+  platform_ids_before=$(compact_ids <<<"$platform" | sort)
+  if ! compact_ids <<<"$platform" | grep -Fxq "$platform_id"; then
+    [[ -f $platform_profile ]] || fail platform_profile_missing
+    [[ $(hash "$platform_profile") == "$platform_sha" ]] || fail platform_profile_hash
+    "$qmicli" -d qrtr://0 --device-open-qmi \
+      --pdc-load-config="platform,$platform_profile" >/dev/null || fail platform_load
+  fi
+  if [[ $(active_id <<<"$platform") != "$platform_id" ]]; then
+    # Normal packaged qmicli selects this exact existing ID before activation.
+    # Never remove other stock configurations or load an already present body.
+    set +e
+    timeout --signal=TERM --kill-after=5 20 \
+      "$qmicli" -d qrtr://0 --device-open-qmi \
+        --pdc-activate-config="platform,$platform_id" >/dev/null 2>&1
+    platform_activation_status=$?
+    set -e
+    # Milos may end the client wait with a transport status after accepting the
+    # request. The authoritative PDC list below is the acceptance gate.
+    platform=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=platform) ||\
+      fail platform_verification_list
+    # A freshly activated platform can stay Pending until the modem restarts
+    # (seen on blank-EFS installs). Restart it before ModemManager owns it,
+    # then require the configuration to be Active.
+    if [[ $(active_id <<<"$platform") != "$platform_id" && $(selected_id <<<"$platform") == "$platform_id" ]]; then
+      systemctl start luma-fp6-modem-restart.service || fail modem_restart
+      wait_modem || fail modem_timeout
+      platform=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=platform) ||\
+        fail platform_verification_list
+    fi
+  fi
+  validate_platform_catalog "$platform"
+  [[ $(active_id <<<"$platform") == "$platform_id" ]] || fail platform_identity
+  platform_ids_expected=$(printf '%s\n%s\n' "$platform_ids_before" "$platform_id" | sed '/^$/d' | sort -u)
+  [[ $(compact_ids <<<"$platform" | sort) == "$platform_ids_expected" ]] || fail platform_catalog_changed
+  unset platform platform_count platform_activation_status platform_ids_before platform_ids_expected
+  if [[ $configured != true ]]; then
+    event "state=platform-active profile=none persistence=private-file-store identifiers_logged=0"
+    exit 0
+  fi
+
+  software=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=software) ||
+    fail software_list
+  validate_software_catalog "$software"
+  mapfile -t software_ids < <(compact_ids <<<"$software")
+  software_ids_before=$(compact_ids <<<"$software" | sort)
+  active=$(active_id <<<"$software")
+  if [[ $active == "$selected_id" || ( $profile == tmo-qrel1695 && $active == "$tmo_stock_id" ) ]]; then
+    event "state=already-active profile=$profile persistence=private-file-store identifiers_logged=0"
+    exit 0
+  fi
+
+  if [[ ! " ${software_ids[*]} " =~ " $selected_id " ]]; then
+    case "$profile" in
+      att-qrel1695) file=$att_profile sha=$att_sha ;;
+      tmo-qrel1695) file=$tmo_profile sha=$tmo_sha ;;
+    esac
+    [[ -f $file ]] || fail selected_profile_missing
+    [[ $(hash "$file") == "$sha" ]] || fail profile_hash
+    "$qmicli" -d qrtr://0 --device-open-qmi \
+      --pdc-load-config="software,$file" >/dev/null || fail profile_load
+  fi
+  unset active file sha
+  unset software software_ids id
+
+  set +e
+  timeout --signal=TERM --kill-after=5 20 \
+    "$qmicli" -d qrtr://0 --device-open-qmi \
+    --pdc-activate-config="software,$selected_id" >/dev/null 2>&1
+  activation_status=$?
+  set -e
+  # As above, trust only the exact active PDC identity, not the terminal client
+  # status, which is unreliable on this modem firmware.
+
+  software=$($qmicli -d qrtr://0 --device-open-qmi --pdc-list-configs=software) ||
+    fail verification_list
+  validate_software_catalog "$software"
+  [[ $(active_id <<<"$software") == "$selected_id" ]] || fail selected_profile_not_active
+  software_ids_expected=$(printf '%s\n%s\n' "$software_ids_before" "$selected_id" | sed '/^$/d' | sort -u)
+  [[ $(compact_ids <<<"$software" | sort) == "$software_ids_expected" ]] || fail software_catalog_changed
+  unset software activation_status software_ids_before software_ids_expected
+
+  event "state=active profile=$profile persistence=private-file-store identifiers_logged=0"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

@@ -169,6 +169,19 @@ class SecretServiceStoreTests(unittest.TestCase):
         self.assertIsNone(store.lookup_background(reference))
         self.assertIsNone(store.lookup(reference))
 
+    def test_a_sandboxed_sign_in_is_found_where_store_wrote_it(self) -> None:
+        # Inside a Flatpak, libsecret keeps sign-ins in the app's own keyring
+        # file; the host Secret Service search never lists them. The startup
+        # read must still find what store() wrote, or Tide signs out on every launch.
+        store = SecretServiceStore()
+        reference = new_reference()
+        store.store(reference, "Navidrome", "synthetic-password")
+        self.secret.search_sync = lambda *_args: []
+        self.secret.Collection = types.SimpleNamespace(
+            for_alias_sync=lambda *_: types.SimpleNamespace(get_locked=lambda: False))
+        self.secret.CollectionFlags = types.SimpleNamespace(NONE=0)
+        self.assertEqual(store.lookup_background(reference), "synthetic-password")
+
     def test_a_locked_sign_in_is_unavailable_not_missing(self) -> None:
         store = SecretServiceStore()
         reference = new_reference()

@@ -56,7 +56,8 @@ from . import lumaui_tokens as tokens  # noqa: E402
 #     TextButton sizes list, bar and big.
 # 12: ActionCenter.show_bar(fill="edge"), BarSearch(span="medium"), FramedPicture(frost=), the places
 #     sidebar (lumaui-sidebar-places), Inset(padding="list") rows 4 apart.
-LUMAUI_API_LEVEL = 12
+# 13: TvActionBar (tv.action_bar), TvFocus.add(console=), TvRoom.set_wallpaper(), desktop_wallpaper.
+LUMAUI_API_LEVEL = 13
 
 _PACKAGE = Path(__file__).resolve().parent
 _portable_installed: set[int] = set()

@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.projectluma.ESim1
+Exec=/usr/libexec/luma-esim-service
+User=root
+SystemdService=luma-esim.service

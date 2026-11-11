@@ -1,97 +1,126 @@
-"""Terminal on a TV: the saved scripts it may run, and what reads as a failure.
+"""Terminal on a TV: the shell's size and colours, the keys a remote reaches, and the presentation itself.
 
-GTK-free, except the last class, which needs GTK 4 and VTE and skips without them.
+GTK-free, except the last class, which needs GTK 4, VTE and a display and skips without them.
 """
 
-import json
 import os
-import re
 import sys
-import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parents[1] / "luma-platform" / "appkit"))
 
-from luma_terminal import tv_scripts  # noqa: E402
-
-
-class SavedScripts(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.path = Path(self.temp.name) / "luma-terminal" / "tv-scripts.json"
-
-    def tearDown(self):
-        self.temp.cleanup()
-
-    def test_the_first_time_luma_s_monitors_are_written(self):
-        scripts = tv_scripts.load_scripts(self.path)
-        self.assertEqual([s["name"] for s in scripts], ["System log", "Updates", "Disk and memory"])
-        self.assertEqual(json.loads(self.path.read_text()), scripts)
-
-    def test_an_unreadable_file_is_left_alone(self):
-        self.path.parent.mkdir(parents=True)
-        self.path.write_text("{ not json")
-        self.assertEqual(len(tv_scripts.load_scripts(self.path)), 3)
-        self.assertEqual(self.path.read_text(), "{ not json")
-
-    def test_only_complete_scripts_are_offered(self):
-        self.path.parent.mkdir(parents=True)
-        self.path.write_text(json.dumps([
-            {"name": "Build", "command": "make -C ~/src/app"},
-            {"name": "", "command": "true"}, {"name": "No command"}, "make", {"name": 3, "command": "x"}]))
-        self.assertEqual(tv_scripts.load_scripts(self.path),
-                         [{"name": "Build", "command": "make -C ~/src/app", "cwd": "~"}])
-
-    def test_saving_from_a_computer(self):
-        home = str(Path.home())
-        saved = tv_scripts.save_script("  make check  ", os.path.join(home, "src", "app"), self.path)
-        self.assertEqual(saved, {"name": "make check", "command": "make check", "cwd": "~/src/app"})
-        tv_scripts.save_script("journalctl -f", "/var/log", self.path)
-        # Saving one already there moves it to the end; it is never listed twice.
-        tv_scripts.save_script("make check", home, self.path)
-        commands = [s["command"] for s in tv_scripts.load_scripts(self.path)]
-        self.assertEqual(commands[-2:], ["journalctl -f", "make check"])
-        self.assertEqual(commands.count("make check"), 1)
-        with self.assertRaises(ValueError):
-            tv_scripts.save_script("   ", home, self.path)
-
-    def test_a_long_command_is_named_short(self):
-        name = tv_scripts.script_name("rsync -av --delete " + "x" * 80)
-        self.assertEqual(len(name), tv_scripts.NAME_LENGTH)
-        self.assertTrue(name.endswith("…"))
-
-    def test_the_config_folder_is_honoured(self):
-        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": self.temp.name}):
-            self.assertEqual(tv_scripts.scripts_path(), self.path)
-
-
 try:
     import gi
 
     gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
     gi.require_version("Vte", "3.91")
-    from gi.repository import Gtk, Vte  # noqa: F401
+    from gi.repository import Gdk, GLib, Gtk, Vte  # noqa: F401
     HAS_GTK = Gtk.init_check() if hasattr(Gtk, "init_check") else True
 except (ImportError, ValueError):
     HAS_GTK = False
 
+from luma_appkit import lumaui_tokens  # noqa: E402
+
+TERMINAL = lumaui_tokens.TV["terminal"]
+
+
+class Scale(unittest.TestCase):
+    def test_the_text_is_tv_reading_size(self):
+        from luma_terminal.tv import DESKTOP_MONO, tv_font_scale
+        self.assertAlmostEqual(tv_font_scale(1080), TERMINAL["text_size"] / DESKTOP_MONO)
+        self.assertAlmostEqual(tv_font_scale(2160), 2 * TERMINAL["text_size"] / DESKTOP_MONO)
+        self.assertEqual(tv_font_scale(200), 1.0)          # never smaller than the desktop's
+
+    def test_the_remote_reaches_the_phones_keys_not_its_symbols(self):
+        from luma_terminal.model import PHONE_KEYS
+        from luma_terminal.tv import TV_KEYS
+        self.assertEqual([k.label or k.name for k in TV_KEYS], ["esc", "tab", "⌃C", "ArrowUp", "ArrowDown"])
+        self.assertTrue(all(k in PHONE_KEYS for k in TV_KEYS))
+
+    def test_the_palette_is_the_tv_terminals(self):
+        self.assertEqual(len(TERMINAL["ansi"]), 16)
+        self.assertEqual(len(TERMINAL["shade"]), 2)
+        self.assertLess(TERMINAL["text_top"], 1080 - TERMINAL["text_bottom"])
+
 
 @unittest.skipUnless(HAS_GTK, "needs GTK 4, VTE and a display")
-class Failures(unittest.TestCase):
-    """Left / Right jump between lines that read like a failure: a raw session has no verbs."""
+class Presentation(unittest.TestCase):
+    """The same window on a TV: a stage, the shell as a console, the action bar; back again on leaving."""
 
-    def test_what_reads_as_a_failure(self):
-        from luma_terminal.ui_tv import FAILURE
-        failure = re.compile(FAILURE)
-        for line in ("error: linker failed", "FAILED tests/test_x.py", "Traceback (most recent call last):",
-                     "Permission denied", "✗ check", "kernel panic"):
-            self.assertTrue(failure.search(line), line)
-        for line in ("errorless", "0 failures expected", "terror", "Built in 3.2s", "deny-list updated"):
-            self.assertFalse(failure.search(line), line)
+    def window(self):
+        from gi.repository import GObject
+        from luma_terminal.model import TerminalModel
+
+        class Window(Gtk.Window):
+            tv_posture = GObject.Property(type=bool, default=False)
+
+            def __init__(self):
+                super().__init__(default_width=960, default_height=540)
+                self.model = TerminalModel("/home/nick", home="/home/nick")
+                self.display_home = "/home/nick"
+                self.shell = Gtk.Box()
+                self.host = Gtk.Box()
+                self.host.append(self.shell)
+                self.center = Gtk.Box()
+                self.fed, self.changes = [], 0
+                self.set_body(self.host)
+
+            def set_body(self, body):
+                self.set_child(body)
+
+            def _active_terminal(self):
+                return self.shell
+
+            def _session_icon(self):
+                return "house"
+
+            def _feed(self, text):
+                self.fed.append(text)
+
+            def new_session(self):
+                self.model.new_session("/tmp")
+
+            def activate_session(self, sid):
+                self.model.activate_session(sid) if hasattr(self.model, "activate_session") else None
+
+            def tv_presentation_changed(self):
+                self.changes += 1
+
+        return Window()
+
+    def test_entering_and_leaving_tv(self):
+        from luma_appkit.tv_parts import TvActionBar
+        from luma_appkit.tv_stage import TvStage
+        from luma_terminal.tv import TerminalOnTv
+        window = self.window()
+        tv = TerminalOnTv(window)
+        self.assertFalse(tv.active)
+        window.tv_posture = True
+        self.assertTrue(tv.active)
+        self.assertIsInstance(window.get_child(), TvStage)
+        self.assertIs(window.host.get_parent(), window.get_child())
+        self.assertFalse(window.center.get_visible())
+        self.assertIsInstance(tv.bar, TvActionBar)
+        labels = [i.label.get_label() for i in tv.bar.items()]
+        self.assertEqual(labels[:2], ["Home", "New session"])
+        self.assertEqual(len(tv.bar.items()), 2 + 5)                  # and esc tab ⌃C ↑ ↓
+        self.assertIs(tv.focus.focused, window.shell)                  # the shell has the remote
+        self.assertFalse(tv.focus.handle(Gdk.KEY_Up))                  # history, not the bar
+        self.assertTrue(tv.focus.handle(Gdk.KEY_Escape))               # Back: down to the bar
+        self.assertIs(tv.focus.focused, tv.bar.items()[0])
+        tv.focus.focus(tv.bar.items()[2])                              # esc
+        tv.focus.handle(Gdk.KEY_Return)
+        self.assertEqual(window.fed, ["\x1b"])
+        self.assertFalse(tv.focus.handle(Gdk.KEY_Escape))              # Back from the bar: the TV home
+        window.tv_posture = False
+        self.assertFalse(tv.active)
+        self.assertIs(window.get_child(), window.host)
+        self.assertTrue(window.center.get_visible())
+        self.assertEqual(window.changes, 2)
 
 
 if __name__ == "__main__":
