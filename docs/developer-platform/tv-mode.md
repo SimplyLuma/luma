@@ -493,7 +493,9 @@ it closes; outside TV posture dialogs are exactly as on the desktop.
   names) 30/700, text 26/500, small print 20/600, warnings in the danger
   colour. Rows a dialog adds after it opens are styled as they arrive. Entries are recessed fields 76 tall; buttons are TV actions 76 tall
   in a row, chips at rest. The focus is the one bright thing: the focused
-  button is the key, a focused field takes the white ring.
+  button is the key, a focused field takes the white ring (its own border,
+  grown inward, so the field keeps its size and the ring's corners are
+  smooth).
 - **The remote.** Arrows move the focus between fields and buttons by where
   they are on screen; in a field Up and Down leave it and Left and Right move
   the cursor. OK presses the focused button, and on a field opens the TV
@@ -599,9 +601,22 @@ is no second app model: the apps are `Shell.AppSystem`'s (with
   An app still running after `force_after_ms` (3 s) says "Not responding" and
   its menu offers Force Close (each window's `kill()`, the desktop's Force
   Quit) and Wait.
-- **The TV home's tiles.** A running app's tile carries a small dot before its
-  name (the dock's running dot). A held OK or Menu on it drops Open and Close
-  under it; on an app that is not running a held OK is an ordinary OK.
+- **The TV home's tiles.** A running app's tile carries its running light: a
+  short soft line under its centred name (`app_switcher.running_light_*`) that
+  fades in while the app has a window and widens and brightens on the focused
+  tile. Its room is always kept, so names never move. An app is running only
+  while it has a window: an app loaded ahead (prepared) or a background service
+  is not.
+  A held OK or Menu on a running tile drops Open and Close under it; on an app
+  that is not running a held OK is an ordinary OK.
+- **Focus rings** on tiles, switcher cards and the search field are their own
+  bordered actors, concentric with what they ring (radius plus ring width),
+  never a box-shadow spread, which St draws without anti-aliasing at a rounded
+  corner.
+- **Home** from an app returns to the page the app was opened from (Apps, say);
+  Home on the TV home goes to its first page. An app with no wide tile (an
+  Android app) shows its icon at the tile's full height on the colour of the
+  icon's own edge (`tvModel.edgeColour`).
 - A held OK opens a menu once; the menu acts only on a new press, and a key's
   repeat never activates anything.
 
