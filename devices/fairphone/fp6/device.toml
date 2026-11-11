@@ -15,6 +15,13 @@ fastboot_product = "FP6"
 tag = "luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1"
 release = "7.1.2-luma-fp-ims1.gmu2.selinux1"
 config = "luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1"
+# Merged over config in order (scripts/kernel/build-fp6.sh).
+config_fragments = ["config/kernel/fp6.fragment"]
+# Applied over the tag in order (scripts/kernel/build-fp6.sh).
+patches = [
+  "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch",
+  "patches/linux-milos/0042-Input-eswin_eph861x-reset-the-controller-before-unmasking.patch",
+]
 dtb = "qcom/milos-fairphone-fp6.dtb"
 dtb_overlays = "luma/fp6/alpha1/dtb"
 
@@ -47,6 +54,30 @@ ostree_source = "config/mobile/fp6-ostree-source.json"
 manifest = "firmware.manifest"
 manifest_sha256 = "79a3c9b336f43dc341953426f1e8fc1ebf6c07d24a997dfe5c04370f31c80d7b"
 files = 267
+# Files no postmarketOS firmware package carries, also in luma-fp6-firmware
+# (listed in packaging/rpm/luma-fp6-firmware-extra.manifest):
+#  - qcom/milos/Fairphone (Gen. 6)-tplg.bin: AudioReach topology, BSD-3-Clause,
+#    built from Catcrafts/audioreach-topology (branch fp6) and shipped as
+#    fp6-tplg.bin by Catcrafts/fp6-img soc-fairphone-fp6-audio (pkgver 3,
+#    fp6-img 738148b5). q6apm requests it by the sound card's model name; without
+#    it the card does not instantiate.
+#  - qcom/milos/fairphone/fp6/aw88261_acf.bin: AW88261 speaker amplifier profile,
+#    from the same package.
+#  - luma/fp6-carrier-pdc/{dsds-la-milos,att-volte-qrel1695,
+#    tmo-commercial-qrel1695}.mbn: the DSDS platform, AT&T VoLTE and T-Mobile
+#    commercial modem configurations from the Fairphone 6 QREL1695 modem
+#    partition (modem_pr/mcfg/configs/mcfg_hw/generic/common/Milos/STANDALONE/
+#    LA/DSDS/mcfg_hw.mbn, mcfg_sw/generic/NA/ATT/VoLTE/mcfg_sw.mbn,
+#    mcfg_sw/generic/NA/TMO/Commercial/mcfg_sw.mbn), which
+#    luma-fp6-carrier-pdc loads.
+#  - ath11k/WCN6750/hw1.0/board-2.bin: linux-firmware's WCN6750 board file
+#    (the board-2.bin.zst of the set above) with one entry appended by
+#    scripts/packages/ath11k-board-add.py:
+#    bus=ahb,qmi-chip-id=1,qmi-board-id=255,variant=Fairphone_Gen_6, holding
+#    image/qca6750/bdwlan.elf of the same modem partition (sha256 def4230e...
+#    936ff1). The kernel asks for that variant; without the entry ath11k falls
+#    back to the generic board data and cannot transmit on 5 GHz or 6 GHz.
+#    The loader prefers the uncompressed file over board-2.bin.zst.
 # luma-fp6-firmware from the device repository, in the deployment's
 # /usr/lib/firmware. Alpha 1 kept it in shared /var/lib/luma/device-firmware;
 # the initramfs still verifies and uses that store when it exists.
@@ -92,3 +123,15 @@ boot_image = "https://dl.simplyluma.com/mobile/fp6/alpha1/luma-mobile-alpha1-fp6
 boot_image_sha256 = "6b93fa901d85152efb29e9a58874d040e86fcad597c4dae0c9b11c897cf1051b"
 system_image = "https://dl.simplyluma.com/mobile/fp6/alpha1/luma-mobile-alpha1-fp6-userdata.sparse.zst"
 system_image_sha256 = "75ab6f59c6013017a4fe32d68768f20996b4c57aaf3bbc7a7e5da13c67ba251f"
+
+# Device kit only: userdata is the nightly's generic phone userdata image.
+[[releases]]
+name = "kit-20261109-2-fix3"
+date = "2026-11-10"
+boot_image = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/luma-fp6-20261109.2-fix3-boot.bin"
+boot_image_sha256 = "bde6146e38e3cb5f55ff69d6b77511a4747e138985eceaf268688ca61fba7545"
+kit_image = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/luma-fp6-20261109.2-fix3-kit.sparse"
+kit_image_sha256 = "5d8019855d86335a2177b1f2cdb45308fef65168b437c3df08d2e202ba6f5185"
+dtbo_image = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/dtbo-blank.bin"
+dtbo_image_sha256 = "75c91b29d5522c8a97c779e50bc33f11e07ed37b2baa31c8c727016e92915c1d"
+guide = "https://media.simplyluma.com/mobile/fp6/kit-20261109.2-fix3/FLASHING.md"

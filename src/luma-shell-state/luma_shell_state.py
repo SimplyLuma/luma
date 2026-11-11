@@ -325,12 +325,13 @@ def presentation_idle_default(mode: str, user_value: int | None, owned_value: in
     owned_value records the broker's last projection across restarts. A value
     changed through another settings client immediately becomes user-owned.
     Zero is an explicit never-idle preference and is preserved.
+    A TV never idles: it is watched, not touched, so its default is zero.
     """
-    if mode not in {"desktop", "tablet", "mobile"}:
+    if mode not in {"desktop", "tablet", "mobile", "tv"}:
         raise InvalidState("an effective presentation is required")
     if user_value is not None and (owned_value < 0 or user_value != owned_value):
         return None
-    return {"desktop": 300, "tablet": 120, "mobile": 60}[mode]
+    return {"desktop": 300, "tablet": 120, "mobile": 60, "tv": 0}[mode]
 
 
 HANDHELD_BUTTON_LAYOUT = ":"

@@ -1,0 +1,142 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Seed the FP6 modem's private rmtfs store once per install.
+#
+# A Fairphone factory flash erases modemst1/modemst2, and the read-only
+# `rmtfs -r -P -s` backend keeps every modem write in RAM, so the modem's EFS
+# (IMEI/NV, UIM and PDC configuration) never persists. This copies the modem
+# storage partitions once into a root-only directory on userdata; rmtfs then
+# serves and persists the modem's writes there (`rmtfs -o STORE -s`, see
+# luma-fp6-rmtfs). The partitions are only ever read. Deleting the store
+# returns the device to the read-only backend on the next boot.
+
+set -Eeuo pipefail
+umask 077
+
+store=/var/lib/luma/rmtfs
+stage=/var/lib/luma/rmtfs.new
+manifest=luma-fp6-modem-store.json
+# Read by luma-fp6-primary-gw-session and Settings (Mobile network).
+modem_state=/run/luma/fp6-modem-state.json
+by_label=/dev/disk/by-partlabel
+max_bytes=$((64 * 1024 * 1024))
+modemst_bytes=$((10 * 1024 * 1024))
+# partition label -> rmtfs file name (upstream rmtfs storage table)
+labels=(modemst1 modemst2 fsc fsg study)
+files=(modem_fs1 modem_fs2 modem_fsc modem_fsg modem_study)
+
+event() { printf 'event=luma_fp6_modem_store %s\n' "$*"; }
+fail() { event "state=failed reason=$1 identifiers_logged=0" >&2; rm -rf "$stage"; exit 1; }
+hash() { sha256sum "$1" | awk '{print $1}'; }
+publish_state() {
+  install -d -m 0755 "$(dirname "$modem_state")"
+  printf '{"state": "%s"}\n' "$1" >"$modem_state.tmp"
+  chmod 0644 "$modem_state.tmp"
+  mv -f "$modem_state.tmp" "$modem_state"
+}
+# Both modemst partitions all-zero: the factory flash erased them and Android
+# never booted to rebuild the EFS (IMEI, NV). Seeding from that would keep a
+# device without an IMEI even after a later Android boot repairs the
+# partitions, so seeding waits until they hold real EFS.
+modemst_blank() {
+  local label device
+  for label in modemst1 modemst2; do
+    device=$by_label/$label
+    [[ -b $device ]] || return 1
+    cmp -s -n "$(blockdev --getsize64 "$device")" "$device" /dev/zero || return 1
+  done
+}
+# A store seeded from blank modemst (luma-fp6-carrier-adapter 1.luma.6/1.luma.7):
+# its manifest records the seed-time digests, and both equal 10 MiB of zeros.
+# The store's own files cannot tell, because the modem writes them at once.
+zero_10mib=e5b844cc57f57094ea4585e235f36c78c1cd222262bb89d53c94dcb4d6b3e55d
+store_from_blank() {
+  [[ -f $store/$manifest ]] || return 1
+  [[ $(grep -o "\"modemst1\":{[^}]*}" "$store/$manifest") == *"\"sha256\":\"$zero_10mib\""* ]] &&
+    [[ $(grep -o "\"modemst2\":{[^}]*}" "$store/$manifest") == *"\"sha256\":\"$zero_10mib\""* ]]
+}
+
+# Complete as luma-fp6-rmtfs judges it, so it is the store rmtfs serves.
+store_complete() {
+  local file
+  [[ -d $store && ! -L $store ]] || return 1
+  for file in modem_fs1 modem_fs2 modem_fsc modem_fsg modem_study modem_tunning; do
+    [[ -f $store/$file && ! -L $store/$file ]] || return 1
+  done
+}
+
+main() {
+  [[ $(id -u) -eq 0 ]] || fail not_root
+  [[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == 'The Fairphone (Gen. 6)' ]] || fail model
+  if [[ -e $store ]]; then
+    if store_from_blank && ! modemst_blank; then
+      # The partitions were repaired (Android first boot) after a blank seed.
+      # Keep the old store for diagnosis and seed again from the real EFS.
+      mv -T "$store" "$store.blank-$(date -u +%Y%m%dT%H%M%SZ)"
+      event 'state=retired-blank-store identifiers_logged=0'
+    else
+      # efs-missing means rmtfs has no usable modem data. A complete store
+      # seeded from real EFS is healthy even with blank modemst, which is the
+      # normal state once the bootloader's TAR refresh has run after install.
+      if store_complete && ! store_from_blank; then
+        publish_state ok
+      elif modemst_blank; then
+        publish_state efs-missing
+      else
+        publish_state ok
+      fi
+      event 'state=present'
+      exit 0
+    fi
+  fi
+  if modemst_blank; then
+    publish_state efs-missing
+    event 'state=deferred reason=modemst_blank partitions_written=0 identifiers_logged=0'
+    exit 0
+  fi
+  # The modem must not be served while its storage is copied.
+  ! systemctl is-active --quiet rmtfs.service || fail rmtfs_active
+  rm -rf "$stage"
+  install -d -m 0700 "$(dirname "$stage")"
+  install -d -m 0700 "$stage"
+
+  local i label file device bytes source_sha rows=()
+  for i in "${!labels[@]}"; do
+    label=${labels[$i]} file=${files[$i]} device=$by_label/${labels[$i]}
+    [[ -b $device ]] || fail "partition_missing_$label"
+    bytes=$(blockdev --getsize64 "$device")
+    [[ $bytes -gt 0 && $bytes -le $max_bytes ]] || fail "partition_size_$label"
+    if [[ $label == modemst1 || $label == modemst2 ]]; then
+      [[ $bytes -eq $modemst_bytes ]] || fail "partition_size_$label"
+    fi
+    source_sha=$(hash "$device")
+    dd if="$device" of="$stage/$file" bs=1M status=none
+    [[ $(stat -c %s "$stage/$file") -eq $bytes ]] || fail "copy_size_$label"
+    [[ $(hash "$stage/$file") == "$source_sha" ]] || fail "copy_digest_$label"
+    # The partition must not have changed while it was copied.
+    [[ $(hash "$device") == "$source_sha" ]] || fail "partition_changed_$label"
+    if [[ $label == fsg ]] && cmp -s -n "$bytes" "$stage/$file" /dev/zero; then
+      # Without the factory golden copy there is nothing to restore from;
+      # this device needs Fairphone's own recovery, not Luma.
+      fail fsg_blank
+    fi
+    rows+=("\"$label\":{\"file\":\"$file\",\"bytes\":$bytes,\"sha256\":\"$source_sha\"}")
+  done
+  : >"$stage/modem_tunning"
+  local IFS=,
+  printf '{"schema":"org.projectluma.fp6-modem-store/v1","seeded_utc":"%s","partitions_written":false,"sources":{%s}}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${rows[*]}" >"$stage/$manifest"
+  unset IFS
+  chmod 0600 "$stage"/*
+  restorecon -RF "$stage" 2>/dev/null || true
+  sync -f "$stage"
+  mv -T "$stage" "$store"
+  sync -f "$(dirname "$store")"
+  publish_state ok
+  event 'state=seeded partitions_written=0 identifiers_logged=0'
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

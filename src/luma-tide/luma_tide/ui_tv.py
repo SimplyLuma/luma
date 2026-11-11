@@ -33,7 +33,7 @@ from luma_appkit.tv_media import (  # noqa: E402
 from luma_appkit.tv_parts import TvButton, TvField, TvTab, TvTopBar  # noqa: E402
 from luma_appkit.tv_stage import TvStage, add_tv_style, tv_fade  # noqa: E402
 
-from .presentation import Album, Playlist, Song, duration_text, next_queue, search_library  # noqa: E402
+from .presentation import Album, Playlist, Song, duration_text, search_library  # noqa: E402
 from .ui_parts import image_path  # noqa: E402
 
 TV = tokens.TV
@@ -80,7 +80,6 @@ def _sheet(_opaque: bool = False) -> str:
 .tide-tv-track {{ margin-top: 54tv; }}
 .tide-tv-times {{ margin-top: 12tv; font-size: 21tv; font-weight: 600; color: {m['ink_3']}; font-feature-settings: "tnum"; }}
 .tide-tv-controls {{ border-spacing: 22tv; margin-top: 40tv; }}
-.tide-tv-next {{ margin-top: 46tv; font-size: 22tv; color: {m['ink_3']}; }}
 .tide-tv-idle-title {{ font-size: 52tv; font-weight: 750; letter-spacing: -1.56tv; margin-top: 52tv; }}
 .tide-tv-idle-by {{ font-size: 28tv; color: {m['ink_2']}; margin-top: 10tv; }}
 .tide-tv-idle-line {{ margin-top: 34tv; }}
@@ -243,6 +242,7 @@ class TideTV:
     def __init__(self, window) -> None:
         self.window = window
         self.source = window.source
+        self._shown_error = None  # the playback error last shown, so each is said once
         add_tv_style(_sheet)
         self.stage = TvStage()
         self.stage.add_css_class("tide-tv")
@@ -354,6 +354,7 @@ class TideTV:
 
     def player_changed(self, player, previous) -> None:
         self._update_pill()
+        self._toast_playback_error()
         changed = (player.song_id, player.playing) != (previous.song_id, previous.playing)
         kind = self.view["kind"]
         if kind == "now":
@@ -372,6 +373,15 @@ class TideTV:
             else:
                 self.idle_hook.wake()
         self._sync_idle()
+
+    def _toast_playback_error(self) -> None:
+        """A song that can't play says why, once per failure: Play or Resume
+        never just does nothing (the desktop shows it in its status line)."""
+        error = self.source.playback_error
+        if error and error != self._shown_error:
+            from luma_appkit.tv_toast import TvToast
+            TvToast.show(self.stage, error, lead="circle-alert")
+        self._shown_error = error
 
     # ── the bar ──────────────────────────────────────────────────────────────
 
@@ -1076,13 +1086,6 @@ class TideTV:
                                     (following, "next", lambda: self.source.step(1))):
             controls.append(self._add(widget, key, action))
         info.append(controls)
-        upcoming = next_queue(self.player)[1:]
-        nxt = self.library.find_song(upcoming[0]) if upcoming else None
-        line = _label("", "tide-tv-next", use_markup=True)
-        if nxt is not None:
-            line.set_markup(f"Up next · <span weight='600' foreground='#ffffff' alpha='74%'>"
-                            f"{GLib.markup_escape_text(nxt[1].title)}</span>, {GLib.markup_escape_text(nxt[0].artist)}")
-        info.append(line)
         layout.append(info)
         self._np = {"progress": progress, "elapsed": elapsed, "remaining": remaining, "toggle": toggle,
                     "duration": song.duration}

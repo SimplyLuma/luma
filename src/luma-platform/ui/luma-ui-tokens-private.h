@@ -2138,6 +2138,7 @@
 #define LUMA_UI_TV_HOME_FIELD_WIDTH 900
 #define LUMA_UI_TV_HOME_FIELD_HEIGHT 88
 #define LUMA_UI_TV_HOME_FIELD_RADIUS 28
+#define LUMA_UI_TV_HOME_FIELD_RING 4
 #define LUMA_UI_TV_HOME_FIELD_PADDING_X 32
 #define LUMA_UI_TV_HOME_FIELD_SIZE 32
 #define LUMA_UI_TV_HOME_FIELD_ICON 34
@@ -2268,7 +2269,7 @@
 #define LUMA_UI_TV_QUICK_PANEL_CLUSTER_HEIGHT 56
 #define LUMA_UI_TV_QUICK_PANEL_CLUSTER_RADIUS 16
 #define LUMA_UI_TV_QUICK_PANEL_HOME_HOLD_MS 500
-#define LUMA_UI_TV_APP_SWITCHER__DOC "The app switcher (tvAppSwitcher.js): the TV posture of the shell's running apps (Shell.AppSystem, newest first as Alt+Tab orders them), opened by pressing Home twice within double_ms. Cards of card_width (16:9) in one row from the side safe line, each its window's latest picture (a clone, corners card_radius) or the app's TV tile, the app's icon and name above; over the scrim, the shared bar staying. The row scrolls only as far as the focused card needs, plus peek. Up or a held OK (focus.hold_ms) drops the item menu (tv.menu) above the card: Close asks the app to quit, as the desktop's Quit; a card still running after force_after_ms offers Force Close. A running app's TV home tile carries a running_dot before its name. Design Center mockups/luma-tv-app-switcher.html."
+#define LUMA_UI_TV_APP_SWITCHER__DOC "The app switcher (tvAppSwitcher.js): the TV posture of the shell's running apps (Shell.AppSystem, newest first as Alt+Tab orders them), opened by pressing Home twice within double_ms. Cards of card_width (16:9) in one row from the side safe line, each its window's latest picture (a clone, corners card_radius) or the app's TV tile, the app's icon and name above; over the scrim, the shared bar staying. The row scrolls only as far as the focused card needs, plus peek. Up or a held OK (focus.hold_ms) drops the item menu (tv.menu) above the card: Close asks the app to quit, as the desktop's Quit; a card still running after force_after_ms offers Force Close. A running app's TV home tile carries its running light: a short soft line of running_light_width under its centred name (running_light_gap below it), fading in over running_light_fade_ms; on the focused tile it widens to running_light_focus_width and brightens to ink. Its room is always kept, so names never move as apps start and quit. An app counts as running only while it has a window: a prepared app or a background service is not open. Design Center mockups/luma-tv-app-switcher.html."
 #define LUMA_UI_TV_APP_SWITCHER_DOUBLE_MS 350
 #define LUMA_UI_TV_APP_SWITCHER_ROW_TOP 318
 #define LUMA_UI_TV_APP_SWITCHER_CARD_WIDTH 540
@@ -2288,8 +2289,11 @@
 #define LUMA_UI_TV_APP_SWITCHER_FORCE_AFTER_MS 3000
 #define LUMA_UI_TV_APP_SWITCHER_EMPTY_SIZE 30
 #define LUMA_UI_TV_APP_SWITCHER_EMPTY_WEIGHT 700
-#define LUMA_UI_TV_APP_SWITCHER_RUNNING_DOT 8
-#define LUMA_UI_TV_APP_SWITCHER_RUNNING_GAP 10
+#define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_WIDTH 24
+#define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_FOCUS_WIDTH 44
+#define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_HEIGHT 4
+#define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_GAP 12
+#define LUMA_UI_TV_APP_SWITCHER_RUNNING_LIGHT_FADE_MS 300
 #define LUMA_UI_TV_SHEET_RADIUS 44
 #define LUMA_UI_TV_SHEET_PADDING 40
 #define LUMA_UI_TV_SHEET_GAP 22

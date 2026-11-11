@@ -43,6 +43,10 @@ posture for tests, reviews and capture harnesses. Without the shell-state
 service or schema (another distribution, a sandbox without the bus name) the
 posture is never TV.
 
+A TV is watched, not touched: while the posture is TV the session's idle
+default is never (`presentation_idle_default("tv")` is 0), so the screen does
+not dim or blank on its own. A delay the person chose is kept.
+
 ## What every window gets in TV posture
 
 - The shell runs the window full screen. LumaUI drops the title row and window
@@ -149,7 +153,10 @@ TvIdle(focus, seconds=20, on_idle=show_glance, on_wake=hide_glance)
   Left/Right and Backspace, so a real keyboard and the system's TV keyboard
   type straight in. Back nothing takes falls through to the window (the TV
   home at the app's top level).
-- **TvTopBar / TvTab**: the track of tabs and the clock; the open tab is the
+- **TvTopBar / TvTab**: the track of tabs and the clock, with Home's weather
+  before it (weather | time, as on the TV home), read from the shell-state
+  `Weather` property (`a{ss}`: value, description, title, unit) and hidden
+  without a reading; the open tab is the
   key unless another tab holds the focus.
 - **TvButton**: 66 tall, chip at rest, key with the focus; `danger=True`.
 - **TvField**: a recessed field around a real `Gtk.Text`; `action=` labels the
@@ -202,7 +209,9 @@ shelf = TvSlide(row, orientation=Gtk.Orientation.HORIZONTAL, clip=False)
   stays smooth. A shade keeps the bar and text legible.
 - **TvSlide**: a row or page that slides to keep the focus in view (call
   `reveal(widget)` from `TvFocus`'s change callback), only as far as needed,
-  with `peek` of the next item; no scrollbars.
+  with `peek` of the next item; no scrollbars. A clipping slide clips itself
+  `SLIDE_BLEED` (56) beyond its edges, so a focused cover's lift and shadow
+  are never cut at the top of a page or the ends of a shelf.
 - `.tv-playing` colours the playing song (its title, number, equaliser).
 
 Values come from the `tv` block of `config/shared/design-tokens.json`
@@ -504,7 +513,9 @@ it closes; outside TV posture dialogs are exactly as on the desktop.
   names) 30/700, text 26/500, small print 20/600, warnings in the danger
   colour. Rows a dialog adds after it opens are styled as they arrive. Entries are recessed fields 76 tall; buttons are TV actions 76 tall
   in a row, chips at rest. The focus is the one bright thing: the focused
-  button is the key, a focused field takes the white ring.
+  button is the key, a focused field takes the white ring (its own border,
+  grown inward, so the field keeps its size and the ring's corners are
+  smooth).
 - **The remote.** Arrows move the focus between fields and buttons by where
   they are on screen; in a field Up and Down leave it and Left and Right move
   the cursor. OK presses the focused button, and on a field opens the TV
@@ -610,11 +621,46 @@ is no second app model: the apps are `Shell.AppSystem`'s (with
   An app still running after `force_after_ms` (3 s) says "Not responding" and
   its menu offers Force Close (each window's `kill()`, the desktop's Force
   Quit) and Wait.
-- **The TV home's tiles.** A running app's tile carries a small dot before its
-  name (the dock's running dot). A held OK or Menu on it drops Open and Close
-  under it; on an app that is not running a held OK is an ordinary OK.
+- **The TV home's tiles.** A running app's tile carries its running light: a
+  short soft line under its centred name (`app_switcher.running_light_*`) that
+  fades in while the app has a window and widens and brightens on the focused
+  tile. Its room is always kept, so names never move. An app is running only
+  while it has a window: an app loaded ahead (prepared) or a background service
+  is not.
+  A held OK or Menu on a running tile drops Open and Close under it; on an app
+  that is not running a held OK is an ordinary OK.
+- **Focus rings** on tiles, switcher cards and the search field are their own
+  bordered actors, concentric with what they ring (radius plus ring width),
+  never a box-shadow spread, which St draws without anti-aliasing at a rounded
+  corner.
+- **Home** from an app returns to the page the app was opened from (Apps, say);
+  Home on the TV home goes to its first page. An app with no wide tile (an
+  Android app) shows its icon at the tile's full height on the colour of the
+  icon's own edge (`tvModel.edgeColour`).
 - A held OK opens a menu once; the menu acts only on a new press, and a key's
   repeat never activates anything.
+
+## Opening at once: prepared TV apps
+
+On a TV, opening an app is a present, not a start. At sign-in in TV posture
+`luma-native-app-prewarm` starts each TV app listed in
+`/usr/share/luma-app-host/tv.json` (in that order, each waiting until the last
+owns its bus name, while at least 2 GB is free) as
+`luma-app-prepared@<app id>.service`. The app runs with `LUMA_APP_PREPARE=1`:
+C apps through `libluma-app-prepare.so`, Python apps through
+`luma_appkit.prepare`, which the kit installs when it is imported with that
+variable. The app runs as its D-Bus service (whatever its own argv), holds
+itself and runs its own `activate` once: its window is built, styled and
+realized, never mapped. A launch (D-Bus Activate) then only maps that window;
+one that arrives while the app is still preparing is kept and shown as soon as
+it is ready. A prepared app that is closed is prepared again; one already
+running, or a session that is no longer a TV, is left alone. A Flatpak's data
+check (`luma_appkit.migration_startup`) that fails while preparing leaves
+quietly (exit 75) and shows its repair screen only to a real launch.
+
+Nothing is needed from an app beyond the TV opt-in below and being a
+`GApplication` that presents its window from `activate`. List it in `tv.json`
+to have it prepared.
 
 ## Appearing on the TV home
 

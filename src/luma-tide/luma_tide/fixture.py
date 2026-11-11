@@ -84,6 +84,8 @@ class FixtureLibrary:
                 self._publish(position=self.player.position + 1)
         return True
 
+    playback_error = None  # a fixture always plays
+
     def toggle(self):
         self._publish(playing=not self.player.playing)
 

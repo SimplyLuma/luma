@@ -99,6 +99,23 @@ def _fp6_software_presentation_admitted() -> bool:
     return fp6_software_service_admitted(session_user=session_user)
 
 
+def fp6_gate_closed() -> str:
+    """Why this Fairphone 6 cannot start Android at all, or an empty string.
+
+    A closed gate is a decision, not a failure: callers skip Android instead
+    of starting units that can only be refused. An authorized software lab
+    still needs its session to start the isolated compositor, so it passes.
+    """
+    if not is_fp6():
+        return ""
+    admission = fp6_kernel_admission()
+    if admission.allowed:
+        return ""
+    if admission.reason == "kernel-not-admitted" and _fp6_software_lab_authorized():
+        return ""
+    return admission.reason
+
+
 @dataclass(frozen=True)
 class CommandResult:
     stdout: str

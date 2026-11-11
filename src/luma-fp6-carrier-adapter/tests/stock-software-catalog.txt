@@ -1,0 +1,201 @@
+Total configurations: 25
+Configuration 1:
+	Description: Commercial-TMO
+	Type:        software
+	Size:        60864
+	Status:      Active
+	Version:     0xA01050F
+	ID:          88:F5:89:36:9F:F3:A0:66:51:1D:D1:B2:1E:D4:2C:F3:49:66:86:A3
+
+Configuration 2:
+	Description: YTL_Commercial
+	Type:        software
+	Size:        45068
+	Status:      Inactive
+	Version:     0xA012D01
+	ID:          90:AB:0F:95:E1:1F:22:83:B1:9D:7E:28:F2:AB:D9:DD:BE:08:A1:BD
+
+Configuration 3:
+	Description: Viettel_Vietnam_Commercial
+	Type:        software
+	Size:        45548
+	Status:      Inactive
+	Version:     0xA015400
+	ID:          4E:26:4B:0B:A0:EC:9B:0C:CA:AD:95:9F:50:09:89:73:0A:A2:F3:2D
+
+Configuration 4:
+	Description: UMobile_Commercial_Malaysia
+	Type:        software
+	Size:        47344
+	Status:      Inactive
+	Version:     0xA013D00
+	ID:          0F:2D:3F:6D:AC:1C:AB:54:E3:EE:92:59:BE:B0:09:1E:74:F9:D5:96
+
+Configuration 5:
+	Description: TStar_Taiwan_Commercial
+	Type:        software
+	Size:        38896
+	Status:      Inactive
+	Version:     0xA015000
+	ID:          D5:0B:BD:21:F4:CB:D9:4F:25:D5:A5:32:78:12:4B:BB:2B:1D:67:31
+
+Configuration 6:
+	Description: Truemove_VoLTE_Commercial
+	Type:        software
+	Size:        44316
+	Status:      Inactive
+	Version:     0xA012F00
+	ID:          B1:0F:0B:E5:55:7A:50:B7:21:02:BD:BD:F8:46:FD:FD:38:51:FD:4E
+
+Configuration 7:
+	Description: TaiwanMobile_Commercial
+	Type:        software
+	Size:        47072
+	Status:      Inactive
+	Version:     0xA014100
+	ID:          6E:40:37:41:26:E7:99:B4:4B:EF:D2:B2:AA:5D:45:71:88:7B:76:30
+
+Configuration 8:
+	Description: Telkomsel_IDN_Commercial
+	Type:        software
+	Size:        48176
+	Status:      Inactive
+	Version:     0xA015C00
+	ID:          8F:FD:89:E9:A5:66:6C:04:14:24:5B:BC:94:BC:A8:B1:82:08:27:E5
+
+Configuration 9:
+	Description: StarHub_Singapore_Commercial
+	Type:        software
+	Size:        45072
+	Status:      Inactive
+	Version:     0xA013300
+	ID:          4E:91:55:73:CD:9F:5C:4B:12:17:C7:0E:AB:DD:79:54:82:C3:5A:E1
+
+Configuration 10:
+	Description: SmarTone_HongKong_Commercial
+	Type:        software
+	Size:        45404
+	Status:      Inactive
+	Version:     0xA013700
+	ID:          39:EB:C2:7E:A9:67:BB:CB:AE:65:68:13:08:9F:BF:49:0B:EB:46:E0
+
+Configuration 11:
+	Description: SmartFren_VoWiFi_Commercial
+	Type:        software
+	Size:        46132
+	Status:      Inactive
+	Version:     0xA012520
+	ID:          E4:19:7A:80:57:95:FE:92:38:36:51:6A:86:53:5B:11:EB:2D:F2:B1
+
+Configuration 12:
+	Description: Singtel_Commercial
+	Type:        software
+	Size:        49196
+	Status:      Inactive
+	Version:     0xA013400
+	ID:          E5:05:C1:72:2F:45:43:E0:BF:38:F4:0B:1B:F9:95:8F:B7:0A:8B:93
+
+Configuration 13:
+	Description: P1_Commercial_Malaysia
+	Type:        software
+	Size:        38400
+	Status:      Inactive
+	Version:     0xA013900
+	ID:          95:C1:22:A9:C1:60:F3:ED:41:26:9C:A3:DF:4E:B4:79:8C:47:FA:99
+
+Configuration 14:
+	Description: M1_Singapore_Commercial
+	Type:        software
+	Size:        38284
+	Status:      Inactive
+	Version:     0xA013200
+	ID:          63:54:C4:E4:36:9B:03:15:06:D8:B1:49:3C:70:2B:2E:15:AE:35:1A
+
+Configuration 15:
+	Description: Indosat_IDN_Commercial
+	Type:        software
+	Size:        39504
+	Status:      Inactive
+	Version:     0xA015B00
+	ID:          53:6B:53:D4:CE:F9:64:F8:26:4C:F1:F9:C0:D5:5B:91:A0:F4:F7:0A
+
+Configuration 16:
+	Description: HKT_HK_Commercial
+	Type:        software
+	Size:        45432
+	Status:      Inactive
+	Version:     0xA013100
+	ID:          7A:CB:3E:E5:0B:02:1A:A4:C5:EB:1D:FD:25:16:1B:BD:01:E6:70:22
+
+Configuration 17:
+	Description: Globe_Philippines
+	Type:        software
+	Size:        46180
+	Status:      Inactive
+	Version:     0xA014600
+	ID:          15:D3:6E:8A:0E:17:75:47:61:F1:DA:8B:99:9F:3A:DE:EE:A9:40:2D
+
+Configuration 18:
+	Description: FarEastOne_Taiwan_Commercial
+	Type:        software
+	Size:        46900
+	Status:      Inactive
+	Version:     0xA014000
+	ID:          3A:2A:DE:58:42:0C:37:01:76:71:A7:5D:84:7F:1C:4E:47:23:9C:DD
+
+Configuration 19:
+	Description: DTAC_VoLTE_Commercial
+	Type:        software
+	Size:        44888
+	Status:      Inactive
+	Version:     0xA013000
+	ID:          1A:B5:08:52:EF:19:A5:36:C6:29:57:43:4C:B4:F0:BD:4B:D6:C1:78
+
+Configuration 20:
+	Description: ChunghwaTel_Taiwan_Commercial
+	Type:        software
+	Size:        48184
+	Status:      Inactive
+	Version:     0xA014F00
+	ID:          A7:27:5F:AF:49:ED:73:FD:22:79:20:72:E9:F8:81:DD:93:D9:C0:A5
+
+Configuration 21:
+	Description: Axiata_IDN_Commercial
+	Type:        software
+	Size:        39392
+	Status:      Inactive
+	Version:     0xA015A00
+	ID:          40:16:08:26:F3:1E:90:BC:46:F7:F5:FC:96:84:CD:DF:BD:17:6F:B1
+
+Configuration 22:
+	Description: APT_Taiwan_Commercial
+	Type:        software
+	Size:        45796
+	Status:      Inactive
+	Version:     0xA014200
+	ID:          5F:9B:28:81:54:3B:C3:15:41:1A:11:67:40:46:85:2B:BB:F8:B1:54
+
+Configuration 23:
+	Description: AIS_Thailand_Commercial
+	Type:        software
+	Size:        47928
+	Status:      Inactive
+	Version:     0xA012E00
+	ID:          9B:42:B5:3D:8A:5B:1C:17:5A:7F:F4:B5:02:01:B0:F0:7A:3D:12:11
+
+Configuration 24:
+	Description: 3HK_Commercial_HongKong
+	Type:        software
+	Size:        46052
+	Status:      Inactive
+	Version:     0xA013600
+	ID:          41:FF:7D:FF:36:13:3C:8B:FC:71:4A:88:E3:1C:F7:8F:D7:F5:4D:0C
+
+Configuration 25:
+	Description: Brazil_Commercial
+	Type:        software
+	Size:        9244
+	Status:      Inactive
+	Version:     0xA012100
+	ID:          D7:94:04:B5:09:1C:0A:02:5B:C6:88:B0:52:FD:CD:3C:57:A1:D5:14
+

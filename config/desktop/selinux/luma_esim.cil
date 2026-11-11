@@ -1,0 +1,12 @@
+; SPDX-License-Identifier: Apache-2.0
+; ModemManager returns the owned eSIM profile transport, one end of an AF_UNIX
+; SOCK_SEQPACKET socketpair (class unix_stream_socket), from
+; OpenLumaProfileTransport*. dbus-broker must be able to receive that
+; descriptor to forward it to luma-esim-service. The base policy only
+; dontaudits it, so the refusal is silent: dbus-broker drops ModemManager's
+; connection, ModemManager loses its bus name and exits, and cellular goes
+; down with it.
+;
+; The activation-code pipe Settings passes to Download is already allowed
+; (systemprocess -> initrc_transition_domain fifo_file).
+(allow system_dbusd_t modemmanager_t (unix_stream_socket (read write)))

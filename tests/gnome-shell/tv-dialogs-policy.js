@@ -141,6 +141,11 @@ assert(grabs.length > 0 && grabs.length === guarded.length, 'the TV home waits f
 assert(/shellFocus = \(Boolean\(focus\) && focus !== global\.stage\) \|\| Main\.modalCount > 0/.test(input),
     'a Shell grab gets the pad');
 
+// The focused field's ring is its own border, grown inward: anti-aliased, and the field keeps its size.
+assert(/border: \$\{this\._px\(rim\)\} solid \$\{this\._m\(focused \? 'key_top' : 'well_rim'\)\}/.test(dialogs) &&
+    /min-height: \$\{this\._px\(sheet\.field_height - 2 \* rim\)\}/.test(dialogs) && !/box-shadow: 0 0 0 \$\{this\._px\(focus\.ring\)\}/.test(dialogs),
+    'a field ring is a border, never a spread shadow');
+
 print('tv-dialogs-policy: ok');
 
 function print(message) {

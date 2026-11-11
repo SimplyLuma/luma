@@ -97,3 +97,4 @@ shared_module('luma-app-prepare', 'apphost/native-prepare.c',
 install_data('apphost/native-prewarm.py', rename: 'luma-native-app-prewarm',
   install_mode: 'rwxr-xr-x', install_dir: get_option('libexecdir'))
 install_data('apphost/native.json', install_dir: get_option('datadir') / 'luma-app-host')
+install_data('apphost/tv.json', install_dir: get_option('datadir') / 'luma-app-host')

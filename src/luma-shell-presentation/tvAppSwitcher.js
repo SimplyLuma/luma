@@ -41,6 +41,9 @@ import('resource:///org/gnome/shell/ui/sessionApplications.js')
 
 export function appRunning(app) {
     if (!app) return false;
+    // Open means a window to go back to. A prepared app (loaded ahead, its
+    // window not yet shown) or a background service is not an open app.
+    if (!(app.get_n_windows?.() > 0)) return false;
     if (sessionApplications) return sessionApplications.isRunning(app);
     return app.state !== Shell.AppState.STOPPED;
 }
@@ -386,13 +389,22 @@ export class TvAppSwitcher {
             this._fill(shot, entry, width, height);
             card.add_child(caption);
             card.add_child(shot);
+            // The focus ring: a border on its own actor around the shot (anti-aliased),
+            // lifted with it about the same centre.
+            const ringWidth = Math.round(TOKENS.tile.ring * u);
+            const ring = new St.Widget({visible: false, reactive: false,
+                x: -ringWidth, y: top - ringWidth, width: width + 2 * ringWidth, height: height + 2 * ringWidth,
+                pivot_point: new Graphene.Point({x: 0.5, y: 0.5})});
+            ring.style = `border: ${ringWidth}px solid ${look.m('ring')};
+                border-radius: ${Math.round(s.card_radius * u + ringWidth)}px;`;
+            card.add_child(ring);
             card.connect('button-release-event', () => {
                 this._index = index;
                 this._switch();
                 return Clutter.EVENT_STOP;
             });
             this._row.add_child(card);
-            return {card, caption, name, state, shot, entry};
+            return {card, caption, name, state, shot, ring, entry};
         });
         this._empty.visible = !this._entries.length;
         this._draw();
@@ -447,15 +459,17 @@ export class TvAppSwitcher {
         const look = this._look;
         const {app_switcher: s, tile, motion} = TOKENS;
         const t = now();
-        this._cards.forEach(({caption, name, state, shot, entry}, index) => {
+        this._cards.forEach(({caption, name, state, shot, ring, entry}, index) => {
             const focused = index === this._index;
             const held = focused && this._menu.isOpen;
             const lifted = focused ? tile.focus_scale : 1;
             shot.remove_all_transitions();
             shot.ease({scale_x: lifted, scale_y: lifted, duration: motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
             shot.style = (shot.style ?? '').replace(/box-shadow:[^;]*;/, '') + `box-shadow: ${focused && !held
-                ? `0 0 0 ${look.px(tile.ring)} ${look.m('ring')}`
-                : `0 ${look.px(14)} ${look.px(34)} ${look.m('tile_drop')}`};`;
+                ? 'none' : `0 ${look.px(14)} ${look.px(34)} ${look.m('tile_drop')}`};`;
+            ring.visible = focused && !held;
+            ring.remove_all_transitions();
+            ring.ease({scale_x: lifted, scale_y: lifted, duration: motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
             const phase = closeState(entry.requestedAt, t, s.force_after_ms);
             shot.opacity = phase === 'open' ? 255 : Math.round(255 * s.closing_opacity);
             caption.opacity = held ? 0 : 255;

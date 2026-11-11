@@ -48,6 +48,26 @@ class MediaAggregate(unittest.TestCase):
         self.assertEqual({alias['kind'] for alias in aliases}, {'installer-iso', 'checksum', 'notes', 'notes.minisig'})
         self.assertEqual(ignored, [])
 
+    def disk(self, base):
+        name = 'luma-nightly-20261110.2-aarch64-disk.sparse'
+        return {'file': name, 'download_file': name, 'url': base + name, 'download_url': base + name,
+                'sha256_url': base + name + '.sha256', 'sha256': 'b' * 64, 'size_bytes': 4096,
+                'commit': 'c' * 64}
+
+    def test_disk_image_stays_beside_the_scoped_index_without_an_alias(self):
+        self.new.update(commit='c' * 64, disk_image=self.disk(self.arm))
+        doc, aliases, _ = self.run_merge()
+        arm = next(row for row in doc['entries'] if row['arch'] == 'aarch64')
+        self.assertEqual(arm['disk_image'], self.new['disk_image'])
+        self.assertFalse(any('disk' in alias['target_url'] for alias in aliases))
+
+    def test_disk_image_elsewhere_or_of_another_commit_fails(self):
+        for disk in (self.disk(self.base), dict(self.disk(self.arm), commit='d' * 64),
+                     dict(self.disk(self.arm), file='phone.img')):
+            self.new.update(commit='c' * 64, disk_image=disk)
+            with self.assertRaisesRegex(ValueError, 'disk image'):
+                self.run_merge()
+
     def test_same_build_both_cpus_remain_distinct_with_identical_notes(self):
         self.new.update(build_id='old', notes_url=self.arm + 'notes/old.json')
         doc, aliases, _ = self.run_merge()

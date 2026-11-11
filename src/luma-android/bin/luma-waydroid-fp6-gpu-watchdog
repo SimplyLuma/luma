@@ -115,6 +115,8 @@ def monitor() -> int:
 
 def main() -> int:
     if sys.argv[1:] == ["--check"]:
+        # ExecCondition= of the watchdog and the container: 69 skips the unit
+        # without failing it, and the container still does not start.
         return 0 if (not is_fp6() or check_admission()) else 69
     if sys.argv[1:]:
         print("usage: luma-waydroid-fp6-gpu-watchdog [--check]", file=sys.stderr)

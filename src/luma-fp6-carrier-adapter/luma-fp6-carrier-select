@@ -1,0 +1,229 @@
+#!/usr/bin/python3
+# SPDX-License-Identifier: Apache-2.0
+"""Choose the FP6 carrier settings from the active SIM before ModemManager starts.
+
+Reads the provisioned USIM's IMSI prefix (MCC/MNC), GID1 and SPN over QMI,
+matches the packaged carrier table, falls back to mobile-broadband-provider-info
+for the data APN, and writes the decision to /run/luma/fp6-carrier.json for
+luma-fp6-carrier-pdc (modem MCFG) and luma-fp6-cellular-link (APN, modes).
+Hand-written /etc/luma files still win. The IMSI itself is never written or
+logged; only the network code, GID1 and SPN (operator data) are recorded.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import tomllib
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+TABLE = Path("/usr/share/luma/fp6-carriers/carriers.toml")
+MBPI = Path("/usr/share/mobile-broadband-provider-info/serviceproviders.xml")
+OUTPUT = Path("/run/luma/fp6-carrier.json")
+PDC_OVERRIDE = Path("/etc/luma/fp6-carrier-pdc.conf")
+ATT_MBN = Path("/usr/lib/firmware/luma/fp6-carrier-pdc/att-volte-qrel1695.mbn")
+QMICLI = "/usr/bin/qmicli"
+PROFILE_IDS = {
+    "tmo-qrel1695": "88f589369ff3a066511dd1b21ed42cf3496686a3",
+    "att-qrel1695": "444954dcfbd6d5bf196cd8fecf6770ff3c6b34fc",
+}
+APN_RE = re.compile(r"[A-Za-z0-9.-]{1,100}")
+# North American numbering uses three-digit MNCs when EF_AD does not say.
+THREE_DIGIT_MNC_MCC = {"302", "310", "311", "312", "313", "316", "334", "338", "342", "344", "346", "348"}
+
+
+def event(**fields) -> None:
+    print("event=luma_fp6_carrier_select " + " ".join(f"{k}={v}" for k, v in fields.items()), flush=True)
+
+
+def qmi(*arguments: str) -> str:
+    return subprocess.run([QMICLI, "-d", "qrtr://0", "--device-open-qmi", *arguments],
+                          check=True, capture_output=True, text=True, timeout=30).stdout
+
+
+def read_ef(path: str) -> bytes | None:
+    try:
+        output = qmi(f"--uim-read-transparent={path}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+    _, _, tail = output.partition("Read result:")
+    data = re.findall(r"\b([0-9A-Fa-f]{2})\b", tail)
+    return bytes(int(b, 16) for b in data) if data else None
+
+
+def decode_imsi(raw: bytes) -> str | None:
+    """EF_IMSI (3GPP TS 31.102 4.2.2): length byte then nibble-swapped BCD."""
+    if not raw or raw[0] < 2 or len(raw) < 1 + raw[0]:
+        return None
+    digits = []
+    for byte in raw[1:1 + raw[0]]:
+        digits += [byte & 0x0F, byte >> 4]
+    digits = digits[1:]  # first nibble is the parity/identity type
+    text = "".join(str(d) for d in digits if d <= 9)
+    return text if 6 <= len(text) <= 15 else None
+
+
+def mnc_length(raw: bytes | None, mcc: str) -> int:
+    if raw and len(raw) >= 4 and (raw[3] & 0x0F) in (2, 3):
+        return raw[3] & 0x0F
+    return 3 if mcc in THREE_DIGIT_MNC_MCC else 2
+
+
+def decode_gid1(raw: bytes | None) -> str:
+    return raw.rstrip(b"\xff").hex().upper() if raw else ""
+
+
+def decode_spn(raw: bytes | None) -> str:
+    """EF_SPN: display-condition byte, then GSM 7-bit default characters padded with 0xFF."""
+    if not raw or len(raw) < 2:
+        return ""
+    text = "".join(chr(b) for b in raw[1:] if 0x20 <= b < 0x7F)
+    return text.strip()
+
+
+def sim_identity() -> dict | None:
+    imsi = decode_imsi(read_ef("0x3F00,0x7FFF,0x6F07") or b"")
+    if not imsi:
+        return None
+    mcc = imsi[:3]
+    mnc = imsi[3:3 + mnc_length(read_ef("0x3F00,0x7FFF,0x6FAD"), mcc)]
+    identity = {"mcc": mcc, "mnc": mnc, "gid1": decode_gid1(read_ef("0x3F00,0x7FFF,0x6F3E")),
+                "spn": decode_spn(read_ef("0x3F00,0x7FFF,0x6F46"))}
+    del imsi
+    return identity
+
+
+def load_table(path: Path = TABLE) -> list[dict]:
+    rows = tomllib.loads(path.read_text(encoding="utf-8")).get("carrier", [])
+    for row in rows:
+        if not isinstance(row.get("networks"), list) or not row["networks"]:
+            raise ValueError(f"carrier {row.get('name')!r} needs networks")
+        if row.get("mcfg", "factory") not in ("factory", *PROFILE_IDS):
+            raise ValueError(f"carrier {row.get('name')!r} has unknown mcfg")
+        if "apn" in row and not APN_RE.fullmatch(row["apn"]):
+            raise ValueError(f"carrier {row.get('name')!r} has an invalid apn")
+        if row.get("allowed_modes", "") not in ("", "4g", "4g,5g"):
+            raise ValueError(f"carrier {row.get('name')!r} has invalid allowed_modes")
+    return rows
+
+
+def match(rows: list[dict], identity: dict) -> dict | None:
+    """The most specific row wins: a GID1 or SPN match beats a plain network match."""
+    network = identity["mcc"] + identity["mnc"]
+    best, best_score = None, -1
+    for row in rows:
+        if network not in row["networks"]:
+            continue
+        score = 0
+        if "gid1_prefix" in row:
+            if not identity["gid1"].startswith(row["gid1_prefix"].upper()):
+                continue
+            score += 2
+        if "spn" in row:
+            if identity["spn"].casefold() != row["spn"].casefold():
+                continue
+            score += 2
+        if score > best_score:
+            best, best_score = row, score
+    return best
+
+
+def mbpi_apn(identity: dict, path: Path = MBPI) -> str:
+    """The internet APN mobile-broadband-provider-info lists for exactly this network."""
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return ""
+    candidates = []
+    for provider in root.iter("provider"):
+        gsm = provider.find("gsm")
+        if gsm is None:
+            continue
+        codes = {(n.get("mcc"), n.get("mnc")) for n in gsm.findall("network-id")}
+        if (identity["mcc"], identity["mnc"]) not in codes:
+            continue
+        for apn in gsm.findall("apn"):
+            usage = apn.find("usage")
+            if (usage is None or usage.get("type") == "internet") and APN_RE.fullmatch(apn.get("value", "")):
+                candidates.append(apn.get("value"))
+    # Several providers can share a network (MVNOs); only an unambiguous answer is used.
+    return candidates[0] if len(set(candidates)) == 1 else ""
+
+
+def decide(identity: dict | None, rows: list[dict], att_available: bool, mbpi: Path = MBPI) -> dict:
+    if identity is None:
+        return {"state": "no-sim", "mcfg": "factory", "apn": "", "allowed_modes": "", "verified": False}
+    row = match(rows, identity)
+    decision = {"state": "selected", "network": identity["mcc"] + identity["mnc"],
+                "carrier": row["name"] if row else "", "mcfg": "factory", "apn": "", "allowed_modes": "",
+                "verified": bool(row and row.get("verified")), "volte": row.get("volte", "unknown") if row else "unknown",
+                "note": row.get("note", "") if row else "No Luma carrier entry; APN from mobile-broadband-provider-info."}
+    if row:
+        decision["mcfg"] = row.get("mcfg", "factory")
+        decision["apn"] = row.get("apn", "")
+        decision["allowed_modes"] = row.get("allowed_modes", "")
+    if decision["mcfg"] == "att-qrel1695" and not att_available:
+        decision["mcfg"] = "factory"
+        decision["note"] = (decision["note"] + " AT&T modem profile file not installed; factory profile kept.").strip()
+    if not decision["apn"] and not (row and row.get("apn_from_network")):
+        decision["apn"] = mbpi_apn(identity, mbpi)
+        decision["apn_source"] = "mobile-broadband-provider-info" if decision["apn"] else "network-attach"
+    else:
+        decision["apn_source"] = "luma-table" if decision["apn"] else "network-attach"
+    return decision
+
+
+def active_software_id() -> str:
+    output = qmi("--pdc-list-configs=software")
+    active = False
+    for line in output.splitlines():
+        if re.match(r"\s*Status:\s*Active", line):
+            active = True
+        elif active and re.match(r"\s*ID:", line):
+            return line.split(":", 1)[1].replace(":", "").strip().lower()
+    return ""
+
+
+def write(decision: dict) -> None:
+    OUTPUT.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    temporary = OUTPUT.with_suffix(".tmp")
+    temporary.write_text(json.dumps(decision, sort_keys=True) + "\n", encoding="utf-8")
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, OUTPUT)
+
+
+def main() -> int:
+    if os.geteuid() != 0:
+        event(state="failed", reason="not_root")
+        return 1
+    decision = decide(sim_identity(), load_table(), ATT_MBN.is_file())
+    write(decision)
+    event(state=decision["state"], mcfg=decision["mcfg"], apn_source=decision.get("apn_source", "none"),
+          verified=str(decision["verified"]).lower(), identifiers_logged=0)
+    wanted = PROFILE_IDS.get(decision["mcfg"])
+    if not wanted or PDC_OVERRIDE.exists() or active_software_id() == wanted:
+        return 0
+    # carrier-pdc exits 3 for conditions a retry cannot change (for example no
+    # platform profile on this modem); it has already said why, once.
+    status = subprocess.run(["systemctl", "show", "-p", "ExecMainStatus", "--value",
+                             "luma-fp6-carrier-pdc.service"], capture_output=True, text=True).stdout.strip()
+    if status == "3":
+        event(state="selected", apply="skipped", reason="carrier_pdc_unavailable", identifiers_logged=0)
+        return 0
+    # Switching the modem profile resets its SIM session; both units run again
+    # before ModemManager, so no call or data session exists yet. A failed
+    # switch keeps the decision (APN, modes) and the current modem profile.
+    for unit in ("luma-fp6-carrier-pdc.service", "luma-fp6-primary-gw-session.service"):
+        if subprocess.run(["systemctl", "restart", unit], timeout=240).returncode != 0:
+            event(state="selected", apply="failed", reason="apply_" + unit.split(".")[0].replace("-", "_"))
+            return 0
+    event(state="applied", mcfg=decision["mcfg"], identifiers_logged=0)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -23,6 +23,7 @@ KEY = 'RWRDS3jtjw9qdvQCeGSjoTFyrfbPMTjDcFHlKOy7Gr9Ot+nH0ASjW48c'
 SCHEMA = 'org.projectluma.os-media-index/v1'
 SHA = re.compile(r'[a-f0-9]{64}')
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,199}')
+DISK = re.compile(r'luma-[a-z]+-[0-9]{8}\.[0-9]+-aarch64-disk\.sparse')
 
 
 def require(condition, message):
@@ -138,6 +139,15 @@ def merge(canonical, incoming, channel, canonical_url, incoming_url, generated, 
         require(row.get('url') == source_base + filename, 'ISO is not beside scoped index')
         require(row.get('notes_url') == source_base + f'notes/{build}.json', 'Notes are not beside scoped index')
         require(SHA.fullmatch(row.get('sha256', '')), 'Invalid ISO hash')
+        # The ARM disk image (scripts/os/lib/arm_disk_image.py) stays beside the scoped
+        # index: one public copy, never aliased.
+        disk = row.get('disk_image')
+        require(disk is None or (isinstance(disk, dict) and DISK.fullmatch(disk.get('file', ''))
+                                 and disk.get('url') == disk.get('download_url') == source_base + disk['file']
+                                 and disk.get('sha256_url') == source_base + disk['file'] + '.sha256'
+                                 and SHA.fullmatch(disk.get('sha256', '')) and type(disk.get('size_bytes')) is int
+                                 and disk['size_bytes'] > 0 and disk.get('commit') == row.get('commit')),
+                'Invalid disk image entry')
         require(type(row.get('size_bytes')) is int and row['size_bytes'] > 0, 'Invalid ISO size')
         stamp(row.get('published_utc') or row.get('date'))
         row['file'], row['url'] = alias, target_base + alias

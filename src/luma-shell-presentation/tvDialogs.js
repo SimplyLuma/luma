@@ -437,14 +437,17 @@ export class TvDialogs {
 
     _fieldStyle(focused) {
         const {sheet, focus} = TOKENS;
-        return `min-height: ${this._px(sheet.field_height)}; padding: 0 ${this._px(26)};
+        // The ring is the field's own border (St anti-aliases a rounded border;
+        // a box-shadow spread is stair-stepped at the corners). The rim grows
+        // inward into the padding, so the field never changes size.
+        const rim = focused ? focus.ring : 1.5;
+        return `min-height: ${this._px(sheet.field_height - 2 * rim)}; padding: 0 ${this._px(26 - rim)};
             border-radius: ${this._px(sheet.field_radius)}; background-gradient-direction: none;
-            border: ${this._px(1.5)} solid ${this._m('well_rim')};
+            border: ${this._px(rim)} solid ${this._m(focused ? 'key_top' : 'well_rim')};
             ${focused
-        // St draws a box shadow under the whole box, so the ringed field
-        // is the well made opaque: a dark field with a white ring.
+        // A dark field with a white ring: the well made opaque.
         ? `background-color: ${this._m('well').replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgba($1,$2,$3, 1)')};
-           box-shadow: 0 0 0 ${this._px(focus.ring)} ${this._m('key_top')};`
+           box-shadow: none;`
         : `background-color: ${this._m('well')}; box-shadow: inset 0 ${this._px(2)} ${this._px(4)} ${this._m('well_shade')};`}`;
     }
 

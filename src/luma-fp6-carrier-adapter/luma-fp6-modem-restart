@@ -1,0 +1,36 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+
+# Restart the FP6 modem so it applies a pending PDC activation. Only allowed
+# before ModemManager and imsd own the modem, so no call or data session is
+# interrupted. The private rmtfs store keeps serving across the restart.
+
+set -Eeuo pipefail
+
+remoteproc=/sys/class/remoteproc/remoteproc1
+
+event() { printf 'event=luma_fp6_modem_restart %s\n' "$*"; }
+fail() { event "state=failed reason=$1" >&2; exit 1; }
+
+[[ $(id -u) -eq 0 ]] || fail not_root
+[[ $(tr -d '\0' </sys/firmware/devicetree/base/model) == 'The Fairphone (Gen. 6)' ]] || fail model
+[[ $(cat "$remoteproc/name") == modem ]] || fail remoteproc_identity
+systemctl is-active --quiet rmtfs.service || fail rmtfs_inactive
+for unit in ModemManager.service luma-fp6-imsd.service; do
+  ! systemctl is-active --quiet "$unit" || fail modem_in_use
+done
+
+if [[ $(cat "$remoteproc/state") == running ]]; then
+  printf stop >"$remoteproc/state"
+fi
+for _ in $(seq 1 50); do
+  [[ $(cat "$remoteproc/state") == offline ]] && break
+  sleep 0.2
+done
+[[ $(cat "$remoteproc/state") == offline ]] || fail stop_timeout
+printf start >"$remoteproc/state"
+for _ in $(seq 1 50); do
+  [[ $(cat "$remoteproc/state") == running ]] && { event 'state=restarted'; exit 0; }
+  sleep 0.2
+done
+fail start_timeout

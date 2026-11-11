@@ -88,6 +88,12 @@ if __name__ == '__main__':
     try:
         prepare()
     except RuntimeError as error:
+        if os.environ.get('LUMA_APP_PREPARE') == '1':
+            # Preparing ahead of a launch (a TV keeps its apps loaded): there is
+            # no one to show the repair screen to. Leave quietly; the next
+            # prepare tries again, and opening the app shows the screen.
+            print(f'Not prepared: {error}', file=sys.stderr)
+            raise SystemExit(75)
         show_failure(str(error))
         raise SystemExit(1)
     command = sys.argv[1:]

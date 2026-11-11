@@ -8,6 +8,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import GnomeDesktop from 'gi://GnomeDesktop';
 import Graphene from 'gi://Graphene';
 import Meta from 'gi://Meta';
@@ -26,7 +27,7 @@ import {TvPointer} from './tvPointer.js';
 import {TvScreenEdges} from './tvScreenEdges.js';
 import {TvQuickPanel} from './tvQuickPanel.js';
 import {tileMenu} from './tvAppSwitcherModel.js';
-import {flatpakTile, flatpakTv, greetingPart, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
+import {edgeColour, flatpakTile, flatpakTv, greetingPart, nearest, remoteAction, repeatAllowed, searchTvApps, tileGrid, tvApps, tvEntry, tvUnit,
     weatherGlyph} from './tvModel.js';
 import {gettext as _} from 'gettext';
 
@@ -95,7 +96,8 @@ export class TvPresentation {
             this._activeSignals.push([object, object.connect(signal, callback)]);
         watch(global.window_manager, 'map', (_wm, actor) => this._windowShown(actor.meta_window));
         watch(global.window_manager, 'minimize', () => this._queueHomeCheck());
-        watch(global.window_manager, 'destroy', () => this._queueHomeCheck());
+        // The closing window is still mid-effect when the check runs: never count it.
+        watch(global.window_manager, 'destroy', (_wm, actor) => this._queueHomeCheck(actor?.meta_window ?? null));
         watch(global.display, 'notify::focus-window', () => {
             const window = global.display.focus_window;
             if (normalWindow(window) && !window.minimized) this._windowShown(window);
@@ -114,7 +116,7 @@ export class TvPresentation {
             this._loadApps();
         });
         watch(Gio.AppInfoMonitor.get(), 'changed', () => this._loadApps());
-        // A running app's tile carries the running dot.
+        // A running app's tile carries the running light under its name.
         watch(this._appSystem, 'app-state-changed', () => this._syncRunning());
         watch(this._settings, 'changed::reduce-transparency', () => this._restyle());
         // No notification lip on a TV; notifications still arrive and wait. The
@@ -153,7 +155,9 @@ export class TvPresentation {
         // Every remote and gamepad becomes the TV's keys (tvInput.js).
         // The pointer hides while the remote is in use and once it rests (tvPointer.js).
         this._pointer = new TvPointer();
-        this._input = new TvInput({home: () => this.showHome('home'),
+        // Home from an app returns to the page it was opened from (Apps, say);
+        // Home on the home screen itself goes to the first page.
+        this._input = new TvInput({home: () => this.showHome(this._home?.visible ? 'home' : (this._page ?? 'home')),
             quickPanel: () => this._quick?.toggle('remote'),
             // Start is the system's pause menu: the quick panel over whatever is showing.
             pause: () => this._quick?.toggle('start'),
@@ -223,18 +227,29 @@ export class TvPresentation {
         if (!this._fullscreened.has(window)) {
             this._fullscreened.set(window, window.is_fullscreen());
             window.connectObject('unmanaged', () => this._fullscreened.delete(window), this);
+            // A window that maps at a fixed size (an Android task's phone-sized
+            // first frame) refuses full screen then and grows into a framed,
+            // maximized window later: take it full screen as soon as it can be.
+            window.connectObject('size-changed', () => {
+                if (this.active && !window.is_fullscreen() && !window.minimized && normalWindow(window))
+                    window.make_fullscreen();
+            }, this);
         }
         if (!window.is_fullscreen()) window.make_fullscreen();
         this._minimizedOnEnter.delete(window);
         this._hideHome();
     }
 
-    _queueHomeCheck() {
+    _queueHomeCheck(closing = null) {
+        if (closing) (this._closingWindows ??= new Set()).add(closing);
         if (this._homeCheck) return;
         this._homeCheck = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
             this._homeCheck = 0;
             // Back at an app's top level minimises it: the Apps page it came from.
-            if (this.active && !this._home?.visible && !visibleAppWindows().length) this.showHome('apps');
+            const closing = this._closingWindows ?? new Set();
+            this._closingWindows = null;
+            if (this.active && !this._home?.visible &&
+                !visibleAppWindows().filter(window => !closing.has(window)).length) this.showHome('apps');
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -343,6 +358,9 @@ export class TvPresentation {
         this._resultGrid = new St.Widget({layout_manager: new Clutter.FixedLayout()});
         this._noResults = new St.Label({x_align: Clutter.ActorAlign.CENTER});
         this._pages.search.add_child(this._field);
+        // The field's focus ring: a border on its own actor around the field (anti-aliased).
+        this._fieldRing = new St.Widget({visible: false, reactive: false});
+        this._pages.search.add_child(this._fieldRing);
         this._pages.search.add_child(this._resultGrid);
         this._pages.search.add_child(this._noResults);
         for (const page of PAGES) this._home.add_child(this._pages[page]);
@@ -393,6 +411,10 @@ export class TvPresentation {
         this._fieldWidth = Math.min(home.field_width * u, monitor.width - 2 * layout.safe_x * u);
         this._field.set_size(this._fieldWidth, home.field_height * u);
         this._field.set_position((monitor.width - this._fieldWidth) / 2, home.search_top * u);
+        this._fieldRingWidth = Math.round(home.field_ring * u);
+        this._fieldRing.set_position(this._field.x - this._fieldRingWidth, this._field.y - this._fieldRingWidth);
+        this._fieldRing.set_size(this._fieldWidth + 2 * this._fieldRingWidth,
+            home.field_height * u + 2 * this._fieldRingWidth);
         this._restyle();
     }
 
@@ -497,16 +519,45 @@ export class TvPresentation {
             plate.add_child(St.TextureCache.get_default().load_file_async(file,
                 Math.round(width / scale), Math.round(height / scale), scale, plate.get_resource_scale()));
         } else {
-            // An opted-in app without a wide tile: its icon on the bar material.
+            // An opted-in app without a wide tile (an Android app): its icon at
+            // the tile's full height, on the colour of the icon's own edge so
+            // the tile reads as one banner. An icon with no opaque edge keeps
+            // the bar material behind a half-height icon.
             const shellApp = this._appSystem.lookup_app(app.id);
-            const icon = shellApp?.create_icon_texture(Math.round(height * 0.5 / scale));
+            const edge = this._edgeColour(shellApp);
+            const icon = shellApp?.create_icon_texture(Math.round(height * (edge ? 1 : 0.5) / scale));
             if (icon) {
                 icon.x_align = icon.y_align = Clutter.ActorAlign.CENTER;
                 plate.add_child(icon);
             }
-            plate.style = `background-color: ${this._material('bar')};`;
+            plate.style = `background-color: ${edge ?? this._material('bar')};`;
         }
         return plate;
+    }
+
+    // The colour at an app icon's edge (tvModel.edgeColour) as rgb(); null when
+    // the icon has no file or no opaque edge. Cached per icon file.
+    _edgeColour(shellApp) {
+        let path = shellApp?.get_app_info?.()?.get_string?.('Icon') ?? '';
+        if (path && !path.startsWith('/'))
+            path = iconTheme.lookup_icon(path, 256, 0)?.get_filename?.() ?? '';
+        if (!path || !GLib.file_test(path, GLib.FileTest.IS_REGULAR))
+            return null;
+        this._edgeColours ??= new Map();
+        if (this._edgeColours.has(path))
+            return this._edgeColours.get(path);
+        let colour = null;
+        try {
+            const size = 64;
+            const pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(path, size, size);
+            const rgb = edgeColour(pixbuf.get_pixels(), pixbuf.get_width(), pixbuf.get_height(),
+                pixbuf.get_n_channels(), pixbuf.get_rowstride(), pixbuf.get_has_alpha());
+            if (rgb) colour = `rgb(${rgb.join(', ')})`;
+        } catch (error) {
+            logError(error, `TV tile edge colour for ${path}`);
+        }
+        this._edgeColours.set(path, colour);
+        return colour;
     }
 
     _makeTile(app) {
@@ -515,25 +566,35 @@ export class TvPresentation {
         const width = tile.width * u, height = width * tile.aspect_height / tile.aspect_width;
         const cell = new St.Widget({layout_manager: new Clutter.FixedLayout(), reactive: true});
         const plate = this._plate(app, width, height);
-        // The name, and before it the running dot (the dock's), centred as one.
-        const label = new St.Label({y_align: Clutter.ActorAlign.CENTER, text: app.name});
+        // The name, centred on the tile; under it the running light, a short
+        // soft line like a set's standby light. It always takes its room, so the
+        // name never moves as apps start and quit; only its opacity changes.
+        const label = new St.Label({x_align: Clutter.ActorAlign.CENTER, text: app.name});
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        const dot = new St.Widget({y_align: Clutter.ActorAlign.CENTER, width: s.running_dot * u,
-            height: s.running_dot * u, visible: false});
-        const name = new St.BoxLayout({x_align: Clutter.ActorAlign.CENTER});
-        name.style = `spacing: ${this._px(s.running_gap)};`;
-        name.add_child(dot);
+        const light = new St.Widget({x_align: Clutter.ActorAlign.CENTER, width: s.running_light_width * u,
+            height: s.running_light_height * u, opacity: 0});
+        const name = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL,
+            x_align: Clutter.ActorAlign.CENTER});
+        name.style = `spacing: ${this._px(s.running_light_gap)};`;
         name.add_child(label);
+        name.add_child(light);
         const caption = new St.Bin({child: name, width});
         caption.set_position(0, height + tile.label_gap * u);
         cell.add_child(plate);
+        // The focus ring: its own actor just outside the plate, drawn as a border
+        // (anti-aliased) and lifted with the plate about the same centre.
+        const ringWidth = Math.round(tile.ring * u);
+        const ringActor = new St.Widget({visible: false, reactive: false,
+            x: -ringWidth, y: -ringWidth, width: width + 2 * ringWidth, height: height + 2 * ringWidth,
+            pivot_point: new Graphene.Point({x: 0.5, y: 0.5})});
+        cell.add_child(ringActor);
         cell.add_child(caption);
         cell.connect('button-release-event', () => {
             this._launch(app);
             return Clutter.EVENT_STOP;
         });
-        const made = {app, cell, plate, label, dot, baseStyle: plate.style ?? ''};
-        dot.visible = this._running(app);
+        const made = {app, cell, plate, label, light, ring: ringActor, ringWidth, baseStyle: plate.style ?? ''};
+        light.opacity = this._running(app) ? 255 : 0;
         return made;
     }
 
@@ -543,7 +604,11 @@ export class TvPresentation {
     }
 
     _syncRunning() {
-        for (const made of [...this._tiles, ...(this._resultTiles ?? [])]) made.dot.visible = this._running(made.app);
+        for (const made of [...this._tiles, ...(this._resultTiles ?? [])]) {
+            made.light.remove_transition('opacity');
+            made.light.ease({opacity: this._running(made.app) ? 255 : 0, duration: TOKENS.app_switcher.running_light_fade_ms,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        }
         // A tile's menu for an app that has just quit no longer applies.
         if (this._itemMenu?.isOpen && this._itemMenuApp && !this._running(this._itemMenuApp)) this._itemMenu.close();
         this._draw();
@@ -914,11 +979,25 @@ export class TvPresentation {
             made.plate.ease({scale_x: focused ? tile.focus_scale : 1, scale_y: focused ? tile.focus_scale : 1,
                 duration: TOKENS.motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
             made.plate.style = `${made.baseStyle} border-radius: ${this._tileStyle.radius};
-                box-shadow: ${ring ? `0 0 0 ${this._px(tile.ring)} ${m('ring')}`
-        : `0 ${this._px(16)} ${this._px(40)} ${m('tile_drop')}`};`;
+                box-shadow: ${ring ? 'none' : `0 ${this._px(16)} ${this._px(40)} ${m('tile_drop')}`};`;
+            // Concentric with the tile: inner radius the tile's, outer that plus the ring.
+            const radius = tile.width * tile.corner_x * this._u;
+            made.ring.style = `border: ${made.ringWidth}px solid ${m('ring')};
+                border-radius: ${Math.round(radius + made.ringWidth)}px;`;
+            made.ring.remove_all_transitions();
+            made.ring.visible = ring;
+            made.ring.ease({scale_x: focused ? tile.focus_scale : 1, scale_y: focused ? tile.focus_scale : 1,
+                duration: TOKENS.motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
             const ink = focused ? m('ink') : m('ink_2');
             made.label.style = `${this._tileStyle.label} color: ${ink};`;
-            made.dot.style = `border-radius: ${this._px(TOKENS.app_switcher.running_dot / 2)}; background-color: ${ink};`;
+            // Focused, the light widens and brightens with the lifted tile.
+            made.light.remove_transition('width');
+            made.light.ease({width: this._u * (focused ? TOKENS.app_switcher.running_light_focus_width
+                : TOKENS.app_switcher.running_light_width),
+                duration: TOKENS.motion.focus_ms, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            made.light.style = `border-radius: ${this._px(TOKENS.app_switcher.running_light_height / 2)};
+                background-color: ${focused ? m('ink') : m('ink_3')};
+                box-shadow: 0 0 ${this._px(focused ? 10 : 6)} ${focused ? m('ink_3') : m('divider')};`;
             if (focused) made.cell.get_parent()?.set_child_above_sibling(made.cell, null);
         });
         this._drawCluster();
@@ -926,8 +1005,11 @@ export class TvPresentation {
         paint(this._resultTiles, 'result');
         const fieldFocused = this._focus.kind === 'field';
         this._field.style = this._field.style.replace(/box-shadow:[^;]*;/,
-            fieldFocused ? `box-shadow: 0 0 0 ${this._px(4)} ${m('ink')};`
+            fieldFocused ? 'box-shadow: none;'
                 : `box-shadow: inset 0 ${this._px(2)} ${this._px(4)} ${m('well_shade')};`);
+        this._fieldRing.visible = fieldFocused;
+        this._fieldRing.style = `border: ${this._fieldRingWidth}px solid ${m('ink')};
+            border-radius: ${Math.round(TOKENS.home.field_radius * this._u + this._fieldRingWidth)}px;`;
         if (fieldFocused && this._page === 'search') {
             this._entry.clutter_text.set_editable(true);
             if (!Main.modalCount) this._entry.grab_key_focus();

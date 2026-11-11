@@ -45,6 +45,7 @@ cp -R "$repo_root/src/luma-fp6-platform/." "$source_dir/"
 find "$source_dir" -type d -name __pycache__ -prune -exec rm -rf {} +
 # The shared handheld defaults, one source for every phone.
 install -m 0644 "$repo_root/config/mobile/luma-shell-handheld.dconf" "$source_dir/luma-shell-handheld.dconf"
+install -m 0644 "$repo_root/config/mobile/luma-greeter-handheld.dconf" "$source_dir/luma-greeter-handheld.dconf"
 source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work_dir" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
   --numeric-owner -cf - luma-fp6-platform | gzip -n >"$rpmbuild_dir/SOURCES/luma-fp6-platform.tar.gz"

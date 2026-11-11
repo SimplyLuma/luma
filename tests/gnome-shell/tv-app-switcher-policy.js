@@ -105,9 +105,31 @@ assert(/_leave\(\) \{[\s\S]*?this\._switcher\?\.destroy\(\)/.test(home), 'leavin
 assert(/returnTo\.activate\(\)/.test(home), 'Back returns to the app it opened over');
 assert(/reason === 'back' && returnTo && appRunning\(returnTo\)/.test(home), 'Back never restarts an app closed in the switcher');
 
-// The TV home's tiles: the running dot and the held-OK menu.
-assert(/watch\(this\._appSystem, 'app-state-changed', \(\) => this\._syncRunning\(\)\)/.test(home), 'the dot follows the app');
-assert(/made\.dot\.visible = this\._running\(made\.app\)/.test(home), 'only running apps carry the dot');
+// The TV home's tiles: the running light and the held-OK menu.
+assert(/watch\(this\._appSystem, 'app-state-changed', \(\) => this\._syncRunning\(\)\)/.test(home), 'the light follows the app');
+assert(/made\.light\.ease\(\{opacity: this\._running\(made\.app\) \? 255 : 0/.test(home), 'only running apps carry the light');
+assert(/light\.opacity = this\._running\(app\) \? 255 : 0/.test(home) && !/\.visible = this\._running/.test(home),
+    'the light keeps its room, so names never move');
+assert(s.running_light_focus_width > s.running_light_width && s.running_light_height <= 6 && !('running_dot' in s),
+    'a short soft light that widens on focus, not a dot');
+assert(/if \(!\(app\.get_n_windows\?\.\(\) > 0\)\) return false;/.test(switcher),
+    'a prepared app or a background service is not open');
+
+// Focus rings: their own bordered actor, concentric with what they ring (a
+// box-shadow spread is drawn without anti-aliasing at rounded corners).
+assert(/made\.ring\.style = `border: \$\{made\.ringWidth\}px solid/.test(home) && /radius \+ made\.ringWidth/.test(home),
+    'a tile ring is a border, concentric with the tile');
+assert(/this\._fieldRing\.style = `border:/.test(home) && /home\.field_ring \* u/.test(home), 'the search field ring too');
+assert(/ring\.style = `border: \$\{ringWidth\}px solid/.test(switcher) && /card_radius \* u \+ ringWidth/.test(switcher),
+    'a switcher card ring too');
+assert(!/box-shadow: \$\{ring \? `0 0 0/.test(home) && !/`0 0 0 \$\{look\.px\(tile\.ring\)\}/.test(switcher), 'no spread-shadow rings');
+
+// Home from an app returns to the page it came from; the window closing is
+// never counted as still open (a black screen after the last app closed).
+assert(/home: \(\) => this\.showHome\(this\._home\?\.visible \? 'home' : \(this\._page \?\? 'home'\)\)/.test(home),
+    'Home returns to the page the app was opened from');
+assert(/'destroy', \(_wm, actor\) => this\._queueHomeCheck\(actor\?\.meta_window/.test(home) &&
+    /visibleAppWindows\(\)\.filter\(window => !closing\.has\(window\)\)/.test(home), 'a closing window is not open');
 assert(/tileMenu\(this\._running\(made\.app\)\)/.test(home) && /key === 'close' && shellApp\) requestQuit\(shellApp\)/.test(home),
     "a tile's Close is the same Quit");
 

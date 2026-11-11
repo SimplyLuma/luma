@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Keycap policy and its wiring into the Shell keyboard.
-// Run: gjs -m keycap-policy.js js/ui/lumaPresentation/keycap.js js/ui/keyboard.js
+// Run: gjs -m keycap-policy.js js/ui/lumaPresentation/keycap.js js/ui/keyboard.js [js/gdm/loginDialog.js]
 // (node keycap-policy.js ... works too). The cases mirror Stevia's
 // test-keycap-history.c so both keyboards keep one behaviour.
 const gjs = typeof globalThis.ARGV !== 'undefined';
@@ -19,6 +19,7 @@ function assert(value, message) {
 
 const Keycap = await import(`file://${absolute(args[0])}`);
 const keyboard = read(args[1]);
+const loginDialog = args[2] ? read(args[2]) : null;
 
 // Clutter's wire values (InputContentPurpose, InputContentHintFlags).
 const purpose = {NORMAL: 0, ALPHA: 1, DIGITS: 2, NUMBER: 3, PHONE: 4, URL: 5, EMAIL: 6,
@@ -163,6 +164,12 @@ assert(Keycap.bottomInset({width: 360, height: 808}, true, 28) === g.thumb_gap &
 assert(Keycap.bottomInset({width: 360, height: 808}, true, 0) === g.thumb_gap, 'the lock screen keeps the thumb gap');
 assert(Keycap.bottomInset({width: 808, height: 360}, true, 28) === 28, 'a phone on its side keeps only the home gesture');
 assert(Keycap.bottomInset({width: 1038, height: 1076}, false, 28) === 28, 'a tablet keeps only the home gesture');
+assert(Keycap.standaloneInset({width: 372, height: 828}, true) === g.thumb_gap,
+    'a handheld greeter keeps the thumb gap on a phone-width screen');
+assert(Keycap.standaloneInset({width: 828, height: 372}, true) === 0 &&
+    Keycap.standaloneInset({width: 1038, height: 1076}, true) === 0 &&
+    Keycap.standaloneInset({width: 372, height: 828}, false) === 0,
+    'no standalone inset on a phone on its side, a wide handheld screen or a desktop');
 assert(Keycap.keyboardHeight({width: 432, height: 970}, 4, 11.5, Keycap.bottomInset({width: 432, height: 970}, true, 28)) <= 970 / 2,
     'the thumb gap fits within half the screen');
 assert(Keycap.keyboardHeight({width: 404, height: 908}, 4, 11.5) < 908 / 3, 'tall phones are not sized by screen height');
@@ -181,7 +188,7 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
 {
     const at = keyboard.indexOf('    _relayout() {');
     const body = keyboard.slice(keyboard.indexOf('{', at) + 1, keyboard.indexOf('\n    }', at));
-    const relayout = new Function('Main', 'St', 'Keycap', 'global', body);
+    const relayout = new Function('Main', 'St', 'Keycap', 'global', 'GLib', body);
     let style = null, styleWrites = 0, sizeWrites = 0;
     const sized = {};
     const actor = {_currentPage: {getRatio: () => [11.5, 4]},
@@ -202,6 +209,43 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
     run(360, 808);
     run(360, 808);
     assert(styleWrites === styles && sizeWrites === sizes, 'an unchanged relayout writes no style or size');
+    // The greeter has no presentation: a handheld keeps the thumb gap below
+    // the keys there, a desktop greeter keeps nothing.
+    const greeter = deviceClass => relayout.call(actor, {layoutManager: {keyboardMonitor: {width: 372, height: 828}},
+        presentation: null}, {ThemeContext: {get_for_stage: () => ({scale_factor: 1})}}, Keycap, {stage: {}},
+    {getenv: name => (name === 'LUMA_DEVICE_CLASS' ? deviceClass : null)});
+    greeter('handheld');
+    assert(style === `padding-bottom: ${g.thumb_gap}px;` &&
+        actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5, g.thumb_gap),
+        `the handheld greeter keyboard keeps the thumb gap (${style}, ${actor.height})`);
+    greeter(null);
+    assert(style === null && actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5),
+        'a greeter that is not a handheld keeps no inset');
+}
+
+// A key never sets the row height: its label's font (a fallback font for one
+// glyph) must not raise the rows above the height the Keycap rule gives.
+{
+    const at = keyboard.indexOf('class Key extends St.BoxLayout {');
+    const key = keyboard.slice(at, keyboard.indexOf('\n});', at));
+    const from = key.indexOf('    vfunc_get_preferred_height(forWidth) {');
+    assert(at > 0 && from > 0, 'Key overrides its preferred height');
+    const body = key.slice(key.indexOf('{', from) + 1, key.indexOf('\n    }', from));
+    const preferred = new Function('forWidth', body.replace('super.vfunc_get_preferred_height(forWidth)', '[52, 52]'));
+    const [min, nat] = preferred(-1);
+    assert(min === 0 && nat === 52, `a key reports no minimum height (${min}, ${nat})`);
+}
+
+// The login dialog lays its content out above an open keyboard, as the
+// unlock dialog does, and lays out again when the keyboard shows or hides.
+if (loginDialog) {
+    const at = loginDialog.indexOf('    vfunc_allocate(dialogBox) {');
+    const allocate = loginDialog.slice(at, loginDialog.indexOf('\n    }', at));
+    assert(at > 0 && allocate.includes('Main.layoutManager.keyboardBox.height') &&
+        allocate.includes('const height = Math.max(fullHeight / 2, fullHeight - keyboard);'),
+        'the login dialog allocates in the height the keyboard leaves');
+    assert(/Main\.keyboard\.connectObject\('visibility-changed', \(\) => this\.queue_relayout\(\), this\)/.test(loginDialog),
+        'the login dialog follows the keyboard');
 }
 
 const words2 = new Keycap.WordSuggester(['the', 'then', 'they', 'there', 'tax'],
