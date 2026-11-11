@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.125%{?dist}
+Release:        1.luma.126%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -376,6 +376,13 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.126
+- LumaUI API level 13: the TV action bar (TvActionBar, tv.action_bar),
+  TvFocus.add(console=) for a terminal under the remote, TvRoom.set_wallpaper()
+  and desktop_wallpaper(); an Island on a TV stage draws no card.
+- TV posture: prepared app launches, never idle, weather in the shared bar,
+  the TV home's running light; Terminal's and Photos' TV tokens.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.125
 - LumaUI API level 12: an edge-filled phone bar, a medium search well,
   frosted specimens, the places sidebar and list insets. A bar text
