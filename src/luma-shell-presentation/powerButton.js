@@ -61,8 +61,10 @@ export class HandheldPowerButton {
                 this._blanked = false;
                 this._setMode(0);
             } else {
-                // Secure the session before switching off its display.
-                Main.screenShield.lock(false);
+                // Secure the session before switching off its display. The
+                // login screen has no session yet, so it only blanks.
+                if (!Main.sessionMode.isGreeter)
+                    Main.screenShield.lock(false);
                 this._blanked = true;
                 this._setMode(3);
             }

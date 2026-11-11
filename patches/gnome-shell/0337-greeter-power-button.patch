@@ -1,0 +1,48 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] main: the handheld power button on the greeter
+
+The handheld power button (a short press blanks or wakes the display)
+belongs to the Presentation, which main.js builds only outside greeter
+mode. On the login screen nothing took XF86PowerOff, the greeter's dconf
+sets power-button-action to nothing, and a short press did nothing: a
+blanked login screen could only be woken by touch.
+
+main.js builds a HandheldPowerButton of its own in greeter mode. It still
+needs the handheld device class, so desktops are unchanged.
+
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -27,6 +27,7 @@
+ import * as Panel from './panel.js';
+ import * as Shelf from './shelf.js';
+ import * as Presentation from './lumaPresentation/presentation.js';
++import {HandheldPowerButton} from './lumaPresentation/powerButton.js';
+ import * as LumaStickyDock from './lumaStickyDock.js';
+ import * as RunDialog from './runDialog.js';
+ import * as WelcomeDialog from './welcomeDialog.js';
+@@ -64,6 +65,7 @@
+ export let panel = null;
+ export let shelf = null;
+ export let presentation = null;
++let greeterPowerButton = null;
+ export let stickyDock = null;
+ export let stickyDockManager = null;
+ export let overview = null;
+@@ -363,6 +365,17 @@
+         }
+     }
+ 
++    // The login screen builds no Presentation, which owns the handheld power
++    // button, so a short press there did nothing. Give the greeter its own:
++    // it blanks and wakes the display (nothing to lock before a login).
++    if (sessionMode.isGreeter) {
++        try {
++            greeterPowerButton = new HandheldPowerButton();
++        } catch (e) {
++            logError(e, 'the greeter power button could not be set up');
++        }
++    }
++
+     new PointerA11yTimeout.PointerA11yTimeout();
+ 
+     global.connect('locate-pointer', () => {
