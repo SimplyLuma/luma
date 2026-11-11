@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.16%{?dist}
+Release:        1.luma.17%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -70,7 +70,7 @@ grep -Fxq 'ConditionFirmware=device-tree-compatible(fairphone,fp6)' %{buildroot}
 test ! -s %{buildroot}%{_unitdir}/boot.automount
 grep -Fxq 'wifi.powersave=2' %{buildroot}%{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
 grep -Fxq 'MemorySleepMode=s2idle' %{buildroot}%{_prefix}/lib/systemd/sleep.conf.d/50-luma-fp6.conf
-grep -Fq 'KERNEL=="890000.serial", ATTR{power/wakeup}="disabled"' %{buildroot}%{_prefix}/lib/udev/rules.d/60-luma-fp6-wakeup.rules
+grep -Fq 'ACTION=="add|bind", SUBSYSTEM=="platform", KERNEL=="890000.serial", ATTR{power/wakeup}="disabled"' %{buildroot}%{_prefix}/lib/udev/rules.d/60-luma-fp6-wakeup.rules
 # The login screen keeps the signed-in session's power defaults.
 for key in power-button-action sleep-inactive-ac-type sleep-inactive-battery-type color-scheme; do
   line=$(grep -x "$key='[a-z-]*'" %{buildroot}%{_sysconfdir}/dconf/db/luma.d/10-luma-handheld)
@@ -115,6 +115,10 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.17
+- The Bluetooth UART wakeup rule also matches the coldplug add event: on a
+  normal boot the driver binds before udev starts, so the rule never ran.
+
 * Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.16
 - System suspend works: s2idle by default (the firmware returns at once from
   deep), and the Bluetooth UART RX line is no longer a wakeup source (it
