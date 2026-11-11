@@ -30,6 +30,15 @@ class Platform(unittest.TestCase):
         # V3D blit work, so the Pi keeps the stock Shell defaults.
         self.assertEqual(sorted(p.name for p in HERE.glob("*.gschema.override")), [])
 
+    def test_android_gets_pressure_stall_information(self):
+        # lmkd needs /proc/pressure; the Pi kernel leaves PSI off without psi=1.
+        try:
+            import tomllib
+        except ImportError:
+            self.skipTest("tomllib needs Python 3.11")
+        kargs = tomllib.loads((HERE / "40-luma-rpi5-psi.toml").read_text())
+        self.assertEqual(kargs, {"kargs": ["psi=1"]})
+
     def test_no_update_stream_of_its_own(self):
         # The Pi follows the generic ARM commit; its kernel is a client-side
         # override, which rpm-ostree reapplies on every update.

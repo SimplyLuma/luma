@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Pressure stall information on. The Raspberry Pi kernel builds PSI but leaves
+# it off unless booted with psi=1 (CONFIG_PSI_DEFAULT_DISABLED, from Raspberry
+# Pi's defconfig). Android's low-memory killer, lmkd, needs /proc/pressure:
+# without it lmkd exits and every Android start fails within seconds.
+# Fedora's kernels already have PSI on, so on every other ARM desktop that
+# installs this package the argument changes nothing.
+kargs = ["psi=1"]
