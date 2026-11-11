@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-rpi5-platform
 Version:        0.4.0
-Release:        1.luma.1%{?dist}
+Release:        1.luma.2%{?dist}
 Summary:        Raspberry Pi 5 platform support for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -23,8 +23,10 @@ Raspberry Pi 5 support, installed on every ARM desktop: the Wi-Fi NVRAM
 alias D0 boards ask for, a V3D runtime-PM delay that keeps the GPU awake
 between frames, GTK's GL renderer, a tool that chooses the SD card boot menu
 entry for the next boot, a service that copies the kernel's device trees to
-the card, and no system sleep (the board does not resume). Everything is
-gated on the Pi 5 device tree, so the package is inert on other machines.
+the card, no system sleep (the board does not resume), and the psi=1 kernel
+argument Android needs. Everything else is gated on the Pi 5 device tree, and
+psi=1 changes nothing on a kernel that already has PSI on, so the package is
+inert on other machines.
 
 %prep
 %autosetup -n luma-rpi5-platform
@@ -48,6 +50,7 @@ ln -s ../luma-rpi5-firmware-sync.service \
 install -d %{buildroot}%{_unitdir}/sysinit.target.wants
 ln -s ../luma-rpi5-no-sleep.service \
   %{buildroot}%{_unitdir}/sysinit.target.wants/luma-rpi5-no-sleep.service
+install -D -m 0644 40-luma-rpi5-psi.toml %{buildroot}%{_prefix}/lib/bootc/kargs.d/40-luma-rpi5-psi.toml
 install -d %{buildroot}%{_prefix}/lib/firmware/brcm
 ln -s brcmfmac43455-sdio.raspberrypi,5-model-b.txt.xz \
   "%{buildroot}%{_prefix}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b-d0.txt.xz"
@@ -63,6 +66,7 @@ grep -Fqx 'ConditionFirmware=|device-tree-compatible(raspberrypi,5-model-b)' \
   %{buildroot}%{_unitdir}/luma-rpi5-no-sleep.service
 test ! -e %{buildroot}%{_prefix}/lib/systemd/sleep.conf.d
 test ! -e %{buildroot}%{_sysconfdir}/luma/update.conf
+grep -Fqx 'kargs = ["psi=1"]' %{buildroot}%{_prefix}/lib/bootc/kargs.d/40-luma-rpi5-psi.toml
 udevadm verify --no-style %{buildroot}%{_udevrulesdir}/70-luma-rpi5-v3d.rules
 
 %files
@@ -78,8 +82,15 @@ udevadm verify --no-style %{buildroot}%{_udevrulesdir}/70-luma-rpi5-v3d.rules
 %{_unitdir}/luma-rpi5-firmware-sync.service
 %{_unitdir}/multi-user.target.wants/luma-rpi5-firmware-sync.service
 "%{_prefix}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-model-b-d0.txt.xz"
+%dir %{_prefix}/lib/bootc/kargs.d
+%{_prefix}/lib/bootc/kargs.d/40-luma-rpi5-psi.toml
 
 %changelog
+* Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.4.0-1.luma.2
+- psi=1 (/usr/lib/bootc/kargs.d): the Raspberry Pi kernel leaves pressure
+  stall information off without it, and Android's lmkd needs it, so Android
+  never started on a Pi 5.
+
 * Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.4.0-1.luma.1
 - Installed on every ARM desktop: the Pi follows the generic ARM update
   stream (no /etc/luma/update.conf); its kernel comes from a client-side
