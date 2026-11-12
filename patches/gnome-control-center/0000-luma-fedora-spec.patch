@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,127 @@
+@@ -28,14 +28,128 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.63%{?dist}
++Release:        1.luma.64%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -116,6 +116,7 @@
 +Patch1097:      0098-lumaui-page-wash-300px-and-hidden-on-tv.patch
 +Patch1098:      0099-lumaui-tv-turn-off-tv-mode.patch
 +Patch1099:      0100-lumaui-phone-search-keeps-bar.patch
++Patch1100:      0101-lumaui-mobile-network-with-a-modem.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.123
@@ -129,7 +130,7 @@
  BuildRequires:  desktop-file-utils
  BuildRequires:  docbook-style-xsl libxslt
  BuildRequires:  gcc
-@@ -85,6 +198,12 @@
+@@ -85,6 +199,12 @@
  %endif
  
  # Versioned library deps
@@ -142,7 +143,7 @@
  Requires: libadwaita%{?_isa} >= %{libadwaita_version}
  Requires: glib2%{?_isa} >= %{glib2_version}
  Requires: gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
-@@ -170,16 +289,10 @@
+@@ -170,16 +290,10 @@
  
  %build
  %meson \
@@ -161,7 +162,7 @@
  %if %{with malcontent}
    -Dmalcontent=true \
  %else
-@@ -200,6 +313,51 @@
+@@ -200,6 +314,51 @@
  
  %find_lang %{name} --all-name --with-gnome
  
@@ -182,7 +183,7 @@
 +glib-compile-schemas --strict "$task_runtime/schema"
 +export GSETTINGS_SCHEMA_DIR="$task_runtime/schema"
 +# LumaUI Settings model and adapter tests; display-bound tests run below.
-+%meson_test luma-settings-fixture luma-settings-applications luma-settings-audio luma-settings-permissions luma-settings-power-reads luma-settings-preferences luma-settings-properties luma-settings-scroll-speed luma-settings-search-locations luma-settings-live-conn luma-settings-live-gsettings luma-settings-live-desk luma-settings-live-you luma-settings-live-keyboard luma-settings-display-preview luma-settings-display-save-view-1180 luma-settings-display-save-view-320
++%meson_test luma-settings-fixture luma-settings-applications luma-settings-audio luma-settings-permissions luma-settings-power-reads luma-settings-preferences luma-settings-properties luma-settings-scroll-speed luma-settings-search-locations luma-settings-live-conn luma-settings-live-modem luma-settings-live-gsettings luma-settings-live-desk luma-settings-live-you luma-settings-live-keyboard luma-settings-display-preview luma-settings-display-save-view-1180 luma-settings-display-save-view-320
 +# Test the actual native network editor frame and Cancel with accessibility enabled.
 +xvfb-run -a --server-args="-screen 0 1600x1200x24" dbus-run-session -- env GSK_RENDERER=cairo GIO_USE_VFS=local GDK_DEBUG=no-portals meson test -C %{_vpath_builddir} --no-rebuild --print-errorlogs luma-settings-network-editor
 +# Native page actions must reach the owned BlueZ/Rfkill service on a private bus.

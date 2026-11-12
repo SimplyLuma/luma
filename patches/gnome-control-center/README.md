@@ -277,3 +277,12 @@ moves only when its side changes and the bar is shown or hidden only when its
 state differs (5 bar rebuilds for a 4-letter query before, 1 after, in a
 LumaUI harness of the same wiring). `cc_luma_window_search` also runs the
 search on a phone.
+
+`0101-lumaui-mobile-network-with-a-modem.patch`: the LumaUI window listed no
+route to the wwan panel. A live adapter watches ModemManager's objects on the
+system bus without starting it and reports a modem the panel supports (the
+capability test of `cc_wwan_panel_static_init_func`); Mobile Network is listed
+after Wi-Fi only then, and the sidebar follows a modem coming or going. Before
+the panel opens, the NMClient and MMManager it reads from the object storage
+are created, as GNOME's window does at startup, so the `wwan` deep link works
+too. Test: `luma-settings-live-modem` against a stand-in ModemManager.
