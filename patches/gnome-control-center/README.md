@@ -269,3 +269,11 @@ page-sized GtkDrawingArea, so every redraw rasterized and uploaded a cairo
 surface of the whole page (on TV an empty one); it is now 300 px tall and
 hidden on TV. Pi 5 4K Settings: cairo upload share 10% -> 1%, page-switch
 key-to-frame p50 ~200 -> 169 ms.
+
+`0100-lumaui-phone-search-keeps-bar.patch`: on a phone each keystroke in the
+bar search re-emitted the list-first "showing" signal and rebuilt the action
+bar around the focused entry from inside its "changed" handler. The stack now
+moves only when its side changes and the bar is shown or hidden only when its
+state differs (5 bar rebuilds for a 4-letter query before, 1 after, in a
+LumaUI harness of the same wiring). `cc_luma_window_search` also runs the
+search on a phone.

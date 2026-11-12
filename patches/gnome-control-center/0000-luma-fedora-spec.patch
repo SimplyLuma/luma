@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,126 @@
+@@ -28,14 +28,127 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.62%{?dist}
++Release:        1.luma.63%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -115,6 +115,7 @@
 +Patch1096:      0097-lumaui-one-image-decode-per-file.patch
 +Patch1097:      0098-lumaui-page-wash-300px-and-hidden-on-tv.patch
 +Patch1098:      0099-lumaui-tv-turn-off-tv-mode.patch
++Patch1099:      0100-lumaui-phone-search-keeps-bar.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.123
@@ -128,7 +129,7 @@
  BuildRequires:  desktop-file-utils
  BuildRequires:  docbook-style-xsl libxslt
  BuildRequires:  gcc
-@@ -85,6 +197,12 @@
+@@ -85,6 +198,12 @@
  %endif
  
  # Versioned library deps
@@ -141,7 +142,7 @@
  Requires: libadwaita%{?_isa} >= %{libadwaita_version}
  Requires: glib2%{?_isa} >= %{glib2_version}
  Requires: gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
-@@ -170,16 +288,10 @@
+@@ -170,16 +289,10 @@
  
  %build
  %meson \
@@ -160,7 +161,7 @@
  %if %{with malcontent}
    -Dmalcontent=true \
  %else
-@@ -200,6 +312,51 @@
+@@ -200,6 +313,51 @@
  
  %find_lang %{name} --all-name --with-gnome
  
