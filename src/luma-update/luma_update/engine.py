@@ -21,6 +21,7 @@ import re
 import threading
 import time
 
+from . import device_repo as devicemod
 from . import graph as graphmod
 from . import kargs as kargsmod
 from . import minisign, names, preview, redact, reporting, rpmver, versions
@@ -60,6 +61,10 @@ class Busy(UpdateError):
 
 class NothingToDo(UpdateError):
     error_class = ""
+
+
+class _DeviceUnchanged(Exception):
+    """rpm-ostree resolved the device update to the booted deployment: nothing to stage."""
 
 
 class NotOurs(UpdateError):
@@ -392,7 +397,7 @@ def repository_url(paths: Paths, settings: Settings) -> str:
 class Engine:
     def __init__(self, paths: Paths, settings: Settings, backend, probes, http, *, clock=time.time,
                  arch: str | None = None, on_change=None, boot_id=_boot_id,
-                 greenboot_installed=None, on_staged=None) -> None:
+                 greenboot_installed=None, on_staged=None, device=None) -> None:
         self.paths = paths
         self.settings = settings
         self.backend = backend
@@ -400,6 +405,8 @@ class Engine:
         self.http = http
         self.clock = clock
         self.arch = arch or platform.machine()
+        #: Device-package updates from a layered device repository (device_repo.py).
+        self.device = device if device is not None else devicemod.DeviceUpdates(paths, http, self.arch)
         self.on_change = on_change
         #: Called once a release is staged: its app updates are fetched for it (apps.py).
         self.on_staged = on_staged
@@ -422,6 +429,7 @@ class Engine:
         self._decision: graphmod.Decision | None = None
         self._decision_at = 0.0
         self._decision_channel = ""
+        self._device_offer: list[str] = []
 
     # ── Published status ─────────────────────────────────────────────────
 
@@ -518,11 +526,32 @@ class Engine:
             return requested
         return view.origin.channel if view.origin else ""
 
+    @staticmethod
+    def _is_device(pending) -> bool:
+        """A device-package update: same base commit, newer device packages."""
+        return isinstance(pending, dict) and pending.get("kind") == "device"
+
+    @classmethod
+    def _ident(cls, deployment, pending) -> str:
+        """What a pending change is recognised by on a deployment: the layered
+        checksum for a device update, else the base commit."""
+        return deployment.checksum if cls._is_device(pending) else deployment.base_commit
+
+    @classmethod
+    def _pending_to(cls, pending) -> str:
+        return str(pending.get("to_checksum" if cls._is_device(pending) else "to_commit") or "")
+
+    @classmethod
+    def _pending_from(cls, pending) -> str:
+        return str(pending.get("from_checksum" if cls._is_device(pending) else "from_commit") or "")
+
     def _ours_staged(self, view: SystemView, data: dict | None = None) -> bool:
         pending = (self.store.data if data is None else data).get("pending")
-        return bool(view.staged and isinstance(pending, dict)
-                    and view.staged.base_commit == pending.get("to_commit")
-                    and view.staged.base_commit != view.booted.base_commit)
+        if not (view.staged and isinstance(pending, dict)):
+            return False
+        target = self._pending_to(pending)
+        return bool(target and self._ident(view.staged, pending) == target
+                    and self._ident(view.booted, pending) != target)
 
     @staticmethod
     def _live_applied(view: SystemView) -> bool:
@@ -543,10 +572,12 @@ class Engine:
         previous deployment is running: the person picked it in the boot menu."""
         pending = (self.store.data if data is None else data).get("pending")
         first = view.deployments[0] if view.deployments else None
-        return bool(view.staged is None and first is not None and not first.booted and isinstance(pending, dict)
-                    and pending.get("to_commit") and first.base_commit == pending.get("to_commit")
-                    and view.booted.base_commit == pending.get("from_commit")
-                    and first.base_commit != view.booted.base_commit)
+        if not (view.staged is None and first is not None and not first.booted and isinstance(pending, dict)):
+            return False
+        target = self._pending_to(pending)
+        return bool(target and self._ident(first, pending) == target
+                    and self._ident(view.booted, pending) == self._pending_from(pending)
+                    and self._ident(first, pending) != self._ident(view.booted, pending))
 
     def _ours_waiting(self, view: SystemView, data: dict | None = None) -> str:
         """The commit of our update waiting for a restart (staged or finalized), or ''."""
@@ -663,7 +694,7 @@ class Engine:
         data = self.store.snapshot()
         pending_now = data.get("pending") if isinstance(data.get("pending"), dict) else None
         if pending_now and pending_now.get("staged_boot_id") and pending_now.get("staged_boot_id") == self.boot_id() \
-                and not (view.staged and view.staged.base_commit == pending_now.get("to_commit")):
+                and not (view.staged and self._ident(view.staged, pending_now) == self._pending_to(pending_now)):
             # Removed in this boot by someone else (rpm-ostree cleanup): nothing is pending.
             with self.store.locked():
                 if self.store.data.get("pending") == pending_now:
@@ -966,7 +997,7 @@ class Engine:
 
             # A staged release that has since been pulled is removed before booting into it.
             pending = data.get("pending") if isinstance(data.get("pending"), dict) else None
-            if self._ours_staged(view):
+            if self._ours_staged(view) and not self._is_device(pending):
                 staged_release = graph.by_commit(view.staged.base_commit)
                 if staged_release is not None and (staged_release.deadend or staged_release.paused):
                     log.warning("staged release %s was pulled or paused; removing it", staged_release.version)
@@ -986,6 +1017,8 @@ class Engine:
                 decision = graphmod.select_target(graph, booted_version=booted_version,
                                                   booted_commit=view.booted.base_commit, wariness=wariness,
                                                   now=now, do_not_retry=do_not_retry)
+            if decision.release is None and decision.action == "none" and view.origin is not None:
+                decision = self._device_decision(view, decision) or decision
             release = decision.release
             available = None
             if release is not None and self._ours_waiting(view) != release.commit:
@@ -995,6 +1028,8 @@ class Engine:
                     "download_bytes": release.download_bytes_estimate, "action": decision.action,
                     "channel": channel, "display_name": release.display_name,
                 }
+                if decision.action == "device":
+                    available["device_packages"] = list(self._device_offer)
             booted_release = decision.booted_release
             extras = {
                 "booted_deadend_reason": (booted_release.deadend_reason or "pulled")
@@ -1046,6 +1081,37 @@ class Engine:
         except Exception as error:
             self._fail(error, keep_state=STAGED if previous_state == STAGED else None)
             return None
+
+    def _device_decision(self, view: SystemView, decision: graphmod.Decision) -> graphmod.Decision | None:
+        """A device-package update on the booted release: the base commit is
+        current, but the device repository (device_repo.py) has newer builds of
+        installed device packages. None on a system without a device repository."""
+        if view.staged is not None or view.default_is_rollback or self._ours_waiting(view):
+            return None
+        try:
+            repo = self.device.repo()
+            if repo is None:
+                return None
+            newer = self.device.newer(repo)
+        except Exception as error:  # the OS check stands; the device repository is retried next time
+            log.warning("could not read the device repository: %s", error)
+            return None
+        if not newer:
+            return None
+        offer = sorted(f"{item.name}-{item.available}" for item in newer)
+        skip = self.store.data.get("device_skip")
+        if isinstance(skip, dict) and skip.get("booted") == view.booted.checksum and skip.get("offer") == offer:
+            log.info("not offering device packages %s again (%s)", " ".join(offer), skip.get("reason", ""))
+            return None
+        booted_release = decision.booted_release
+        release = graphmod.Release(
+            version=self._booted_version(view), commit=view.booted.base_commit, released_at=self.clock(),
+            rollout=None, summary="Device update: " + ", ".join(item.describe() for item in newer),
+            download_bytes_estimate=sum(item.size for item in newer),
+            display_name=booted_release.display_name if booted_release is not None else "")
+        self._device_offer = offer
+        return graphmod.Decision("device", release, "device-update", booted_release=booted_release,
+                                 waiting=decision.waiting)
 
     # ── Downloading and staging ──────────────────────────────────────────
 
@@ -1111,7 +1177,10 @@ class Engine:
         target_refspec = refspec_for(channel, self._arch(view), self.settings)
         # Adoption always rebases: there is no Luma origin to compare against.
         refspec = None if (view.origin is not None and target_refspec == view.origin.refspec) else target_refspec
-        kind = "update" if decision.action == "update" else "rollback"
+        kind = {"update": "update", "device": "device"}.get(decision.action, "rollback")
+        if kind == "device":
+            refspec = None  # the booted base commit, re-resolved against the device repository
+        device_offer = list(self._device_offer) if kind == "device" else []
         if self.backend.active_transaction() is not None:
             self._fail(Busy("another rpm-ostree transaction is in progress"))
             return False
@@ -1199,7 +1268,9 @@ class Engine:
             try:
                 stage(allow_downgrade)
             except Exception as error:
-                if not (added_packages and not token.is_cancelled() and package_repository_unreachable(error)):
+                # A device update is the repositories' newer packages: the cache has none.
+                if not (added_packages and kind != "device" and not token.is_cancelled()
+                        and package_repository_unreachable(error)):
                     raise
                 log.warning("the package repositories of added packages are unreachable (%s); staging %s with "
                             "the added packages from this computer's cache, to be refreshed with the next update",
@@ -1244,6 +1315,14 @@ class Engine:
                         "installed; using the public repository")
             preview.remove_credential(self.paths, self.settings)
 
+        try:
+            if self.device.repo() is not None:
+                # rpm-ostree keeps rpm-md metadata until it expires; a device
+                # release must resolve now, whether alone or with an OS update.
+                self.backend.refresh_md(force=True, message=lambda text: log.info("rpm-ostree: %s", text))
+        except Exception as error:
+            log.warning("could not refresh the device repository metadata: %s", error)
+
         transferred = False
         kargs_added: list[str] = []
         try:
@@ -1267,6 +1346,9 @@ class Engine:
                     self._download_cancel = None
             transferred = True
             view_after = self._view()
+            if kind == "device" and (view_after.staged is None
+                                     or view_after.staged.checksum == view.booted.checksum):
+                raise _DeviceUnchanged()
             if view_after.staged is None or view_after.staged.base_commit != release.commit:
                 if view_after.staged is not None and view_after.staged_origin is not None:
                     # Whatever this transaction staged is not what was asked for: never leave it
@@ -1289,6 +1371,21 @@ class Engine:
                     raise
             kargs_added = self._apply_release_kargs(view_after, release)
             self._refresh_boot_menu(view_after, release)
+        except _DeviceUnchanged:
+            log.info("rpm-ostree resolved device packages %s to the booted deployment; nothing to stage",
+                     " ".join(device_offer))
+            leftover = self._view().staged
+            if leftover is not None and leftover.checksum == view.booted.checksum:
+                self.backend.cleanup_pending(message=lambda text: log.info("rpm-ostree: %s", text))
+            with self.store.locked():
+                self.store.data["device_skip"] = {"booted": view.booted.checksum, "offer": device_offer,
+                                                  "reason": "no-change"}
+                self.store.data["available"] = None
+                self.store.data["last_check_reason"] = "device-update-no-change"
+            self._decision = None
+            self._set(progress=0.0)
+            self.refresh(keep_busy=False)
+            return False
         except Exception as error:
             if token.is_cancelled() and not transferred:
                 reason = self._cancel_reason or "cancelled"
@@ -1314,6 +1411,14 @@ class Engine:
                 "to_display_name": release.display_name,
                 "removed_packages": list(dropping),
             }
+            if kind == "device":
+                # Same base commit: the layered deployment checksum tells the two apart.
+                staged_now = self._view().staged
+                self.store.data["pending"].update(
+                    from_checksum=view.booted.checksum,
+                    to_checksum=staged_now.checksum if staged_now is not None else "",
+                    device_packages=device_offer)
+            self.store.data["device_skip"] = None
             # Kept until the next staging, so Depot can say what the update took over.
             self.store.data["removed_packages"] = {"to_version": str(release.version), "packages": list(dropping)} \
                 if dropping else None
@@ -1329,7 +1434,7 @@ class Engine:
         self._set(progress=1.0)
         self.refresh(keep_busy=False)
         log.info("staged %s (%s) for the next restart", release.version, release.commit)
-        if self.on_staged is not None:
+        if self.on_staged is not None and kind != "device":
             try:
                 self.on_staged(release)
             except Exception as error:  # noqa: BLE001 - the apps never cost the system update
@@ -1707,12 +1812,14 @@ class Engine:
             pending = self.store.data.get("pending")
             if not isinstance(pending, dict) or not pending.get("to_commit"):
                 return outcome
-            booted = view.booted.base_commit
+            device = self._is_device(pending)
+            booted = self._ident(view.booted, pending)
+            target, source = self._pending_to(pending), self._pending_from(pending)
             channel = pending.get("channel", "")
             arch = pending.get("arch") or (view.origin.arch if view.origin else self.arch)
             fields = dict(channel=channel, from_version=pending.get("from_version", ""),
                           to_version=pending.get("to_version", ""), arch=arch)
-            if booted == pending["to_commit"]:
+            if booted == target:
                 if health == "red":
                     pending["health_failures"] = int(pending.get("health_failures", 0)) + 1
                     self.store.data["pending"] = pending
@@ -1726,31 +1833,31 @@ class Engine:
                         self.store.data["kargs_added"] = [item for item in pending["kargs_added"]
                                                           if isinstance(item, str)]
                     # It works here: whatever went wrong on an earlier attempt is forgotten.
-                    self.store.remove_do_not_retry(pending["to_commit"])
-                    self._forget_finalize_failures(pending["to_commit"])
+                    if not device:
+                        self.store.remove_do_not_retry(pending["to_commit"])
+                    self._forget_finalize_failures(target)
                     outcome = "booted"
                 else:
                     outcome = "pending"
-            elif view.staged is not None and view.staged.base_commit == pending["to_commit"]:
+            elif view.staged is not None and self._ident(view.staged, pending) == target:
                 outcome = "pending"
             elif pending.get("staged_boot_id") and pending.get("staged_boot_id") == self.boot_id():
                 # Same boot, and the staged deployment is gone: someone removed it.
                 self.store.data["pending"] = None
                 outcome = "cleared"
-            elif booted == pending.get("from_commit") and self._ours_finalized(view):
+            elif booted == source and self._ours_finalized(view):
                 # The update finalized and is still the default, but the previous entry was
                 # chosen in the boot menu for this one boot. The next restart starts the update.
                 outcome = "pending"
-            elif booted == pending.get("from_commit"):
-                still_there = any(d.base_commit == pending["to_commit"] for d in view.deployments)
+            elif booted == source:
+                still_there = any(self._ident(d, pending) == target for d in view.deployments)
                 health_failures = int(pending.get("health_failures", 0) or 0)
                 if still_there and health_failures > 0:
                     # greenboot recorded a failed health check on the new version, then fell back.
-                    self.store.add_do_not_retry(pending["to_commit"], pending.get("to_version", ""),
-                                                "rolled-back-after-failed-boot", now)
+                    self._mark_failed(pending, "rolled-back-after-failed-boot", now)
                     self.store.data["rollback_notice"] = {
                         "from_version": pending.get("to_version", ""), "to_version": view.booted.version,
-                        "at": int(now), "id": f"{pending['to_commit'][:16]}-{int(now)}",
+                        "at": int(now), "id": f"{target[:16]}-{int(now)}",
                         "from_display_name": self._failed_name(view, pending)}
                     reporting.queue_transition(self.store, self.paths, result="rolled_back",
                                                error_class="health-check", **fields)
@@ -1759,8 +1866,7 @@ class Engine:
                     # The previous version became the default again with no failed health check
                     # recorded: the new version never got far enough to run its checks, or someone
                     # rolled back by other means. Not proof it is broken: wait a week.
-                    self.store.add_do_not_retry(pending["to_commit"], pending.get("to_version", ""),
-                                                "booted-previous-deployment", now)
+                    self._mark_failed(pending, "booted-previous-deployment", now)
                     reporting.queue_transition(self.store, self.paths, result="rolled_back",
                                                error_class="unknown", **fields)
                     outcome = "booted_previous"
@@ -1769,12 +1875,11 @@ class Engine:
                     # held power button) drops it with /run. Retried at once the first time.
                     counts = self.store.data.get("finalize_failures")
                     counts = {k: v for k, v in counts.items() if isinstance(v, int)} if isinstance(counts, dict) else {}
-                    failures = counts.get(pending["to_commit"], 0) + 1
-                    counts[pending["to_commit"]] = failures
+                    failures = counts.get(target, 0) + 1
+                    counts[target] = failures
                     self.store.data["finalize_failures"] = dict(list(counts.items())[-16:])
                     if failures >= 2:
-                        self.store.add_do_not_retry(pending["to_commit"], pending.get("to_version", ""),
-                                                    "failed-to-finalize", now)
+                        self._mark_failed(pending, "failed-to-finalize", now)
                     reporting.queue_transition(self.store, self.paths, result="failed",
                                                error_class="finalize", **fields)
                     outcome = "failed"
@@ -1785,6 +1890,16 @@ class Engine:
         log.info("boot reconciliation: %s", outcome)
         self.refresh()
         return outcome
+
+    def _mark_failed(self, pending: dict, reason: str, now: float) -> None:
+        """Do not offer a failed change again: an OS commit through the retry
+        marks, a device update (whose base commit is the booted one) by its
+        package set on the deployment it was built on."""
+        if self._is_device(pending):
+            self.store.data["device_skip"] = {"booted": self._pending_from(pending),
+                                              "offer": list(pending.get("device_packages") or []), "reason": reason}
+        else:
+            self.store.add_do_not_retry(pending["to_commit"], pending.get("to_version", ""), reason, now)
 
     def _forget_finalize_failures(self, commit: str) -> None:
         counts = self.store.data.get("finalize_failures")

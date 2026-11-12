@@ -35,3 +35,24 @@ platform packages come from a device repository. The kernel device-tree board
 must match that policy; a signed graph cannot authorize another device or an
 explicitly different commit architecture. Older generic commits without an
 architecture metadata key remain accepted.
+
+A device with a layered device kit (`/var/lib/luma-device-layer/layered` and
+the `/etc/yum.repos.d/ID.repo` luma-device-layer wrote) is also offered
+device-package updates when the graph has no newer OS commit
+([device_repo.py](luma_update/device_repo.py)): when the repository's
+`primary` metadata has a newer EVR of an installed package from the repo
+file's `includepkgs`, the check publishes `available` with the booted version
+and commit, `last_check_reason` `device-update` and a `Device update: ...`
+summary. Staging forces `RefreshMd` and redeploys the booted base commit
+through the same path as an OS update (kernel arguments, greenboot,
+rollback); the pending change is recognised by its layered deployment
+checksum. A rolled-back or unchanged device update is not offered again on
+that deployment until the repository has newer builds. Devices without a
+device repository read nothing and behave as before.
+
+To publish a device-only OTA, build the newer device packages (a higher
+version or release than the installed ones; the kit's `packages`, so the repo
+file's `includepkgs` admits them), sign them and `repomd.xml` with the Luma OS
+Release key, and publish the repository to its `[device_repo] url` (for
+example `https://dl.simplyluma.com/os/devices/aarch64/fairphone-fp6/`). No
+graph or OS commit changes; devices offer the update on their next check.

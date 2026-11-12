@@ -71,6 +71,7 @@ DEFAULT_STATE = {
     "booted_display_name": None,   # {commit, name}: the graph's name for the booted release (presentation only)
     "removed_packages": None,
     "kept_packages": None,         # {to_version, packages}: added packages newer than the release kept
+    "device_skip": None,           # {booted, offer, reason}: a device-package offer not to make again on that deployment
     "attempt_booted": "",          # base commit booted when last_attempt/last_error were recorded      # {to_version, packages}: added packages the last staged release ships itself
 }
 
