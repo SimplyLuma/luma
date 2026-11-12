@@ -1621,7 +1621,10 @@ class TideWindow(AppWindow):
         self.pane.set_title(self.pane_trail.current.title)
         if self.source_id:
             self.pane.add(NavigationTrailBar(self.pane_trail, title=False))
-        if self.source_id in ('add', 'add-server') or self.editing:
+        if self.source_id == 'add' and not self.editing:
+            self._folder_choices()
+            self._source_form(focus=False)
+        elif self.source_id in ('add', 'add-server') or self.editing:
             self._source_form()
         elif self.source_id:
             try:
@@ -1677,7 +1680,35 @@ class TideWindow(AppWindow):
             self.pane.add_list(rows)
             self.pane.set_footer(add)
 
-    def _source_form(self):
+    def _folder_choices(self):
+        """Add source, first part: a folder on this device or a mounted drive (an SD card),
+        so a phone without a usable file chooser can still pick where its music lives."""
+        self.pane.add_section('Folder')
+        rows = []
+        for choice in self.source.folder_choices():
+            row = DetailsRow(choice.name, choice.subtitle, lead=SourceFace(choice.icon),
+                             on_activate=lambda choice=choice: self._add_folder_choice(choice))
+            row.button.set_name('td-source-folder-' + ''.join(c if c.isalnum() else '-' for c in choice.name))
+            rows.append(row)
+        other = DetailsRow('Choose a folder…', 'Any folder on this device or a drive', lead=SourceFace('folder-plus'),
+                           on_activate=self._add_folder)
+        other.button.set_name('td-source-folder-choose')
+        rows.append(other)
+        self.pane.add_list(rows)
+
+    def _add_folder_choice(self, choice):
+        self.source.add_folder(choice.path, choice.name)
+        self.pane_trail.start(Place('sources', 'Sources'))
+        self.refresh_library()
+        Toast.show(self.layer, 'Added ' + choice.name, kind='done')
+
+    def mounts_changed(self):
+        """A drive was mounted or removed: an open Add source offers what is there now."""
+        if self.pane_kind == 'sources' and self.source_id == 'add' and not self.editing:
+            self._fill_pane()
+        self.refresh_library()
+
+    def _source_form(self, focus=True):
         source = self.library.source(self.source_id) if self.editing else None
         facts = dict(source.facts) if source else {}
         self.pane.add_section('Server')
@@ -1711,7 +1742,8 @@ class TideWindow(AppWindow):
             self.server_address.entry.grab_focus()
             self.server_address.entry.select_region(0, 0)
             return False
-        GLib.idle_add(focus_address)
+        if focus:
+            GLib.idle_add(focus_address)
 
     def _connect_source(self):
         address, user, password = self.server_address.text, self.server_user.text, self.server_password.text

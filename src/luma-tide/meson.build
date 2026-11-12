@@ -12,6 +12,7 @@ python.install_sources(
   'luma_tide/preview.py',
   'luma_tide/presentation.py',
   'luma_tide/fixture.py',
+  'luma_tide/folders.py',
   'luma_tide/fixture_application.py',
   'luma_tide/live.py',
   'luma_tide/recency.py',
