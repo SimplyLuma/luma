@@ -189,9 +189,10 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
     const at = keyboard.indexOf('    _relayout() {');
     const body = keyboard.slice(keyboard.indexOf('{', at) + 1, keyboard.indexOf('\n    }', at));
     const relayout = new Function('Main', 'St', 'Keycap', 'global', 'GLib', body);
-    let style = null, styleWrites = 0, sizeWrites = 0;
+    let style = null, styleWrites = 0, sizeWrites = 0, toolSyncs = 0;
     const sized = {};
     const actor = {_currentPage: {getRatio: () => [11.5, 4]},
+        _controls: {visible: false}, _syncTools() { toolSyncs++; },
         get_style: () => style, set_style(value) { style = value; styleWrites++; },
         get height() { return sized.height ?? 0; }, set height(v) { sized.height = v; sizeWrites++; },
         get width() { return sized.width ?? 0; }, set width(v) { sized.width = v; sizeWrites++; },
@@ -209,18 +210,72 @@ for (const monitor of [{width: 360, height: 800}, {width: 800, height: 360}, {wi
     run(360, 808);
     run(360, 808);
     assert(styleWrites === styles && sizeWrites === sizes, 'an unchanged relayout writes no style or size');
+    assert(!actor._controls.visible && style === 'padding-bottom: 28px;',
+        'a keyboard without the thumb gap keeps its controls in the strip');
+    // A phone held upright: settings and hide sit in the thumb gap's top
+    // row, the home gesture zone below it stays clear.
+    const phone = {width: 372, height: 828};
+    const phoneInset = Keycap.bottomInset(phone, true, 28);
+    const upright = () => relayout.call(actor, {layoutManager: {keyboardMonitor: phone},
+        presentation: {keyboardInset: () => phoneInset}}, {ThemeContext: {get_for_stage: () => ({scale_factor: 1})}},
+    Keycap, {stage: {}});
+    const syncs = toolSyncs;
+    upright();
+    assert(actor._controls.visible && toolSyncs === syncs + 1 &&
+        style === `padding-bottom: ${phoneInset - g.min_row}px;` &&
+        actor.height === Keycap.keyboardHeight(phone, 4, 11.5, phoneInset),
+    `the thumb gap holds the control row above the home gesture (${style}, ${actor.height})`);
+    const writes = [styleWrites, sizeWrites, toolSyncs];
+    upright();
+    assert(styleWrites === writes[0] && sizeWrites === writes[1] && toolSyncs === writes[2],
+        'an unchanged phone relayout writes nothing');
+    run(1038, 1076);
+    assert(!actor._controls.visible && toolSyncs === writes[2] + 1, 'a tablet returns the controls to the strip');
     // The greeter has no presentation: a handheld keeps the thumb gap below
     // the keys there, a desktop greeter keeps nothing.
     const greeter = deviceClass => relayout.call(actor, {layoutManager: {keyboardMonitor: {width: 372, height: 828}},
         presentation: null}, {ThemeContext: {get_for_stage: () => ({scale_factor: 1})}}, Keycap, {stage: {}},
     {getenv: name => (name === 'LUMA_DEVICE_CLASS' ? deviceClass : null)});
     greeter('handheld');
-    assert(style === `padding-bottom: ${g.thumb_gap}px;` &&
+    assert(style === `padding-bottom: ${g.thumb_gap - g.min_row}px;` && actor._controls.visible &&
         actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5, g.thumb_gap),
         `the handheld greeter keyboard keeps the thumb gap (${style}, ${actor.height})`);
     greeter(null);
-    assert(style === null && actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5),
+    assert(style === null && !actor._controls.visible && actor.height === Keycap.keyboardHeight({width: 372, height: 828}, 4, 11.5),
         'a greeter that is not a handheld keeps no inset');
+}
+
+// The thumb gap's control row: one touch row, only where the thumb gap is,
+// leaving at least the home gesture zone (28 px) below it.
+assert(Keycap.controlRow(g.thumb_gap) === g.min_row && Keycap.controlRow(g.thumb_gap + 8) === g.min_row,
+    'a phone thumb gap holds one touch row of controls');
+assert(Keycap.controlRow(28) === 0 && Keycap.controlRow(0) === 0, 'other insets hold no controls');
+assert(g.thumb_gap - g.min_row >= 28, 'the control row leaves the home gesture zone clear');
+
+// Settings and hide leave the strip while the control row shows them, so
+// hide stays reachable while suggestions fill the strip; number pads keep
+// hide (in the strip or the row) and gain Enter.
+{
+    const at = keyboard.indexOf('    _syncTools() {');
+    const body = keyboard.slice(keyboard.indexOf('{', at) + 1, keyboard.indexOf('\n    }', at));
+    const syncTools = new Function(body);
+    const tools = (controls, numeric, suggesting) => {
+        const actor = {_tools: {visible: true}, _suggestions: {visible: false, count: suggesting ? 3 : 0},
+            _suggestionsShown: true, _controls: {visible: controls}, _stripEnter: {visible: false},
+            _toolButtons: [0, 1, 2, 3, 4].map(() => ({visible: true})),
+            _keycapPolicy: {isNumeric: () => numeric}, _keyboardController: {purpose: 0}};
+        syncTools.call(actor);
+        return {strip: actor._toolButtons.map(b => (b.visible ? 1 : 0)).join(''),
+            enter: actor._stripEnter.visible, tools: actor._tools.visible, suggestions: actor._suggestions.visible};
+    };
+    assert(tools(false, false, false).strip === '11111', 'without the row the strip has every tool');
+    assert(tools(true, false, false).strip === '11100', 'with the row settings and hide leave the strip');
+    assert(tools(true, true, false).strip === '00000' && tools(true, true, false).enter, 'a number pad strip keeps Enter');
+    assert(tools(false, true, false).strip === '00001', 'a number pad without the row keeps hide in the strip');
+    const typing = tools(true, false, true);
+    assert(typing.suggestions && !typing.tools, 'suggestions take the strip while a word has them');
+    assert(keyboard.includes("add('chevron-down', _('Hide keyboard'), () => this.close(true))") &&
+        keyboard.includes('this.add_child(this._controls);'), 'the control row carries hide');
 }
 
 // A key never sets the row height: its label's font (a fallback font for one
