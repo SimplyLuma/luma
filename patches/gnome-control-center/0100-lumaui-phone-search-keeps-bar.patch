@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Wed, 11 Nov 2026 12:00:00 -0600
+Subject: [PATCH] LumaUI Settings: phone search keeps its bar while typing
+
+On a phone every keystroke in the bar search ran show_detail, which
+re-emitted "showing", which rebuilt the action bar around the focused
+entry from inside its own "changed" handler. Move the list-first stack
+only when the side changes and show or hide the bar only when its state
+differs. cc_luma_window_search now runs the search on a phone too: the
+bar item's set_text does not emit "search-changed".
+---
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index 74c8346..317b598 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -275,15 +275,22 @@ static void search_changed (GtkWidget *foot, const char *text, Frame *f)
+   cc_luma_shell_search (CC_LUMA_SHELL (f->shell), text, search_counts, f);
+   if (f->stack && f->search_item)
+     {
+-      if (text && *text) luma_list_first_show_detail (LUMA_LIST_FIRST (f->stack));
+-      else luma_list_first_show_list (LUMA_LIST_FIRST (f->stack));
++      /* Each keystroke lands here; only a change of side moves the stack (and re-emits "showing"). */
++      gboolean detail = g_str_equal (luma_list_first_get_showing (LUMA_LIST_FIRST (f->stack)), "detail");
++      if (text && *text) { if (!detail) luma_list_first_show_detail (LUMA_LIST_FIRST (f->stack)); }
++      else if (detail) luma_list_first_show_list (LUMA_LIST_FIRST (f->stack));
+     }
+ }
+ 
+ static void list_showing (LumaListFirst *stack, const char *which, Frame *f)
+ {
+   if (!f->search_center) return;
+-  if (g_str_equal (which, "list") || (f->search_item && *luma_bar_item_search_get_text (f->search_item)))
++  gboolean want = g_str_equal (which, "list") || (f->search_item && *luma_bar_item_search_get_text (f->search_item));
++  gboolean shown = !g_str_equal (luma_action_center_get_state (LUMA_ACTION_CENTER (f->search_center)), "hidden");
++  /* The bar already holds the field: showing it again rebuilds the bar and re-parents the focused
++   * entry from inside its own "changed" (an on-screen keyboard's commit), once per keystroke. */
++  if (want == shown) return;
++  if (want)
+     {
+       LumaBarItem *items[] = { f->search_item };
+       luma_action_center_show_bar (LUMA_ACTION_CENTER (f->search_center), items, 1, NULL);
+@@ -492,7 +499,9 @@ cc_luma_window_search (GtkWindow *window, const char *text)
+   Frame *f = g_object_get_data (G_OBJECT (window), "cf-frame");
+   if (f && f->search_item)
+     {
++      /* set_text syncs the field without "search-changed"; run the search as the foot does. */
+       luma_bar_item_search_set_text (f->search_item, text);
++      search_changed (NULL, text, f);
+       return;
+     }
+   GtkWidget *entry = f && f->foot ? luma_sidebar_foot_get_entry (LUMA_SIDEBAR_FOOT (f->foot)) : NULL;
