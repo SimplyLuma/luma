@@ -73,6 +73,14 @@ _FP6_CAMERA_PRESENTATION = {
     "/base/soc@0/cci@ac16000/i2c-bus@1/camera@3d": ("Front", 2),
 }
 
+# The FP6 device tree describes the S5KKD1SP front sensor as mounted at 90
+# degrees, the same as the IMX896 main sensor, and the front preview, stills
+# and taps came out upside down. Its mount is 270 degrees; this replaces the
+# reported value (and a missing one) until the device tree carries it.
+_FP6_MOUNT_ROTATIONS = {
+    "/base/soc@0/cci@ac16000/i2c-bus@1/camera@3d": 270,
+}
+
 # OV13B10's smaller 1364x768 mode caps exposure at 8.245 ms.  This request
 # selects the 2080x1170 mode (16.553 ms ceiling). Keep this FP6 hardware
 # decision below the shared application surface. The shared application then
@@ -363,7 +371,7 @@ def list_camera_devices() -> tuple[CameraDevice, ...]:
                 identifier=identifier,
                 label=label,
                 location=location,
-                rotation=rotations.get(identifier, 0),
+                rotation=_FP6_MOUNT_ROTATIONS.get(identifier, rotations.get(identifier, 0)),
                 preview_width=preview_width,
                 preview_height=preview_height,
                 viewfinder_width=viewfinder_width,

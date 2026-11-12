@@ -67,6 +67,44 @@ class CameraCapabilityTests(unittest.TestCase):
             ["camera@1a", "camera@36", "camera@3d"],
         )
 
+    def test_fp6_front_mount_replaces_the_device_tree_rotation(self) -> None:
+        listing = """Available cameras:
+1: Built-in Front Camera (/base/soc@0/cci@ac16000/i2c-bus@1/camera@3d)
+2: Built-in Back Camera (/base/soc@0/cci@ac15000/i2c-bus@0/camera@1a)
+3: Built-in Back Camera (/base/soc@0/cci@ac15000/i2c-bus@1/camera@36)
+"""
+        reported = {
+            "/base/soc@0/cci@ac16000/i2c-bus@1/camera@3d": 90,
+            "/base/soc@0/cci@ac15000/i2c-bus@0/camera@1a": 90,
+            "/base/soc@0/cci@ac15000/i2c-bus@1/camera@36": 270,
+        }
+        for rotations in (reported, {}):
+            with self.subTest(reported=bool(rotations)), mock.patch(
+                "shutil.which", return_value="/usr/bin/cam"
+            ), mock.patch(
+                "subprocess.run", return_value=mock.Mock(stdout=listing)
+            ), mock.patch(
+                "prairie_apps.camera_backend._pipewire_camera_rotations",
+                return_value=rotations,
+            ):
+                devices = {device.label: device for device in list_camera_devices()}
+            front = devices["Front"]
+            self.assertEqual(front.rotation, 270)
+            self.assertEqual(
+                image_rotation_from_mount(front.rotation, front_facing=True), 90
+            )
+        # Rear sensors keep what the device tree reports.
+        self.assertEqual(devices["Main"].rotation, 0)
+        with mock.patch("shutil.which", return_value="/usr/bin/cam"), mock.patch(
+            "subprocess.run", return_value=mock.Mock(stdout=listing)
+        ), mock.patch(
+            "prairie_apps.camera_backend._pipewire_camera_rotations",
+            return_value=reported,
+        ):
+            devices = {device.label: device for device in list_camera_devices()}
+        self.assertEqual(devices["Main"].rotation, 90)
+        self.assertEqual(devices["Wide"].rotation, 270)
+
     def test_display_point_maps_through_sensor_mount_rotation(self) -> None:
         self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 0), (500, 750))
         self.assertEqual(sensor_point_from_display(50, 25, 100, 100, 90), (750, 500))
