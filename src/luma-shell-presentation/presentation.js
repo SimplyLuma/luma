@@ -947,9 +947,15 @@ export class Presentation {
     }
 
     _queueInkSample() {
-        if (this._inkSampleSource || this._inkSampling || this._home.visible || !this._statusWindow ||
+        if (this._inkSampling || this._home.visible || !this._statusWindow ||
             this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
             return;
+        // Sample once the stage has settled. Every pick repaints the stage off
+        // screen and reads it back on the compositor thread, about a frame
+        // each, so sampling while content moves (a scroll, an animation)
+        // dropped a run of frames every INK_SAMPLE_MS.
+        if (this._inkSampleSource)
+            GLib.source_remove(this._inkSampleSource);
         this._inkSampleSource = GLib.timeout_add(GLib.PRIORITY_LOW, INK_SAMPLE_MS, () => {
             this._inkSampleSource = 0;
             this._sampleInk();
