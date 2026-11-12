@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.17%{?dist}
+Release:        1.luma.18%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -115,6 +115,11 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.18
+- The cellular link follows the mobile data switch: NetworkManager's WWAN
+  state and the Mobile Network panel's per-SIM data setting. Off disconnects
+  only the data bearer; on by default.
+
 * Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.17
 - The Bluetooth UART wakeup rule also matches the coldplug add event: on a
   normal boot the driver binds before udev starts, so the rule never ran.

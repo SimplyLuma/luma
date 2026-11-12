@@ -175,9 +175,38 @@ class CellularLink:
             return None
         return found[0], index
 
-    def connected_bearer(
-        self, modem: str, modem_values: dict[str, str]
-    ) -> tuple[str, dict[str, str]] | None:
+    def data_enabled(self, modem_values: dict[str, str]) -> bool:
+        """The person's mobile data switch, as Settings' Mobile Network panel
+        writes it: NetworkManager's WWAN radio state, and the autoconnect of
+        the NetworkManager GSM profile bound to this SIM (the panel's per-SIM
+        Mobile Data). Data is on unless one of them says off; an unreadable
+        answer keeps it on."""
+        try:
+            if run(["nmcli", "--terse", "--fields", "WWAN", "radio"]).strip() == "disabled":
+                return False
+            sim = re.search(r"/SIM/(\d+)$", suffix(modem_values, ".generic.sim"))
+            if not sim:
+                return True
+            iccid = suffix(values(run(["mmcli", "-i", sim.group(1), "--output-keyvalue"], check=False)),
+                           ".properties.iccid")
+            if not usable(iccid):
+                return True
+            bound = []
+            for line in run(["nmcli", "--terse", "--escape", "no", "--fields",
+                             "UUID,TYPE", "connection", "show"]).splitlines():
+                uuid_value, _separator, kind = line.partition(":")
+                if kind != "gsm" or not re.fullmatch(r"[0-9a-fA-F-]{36}", uuid_value):
+                    continue
+                profile = values(run(["nmcli", "--terse", "--escape", "no", "--fields",
+                                      "connection.autoconnect,gsm.sim-id", "connection",
+                                      "show", "uuid", uuid_value]))
+                if profile.get("gsm.sim-id") == iccid:
+                    bound.append(profile.get("connection.autoconnect") == "yes")
+            return not bound or any(bound)
+        except (OSError, subprocess.SubprocessError):
+            return True
+
+    def data_bearers(self, modem_values: dict[str, str]) -> tuple[list, str]:
         paths = set(re.findall(r"/Bearer/(\d+)", "\n".join(modem_values.values())))
         entries = []
         attach_apn = ""
@@ -199,7 +228,27 @@ class CellularLink:
         # A carrier may expose a generic parent-network attach APN even when
         # the MVNO requires its own APN for user traffic.  An explicit Luma
         # setting therefore overrides the modem-reported attach fallback.
-        connect_apn = self.apn or attach_apn
+        return entries, self.apn or attach_apn
+
+    def stop_data(self, modem_values: dict[str, str]) -> None:
+        """Disconnect only this helper's data bearer (the data APN); the IMS
+        and attach bearers, and with them calls and texts, stay."""
+        entries, connect_apn = self.data_bearers(modem_values)
+        for bearer, bearer_values, bearer_type, bearer_apn in entries:
+            if (
+                connect_apn
+                and bearer_type == "default"
+                and bearer_apn == connect_apn
+                and suffix(bearer_values, ".status.connected") == "yes"
+            ):
+                run(["mmcli", "-b", bearer, "--disconnect"])
+        # Turning data back on connects at once, not after the retry throttle.
+        self.last_connect_action = float("-inf")
+
+    def connected_bearer(
+        self, modem: str, modem_values: dict[str, str]
+    ) -> tuple[str, dict[str, str]] | None:
+        entries, connect_apn = self.data_bearers(modem_values)
         for bearer, bearer_values, bearer_type, bearer_apn in entries:
             interface = suffix(bearer_values, ".status.interface")
             if (
@@ -313,6 +362,10 @@ class CellularLink:
                 return GLib.SOURCE_REMOVE
             if registration not in {"home", "roaming"}:
                 self.cleanup()
+                return GLib.SOURCE_REMOVE
+            if not self.data_enabled(modem_values):
+                self.cleanup()
+                self.stop_data(modem_values)
                 return GLib.SOURCE_REMOVE
             bearer = self.connected_bearer(modems[0], modem_values)
             if not bearer:
@@ -460,6 +513,22 @@ def main() -> int:
         Gio.DBusSignalFlags.NONE,
         link.changed,
     )
+    # Mobile data on/off: NetworkManager's WWAN state and its saved profiles.
+    for interface, member, path in (
+        (PROPERTIES_INTERFACE, "PropertiesChanged", "/org/freedesktop/NetworkManager"),
+        ("org.freedesktop.NetworkManager.Settings", "NewConnection", None),
+        ("org.freedesktop.NetworkManager.Settings", "ConnectionRemoved", None),
+        ("org.freedesktop.NetworkManager.Settings.Connection", "Updated", None),
+    ):
+        bus.signal_subscribe(
+            "org.freedesktop.NetworkManager",
+            interface,
+            member,
+            path,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            link.changed,
+        )
     link.schedule_reconcile(0)
     GLib.timeout_add_seconds(300, link.periodic_reconcile)
     loop = GLib.MainLoop()
