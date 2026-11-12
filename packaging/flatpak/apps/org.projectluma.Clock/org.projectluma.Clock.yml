@@ -30,6 +30,7 @@
       "build-commands": [
         "install -d /app/lib/python3.14/site-packages /app/bin /app/share/prairie-core",
         "cp -a --no-preserve=ownership src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/",
+        "python3 -m compileall -q -f -j0 --invalidation-mode checked-hash /app/lib/python3.14/site-packages",
         "install -Dm755 src/prairie-core/bin/prairie-clock /app/bin/prairie-clock-real",
         "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup prairie-clock-real \"$@\"\\n' > /app/bin/prairie-clock",
         "chmod 755 /app/bin/prairie-clock",

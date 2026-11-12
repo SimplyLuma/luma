@@ -34,6 +34,7 @@
         "PYTHONPATH=src/external/charlie python3 -m unittest discover -s src/external/charlie/tests -p 'test_host_mail_oauth_cancel.py'",
         "install -d /app/lib/python3.14/site-packages /app/bin /app/share/charlie /app/share/dbus-1/services",
         "cp -a src/external/charlie/charlie_luma /app/lib/python3.14/site-packages/",
+        "python3 -m compileall -q -f -j0 --invalidation-mode checked-hash /app/lib/python3.14/site-packages",
         "install -m755 src/external/charlie/data/org.projectluma.Charlie.in /app/bin/org.projectluma.Charlie",
         "install -m644 src/external/charlie/data/charlie.css /app/share/charlie/charlie.css",
         "sed 's|Exec=/usr/bin/|Exec=/app/bin/|' src/external/charlie/data/org.projectluma.Charlie.service > /app/share/dbus-1/services/org.projectluma.Charlie.service",

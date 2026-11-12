@@ -30,6 +30,7 @@
         "install -Dm644 src/luma-darkroom/style/darkroom.css /app/share/luma-darkroom/darkroom.css",
         "install -d /app/lib/python3.14/site-packages/data/icons",
         "cp -a src/luma-darkroom/data/icons/. /app/lib/python3.14/site-packages/data/icons/",
+        "python3 -m compileall -q -f -j0 --invalidation-mode checked-hash /app/lib/python3.14/site-packages",
         "install -d /app/share/dbus-1/services",
         "printf '[D-BUS Service]\\nName=org.projectluma.Darkroom\\nExec=/app/bin/luma-darkroom\\n' > /app/share/dbus-1/services/org.projectluma.Darkroom.service"
       ]

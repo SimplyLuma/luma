@@ -23,6 +23,7 @@
       "build-commands": [
         "install -d /app/lib/python3.14/site-packages /app/bin",
         "cp -a src/luma-monitor/luma_monitor /app/lib/python3.14/site-packages/",
+        "python3 -m compileall -q -f -j0 --invalidation-mode checked-hash /app/lib/python3.14/site-packages",
         "printf '#!/bin/sh\\nexec python3 -m luma_monitor.application \"$@\"\\n' > /app/bin/io.luma.Monitor",
         "chmod 755 /app/bin/io.luma.Monitor",
         "install -Dm644 src/luma-monitor/data/io.luma.Monitor.desktop /app/share/applications/io.luma.Monitor.desktop",

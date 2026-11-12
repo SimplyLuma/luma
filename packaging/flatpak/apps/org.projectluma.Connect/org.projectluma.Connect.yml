@@ -31,6 +31,7 @@
         "install -Dm644 src/luma-continuity/luma_continuity/connect_view.py /app/lib/python3.14/site-packages/luma_continuity/connect_view.py",
         "install -Dm644 src/luma-continuity/luma_continuity/phone_contract.py /app/lib/python3.14/site-packages/luma_continuity/phone_contract.py",
         "install -Dm644 src/luma-continuity/luma_continuity/companion_contract.py /app/lib/python3.14/site-packages/luma_continuity/companion_contract.py",
+        "python3 -m compileall -q -f -j0 --invalidation-mode checked-hash /app/lib/python3.14/site-packages",
         "install -Dm755 src/luma-continuity/bin/luma-connect /app/bin/luma-connect-real",
         "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup luma-connect-real \"$@\"\\n' > /app/bin/luma-connect",
         "chmod 755 /app/bin/luma-connect",
