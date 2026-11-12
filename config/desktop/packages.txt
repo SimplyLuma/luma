@@ -118,7 +118,7 @@ luma-ari-0.1.0-1.luma.22.fc44.noarch
 luma-ari-runtime-0.4.0-1.luma.1.fc44.x86_64
 luma-display-config-0.1.0-1.luma.7.creator20261024.1.fc44.noarch
 luma-leaf-0.1.0-1.luma.13.creator20261007.1.fc44.noarch
-luma-tide-0.1.0-2.luma.39.fc44.noarch
+luma-tide-0.1.0-2.luma.40.fc44.noarch
 luma-viewer-0.1.0-1.luma.18.nightly20261026.1.fc44.noarch
 intel-crashlog-1.2.0-1.luma.1.fc44.x86_64
 luma-vitals-0.1.0-1.luma.16.fc44.noarch

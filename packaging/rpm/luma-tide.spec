@@ -29,7 +29,7 @@
 # cherry-pick -- the right home for the canvas artwork re-sync.
 Name:           luma-tide
 Version:        0.1.0
-Release:        2.luma.39%{?dist}
+Release:        2.luma.40%{?dist}
 Summary:        Source-aware native music player for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/apps/tide
@@ -149,7 +149,7 @@ dbus-run-session -- xvfb-run -a --server-args="-screen 0 1440x1000x24" env GSK_R
 dbus-run-session -- xvfb-run -a --server-args="-screen 0 1440x1000x24" env GSK_RENDERER=cairo PYTHONPATH=.:tests python3 tests/sign_in_runtime.py
 
 # Current v71 desktop and phone contracts, plus compact player/source checks.
-for runtime in deck_narrow_runtime search_panel_runtime artwork_hues_runtime v71_album_actions_runtime v71_desktop_runtime v71_startup_search_runtime creator_forms_runtime creator_audio_runtime source_navigation_runtime; do
+for runtime in deck_narrow_runtime search_panel_runtime artwork_hues_runtime v71_album_actions_runtime v71_desktop_runtime v71_startup_search_runtime creator_forms_runtime creator_audio_runtime source_navigation_runtime source_folders_runtime; do
   dbus-run-session -- xvfb-run -a --server-args="-screen 0 1440x1000x24" env GSK_RENDERER=cairo GDK_DEBUG=no-portals PYTHONPATH=.:tests python3 "tests/$runtime.py"
 done
 
@@ -175,6 +175,9 @@ PYTHONPATH=.:tests python3 tests/gapless_runtime.py
 %{_userunitdir}/graphical-session-pre.target.wants/luma-tide-retire-preview-overrides.service
 
 %changelog
+* Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.40
+- Add source offers the Music folder, mounted drives and a folder chooser.
+
 * Wed Nov 04 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-2.luma.39
 - Tide in TV posture: library, now playing and sources for the remote.
 

@@ -155,6 +155,18 @@ class FixtureLibrary:
     def remove_source(self, source_id):
         self.library = replace(self.library, sources=tuple(s for s in self.library.sources if s.id != source_id))
 
+    def folder_choices(self):
+        """The preview has no drives of its own; a check may offer some."""
+        return tuple(getattr(self, "offered_folders", ()))
+
+    def add_folder(self, path, name=None):
+        identifier = f"f{len(self.library.sources)}"
+        source = MusicSource(identifier, name or path.name or "Music", "hard-drive", "busy", "Syncing · 0 songs",
+                             (("Folder", str(path)), ("Songs", "Counting")), False)
+        self.offered_folders = tuple(c for c in self.folder_choices() if c.path != path)
+        self.library = replace(self.library, sources=self.library.sources + (source,))
+        return identifier
+
     def connect(self, address, username, password, source_id=None):
         if not address.strip() or not username.strip():
             raise ValueError("Enter a server address and username.")

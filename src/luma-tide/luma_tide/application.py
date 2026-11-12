@@ -40,6 +40,7 @@ except ImportError:  # An AppKit from before the shared trail; drop with it.
 from .credentials import CredentialUnavailable, SecretServiceStore
 from .identity import APP_ID, validate_application_id
 from .credit_markup import artist_index, build_credit_markup, escape_markup, parse_link_uri
+from .folders import FolderChoice, folder_choices
 from .indexer import AUDIO_EXTENSIONS, LibraryIndexer
 from .model import (
     LibraryStore, OfflineState, RepeatMode, SearchResults, Source, SourceState, Track, TrackCopy,
@@ -195,6 +196,8 @@ class TideApplication(Adw.Application):
         self._download_refresh = 0
         self._network_timer = 0
         self._network_handler = 0
+        self._volume_monitor: Gio.VolumeMonitor | None = None
+        self._mount_handlers: list[int] = []
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
@@ -244,6 +247,11 @@ class TideApplication(Adw.Application):
         # Remote sources follow the network's own change events; nothing polls.
         network = Gio.NetworkMonitor.get_default()
         self._network_handler = network.connect("network-changed", self._network_changed)
+        # An SD card or USB drive comes and goes: its sources go out of reach
+        # and come back, and the Sources pane offers whatever is mounted now.
+        self._volume_monitor = Gio.VolumeMonitor.get()
+        self._mount_handlers = [self._volume_monitor.connect(signal, self._mounts_changed)
+                                for signal in ("mount-added", "mount-removed")]
         self.controller.subscribe(self._playback_for_sources)
 
     def do_activate(self) -> None:
@@ -386,10 +394,36 @@ class TideApplication(Adw.Application):
             folder = dialog.select_folder_finish(result)
         except GLib.Error:
             return
-        path = Path(folder.get_path())
-        source = self.store.add_source(path.name or "Music", "local-folder", path, local=True)
+        if folder.get_path():
+            self.add_music_folder(Path(folder.get_path()))
+
+    def music_folder(self) -> Path:
+        return Path(GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_MUSIC) or Path.home() / "Music")
+
+    def folder_choices(self) -> list[FolderChoice]:
+        """Folders the Sources pane offers without a file chooser (a phone's SD card)."""
+        existing = [Path(unquote(urlparse(source.uri).path)) for source in self.store.sources()
+                    if source.local and urlparse(source.uri).scheme == "file"]
+        return folder_choices(existing, music=self.music_folder())
+
+    def add_music_folder(self, path: Path, name: str | None = None) -> Source:
+        source = self.store.add_source(name or path.name or "Music", "local-folder", path, local=True)
         self.scan_source(source)
         self._rebuild_monitors()
+        return source
+
+    def _mounts_changed(self, _monitor: Gio.VolumeMonitor, mount: Gio.Mount) -> None:
+        root = mount.get_root().get_path()
+        if root:
+            for source in self.store.sources():
+                if not source.local or urlparse(source.uri).scheme != "file":
+                    continue
+                path = Path(unquote(urlparse(source.uri).path))
+                if path == Path(root) or Path(root) in path.parents:
+                    self.scan_source(source, quiet=True)
+            self._rebuild_monitors()
+        if self.window:
+            self.window.mounts_changed()
 
     def _new_playlist(self, track_ids: list[str] | None = None) -> None:
         if not self.window:
@@ -783,6 +817,10 @@ class TideApplication(Adw.Application):
             monitor.close()
         if self._network_handler:
             Gio.NetworkMonitor.get_default().disconnect(self._network_handler)
+        if self._volume_monitor is not None:
+            for handler in self._mount_handlers:
+                self._volume_monitor.disconnect(handler)
+            self._mount_handlers = []
         for timer in (self._network_timer, self._download_refresh):
             if timer:
                 GLib.source_remove(timer)

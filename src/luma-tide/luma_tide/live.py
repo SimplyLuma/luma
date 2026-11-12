@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from urllib.parse import urlsplit
 
+from .folders import removable_root
 from .model import RepeatMode, SourceState
 from .playback import PlaybackState
 from .presentation import Album, Library, MusicSource, Player, Playlist, Song
@@ -33,6 +34,13 @@ SNAPSHOT_SPACING = 30.0
 def snapshot_path():
     cache = os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache')
     return os.path.join(cache, 'luma-tide', 'library-view.pickle')
+
+
+def _on_removable_drive(uri):
+    from pathlib import Path
+    from urllib.parse import unquote
+    parts = urlsplit(uri)
+    return parts.scheme == 'file' and removable_root(Path(unquote(parts.path))) is not None
 
 
 def album_id(title, artist):
@@ -129,7 +137,8 @@ class LiveLibrary:
                     facts.append(('Password', 'In your keyring'))
             else:
                 facts = [('Folder', source.uri), ('Songs', f'{count:,}'), ('Last sync', 'Watching for changes')]
-            rows.append(MusicSource(source.id, source.name, 'server' if remote else 'monitor', state,
+            icon = 'server' if remote else 'hard-drive' if _on_removable_drive(source.uri) else 'monitor'
+            rows.append(MusicSource(source.id, source.name, icon, state,
                                     subtitle, tuple(facts), remote,
                                     signed_out=source.state == SourceState.AUTH_REQUIRED))
         offline = self.store.offline_summary()
@@ -297,6 +306,13 @@ class LiveLibrary:
 
     def remove_source(self, identifier):
         self.app._remove_source(self.store.source(identifier))
+
+    def folder_choices(self):
+        """The device's Music folder and mounted drives not yet in the library."""
+        return tuple(self.app.folder_choices())
+
+    def add_folder(self, path, name=None):
+        return self.app.add_music_folder(path, name).id
 
     def sign_out(self, identifier, callback):
         future = self.app.remote.sign_out(identifier)
