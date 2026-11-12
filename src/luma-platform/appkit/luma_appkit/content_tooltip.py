@@ -11,18 +11,26 @@ its accessible label, so a screen reader and a keyboard user hear the same.
     Tooltip.attach(share_button, "Share")
     Tooltip.attach(update_button, "1.0.158 → 1.0.159 · 96 MB")   # a key's detail
 
-Focus shows it too, so the name is reachable without a pointer.
+Focus shows it too, so the name is reachable without a pointer. A finger has no
+hover: touch crossings (a scroll passing under the finger) never show it.
 """
 from __future__ import annotations
 
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+gi.require_version("Gdk", "4.0")
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from . import lumaui  # noqa: E402
 
 __all__ = ["Tooltip"]
+
+
+def _touch(controller: Gtk.EventController) -> bool:
+    """Whether the event being handled comes from a touchscreen (GTK synthesizes crossings for it)."""
+    device = controller.get_current_event_device()
+    return device is not None and device.get_source() == Gdk.InputSource.TOUCHSCREEN
 
 
 class Tooltip(Gtk.Popover):
@@ -53,7 +61,7 @@ class Tooltip(Gtk.Popover):
         if label:
             widget.update_property([Gtk.AccessibleProperty.LABEL], [text])
         motion = Gtk.EventControllerMotion()
-        motion.connect("enter", lambda *_a: tip.later())
+        motion.connect("enter", lambda controller, *_a: None if _touch(controller) else tip.later())
         motion.connect("leave", lambda *_a: tip.hide_now())
         widget.add_controller(motion)
         focus = Gtk.EventControllerFocus()
@@ -63,7 +71,9 @@ class Tooltip(Gtk.Popover):
         click = Gtk.GestureClick()
         click.connect("pressed", lambda *_a: tip.hide_now())
         widget.add_controller(click)
-        widget.connect("destroy", lambda *_a: tip.hide_now())
+        # The popover is the widget's child: let go of it while the widget is disposed, or it
+        # outlives its parent ("Finalizing ... still has children left") holding a stale parent.
+        widget.connect("destroy", lambda *_a: tip.detach())
         widget.connect("unrealize", lambda *_a: tip.hide_now())
         return tip
 
@@ -95,3 +105,9 @@ class Tooltip(Gtk.Popover):
         self._cancel()
         if self.get_visible():
             self.popdown()
+
+    def detach(self) -> None:
+        """Hide and leave the target; the target is going away."""
+        self.hide_now()
+        if self.get_parent() is not None:
+            self.unparent()
