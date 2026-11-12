@@ -1,7 +1,6 @@
 ---
 type: fix
 component: Phone
-packages: [luma-fp6-platform]
 highlight: false
 ---
 Summary: Mobile data can be turned off on the Fairphone 6
