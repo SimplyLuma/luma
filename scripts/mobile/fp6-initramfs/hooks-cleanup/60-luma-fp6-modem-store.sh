@@ -80,7 +80,10 @@ digest() {
 
 # Label the store early on the next systemd start, before rmtfs, the store
 # service and luma-device-layer (whose restart follows the first start).
-add_label_unit() {
+# Umask 022 in a subshell: the seed runs under 077, and /run/systemd made here
+# outlives switch_root; at 0700 it locks every non-root service out of it.
+add_label_unit() (
+	umask 022
 	mkdir -p "$run/systemd/system/sysinit.target.wants" || return 1
 	cat >"$run/systemd/system/$unit" <<'UNIT' || return 1
 [Unit]
@@ -100,7 +103,7 @@ ExecStart=/usr/sbin/restorecon -RF /var/lib/luma/rmtfs
 ExecStart=/usr/bin/rm -f /var/lib/luma/rmtfs.relabel
 UNIT
 	ln -sf "../$unit" "$run/systemd/system/sysinit.target.wants/$unit"
-}
+)
 
 fail() {
 	event "state=failed reason=$1 partitions_written=0 identifiers_logged=0"
