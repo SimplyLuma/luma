@@ -125,6 +125,16 @@ class ModemStoreSeed(unittest.TestCase):
         link = self.root / "run/systemd/system/sysinit.target.wants" / UNIT
         self.assertEqual(os.readlink(link), f"../{UNIT}")
 
+    def test_run_entries_stay_readable_by_every_service(self):
+        # The seed runs under umask 077; /run/systemd made 0700 here outlives
+        # switch_root and locks every non-root service (dbus-broker first)
+        # out of /run/systemd on that boot.
+        self.run_hook()
+        run = self.root / "run"
+        for path in ("systemd", "systemd/system", "systemd/system/sysinit.target.wants"):
+            self.assertEqual((run / path).stat().st_mode & 0o7777, 0o755, path)
+        self.assertEqual((run / "systemd/system" / UNIT).stat().st_mode & 0o7777, 0o644)
+
     def test_blank_modemst_is_never_seeded(self):
         for label in ("modemst1", "modemst2"):
             self.parts[label].write_bytes(bytes(10 * MIB))
