@@ -874,6 +874,12 @@ export class HandheldBackNavigation {
             startY >= m.y + 44 * scale && startY < m.y + m.height - 28 * scale;
     }
     goBack() {
+        // Back first puts an open on-screen keyboard away, as on Android;
+        // the application gets Back once the keyboard is down.
+        if (Main.keyboard?.visible) {
+            Main.keyboard.close();
+            return;
+        }
         const app = Shell.WindowTracker.get_default().get_window_app(this.window);
         const appId = app?.get_id() ?? '';
         const wmClass = this.window.get_wm_class()?.toLowerCase() ?? '';

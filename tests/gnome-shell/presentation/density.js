@@ -27,6 +27,18 @@ assert(pixel.layout.columns === 4 && pixel.layout.otherRows === 7, 'a 6.3 inch p
 assert(pixel.iconMm > 9.5 && pixel.iconMm < 10.5 && pixel.layout.labelSize === 11, 'Pixel 9 icons are 10 mm with 11 px labels');
 assert(pixel.layout.dockHeight >= pixel.layout.iconSize + 16, 'the dock reserve fits buttons sized to Home icons');
 
+// Widget text: a roomy phone's widgets take the token sizes of a wide-layout
+// widget scaled to Home's rows (14 px base: heading 11.5, values 44 and 30,
+// details 12), never above the tokens; dense grids keep the fixed sheet.
+const fp6 = device(1116, 2484, 66, 146, 3);
+assert(fp6.layout.width === 372 && fp6.layout.roomy && fp6.layout.columns === 4, 'a 6.3 inch FP6-class panel is a roomy phone');
+const fp6Type = fp6.layout.widgetFontSize;
+assert(fp6Type === Math.round(14 * Math.min(1, fp6.layout.rowHeight / 108) * 100) / 100 && fp6Type > 12 && fp6Type <= 14,
+    `FP6 widget text follows its rows (${fp6Type} px base)`);
+assert(fp6Type * 12 / 14 >= fp6.layout.labelSize - 0.5,
+    'FP6 widget details are no smaller than its app labels');
+assert(pixel.layout.roomy && pixel.layout.widgetFontSize > 12, 'Pixel 9 widget text follows its rows');
+
 const zoomed = device(1080, 2424, 65, 146, 4);
 assert(Math.abs(zoomed.density.zoom - 4 / 3) < 0.01, '400% is a zoom over the panel default');
 assert(zoomed.layout.columns === 3 && zoomed.iconMm > pixel.iconMm * 1.25, 'zoom gives fewer, larger icons');
@@ -35,6 +47,9 @@ assert(zoomed.layout.width === 270 && zoomed.layout.compact, 'below 360 logical 
 const titan = device(1080, 1200, 69, 76, 3);
 assert(titan.layout.columns === 5 && titan.layout.otherRows === 4 && titan.layout.iconSize === 44 &&
     titan.layout.labelSize === 10, 'a short square keyboard phone keeps its dense five by four grid');
+assert(!titan.layout.roomy && titan.layout.widgetFontSize === null, 'a dense grid keeps the fixed widget text');
+assert(homeLayout(360, 808, 'mobile', 40, {}, {}, null).widgetFontSize === null, 'no density keeps the fixed widget text');
+assert(!('widgetFontSize' in homeLayout(1440, 960, 'tablet', 40, {}, {})), 'wide layouts keep the widget sheet');
 const ikko = device(1080, 1240, 67, 77, 3);
 assert(ikko.layout.columns === 5 && ikko.layout.otherRows >= 4, 'square phones fit five columns');
 const compact = device(1080, 2340, 57, 124, 4);

@@ -1140,6 +1140,10 @@ export class Presentation {
         this._homeIconSize = this._layout.iconSize ?? 60;
         if (this._layout.compact) this._home.add_style_class_name('compact-home');
         else this._home.remove_style_class_name('compact-home');
+        // A dense compact grid keeps fixed widget text; a roomy one sizes it
+        // from the layout (widgetFontSize) on each widget below.
+        if (this._layout.compact && !this._layout.widgetFontSize) this._home.add_style_class_name('dense-home');
+        else this._home.remove_style_class_name('dense-home');
         let metrics = {};
         if (this._apps.length) {
             const probe = this._appButton(this._apps[0]);
@@ -1199,6 +1203,9 @@ export class Presentation {
                 const host = this._widgetHosts.get(record.id);
                 const item = record.kind === 'app' ? this._appButton(info) : host.createActor();
                 item.clip_to_allocation = true;
+                // The widget sheet's em sizes follow this base.
+                if (record.kind === 'widget' && layout.widgetFontSize)
+                    item.set_style(`font-size: ${layout.widgetFontSize}px;`);
                 pageView.add_child(item);
                 const inset = record.kind === 'widget' ? (layout.compact ? 3 : (host.gap ?? 12) / 2) : 0;
                 item.set_position((layout.inset + (rtl ? layout.columns - record.x - record.w : record.x) * cellWidth + inset) * scale,

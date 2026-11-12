@@ -81,8 +81,14 @@ phone held upright it is `keycap.geometry.thumb_gap` (72 logical px), so the
 bottom row sits where a thumb rests instead of at the screen edge. For
 comparison, iOS keeps a band of about 75 pt below its keys and Android keeps
 a 48 dp navigation frame. The home gesture (28 px) sits inside that inset.
-The lock screen keeps the thumb gap without the gesture. Tablets and phones
-on their side keep only the gesture zone, and Desktop keeps nothing.
+The thumb gap's top row (`Keycap.controlRow`, one `min_row` touch row) holds
+keyboard settings on the left and hide on the right, as a phone's navigation
+band holds the keyboard's hide control, so the keyboard can be put away while
+suggestions fill the strip; those two leave the strip there. The lock screen
+keeps the thumb gap (and its row) without the gesture. Tablets and phones on
+their side keep only the gesture zone and the strip's tools, and Desktop
+keeps nothing. On a handheld the right-edge Back gesture puts an open
+keyboard away before it sends Back to the application.
 
 Not ported to the Shell: the eight-column emoji grid with search and recents
 (the Shell's paged emoji chooser is themed instead), drag-select of accent

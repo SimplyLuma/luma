@@ -379,6 +379,17 @@ export function bottomInset(monitor, phone, gesture = 0) {
     return Math.max(gesture, keycap.geometry.thumb_gap);
 }
 
+// Logical pixels at the top of a bottom inset that hold the keyboard's own
+// controls (settings and hide): one touch row (min_row) in a phone's thumb
+// gap, where a phone keeps its navigation band, so they stay in reach while
+// the strip shows suggestions. The rest of the inset, thumb_gap - min_row,
+// is the home gesture zone. Insets without the thumb gap (tablets, phones on
+// their side, Desktop) hold no controls.
+export function controlRow(inset) {
+    const g = keycap.geometry;
+    return inset >= g.thumb_gap ? g.min_row : 0;
+}
+
 // The same inset where no presentation runs (the greeter): a handheld whose
 // screen (logical size) is phone width keeps the thumb gap, nothing else does.
 export function standaloneInset(monitor, handheld) {

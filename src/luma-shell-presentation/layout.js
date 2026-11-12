@@ -29,6 +29,11 @@ function preferredIcon(choice, automatic, width, height, labels) {
 // keyboard phone) trades column width for rows instead.
 const CELL_MM = 17, PHONE_CELL_MM = 13, DENSE_CELL_MM = 12.5, ROW_MM = 17, ICON_MM = 10, WIDE_ICON_MM = 11.4, LABEL_MM = 2;
 const MIN_ROWS = 4;
+// The wide layout's least cell height; its rows add an 8 px gap.
+const WIDE_CELL = 100;
+// The px the generated widget sheet (generate-home-widget-styles.py) writes
+// its token sizes against: each is an em of 14 px.
+const WIDGET_TYPE_BASE = 14;
 
 // Millimetres per logical pixel of the primary monitor, and the user's zoom:
 // its scale over the scale Mutter picks by default for the panel. Mutter
@@ -113,9 +118,15 @@ export function homeLayout(width, height, mode, count, metrics = {}, preferences
         const iconSize = preferredIcon(preferences.iconSize, automaticIcon,
             cellWidth, rowHeight, preferences.showLabels !== false);
         const labelSize = roomy ? Math.max(10, Math.min(13, Math.round(px(LABEL_MM)))) : 10;
+        // Widget text on a roomy phone: the token sizes of a wide-layout
+        // widget, scaled by Home's row over the wide layout's least row and
+        // never above the tokens. A dense grid (no density, or a short
+        // screen) keeps the compact sheet's fixed sizes (widgetFontSize null).
+        const widgetFontSize = roomy
+            ? Math.round(WIDGET_TYPE_BASE * Math.min(1, rowHeight / (WIDE_CELL + 8)) * 100) / 100 : null;
         const columns = iconColumns;
         const capacity = rows * iconColumns;
-        return {width, height, form: formOf(width, height), compact: true, inset,
+        return {width, height, form: formOf(width, height), compact: true, roomy, widgetFontSize, inset,
             contentWidth, columns, iconColumns, appColumns: 1,
             widgetColumns: Math.floor(iconColumns / 2), top, bottom, dockHeight, dockBottom,
             dotsHeight, iconSize, labelSize, cellHeight: rowHeight - 4, rowHeight,
@@ -132,7 +143,7 @@ export function homeLayout(width, height, mode, count, metrics = {}, preferences
         contentWidth, 56, 3);
     const top = height < 440 ? 44 : 64;
     const bottom = 156;
-    const cellHeight = Math.max(100, metrics.cellHeight ?? 0);
+    const cellHeight = Math.max(WIDE_CELL, metrics.cellHeight ?? 0);
     let rowHeight = cellHeight + 8;
     if (preferences.rows > 0) {
         const rows = preferredCount(preferences.rows, 1, height - top - bottom, 56, 2);

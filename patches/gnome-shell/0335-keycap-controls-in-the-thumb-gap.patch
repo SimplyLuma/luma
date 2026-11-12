@@ -1,0 +1,101 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: settings and hide in a phone's thumb gap
+
+On a phone held upright the keyboard keeps a 72 px thumb gap below the keys
+(Keycap.bottomInset). It held nothing: a keyboard-coloured band with the
+home gesture's 28 px zone at its foot. Hide lived only in the tool strip,
+which suggestions replace while a word is typed, so the keyboard could not
+be put away while typing.
+
+The gap's top row (Keycap.controlRow: one min_row touch row) now carries
+keyboard settings on the left and hide on the right, as a phone's
+navigation band carries the keyboard's hide control; both leave the strip
+there. The home gesture zone below the row stays clear. Tablets, phones on
+their side, Desktop and TV keep their insets and strips as before.
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -2269,6 +2269,8 @@ export const Keyboard = GObject.registerClass({
+             y_expand: true,
+         });
+         this.add_child(this._aspectContainer);
++        this._controls = this._createControls();
++        this.add_child(this._controls);
+ 
+         this._emojiSelection = new EmojiSelection();
+         this._emojiSelection.connect('toggle', this._toggleEmoji.bind(this));
+@@ -3266,8 +3268,36 @@ export const Keyboard = GObject.registerClass({
+         return tools;
+     }
+ 
++    // A phone's thumb gap (Keycap.controlRow) carries settings and hide in
++    // one row below the keys, as a phone's navigation band carries the
++    // keyboard's hide control: they stay in reach while the strip shows
++    // suggestions, and the gap is not an empty band.
++    _createControls() {
++        const controls = new St.BoxLayout({
++            style_class: 'luma-keycap-tools luma-keycap-controls',
++            x_expand: true,
++            visible: false,
++        });
++        const size = Keycap.keycap.geometry.min_row;
++        const add = (icon, name, callback) => {
++            const button = new St.Button({
++                accessible_name: name,
++                can_focus: false,
++                style: `min-width: ${size}px; min-height: ${size}px;`,
++                child: new St.Icon({icon_name: `luma-keycap-${icon}-symbolic`}),
++            });
++            button.connect('clicked', callback);
++            return button;
++        };
++        controls.add_child(add('settings-2', _('Keyboard settings'), button => this._popupLanguageMenu(button)));
++        controls.add_child(new St.Widget({x_expand: true}));
++        controls.add_child(add('chevron-down', _('Hide keyboard'), () => this.close(true)));
++        return controls;
++    }
++
+     // The strip shows suggestions while a word has them, and the tools
+-    // otherwise; number pads keep hide and gain Enter.
++    // otherwise; number pads keep hide and gain Enter. Settings and hide
++    // leave the strip where the thumb gap carries them.
+     _syncTools() {
+         if (!this._tools)
+             return;
+@@ -3277,7 +3307,9 @@ export const Keyboard = GObject.registerClass({
+             return;
+         }
+         const numeric = this._keycapPolicy.isNumeric(this._keyboardController.purpose);
+-        this._toolButtons.forEach((button, i) => (button.visible = i === 4 || !numeric));
++        const controls = this._controls?.visible ?? false;
++        this._toolButtons.forEach((button, i) =>
++            (button.visible = (i === 4 || !numeric) && !(controls && i >= 3)));
+         this._stripEnter.visible = numeric;
+         const suggesting = this._suggestionsShown && this._suggestions.count > 0;
+         this._suggestions.visible = suggesting;
+@@ -3610,6 +3642,7 @@ export const Keyboard = GObject.registerClass({
+         const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+         const [columns, rows] = this._currentPage?.getRatio() ?? [10, 4];
+         if (this._tv) {
++            this._controls.visible = false;
+             this._tvRelayout(monitor, rows || 5);
+             return;
+         }
+@@ -3621,8 +3654,15 @@ export const Keyboard = GObject.registerClass({
+         const height = Keycap.keyboardHeight({width: monitor.width / scale, height: monitor.height / scale},
+             rows || 4, columns || 10, inset) * scale;
+         // Writes only what changed: a new style or size re-renders the
+-        // keyboard's paint state, which must never happen per key.
+-        const style = inset ? `padding-bottom: ${inset}px;` : null;
++        // keyboard's paint state, which must never happen per key. The
++        // control row sits at the top of the inset; the rest stays clear.
++        const controls = Keycap.controlRow(inset);
++        if (this._controls.visible !== controls > 0) {
++            this._controls.visible = controls > 0;
++            this._syncTools();
++        }
++        const padding = inset - controls;
++        const style = padding ? `padding-bottom: ${padding}px;` : null;
+         if (this.get_style() !== style)
+             this.set_style(style);
+         // The keyboard's own preferred height is the height last set here,

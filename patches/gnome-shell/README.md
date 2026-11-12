@@ -605,3 +605,19 @@ glyphs are Lucide's radio-off and card-sim (`vendor/lucide-shell-status`),
 geometry unchanged, as symbolic strokes at the 1.6 status weight. Without a
 modem nothing is drawn. Test: `tests/gnome-shell/presentation/cellular-status.js`
 (source checks). Shell .169.
+
+`0334-search-keeps-the-on-screen-keyboard.patch`: typing on the on-screen
+keyboard no longer closes Search. Search closes on a press outside its painted
+surfaces from a `captured-event` handler that runs before ModalDialog's, which
+routes the keyboard's events while the dialog holds the grab; the first key
+press counted as outside. Keyboard events are routed first. Test:
+`search-keyboard-policy.js` in %check (runs the handler from the source against
+stubs). Shell .170.
+
+`0335-keycap-controls-in-the-thumb-gap.patch`: on a phone held upright the
+thumb gap below the keys carries keyboard settings (left) and hide (right) in
+one touch row (`Keycap.controlRow`, `min_row`) above the home gesture zone;
+both leave the tool strip there. The gap was an empty keyboard-coloured band,
+and hide lived only in the strip, which suggestions replace while a word is
+typed. Other insets (tablet, landscape, Desktop, TV) are unchanged. Test:
+`keycap-policy.js` in %check. Shell .170.
