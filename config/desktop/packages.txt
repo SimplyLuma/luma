@@ -13,8 +13,8 @@
 # deployment's rpmdb. Keep the shared pins in step with inputs.env.
 
 # Shell, window manager and settings (replace Fedora base packages)
-gnome-control-center-50.4-1.luma.63.fc44.x86_64
-gnome-control-center-filesystem-50.4-1.luma.63.fc44.noarch
+gnome-control-center-50.4-1.luma.64.fc44.x86_64
+gnome-control-center-filesystem-50.4-1.luma.64.fc44.noarch
 gnome-shell-50.3-1.luma.170.fc44.x86_64
 gdm-1:50.3-1.luma.1.fc44.x86_64
 gnome-shell-common-50.3-1.luma.170.fc44.noarch
