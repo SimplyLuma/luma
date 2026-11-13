@@ -8,7 +8,7 @@ PLATFORM='00b4217c22737e3fc64ddea978a4218c4282769e'
 TMO='88f589369ff3a066511dd1b21ed42cf3496686a3'
 ATT='444954dcfbd6d5bf196cd8fecf6770ff3c6b34fc'
 class Controls(unittest.TestCase):
- def invoke(self,slot='androidboot.slot_suffix=_b',profile='tmo-qrel1695',platform=True,software=TMO,extra_ids='',config=True,store=True,pending=False,selection=None):
+ def invoke(self,slot='androidboot.slot_suffix=_b',profile='tmo-qrel1695',platform=True,software=TMO,extra_ids='',config=True,store=True,pending=False,selection=None,description=''):
   with tempfile.TemporaryDirectory() as td:
    r=pathlib.Path(td);bins=r/'bin';bins.mkdir();calls=r/'calls'
    def executable(name,body):
@@ -16,7 +16,7 @@ class Controls(unittest.TestCase):
    executable('id','echo 0\n');executable('stat','echo 0:0:644\n');executable('uname','echo 7.1.2-luma-fp-ims1.gmu2\n')
    restarted=r/'restarted'
    executable('systemctl','case "$1" in is-active) exit 0;; show) echo 123;; start) [ "$2" = luma-fp6-modem-restart.service ] || exit 87; printf restart >> '+str(calls)+'; touch '+str(restarted)+';; *) exit 88;; esac\n')
-   qmi=executable('qmicli',"printf '%s\\n' \"$*\" >> "+str(calls)+"\ncase \"$*\" in *--dms-get-operating-mode*) exit 0;; *--pdc-list-configs=platform*) "+(("if [ -e "+str(restarted)+" ]; then s=Active; else s=Pending; fi; " if pending else "s=Active; ")+"printf \"Configuration 0\\n Status: $s\\n ID: "+PLATFORM+"\\n\"" if platform else "true")+";; *--pdc-activate-config=platform*) exit 0;; *--pdc-list-configs=software*) printf \"Configuration 0\\n Status: Active\\n ID: "+software+"\\n"+extra_ids+"\";; *) exit 89;; esac\n")
+   qmi=executable('qmicli',"printf '%s\\n' \"$*\" >> "+str(calls)+"\ncase \"$*\" in *--dms-get-operating-mode*) exit 0;; *--pdc-list-configs=platform*) "+(("if [ -e "+str(restarted)+" ]; then s=Active; else s=Pending; fi; " if pending else "s=Active; ")+"printf \"Configuration 0\\n Status: $s\\n ID: "+PLATFORM+"\\n\"" if platform else "true")+";; *--pdc-activate-config=platform*) exit 0;; *--pdc-list-configs=software*) printf \"Configuration 0\\n"+(" Description: "+description+"\\n" if description else "")+" Status: Active\\n ID: "+software+"\\n"+extra_ids+"\";; *) exit 89;; esac\n")
    files={'model':'The Fairphone (Gen. 6)\0','cmdline':slot+'\n','rmtfs-cmdline':'/usr/bin/rmtfs\0-o\0/var/lib/luma/rmtfs\0-s\0' if store else '/usr/bin/rmtfs\0-r\0-P\0-s\0'}
    if config:files['config']='PROFILE='+profile+'\n'
    if selection:files['selection']='{"apn": "", "mcfg": "'+selection+'", "state": "selected"}\n'
@@ -46,6 +46,15 @@ class Controls(unittest.TestCase):
   code,out,calls=self.invoke(profile='att-qrel1695',software='4ea00db36530421c79794b4ba87686fa0a31f31b');self.assertNotEqual(code,0);self.assertIn('reason=selected_profile_missing',out)
  def test_unknown_software_refused(self):
   code,out,calls=self.invoke(software='deadbeef');self.assertNotEqual(code,0);self.assertIn('reason=unexpected_software',out)
+ def test_unknown_inactive_software_is_left_alone(self):
+  # Another modem firmware release ships built-in configurations with other IDs.
+  code,out,calls=self.invoke(extra_ids='Configuration 1\\n Description: Other_Commercial\\n Status: Inactive\\n ID: 0123456789abcdef0123456789abcdef01234567\\n');self.assertEqual(code,0,out);self.assertIn('state=already-active profile=tmo-qrel1695',out);self.assertIn('unknown_configs=1',out);self.assertNotIn('--pdc-activate-config',calls)
+ def test_firmware_tmo_configuration_counts_as_tmo(self):
+  code,out,calls=self.invoke(software='0123456789abcdef0123456789abcdef01234567',description='Commercial-TMO');self.assertEqual(code,0,out);self.assertIn('state=already-active profile=tmo-qrel1695 active_config=Commercial-TMO unknown_configs=1',out);self.assertNotIn('--pdc-load-config',calls);self.assertNotIn('--pdc-activate-config=software',calls)
+ def test_unknown_active_software_names_its_description(self):
+  code,out,calls=self.invoke(software='0123456789abcdef0123456789abcdef01234567',description='Some Other;Commercial');self.assertEqual(code,3,out);self.assertIn('reason=unexpected_software active_config=SomeOtherCommercial unknown_configs=1',out);self.assertNotIn('--pdc-activate-config=software',calls)
+ def test_firmware_tmo_description_does_not_satisfy_att(self):
+  code,out,calls=self.invoke(profile='att-qrel1695',software='0123456789abcdef0123456789abcdef01234567',description='Commercial-TMO');self.assertEqual(code,3,out);self.assertIn('reason=unexpected_software',out)
  def test_without_profile_only_platform(self):
   code,out,calls=self.invoke(config=False);self.assertEqual(code,0,out);self.assertIn('state=platform-active profile=none',out);self.assertNotIn('software',calls)
  def test_read_only_backend_skips_without_profile(self):

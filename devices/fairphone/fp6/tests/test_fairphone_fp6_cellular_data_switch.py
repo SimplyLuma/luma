@@ -53,6 +53,7 @@ class FakeSystem:
         self.data_connected = "yes"
         self.calls = []
         self.fail_nmcli = False
+        self.nm_gsm_state = ""  # NetworkManager's own GSM activation, if any
 
     def run(self, arguments, *, check=True):
         self.calls.append(tuple(arguments))
@@ -89,6 +90,12 @@ class FakeSystem:
             return ""
         if command[:2] == ("mmcli", "-m") and command[3].startswith("--simple-connect="):
             return ""
+        if command == ("nmcli", "--terse", "--escape", "no", "--fields", "TYPE,STATE",
+                       "connection", "show", "--active"):
+            rows = ["loopback:activated"]
+            if self.nm_gsm_state:
+                rows.append(f"gsm:{self.nm_gsm_state}")
+            return "\n".join(rows) + "\n"
         if command == ("nmcli", "--terse", "--fields", "WWAN", "radio"):
             return self.radio + "\n"
         if command == ("nmcli", "--terse", "--escape", "no", "--fields", "UUID,TYPE", "connection", "show"):
@@ -127,7 +134,7 @@ class CellularDataSwitch(unittest.TestCase):
         self.assertTrue(self.link.data_enabled(self.modem))
         self.system.data_connected = "no"
         self.link.reconcile()
-        self.assertEqual(self.connects(), [("mmcli", "-m", "0", "--simple-connect=apn=fast.example,ip-type=ipv4")])
+        self.assertEqual(self.connects(), [("mmcli", "-m", "0", "--simple-connect=apn=fast.example,ip-type=ipv4v6")])
         self.assertEqual(self.disconnected(), [])
 
     def test_wwan_off_stops_only_the_data_bearer(self):
@@ -161,6 +168,20 @@ class CellularDataSwitch(unittest.TestCase):
         self.system.data_connected = "no"
         self.link.reconcile()
         self.assertEqual(self.disconnected(), [])
+
+    def test_networkmanager_owned_data_is_left_alone(self):
+        # Settings' Mobile Data switch activates NetworkManager's own GSM
+        # profile; that connection then owns the data bearer.
+        self.system.profiles = {DATA_UUID: (ICCID, "yes")}
+        self.system.data_connected = "no"
+        for state in ("activating", "activated"):
+            self.system.nm_gsm_state = state
+            self.link.reconcile()
+        self.assertEqual(self.connects(), [])
+        self.assertEqual(self.disconnected(), [])
+        self.system.nm_gsm_state = "deactivating"
+        self.link.reconcile()
+        self.assertEqual(len(self.connects()), 1)
 
     def test_back_on_connects_without_waiting(self):
         self.system.radio = "disabled"

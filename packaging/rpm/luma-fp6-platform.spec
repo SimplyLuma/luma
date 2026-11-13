@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.19%{?dist}
+Release:        1.luma.20%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -21,7 +21,7 @@ Requires:       findutils
 Requires:       gawk
 Requires:       grep
 Requires:       iproute
-Requires:       luma-fp6-carrier-adapter
+Requires:       luma-fp6-carrier-adapter >= 0.1.0-1.luma.13
 Requires:       luma-imsd
 Requires:       psmisc
 Requires:       python3
@@ -116,6 +116,16 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.20
+- The cellular link requests a dual-stack data bearer (ip-type=ipv4v6) and
+  configures each IP family the network grants; an IPv6-only bearer gets an
+  IPv6 link with its default route instead of being ignored.
+- It leaves the data link to NetworkManager while NetworkManager's own GSM
+  connection is activating or active.
+- A failed command logs the mmcli option and ModemManager's error.
+- Requires luma-fp6-carrier-adapter >= 0.1.0-1.luma.13 (data APN from the
+  carrier database).
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.19
 - The login screen leaves the power key to the Shell (media-keys
   power-static empty), so a short press blanks and wakes it.

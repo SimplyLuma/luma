@@ -75,8 +75,13 @@ class Controls(unittest.TestCase):
  def test_software_load_cannot_drop_stock(self):
   code,out,calls=self.run_case('software-load-loses-stock');self.assertNotEqual(code,0);self.assertIn('reason=software_catalog_changed',out)
  def test_unknown_duplicate_catalog_refused(self):
-  for kind in ['unknown-platform','duplicate','unknown-software']:
+  for kind in ['unknown-platform','duplicate']:
    with self.subTest(kind=kind):
     code,out,calls=self.run_case(kind);self.assertNotEqual(code,0,out)
-    if kind!='unknown-software':self.assertNotIn('--pdc-activate-config',calls)
+    self.assertNotIn('--pdc-activate-config',calls)
+ def test_other_firmware_commercial_tmo_is_kept(self):
+  # Another modem firmware release: its own Commercial-TMO has another ID.
+  code,out,calls=self.run_case('unknown-software');self.assertEqual(code,0,out)
+  self.assertIn('state=already-active profile=tmo-qrel1695 active_config=Commercial-TMO unknown_configs=1',out)
+  self.assertNotIn('--pdc-activate-config=software',calls);self.assertNotIn('--pdc-load-config=software',calls)
 if __name__=='__main__':unittest.main()

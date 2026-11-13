@@ -5,8 +5,9 @@
 # networks:        MCC+MNC strings the row applies to
 # spn/gid1_prefix: optional SIM match; a matching row beats a plain network row
 # mcfg:            factory | tmo-qrel1695 | att-qrel1695 (modem software config)
-# apn:             data APN; omit to use mobile-broadband-provider-info, or set
-#                  apn_from_network = true to use the modem's attach APN
+# apn:             data APN for an MVNO that needs its own; omit to use the
+#                  network operator's default from mobile-broadband-provider-info,
+#                  or set apn_from_network = true to use the modem's attach APN
 # allowed_modes:   "" | "4g" | "4g,5g"
 # verified:        true only after physical acceptance on an FP6 with that SIM
 #
@@ -18,22 +19,20 @@ name = "Tello (T-Mobile US network)"
 networks = ["310240", "310260"]
 gid1_prefix = "6941"   # read from a Tello eSIM on an FP6 (2026-10-16); Tello sets no EF_SPN
 mcfg = "tmo-qrel1695"
-apn = "wholesale"
 allowed_modes = "4g"   # outgoing SMS fails on 5G (fp6-esim-backend.md)
 volte = "unverified"
-verified = true        # data and SMS on Nick's FP6
-note = "Known-good reference: tmo-qrel1695, APN wholesale, LTE only."
+verified = true        # registration, SMS and IMS on an FP6
+note = "tmo-qrel1695, LTE only, T-Mobile's default APN (fast.t-mobile.com) from mobile-broadband-provider-info."
 
 [[carrier]]
 name = "T-Mobile US"
 networks = ["310260", "310160", "310200", "310210", "310220", "310230", "310240",
             "310250", "310270", "310310", "310490", "310660", "310800"]
 mcfg = "tmo-qrel1695"
-apn_from_network = true
 allowed_modes = "4g"
 volte = "unverified"
 verified = false
-note = "T-Mobile modem profile; APN from the network. MVNOs that need their own APN need a row."
+note = "T-Mobile modem profile; T-Mobile's default APN from mobile-broadband-provider-info. MVNOs that need their own APN need a row."
 
 [[carrier]]
 name = "AT&T"
