@@ -20,6 +20,11 @@ def _rounded(value: float) -> int:
     return math.floor(value + .5)
 
 
+def memory_summary(used_mb: float, total_mb: float) -> str:
+    """Sidebar memory line: used and installed memory in GB, one decimal each."""
+    return f'{used_mb / 1024:.1f} of {total_mb / 1024:.1f} GB'
+
+
 def format_value(value: float | None, resource: str) -> str:
     if resource not in RESOURCES:
         raise ValueError(f'Unknown resource: {resource}')

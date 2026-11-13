@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from luma_monitor.v70_data import FixtureSource, activity_matches, format_value, sorted_apps, fixture_process_properties, fixture_totals
+from luma_monitor.v70_data import FixtureSource, activity_matches, format_value, memory_summary, sorted_apps, fixture_process_properties, fixture_totals
 
 FIXTURE = Path(__file__).resolve().parents[3] / 'tests/fixtures/monitor-v70.json'
 
@@ -19,6 +19,12 @@ class V70DataTests(unittest.TestCase):
         self.assertEqual(sum(len(a['procs']) for a in source.apps), 21)
         self.assertEqual(source.apps[0]['sub'], '3 windows · 14 tabs')
         self.assertEqual(source.totals, {'mem': 16384, 'disk': 512})
+
+    def test_memory_summary_rounds_the_total(self):
+        # /proc/meminfo totals are rarely whole GB: 8048000 kB was "7.67568".
+        self.assertEqual(memory_summary(3891, 8048000 / 1024), '3.8 of 7.7 GB')
+        self.assertEqual(memory_summary(8499, 31.0557 * 1024), '8.3 of 31.1 GB')
+        self.assertEqual(memory_summary(0, 16384), '0.0 of 16.0 GB')
 
     def test_value_boundaries(self):
         for value, resource, expected in [
