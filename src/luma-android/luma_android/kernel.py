@@ -14,10 +14,16 @@ from .errors import RuntimeUnavailableError
 FP6_COMPATIBLE = b"fairphone,fp6"
 DEFAULT_COMPATIBLE = Path("/proc/device-tree/compatible")
 DEFAULT_KERNEL_NOTES = Path("/sys/kernel/notes")
-DEFAULT_FP6_ALLOWLIST = Path(
-    "/usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.sha256"
+# kernel-modules-luma-fp6 ships the entry of the kernel it belongs to, written
+# by the kernel build (scripts/kernel/fp6-android-gpu-admission.py). The
+# runtime carries no list of its own.
+DEFAULT_FP6_ADMISSION_DIR = Path(
+    "/usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.d"
 )
 FP6_GPU_FAULT_MARKER = Path("/run/luma-fp6-android-gpu-fault")
+# Root-written, reboot-cleared: admits the one running kernel whose digest it
+# holds while that kernel is being qualified on the phone.
+FP6_GPU_QUALIFY_MARKER = Path("/run/luma-fp6-android-gpu-qualify")
 MAX_KERNEL_NOTES_BYTES = 1024 * 1024
 FP6_SOFTWARE_PORT = 33990
 FP6_SOFTWARE_SOCKET = "luma-android/luma-android-rdp"
@@ -79,10 +85,12 @@ def kernel_notes_sha256(notes_path: Path = DEFAULT_KERNEL_NOTES) -> str:
     return hashlib.sha256(notes).hexdigest()
 
 
-def admitted_kernel_notes(allowlist_path: Path = DEFAULT_FP6_ALLOWLIST) -> frozenset[str]:
+def _admission_file_digests(path: Path) -> frozenset[str]:
     digests: set[str] = set()
     try:
-        lines = allowlist_path.read_text(encoding="utf-8").splitlines()
+        if not stat.S_ISREG(path.lstat().st_mode):
+            return frozenset()
+        lines = path.read_text(encoding="utf-8").splitlines()
     except (FileNotFoundError, PermissionError, OSError, UnicodeError):
         return frozenset()
     for raw_line in lines:
@@ -96,12 +104,42 @@ def admitted_kernel_notes(allowlist_path: Path = DEFAULT_FP6_ALLOWLIST) -> froze
     return frozenset(digests)
 
 
+def admitted_kernel_notes(
+    admission_dir: Path = DEFAULT_FP6_ADMISSION_DIR,
+) -> frozenset[str]:
+    """Digests from every *.sha256 file; a malformed file admits nothing."""
+    digests: set[str] = set()
+    try:
+        entries = sorted(admission_dir.glob("*.sha256"))
+    except OSError:
+        return frozenset()
+    for entry in entries:
+        digests.update(_admission_file_digests(entry))
+    return frozenset(digests)
+
+
+def _qualification_digest(marker: Path) -> str:
+    try:
+        metadata = marker.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or metadata.st_mode & 0o022
+        ):
+            return ""
+        digest = marker.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return ""
+    return digest if re.fullmatch(r"[0-9a-f]{64}", digest) else ""
+
+
 def fp6_kernel_admission(
     *,
     compatible_path: Path = DEFAULT_COMPATIBLE,
     notes_path: Path = DEFAULT_KERNEL_NOTES,
-    allowlist_path: Path = DEFAULT_FP6_ALLOWLIST,
+    admission_dir: Path = DEFAULT_FP6_ADMISSION_DIR,
     fault_marker: Path = FP6_GPU_FAULT_MARKER,
+    qualify_marker: Path = FP6_GPU_QUALIFY_MARKER,
 ) -> KernelAdmission:
     if not is_fp6(compatible_path):
         return KernelAdmission(True, reason="not-fp6")
@@ -110,9 +148,11 @@ def fp6_kernel_admission(
     digest = kernel_notes_sha256(notes_path)
     if not digest:
         return KernelAdmission(False, reason="kernel-identity-unavailable")
-    if digest not in admitted_kernel_notes(allowlist_path):
-        return KernelAdmission(False, digest, "kernel-not-admitted")
-    return KernelAdmission(True, digest, "verified-kernel")
+    if digest in admitted_kernel_notes(admission_dir):
+        return KernelAdmission(True, digest, "verified-kernel")
+    if digest == _qualification_digest(qualify_marker):
+        return KernelAdmission(True, digest, "qualifying-kernel")
+    return KernelAdmission(False, digest, "kernel-not-admitted")
 
 
 def _process_socket_inodes(process_root: Path) -> frozenset[str]:

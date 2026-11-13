@@ -64,6 +64,12 @@ Promotion requires physical FP6 evidence showing:
 - Android applications are managed as ordinary Luma application windows; and
 - idle-power measurements are understood.
 
+Android GPU admission follows `devices/fairphone/fp6/device.toml`
+`[kernel.android_gpu]`: it requires 0002 and 0004, refuses 0003, and the
+kernel build writes an admission entry into `kernel-modules-luma-fp6` only
+after `scripts/kernel/fp6-android-gpu-admission.py qualify` has recorded a
+passed physical qualification of those GPU inputs.
+
 The exact `cross-x86_64` baseline and the IFPC diagnostic have both passed
 RAM-only boot with Linux USB, Fedora userspace, and Luma Shell returning. The
 baseline also passed a 24-minute idle soak at 37 degrees Celsius with zero GPU

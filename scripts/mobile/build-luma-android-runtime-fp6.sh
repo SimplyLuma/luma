@@ -35,7 +35,7 @@ work_dir=$(mktemp -d "${output_dir}.work.XXXXXX")
 rpmbuild_dir="$work_dir/rpmbuild"
 source_dir="$work_dir/luma-android-runtime"
 install -d -m 0755 "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} \
-  "$source_dir/config/profiles" "$source_dir/config/hardware"
+  "$source_dir/config/profiles"
 
 cp -R "$repo_root/src/luma-android/luma_android" "$source_dir/"
 cp -R "$repo_root/src/luma-android/tests" "$source_dir/"
@@ -44,7 +44,6 @@ cp -R "$repo_root/src/luma-android/bin" "$repo_root/src/luma-android/data" \
 cp "$repo_root/config/android/luma-android.conf" "$source_dir/config/"
 cp "$repo_root/config/android/fp6-software-weston.ini" "$source_dir/config/"
 cp "$repo_root/config/android/profiles/"*.conf "$source_dir/config/profiles/"
-cp "$repo_root/config/android/hardware/"*.sha256 "$source_dir/config/hardware/"
 tar -C "$work_dir" -czf "$rpmbuild_dir/SOURCES/luma-android-runtime.tar.gz" \
   luma-android-runtime
 install -m 0644 "$repo_root/LICENSE.md" "$rpmbuild_dir/SOURCES/LICENSE.md"
@@ -137,8 +136,9 @@ verify_dir=$(mktemp -d "$work_dir/verify.XXXXXX")
   grep -Fqx 'IPAddressAllow=localhost' \
     usr/lib/systemd/user/luma-android-fp6-software-compositor.service
   grep -Fqx 'refresh-rate=30' usr/share/luma/android/fp6-software-weston.ini
-  ! grep -Eq '^[[:space:]]*[0-9a-f]{64}([[:space:]]|$)' \
-    usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.sha256
+  test ! -e usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.sha256
+  grep -Fq 'fairphone-fp6-kernel-notes.d' \
+    usr/lib/python3*/site-packages/luma_android/kernel.py
   grep -Fq 'BindsTo=luma-waydroid-fp6-gpu-watchdog.service' \
     usr/lib/systemd/system-generators/luma-android-policy-generator
 )

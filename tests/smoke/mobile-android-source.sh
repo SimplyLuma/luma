@@ -55,8 +55,10 @@ grep -Fq '"persist.waydroid.use_subsurface": "false"' \
 grep -Fq 'gpu-fault-latched' "$repo_root/src/luma-android/luma_android/engine.py"
 grep -Fq 'GPU watchdog active while Android runs' \
   "$repo_root/src/luma-android/luma_android/settings.py"
-! grep -Eq '^[[:space:]]*[0-9a-f]{64}([[:space:]]|$)' \
-  "$repo_root/config/android/hardware/fairphone-fp6-kernel-notes.sha256"
+test ! -e "$repo_root/config/android/hardware/fairphone-fp6-kernel-notes.sha256"
+grep -Fq 'fairphone-fp6-kernel-notes.d' \
+  "$repo_root/src/luma-android/luma_android/kernel.py"
+python3 -B "$repo_root/scripts/kernel/fp6-android-gpu-admission.py" check
 grep -Fq 'hangcheck detected gpu lockup' \
   "$repo_root/src/luma-android/bin/luma-waydroid-fp6-gpu-watchdog"
 grep -Fq 'PrivateDevices=yes' \

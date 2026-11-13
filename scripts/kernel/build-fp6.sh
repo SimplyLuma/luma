@@ -12,6 +12,11 @@
 #   dtb       the boot DTB: the built DTB with the tag's overlays
 #             (scripts/kernel/compose-fp6-dtb.sh; build-fp6-boot-image.sh --dtb)
 #   config    the merged configuration
+#   android-gpu-admission.sha256
+#             the kernel's Android GPU admission entry, empty unless
+#             device.toml [kernel.android_gpu] admits these inputs
+#             (scripts/kernel/fp6-android-gpu-admission.py); shipped by
+#             kernel-modules-luma-fp6
 #   modules/  stripped modules_install tree (scripts/packages/build-kernel-modules-luma-fp6.sh --tree)
 #   obj/      the build tree; a second run with the same OUTPUT_DIR is incremental
 #
@@ -35,6 +40,8 @@ while [ "$#" -gt 1 ]; do
   esac
 done
 [ "$#" -eq 1 ] || { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
+# The admission record must match these inputs before anything is built.
+python3 "$repo_root/scripts/kernel/fp6-android-gpu-admission.py" check || fail "restamp [kernel.android_gpu]"
 mkdir -p "$1"
 out=$(realpath -e "$1")
 
@@ -100,6 +107,10 @@ rm -f "$out/modules/lib/modules/$release/build" "$out/modules/lib/modules/$relea
 install -m 0644 "$obj/arch/arm64/boot/vmlinuz" "$out/Image.gz"
 install -m 0644 "$obj/.config" "$out/config"
 "$repo_root/scripts/kernel/compose-fp6-dtb.sh" "$source_dir" "$obj/arch/arm64/boot/dts/$dtb" "$out/dtb" >/dev/null
+admission=$(python3 "$repo_root/scripts/kernel/fp6-android-gpu-admission.py" emit \
+  --source "$source_dir" --vmlinux "$obj/vmlinux" --output "$out/android-gpu-admission.sha256") ||
+  fail "Android GPU admission"
+inputs=$(python3 "$repo_root/scripts/kernel/fp6-android-gpu-admission.py" inputs)
 {
   printf 'TAG=%s\nRELEASE=%s\n' "$tag" "$release"
   printf 'FRAGMENTS=%s\n' "${fragments[*]}"
@@ -109,5 +120,6 @@ install -m 0644 "$obj/.config" "$out/config"
   printf 'DTB_SHA256=%s\n' "$(sha256sum "$out/dtb" | cut -d' ' -f1)"
   printf 'SIGNING_CERT_SHA256=%s\n' "$(sha256sum "$obj/certs/signing_key.x509" | cut -d' ' -f1)"
   printf 'MODULE_COUNT=%s\n' "$(find "$out/modules/lib/modules/$release" -name '*.ko*' | wc -l)"
+  printf '%s\n' "$inputs" "$admission"
 } >"$out/manifest.env"
 cat "$out/manifest.env"

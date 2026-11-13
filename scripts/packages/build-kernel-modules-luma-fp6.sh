@@ -6,6 +6,9 @@
 # in an OSTree commit (the Alpha 1 image: luma/1/aarch64/fairphone-fp6/nightly
 # 949c41c0). The package holds /usr/lib/modules/<release> without vmlinuz,
 # initramfs.img and aboot.img. Its kernel must be the one in the boot image.
+# It also ships that kernel's Android GPU admission entry: with --tree, the
+# android-gpu-admission.sha256 build-fp6.sh wrote beside DIR; an OSTree commit
+# has none, so its package admits no kernel.
 #
 #   build-kernel-modules-luma-fp6.sh --tree OUTPUT_DIR/modules
 #   build-kernel-modules-luma-fp6.sh OSTREE_REPO COMMIT
@@ -38,6 +41,17 @@ else
   ostree --repo="$ostree_repo" checkout -U --subpath="/usr/lib/modules/$kver" "$commit" "$work_dir/tree/usr/lib/modules/$kver"
 fi
 rm -f "$work_dir/tree/usr/lib/modules/$kver"/{vmlinuz,initramfs.img,aboot.img}
+admission_dir="$work_dir/tree/usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.d"
+mkdir -p "$admission_dir"
+if [ -n "$tree" ]; then
+  admission="$(dirname "$tree")/android-gpu-admission.sha256"
+  [ -f "$admission" ] || { echo "error: $admission is missing (build the kernel with scripts/kernel/build-fp6.sh)" >&2; exit 1; }
+  grep -Fq "for $kver," "$admission" || { echo "error: $admission is not for $kver" >&2; exit 1; }
+  install -m 0644 "$admission" "$admission_dir/$kver.sha256"
+else
+  printf '# Fairphone 6 kernel %s from an OSTree commit: no Android GPU admission.\n' "$kver" \
+    >"$admission_dir/$kver.sha256"
+fi
 rm -rf "$work_dir/tree/usr/lib/modules/$kver/dtb"
 tar -C "$work_dir/tree" --sort=name --owner=0 --group=0 --numeric-owner -cf "$rpmbuild_dir/SOURCES/fp6-kernel-modules.tar" usr
 install -m 0644 "$repo_root/packaging/rpm/kernel-modules-luma-fp6.spec" "$rpmbuild_dir/SPECS/"

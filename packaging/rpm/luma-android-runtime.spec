@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.112%{?dist}
+Release:        1.luma.113%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -133,8 +133,6 @@ for profile in config/profiles/*.conf; do
   install -D -m 0644 "$profile" \
     "%{buildroot}%{_datadir}/luma/android/profiles/$(basename "$profile")"
 done
-install -D -m 0644 config/hardware/fairphone-fp6-kernel-notes.sha256 \
-  %{buildroot}%{_datadir}/luma/android/hardware/fairphone-fp6-kernel-notes.sha256
 install -D -m 0644 config/fp6-software-weston.ini \
   %{buildroot}%{_datadir}/luma/android/fp6-software-weston.ini
 
@@ -222,6 +220,11 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-android-recover@.service
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.113
+- Admit FP6 kernels from the entry kernel-modules-luma-fp6 ships for its own kernel instead of a hand-edited list
+- Admit a kernel under on-phone qualification through a root-written, reboot-cleared digest marker
+- Latch the FP6 GPU fault at the first GMU firmware initialization timeout
+
 * Tue Nov 10 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.112
 - Skip the FP6 GPU watchdog and the container when the hardware gate is closed instead of failing them
 - Skip the Android session and its sign-in start on gated hardware; stop status probes from starting the container there

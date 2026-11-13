@@ -44,7 +44,21 @@
         "config_fragments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relpath"}, "description": "Kconfig fragments in this repository, merged over config in order."},
         "patches": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/relpath"}, "description": "Kernel patches in this repository, applied over the tag in order."},
         "dtb": {"type": "string", "pattern": "^[a-z0-9_-]+/[A-Za-z0-9_.,+-]+\\.dtb$"},
-        "dtb_overlays": {"$ref": "#/$defs/relpath"}
+        "dtb_overlays": {"$ref": "#/$defs/relpath"},
+        "android_gpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required_patches", "rejected_patches", "qualified_gpu_inputs", "qualified_notes_sha256", "kernel_inputs", "admitted"],
+          "description": "Android GPU admission of this kernel (scripts/kernel/fp6-android-gpu-admission.py).",
+          "properties": {
+            "required_patches": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/relpath"}},
+            "rejected_patches": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/relpath"}},
+            "qualified_gpu_inputs": {"type": "string", "pattern": "^([0-9a-f]{64})?$"},
+            "qualified_notes_sha256": {"type": "string", "pattern": "^([0-9a-f]{64})?$"},
+            "kernel_inputs": {"$ref": "#/$defs/sha256"},
+            "admitted": {"type": "boolean"}
+          }
+        }
       }
     },
     "boot": {
