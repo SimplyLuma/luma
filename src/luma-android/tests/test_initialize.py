@@ -337,6 +337,11 @@ class GraphicsCapabilityTest(unittest.TestCase):
             self.assertEqual(self.probe(), (False, None))
         virtio.assert_not_called()
 
+    def test_msm_dpu_render_node_is_the_adreno_gpu(self):
+        # SDM845: /sys/class/drm/renderD128/device/uevent reads DRIVER=msm_dpu.
+        self.node("renderD128", "msm_dpu")
+        self.assertEqual(self.probe(), (False, None))
+
     def test_display_only_node_is_skipped_for_the_gpu(self):
         self.node("renderD128", "exynos-drm")
         self.assertEqual(self.probe(), (True, None))
