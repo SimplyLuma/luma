@@ -688,9 +688,28 @@ def open_conversation(key: str) -> None:
 class AgentClient:
     """The Messages window's connection to the agent, if it is running."""
 
+    # Reads the window repeats (every list reload asks for each conversation's
+    # kind and flags) are answered from the agent's last reply until anything
+    # could have changed: a StoreChanged or AccountChanged signal, the agent
+    # going or coming back, or any other request to it. A write through the
+    # mailbox API forgets only that mailbox's reads.
+    READS = frozenset({"Accounts", "ApplicationAccounts", "ApplicationPhones"})
+    # Requests that change no mailbox and no account, not kept either (SetViewing
+    # only steers the agent's notifications; other devices' history and the
+    # Luma setup state are not the agent's).
+    QUIET = frozenset({"SetViewing", "ApplicationCloud", "ApplicationInfo"})
+    # Requests about one account, named first, that change only its mailbox.
+    ACCOUNT = frozenset({"Send", "React", "ConversationOpened", "ConversationSeen", "RetryMedia", "Reconnect", "Luma"})
+    # Modem and phone state reads: never kept, but they change no mailbox.
+    TRANSPORT_READS = frozenset({"inspect", "mms_inspect", "snapshot"})
+
     def __init__(self, connection: Gio.DBusConnection) -> None:
         self.connection = connection
         self._listeners: dict[str, list] = {}
+        self._reads: dict[tuple, tuple] = {}
+        self._reads_lock = threading.Lock()
+        self._reads_generation = 0
+        self._mailbox_generations: dict[str, int] = {}
         self._subscription = connection.signal_subscribe(AGENT_NAME, API, "AccountChanged", API_PATH, None,
                                                          Gio.DBusSignalFlags.NONE, self._account_changed)
         self._seen_owner = False
@@ -700,7 +719,7 @@ class AgentClient:
         self.on_store_changed = lambda: None
         self.on_mailbox_error = lambda _message: None
         self._store_subscription = connection.signal_subscribe(AGENT_NAME, API, 'StoreChanged', API_PATH, None,
-            Gio.DBusSignalFlags.NONE, lambda *_: self.on_store_changed())
+            Gio.DBusSignalFlags.NONE, lambda *_: (self.forget_reads(), self.on_store_changed()))
         self._error_subscription = connection.signal_subscribe(AGENT_NAME, API, 'MailboxError', API_PATH, None,
             Gio.DBusSignalFlags.NONE, lambda _c, _s, _p, _i, _n, args: self.on_mailbox_error(args.unpack()[0]))
 
@@ -716,7 +735,55 @@ class AgentClient:
             return None
         return cls(connection)
 
+    def forget_reads(self, mailbox: str | None = None) -> None:
+        """Forget every kept read, or one mailbox's after a write to it."""
+        with self._reads_lock:
+            if mailbox is None:
+                self._reads.clear()
+                self._reads_generation += 1
+                return
+            for key in [key for key in self._reads if key[0] == "ApplicationStore" and key[1] == mailbox]:
+                del self._reads[key]
+            self._mailbox_generations[mailbox] = self._mailbox_generations.get(mailbox, 0) + 1
+
+    def _read_key(self, method: str, parameters: GLib.Variant | None) -> tuple[tuple | None, str | None]:
+        """A read's cache key (or None), and what the request may change: "" nothing,
+        a mailbox name for a write to that mailbox, None for anything."""
+        if method in self.READS:
+            return (method, parameters.print_(False) if parameters is not None else ""), ""
+        if method in self.QUIET:
+            return None, ""
+        if method in self.ACCOUNT and parameters is not None and parameters.n_children():
+            return None, parameters.get_child_value(0).get_string() or None
+        if method == "ApplicationStore" and parameters is not None:
+            from .messages_app_rpc import READS
+            mailbox, operation, data = parameters.unpack()
+            return ((method, mailbox, operation, data), "") if operation in READS else (None, mailbox)
+        if method in {"ApplicationNative", "ApplicationPhone"} and parameters is not None:
+            operation = parameters.get_child_value(0 if method == "ApplicationNative" else 1).get_string()
+            if operation in self.TRANSPORT_READS:
+                return None, ""
+        return None, None
+
     def call(self, method: str, parameters: GLib.Variant | None = None, *, timeout: int = 10_000):
+        key, changes = self._read_key(method, parameters)
+        with self._reads_lock:
+            if key is not None and key in self._reads:
+                return self._reads[key]
+            generation = (self._reads_generation, self._mailbox_generations.get(key[1], 0) if key else 0)
+        try:
+            answer = self._request(method, parameters, timeout)
+        finally:
+            # Once it is done: a read that ran alongside it may be either side.
+            if changes != "":
+                self.forget_reads(changes)
+        if key is not None:
+            with self._reads_lock:
+                if generation == (self._reads_generation, self._mailbox_generations.get(key[1], 0)):
+                    self._reads[key] = answer
+        return answer
+
+    def _request(self, method: str, parameters: GLib.Variant | None, timeout: int):
         try:
             result = self.connection.call_sync(AGENT_NAME, API_PATH, API, method, parameters, None,
                                                Gio.DBusCallFlags.NO_AUTO_START, timeout, None)
@@ -735,8 +802,17 @@ class AgentClient:
         return result.unpack() if result is not None else ()
 
     def call_async(self, method: str, parameters: GLib.Variant | None = None) -> None:
+        changes = self._read_key(method, parameters)[1]
         self.connection.call(AGENT_NAME, API_PATH, API, method, parameters, None, Gio.DBusCallFlags.NO_AUTO_START,
-                             10_000, None, None)
+                             10_000, None, self._async_done, changes)
+
+    def _async_done(self, connection, result, changes) -> None:
+        try:
+            connection.call_finish(result)
+        except GLib.Error:
+            pass
+        if changes != "":
+            self.forget_reads(changes)
 
     def states(self) -> dict[str, dict]:
         try:
@@ -752,6 +828,7 @@ class AgentClient:
             self._listeners[account_id].remove(callback)
 
     def _account_changed(self, _connection, _sender, _path, _interface, _signal, parameters, *_user) -> None:
+        self.forget_reads()
         account_id, state = parameters.unpack()
         try:
             value = json.loads(state)
@@ -761,6 +838,7 @@ class AgentClient:
             callback(value)
 
     def _appeared(self, *_args) -> None:
+        self.forget_reads()
         # A restarted agent (after a crash) knows nothing of what the window last
         # heard: read every account's state again.
         if not self._seen_owner:
@@ -774,6 +852,7 @@ class AgentClient:
                     callback(state)
 
     def _vanished(self, *_args) -> None:
+        self.forget_reads()
         for listeners in list(self._listeners.values()):
             for callback in list(listeners):
                 callback({"state": "offline", "network_state": "connecting", "detail": ""})

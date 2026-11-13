@@ -6,7 +6,9 @@ import os
 import re
 from pathlib import Path
 import stat
+import sys
 import tempfile
+import threading
 import uuid
 from gi.repository import Gio, GLib
 from .messages_accounts import Account, MediaPart, ACCOUNT_ID
@@ -113,7 +115,10 @@ class ApplicationStore:
                 GLib.Variant('(sssh)', (self.account, address, str(name or Path(source).name), index)),
                 GLib.VariantType.new('(s)'), Gio.DBusCallFlags.NO_AUTO_START, 30000, fds, None)
             return unpack(json.loads(result.unpack()[0]))
-        finally: os.close(fd)
+        finally:
+            os.close(fd)
+            forget = getattr(self.client, 'forget_reads', None)
+            if forget is not None: forget(self.account)  # the import wrote to this mailbox
 
     def attachment_path(self, attachment):
         return self._descriptor_file(attachment.uid, '', attachment.size, cache_key=attachment.storage_key)
@@ -184,7 +189,13 @@ class NativeProvider:
         provider = self
         class Transport:
             def inspect(self): return provider.call('mms_inspect')
-            def start(self, _arrived, changed): changed(self.inspect())
+            def start(self, _arrived, changed):
+                # Asked off the main thread; the answer arrives on it.
+                def inspect():
+                    try: capability = self.inspect()
+                    except Exception: capability = MmsCapability()
+                    GLib.idle_add(lambda: (changed(capability), GLib.SOURCE_REMOVE)[1])
+                threading.Thread(target=inspect, daemon=True, name='messages-mms-inspect').start()
             def stop(self): pass
             def mark_read(self, path): provider.call('mms_read', path)
             def delete(self, path): provider.call('mms_delete', path)
@@ -205,7 +216,12 @@ class PhoneProvider(NativeProvider):
     def start(self, notify):
         self.notify = notify
         self.client.listen(self.identity, self._changed)
-        self.refresh()
+        # The phone reports its state through AccountChanged; the window
+        # doesn't wait for this request to be accepted.
+        def refresh():
+            try: self.refresh()
+            except GLib.Error as error: print(f'messages: phone refresh failed: {error.message}', file=sys.stderr)
+        threading.Thread(target=refresh, daemon=True, name='messages-phone-refresh').start()
     def _changed(self, state):
         self.status = state; self.notify(state)
     def refresh(self): self.call('refresh')

@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.133%{?dist}
+Release:        1.luma.134%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -291,7 +291,7 @@ dbus-run-session -- xvfb-run -a --server-args="-screen 0 1440x900x24" \
   python3 tests/notes_creator_followup_runtime.py
 # Current creator workflows execute against the staged installed payload.
 # Replies/contacts and synthetic audio remain explicit private fixtures.
-for regression in messages_recipient_runtime messages_details_runtime messages_host_lifecycle_runtime phone_navigation_runtime voice_memos_audio; do
+for regression in messages_recipient_runtime messages_details_runtime messages_host_lifecycle_runtime messages_host_startup_runtime phone_navigation_runtime voice_memos_audio; do
   timeout 120s xvfb-run -a --server-args="-screen 0 1920x1080x24" dbus-run-session -- \
     env GSK_RENDERER=cairo GTK_A11Y=none GSETTINGS_BACKEND=memory \
       LUMA_CREATOR_SCHEMA_FILE=%{SOURCE3} \
@@ -699,6 +699,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.134
+- Messages: the window opens before its phones and accounts answer.
+
 * Thu Nov 12 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.133
 - Clock, alarms, Calendar and Weather follow the system 12/24-hour setting.
 - Weather's automatic units follow the system locale when the session has none.

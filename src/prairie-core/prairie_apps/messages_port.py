@@ -328,6 +328,9 @@ class MessagesSurface:
         self._phone_breakpoint = phone
         self.owner.connect("notify::current-breakpoint", self._adapt_to_width)
         self.render_sidebar()
+        self._open_first()
+
+    def _open_first(self) -> None:
         first = self.fixture.document.get("selected") if self.fixture else None
         entries = self._entries()
         if first is None and entries:
@@ -337,6 +340,13 @@ class MessagesSurface:
         else:
             self.render_thread()
             self._composer()
+
+    def host_loaded(self) -> None:
+        """The window's phones and accounts are in: open what a first build would have."""
+        if self.current is None:
+            self._open_first()
+        if self._phone_mode and not self._navigated:
+            self.split.set_show_content(not bool(self._entries()))
 
     def _link_google(self) -> None:
         if self.fixture:
@@ -354,6 +364,8 @@ class MessagesSurface:
             self.owner._show_luma_profile()
 
     def _entries(self) -> list[dict]:
+        if not self.fixture and getattr(self.owner, "_host_loading", False):
+            return []  # listed once the window's services are in (MessagesWindow._load_host_services)
         if self.fixture:
             data = self.fixture.document
             people = data["people"]
@@ -481,7 +493,7 @@ class MessagesSurface:
             hint.set_margin_top(12)
             hint.set_name("msg-no-results")
             self.sidebar.list.append(Gtk.ListBoxRow(child=hint, selectable=False, activatable=False))
-        elif not entries:
+        elif not entries and not getattr(self.owner, "_host_loading", False):
             self.sidebar.list.append(Gtk.ListBoxRow(child=ListEmptyState('No conversations yet'),
                                                    selectable=False, activatable=False))
         # A phone's list-first page shows no selected row (v71 `.win.phone #m-side .crow.on`).
@@ -1296,7 +1308,7 @@ class MessagesSurface:
         if self.center.state != "editor":
             self.history.set_margin_bottom(self._thread_foot())
         self._list_bar()
-        if phone and not self._navigated:
+        if phone and not self._navigated and not getattr(self.owner, "_host_loading", False):
             # List-first: a phone opens on the conversations, full screen.
             self.split.set_show_content(not bool(self._entries()))
         self._name_detail_controls()
