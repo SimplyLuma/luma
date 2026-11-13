@@ -39,6 +39,16 @@ class DesktopTargets(unittest.TestCase):
         self.assertIn('gstreamer1-1.28.7-1.fc44.aarch64', values)
         self.assertIn('greenboot', values)
 
+    def test_surface_target_keeps_its_kernel_and_namespace_scoped(self):
+        selected = target.packages(ROOT, 'aarch64', profile_name='arm-preview', hardware_target='microsoft,sp12in')
+        self.assertIn('kernel-surface-pro12-7.3.0-2.luma.surface12.fc44.aarch64', selected)
+        for arch in ('x86_64', 'aarch64'):
+            self.assertFalse(any(p.startswith('kernel-surface-pro12-') for p in target.packages(ROOT, arch)))
+        values = target.contract(ROOT, 'aarch64', 'arm-preview', 'microsoft,sp12in')
+        self.assertEqual(values['LUMA_OS_REF_PREFIX'], 'luma/1/aarch64/microsoft-sp12in')
+        with self.assertRaises(ValueError):
+            target.contract(ROOT, 'x86_64', 'full', 'microsoft,sp12in')
+
     def test_arm_update_ref_and_graph_are_isolated(self):
         values = target.contract(ROOT, 'aarch64')
         self.assertEqual(values['LUMA_OS_REF_PREFIX'], 'luma/1/aarch64')

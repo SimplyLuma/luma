@@ -46,6 +46,12 @@
         "gstreamer1-plugins-bad-free",
         "gstreamer1-plugins-bad-free-libs"
       ]
+    },
+    "microsoft,sp12in": {
+      "kernel": "kernel-surface-pro12",
+      "packages": [
+        "kernel-surface-pro12"
+      ]
     }
   }
 }

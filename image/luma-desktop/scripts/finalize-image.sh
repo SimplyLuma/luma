@@ -89,6 +89,12 @@ fi
 DRACUT_NO_XATTR=1 dracut --no-hostonly --reproducible --zstd --force \
   --add ostree --kver "$kver" "/usr/lib/modules/$kver/initramfs.img"
 chmod 0644 "/usr/lib/modules/$kver/initramfs.img"
+if [ -f /usr/share/luma/device/hardware-inputs.json ]; then
+  device_check=$(mktemp -d /tmp/luma-device-initrd.XXXXXX)
+  (cd "$device_check" && lsinitrd --unpack "/usr/lib/modules/$kver/initramfs.img") > /tmp/luma-device-initrd.log 2>&1
+  python3 "$src/scripts/install/atlas-iso/device-firmware-dracut.py" verify "$device_check" /usr/share/luma/device/hardware-inputs.json
+  rm -rf -- "$device_check"
+fi
 [ "$created_roothome" -eq 0 ] || rm -rf /var/roothome
 # List to a file first: grep -q closing a pipe under pipefail would fail the
 # check with SIGPIPE even when the theme is there.

@@ -137,3 +137,6 @@ luma-rpi5-platform-0.4.0-1.luma.2.fc44.noarch
 luma-rpi-bluetooth-firmware-0-1.20251002gitcdf61dc.luma.1.fc44.noarch
 gstreamer1-plugins-bad-free-1.28.8-1.luma.1.fc44.aarch64
 gstreamer1-plugins-bad-free-libs-1.28.8-1.luma.1.fc44.aarch64
+
+# Private Surface Pro 12-inch target; supplied through device hardware inputs.
+kernel-surface-pro12-7.3.0-2.luma.surface12.fc44.aarch64
