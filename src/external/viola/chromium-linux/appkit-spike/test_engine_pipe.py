@@ -69,6 +69,10 @@ class EngineLifecycleTest(unittest.TestCase):
                         self.assertEqual('--headless=new' in argv, not native)
                         self.assertEqual('--viola-native-frame-probe' in argv, native)
                         self.assertEqual('--viola-native-shm-frame-probe' in argv, selected)
+                        # One --disable-features: Chromium keeps only the last.
+                        disabled = [flag for flag in argv if flag.startswith('--disable-features=')]
+                        self.assertEqual(disabled, ['--disable-features=Vulkan,WaylandWpColorManagerV1']
+                                         if native else [])
                         for flag in ('--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'):
                             self.assertNotIn(flag, argv)
                     finally:

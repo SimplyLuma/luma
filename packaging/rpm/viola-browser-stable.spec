@@ -9,7 +9,7 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 43
+%global native_release 44
 # The native host is shared. Both CPUs use source-built engines from the same
 # tree (engine patches 0001-0005); each has its own release number.
 %ifarch aarch64
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261108.3%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261113.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -284,6 +284,9 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native44.creator20261113.1
+- Host native44: the engine leaves Wayland color management off on its private display, so shared-memory frames stay sRGB and pages appear on GPU-backed ARM systems.
+
 * Sun Nov 08 2026 Nick McMillen <nmcmil@users.noreply.github.com> - 151.0.7922.72-15.viola8210.native43.creator20261108.3
 - Host native43: the window opens wide enough to keep its sidebar, and the sidebar keeps the media preview down to a 480 px height, so background video is drawn, not only received.
 - The private engine display waits while Mutter makes progress (up to 120 s) instead of failing after 15 s, and says why when it fails.
