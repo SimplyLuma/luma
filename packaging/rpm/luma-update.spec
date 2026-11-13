@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.32%{?dist}
+Release:        1.luma.33%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -231,6 +231,13 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Thu Nov 12 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.33
+- luma-device-layer: step the clock forward to the newest creation time of
+  the kit's verified signatures before the transaction (a first boot without
+  RTC or network starts at the image build time, and rpm rejects a kit signed
+  later as not yet live); keep that floor in systemd-timesyncd's clock file.
+- luma-device-layer: count only staged deployments as attempts, so a
+  transaction that fails before staging is retried on the next boot.
 * Mon Nov 09 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.32
 - luma-device-layer: load fuse.ko for the running kernel from the kit's
   signed packages when /dev/fuse is missing (rofiles-fuse runs the package

@@ -31,11 +31,21 @@ A boot whose deployment already carries the layer writes
 /var/lib/luma-device-layer/layered, after which the unit no longer starts.
 Failures never restart the phone; after MAX_ATTEMPTS staged attempts that did
 not boot (a greenboot rollback, power lost before finalisation) it stops and
-says so. `luma-device-layer apply --retry` starts over.
+says so. A run that fails before rpm-ostree stages a deployment is not an
+attempt: the next boot tries again. `luma-device-layer apply --retry` starts
+over.
+
+A phone's first boot has no network and often no RTC, so the clock starts at
+the image's build time. A kit signed later is "not live yet" to rpm's OpenPGP
+checks, so before the transaction the clock is stepped forward to the newest
+creation time of the kit's verified signatures (kit.json is signed last, after
+repomd.xml, whose checksums cover every package with its signature) and that
+floor is kept in systemd-timesyncd's clock file.
 """
 from __future__ import annotations
 
 import argparse
+import calendar
 import ctypes
 import json
 import os
@@ -50,6 +60,8 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 MAX_ATTEMPTS = 2
+# A kit signed further ahead of the clock than this is not trusted to set it.
+MAX_CLOCK_STEP = 2 * 366 * 86400
 KIT_DIR = "luma-device-kit"
 KIT_SCHEMA = 1
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
@@ -77,6 +89,7 @@ class Paths:
     fuse: str = "dev/fuse"
     osrelease: str = "proc/sys/kernel/osrelease"
     selinuxfs: str = "sys/fs/selinux/enforce"
+    timesync_clock: str = "var/lib/systemd/timesync/clock"
 
     def __getattribute__(self, name: str):
         value = object.__getattribute__(self, name)
@@ -97,6 +110,11 @@ class Kit:
     packages: list[str]
     version: str
     path: Path = field(default=Path())
+    signed: int | None = None  # newest creation time of its verified signatures
+
+    def saw_signature(self, created: int | None) -> None:
+        if created is not None and (self.signed is None or created > self.signed):
+            self.signed = created
 
     @property
     def repo(self) -> Path:
@@ -271,6 +289,31 @@ def librepo_import_key(key: Path, gpgdir: Path) -> None:
         raise LayerError(f"importing {key} into {gpgdir} failed: {message}")
 
 
+def signature_time(status: str) -> int | None:
+    """Creation time (seconds since the epoch) of the newest good signature in
+    gpgv --status-fd output: VALIDSIG <fpr> <date> <timestamp> ..., where the
+    timestamp is seconds or an ISO 8601 time like 20261113T021431."""
+    times = []
+    for line in status.splitlines():
+        parts = line.split()
+        if len(parts) < 5 or parts[:2] != ["[GNUPG:]", "VALIDSIG"]:
+            continue
+        value = parts[4]
+        if value.isdigit():
+            times.append(int(value))
+        elif re.match(r"^\d{8}T\d{6}$", value):
+            times.append(calendar.timegm(time.strptime(value, "%Y%m%dT%H%M%S")))
+    return max(times) if times else None
+
+
+def set_realtime(seconds: float) -> None:
+    time.clock_settime(time.CLOCK_REALTIME, seconds)
+
+
+def iso(seconds: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(seconds))
+
+
 def repo_file_text(kit: Kit, baseurl: str, rpm_key: str) -> str:
     return "\n".join([
         f"# {kit.name or kit.device} device packages, layered on the Luma OS with",
@@ -291,12 +334,16 @@ class DeviceLayer:
     def __init__(self, paths: Paths | None = None, run: Callable = default_run,
                  sleep: Callable[[float], None] = time.sleep,
                  import_key: Callable[[Path, Path], None] = librepo_import_key,
-                 label: Callable[[Path], str | None] = read_label):
+                 label: Callable[[Path], str | None] = read_label,
+                 now: Callable[[], float] = time.time,
+                 set_clock: Callable[[float], None] = set_realtime):
         self.paths = paths or Paths()
         self.run = run
         self.sleep = sleep
         self.import_key = import_key
         self.label = label
+        self.now = now
+        self.set_clock = set_clock
         self.mounted = False  # whether paths.mount is a mount this process made
 
     # -- state -----------------------------------------------------------------
@@ -422,24 +469,28 @@ class DeviceLayer:
             self.run(["umount", str(self.paths.mount)])
             self.mounted = False
 
-    def verify(self, data: Path) -> None:
+    def verify(self, data: Path) -> int | None:
+        """Check data.asc against the release key; the signature's creation time."""
         signature = data.with_name(data.name + ".asc")
         if not signature.is_file():
             raise LayerError(f"{data} has no signature {signature.name}")
         if not self.paths.keyring.is_file():
             raise LayerError(f"no release key at {self.paths.keyring}")
-        result = self.run(["gpgv", "--keyring", str(self.paths.keyring), str(signature), str(data)])
+        result = self.run(["gpgv", "--status-fd", "1", "--keyring", str(self.paths.keyring),
+                           str(signature), str(data)])
         if result.returncode != 0:
             raise LayerError(f"{data} is not signed by the Luma OS Release key")
+        return signature_time(result.stdout or "")
 
     def load_kit(self, top: Path) -> Kit:
         kit_dir = top / KIT_DIR
         manifest = kit_dir / "kit.json"
         if not manifest.is_file():
             raise FileNotFoundError(manifest)
-        self.verify(manifest)
+        created = self.verify(manifest)
         kit = parse_kit(manifest.read_text())
         kit.path = kit_dir
+        kit.saw_signature(created)
         return kit
 
     def stage_repo(self, kit: Kit) -> Path:
@@ -448,7 +499,7 @@ class DeviceLayer:
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(kit.repo, target)
-        self.verify(target / "repodata" / "repomd.xml")
+        kit.saw_signature(self.verify(target / "repodata" / "repomd.xml"))
         # libdnf treats a file:// baseurl as a local repository: it checks
         # repomd.xml.asc against the keys in <baseurl>/gpgdir and skips the
         # refresh that imports gpgkey=, so the key goes in here (any gpgdir
@@ -561,6 +612,41 @@ class DeviceLayer:
             raise LayerError(f"/{SYSTEMD} in the staged deployment is still {label or 'unlabelled'} "
                              "after relabelling")
 
+    # -- clock -------------------------------------------------------------------
+
+    def ensure_clock(self, kit: Kit) -> None:
+        """Step the clock forward to the kit's newest signature; never back."""
+        if kit.signed is None:
+            log("the kit's signatures carry no creation time; the clock is left as it is")
+            return
+        now = self.now()
+        if now >= kit.signed:
+            return
+        if kit.signed - now > MAX_CLOCK_STEP:
+            raise LayerError(f"the kit was signed {iso(kit.signed)}, more than two years after the clock "
+                             f"({iso(now)}); not moving the clock that far")
+        try:
+            self.set_clock(kit.signed)
+        except OSError as exc:
+            raise LayerError(f"cannot set the clock to {iso(kit.signed)}: {exc}") from None
+        log(f"the clock read {iso(now)}, before the kit's signatures; stepped it to {iso(kit.signed)}")
+        self.keep_clock(kit.signed)
+
+    def keep_clock(self, seconds: float) -> None:
+        """systemd and systemd-timesyncd start the clock no earlier than this file's mtime."""
+        path = self.paths.timesync_clock
+        try:
+            created = not path.exists()
+            if created:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+                owner = path.parent.stat()
+                os.chown(path, owner.st_uid, owner.st_gid)
+            if created or path.stat().st_mtime < seconds:
+                os.utime(path, (seconds, seconds))
+        except OSError as exc:
+            log(f"cannot keep the clock in /{path.relative_to(self.paths.root).as_posix()}: {exc}")
+
     # -- repositories ------------------------------------------------------------
 
     # Other repositories are renamed in place (dnf and rpm-ostree read only
@@ -647,26 +733,26 @@ class DeviceLayer:
             log(f"the booted deployment {booted['checksum'][:12]} carries the {kit.device} layer")
             shutil.rmtree(self.paths.state_dir / "repo", ignore_errors=True)
             return 0
-        attempts = int(state.get("attempts", 0))
-        if attempts >= MAX_ATTEMPTS:
-            raise LayerError(f"{attempts} layered deployments were staged and none was booted "
-                             "(rolled back or lost); not trying again. "
-                             "`luma-device-layer apply --retry` starts over")
         staged = next((d for d in deployments if d.get("staged")), None)
         if staged is not None and set(kit.install) <= set(staged.get("requested-packages", [])):
             # An earlier run (stopped before it restarted) staged the layer.
+            self.count_attempt(state, staged)
             self.check_staged(staged)
-            state.update(status="staged", staged=staged.get("checksum"), last_error=None)
+            state.update(status="staged", last_error=None)
             self.save_state(state)
             log(f"{staged.get('checksum', '')[:12]} with the {kit.device} layer is already staged")
             return self._restart(reboot)
         if staged is not None:
             raise LayerError("another update is staged; restart first")
-        state.update(attempts=attempts + 1, status="layering", base=booted["checksum"], kit=kit.version)
+        self.check_attempts(state)
+        # Only a staged deployment counts as an attempt: a run that fails or
+        # stops before that is tried again on the next boot.
+        state.update(status="layering", base=booted["checksum"], kit=kit.version)
         self.save_state(state)
         repo = self.stage_repo(kit)
         self.write_repo(kit, "file://" + "/" + repo.relative_to(self.paths.root).as_posix())
         self.ensure_fuse(repo)
+        self.ensure_clock(kit)
         self.set_repos_aside(f"{kit.repo_id}.repo")
         try:
             if kit.replace:
@@ -681,12 +767,31 @@ class DeviceLayer:
         pending = next((d for d in self.status().get("deployments", []) if d.get("staged")), None)
         if pending is None or not set(kit.install) <= set(pending.get("requested-packages", [])):
             raise LayerError("rpm-ostree staged no deployment with the device packages")
+        self.count_attempt(state, pending, new=True)
         self.check_staged(pending)
-        state.update(status="staged", staged=pending.get("checksum"), last_error=None)
+        state.update(status="staged", last_error=None)
         self.save_state(state)
         log(f"staged {pending.get('checksum', '')[:12]} with the {kit.device} layer (attempt "
-            f"{attempts + 1} of {MAX_ATTEMPTS})")
+            f"{state['attempts']} of {MAX_ATTEMPTS})")
         return self._restart(reboot)
+
+    @staticmethod
+    def check_attempts(state: dict) -> None:
+        attempts = int(state.get("attempts", 0))
+        if attempts >= MAX_ATTEMPTS:
+            raise LayerError(f"{attempts} layered deployments were staged and none was booted "
+                             "(rolled back or lost); not trying again. "
+                             "`luma-device-layer apply --retry` starts over")
+
+    def count_attempt(self, state: dict, deployment: dict, new: bool = False) -> None:
+        """Count a staged deployment once (a stopped run may find its own again)."""
+        checksum = deployment.get("checksum")
+        if new or state.get("staged") != checksum:
+            if not new:
+                self.check_attempts(state)
+            state["attempts"] = int(state.get("attempts", 0)) + 1
+        state["staged"] = checksum
+        self.save_state(state)
 
     def check_staged(self, deployment: dict) -> None:
         """A staged deployment that would not boot is dropped, never restarted into."""
