@@ -16,10 +16,11 @@ check() {
 }
 
 android_diagnostics() {
+  local status
+  status=$(luma-android status 2>/dev/null || true)
   if tr '\0' '\n' </proc/device-tree/compatible 2>/dev/null | \
       grep -Fxq fairphone,fp6 && \
-      ! grep -Eq '^[[:space:]]*[0-9a-f]{64}([[:space:]]|$)' \
-        /usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.sha256; then
+      ! grep -Fq '"fp6_kernel_admitted": true' <<<"$status"; then
     if luma-android status | \
         grep -Fq '"fp6_software_presentation": true'; then
       luma-android doctor
@@ -54,7 +55,7 @@ check 'split-package default handler is Luma Application Installer' bash -c \
 check 'split-package helper is installed with its policy' bash -c \
   'test -x /usr/libexec/luma-waydroid-package-session && test -f /usr/share/polkit-1/actions/org.projectluma.waydroid-package-session.policy'
 check 'FP6 kernel admission and GPU watchdog are installed' bash -c \
-  'test -x /usr/libexec/luma-waydroid-fp6-gpu-watchdog && test -x /usr/libexec/luma-waydroid-fp6-software-compositor && test -f /usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.sha256 && test -f /usr/lib/systemd/system/luma-waydroid-fp6-gpu-watchdog.service && test -f /usr/lib/systemd/user/luma-android-fp6-software-compositor.service'
+  'test -x /usr/libexec/luma-waydroid-fp6-gpu-watchdog && test -x /usr/libexec/luma-waydroid-fp6-software-compositor && test -f /usr/lib/systemd/system/luma-waydroid-fp6-gpu-watchdog.service && test -f /usr/lib/systemd/user/luma-android-fp6-software-compositor.service'
 check 'runtime broker unit has a valid hardening profile' bash -c \
   'systemd-analyze --user security luma-android.service >/dev/null'
 check 'runtime broker owns private writable package staging' bash -c \

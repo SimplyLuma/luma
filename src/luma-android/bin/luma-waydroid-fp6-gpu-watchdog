@@ -20,6 +20,8 @@ from luma_android.kernel import (
 GPU_FAULT_SIGNATURES = (
     b"hangcheck detected gpu lockup",
     b"Timeout waiting for GMU",
+    # The A810 failure starts here; OOB and hangcheck faults follow it.
+    b"GMU firmware initialization timed out",
 )
 
 

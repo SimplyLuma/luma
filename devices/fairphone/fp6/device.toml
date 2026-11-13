@@ -28,6 +28,30 @@ dtb = "qcom/milos-fairphone-fp6.dtb"
 # The boot DTB is the built dtb with these overlays (scripts/kernel/compose-fp6-dtb.sh).
 dtb_overlays = "luma/fp6/alpha1/dtb"
 
+[kernel.android_gpu]
+# Android GPU admission (scripts/kernel/fp6-android-gpu-admission.py). The
+# kernel build writes the /sys/kernel/notes sha256 of an admitted kernel into
+# kernel-modules-luma-fp6; luma-android-runtime refuses GPU-rendered Android on
+# any other FP6 kernel. The A810 GMU fails firmware initialization under
+# Android load (GMU start timeout, GPU_SET OOB timeouts, GPU and DPU
+# hangchecks): the IFPC-off kernel was revoked on 2026-08-15 after that
+# failure. Patch 0004 (Gen8.3 650 MHz GMU boot rate, after the 0002 timeout
+# diagnostics) passed one cold workload; 0003 (AHB fence range) broke the
+# native shell. See patches/linux-milos/README.md.
+required_patches = [
+  "patches/linux-milos/0002-drm-msm-a810-gmu-timeout-diagnostics.patch",
+  "patches/linux-milos/0004-drm-msm-a810-use-gen8-3-gmu-boot-rate.patch",
+]
+rejected_patches = ["patches/linux-milos/0003-drm-msm-a810-use-gen8-3-ahb-fence-range.patch"]
+# Set by `fp6-android-gpu-admission.py qualify` after the on-phone
+# qualification passes; "" = no kernel has passed.
+qualified_gpu_inputs = ""
+qualified_notes_sha256 = ""
+# Stamped by `fp6-android-gpu-admission.py stamp`; CI fails when the [kernel]
+# inputs change without restamping.
+kernel_inputs = "1d1ab90542843e84cfc1e9bf72fd04bcc59239c1336a68cb265fb9b0ceb8e92f"
+admitted = false
+
 [boot]
 config = "boot.toml"
 

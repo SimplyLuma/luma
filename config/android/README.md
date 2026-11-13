@@ -68,10 +68,15 @@ Android's public `sys.boot_completed` property before dispatching the requested
 package and reasserts it once after the launcher settles. Warm launches remain
 single-dispatch.
 
-On Fairphone 6, direct interactive startup additionally requires an exact
+On Fairphone 6, direct interactive startup additionally requires the exact
 running kernel-notes digest in
-`hardware/fairphone-fp6-kernel-notes.sha256`. The list is currently empty after
-the IFPC candidate failed the full cold workload. The private Pixman/Weston
+`/usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.d/`. The runtime
+carries no list: `kernel-modules-luma-fp6` ships the entry for its own kernel,
+written at kernel build time only when `devices/fairphone/fp6/device.toml`
+`[kernel.android_gpu]` records a passed physical qualification of that
+kernel's GPU inputs (`scripts/kernel/fp6-android-gpu-admission.py`). No FP6
+kernel is admitted: the IFPC candidate failed the full cold workload, and the
+shipped kernel lacks the A810 GMU patches 0002/0004. The private Pixman/Weston
 and loopback-only FreeRDP path in `fp6-software-weston.ini` is retained only as
 a root-authorized, reboot-cleared laboratory diagnostic. Repeated 30 and 60 Hz
 tests produced GMU/DPU faults despite the compositor being denied DRM devices,

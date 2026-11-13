@@ -28,11 +28,10 @@ chmod 0755 "$work_dir"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$source_dir"
 cp -R "$repo_root/src/luma-android/luma_android" "$repo_root/src/luma-android/tests" "$source_dir/"
 cp -R "$repo_root/src/luma-android/bin" "$repo_root/src/luma-android/data" "$source_dir/"
-mkdir -p "$source_dir/config/profiles" "$source_dir/config/hardware"
+mkdir -p "$source_dir/config/profiles"
 cp "$repo_root/config/android/luma-android.conf" "$source_dir/config/"
 cp "$repo_root/config/android/fp6-software-weston.ini" "$source_dir/config/"
 cp "$repo_root/config/android/profiles/"*.conf "$source_dir/config/profiles/"
-cp "$repo_root/config/android/hardware/"*.sha256 "$source_dir/config/hardware/"
 install -m 0644 "$repo_root/LICENSES/GPL-3.0-or-later.txt" "$source_dir/COPYING.GPL-3.0"
 tar -C "$work_dir" -czf "$rpmbuild_dir/SOURCES/luma-android-runtime.tar.gz" \
   luma-android-runtime

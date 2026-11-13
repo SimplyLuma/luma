@@ -848,26 +848,74 @@ class EngineTests(unittest.TestCase):
             import hashlib
 
             digest = hashlib.sha256(notes.read_bytes()).hexdigest()
-            allowlist = root / "allowlist"
-            allowlist.write_text(f"{digest}  verified\n", encoding="utf-8")
+            admitted = root / "fairphone-fp6-kernel-notes.d"
+            admitted.mkdir()
             marker = root / "fault"
-            admission = fp6_kernel_admission(
-                compatible_path=compatible,
-                notes_path=notes,
-                allowlist_path=allowlist,
-                fault_marker=marker,
-            )
-            self.assertTrue(admission.allowed)
-            self.assertEqual(admission.notes_sha256, digest)
+            qualify = root / "qualify"
+
+            def admission():
+                return fp6_kernel_admission(
+                    compatible_path=compatible,
+                    notes_path=notes,
+                    admission_dir=admitted,
+                    fault_marker=marker,
+                    qualify_marker=qualify,
+                )
+
+            # The kernel package ships its entry; an empty one admits nothing.
+            (admitted / "7.1.2-fp6.sha256").write_text("# not admitted\n", encoding="utf-8")
+            self.assertEqual(admission().reason, "kernel-not-admitted")
+            # Another file's malformed line does not poison a valid entry,
+            # and only *.sha256 files are read.
+            (admitted / "stale.txt").write_text(f"{digest}\n", encoding="utf-8")
+            self.assertEqual(admission().reason, "kernel-not-admitted")
+            (admitted / "broken.sha256").write_text(f"{digest}\nnot-a-digest\n", encoding="utf-8")
+            self.assertEqual(admission().reason, "kernel-not-admitted")
+            (admitted / "7.1.2-fp6.sha256").write_text(f"{digest}  7.1.2-fp6\n", encoding="utf-8")
+            self.assertTrue(admission().allowed)
+            self.assertEqual(admission().notes_sha256, digest)
+            self.assertEqual(admission().reason, "verified-kernel")
             marker.write_text("hangcheck detected gpu lockup\n", encoding="utf-8")
-            admission = fp6_kernel_admission(
-                compatible_path=compatible,
-                notes_path=notes,
-                allowlist_path=allowlist,
-                fault_marker=marker,
-            )
-            self.assertFalse(admission.allowed)
-            self.assertEqual(admission.reason, "gpu-fault-latched")
+            self.assertFalse(admission().allowed)
+            self.assertEqual(admission().reason, "gpu-fault-latched")
+
+    def test_fp6_qualification_marker_admits_only_a_root_owned_exact_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compatible = root / "compatible"
+            compatible.write_bytes(b"fairphone,fp6\0qcom,milos\0")
+            notes = root / "notes"
+            notes.write_bytes(b"candidate kernel notes")
+            import hashlib
+
+            digest = hashlib.sha256(notes.read_bytes()).hexdigest()
+            qualify = root / "qualify"
+            qualify.write_text(digest + "\n", encoding="ascii")
+            qualify.chmod(0o644)
+            marker = root / "fault"
+
+            def admission():
+                return fp6_kernel_admission(
+                    compatible_path=compatible,
+                    notes_path=notes,
+                    admission_dir=root / "none.d",
+                    fault_marker=marker,
+                    qualify_marker=qualify,
+                )
+
+            with mock.patch.object(Path, "lstat", lambda path: os.stat_result(
+                (0o100644, 0, 0, 1, 0, 0, 65, 0, 0, 0)
+            ) if path == qualify else os.lstat(path)):
+                self.assertEqual(admission().reason, "qualifying-kernel")
+                qualify.write_text("0" * 64 + "\n", encoding="ascii")
+                self.assertEqual(admission().reason, "kernel-not-admitted")
+                qualify.write_text(digest + "\n", encoding="ascii")
+                marker.write_text("Timeout waiting for GMU OOB set GPU_SET\n", encoding="utf-8")
+                self.assertEqual(admission().reason, "gpu-fault-latched")
+            marker.unlink()
+            # Not owned by root (the test user): refused.
+            if os.getuid() != 0:
+                self.assertEqual(admission().reason, "kernel-not-admitted")
 
     def test_non_fp6_windowing_keeps_direct_display(self) -> None:
         with mock.patch("subprocess.run") as run, mock.patch(
