@@ -35,9 +35,26 @@ assert(fp6.layout.width === 372 && fp6.layout.roomy && fp6.layout.columns === 4,
 const fp6Type = fp6.layout.widgetFontSize;
 assert(fp6Type === Math.round(14 * Math.min(1, fp6.layout.rowHeight / 108) * 100) / 100 && fp6Type > 12 && fp6Type <= 14,
     `FP6 widget text follows its rows (${fp6Type} px base)`);
-assert(fp6Type * 12 / 14 >= fp6.layout.labelSize - 0.5,
-    'FP6 widget details are no smaller than its app labels');
 assert(pixel.layout.roomy && pixel.layout.widgetFontSize > 12, 'Pixel 9 widget text follows its rows');
+// Only the values scale. Heading and details keep the home_widget tokens
+// (presentation.css .roomy-home), never below Home's app labels: scaled with
+// the rows they fell to 10.1/10.6 px on a 1080-wide phone at 300%.
+async function readText(relative) {
+    if (typeof globalThis.process === 'object') {
+        const fs = await import('node:fs');
+        return fs.readFileSync(new URL(relative, import.meta.url), 'utf8');
+    }
+    const {default: Gio} = await import('gi://Gio');
+    const file = Gio.File.new_for_uri(import.meta.url).get_parent().resolve_relative_path(relative);
+    return new TextDecoder().decode(file.load_contents(null)[1]);
+}
+const tokens = JSON.parse(await readText('../../../config/shared/design-tokens.d/home-widgets.json')).lumaui.home_widget;
+const sheet = await readText('../../../src/luma-shell-presentation/presentation.css');
+const roomy = role => Number(sheet.match(new RegExp(`\\.roomy-home \\.luma-converged-widget-${role} \\{ font-size: ([0-9.]+)px;`))?.[1]);
+assert(roomy('heading') === tokens.heading && roomy('caption') === tokens.detail,
+    'a roomy phone keeps widget heading and details at their token sizes');
+for (const phone of [pixel, fp6])
+    assert(Math.min(tokens.heading, tokens.detail) >= phone.layout.labelSize, 'widget text is no smaller than app labels');
 
 const zoomed = device(1080, 2424, 65, 146, 4);
 assert(Math.abs(zoomed.density.zoom - 4 / 3) < 0.01, '400% is a zoom over the panel default');

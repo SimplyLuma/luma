@@ -1164,10 +1164,13 @@ export class Presentation {
         this._homeIconSize = this._layout.iconSize ?? 60;
         if (this._layout.compact) this._home.add_style_class_name('compact-home');
         else this._home.remove_style_class_name('compact-home');
-        // A dense compact grid keeps fixed widget text; a roomy one sizes it
-        // from the layout (widgetFontSize) on each widget below.
+        // A dense compact grid keeps fixed widget text; a roomy one sizes its
+        // values from the layout (widgetFontSize) on each widget below and
+        // keeps its text roles on the type scale (roomy-home).
         if (this._layout.compact && !this._layout.widgetFontSize) this._home.add_style_class_name('dense-home');
         else this._home.remove_style_class_name('dense-home');
+        if (this._layout.compact && this._layout.widgetFontSize) this._home.add_style_class_name('roomy-home');
+        else this._home.remove_style_class_name('roomy-home');
         let metrics = {};
         if (this._apps.length) {
             const probe = this._appButton(this._apps[0]);

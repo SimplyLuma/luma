@@ -79,6 +79,12 @@ StWidget.luma-notification-lip.luma-mobile-notifications .luma-lip-surface {
 .dense-home .luma-converged-widget.weather .luma-converged-widget-title { font-size: 28px; }
 .dense-home .luma-converged-widget.calendar .luma-converged-widget-title { font-size: 24px; }
 .dense-home .luma-converged-widget-caption { font-size: 10px; }
+/* A roomy phone scales only the values with its rows. Heading and details
+   keep the home_widget tokens (LumaUI caption 11.5, small 12): scaled, they
+   fell to 10-11 px, below the type scale and below Home's app labels.
+   tests/gnome-shell/presentation/density.js checks these against the tokens. */
+.roomy-home .luma-converged-widget-heading { font-size: 11.5px; }
+.roomy-home .luma-converged-widget-caption { font-size: 12px; }
 .compact-home .luma-converged-dock { border-radius: 18px; }
 .compact-home .luma-converged-page { height: 16px; }
 
