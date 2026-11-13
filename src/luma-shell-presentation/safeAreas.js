@@ -65,6 +65,21 @@ export function displayExclusions(profile, monitor) {
     });
 }
 
+// Logical pixels the panel outline takes from the bottom edge at its sides:
+// the tallest exclusion that touches the bottom edge and a side edge (a
+// rounded corner). Content running edge to edge, such as the on-screen
+// keyboard's outer keys, stays above it.
+export function bottomCornerClearance(profile, monitor) {
+    let clearance = 0;
+    for (const r of displayExclusions(profile, monitor)) {
+        if (r.y + r.height < monitor.height - 0.5)
+            continue;
+        if (r.x <= 0.5 || r.x + r.width >= monitor.width - 0.5)
+            clearance = Math.max(clearance, r.height);
+    }
+    return clearance;
+}
+
 export function statusInsets(profile, monitor, height, edge = 12, gap = 8) {
     let left = edge, right = edge;
     for (const r of displayExclusions(profile, monitor)) {

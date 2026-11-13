@@ -1,0 +1,81 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: keep the greeter keyboard above a panel's corners
+
+On a panel with rounded corners the greeter keyboard's outer keys ran into
+the corners wherever the thumb gap was not there to hold them up.
+
+The greeter builds no presentation, so the keyboard reads the built-in
+panel's display profile itself (/etc/luma/display-geometry.json, then
+/usr/share/luma/display-geometry.json) and passes its bottom corner
+clearance to Keycap.standaloneInset, the rule the session's presentation
+applies. Only at the panel's native orientation, which is how
+the greeter shows it. Without a profile the greeter keeps the standalone
+inset unchanged.
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -19,6 +19,7 @@ import * as PageIndicators from './pageIndicators.js';
+ import * as PopupMenu from './popupMenu.js';
+ import * as SwipeTracker from './swipeTracker.js';
+ import * as Keycap from './lumaPresentation/keycap.js';
++import {bottomCornerClearance, readDisplayProfiles, selectDisplayProfile} from './lumaPresentation/safeAreas.js';
+ import * as TvKeyboard from './lumaPresentation/tvKeyboard.js';
+ import {tv as TV_TOKENS} from './lumaPresentation/tvTokens.js';
+ 
+@@ -82,6 +83,41 @@ function monotonicMs() {
+     return GLib.get_monotonic_time() / 1000;
+ }
+ 
++// Display profiles, read once (undefined: not read yet; null: none).
++let panelProfiles;
++
++// The built-in panel's display profile, for a keyboard without a presentation
++// to ask (the greeter). Only at the panel's native orientation, which is how
++// the greeter shows it; the presentation projects every transform for the
++// session.
++function panelProfile(monitor) {
++    if (!monitor || monitor !== Main.layoutManager.primaryMonitor)
++        return null;
++    if (panelProfiles === undefined) {
++        panelProfiles = null;
++        for (const path of ['/etc/luma/display-geometry.json', '/usr/share/luma/display-geometry.json']) {
++            try {
++                const [ok, bytes] = GLib.file_get_contents(path);
++                if (ok)
++                    panelProfiles = readDisplayProfiles(new TextDecoder().decode(bytes));
++                if (panelProfiles)
++                    break;
++            } catch { /* A panel without a profile keeps its edge. */ }
++        }
++    }
++    if (!panelProfiles)
++        return null;
++    try {
++        const builtIn = global.backend.get_monitor_manager().get_monitors().find(m => m.is_builtin());
++        const profile = selectDisplayProfile(panelProfiles, builtIn?.get_connector(), !!builtIn);
++        if (!profile || (monitor.width < monitor.height) !== (profile.nativeWidth < profile.nativeHeight))
++            return null;
++        return profile;
++    } catch {
++        return null;
++    }
++}
++
+ const AspectContainer = GObject.registerClass(
+ class AspectContainer extends St.Widget {
+     _init(params) {
+@@ -3614,10 +3650,12 @@ export const Keyboard = GObject.registerClass({
+             return;
+         }
+         // The greeter has no presentation; a handheld keeps the thumb gap there.
++        const logical = {width: monitor.width / scale, height: monitor.height / scale};
++        const profile = Main.presentation ? null : panelProfile(monitor);
+         const inset = Main.presentation
+             ? Main.presentation.keyboardInset?.() ?? 0
+-            : Keycap.standaloneInset({width: monitor.width / scale, height: monitor.height / scale},
+-                GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld');
++            : Keycap.standaloneInset(logical, GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld',
++                bottomCornerClearance(profile, logical));
+         const height = Keycap.keyboardHeight({width: monitor.width / scale, height: monitor.height / scale},
+             rows || 4, columns || 10, inset) * scale;
+         // Writes only what changed: a new style or size re-renders the

@@ -369,14 +369,17 @@ export function keyboardHeight(monitor, rows, columns = 10, inset = 0) {
 }
 
 // Logical pixels kept clear below the keys: the home gesture zone (`gesture`,
-// 0 where there is none) and, on a phone held upright, thumb_gap so the
-// bottom row sits where a thumb rests rather than at the screen edge. iOS
-// keeps a band of about 75 pt below its keys, Android a 48 dp navigation
-// frame. Tablets and phones on their side keep only the gesture zone.
-export function bottomInset(monitor, phone, gesture = 0) {
+// 0 where there is none), the panel's rounded bottom corners (`corner`, from
+// the display profile, so the outer keys are never clipped) and, on a phone
+// held upright, thumb_gap so the bottom row sits where a thumb rests rather
+// than at the screen edge. iOS keeps a band of about 75 pt below its keys,
+// Android a 48 dp navigation frame. Tablets and phones on their side keep
+// only the gesture zone and the corners.
+export function bottomInset(monitor, phone, gesture = 0, corner = 0) {
+    const edge = Math.max(gesture, corner);
     if (!phone || monitor.width >= monitor.height)
-        return gesture;
-    return Math.max(gesture, keycap.geometry.thumb_gap);
+        return edge;
+    return Math.max(edge, keycap.geometry.thumb_gap);
 }
 
 // Logical pixels at the top of a bottom inset that hold the keyboard's own
@@ -392,8 +395,11 @@ export function controlRow(inset) {
 
 // The same inset where no presentation runs (the greeter): a handheld whose
 // screen (logical size) is phone width keeps the thumb gap, nothing else does.
-export function standaloneInset(monitor, handheld) {
-    return bottomInset(monitor, handheld && monitor.width < keycap.geometry.compact_width);
+// The panel's rounded bottom corners come from the display profile, as in
+// the session.
+export function standaloneInset(monitor, handheld, corner = 0) {
+    return bottomInset(monitor, handheld && monitor.width < keycap.geometry.compact_width, 0,
+        corner);
 }
 
 // Horizontal drag on space moves the caret one character per step once the

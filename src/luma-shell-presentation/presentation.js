@@ -18,7 +18,7 @@ import {QuickMenuToggle} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {SwipeTracker} from 'resource:///org/gnome/shell/ui/swipeTracker.js';
 import {displayDensity, hiddenFromHome, homeLayout, inkFor, pageProgress, statusGlyph, visiblePageRange} from './layout.js';
 import {bottomInset} from './keycap.js';
-import {readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
+import {bottomCornerClearance, readDisplayProfiles, selectDisplayProfile, statusInsets} from './safeAreas.js';
 import {HandheldPowerButton} from './powerButton.js';
 import {CallTakeover} from './incomingCall.js';
 import {reconcileGrid} from './grid.js';
@@ -748,10 +748,19 @@ export class Presentation {
     // the thumb gap; Desktop keeps nothing.
     keyboardInset() {
         const monitor = Main.layoutManager.keyboardMonitor;
-        if (this.mode === 'desktop' || !monitor)
+        if (!monitor)
             return 0;
+        // The display profile describes the primary (built-in) panel only.
+        // Insets are logical pixels; the layout monitor is in stage pixels.
+        const profile = monitor === Main.layoutManager.primaryMonitor ? this._displayGeometry : null;
+        const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+        const corner = bottomCornerClearance(profile,
+            {width: monitor.width / scale, height: monitor.height / scale});
+        if (this.mode === 'desktop')
+            return corner;
         const locked = Main.sessionMode.isLocked || Main.sessionMode.isGreeter;
-        return bottomInset(monitor, this.mode === 'mobile', locked ? 0 : GESTURE_HEIGHT);
+        return bottomInset(monitor, this.mode === 'mobile', locked ? 0 : GESTURE_HEIGHT,
+            corner);
     }
 
     _watchInitialConfigure(window) {

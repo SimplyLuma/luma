@@ -89,6 +89,8 @@ keeps the thumb gap (and its row) without the gesture. Tablets and phones on
 their side keep only the gesture zone and the strip's tools, and Desktop
 keeps nothing. On a handheld the right-edge Back gesture puts an open
 keyboard away before it sends Back to the application.
+Every mode, and the sign-in screen, also keeps the keys above the panel's
+rounded bottom corners when its display profile lists them.
 
 Not ported to the Shell: the eight-column emoji grid with search and recents
 (the Shell's paged emoji chooser is themed instead), drag-select of accent
