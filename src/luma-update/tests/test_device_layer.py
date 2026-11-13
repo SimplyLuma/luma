@@ -11,6 +11,8 @@ from unittest import mock
 from luma_update import device_layer as dl
 
 BASE = "a" * 64
+IMAGE_BUILT = 1794520800    # 2026-11-12T22:40:00Z: a fresh phone's clock
+KIT_SIGNED = 1794536071     # 2026-11-13T02:14:31Z
 LAYERED = "b" * 64
 
 
@@ -44,6 +46,7 @@ class FakeSystem:
         self.booted = BASE
         self.staged = None
         self.good_signatures = True
+        self.signed = {}  # signature file name -> creation time gpgv reports
         self.fail_install = False
         self.repos_during_install = None
         self.devices = {}
@@ -64,7 +67,14 @@ class FakeSystem:
         self.calls.append(argv)
         ok = subprocess.CompletedProcess(argv, 0, "", "")
         if argv[0] == "gpgv":
-            return ok if self.good_signatures else subprocess.CompletedProcess(argv, 1, "", "BAD signature")
+            if not self.good_signatures:
+                return subprocess.CompletedProcess(argv, 1, "", "BAD signature")
+            created = self.signed.get(Path(argv[-2]).name)
+            if created is None:
+                return ok
+            return subprocess.CompletedProcess(argv, 0, f"[GNUPG:] NEWSIG\n[GNUPG:] GOODSIG C8CE1A1B51D96CE2 Luma\n"
+                                                        f"[GNUPG:] VALIDSIG {'F' * 40} 2026-11-13 {created} 0 4 0 1 10 00 "
+                                                        f"{'F' * 40}\n", "")
         if argv[:3] == ["rpm-ostree", "status", "--json"]:
             deployments = [{"osname": "luma", "checksum": self.booted, "serial": 0, "booted": True,
                             "requested-packages": []}]
@@ -115,8 +125,15 @@ class DeviceLayerTest(unittest.TestCase):
             self.imported.append((key, gpgdir))
             (gpgdir / "C8CE1A1B51D96CE2.pub").write_bytes(key.read_bytes())
 
+        self.clock = [IMAGE_BUILT]
+        self.clock_set = []
+
+        def set_clock(seconds):
+            self.clock_set.append(seconds)
+            self.clock[0] = seconds
+
         self.layer = dl.DeviceLayer(dl.Paths(root=self.root), run=self.system, sleep=lambda _: None,
-                                    import_key=import_key)
+                                    import_key=import_key, now=lambda: self.clock[0], set_clock=set_clock)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -229,6 +246,82 @@ class DeviceLayerTest(unittest.TestCase):
         self.assertIn("not trying again", self.layer.load_state()["last_error"])
         self.system.calls.clear()
         self.assertEqual(self.layer.apply(retry=True), 0)
+        self.assertEqual(len(self.transactions()), 1)
+
+    # -- clock -------------------------------------------------------------------
+
+    def timesync_clock(self):
+        return self.root / "var/lib/systemd/timesync/clock"
+
+    def test_clock_before_the_kit_signature_is_stepped_forward(self):
+        """No RTC and no network: the clock starts at the image's build time."""
+        self.system.signed = {"kit.json.asc": KIT_SIGNED, "repomd.xml.asc": KIT_SIGNED - 600}
+        steps = []
+        call = self.system.__call__
+
+        def run(argv):
+            if list(argv[:3]) == ["rpm-ostree", "override", "replace"]:
+                steps.append(self.clock[0])
+            return call(argv)
+
+        self.layer.run = run
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.clock_set, [KIT_SIGNED])
+        self.assertEqual(steps, [KIT_SIGNED])
+        self.assertEqual(int(self.timesync_clock().stat().st_mtime), KIT_SIGNED)
+
+    def test_clock_uses_the_newest_verified_signature(self):
+        self.system.signed = {"kit.json.asc": KIT_SIGNED, "repomd.xml.asc": KIT_SIGNED + 60}
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.clock_set, [KIT_SIGNED + 60])
+
+    def test_clock_already_later_is_untouched(self):
+        self.system.signed = {"kit.json.asc": KIT_SIGNED, "repomd.xml.asc": KIT_SIGNED}
+        self.clock[0] = KIT_SIGNED + 86400
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.clock_set, [])
+        self.assertFalse(self.timesync_clock().exists())
+
+    def test_kept_clock_file_only_moves_forward(self):
+        self.system.signed = {"kit.json.asc": KIT_SIGNED}
+        self.timesync_clock().parent.mkdir(parents=True)
+        self.timesync_clock().touch()
+        os.utime(self.timesync_clock(), (KIT_SIGNED + 5, KIT_SIGNED + 5))
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(int(self.timesync_clock().stat().st_mtime), KIT_SIGNED + 5)
+
+    def test_absurd_signature_time_fails_before_the_transaction_and_is_retried(self):
+        self.system.signed = {"kit.json.asc": IMAGE_BUILT + 3 * 366 * 86400}
+        self.assertEqual(self.layer.apply(), 1)
+        self.assertEqual(self.clock_set, [])
+        self.assertEqual(self.transactions(), [])
+        state = self.layer.load_state()
+        self.assertIn("more than two years after the clock", state["last_error"])
+        self.assertEqual(state.get("attempts", 0), 0)
+
+    def test_iso_signature_timestamps_are_read(self):
+        status = f"[GNUPG:] VALIDSIG {'F' * 40} 2026-11-13 20261113T021431 0 4 0 1 10 00 {'F' * 40}\n"
+        self.assertEqual(dl.signature_time(status), KIT_SIGNED)
+        self.assertIsNone(dl.signature_time("[GNUPG:] GOODSIG C8CE1A1B51D96CE2 Luma\n"))
+
+    # -- attempts ------------------------------------------------------------------
+
+    def test_failed_transactions_are_not_staged_attempts(self):
+        """A transaction that fails before staging is tried again on every boot."""
+        self.system.fail_install = True
+        for _ in range(dl.MAX_ATTEMPTS + 1):
+            self.assertEqual(self.layer.apply(), 1)
+            self.assertIn("Packages not found", self.layer.load_state()["last_error"])
+        self.assertEqual(self.layer.load_state().get("attempts", 0), 0)
+        self.system.fail_install = False
+        self.assertEqual(self.layer.apply(), 0)
+        self.assertEqual(self.layer.load_state()["attempts"], 1)
+        self.assertEqual(len(self.transactions()), dl.MAX_ATTEMPTS + 2)
+
+    def test_a_staged_layer_found_again_is_counted_once(self):
+        self.assertEqual(self.layer.apply(reboot=False), 0)
+        self.assertEqual(self.layer.apply(), 0)  # stopped before the restart; found again
+        self.assertEqual(self.layer.load_state()["attempts"], 1)
         self.assertEqual(len(self.transactions()), 1)
 
     def test_failed_transaction_restores_repositories_and_does_not_restart(self):
