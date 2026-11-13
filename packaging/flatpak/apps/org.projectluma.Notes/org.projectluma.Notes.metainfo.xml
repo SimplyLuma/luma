@@ -11,5 +11,5 @@
   <url type="homepage">https://simplyluma.com</url>
   <screenshots><screenshot type="default"><caption>Write and collaborate in Notes</caption><image width="592" height="370">https://dl.simplyluma.com/media/org.projectluma.Notes/9e33144fcc137fa18dee7c5de0ec0fbaebc00a639952e02619e13cbd8f0a5dd2.png</image></screenshot></screenshots>
   <content_rating type="oars-1.1"/>
-  <releases><release version="0.1.0" date="2026-10-07"/></releases>
+  <releases><release version="0.1.1" date="2026-11-13"/><release version="0.1.0" date="2026-10-07"/></releases>
 </component>

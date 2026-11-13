@@ -13,27 +13,23 @@ import json
 import os
 from pathlib import Path
 import tarfile
-import yaml
 
 REGISTRY = Path(__file__).resolve().parents[2] / 'packaging/flatpak/first-party-updates.json'
 APPS = {entry['id'].rsplit('.', 1)[-1]: entry
         for entry in json.loads(REGISTRY.read_text())['applications']
         if entry.get('recipe') and entry['producer'] not in {'creative-external'}}
 
-def seal(repo, app, output, filer_srpm=None, viola_engine=None):
+def repo_inputs(repo, app):
+    """Return the repository's input files for APP as (name, data, mode) rows.
+
+    The first list precedes any admitted upstream members in the sealed
+    archive; the second (metainfo, media, icon) follows them.
+    """
     entry = APPS[app]
     source = repo / entry['source_tree']
     app_id = entry['id']
-    if (app_id == 'org.gnome.Nautilus') != (filer_srpm is not None):
-        raise ValueError('Only Filer requires an explicitly admitted --filer-srpm input')
-    if (app_id == 'com.rhyme.viola') != (viola_engine is not None):
-        raise ValueError('Only Viola requires an explicitly admitted --viola-engine input')
     recipe = repo / 'packaging/flatpak/apps' / app_id
-    if output.exists():
-        raise ValueError('output already exists; source snapshots are immutable')
-    output.mkdir(mode=0o755, parents=True)
     paths = [repo / 'LICENSE.md'] + sorted(source.rglob('*'))
-    upstream = []
     if app_id == 'org.gnome.Nautilus':
         paths += sorted((repo / 'patches/nautilus').glob('0[0-9][0-9][0-9]-*.patch'))
         paths += [repo / 'config/desktop/inputs.env',
@@ -42,20 +38,10 @@ def seal(repo, app, output, filer_srpm=None, viola_engine=None):
                   repo / 'scripts/packages/patch-series.sh',
                   repo / 'scripts/packages/spec-release.sh',
                   repo / 'src/luma-shell-state/org.project_luma.shell-state.gschema.xml']
-        helper = repo / 'packaging/nautilus/flatpak-source.py'
-        specification = importlib.util.spec_from_file_location('luma_filer_source', helper)
-        module = importlib.util.module_from_spec(specification)
-        specification.loader.exec_module(module)
-        upstream = module.admitted_upstream(filer_srpm)
     if app_id == 'com.rhyme.viola':
         paths += sorted((repo / 'packaging/viola').rglob('*'))
         paths += [repo / 'scripts/packages/build-viola-browser.sh',
                   repo / 'scripts/packages/run-in-rpm-builder.sh']
-        helper = repo / 'packaging/viola/flatpak-source.py'
-        specification = importlib.util.spec_from_file_location('luma_viola_source', helper)
-        module = importlib.util.module_from_spec(specification)
-        specification.loader.exec_module(module)
-        upstream = module.admitted_engine(viola_engine)
     if app_id == 'org.projectluma.Depot':
         # Maintained UI view models, rendering and typed client adapters only;
         # source contains no installed trust data, host profiles or signing keys.
@@ -77,7 +63,6 @@ def seal(repo, app, output, filer_srpm=None, viola_engine=None):
         # its licensed assets; it does not implement a second reader engine.
         paths += sorted((repo / 'src/luma-leaf').rglob('*'))
     metainfo = recipe / f'{app_id}.metainfo.xml'
-    materials = {}
     files = []
     for path in paths:
         if any(part in {'__pycache__', '.pytest_cache', '.git'} for part in path.parts):
@@ -93,24 +78,13 @@ def seal(repo, app, output, filer_srpm=None, viola_engine=None):
             raise ValueError('control character in source name')
         data = path.read_bytes()
         mode = path.stat().st_mode & 0o777
-        materials[name] = {'sha256': hashlib.sha256(data).hexdigest(), 'mode': mode, 'bytes': len(data)}
         files.append((name, data, mode))
-    for name, data, mode in upstream:
-        if name in materials or Path(name).is_absolute() or '..' in Path(name).parts:
-            raise ValueError('Invalid admitted upstream source member')
-        materials[name] = {'sha256': hashlib.sha256(data).hexdigest(), 'mode': mode, 'bytes': len(data)}
-        files.append((name, data, mode))
-    data = metainfo.read_bytes()
-    materials['depot.metainfo.xml'] = {'sha256': hashlib.sha256(data).hexdigest(), 'mode': 0o644, 'bytes': len(data)}
-    files.append(('depot.metainfo.xml', data, 0o644))
+    tail = [('depot.metainfo.xml', metainfo.read_bytes(), 0o644)]
     for path in sorted((recipe / 'media').glob('*.png')):
         if path.is_symlink() or not path.is_file():
             raise ValueError('application media must be a regular source file')
         data = path.read_bytes()
-        digest = hashlib.sha256(data).hexdigest()
-        name = 'depot-media/' + digest + '.png'
-        materials[name] = {'sha256': digest, 'mode': 0o644, 'bytes': len(data)}
-        files.append((name, data, 0o644))
+        tail.append(('depot-media/' + hashlib.sha256(data).hexdigest() + '.png', data, 0o644))
     if app not in ('Notes', 'Tide'):
         icon = repo / 'assets/icon-theme/Prairie/scalable/apps' / f'{app_id}.svg'
         creative_icons = {
@@ -133,9 +107,42 @@ def seal(repo, app, output, filer_srpm=None, viola_engine=None):
             icon = source / 'appkit-spike/assets/org.projectluma.Viola.NativeIntegration.svg'
         if icon.is_symlink() or not icon.is_file():
             raise ValueError('The maintained application icon is missing or unsafe')
-        data = icon.read_bytes()
-        materials['depot-icon.svg'] = {'sha256': hashlib.sha256(data).hexdigest(), 'mode': 0o644, 'bytes': len(data)}
-        files.append(('depot-icon.svg', data, 0o644))
+        tail.append(('depot-icon.svg', icon.read_bytes(), 0o644))
+    return files, tail
+
+
+def seal(repo, app, output, filer_srpm=None, viola_engine=None):
+    entry = APPS[app]
+    app_id = entry['id']
+    if (app_id == 'org.gnome.Nautilus') != (filer_srpm is not None):
+        raise ValueError('Only Filer requires an explicitly admitted --filer-srpm input')
+    if (app_id == 'com.rhyme.viola') != (viola_engine is not None):
+        raise ValueError('Only Viola requires an explicitly admitted --viola-engine input')
+    recipe = repo / 'packaging/flatpak/apps' / app_id
+    if output.exists():
+        raise ValueError('output already exists; source snapshots are immutable')
+    output.mkdir(mode=0o755, parents=True)
+    files, tail = repo_inputs(repo, app)
+    upstream = []
+    if app_id == 'org.gnome.Nautilus':
+        helper = repo / 'packaging/nautilus/flatpak-source.py'
+        specification = importlib.util.spec_from_file_location('luma_filer_source', helper)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        upstream = module.admitted_upstream(filer_srpm)
+    if app_id == 'com.rhyme.viola':
+        helper = repo / 'packaging/viola/flatpak-source.py'
+        specification = importlib.util.spec_from_file_location('luma_viola_source', helper)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        upstream = module.admitted_engine(viola_engine)
+    names = {name for name, _, _ in files}
+    for name, _, _ in upstream:
+        if name in names or Path(name).is_absolute() or '..' in Path(name).parts:
+            raise ValueError('Invalid admitted upstream source member')
+    files = files + list(upstream) + tail
+    materials = {name: {'sha256': hashlib.sha256(data).hexdigest(), 'mode': mode, 'bytes': len(data)}
+                 for name, data, mode in files}
     manifest_bytes = (json.dumps({'schema': 'org.projectluma.app-source/v1', 'app_id': app_id,
                                 'source_revision': 'working-snapshot', 'materials': materials}, sort_keys=True, indent=2) + '\n').encode()
     archive = output / 'source.tar'
@@ -150,6 +157,7 @@ def seal(repo, app, output, filer_srpm=None, viola_engine=None):
     sealed = output / f'source-{digest}.tar'
     archive.rename(sealed)
     (output / 'SOURCE-MANIFEST.json').write_bytes(manifest_bytes)
+    import yaml
     doc = yaml.safe_load((recipe / f'{app_id}.yml').read_text())
     if len(doc['modules']) != 1:
         raise ValueError('first-party application recipe must have one maintained module')

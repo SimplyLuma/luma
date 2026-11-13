@@ -16,6 +16,7 @@
   <screenshots><screenshot type="default"><caption>Start a conversation with Ari</caption><image width="1180" height="740">https://dl.simplyluma.com/media/org.projectluma.Ari/eb4536550cc8d32ed547aa760a8a122ad3e14b472a75ba31455286025ec24592.png</image></screenshot></screenshots>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.1" date="2026-11-13" />
     <release version="0.2.0" date="2026-10-30">
       <description>
         <p>Added ChatGPT sign-in, model controls and application permissions. Fixed conversation scrolling and action status.</p>
