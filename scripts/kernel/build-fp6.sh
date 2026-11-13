@@ -9,6 +9,8 @@
 #
 # OUTPUT_DIR receives:
 #   Image.gz  the kernel for the boot image (scripts/mobile/build-fp6-boot-image.sh --kernel)
+#   dtb       the boot DTB: the built DTB with the tag's overlays
+#             (scripts/kernel/compose-fp6-dtb.sh; build-fp6-boot-image.sh --dtb)
 #   config    the merged configuration
 #   modules/  stripped modules_install tree (scripts/packages/build-kernel-modules-luma-fp6.sh --tree)
 #   obj/      the build tree; a second run with the same OUTPUT_DIR is incremental
@@ -97,12 +99,14 @@ rm -rf "$out/modules"
 rm -f "$out/modules/lib/modules/$release/build" "$out/modules/lib/modules/$release/source"
 install -m 0644 "$obj/arch/arm64/boot/vmlinuz" "$out/Image.gz"
 install -m 0644 "$obj/.config" "$out/config"
+"$repo_root/scripts/kernel/compose-fp6-dtb.sh" "$source_dir" "$obj/arch/arm64/boot/dts/$dtb" "$out/dtb" >/dev/null
 {
   printf 'TAG=%s\nRELEASE=%s\n' "$tag" "$release"
   printf 'FRAGMENTS=%s\n' "${fragments[*]}"
   printf 'PATCHES=%s\n' "${patches[*]}"
   printf 'IMAGE_SHA256=%s\n' "$(sha256sum "$out/Image.gz" | cut -d' ' -f1)"
   printf 'CONFIG_SHA256=%s\n' "$(sha256sum "$out/config" | cut -d' ' -f1)"
+  printf 'DTB_SHA256=%s\n' "$(sha256sum "$out/dtb" | cut -d' ' -f1)"
   printf 'SIGNING_CERT_SHA256=%s\n' "$(sha256sum "$obj/certs/signing_key.x509" | cut -d' ' -f1)"
   printf 'MODULE_COUNT=%s\n' "$(find "$out/modules/lib/modules/$release" -name '*.ko*' | wc -l)"
 } >"$out/manifest.env"

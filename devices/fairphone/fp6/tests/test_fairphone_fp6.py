@@ -78,6 +78,22 @@ class FairphoneFp6(unittest.TestCase):
         spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
         self.assertIn("test ! -e $m/kernel/fs/fuse/fuse.ko.zst", spec)
 
+    def test_sensor_stack_is_built(self):
+        # Auto-rotate and automatic brightness read these through iio-sensor-proxy.
+        patches = self.device["kernel"]["patches"]
+        for name in ("0039-iio-fp6-add-motion-environment-sensor-stack.patch",
+                     "0040-iio-imu-inv-icm42600-add-icm42630.patch"):
+            self.assertIn(f"patches/linux-milos/{name}", patches)
+        self.assertEqual(patches, sorted(patches))
+        fragments = self.device["kernel"]["config_fragments"]
+        text = "".join((ROOT / f).read_text() for f in fragments)
+        for option in ("I2C_GPIO", "SPI_GPIO", "INV_ICM42600_SPI", "STK3310", "QMC6308", "DPS310"):
+            self.assertRegex(text, rf"(?m)^CONFIG_{option}=m$")
+        spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
+        self.assertIn("iio/light/stk3310", spec)
+        build = (ROOT / "scripts" / "kernel" / "build-fp6.sh").read_text()
+        self.assertIn("compose-fp6-dtb.sh", build)
+
     def test_uses_the_shared_milos_kernel(self):
         self.assertEqual(self.device["soc"], "qcom/milos")
         self.assertEqual(self.soc["kernel"]["branch"], "milos")

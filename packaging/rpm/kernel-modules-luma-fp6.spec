@@ -17,7 +17,7 @@
 
 Name:           kernel-modules-luma-fp6
 Version:        7.1.2
-Release:        1.luma.ims1.gmu2.selinux1.2%{?dist}
+Release:        1.luma.ims1.gmu2.selinux1.3%{?dist}
 Summary:        Kernel modules for the Fairphone 6 kernel
 License:        GPL-2.0-only
 URL:            https://github.com/SimplyLuma/linux/tree/luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1
@@ -48,6 +48,11 @@ test -f $m/kernel/fs/erofs/erofs.ko.zst && test -f $m/kernel/fs/overlayfs/overla
 test "$(find $m/kernel -name '*.ko.zst' | wc -l)" -gt 300
 # FUSE is built in (config/kernel/fp6.fragment).
 test ! -e $m/kernel/fs/fuse/fuse.ko.zst && grep -qx kernel/fs/fuse/fuse.ko $m/modules.builtin
+# Motion and environment sensors (patches 0039/0040).
+for k in i2c/busses/i2c-gpio spi/spi-gpio iio/imu/inv_icm42600/inv-icm42600-spi \
+    iio/light/stk3310 iio/magnetometer/qmc6308 iio/pressure/dps310; do
+  test -f $m/kernel/drivers/$k.ko.zst
+done
 
 %files
 %dir /usr/lib/modules/%{kver}
@@ -55,6 +60,12 @@ test ! -e $m/kernel/fs/fuse/fuse.ko.zst && grep -qx kernel/fs/fuse/fuse.ko $m/mo
 /usr/lib/modules/%{kver}/modules.*
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.3
+- Rebuilt with kernel patches 0039-0042: ICM-42630, STK36C61, QMC6308 and
+  SPL07-003 sensor drivers on bit-banged I2C/SPI, UFS power-down during
+  system suspend, touch controller reset before unmasking its interrupt.
+  Matches the boot image built from the same kernel.
+
 * Mon Nov 09 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.2
 - Rebuilt with config/kernel/fp6.fragment: FUSE is built in, so rofiles-fuse
   works before this package is layered. Matches the boot image built from the
