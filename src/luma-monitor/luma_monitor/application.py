@@ -42,9 +42,10 @@ from .visuals import label,ResourceChart,ResourceCells,ActivityRow,CoreMeter,mar
 from .live_data import load_view,save_view
 
 APP_ID='io.luma.Monitor.LumaUIPreview' if os.environ.get('LUMA_MONITOR_FIXTURE') or os.environ.get('LUMA_MONITOR_PREVIEW') else 'io.luma.Monitor'
-RESOURCE_NAMES={'cpu':'CPU','mem':'Memory','disk':'Disk','net':'Network','en':'Energy'}
-RESOURCES=[('cpu','CPU','cpu'),('mem','Memory','layers'),('disk','Disk','hard-drive'),('net','Network','wifi'),('en','Energy','battery-medium')]
-MAXIMUM={'cpu':30,'mem':2400,'disk':90,'net':5,'en':45}
+RESOURCE_NAMES={'cpu':'CPU','mem':'Memory','disk':'Disk','net':'Network','gpu':'GPU','en':'Energy'}
+# GPU is listed only on a live machine with a render-capable GPU (gpu.py).
+RESOURCES=[('cpu','CPU','cpu'),('mem','Memory','layers'),('disk','Disk','hard-drive'),('net','Network','wifi'),('gpu','GPU','monitor'),('en','Energy','battery-medium')]
+MAXIMUM={'cpu':30,'mem':2400,'disk':90,'net':5,'gpu':50,'en':45}
 # Rows laid out before a new list's first paint, then per frame after it. Each
 # app row costs several milliseconds of first layout; a window shows about ten.
 FIRST_ROWS=10
@@ -73,7 +74,7 @@ class MonitorWindow(AppWindow):
         self.closed=False;self.generation=0;self.working=False;self.timer=0;self._menu_widget=None
         self.apps=self.source.apps if self.fixture else [];self.groups=self.source.groups if self.fixture else []
         self.totals=fixture_totals(self.source) if self.fixture else {}
-        self.sample_failed=False
+        self.sample_failed=False;self.gpus=[]
         self.histories={k:deque(maxlen=60) for k in RESOURCE_NAMES}
         if self.fixture:self._fixture_history()
         # Ask for the first reading before building any widgets; the window
@@ -140,12 +141,12 @@ class MonitorWindow(AppWindow):
     def _active_search(self):return self.search
 
     def _chart_max(self,k):
-        if k=='cpu':return 100
+        if k in ('cpu','gpu'):return 100
         if k=='mem':return self.source.totals['mem'] if self.fixture else self.totals.get('totalMem',1)
         return max([1,*[max(a or 0,b or 0) for a,b in self.histories[k]]])*1.25
 
     def _spark_max(self,key):
-        baseline=100 if key=='cpu' else self._chart_max(key) if key=='mem' else 1
+        baseline=100 if key in ('cpu','gpu') else self._chart_max(key) if key=='mem' else 1
         return max([baseline,*[(a or 0)+(b or 0) for a,b in self.histories[key]]])
 
     def _render(self):
@@ -157,15 +158,47 @@ class MonitorWindow(AppWindow):
         values={'cpu':f"{int(t.get('cpu',0)+.5)}%" if t.get('cpu') is not None else '—',
                 'mem':memory_summary(t.get('mem',0),16384 if self.fixture else t.get('totalMem',0)) if t.get('mem') is not None else '—',
                 'disk':format_value((t.get('read') or 0)+(t.get('write') or 0),'disk') if t.get('read') is not None else '—',
-                'net':'↓ '+format_value(t.get('down'),'net'),'en':('74% · '+('4 h' if t['en']>60 else '6 h')+' left') if self.fixture else t.get('batteryText','—')}
+                'net':'↓ '+format_value(t.get('down'),'net'),'gpu':self._gpu_value(),'en':('74% · '+('4 h' if t['en']>60 else '6 h')+' left') if self.fixture else t.get('batteryText','—')}
         if initial:self.resource_rows={}
+        shown=self._shown_resources()
+        if self.resource not in shown:self.resource='cpu'
         for k,title,icon in RESOURCES:
             if not initial:
-                row=self.resource_rows[k];row.set_subtitle(values[k]);row.spark.update(self.histories[k],self._spark_max(k));Selection.mark(row,k==self.resource);continue
+                row=self.resource_rows[k];row.set_visible(k in shown);row.set_subtitle(values[k]);row.spark.update(self.histories[k],self._spark_max(k));Selection.mark(row,k==self.resource);continue
             spark=ResourceChart(self.histories[k],self._spark_max(k),spark=True)
             row=SidebarRow(title,lead=RowLead.well(icon),subtitle=values[k],trail=spark);row.resource=k;row.spark=spark;row.set_name('mn-resource-'+k)
+            row.set_visible(k in shown)
             Selection.mark(row,k==self.resource);self.sidebar.append_row(row);self.resource_rows[k]=row
         self.sidebar.list.select_row(self.resource_rows[self.resource])
+
+    def _shown_resources(self):
+        return [k for k,_title,_icon in RESOURCES if k!='gpu' or (not self.fixture and self.gpus)]
+
+    def _gpu(self):
+        """The GPU the summary describes: the busiest one that reports, else the first."""
+        measured=[g for g in self.gpus if g.get('available')]
+        if measured:return max(measured,key=lambda g:g.get('busy') if g.get('busy') is not None else -1)
+        return self.gpus[0] if self.gpus else None
+
+    def _gpu_value(self):
+        gpu=self._gpu()
+        if gpu is None:return '—'
+        if not gpu.get('available'):return 'Not available'
+        return format_value(gpu.get('busy'),'gpu')
+
+    def _gpu_memory(self,gpu):
+        used,total=gpu.get('memory'),gpu.get('memory_total')
+        if used is None:return '—'
+        if total:return f'{used/1024**3:.1f} of {total/1024**3:.1f} GB'
+        return format_value(used/1024**2,'mem')
+
+    def _gpu_facts(self):
+        """Each engine of the summarised GPU, then any other GPU and the driver."""
+        gpu=self._gpu()
+        if gpu is None:return [('Engines','—'),('Driver','—')]
+        facts=[(name,format_value(value,'gpu')) for name,value in gpu.get('engines',{}).items()] or [('Engines','Not reported')]
+        facts+=[(other['name'],format_value(other.get('busy'),'gpu') if other.get('available') else 'Not available') for other in self.gpus if other is not gpu]
+        return facts[:7]+[('Driver',gpu.get('driver') or '—')]
 
     def _resource(self,key):
         self.resource=key;self.sort=('v','descending');self._render();self.scroll.get_vadjustment().set_value(0)
@@ -181,6 +214,14 @@ class MonitorWindow(AppWindow):
                 measured=t.get('cpu') is not None
                 busiest=top if apps and (apps[0].get('cpu') or 0)>0 else None
                 return ('Plenty of headroom.' if measured and t['cpu']<25 else f'{busiest} is doing most of the work.' if measured and busiest else 'CPU activity.',f"{int(t['cpu']+.5)}% of {len(getattr(self,'cores',[]))} cores in use" if measured else 'Loading…')
+            if r=='gpu':
+                gpu=self._gpu()
+                if gpu is None:return ('GPU activity.','Loading…')
+                if not gpu.get('available'):return ('GPU activity isn’t available.',f"{gpu['name']} doesn’t report how busy it is.")
+                if gpu.get('busy') is None:return ('GPU activity.','Loading…')
+                busiest=top if apps and (apps[0].get('gpu') or 0)>=1 else None
+                return ('The GPU is quiet.' if gpu['busy']<10 else f'{busiest} is using the GPU the most.' if busiest else 'The GPU is busy.',
+                        f"{format_value(gpu['busy'],'gpu')} busy · {gpu['name']}"+(f' · {len(self.gpus)} GPUs' if len(self.gpus)>1 else ''))
             if r=='mem':return ('Memory activity.' if t.get('mem') is None else 'Memory is comfortable.' if t['mem']/max(1,t.get('totalMem',1))<.7 else 'Memory is getting full.',f"{format_value(t.get('mem'),'mem')} of {format_value(t.get('totalMem'),'mem')} in use")
             return ({'disk':'Disk activity.','net':'Network activity.','en':'Energy activity.'}[r],
                     (t.get('batteryText','')+' · ' if t.get('batteryText') else '')+'Per-app energy use is unavailable.' if r=='en' else 'Per-app network use is unavailable.' if r=='net' else '')
@@ -199,7 +240,7 @@ class MonitorWindow(AppWindow):
         self.page.set_margin_top(18 if phone else 30);self.page.set_margin_bottom(0 if phone else 110)
         title,sub=self._hero_text();self.hero_title=label(title,'monitor-story-phone' if phone else 'monitor-story',name='mn-title',wrap=True);self.hero.append(self.hero_title)
         self.hero_subtitle=label(sub,name='mn-subtitle',css='mn-hero-subtitle',wrap=True);self.hero_subtitle.set_margin_top(4);self.hero_subtitle.set_margin_bottom(18);self.hero.append(self.hero_subtitle)
-        plot=Gtk.Overlay();self.chart=ResourceChart(self.histories[self.resource],self._chart_max(self.resource),stacked=self.resource in ('cpu','mem'),single=self.resource=='en',height=120 if phone else 150)
+        plot=Gtk.Overlay();self.chart=ResourceChart(self.histories[self.resource],self._chart_max(self.resource),stacked=self.resource in ('cpu','mem'),single=self.resource in ('en','gpu'),height=120 if phone else 150)
         self.chart.set_name('mn-chart');plot.set_child(self.chart)
         caption=label('60 s','caption',css='mn-chart-caption');caption.set_halign(Gtk.Align.START);caption.set_valign(Gtk.Align.END);caption.set_margin_start(12);caption.set_margin_bottom(8);plot.add_overlay(caption);self.hero.append(Card(plot,recessed=True,padded=False))
         self.stats=Gtk.Box(orientation=Gtk.Orientation.VERTICAL);self.hero.append(self.stats);self._stats()
@@ -287,7 +328,7 @@ class MonitorWindow(AppWindow):
 
     def _resource_caption(self, title, index, resource):
         line=Gtk.Box(spacing=7)
-        if index < (1 if resource=='en' else 2):
+        if index < (1 if resource in ('en','gpu') else 2):
             dot=Gtk.Box(width_request=8,height_request=8,valign=Gtk.Align.CENTER)
             dot.add_css_class('mn-series-marker')
             dot.add_css_class('primary' if index==0 else 'secondary')
@@ -300,6 +341,8 @@ class MonitorWindow(AppWindow):
         r=self.resource;t=self.totals;facts=[]
         if r=='disk':facts=[('Reading',format_value(t.get('read'),'disk')),('Writing',format_value(t.get('write'),'disk')),('Free space','212 GB of 512' if self.fixture else t.get('free','—'))]
         if r=='net':facts=[('Down',format_value(t.get('down'),'net')),('Up',format_value(t.get('up'),'net')),('This session','1.4 GB' if self.fixture else t.get('session','—'))]
+        if r=='gpu' and self._gpu():
+            gpu=self._gpu();facts=[('Busy',self._gpu_value()),('Memory',self._gpu_memory(gpu)),('Device',gpu['name'])]
         if r=='en':facts=[('Battery','74%' if self.fixture else t.get('percentage','—')),('Time left',('4 h 05 m' if t['en']>60 else '6 h 10 m') if self.fixture else t.get('remaining','—'))]
         phone=self._phone()
         if facts:
@@ -336,7 +379,7 @@ class MonitorWindow(AppWindow):
         details=({'mem':[('Cached','3.0 GB'),('Swap','0.2 of 8 GB'),('zram','1.1 GB → 380 MB'),('Committed','14.8 GB')],
                  'disk':[('Device','nvme0n1'),('Root','btrfs · /'),('Queue','2'),('Busy',f"{min(99,int(t['write']/1.1+.5))}%")],
                  'net':[('Interface','wlp0s20f3'),('Address','10.0.4.12'),('Link','1.2 Gb/s · Wi‑Fi 6'),('Packets','2.1 M in · 380 K out')],
-                 'en':[('Draw',f"{7+t['en']/12:.1f} W"),('Profile','Balanced'),('Health','94%'),('Cycles','212')]}[r] if self.fixture else getattr(self,'advanced_facts',{}).get(r,[(key,'—') for key in {'mem':['Cached','Swap','zram','Committed'],'disk':['Device','Root','Queue','Busy'],'net':['Interface','Address','Link','Packets'],'en':['Draw','Profile','Health','Cycles']}[r]]))
+                 'en':[('Draw',f"{7+t['en']/12:.1f} W"),('Profile','Balanced'),('Health','94%'),('Cycles','212')]}[r] if self.fixture else getattr(self,'advanced_facts',{}).get(r,[(key,'—') for key in {'mem':['Cached','Swap','zram','Committed'],'disk':['Device','Root','Queue','Busy'],'net':['Interface','Address','Link','Packets'],'gpu':['Engines','Driver'],'en':['Draw','Profile','Health','Cycles']}[r]]))
         row=Gtk.Grid(column_spacing=10,row_spacing=10,column_homogeneous=True,margin_top=12);self.stats.append(row);self.advanced_grid=row
         for i,(key,value) in enumerate(details):
             card=Card(recessed=True,padded=False);words=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,margin_top=9,margin_bottom=9,margin_start=12,margin_end=12);words.append(label(key,'caption',css='mn-fact-key'));words.append(label(value,css='mn-advanced-value'));card.append(words);row.attach(card,i%4,i//4,1,1)
@@ -501,6 +544,7 @@ class MonitorWindow(AppWindow):
                 'mem':f"{t.get('mem',0)/1024:.1f} GB" if t.get('mem') is not None else '—',
                 'disk':format_value((t.get('read') or 0)+(t.get('write') or 0),'disk') if t.get('read') is not None else '—',
                 'net':format_value(t.get('down'),'net'),
+                'gpu':self._gpu_value(),
                 'en':'74%' if self.fixture else t.get('percentage','—')}
 
     def _resource_picker(self):
@@ -510,6 +554,7 @@ class MonitorWindow(AppWindow):
     def _resource_panel(self):
         values=self._resource_values();rows=[]
         for k,title,icon in RESOURCES:
+            if k not in self._shown_resources():continue
             # Switch after the panel has folded; switching rebuilds the bar the row sits in.
             row=PanelRow(title,icon=icon,detail=values[k],current=k==self.resource,on_activate=lambda k=k:GLib.idle_add(self._pick_resource,k))
             row.set_name('mn-pick-'+k);rows.append(row)
@@ -820,7 +865,7 @@ class MonitorWindow(AppWindow):
             if row['background']:continue
             self.live_rows[row['id']]=row
             procs=[[p.name,p.pid,p.cpu,(p.memory or p.rss)/1024**2 if p.memory is not None or p.rss is not None else None] for p in row['members']]
-            self.apps.append({'id':row['id'],'n':row['name'],'icon':row['icon'],'sub':f"{len(procs)} processes · {row['threads']} threads",'procs':procs,'th':row['threads'],'cpu':row['cpu'],'mem':row['memory']/1024**2 if row['memory'] is not None else None,'disk':(row['reading']+row['writing'])/1e6 if row['reading'] is not None and row['writing'] is not None else None,'net':None,'en':None})
+            self.apps.append({'id':row['id'],'n':row['name'],'icon':row['icon'],'sub':f"{len(procs)} processes · {row['threads']} threads",'procs':procs,'th':row['threads'],'cpu':row['cpu'],'mem':row['memory']/1024**2 if row['memory'] is not None else None,'disk':(row['reading']+row['writing'])/1e6 if row['reading'] is not None and row['writing'] is not None else None,'net':None,'gpu':row.get('gpu'),'en':None})
         from .live_data import process_groups
         app_pids={p[1] for app in self.apps for p in app['procs']}
         self.groups=process_groups(snapshot['processes'],app_pids,self.sampler.users)
@@ -845,7 +890,10 @@ class MonitorWindow(AppWindow):
             if not hasattr(self,'network_start'):self.network_start=received
             self.totals['session']=f'{max(0,received-self.network_start)/1e9:.1f} GB'
         self.cores=snapshot['cores']
-        for k,pair in [('cpu',(snapshot['apps_cpu'],snapshot['system_cpu'])),('mem',(used,0)),('disk',(self.totals['read'],self.totals['write'])),('net',(self.totals['down'],self.totals['up'])),('en',(None,None))]:self.histories[k].append(pair)
+        self.gpus=snapshot.get('gpu') or []
+        self.advanced_facts['gpu']=self._gpu_facts()
+        gpu=self._gpu()
+        for k,pair in [('gpu',(gpu.get('busy') if gpu else None,None)),('cpu',(snapshot['apps_cpu'],snapshot['system_cpu'])),('mem',(used,0)),('disk',(self.totals['read'],self.totals['write'])),('net',(self.totals['down'],self.totals['up'])),('en',(None,None))]:self.histories[k].append(pair)
         title,subtitle=self._hero_text()
         self.hero_title.set_label(title);self.hero_subtitle.set_label(subtitle)
         reshape=False

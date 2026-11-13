@@ -13,6 +13,9 @@ import math
 from pathlib import Path
 
 RESOURCES = ('cpu', 'mem', 'disk', 'net', 'en')
+# GPU is measured live only, on machines that have one; fixtures keep the
+# five resources of the spec.
+LIVE_RESOURCES = RESOURCES + ('gpu',)
 
 
 def _rounded(value: float) -> int:
@@ -26,12 +29,12 @@ def memory_summary(used_mb: float, total_mb: float) -> str:
 
 
 def format_value(value: float | None, resource: str) -> str:
-    if resource not in RESOURCES:
+    if resource not in LIVE_RESOURCES:
         raise ValueError(f'Unknown resource: {resource}')
     if value is None or not math.isfinite(value):
         return '—'
     value = max(0, value)
-    if resource == 'cpu':
+    if resource in ('cpu', 'gpu'):
         return f'{_rounded(value)}%' if value >= 10 else f'{value:.1f}%'
     if resource == 'mem':
         return f'{value / 1024:.1f} GB' if value >= 1024 else f'{_rounded(value)} MB'
@@ -47,7 +50,7 @@ def activity_matches(app: dict, query: str) -> bool:
 
 
 def sorted_apps(apps, resource: str, *, key: str = 'v', descending: bool = True, query: str = '') -> list[dict]:
-    if resource not in RESOURCES or key not in ('n', 'v'):
+    if resource not in LIVE_RESOURCES or key not in ('n', 'v'):
         raise ValueError('Unknown resource or sort key')
     shown = [a for a in apps if activity_matches(a, query)]
     if key == 'n':

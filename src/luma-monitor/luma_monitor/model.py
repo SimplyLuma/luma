@@ -8,6 +8,7 @@ import pwd
 import re
 import time
 from collections import deque
+from .gpu import GpuSampler, app_share
 
 
 def fields(text):
@@ -128,9 +129,11 @@ class Sampler:
         self.previous = None
         self.users = {}
         self.impacts = {}
+        self.gpu = GpuSampler(proc, sys)
 
     def reset(self):
         self.previous = None
+        self.gpu.reset()
 
     def sample(self, *, memory=False, now=None):
         now = time.monotonic() if now is None else now
@@ -207,6 +210,10 @@ class Sampler:
                     break
                 process.identity = ancestor.identity
         rows = group_processes([p for p in processes if p.pid != 2 and p.ppid != 2], self.users)
+        gpus, gpu_shares = self.gpu.sample([p.pid for p in processes if p.pid != 2 and p.ppid != 2], int(now * 1e9))
+        gpu_measured = any(device['available'] for device in gpus)
+        for row in rows:
+            row['gpu'] = app_share(gpu_shares, [p.pid for p in row['members']]) if gpu_measured else None
         active = {r['id'] for r in rows if not r['background']}
         self.impacts = {k: v for k, v in self.impacts.items() if k in active}
         for row in rows:
@@ -268,7 +275,8 @@ class Sampler:
                     'idle_cpu': 100 - busy if busy is not None else None,
                     'cores': [cpu_values[k] for k in sorted(cpu_values, key=lambda x: int(x[3:] or -1)) if k != 'cpu'],
                     'memory': mem, 'disk_rates': device_rates(disks, 'disks'),
-                    'network_rates': device_rates(network, 'network'), 'network_received': complete_sum(v[0] for v in network.values()), 'background_count': sum(p.identity is None for p in processes), 'time': now}
+                    'network_rates': device_rates(network, 'network'), 'network_received': complete_sum(v[0] for v in network.values()), 'background_count': sum(p.identity is None for p in processes),
+                    'gpu': gpus, 'time': now}
         self.previous = {'time': now, 'cpus': cpus, 'processes': counters, 'network': network, 'disks': disks}
         return snapshot
 
