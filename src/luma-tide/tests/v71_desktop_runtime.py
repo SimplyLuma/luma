@@ -60,7 +60,8 @@ for width in (1180, 1024, 720, 560):
   assert w.deck.repeat.get_mapped() and w.deck.shuffle.get_mapped()
   w._add_source();settle()
   assert w.server_address.get_mapped() and w.server_password.get_mapped() and w.connect_button.get_mapped()
-  assert w.get_focus() is w.server_address.entry or w.get_focus().is_ancestor(w.server_address.entry)
+  # Add source opens on the folder choices; the server form below does not take focus (#343).
+  f=w.get_focus();assert f is None or not (f is w.server_address.entry or f.is_ancestor(w.server_address.entry))
   w.pane.close();settle()
   original=w.view
   w.open_search();settle();assert w.modes.get_visible() and w.search.get_mapped() and w.view==original
