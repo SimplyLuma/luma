@@ -20,6 +20,7 @@
   </screenshots>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.14.7" date="2026-11-13" />
     <release version="0.2.14.6" date="2026-10-07"><description><p>Google OAuth is unavailable in this release. Existing mail and saved sign-in grants remain preserved. Gmail app passwords and supported Microsoft sign-in remain available.</p></description></release>
     <release version="0.2.14.5" date="2026-10-07"><description><p>Independent interface updates preserve the existing mailbox. A native mail service owns credentials and account authentication.</p></description></release>
     <release version="0.2.14" date="2026-09-17">

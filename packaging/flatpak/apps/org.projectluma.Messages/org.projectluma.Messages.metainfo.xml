@@ -21,6 +21,7 @@
   </screenshots>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.4" date="2026-11-13" />
     <release version="0.1.3" date="2026-10-08"><description><p>Keep the first message visible when a new Luma conversation receives its permanent identity.</p></description></release>
     <release version="0.1.2" date="2026-10-08"><description><p>Include the maintained Messages theme namespace for signed application startup.</p></description></release>
     <release version="0.1.1" date="2026-10-07">
