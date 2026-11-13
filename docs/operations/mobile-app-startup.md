@@ -85,7 +85,11 @@ image's own interpreter: OSTree's normalized source timestamps otherwise
 invalidate Fedora's timestamp-based caches, forcing recompilation on immutable
 storage. Hash validation still detects changed development source. This has an
 import/mtime regression test; a complete new image compose remains a separate
-qualification step.
+qualification step. Flatpak apps have the same problem in a read-only `/app`
+and `/usr`: the Luma Platform runtime rewrites its Python caches as
+checked-hash at the end of its cleanup, and each first-party app manifest
+compiles its `site-packages` the same way after installing them
+(`tests/unit/test_flatpak_python_bytecode.py`).
 
 ## Titan measurements, 2026-10-30/31
 

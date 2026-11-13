@@ -39,6 +39,7 @@
         "cp -a --no-preserve=ownership src/prairie-core/prairie_apps /app/lib/python3.14/site-packages/",
         "install -d /app/lib/python3.14/site-packages/luma_continuity",
         "install -m644 src/luma-continuity/luma_continuity/__init__.py src/luma-continuity/luma_continuity/phone_contract.py src/luma-continuity/luma_continuity/call_provider.py /app/lib/python3.14/site-packages/luma_continuity/",
+        "python3 -m compileall -q -f -j0 --invalidation-mode checked-hash /app/lib/python3.14/site-packages",
         "install -Dm755 src/prairie-core/bin/prairie-phone /app/bin/prairie-phone-real",
         "printf '#!/bin/sh\\nexec python3 -m luma_appkit.migration_startup prairie-phone-real \"$@\"\\n' > /app/bin/prairie-phone",
         "chmod 755 /app/bin/prairie-phone",

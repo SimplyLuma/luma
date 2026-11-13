@@ -119,3 +119,23 @@ cleanup-append: |
   assert Path('/usr/share/icons/hicolor/scalable/actions/lumaui-tv-minimal-symbolic.svg').is_file()
   print('LumaUI TV kit (API level %d) PASS' % lumaui.LUMAUI_API_LEVEL)
   PY_TV
+
+  # Luma: OSTree exports every file with mtime 0, so the timestamp-checked
+  # bytecode in Fedora's Python packages never matches its source and, with
+  # /usr read-only, every app launch recompiles each module it imports (on a
+  # phone, a large part of an app's start). Hash-checked caches survive the
+  # export, as scripts/os/lib/prepare_python_bytecode.py makes them for the OS
+  # image. Last, so the imports above leave no timestamp caches behind; a
+  # module that does not compile keeps its old cache.
+  for d in /usr/lib/python3.* /usr/lib64/python3.*; do
+    [ -d "$d" ] || continue
+    python3 -m compileall -q -f -j0 -x '/(tests?|__pycache__)/' --invalidation-mode checked-hash "$d" || :
+  done
+  python3 - <<'PY_PYC'
+  import importlib.util, json, gi, luma_appkit
+  for module in (json, gi, luma_appkit):
+      with open(importlib.util.cache_from_source(module.__file__), 'rb') as f:
+          flags = int.from_bytes(f.read(8)[4:8], 'little')
+      assert flags & 1, f'{module.__name__}: timestamp-checked bytecode'
+  print('hash-checked Python bytecode PASS')
+  PY_PYC

@@ -40,6 +40,7 @@
         "install -Dm644 LICENSE.md /app/share/licenses/org.projectluma.Viewer/LICENSE.md",
         "install -Dm644 src/luma-viewer/viewer.css /app/share/luma-viewer/viewer.css",
         "cp -a src/luma-leaf/luma_leaf /app/lib/python3.14/site-packages/",
+        "python3 -m compileall -q -f -j0 --invalidation-mode checked-hash /app/lib/python3.14/site-packages",
         "install -d /app/share/leaf",
         "cp -a src/luma-leaf/data/. /app/share/leaf/",
         "install -d /app/share/luma-viewer/icons",
