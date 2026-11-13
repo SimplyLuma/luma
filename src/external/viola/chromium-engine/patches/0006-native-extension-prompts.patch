@@ -1,0 +1,442 @@
+diff --git a/chrome/browser/extensions/extension_disabled_ui_desktop.cc b/chrome/browser/extensions/extension_disabled_ui_desktop.cc
+--- a/chrome/browser/extensions/extension_disabled_ui_desktop.cc
++++ b/chrome/browser/extensions/extension_disabled_ui_desktop.cc
+@@ -38,6 +38,14 @@
+ #include "ui/base/l10n/l10n_util.h"
+ #include "ui/gfx/geometry/size.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_LINUX)
++#include "base/unguessable_token.h"
++#include "base/values.h"
++#include "chrome/browser/ui/views/viola/viola_product_shell_view.h"
++#endif
++
+ // ExtensionDisabledGlobalError -----------------------------------------------
+ 
+ namespace extensions {
+@@ -77,8 +85,19 @@
+   // ExtensionUninstallDialog::Delegate:
+   void OnExtensionUninstallDialogClosed(bool did_start_uninstall,
+                                         const std::u16string& error) override;
++
++#if BUILDFLAG(IS_LINUX)
++  // Viola has no visible app menu or toolbar bubble: the host asks in its bar
++  // to accept the new permissions (re-enable) or leave the extension off.
++  void ShowInViola();
++#endif
+ 
+  private:
++#if BUILDFLAG(IS_LINUX)
++  void OnViolaAnswer(bool accepted);
++  std::string viola_prompt_id_;
++#endif
++
+   // ExtensionRegistryObserver:
+   void OnExtensionLoaded(content::BrowserContext* browser_context,
+                          const Extension* extension) override;
+@@ -278,7 +297,58 @@
+   registry_observation_.Reset();
+ }
+ 
++#if BUILDFLAG(IS_LINUX)
++void ExtensionDisabledGlobalError::ShowInViola() {
++  viola::ViolaProductShellView* shell =
++      viola::ViolaProductShellView::ForProfile(profile_);
++  if (!shell || !viola_prompt_id_.empty()) {
++    return;
++  }
++  viola_prompt_id_ = base::UnguessableToken::Create().ToString();
++  base::DictValue state;
++  state.Set("id", viola_prompt_id_);
++  state.Set("type", "extension");
++  state.Set("title", GetBubbleViewTitle());
++  std::vector<std::u16string> messages = GetBubbleViewMessages();
++  base::ListValue details;
++  for (size_t i = 1; i < messages.size() && i <= 24; ++i) {
++    details.Append(messages[i]);
++  }
++  state.Set("body", messages.empty() ? std::u16string() : messages[0]);
++  state.Set("details", std::move(details));
++  state.Set("name",
++            ui_util::GetFixupExtensionNameForUIDisplay(extension_->name()));
++  state.Set("extensionId", extension_->id());
++  state.Set("accept", GetBubbleViewAcceptButtonLabel());
++  state.Set("cancel", u"Not now");
++  state.Set("host", "Extensions");
++  state.Set("hue", 250);
++  state.Set("important", true);
++  state.Set("kept", true);
++  shell->ShowExtensionPrompt(
++      std::move(state),
++      base::BindOnce(&ExtensionDisabledGlobalError::OnViolaAnswer,
++                     weak_ptr_factory_.GetWeakPtr()));
++}
++
++void ExtensionDisabledGlobalError::OnViolaAnswer(bool accepted) {
++  viola_prompt_id_.clear();
++  if (accepted) {
++    BubbleViewAcceptButtonPressed(nullptr);
++  }
++}
++#endif
++
+ void ExtensionDisabledGlobalError::RemoveGlobalError() {
++#if BUILDFLAG(IS_LINUX)
++  if (!viola_prompt_id_.empty()) {
++    if (viola::ViolaProductShellView* shell =
++            viola::ViolaProductShellView::ForProfile(profile_)) {
++      shell->ClearExtensionPrompt(viola_prompt_id_);
++    }
++    viola_prompt_id_.clear();
++  }
++#endif
+   std::unique_ptr<GlobalError> ptr =
+       GlobalErrorServiceFactory::GetForProfile(profile_)->RemoveGlobalError(
+           this);
+@@ -295,9 +365,16 @@
+                                const Extension* extension,
+                                bool is_remote_install) {
+   if (extension) {
++    auto error = std::make_unique<ExtensionDisabledGlobalError>(
++        profile, extension, is_remote_install);
++#if BUILDFLAG(IS_LINUX)
++    ExtensionDisabledGlobalError* shown = error.get();
++#endif
+     GlobalErrorServiceFactory::GetForProfile(profile)->AddGlobalError(
+-        std::make_unique<ExtensionDisabledGlobalError>(profile, extension,
+-                                                       is_remote_install));
++        std::move(error));
++#if BUILDFLAG(IS_LINUX)
++    shown->ShowInViola();
++#endif
+   }
+ }
+ 
+diff --git a/chrome/browser/ui/extensions/extension_post_install_dialog.cc b/chrome/browser/ui/extensions/extension_post_install_dialog.cc
+--- a/chrome/browser/ui/extensions/extension_post_install_dialog.cc
++++ b/chrome/browser/ui/extensions/extension_post_install_dialog.cc
+@@ -40,6 +40,12 @@
+ #include "chrome/browser/ui/views/extensions/extension_post_install_dialog_view_utils.h"
+ #endif
+ 
++#if BUILDFLAG(IS_LINUX)
++#include "base/unguessable_token.h"
++#include "base/values.h"
++#include "chrome/browser/ui/views/viola/viola_product_shell_view.h"
++#endif
++
+ namespace extensions {
+ 
+ namespace {
+@@ -138,6 +144,33 @@
+     return;
+   }
+ 
++#if BUILDFLAG(IS_LINUX)
++  // Viola draws its browser window off screen: the host says the extension
++  // was added in its bar instead, with one button that closes the notice.
++  if (viola::ViolaProductShellView* shell =
++          viola::ViolaProductShellView::ForWebContents(web_contents)) {
++    std::u16string extension_name =
++        extensions::ui_util::GetFixupExtensionNameForUIDisplay(
++            model->extension_name());
++    base::DictValue state;
++    state.Set("id", base::UnguessableToken::Create().ToString());
++    state.Set("type", "extension-installed");
++    state.Set("title", base::StrCat({extension_name, u" was added to Viola"}));
++    state.Set("body", model->show_how_to_use() ? model->GetHowToUseText()
++                                               : std::u16string());
++    state.Set("name", extension_name);
++    state.Set("extensionId", model->extension_id());
++    state.Set("accept", std::u16string());
++    state.Set("cancel", u"Done");
++    state.Set("host", "Extensions");
++    state.Set("hue", 250);
++    state.Set("important", false);
++    state.Set("kept", true);
++    shell->ShowExtensionPrompt(std::move(state), base::DoNothing());
++    return;
++  }
++#endif
++
+   auto delegate = std::make_unique<ExtensionPostInstallDialog>(
+       web_contents, std::move(model));
+   gfx::NativeWindow native_window = web_contents->GetTopLevelNativeWindow();
+diff --git a/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc b/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc
+--- a/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc
++++ b/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc
+@@ -55,6 +55,17 @@
+ #include "ui/views/widget/widget_delegate.h"
+ #include "ui/views/window/dialog_delegate.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_LINUX)
++#include <algorithm>
++
++#include "base/unguessable_token.h"
++#include "base/values.h"
++#include "chrome/browser/ui/views/viola/viola_product_shell_view.h"
++#include "extensions/browser/ui_util.h"
++#endif
++
+ using content::OpenURLParams;
+ using content::Referrer;
+ 
+@@ -76,12 +87,100 @@
+       rating, rating_count);
+ }
+ 
++#if BUILDFLAG(IS_LINUX)
++// Viola draws its browser window off screen, so a browser-modal dialog there
++// is never seen. The host shows the prompt in its bar instead and answers
++// accept or cancel; the prompt stays alive until then.
++void AnswerViolaInstallPrompt(
++    std::unique_ptr<ExtensionInstallPrompt::Prompt> prompt,
++    ExtensionInstallPrompt::DoneCallback done_callback,
++    bool accepted) {
++  if (accepted) {
++    prompt->OnDialogAccepted();
++  } else {
++    prompt->OnDialogCanceled();
++  }
++  std::move(done_callback)
++      .Run(ExtensionInstallPrompt::DoneCallbackPayload(
++          accepted ? ExtensionInstallPrompt::Result::ACCEPTED
++                   : ExtensionInstallPrompt::Result::USER_CANCELED));
++}
++
++bool ShowInViolaShell(
++    content::WebContents* web_contents,
++    Profile* profile,
++    ExtensionInstallPrompt::DoneCallback& done_callback,
++    std::unique_ptr<ExtensionInstallPrompt::Prompt>& prompt) {
++  switch (prompt->type()) {
++    case ExtensionInstallPrompt::INSTALL_PROMPT:
++    case ExtensionInstallPrompt::RE_ENABLE_PROMPT:
++    case ExtensionInstallPrompt::PERMISSIONS_PROMPT:
++    case ExtensionInstallPrompt::EXTERNAL_INSTALL_PROMPT:
++    case ExtensionInstallPrompt::REMOTE_INSTALL_PROMPT:
++    case ExtensionInstallPrompt::REPAIR_PROMPT:
++      break;
++    default:
++      // Requests with a justification and parent approval keep Chromium's
++      // dialog.
++      return false;
++  }
++  if (prompt->requires_parent_permission() ||
++      prompt->GetAcceptButtonLabel().empty()) {
++    return false;
++  }
++  // A tab's own window, else (an extension's popup or background page, a
++  // re-enable from settings) the profile's most recent Viola window.
++  viola::ViolaProductShellView* shell =
++      viola::ViolaProductShellView::ForWebContents(web_contents);
++  if (!shell) {
++    shell = viola::ViolaProductShellView::ForProfile(profile);
++  }
++  if (!shell) {
++    return false;
++  }
++  base::DictValue state;
++  state.Set("id", base::UnguessableToken::Create().ToString());
++  state.Set("type", "extension");
++  state.Set("title", prompt->GetDialogTitle());
++  if (const extensions::Extension* extension = prompt->extension()) {
++    state.Set("name", extensions::ui_util::GetFixupExtensionNameForUIDisplay(
++                          extension->name()));
++    state.Set("extensionId", extension->id());
++  }
++  base::ListValue details;
++  const size_t count = std::min<size_t>(prompt->GetPermissionCount(), 24);
++  for (size_t i = 0; i < count; ++i) {
++    details.Append(prompt->GetPermission(i));
++  }
++  state.Set("body", count ? prompt->GetPermissionsHeading() : std::u16string());
++  state.Set("details", std::move(details));
++  state.Set("accept", prompt->GetAcceptButtonLabel());
++  state.Set("cancel", prompt->GetAbortButtonLabel());
++  state.Set("host", "Extensions");
++  state.Set("hue", 250);
++  state.Set("important", true);
++  state.Set("kept", true);
++  shell->ShowExtensionPrompt(
++      std::move(state),
++      base::BindOnce(&AnswerViolaInstallPrompt, std::move(prompt),
++                     std::move(done_callback)));
++  return true;
++}
++#endif
++
+ void ShowExtensionInstallDialogImpl(
+     std::unique_ptr<ExtensionInstallPromptShowParams> show_params,
+     ExtensionInstallPrompt::DoneCallback done_callback,
+     std::unique_ptr<ExtensionInstallPrompt::Prompt> prompt) {
+   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+ 
++#if BUILDFLAG(IS_LINUX)
++  if (ShowInViolaShell(show_params->GetParentWebContents(),
++                       show_params->profile(), done_callback, prompt)) {
++    return;
++  }
++#endif
++
+   // If the dialog has to be parented to WebContents, force activate the
+   // contents. See crbug.com/40059470.
+   content::WebContents* web_contents = show_params->GetParentWebContents();
+diff --git a/chrome/browser/ui/views/viola/viola_product_shell_view.cc b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.cc
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+@@ -1097,6 +1097,8 @@
+     state = base::Value(permission_prompt_state_.Clone());
+   } else if (!login_prompts_.empty()) {
+     state = base::Value(login_prompts_.front().first.Clone());
++  } else if (!extension_prompts_.empty()) {
++    state = base::Value(extension_prompts_.front().first.Clone());
+   } else if (session_restore_callback_) {
+     state = base::Value(session_restore_state_.Clone());
+   }
+@@ -1195,12 +1197,97 @@
+   return true;
+ }
+ 
++void ViolaProductShellView::ShowExtensionPrompt(base::DictValue state,
++                                                ExtensionAnswer answer) {
++  if (!state.FindString("id") || !answer) {
++    return;
++  }
++  extension_prompts_.emplace_back(std::move(state), std::move(answer));
++  if (extension_prompts_.size() == 1) {
++    SendAttentionPrompt();
++  }
++}
++
++void ViolaProductShellView::ClearExtensionPrompt(std::string_view id) {
++  for (auto it = extension_prompts_.begin(); it != extension_prompts_.end();
++       ++it) {
++    const std::string *current = it->first.FindString("id");
++    if (current && id == *current) {
++      const bool shown = it == extension_prompts_.begin();
++      extension_prompts_.erase(it);
++      if (shown) {
++        SendAttentionPrompt();
++      }
++      return;
++    }
++  }
++}
++
++bool ViolaProductShellView::ResolveExtensionPrompt(std::string_view id,
++                                                   bool accepted) {
++  if (extension_prompts_.empty()) {
++    return false;
++  }
++  const std::string *current =
++      extension_prompts_.front().first.FindString("id");
++  if (!current || id != *current) {
++    return false;
++  }
++  ExtensionAnswer answer = std::move(extension_prompts_.front().second);
++  extension_prompts_.pop_front();
++  SendAttentionPrompt();
++  std::move(answer).Run(accepted);
++  return true;
++}
++
++// static
++ViolaProductShellView *
++ViolaProductShellView::ForWebContents(content::WebContents *contents) {
++  tabs::TabInterface *tab =
++      contents ? tabs::TabInterface::MaybeGetFromContents(contents) : nullptr;
++  BrowserWindowInterface *browser =
++      tab ? tab->GetBrowserWindowInterface() : nullptr;
++  BrowserView *browser_view =
++      browser ? BrowserView::GetBrowserViewForBrowser(browser) : nullptr;
++  return browser_view ? browser_view->viola_product_shell_view_for_testing()
++                      : nullptr;
++}
++
++// static
++ViolaProductShellView *ViolaProductShellView::ForProfile(Profile *profile) {
++  if (!profile) {
++    return nullptr;
++  }
++  ProfileBrowserCollection *browsers =
++      ProfileBrowserCollection::GetForProfile(profile);
++  if (!browsers) {
++    return nullptr;
++  }
++  auto shell_of = [](BrowserWindowInterface *browser) -> ViolaProductShellView * {
++    BrowserView *browser_view =
++        browser ? BrowserView::GetBrowserViewForBrowser(browser) : nullptr;
++    return browser_view ? browser_view->viola_product_shell_view_for_testing()
++                        : nullptr;
++  };
++  ViolaProductShellView *shell = shell_of(browsers->GetLastActiveBrowser());
++  if (!shell) {
++    browsers->ForEach([&shell, &shell_of](BrowserWindowInterface *browser) {
++      shell = shell_of(browser);
++      return !shell;
++    });
++  }
++  return shell;
++}
++
+ base::Value ViolaProductShellView::PermissionPromptState() const {
+   if (permission_prompt_) {
+     return base::Value(permission_prompt_state_.Clone());
+   }
+   if (!login_prompts_.empty()) {
+     return base::Value(login_prompts_.front().first.Clone());
++  }
++  if (!extension_prompts_.empty()) {
++    return base::Value(extension_prompts_.front().first.Clone());
+   }
+   return session_restore_callback_
+              ? base::Value(session_restore_state_.Clone())
+diff --git a/chrome/browser/ui/views/viola/viola_product_shell_view.h b/chrome/browser/ui/views/viola/viola_product_shell_view.h
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.h
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.h
+@@ -124,6 +124,18 @@
+   bool ResolveLoginPrompt(std::string_view id, bool supplied,
+                           const std::u16string &username,
+                           const std::u16string &password);
++  // Extension prompts (extension_install_dialog_view.cc,
++  // extension_post_install_dialog.cc, extension_disabled_ui_desktop.cc) take
++  // the same channel as {type: 'extension'} or {type: 'extension-installed'}
++  // and queue after sign-ins. An answer runs once: accepted ("allow") or not.
++  using ExtensionAnswer = base::OnceCallback<void(bool accepted)>;
++  void ShowExtensionPrompt(base::DictValue state, ExtensionAnswer answer);
++  void ClearExtensionPrompt(std::string_view id);
++  bool ResolveExtensionPrompt(std::string_view id, bool accepted);
++  // The Viola shell drawing `contents`, or the profile's most recently active
++  // Viola window; null when Chromium's own window is in use.
++  static ViolaProductShellView *ForWebContents(content::WebContents *contents);
++  static ViolaProductShellView *ForProfile(Profile *profile);
+   bool IsPointInDraggableRegion(const gfx::Point &point) const;
+ 
+   // WebUIContentsWrapper::Host:
+@@ -159,6 +171,7 @@
+   base::OnceCallback<void(bool)> session_restore_callback_;
+   base::DictValue session_restore_state_;
+   std::deque<std::pair<base::DictValue, LoginAnswer>> login_prompts_;
++  std::deque<std::pair<base::DictValue, ExtensionAnswer>> extension_prompts_;
+   int sidebar_width_ = kSidebarWidth;
+   bool sidebar_collapsed_ = false;
+   bool sidebar_modal_visible_ = false;
+diff --git a/chrome/browser/ui/webui/viola/viola_message_handler.cc b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+--- a/chrome/browser/ui/webui/viola/viola_message_handler.cc
++++ b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+@@ -7436,6 +7436,10 @@
+     return;
+   }
+   if (!shell) {
++    return;
++  }
++  // An extension prompt: allow accepts it; block or dismiss cancels it.
++  if (shell->ResolveExtensionPrompt(*id, *decision == "allow")) {
+     return;
+   }
+   // Block or dismiss on a sign-in cancels it.
