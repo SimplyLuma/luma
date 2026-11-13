@@ -21,16 +21,26 @@ class FairphoneFp6(unittest.TestCase):
         self.soc = toml(ROOT / "socs" / "qcom" / "milos" / "soc.toml")
         self.guide = (DEVICE / "INSTALL.md").read_text()
 
-    def test_install_guide_is_the_published_alpha1_guide(self):
-        # Verbatim copy of https://dl.simplyluma.com/mobile/fp6/alpha1/INSTALL.md.
-        digest = hashlib.sha256((DEVICE / "INSTALL.md").read_bytes()).hexdigest()
-        self.assertEqual(digest, "daa3f2dc5a655a162771eb41e798fd6c50f1a46dea37703f4d0b336d4e7b2416")
+    def kit_release(self):
+        return [release for release in self.device["releases"] if "kit_image" in release][-1]
 
-    def test_guide_flashes_the_published_boot_image(self):
-        release = self.device["releases"][0]
-        name = release["boot_image"].rsplit("/", 1)[1]
-        self.assertIn(f"fastboot flash boot_a {name}", self.guide)
-        self.assertIn(f"fastboot flash boot_b {name}", self.guide)
+    def test_install_guide_is_the_newest_kit_guide(self):
+        # INSTALL.md is published beside the newest device kit and links its files.
+        release = self.kit_release()
+        self.assertTrue(release["guide"].endswith("/INSTALL.md"), release["guide"])
+        for key in ("kit_image", "boot_image", "dtbo_image"):
+            self.assertIn(release[key], self.guide)
+
+    def test_guide_flashes_in_the_kit_order(self):
+        release = self.kit_release()
+        names = {
+            "userdata": "luma-nightly-<build>-aarch64-disk.sparse",
+            "kit": release["kit_image"].rsplit("/", 1)[1],
+            "boot": release["boot_image"].rsplit("/", 1)[1],
+            "dtbo": release["dtbo_image"].rsplit("/", 1)[1],
+        }
+        commands = "\n".join("fastboot " + line.format(**names) for line in self.device["kit"]["flash"])
+        self.assertIn(commands, self.guide)
 
     def test_first_boot_is_fastboot_boot_so_the_modem_store_survives(self):
         # A normal first restart lets the bootloader wipe modemst (the IMEI).
@@ -46,7 +56,7 @@ class FairphoneFp6(unittest.TestCase):
     def test_blank_dtbo_matches_the_guide(self):
         dtbo = self.boot["dtbo"]
         self.assertEqual(dtbo["policy"], "blank")
-        self.assertIn(f"head -c {dtbo['size']} /dev/zero > dtbo-blank.bin", self.guide)
+        self.assertTrue(self.kit_release()["dtbo_image"].endswith("/dtbo-blank.bin"))
         for partition in dtbo["partitions"]:
             self.assertIn(f"fastboot flash {partition} dtbo-blank.bin", self.guide)
 
