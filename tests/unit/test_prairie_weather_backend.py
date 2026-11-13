@@ -20,7 +20,9 @@ sys.path.insert(0, str(REPO_ROOT / "src/prairie-core"))
 from prairie_apps.weather_backend import (  # noqa: E402
     LocationSearch, PlaceStore, cached_forecast, fetch_forecast, needs_refresh, new_place, parse_forecast,
 )
-from prairie_apps.weather_model import Place, read_cache, write_cache  # noqa: E402
+from prairie_apps.weather_model import (  # noqa: E402
+    UNITS_IMPERIAL, UNITS_METRIC, Place, read_cache, system_measurement, write_cache,
+)
 
 
 CHICAGO = Place(uid="", name="Chicago", region="Illinois", country="United States",
@@ -146,6 +148,31 @@ class WeatherBackendTests(unittest.TestCase):
         self.assertFalse(needs_refresh(forecast))
         self.assertTrue(needs_refresh(None))
         self.assertIsNotNone(forecast.age_seconds())
+
+
+
+class SystemMeasurementTests(unittest.TestCase):
+    def test_the_first_named_locale_decides(self):
+        missing = Path("/nonexistent/locale.conf")
+        self.assertEqual(system_measurement({"LANG": "en_US.UTF-8"}, locale_conf=missing), UNITS_IMPERIAL)
+        self.assertEqual(system_measurement({"LANG": "en_US.UTF-8", "LC_MEASUREMENT": "en_GB.UTF-8"},
+                                            locale_conf=missing), UNITS_METRIC)
+        self.assertEqual(system_measurement({"LC_ALL": "en_US.UTF-8", "LC_MEASUREMENT": "de_DE.UTF-8"},
+                                            locale_conf=missing), UNITS_IMPERIAL)
+        self.assertEqual(system_measurement({"LANG": "en_US.UTF-8"}, region="fr_FR.UTF-8",
+                                            locale_conf=missing), UNITS_METRIC)
+        # An empty LC_MEASUREMENT is unset, not a reason to skip LANG.
+        self.assertEqual(system_measurement({"LC_MEASUREMENT": "", "LANG": "en_US.UTF-8"},
+                                            locale_conf=missing), UNITS_IMPERIAL)
+        self.assertEqual(system_measurement({}, locale_conf=missing), UNITS_METRIC)
+
+    def test_a_c_session_follows_the_system_locale(self):
+        """A session started before setup chose a locale still says C.UTF-8."""
+        with tempfile.TemporaryDirectory() as directory:
+            conf = Path(directory) / "locale.conf"
+            conf.write_text('LANG="en_US.UTF-8"\n', encoding="utf-8")
+            self.assertEqual(system_measurement({"LANG": "C.UTF-8"}, locale_conf=conf), UNITS_IMPERIAL)
+            self.assertEqual(system_measurement({"LANG": "en_GB.UTF-8"}, locale_conf=conf), UNITS_METRIC)
 
 
 if __name__ == "__main__":

@@ -238,6 +238,35 @@ def measurement_from_locale(value: str) -> str:
     return UNITS_IMPERIAL if country.upper() in _IMPERIAL_COUNTRIES else UNITS_METRIC
 
 
+def _locale_named(value: str | None) -> bool:
+    name = (value or "").strip().split(".")[0].split("@")[0]
+    return bool(name) and name not in ("C", "POSIX")
+
+
+def system_measurement(environ=None, *, region: str | None = None,
+                       locale_conf: Path = Path("/etc/locale.conf")) -> str:
+    """Metric or imperial from the first named locale that governs measurement.
+
+    LC_ALL, then the desktop's Formats region, then LC_MEASUREMENT and LANG,
+    then the system locale localed writes. A session started before the locale
+    was chosen (first-boot setup) still carries C/C.UTF-8 in its environment.
+    """
+    environ = os.environ if environ is None else environ
+    for value in (environ.get("LC_ALL"), region, environ.get("LC_MEASUREMENT"), environ.get("LANG")):
+        if _locale_named(value):
+            return measurement_from_locale(value)
+    try:
+        lines = locale_conf.read_text(encoding="utf-8", errors="replace").splitlines()[:64]
+    except OSError:
+        lines = []
+    system = dict(line.strip().partition("=")[::2] for line in lines if "=" in line)
+    for key in ("LC_MEASUREMENT", "LANG"):
+        value = system.get(key, "").strip().strip('"\'')
+        if _locale_named(value):
+            return measurement_from_locale(value)
+    return UNITS_METRIC
+
+
 def resolve_units(setting: str, system: str) -> str:
     """Automatic follows the system measurement setting; the others override it."""
     if setting in (UNITS_METRIC, UNITS_IMPERIAL):

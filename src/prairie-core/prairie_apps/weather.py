@@ -31,12 +31,25 @@ from .weather_data import plans_for, snapshot_from_forecast, weather_icon
 from .weather_layout import ForecastLayout
 from .weather_places import WeatherPlaces
 from .weather_fixture import fixture_from_environment
-from .weather_model import Place, UNITS_IMPERIAL, UNITS_METRIC, measurement_from_locale, resolve_units
+from .weather_model import Place, UNITS_IMPERIAL, UNITS_METRIC, resolve_units, system_measurement
 from .weather_model import cache_directory, cache_path
 from .weather_observation import fetch_alerts
 from .weather_observation_cache import cached_observation, current_observation
+from .clock_backend import uses_24_hour
 
 ICON_NAME = 'org.projectluma.Weather'
+
+
+def _formats_region() -> str | None:
+    """The desktop's Formats region (org.gnome.system.locale region), when set."""
+    try:
+        source = Gio.SettingsSchemaSource.get_default()
+        schema = source.lookup('org.gnome.system.locale', True) if source else None
+        if schema is None or not schema.has_key('region'):
+            return None
+        return Gio.Settings.new('org.gnome.system.locale').get_string('region') or None
+    except Exception:  # noqa: BLE001 - the environment still decides
+        return None
 # The Prairie preview launcher overrides APP_ID before main(); the application
 # and window must both consume it while the production icon name stays stable.
 APP_ID = ICON_NAME
@@ -88,7 +101,8 @@ class WeatherWindow(AppWindow):
         self._cache_refresh_source = 0
         self._cache_changed_uids = set()
         self.search_provider = self.fixture or WeatherPlaces()
-        self.units = UNITS_IMPERIAL if self.fixture else measurement_from_locale(os.environ.get('LC_MEASUREMENT', os.environ.get('LANG', '')))
+        self.units = UNITS_IMPERIAL if self.fixture else system_measurement(region=_formats_region())
+        self.twelve_hour = True if self.fixture else not uses_24_hour()
         if self.store is not None:
             self.units = resolve_units(self.store.unit_setting(), self.units)
         self._read_cached()
@@ -313,7 +327,7 @@ class WeatherWindow(AppWindow):
         self._render()
 
     def _fetch_done(self, place, forecast):
-        snapshot = snapshot_from_forecast(forecast, self.units) if forecast else None
+        snapshot = snapshot_from_forecast(forecast, self.units, twelve_hour=self.twelve_hour) if forecast else None
         return self._refreshed(self.generation, place.uid, snapshot)
 
     def _remove_selected(self):
@@ -383,7 +397,7 @@ class WeatherWindow(AppWindow):
             try:
                 cached = cached_forecast(place)
                 if cached:
-                    self.snapshots[place.uid] = snapshot_from_forecast(cached, self.units)
+                    self.snapshots[place.uid] = snapshot_from_forecast(cached, self.units, twelve_hour=self.twelve_hour)
             except (OSError, ValueError):
                 pass
         if self.places and not self.selected:
@@ -406,7 +420,7 @@ class WeatherWindow(AppWindow):
                     for p in places:
                         cached = cached_forecast(p)
                         if cached:
-                            snapshots[p.uid] = snapshot_from_forecast(cached, self.units)
+                            snapshots[p.uid] = snapshot_from_forecast(cached, self.units, twelve_hour=self.twelve_hour)
                 GLib.idle_add(self._loaded, generation, places, snapshots, '')
             except (OSError, ValueError) as error:
                 GLib.idle_add(self._loaded, generation, (), {}, str(error))
@@ -499,7 +513,7 @@ class WeatherWindow(AppWindow):
 
     def _refresh_place(self, generation, place, serial=None):
         def publish(forecast):
-            snapshot = snapshot_from_forecast(forecast, self.units, observation=cached_observation(place))
+            snapshot = snapshot_from_forecast(forecast, self.units, observation=cached_observation(place), twelve_hour=self.twelve_hour)
             GLib.idle_add(self._refreshed, generation, place.uid, snapshot, serial)
 
         try:
@@ -521,7 +535,7 @@ class WeatherWindow(AppWindow):
             publish(forecast)
             observation = self._current_observation(place)
             alerts = self._current_alerts(place)
-            snapshot = snapshot_from_forecast(forecast, self.units, observation=observation, alerts=alerts)
+            snapshot = snapshot_from_forecast(forecast, self.units, observation=observation, alerts=alerts, twelve_hour=self.twelve_hour)
             if self.places and place.uid == self.places[0].uid:
                 snapshot = self._with_plans(place, snapshot)
         except (OSError, ValueError):

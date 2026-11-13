@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.132%{?dist}
+Release:        1.luma.133%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -699,6 +699,10 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Thu Nov 12 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.133
+- Clock, alarms, Calendar and Weather follow the system 12/24-hour setting.
+- Weather's automatic units follow the system locale when the session has none.
+
 * Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.132
 - Camera: the Fairphone 6 front camera is no longer upside down.
 

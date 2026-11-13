@@ -52,6 +52,7 @@ struct _LumaWidgetsModel {
   GFileMonitor *places_monitor;
   GFileMonitor *cache_monitor;
   GFileMonitor *timezone_monitor;
+  GSettings *clock_settings;
   GCancellable *cancel;
   GDBusProxy *calendar;
   GHashTable *events;
@@ -182,15 +183,23 @@ cache_filename (const char *uid)
   return g_strconcat (safe->len ? safe->str : "place", ".json", NULL);
 }
 
+/* A locale that names a place: not unset, empty, C or POSIX. */
 static gboolean
-imperial_locale (void)
+locale_named (const char *locale)
 {
-  const char *locale = g_getenv ("LC_MEASUREMENT");
-  const char *country;
+  g_autofree char *name = NULL;
 
-  if (!locale)
-    locale = g_getenv ("LANG");
-  country = locale ? strchr (locale, '_') : NULL;
+  if (!locale || !*locale)
+    return FALSE;
+  name = g_strndup (locale, strcspn (locale, ".@"));
+  return *name && g_strcmp0 (name, "C") != 0 && g_strcmp0 (name, "POSIX") != 0;
+}
+
+static gboolean
+imperial_country (const char *locale)
+{
+  const char *country = strchr (locale, '_');
+
   if (!country)
     return FALSE;
   country++;
@@ -198,6 +207,87 @@ imperial_locale (void)
           g_ascii_strncasecmp (country, "LR", 2) == 0 ||
           g_ascii_strncasecmp (country, "MM", 2) == 0) &&
          (country[2] == '\0' || country[2] == '.' || country[2] == '@');
+}
+
+static char *
+settings_string (const char *schema_id, const char *key)
+{
+  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+  g_autoptr (GSettingsSchema) schema = source ? g_settings_schema_source_lookup (source, schema_id, TRUE) : NULL;
+  g_autoptr (GSettings) settings = NULL;
+
+  if (!schema || !g_settings_schema_has_key (schema, key))
+    return NULL;
+  settings = g_settings_new (schema_id);
+  return g_settings_get_string (settings, key);
+}
+
+/* Weather's "automatic" units, as Weather resolves them (weather_model.py
+ * system_measurement): LC_ALL, the desktop's Formats region, LC_MEASUREMENT,
+ * LANG, then the system locale. A session started before first-boot setup
+ * chose a locale still carries C.UTF-8 in its environment. */
+static gboolean
+imperial_locale (void)
+{
+  g_autofree char *region = settings_string ("org.gnome.system.locale", "region");
+  const char *candidates[] = { g_getenv ("LC_ALL"), region, g_getenv ("LC_MEASUREMENT"), g_getenv ("LANG") };
+  g_autofree char *conf = NULL;
+  gsize length = 0;
+
+  for (guint i = 0; i < G_N_ELEMENTS (candidates); i++)
+    if (locale_named (candidates[i]))
+      return imperial_country (candidates[i]);
+  if (!g_file_get_contents ("/etc/locale.conf", &conf, &length, NULL) || length > 16384)
+    return FALSE;
+  {
+    g_auto (GStrv) lines = g_strsplit (conf, "\n", 64);
+    const char *keys[] = { "LC_MEASUREMENT=", "LANG=" };
+
+    for (guint k = 0; k < G_N_ELEMENTS (keys); k++)
+      for (guint i = 0; lines[i]; i++) {
+        g_autofree char *value = NULL;
+        char *line = g_strstrip (lines[i]);
+
+        if (!g_str_has_prefix (line, keys[k]))
+          continue;
+        value = g_strdup (line + strlen (keys[k]));
+        g_strstrip (value);
+        if (value[0] == '"' || value[0] == '\'') {
+          memmove (value, value + 1, strlen (value));
+          if (*value)
+            value[strcspn (value, "\"'")] = '\0';
+        }
+        if (locale_named (value))
+          return imperial_country (value);
+      }
+  }
+  return FALSE;
+}
+
+/* The system clock-format setting; 12-hour is Luma's default. */
+static gboolean
+twelve_hour (LumaWidgetsModel *self)
+{
+  g_autofree char *format = self->clock_settings ? g_settings_get_string (self->clock_settings, "clock-format") : NULL;
+  return g_strcmp0 (format, "24h") != 0;
+}
+
+static void
+clock_format_changed (GSettings *settings G_GNUC_UNUSED, const char *key G_GNUC_UNUSED, gpointer data)
+{
+  refresh_calendar (data);
+}
+
+static char *
+event_time (LumaWidgetsModel *self, GDateTime *date, gboolean same_day)
+{
+  g_autofree char *day = same_day ? g_strdup ("") : g_date_time_format (date, "%a ");
+  int hour = g_date_time_get_hour (date);
+
+  if (!twelve_hour (self))
+    return g_strdup_printf ("%s%02d:%02d", day, hour, g_date_time_get_minute (date));
+  return g_strdup_printf ("%s%d:%02d %s", day, hour % 12 ? hour % 12 : 12,
+                          g_date_time_get_minute (date), hour < 12 ? _("AM") : _("PM"));
 }
 
 static char *
@@ -461,7 +551,7 @@ refresh_calendar (LumaWidgetsModel *self)
       gboolean same_day = g_date_time_get_year (date) == g_date_time_get_year (today) &&
                           g_date_time_get_day_of_year (date) == g_date_time_get_day_of_year (today);
 
-      time = g_date_time_format (date, same_day ? "%H:%M" : "%a %H:%M");
+      time = event_time (self, date, same_day);
     }
     text = g_strdup_printf ("%s\n%s", event->summary, event->begin <= now ? _("Now") : time);
     set_text (self, &self->calendar_events[i], text);
@@ -714,6 +804,8 @@ stop (LumaWidgetsModel *self)
   if (self->places_monitor) g_file_monitor_cancel (self->places_monitor);
   if (self->cache_monitor) g_file_monitor_cancel (self->cache_monitor);
   if (self->timezone_monitor) g_file_monitor_cancel (self->timezone_monitor);
+  if (self->clock_settings) g_signal_handlers_disconnect_by_data (self->clock_settings, self);
+  g_clear_object (&self->clock_settings);
   g_clear_object (&self->places_monitor);
   g_clear_object (&self->cache_monitor);
   g_clear_object (&self->timezone_monitor);
@@ -784,6 +876,16 @@ luma_widgets_model_new (const char *calendar_service)
   self->calendar_service = g_strdup (calendar_service);
   self->calendar_path = g_strdup (g_str_has_prefix (calendar_service, "mobi.")
     ? "/mobi/phosh/Shell/CalendarServer" : "/org/gnome/Shell/CalendarServer");
+  {
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+    g_autoptr (GSettingsSchema) schema = source
+      ? g_settings_schema_source_lookup (source, "org.gnome.desktop.interface", TRUE) : NULL;
+
+    if (schema && g_settings_schema_has_key (schema, "clock-format")) {
+      self->clock_settings = g_settings_new ("org.gnome.desktop.interface");
+      g_signal_connect (self->clock_settings, "changed::clock-format", G_CALLBACK (clock_format_changed), self);
+    }
+  }
   refresh_weather (self);
   refresh_date (self);
   watch_files (self);

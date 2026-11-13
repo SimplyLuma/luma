@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -187,6 +188,18 @@ class HourFormatTests(unittest.TestCase):
         self.assertTrue(hour_format_from_pattern("%H:%M:%S"))
         self.assertFalse(hour_format_from_pattern("%I:%M:%S %p"))
         self.assertFalse(hour_format_from_pattern("%r"))
+
+    def test_clock_format_setting_beats_the_locale(self):
+        """A C locale reports 24-hour; the system clock-format setting decides first."""
+        from prairie_apps import clock_backend
+        with mock.patch.dict("os.environ", {"LUMA_CLOCK_HOUR_FORMAT": ""}), \
+                mock.patch.object(clock_backend._locale, "nl_langinfo", return_value="%H:%M:%S"):
+            with mock.patch.object(clock_backend, "_clock_format_setting", return_value="12h"):
+                self.assertFalse(clock_backend.uses_24_hour())
+            with mock.patch.object(clock_backend, "_clock_format_setting", return_value="24h"):
+                self.assertTrue(clock_backend.uses_24_hour())
+            with mock.patch.object(clock_backend, "_clock_format_setting", return_value=None):
+                self.assertTrue(clock_backend.uses_24_hour())
 
     def test_formatting_both_ways(self):
         evening = datetime(2026, 9, 11, 21, 47, tzinfo=UTC)
