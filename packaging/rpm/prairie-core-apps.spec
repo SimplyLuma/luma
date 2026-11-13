@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.134%{?dist}
+Release:        1.luma.135%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -332,6 +332,14 @@ timeout 120s xvfb-run -a --server-args="-screen 0 1440x1080x24" dbus-run-session
     LUMA_CREATOR_SCHEMA_FILE=%{SOURCE3} \
     PYTHONPATH=%{buildroot}%{python3_sitelib} \
   python3 tests/collaboration_role_runtime.py
+# A sandboxed Notes window presents before it asks Connect for the account its
+# shared pages are kept under, and fills them in from a reply off the main thread.
+timeout 120s xvfb-run -a --server-args="-screen 0 1440x1080x24" dbus-run-session -- \
+  env GSK_RENDERER=cairo GTK_A11Y=none GSETTINGS_BACKEND=memory \
+    LUMA_CREATOR_SCHEMA_FILE=%{SOURCE3} \
+    LUMA_NOTES_STYLE_PATH=%{buildroot}%{_datadir}/prairie-core/notes.css \
+    PYTHONPATH=%{buildroot}%{python3_sitelib} \
+  python3 tests/notes_host_startup_runtime.py
 PYTHONPATH=%{buildroot}%{python3_sitelib} python3 tests/test_phone_backend_regression.py
 PYTHONPATH=%{buildroot}%{python3_sitelib} python3 tests/phone_luma_contacts_unit.py
 PYTHONPATH=%{buildroot}%{python3_sitelib} python3 tests/tasks_comment_time_unit.py
@@ -699,6 +707,9 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.135
+- Notes: a sandboxed window opens before Connect answers for its shared pages.
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.134
 - Messages: the window opens before its phones and accounts answer.
 
