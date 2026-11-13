@@ -13,3 +13,4 @@
 fairphone,fp6	fairphone-fp6	aarch64	oci	rootfs	config/mobile/fp6-required-labels.tsv	luma-mobile-fp6
 unihertz,titan2e	unihertz-titan2e	aarch64	ostree	ostree	-	luma-mobile-titan2e
 raspberrypi,rpi5	raspberrypi-rpi5	aarch64	oci	desktop	-	luma-desktop
+microsoft,sp12in	microsoft-sp12in	aarch64	oci	desktop	-	luma-desktop

@@ -236,6 +236,8 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
   ("No updates are published for this device's channel yet."), not network:
   the server was reached, so a connectivity change does not bypass the
   hourly check spacing.
+- Hardware target microsoft,sp12in (Surface Pro 12-inch, board compatible
+  microsoft,surface-pro-12in) follows only its own stream, microsoft-sp12in.
 * Thu Nov 12 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.33
 - luma-device-layer: step the clock forward to the newest creation time of
   the kit's verified signatures before the transaction (a first boot without
