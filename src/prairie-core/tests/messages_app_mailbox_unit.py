@@ -242,4 +242,99 @@ class ProtocolTest(unittest.TestCase):
         self.assertIn('$preview', encoded)
 
 
+class CallerVerificationTest(unittest.TestCase):
+    """The agent verifies a sandboxed caller once before the mailbox takes a
+    request, and the mailbox worker checks it again once the request runs."""
+
+    def setUp(self):
+        from gi.repository import GLib
+        self.GLib = GLib
+        self.passes = []
+        self.app = 'org.projectluma.Messages'
+        # The same (non-root) user as the agent, whichever user runs this test.
+        uid, pid = 4242, os.getpid()
+        identity = patch('prairie_apps.messages_app_rpc.os.getuid', return_value=uid)
+        identity.start(); self.addCleanup(identity.stop)
+        self.connection = SimpleNamespace(call_sync=lambda _d, _p, _i, method, *_: GLib.Variant(
+            '(u)', (uid if method == 'GetConnectionUnixUser' else pid,)))
+
+    def authenticate(self, _connection, _sender):
+        self.passes.append(threading.current_thread() is threading.main_thread())
+        if self.app is None:
+            raise FileNotFoundError('/proc/pid/root/.flatpak-info')  # a native caller has no sandbox
+        return self.app
+
+    def sandboxed(self, present=True):
+        class Sandbox(type(Path())):
+            def stat(self, **kwargs):
+                if self.name == '.flatpak-info' and self.parts[:2] == ('/', 'proc'):
+                    if present: return None
+                    raise FileNotFoundError(self)
+                return super().stat(**kwargs)
+        return patch('prairie_apps.messages_app_rpc.Path', Sandbox)
+
+    def test_authenticate_caller_names_only_the_verified_sandbox(self):
+        from prairie_apps.messages_app_rpc import authenticate_caller
+        with patch('luma_installer.app_data_broker.authenticate', self.authenticate):
+            with self.sandboxed():
+                self.assertEqual(authenticate_caller(self.connection, ':1.2'), 'org.projectluma.Messages')
+                self.app = 'org.example.Other'
+                with self.assertRaises(PermissionError): authenticate_caller(self.connection, ':1.2')
+            with self.sandboxed(False):
+                self.assertIsNone(authenticate_caller(self.connection, ':1.2'))
+        self.assertEqual(len(self.passes), 2, 'a native caller needs no signed-deployment check')
+
+    def request(self, method='ApplicationAccounts'):
+        from prairie_apps.messages_agent import MessagesAgent
+        owner = MessagesAgent.__new__(MessagesAgent)
+        owner.services, owner.accounts = {}, SimpleNamespace(list=lambda **_: [])
+        owner._schedule_idle_exit = lambda: None
+        owner._application_mailbox = None
+        replies = []
+        invocation = SimpleNamespace(return_dbus_error=lambda name, _message: replies.append(name),
+                                     return_value=lambda value: replies.append(value))
+        with patch('luma_installer.app_data_broker.authenticate', self.authenticate):
+            owner._call(self.connection, ':1.2', None, None, method, self.GLib.Variant('()', ()), invocation)
+            deadline = time.monotonic() + 5
+            while not replies and time.monotonic() < deadline:
+                self.GLib.MainContext.default().iteration(False); time.sleep(0.005)
+        if owner._application_mailbox is not None:
+            owner._application_mailbox.worker.shutdown(wait=True)
+            owner._application_mailbox.transport_worker.shutdown(wait=True)
+        return replies
+
+    def test_sandboxed_request_is_verified_once_then_once_more_when_it_runs(self):
+        with self.sandboxed():
+            replies = self.request()
+        self.assertEqual(len(replies), 1)
+        self.assertNotIsInstance(replies[0], str, f'refused: {replies}')
+        self.assertEqual(self.passes, [True, False], 'once before the mailbox takes it, once in its worker')
+
+    def test_native_and_foreign_callers_are_still_refused(self):
+        self.app = None
+        with self.sandboxed(False):
+            replies = self.request()
+        self.assertEqual(replies, ['org.projectluma.Messages.Agent1.Error.Refused'])
+        self.app = 'org.example.Other'
+        with self.sandboxed():
+            self.assertEqual(self.request(), ['org.projectluma.Messages.Agent1.Error.Refused'])
+        self.app = 'org.projectluma.Messages'
+        with self.sandboxed():
+            replies = self.request()
+        self.assertNotIsInstance(replies[0], str)
+        # The mailbox called directly (not through the agent) verifies the caller itself.
+        mailbox = ApplicationMailbox(SimpleNamespace(accounts=SimpleNamespace(list=lambda **_: []), services={},
+                                                     _schedule_idle_exit=lambda: None))
+        self.passes.clear(); replies = []
+        invocation = SimpleNamespace(return_dbus_error=lambda name, _message: replies.append(name),
+                                     return_value=lambda value: replies.append(value))
+        with patch('luma_installer.app_data_broker.authenticate', self.authenticate):
+            mailbox.call(self.connection, ':1.2', 'ApplicationAccounts', self.GLib.Variant('()', ()), invocation)
+            deadline = time.monotonic() + 5
+            while not replies and time.monotonic() < deadline:
+                self.GLib.MainContext.default().iteration(False); time.sleep(0.005)
+        mailbox.worker.shutdown(wait=True); mailbox.transport_worker.shutdown(wait=True)
+        self.assertEqual(self.passes, [True, False])
+
+
 if __name__ == '__main__': unittest.main()

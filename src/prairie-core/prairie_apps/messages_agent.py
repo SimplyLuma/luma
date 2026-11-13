@@ -494,7 +494,7 @@ class MessagesAgent:
     def _call(self, connection, sender, _path, _interface, method, parameters, invocation) -> None:
         try:
             from .messages_app_rpc import authenticate_caller
-            authenticate_caller(connection, sender)
+            verified = authenticate_caller(connection, sender)
         except Exception:
             invocation.return_dbus_error(f'{API}.Error.Refused', 'The Messages request was refused')
             return
@@ -502,7 +502,10 @@ class MessagesAgent:
             if self._application_mailbox is None:
                 from .messages_app_rpc import ApplicationMailbox
                 self._application_mailbox = ApplicationMailbox(self)
-            self._application_mailbox.call(connection, sender, method, parameters, invocation)
+            # The caller verified just now is not verified again before the
+            # mailbox takes the request (its worker still checks it is current).
+            self._application_mailbox.call(connection, sender, method, parameters, invocation,
+                                           verified=verified)
             return
         arguments = parameters.unpack()
         try:
