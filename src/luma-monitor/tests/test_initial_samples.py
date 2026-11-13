@@ -26,6 +26,8 @@ class InitialSampleTests(unittest.TestCase):
             apps=[], host=SimpleNamespace(modal=True), hero_title=self.label_factory(),
             hero_subtitle=self.label_factory(), _visible_apps=lambda: [])
         window._hero_text=lambda: MonitorWindow._hero_text(window)
+        window._gpu=lambda: MonitorWindow._gpu(window)
+        window._gpu_facts=lambda: MonitorWindow._gpu_facts(window)
         return window
 
     def test_initial_host_failure_replaces_loading_and_retires_worker(self):
@@ -69,7 +71,7 @@ class InitialSampleTests(unittest.TestCase):
         snapshot['advanced_facts']=resource_facts(snapshot,proc=files.proc,sys=files.sys)
         window=self.window();window.sample_failed=True
         window.sampler=files.sampler;window.properties={};window.selected=None
-        window.histories={key:deque() for key in ('cpu','mem','disk','net','en')}
+        window.histories={key:deque() for key in ('gpu','cpu','mem','disk','net','en')}
         window._render_sidebar=Mock();window._chart_max=lambda _:100;window.chart=Mock()
         window._menu_widget=None
         MonitorWindow._sampled(window,2,snapshot,None)
