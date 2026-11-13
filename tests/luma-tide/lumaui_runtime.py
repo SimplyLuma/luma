@@ -131,6 +131,7 @@ def test_application(identifier):
         app.notify_error = lambda message: None
         app._syncing = set()
         app.remote = None
+        app.folder_choices = lambda: []
         try:
             yield app, root
         finally:
