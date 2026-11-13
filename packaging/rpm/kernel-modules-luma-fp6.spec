@@ -21,7 +21,7 @@
 
 Name:           kernel-modules-luma-fp6
 Version:        7.1.2
-Release:        1.luma.ims1.gmu2.selinux1.4%{?dist}
+Release:        1.luma.ims1.gmu2.selinux1.5%{?dist}
 Summary:        Kernel modules for the Fairphone 6 kernel
 License:        GPL-2.0-only
 URL:            https://github.com/SimplyLuma/linux/tree/luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1
@@ -71,6 +71,12 @@ done
 %{_datadir}/luma/android/hardware/fairphone-fp6-kernel-notes.d/%{kver}.sha256
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.5
+- Rebuilt with the A810 GMU patches 0002 (timeout diagnostics) and 0004
+  (Gen8.3 650 MHz GMU boot rate) over 0039-0042: the Android GPU candidate
+  kernel. Not qualified yet, so the admission entry admits nothing. Matches
+  the boot image built from the same kernel.
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.4
 - Ship the kernel's Android GPU admission entry, written by the kernel build
   from devices/fairphone/fp6/device.toml [kernel.android_gpu]. This kernel
