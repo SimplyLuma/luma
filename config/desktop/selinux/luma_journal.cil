@@ -1,0 +1,39 @@
+; SPDX-License-Identifier: Apache-2.0
+; Services that may log to the journal only through a kernel_t socket.
+;
+; Fedora's policy grants these domains kernel_dgram_send() instead of
+; logging_send_syslog_msg(): with a systemd initramfs, PID 1 creates
+; /run/systemd/journal/socket before the policy is loaded, so the socket keeps
+; the kernel_t label across switch-root. Phones boot through a busybox
+; initramfs: PID 1 loads the policy first and labels the journal socket
+; syslogd_t, so every message from these services is refused (sendto on
+; syslogd_t:unix_dgram_socket) and lost.
+;
+; The list is every domain that may send to kernel_t but not to syslogd_t in
+; selinux-policy 44.11 (tests/unit/test_selinux_journal_senders.py recomputes
+; it from a compiled policy). Each rule sits in its own optional block, so a
+; policy that drops one of the types still builds.
+(optional luma_journal_afterburn (allow afterburn_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_boothd (allow boothd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_bootupd (allow bootupd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_couchdb (allow couchdb_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_gnome_remote_desktop (allow gnome_remote_desktop_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_ibacm (allow ibacm_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_iiosensorproxy (allow iiosensorproxy_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_lttng_sessiond (allow lttng_sessiond_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_mptcpd (allow mptcpd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_nvme_stas (allow nvme_stas_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_samba_bgqd (allow samba_bgqd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_bootchart (allow systemd_bootchart_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_hwdb (allow systemd_hwdb_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_initctl (allow systemd_initctl_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_journal_upload (allow systemd_journal_upload_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_mountfsd (allow systemd_mountfsd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_notify (allow systemd_notify_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_nsresourced (allow systemd_nsresourced_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_oomd (allow systemd_oomd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_pcrextend (allow systemd_pcrextend_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_systemd_ssh_issue (allow systemd_ssh_issue_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_targetd (allow targetd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_tuned_ppd (allow tuned_ppd_t syslogd_t (unix_dgram_socket (sendto))))
+(optional luma_journal_wireguard (allow wireguard_t syslogd_t (unix_dgram_socket (sendto))))

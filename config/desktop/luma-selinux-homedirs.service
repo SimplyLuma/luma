@@ -2,8 +2,10 @@
 Description=Keep the SELinux home-directory contexts for /var/home
 ConditionSecurity=selinux
 DefaultDependencies=no
-After=local-fs.target
-Before=accounts-daemon.service systemd-user-sessions.service gdm.service shutdown.target
+# After tmpfiles, which labels /var/home from the contexts it finds; before
+# systemd-homed, which watches /var/home as soon as it starts.
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=systemd-homed.service accounts-daemon.service systemd-user-sessions.service gdm.service shutdown.target
 Conflicts=shutdown.target
 
 [Service]
