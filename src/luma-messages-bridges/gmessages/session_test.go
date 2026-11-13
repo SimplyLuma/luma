@@ -23,8 +23,11 @@ func TestReplayOfTheRealGoneSequenceDeliversNothing(t *testing.T) {
 	out := newOutbound(dir, zerolog.Nop(), nil)
 	ids := []string{"25443", "25508", "25431", "25592", "3438", "3439", "797", "26867", "26866", "27282", "27283", "241992"}
 	for _, id := range ids {
+		// Earlier photos are already downloading: script the fake under its lock.
+		h.net.mu.Lock()
 		h.net.always["m"+id] = "gone"
 		h.net.always["t"+id] = "gone"
+		h.net.mu.Unlock()
 		msg := photo(id, "m"+id)
 		msg.MessageInfo[0].GetMediaContent().ThumbnailMediaID = "t" + id
 		msg.MessageInfo[0].GetMediaContent().ThumbnailDecryptionKey = testKey
