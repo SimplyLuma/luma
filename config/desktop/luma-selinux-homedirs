@@ -8,8 +8,13 @@
 # is left var_t: useradd is then denied creating a new account's home. This
 # regenerates them with HOME=/var/home, seen only by this semodule.
 set -euo pipefail
+# A boot that ran before the repair may have left /var/home itself var_t, so it
+# is relabeled even when the contexts are already right.
 homedirs=/etc/selinux/targeted/contexts/files/file_contexts.homedirs
-grep -q '^/var/home' "$homedirs" && exit 0
+if grep -q '^/var/home' "$homedirs"; then
+  restorecon /var/home
+  exit 0
+fi
 defaults=$(mktemp)
 trap 'rm -f "$defaults"' EXIT
 sed 's|^HOME=.*|HOME=/var/home|' /etc/default/useradd >"$defaults"

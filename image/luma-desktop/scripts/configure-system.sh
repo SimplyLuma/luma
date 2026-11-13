@@ -31,6 +31,7 @@ install -D -m 0644 "$src/config/desktop/useradd" /etc/default/useradd
 install -D -m 0755 "$src/config/desktop/luma-selinux-homedirs" /usr/libexec/luma-selinux-homedirs
 install -D -m 0644 "$src/config/desktop/luma-selinux-homedirs.service" \
   /usr/lib/systemd/system/luma-selinux-homedirs.service
+install -D -m 0644 "$src/config/desktop/luma-selinux-run.conf" /usr/lib/tmpfiles.d/luma-selinux-run.conf
 install -D -m 0644 "$src/config/desktop/gtk-3.0/settings.ini" /etc/gtk-3.0/settings.ini
 install -D -m 0644 "$src/config/desktop/gtk-4.0/settings.ini" /etc/gtk-4.0/settings.ini
 install -D -m 0644 "$src/config/boot/plymouthd.conf" /etc/plymouth/plymouthd.conf
@@ -46,11 +47,13 @@ dconf update
 # profile transport (luma-esim-broker). It is compiled into the image policy
 # here so that no package script changes the policy when a phone layers its
 # device packages.
+# luma_journal lets the services Fedora allows only a kernel_t journal socket
+# log when PID 1 labels the socket itself (a phone's busybox initramfs).
 # The rebuild regenerates the home-directory contexts from useradd's HOME; give
 # it /var/home so the image ships /var/home rules (luma-selinux-homedirs repairs
 # the same thing at boot for later local rebuilds).
 sed -i 's|^HOME=.*|HOME=/var/home|' /etc/default/useradd
-semodule -i "$src/config/desktop/selinux/luma_esim.cil"
+semodule -i "$src/config/desktop/selinux/luma_esim.cil" "$src/config/desktop/selinux/luma_journal.cil"
 install -D -m 0644 "$src/config/desktop/useradd" /etc/default/useradd
 grep -q '^/var/home' /etc/selinux/targeted/contexts/files/file_contexts.homedirs ||
   fail 'the policy rebuild lost the /var/home home-directory contexts'

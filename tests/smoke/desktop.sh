@@ -106,6 +106,12 @@ check 'update agent answers on the system bus' \
   busctl --system get-property org.projectluma.Update1 /org/projectluma/Update1 org.projectluma.Update1 State
 check 'update agent never asks rpm-ostree to reboot or apply live' \
   bash -c "! grep -REq '\"(reboot|apply-live)\", GLib.Variant\\(\"b\", True' /usr/lib/python3*/site-packages/luma_update"
+# Phones label the journal socket syslogd_t (no systemd initramfs): every
+# service may still log, hostnamed may replace default-hostname, and homed
+# never sees /var/home as var_t (config/desktop/selinux/luma_journal.cil,
+# luma-selinux-run.conf, luma-selinux-homedirs.service).
+check 'SELinux refused no service the journal, default-hostname or /var/home this boot' bash -c \
+  "! journalctl -b -q --no-pager _TRANSPORT=audit | grep -F 'avc:  denied' | grep -Eq 'path=\"/run/systemd/journal/socket\"|:systemd_hostnamed_t:.* tcontext=[^ ]*:init_var_run_t:|:systemd_homed_t:.* tcontext=[^ ]*:var_t:'"
 # Luma Cast (ADR-034): one session service and its backends, started only by
 # D-Bus activation when something asks for them, never at login.
 if capability_enabled casting && [ -n "${LUMA_CAST_NEVRA:-}" ]; then
