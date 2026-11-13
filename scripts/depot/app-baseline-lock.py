@@ -121,9 +121,9 @@ def check(repo, today=None):
             failures.append(f'{app_id}: no recipe in packaging/flatpak/apps; mark it "source": "external"')
             continue
         version = metainfo_version(repo, app_id)
-        if row.get('version') != version:
-            failures.append(f'{app_id}: baseline bundle is {row.get("version")}, metainfo says {version}')
         if row.get('source_sha256') == current:
+            if row.get('version') != version:
+                failures.append(f'{app_id}: baseline bundle is {row.get("version")}, metainfo says {version}')
             continue
         hold = row.get('pending')
         if hold:

@@ -61,6 +61,13 @@ app_baseline_admission=$(python3 "$source_dir/scripts/os/lib/app_baseline.py" "$
   --shipping "$source_dir/config/os/first-party-app-baseline.json" --arch "$LUMA_OS_ARCH") || \
   luma_os_die 'the offline application input fails this OS shipping contract'
 app_baseline_sha=$(printf '%s' "$app_baseline_admission" | python3 -c 'import json,sys; print(json.load(sys.stdin)["manifest_sha256"])')
+# Images ship the baseline pinned with this source (config/os/app-baseline-lock.json),
+# so first-party apps follow the source that built them.
+if [ "${LUMA_OS_UNPINNED_APP_BASELINE:-0}" != 1 ]; then
+  python3 -B "$source_dir/scripts/depot/app-baseline-lock.py" --repo "$source_dir" \
+    verify-baseline --arch "$LUMA_OS_ARCH" "$app_baseline" >&2 || \
+    luma_os_die 'the application baseline is not the one pinned in config/os/app-baseline-lock.json (LUMA_OS_UNPINNED_APP_BASELINE=1 for a development image)'
+fi
 
 # Source identity.
 git_src() { git -c "safe.directory=$source_dir" -C "$source_dir" "$@"; }

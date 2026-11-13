@@ -65,6 +65,12 @@ jobs:
       # fragment; hold the change here instead.
       - name: Check system-app update notes
         run: python3 -B scripts/os/lib/system_apps_current.py pr --repo . --base HEAD^1 --head HEAD
+      # Images ship the offline app baseline pinned in config/os/app-baseline-lock.json;
+      # an app whose source changed needs a rebuilt bundle in a resealed baseline.
+      - name: Check first-party apps against their baseline bundles
+        run: |
+          python3 -B scripts/depot/app-baseline-lock.py check
+          python3 -B -m unittest discover -s tests/depot -p test_app_baseline_lock.py
   shared-search:
     strategy:
       fail-fast: false
