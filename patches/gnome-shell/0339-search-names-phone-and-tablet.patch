@@ -1,0 +1,78 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] search: name the phone and tablet, no esc chip on them
+
+Search called every device "this machine" and showed an "esc" chip,
+which means nothing without an Esc key. In the mobile presentation it
+says "phone", in the tablet presentation "tablet", and the chip is
+hidden in both; an outside tap still closes Search. The desktop keeps
+"this machine" and the chip.
+
+--- a/js/ui/lumaSearch.js
++++ b/js/ui/lumaSearch.js
+@@ -1,5 +1,6 @@
+ import Clutter from 'gi://Clutter';
+ import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+@@ -126,11 +127,12 @@ class LumaSearchDialog extends ModalDialog.ModalDialog {
+             orientation: Clutter.Orientation.VERTICAL,
+             x_expand: true,
+         });
+-        this._intro.add_child(new St.Label({
++        this._introTitle = new St.Label({
+             style_class: 'luma-search-intro-title',
+             text: _('Everything on this machine, in one place.'),
+             x_align: Clutter.ActorAlign.CENTER,
+-        }));
++        });
++        this._intro.add_child(this._introTitle);
+         this._intro.add_child(new St.Label({
+             style_class: 'luma-search-intro-subtitle',
+             text: _('Applications and settings first, then your files, mail, people, days and music.'),
+@@ -214,6 +216,7 @@ class LumaSearchDialog extends ModalDialog.ModalDialog {
+         island.translation_y = animate ? 10 : 0;
+         island.scale_x = animate ? 0.985 : 1;
+         island.scale_y = animate ? 0.985 : 1;
++        this._syncFormFactor();
+         this._entry.text = '';
+         this._fileProvider.warmUp();
+         this._settingsProvider.warmUp();
+@@ -232,11 +235,36 @@ class LumaSearchDialog extends ModalDialog.ModalDialog {
+         return opened;
+     }
+ 
++    // A phone or tablet is not "this machine" and has no Esc key, so it
++    // gets its own name and no esc chip; tapping outside closes Search.
++    // The desktop keeps its words and the chip.
++    _syncFormFactor() {
++        const mode = Main.presentation?.mode ??
++            (GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld' ? 'mobile' : 'desktop');
++        let placeholder, title;
++        if (mode === 'mobile') {
++            placeholder = _('Search this phone');
++            title = _('Everything on this phone, in one place.');
++        } else if (mode === 'tablet') {
++            placeholder = _('Search this tablet');
++            title = _('Everything on this tablet, in one place.');
++        } else {
++            placeholder = _('Search this machine');
++            title = _('Everything on this machine, in one place.');
++        }
++        this.accessible_name = placeholder;
++        this._entry.hint_text = placeholder;
++        this._entry.accessible_name = placeholder;
++        this._introTitle.text = title;
++        this._closeButton.visible = mode !== 'mobile' && mode !== 'tablet';
++    }
++
+     warmUp() {
+         // Resolve Beam's theme nodes and natural sizes while the shell is
+         // starting, rather than making the first overlay-key invocation pay
+         // that cost. The dialog stays hidden and never takes a modal grab.
+         this._syncGeometry();
++        this._syncFormFactor();
+         for (const actor of [
+             this.dialogLayout,
+             this._fieldIsland,

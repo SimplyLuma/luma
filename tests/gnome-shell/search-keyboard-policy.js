@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Search's outside-press dismissal and the on-screen keyboard.
+// Search's outside-press dismissal and the on-screen keyboard, and the
+// words and esc chip for each presentation.
 // Run: gjs -m search-keyboard-policy.js js/ui/lumaSearch.js
 // (node search-keyboard-policy.js ... works too). The dialog's
 // captured-event handler is taken from the source and run against stubs.
@@ -69,4 +70,39 @@ const motion = run(Clutter.EventType.TOUCH_UPDATE, 186, 700);
 assert(motion.closed === 0 && motion.routed === 0 && motion.result === Clutter.EVENT_PROPAGATE,
     'later touch events reach ModalDialog, which routes them to the keyboard');
 
-console.log('PASS Search: keyboard presses type, outside presses close, field presses propagate');
+function methodBody(name) {
+    const at = source.indexOf(`    ${name}() {`);
+    assert(at >= 0, `lumaSearch.js has ${name}()`);
+    const brace = source.indexOf('{', at);
+    let level = 0, stop = brace;
+    for (; stop < source.length; stop++) {
+        if (source[stop] === '{')
+            level++;
+        else if (source[stop] === '}' && --level === 0)
+            break;
+    }
+    return source.slice(brace + 1, stop);
+}
+const syncFormFactor = methodBody('_syncFormFactor');
+function words(mode, deviceClass = '') {
+    const dialog = {_entry: {}, _introTitle: {}, _closeButton: {}};
+    const MainStub = {presentation: mode === null ? null : {mode}};
+    const GLibStub = {getenv: name => (name === 'LUMA_DEVICE_CLASS' ? deviceClass : null)};
+    new Function('Main', 'GLib', '_', syncFormFactor).call(dialog, MainStub, GLibStub, text => text);
+    return {hint: dialog._entry.hint_text, a11y: dialog.accessible_name,
+        title: dialog._introTitle.text, esc: dialog._closeButton.visible};
+}
+const desktop = words('desktop');
+assert(desktop.hint === 'Search this machine' && desktop.a11y === desktop.hint &&
+    desktop.title === 'Everything on this machine, in one place.' && desktop.esc === true,
+'the desktop keeps "this machine" and the esc chip');
+const phone = words('mobile');
+assert(phone.hint === 'Search this phone' && phone.title === 'Everything on this phone, in one place.' &&
+    phone.esc === false, 'a phone says "phone" and has no esc chip');
+const tablet = words('tablet');
+assert(tablet.hint === 'Search this tablet' && tablet.title === 'Everything on this tablet, in one place.' &&
+    tablet.esc === false, 'a tablet says "tablet" and has no esc chip');
+assert(words(null, 'handheld').hint === 'Search this phone', 'a handheld without a presentation is a phone');
+assert(words(null).esc === true, 'a desktop without a presentation keeps the chip');
+
+console.log('PASS Search: keyboard presses type, outside presses close, field presses propagate; words and esc chip follow the presentation');
