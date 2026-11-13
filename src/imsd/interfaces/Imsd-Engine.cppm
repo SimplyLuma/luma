@@ -3,7 +3,9 @@
 
 // lint-disable-file fixed-width-types
 /*
-Imsd:Engine — the call state machine as a pure reducer.
+Imsd:Engine — the daemon's decisions as pure reducers: the call state
+machine (CallMachine) and the registration recovery policy (RegRecovery,
+its own section below).
 
 A CallMachine owns one call's SIP dialog, outgoing or incoming. It never
 touches a socket, a clock, or a subprocess: each event (the INVITE's
@@ -16,8 +18,10 @@ That keeps the whole call FSM — PRACK on reliable 18x, ACK of 2xx vs non-2xx
 finals, CANCEL/answer races, remote BYE, media-plane far-end-hangup, the
 emergency attempt chain (urn:service:sos first for a classified number, one
 fallback to a plain INVITE of the digits; a 380 Alternative Service upgrade
-the other way), and the terminating (UAS) side: 100/180 on an inbound INVITE,
-200-with-answer on Accept, 486 reject, the remote-CANCEL 200+487 pair —
+the other way), the terminating (UAS) side: 100/180 on an inbound INVITE,
+200-with-answer on Accept, 486 reject, the remote-CANCEL 200+487 pair — and
+DTMF, which reaches the media leg only on an active call whose SDP
+negotiated telephone-event, as the tones a keypad has —
 unit-testable against recorded network dialogs with no I/O (tests/Engine).
 
 State/reason strings are the frozen D-Bus vocabulary the dialer maps on
@@ -52,7 +56,242 @@ export namespace imsd::engine {
         return d == Direction::Incoming ? "incoming" : "outgoing";
     }
 
-    // Parsed SDP answer needed to bring up the media leg.
+    // ---- registration recovery policy ---------------------------------
+    //
+    // What the daemon does when the registration stops working after
+    // bring-up, as a pure reducer: the shell supplies the clock and the
+    // network, this decides the next step and how long to wait for it. Two
+    // kinds of failure reach it. A REFUSAL: the network answered a refresh
+    // with a final other than 200 — a 401, re-authentication, included — or
+    // a fresh registration's protected REGISTER with a final other than 200
+    // (the unprotected one's 401 is its challenge). SILENCE: the
+    // flow died and reconnecting through the SA, or the refresh over it,
+    // got no answer. Neither is retried for long on the same registration.
+    // TS 24.229 5.1.1.4.1 has the UE perform an initial registration after
+    // a 408, 500, 504 or 403 on a re-REGISTER (5.1.1.2.1: not before a
+    // Retry-After has passed), and RFC 5626 has it register again when its
+    // flow cannot be recovered. imsd does so after any refusal: the 503s
+    // below are not in that list. Before this reducer the daemon looped
+    // reconnect + re-REGISTER on the same Call-ID and SA forever — O2 UK,
+    // 2026-09-24: 21 × 503 over 70 min, then 33 unanswered reconnect
+    // cycles over 2 h 39 min, each ended only by a manual restart whose
+    // fresh registration the network accepted within two seconds (ims
+    // ledger F16).
+    //
+    // Pacing. Reconnect cycles back off 5 s → 5 min. A refusal without a
+    // Retry-After of at least a second (none, 0, unparsable) escalates to
+    // a fresh registration after two (one 503 may be a momentary hiccup a
+    // retried refresh clears); one with such a Retry-After escalates at
+    // once — it is the network's considered answer (O2 2026-10-08: the
+    // refresh after the first wait was refused again, 414 s then 772 s) —
+    // and so does a 401, the network asking to re-authenticate, which imsd
+    // answers with a fresh registration (TS 24.229 5.1.1.5.1's temporary
+    // SAs on the proposed client port are not implemented). Silence
+    // escalates after two reconnect cycles
+    // that end without an answer — a TCP connect series whose last attempt
+    // was not a local refusal, a bind() the kernel refused, or a refresh
+    // that fails short of a refusal: unanswered, a failed send (the resume
+    // at start gives up after two unanswered
+    // connects).
+    // A fresh registration is the expensive step: an AKA run, a
+    // new SA pair, and on KPN a refusal (spi-s=0) while the registration on
+    // the address is live, which costs that registration. So a refused or
+    // throttled fresh attempt
+    // waits on the throttle schedule (21 min, growing ×1.5 to 60) and a
+    // silent one backs off 30 s → 10 min. Retry-After (RFC 3261 20.33)
+    // always wins over a shorter wait. A 403 is a refusal like the others:
+    // never hammered (the schedule), never abandoned (a SIM that is
+    // unbarred registers within the hour); once a fresh registration is
+    // due it also says the old registration is gone (KPN drops it the
+    // moment an initial REGISTER arrives, throttled or not), as does a
+    // fresh attempt that got past the SA setup, a binding the network
+    // terminated, and a bring-up resume that failed while a fresh
+    // registration follows (OldGone; with no fresh target a resumable pair
+    // is kept for the restart, §7.2 step 1) — no reconnect over the old SA
+    // from then on. Every wait
+    // is either the self-imposed backoff, which a user's Dial cuts short,
+    // or the network's own word (a Retry-After, the schedule after a
+    // refused or throttled fresh attempt, a terminated binding's probation
+    // or its refusal schedule), which nothing cuts short — a
+    // restart of the process neither: the shell keeps the holds (Holds)
+    // and hands them to the next one (Restore). The shell supplies the
+    // clock and the network; this holds the deadlines and names the next
+    // step (Next). Success resets everything.
+    struct RegRecovery {
+        enum class Failure { Refused, Silent, Throttled };
+        enum class Step { Reconnect, Fresh };
+        // What comes next: the step, and the earliest time it may run (the
+        // shell's clock; at <= now means now).
+        struct Plan { Step step; double at; };
+
+        static constexpr int RefusalsBeforeFresh = 2;
+        static constexpr int SilentCyclesBeforeFresh = 2;
+        static constexpr double ReconnectDelayMin = 5;
+        static constexpr double ReconnectDelayMax = 300;
+        static constexpr double FreshDelayMin = 30;
+        static constexpr double FreshDelayMax = 600;
+        static constexpr int ThrottleMinutesMin = 21;
+        static constexpr int ThrottleMinutesMax = 60;
+        // The network's word is honoured up to the schedule's own longest
+        // wait: a Retry-After beyond an hour is cut to it, and the refusal
+        // heard again then — one REGISTER an hour at most, never a day
+        // unregistered on one answer.
+        static constexpr long RetryAfterMax = ThrottleMinutesMax * 60;
+        // A connect refused locally — our own 4-tuple still in TIME_WAIT
+        // (up to 60 s after we closed it), no route yet — is not the
+        // network's answer: retried soon, never counted, the backoff
+        // untouched. Dev phone 2026-09-24: four such refusals in 26 s read
+        // as two silent cycles cost a fresh registration into the throttle.
+        static constexpr double LocalRetry = 5;
+
+        int refusals = 0;
+        int silentCycles = 0;
+        int freshAttempts = 0;
+        double reconnectDelay = ReconnectDelayMin;
+        double freshDelay = FreshDelayMin;
+        int throttleMinutes = ThrottleMinutesMin;
+        bool fresh = false;         // the next registration attempt is a fresh one
+        bool oldGone = false;       // the old registration is gone: nothing to reconnect over
+        bool terminated = false;    // the network terminated our binding, and the policy has counted it
+        // the deadlines, on the shell's clock
+        double backoffUntil = 0;    // self-imposed: no step before this; a Dial clears it
+        double holdUntil = 0;       // the network's word for any attempt (a Retry-After on a refresh): nothing clears it
+        double freshHoldUntil = 0;  // no fresh attempt before this (the schedule after a refused or throttled fresh attempt, a fresh Retry-After, probation, rejected/unregistered)
+
+        bool Fresh() const { return fresh; }
+        bool Reconnectable() const { return !oldGone; }
+
+        // The network's holds as seconds still to run, and where the
+        // schedule stands: what a restart of the process must not forget.
+        struct Held {
+            double hold = 0;
+            double freshHold = 0;
+            int throttleMinutes = ThrottleMinutesMin;
+            bool oldGone = false;   // the old registration is gone: the next process has nothing to reconnect over
+            int refusals = 0;       // refused reconnects counted so far (RefusalsBeforeFresh): a restart's refusal is the next one, not the first
+            // a schedule that has advanced is kept too, until a success resets it, and so are the gone verdict and the count
+            bool Any() const { return hold > 0 || freshHold > 0 || throttleMinutes > ThrottleMinutesMin || oldGone || refusals > 0; }
+        };
+        Held Holds(double now) const { return {std::max(0.0, holdUntil - now), std::max(0.0, freshHoldUntil - now), throttleMinutes, oldGone, refusals}; }
+        // A restarted process takes them over; nothing here shortens a
+        // hold it already has, or lengthens one past RetryAfterMax.
+        void Restore(double now, const Held& h) {
+            if (h.hold > 0) holdUntil = std::max(holdUntil, now + std::min(h.hold, static_cast<double>(RetryAfterMax)));
+            if (h.freshHold > 0) freshHoldUntil = std::max(freshHoldUntil, now + std::min(h.freshHold, static_cast<double>(RetryAfterMax)));
+            throttleMinutes = std::clamp(std::max(throttleMinutes, h.throttleMinutes), ThrottleMinutesMin, ThrottleMinutesMax);
+            refusals = std::max(refusals, h.refusals);
+            if (h.oldGone) OldGone();   // no reconnect over SAs the network has written off
+        }
+
+        // The next step and when. Not escalated: a reconnect after the
+        // backoff and any hold. Escalated: the fresh attempt once the
+        // backoff, any hold and the fresh hold have passed — and while a
+        // fresh hold still runs, a reconnect over the old SA meanwhile, the
+        // cheap thing, unless that registration is gone.
+        Plan Next(double now) const {
+            double any = std::max(backoffUntil, holdUntil);
+            double freshAt = std::max(any, freshHoldUntil);
+            if (!fresh) return {Step::Reconnect, any};
+            if (!oldGone && freshHoldUntil > any && now < freshHoldUntil) return {Step::Reconnect, any};
+            return {Step::Fresh, freshAt};
+        }
+
+        void OnLocalRefusal(double now) { backoffUntil = now + LocalRetry; }
+
+        // A refused keepalive refresh, or a failed reconnect + refresh
+        // cycle; `status` is the refusal's. The backoff paces the next step;
+        // a Retry-After of at least a second holds every attempt for its own
+        // length (up to RetryAfterMax), whichever is longer, and makes the
+        // next step the fresh registration, as does a 401. A 403 once a fresh
+        // registration is due says the old registration is gone (KPN drops
+        // it the moment an initial REGISTER arrives, throttled or not).
+        void OnReconnectFailure(double now, Failure f, long retryAfter = 0, int status = 0) {
+            if (retryAfter > 0) holdUntil = std::max(holdUntil, now + static_cast<double>(std::min(retryAfter, RetryAfterMax)));
+            // A cycle over a registration already known gone — the network
+            // terminated the binding while the cycle waited for its final —
+            // fails by definition: not a silent cycle, not a refusal, and no
+            // backoff before the fresh registration that verdict scheduled.
+            if (oldGone) return;
+            if (f == Failure::Refused) refusals++;
+            else silentCycles++;
+            if (refusals >= RefusalsBeforeFresh || silentCycles >= SilentCyclesBeforeFresh) fresh = true;
+            if (f == Failure::Refused && (retryAfter > 0 || status == 401)) fresh = true;
+            if (status == 403 && fresh) oldGone = true;
+            backoffUntil = now + reconnectDelay;
+            reconnectDelay = std::min(reconnectDelay * 2, ReconnectDelayMax);
+        }
+
+        // A failed fresh registration; `saReplaced`: it got past the SA
+        // setup, so the old registration's SAs went with it. Refusals and
+        // throttles hold the next fresh attempt on the schedule (a Retry-After
+        // replaces it, never below the short backoff's floor nor above
+        // RetryAfterMax); silence backs
+        // it off 30 s → 10 min. A reconnect over the old SA meanwhile waits
+        // at least the reconnect backoff.
+        void OnFreshFailure(double now, Failure f, long retryAfter = 0, bool saReplaced = false) {
+            freshAttempts++;
+            fresh = true;
+            if (saReplaced) oldGone = true;
+            backoffUntil = std::max(backoffUntil, now + reconnectDelay);
+            if (f == Failure::Silent) {
+                backoffUntil = std::max(backoffUntil, now + freshDelay);
+                freshDelay = std::min(freshDelay * 2, FreshDelayMax);
+                return;
+            }
+            double wait = throttleMinutes * 60.0;
+            throttleMinutes = std::min(throttleMinutes * 3 / 2, ThrottleMinutesMax);
+            if (retryAfter > 0) wait = std::max(static_cast<double>(std::min(retryAfter, RetryAfterMax)), FreshDelayMin);
+            freshHoldUntil = now + wait;
+        }
+
+        // The network terminated our binding (a reg-event NOTIFY, RFC
+        // 3680): the old registration is gone. deactivated and expired
+        // mean a fresh registration now; probation after the network's
+        // retry-after (up to RetryAfterMax); rejected and unregistered on the
+        // refusal schedule —
+        // the network's word is neither hammered nor taken as final. One
+        // termination counts once, however often it is reported (every
+        // reg-event dialog of the account carries it, a NOTIFY may be
+        // retransmitted), and never shortens a hold already running.
+        void OnBindingTerminated(double now, std::string_view event, long retryAfter = 0) {
+            bool reported = terminated;
+            terminated = true;
+            oldGone = true;
+            fresh = true;
+            if (event == "probation") {
+                freshHoldUntil = std::max(freshHoldUntil, now + static_cast<double>(std::clamp(retryAfter, 1L, RetryAfterMax)));
+            } else if (reported) {
+                return;
+            } else if (event == "rejected" || event == "unregistered") {
+                freshHoldUntil = std::max(freshHoldUntil, now + throttleMinutes * 60.0);
+                throttleMinutes = std::min(throttleMinutes * 3 / 2, ThrottleMinutesMax);
+            } else {
+                backoffUntil = 0;
+            }
+        }
+
+        // The stored registration is not there to reconnect over (a resume
+        // that failed at bring-up found its SAs unusable, or there are none).
+        void OldGone() { oldGone = true; fresh = true; }
+
+        // A user's Dial cuts the backoff short, never the network's word.
+        void OnDial() { backoffUntil = 0; }
+
+        void OnSuccess() { *this = RegRecovery{}; }
+    };
+
+    // Parsed SDP answer needed to bring up the media leg. `codec` is one of
+    // imsd-media's: "AMR-WB", "AMR", "PCMA", "PCMU" (empty = none we play).
+    // `dtmfPt` is the telephone-event payload type at the codec's clock
+    // (RFC 4733) the leg sends with — the peer's SDP's; nullopt = none
+    // negotiated, no DTMF on this call. `dtmfRxPt` is a second number the
+    // leg takes events at: our own SDP's at that clock — our offer's
+    // number on a call we placed (an answerer sends with the offer's
+    // numbers, RFC 3264 §6.1, and may renumber ours in the answer), the
+    // offer's we echoed on a call we answered; the answer's telephone-event
+    // number instead when the answer gave the audio our offer's number,
+    // which is then the leg's audio number. The leg takes events at
+    // either number, never at the audio's.
     struct MediaLeg {
         std::string remoteIp;
         int remotePort = 0;
@@ -63,6 +302,8 @@ export namespace imsd::engine {
         // A provisional P-Early-Media: sendonly response authorizes downlink
         // early media, not microphone transmission before the peer answers.
         bool transmit = true;
+        std::optional<int> dtmfPt;
+        std::optional<int> dtmfRxPt;
         bool Valid() const { return !remoteIp.empty() && remotePort > 0 && payloadType >= 0; }
     };
 
@@ -72,6 +313,7 @@ export namespace imsd::engine {
             SendResponse,  // answer the just-handled inbound request on its origin channel
             StartMedia,    // bring up the media leg described by `media`
             StopMedia,     // tear the media leg down
+            SendDtmf,      // hand `text` (the tones) to the running media leg
             State,         // emit CallStateChanged(uni, `state`, `reason`)
             Deleted,       // emit CallDeleted(uni); drop this machine
             SetDeadline,   // arm a setup timer for `seconds`; fire calls OnDeadline()
@@ -84,6 +326,11 @@ export namespace imsd::engine {
         MediaLeg media;
         double seconds = 0;
     };
+
+    // The most tones one SendDtmf may carry (a keypad sends one; a dialer's
+    // string is a short sequence): the leg's `dtmf <tones>\n` line stays
+    // within one atomic pipe write, POSIX's 512-byte PIPE_BUF floor.
+    inline constexpr std::size_t DtmfMaxTones = 128;
 
     // ring/answer budget, and how long to wait for a 487 after CANCEL — the
     // imsd.py INVITE_TIMEOUT / CANCEL_487_TIMEOUT constants.
@@ -106,15 +353,20 @@ export namespace imsd::engine {
     public:
         // `emergency`: the shell classified the dialled string as an
         // emergency number — the first attempt targets urn:service:sos.
-        CallMachine(const imsd::msg::Context& ctx, imsd::util::Rng& rng, std::string uni, std::string number, int rtpPort, bool precond, bool emergency = false)
+        // `codecs`: the daemon's CODECS override — the codecs offered on an
+        // outgoing call and accepted from an inbound offer, in preference
+        // order; empty = the sdp module's defaults.
+        CallMachine(const imsd::msg::Context& ctx, imsd::util::Rng& rng, std::string uni, std::string number, int rtpPort, bool precond, bool emergency = false,
+                    std::vector<std::string> codecs = {})
             : ctx_(ctx), rng_(rng), uni_(std::move(uni)), number_(std::move(number)),
-              rtpPort_(rtpPort), precond_(precond), attemptSos_(emergency) {
+              rtpPort_(rtpPort), precond_(precond), codecs_(std::move(codecs)), attemptSos_(emergency) {
             ResetDialog();
         }
 
-        CallMachine(const imsd::msg::Context& ctx, imsd::util::Rng& rng, std::string uni, IncomingInvite in, int rtpPort)
+        CallMachine(const imsd::msg::Context& ctx, imsd::util::Rng& rng, std::string uni, IncomingInvite in, int rtpPort,
+                    std::vector<std::string> codecs = {})
             : ctx_(ctx), rng_(rng), uni_(std::move(uni)), rtpPort_(rtpPort),
-              precond_(false), direction_(Direction::Incoming),
+              precond_(false), codecs_(std::move(codecs)), direction_(Direction::Incoming),
               state_(CallState::Incoming), reason_("incoming"),
               invite_(in.invite) {
             number_ = imsd::sip::CallerId(invite_);
@@ -122,6 +374,7 @@ export namespace imsd::engine {
             d_.itag = rng_.Token(10);        // the To tag we mint = our dialog tag
             d_.invBranch = rng_.Token(20);   // unused as UAS; kept initialized
             if (auto from = imsd::sip::Header(invite_, "From")) d_.dialogTo = std::string(*from);
+            if (auto to = imsd::sip::Header(invite_, "To")) d_.localUri = AngleUri(*to).value_or("");
             if (auto ct = imsd::sip::Header(invite_, "Contact")) d_.remoteTarget = AngleUri(*ct);
             d_.ruri = d_.remoteTarget.value_or("");
             // The UAS route set is the Record-Route in RECEIVED order
@@ -155,6 +408,7 @@ export namespace imsd::engine {
             offer.rtpPort = rtpPort_;
             offer.sessionId = rng_.UInt(1000000, 9999999);
             offer.precond = precond_;
+            offer.codecs = codecs_;
             std::string sdp = imsd::sdp::BuildOffer(offer);
             std::vector<Action> a;
             a.push_back(Send(imsd::msg::BuildInvite(ctx_, d_, sdp, precond_, sessionExpires_)));
@@ -164,16 +418,21 @@ export namespace imsd::engine {
 
         // UAS: answer the inbound INVITE with 100 Trying + 180 Ringing (made
         // reliable only when the caller Requires 100rel) and arm the ring
-        // timeout. An offer we cannot serve — no audio line, or no AMR-WB
-        // (the media plane is AMR-WB-only) — is refused with 488 up front,
-        // before the UI ever rings.
+        // timeout. An offer we cannot serve — no audio line, or none of the
+        // codecs imsd-media plays (AMR-WB, AMR, PCMA, PCMU; the CODECS
+        // override narrows that set) — is refused with 488 up front, before
+        // the UI ever rings; the log line names
+        // what WAS offered, so a field journal answers "which codec did the
+        // gateway want" without a raw SIP dump.
         std::vector<Action> OnInvite() {
             std::vector<Action> a;
             if (direction_ != Direction::Incoming || state_ != CallState::Incoming) return a;
             MediaLeg leg = ParseAnswer();
-            if (!leg.Valid() || leg.codec != "AMR-WB") {
+            if (!leg.Valid() || leg.codec.empty()) {
                 a.push_back(Respond(imsd::msg::BuildInviteResponse(ctx_, invite_, 488, "Not Acceptable Here", d_.itag)));
-                Append(a, Finish("error", "incoming offer unusable (need AMR-WB audio); 488 sent"));
+                std::string why = !leg.Valid() ? "no usable audio line"
+                                               : std::format("no playable codec, offered: {}", imsd::sdp::OfferedCodecs(answerSdp_));
+                Append(a, Finish("error", std::format("incoming offer unusable ({}); 488 sent", why)));
                 return a;
             }
             a.push_back(Respond(imsd::msg::BuildInviteResponse(ctx_, invite_, 100, "Trying", d_.itag)));
@@ -205,7 +464,7 @@ export namespace imsd::engine {
             spec.octetAlign = leg.octetAlign;
             spec.codec = leg.codec;
             spec.modeSet = leg.modeSet;
-            spec.dtmfPt = imsd::sdp::TelephoneEventPt(Body(invite_), 16000);
+            spec.dtmfPt = leg.dtmfPt;
             localSdp_ = imsd::sdp::BuildAnswer(spec);
             // session timers: echo the caller's Session-Expires; with no
             // refresher stated, make the caller (uac) the refresher — its
@@ -268,6 +527,10 @@ export namespace imsd::engine {
                 return a;  // 1xx other than 100<code<200 (only 100): nothing
             if (code == 200) {
                 a.push_back(Send(imsd::msg::BuildAck2xx(ctx_, d_, rng_.Token(20), std::string(imsd::sip::Header(msg, "To").value_or("")))));
+                // A 2xx retransmission (RFC 3261 13.3.1.4: the UAS repeats
+                // it until our ACK arrives) is ACKed again and nothing else —
+                // media is already running, or the call is already over.
+                if (state_ != CallState::Ringing && state_ != CallState::Dialing) return a;
                 if (cancelled_ && userCancelled_) {
                     // answered in the user's CANCEL race — we no longer want it
                     nextCseq_++;
@@ -350,6 +613,7 @@ export namespace imsd::engine {
             offer.currLocal = "sendrecv";
             offer.currRemote = "none";
             offer.mandatory = true;
+            offer.codecs = codecs_;   // the codec set of the INVITE's offer
             std::string sdp = imsd::sdp::BuildOffer(offer);
             std::array<std::string, 1> extra = {
                 precond_ ? "Supported: precondition, timer" : "Supported: timer"};
@@ -400,6 +664,7 @@ export namespace imsd::engine {
                     offer.sessionId = rng_.UInt(1000000, 9999999);
                     offer.precond = precond_;
                     offer.currRemote = "sendrecv";
+                    offer.codecs = codecs_;
                     ans = imsd::sdp::BuildOffer(offer);
                 }
                 // RFC 4028 §9: a 2xx to a refresh MUST echo Session-Expires,
@@ -448,6 +713,45 @@ export namespace imsd::engine {
                     a.push_back(Deadline(Cancel487Timeout));
                 }
             }
+            return a;
+        }
+
+        // The user pressed keys: the tones go to the media leg as RFC 4733
+        // events on an active call whose SDP negotiated telephone-event at
+        // the codec's clock; otherwise they are dropped with a line that
+        // says why — there is no second method (no SIP INFO).
+        // Upper and lower case letters are one event; anything but 0-9, *,
+        // # and A-D drops the whole string rather than sending part of
+        // what was pressed, and so does a string past DtmfMaxTones — a
+        // keypad sends one key, a dialer's string a short sequence; the
+        // bound keeps the leg's control line within one atomic pipe write
+        // (PIPE_BUF), so a line is sent whole or not at all.
+        std::vector<Action> OnDtmf(std::string_view tones) {
+            std::vector<Action> a;
+            if (tones.size() > DtmfMaxTones) {
+                a.push_back(LogAct(std::format("call {}: DTMF of {} tones dropped: more than {}", uni_, tones.size(), DtmfMaxTones)));
+                return a;
+            }
+            std::string sent;
+            for (char c : tones) {
+                const char u = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                if (!((u >= '0' && u <= '9') || u == '*' || u == '#' || (u >= 'A' && u <= 'D'))) {
+                    a.push_back(LogAct(std::format("call {}: DTMF '{}' dropped: '{}' is not a tone", uni_, tones, c)));
+                    return a;
+                }
+                sent += u;
+            }
+            if (sent.empty()) return a;
+            if (state_ != CallState::Active) {
+                a.push_back(LogAct(std::format("call {}: DTMF '{}' dropped: the call is {}", uni_, sent, engine::StateStr(state_))));
+                return a;
+            }
+            if (!dtmfPt_) {
+                a.push_back(LogAct(std::format("call {}: DTMF '{}' dropped: no telephone-event negotiated for this call", uni_, sent)));
+                return a;
+            }
+            a.push_back(LogAct(std::format("call {}: DTMF '{}' -> media leg (telephone-event pt {})", uni_, sent, *dtmfPt_)));
+            a.push_back(Action{Action::Type::SendDtmf, sent});
             return a;
         }
 
@@ -511,6 +815,7 @@ export namespace imsd::engine {
         std::string uni_, number_;
         int rtpPort_;
         bool precond_;
+        std::vector<std::string> codecs_;   // CODECS override; empty = defaults
         Direction direction_ = Direction::Outgoing;
         CallState state_ = CallState::Dialing;
         std::string reason_ = "outgoing";
@@ -533,6 +838,7 @@ export namespace imsd::engine {
         bool resourceUpdateSent_ = false;
         std::set<std::string> pracked_;
         std::string answerSdp_;
+        std::optional<int> dtmfPt_;    // the running leg's telephone-event pt, set at media start
 
         // Fresh dialog identity for the current attempt. A fallback INVITE
         // after a final response is a new transaction AND a clean new dialog
@@ -632,7 +938,7 @@ export namespace imsd::engine {
         }
 
         MediaLeg ParseAnswer() const {
-            imsd::sdp::Answer ans = imsd::sdp::ParseAnswer(answerSdp_);
+            imsd::sdp::Answer ans = imsd::sdp::ParseAnswer(answerSdp_, codecs_);
             MediaLeg leg;
             leg.remoteIp = ans.ip;
             leg.remotePort = ans.port < 0 ? 0 : ans.port;
@@ -640,6 +946,13 @@ export namespace imsd::engine {
             leg.octetAlign = ans.octetAlign;
             leg.codec = ans.codec;
             leg.modeSet = ans.modeSet;
+            leg.dtmfPt = ans.dtmfPt;
+            // the second number the leg takes events at: our offer's on a call
+            // we placed — the answer's instead when the answer gave the audio
+            // that very number, which is then the leg's audio number
+            const int offered = imsd::sdp::OfferedTelephoneEventPt(imsd::sdp::CodecRate(leg.codec));
+            leg.dtmfRxPt = !leg.dtmfPt ? std::nullopt
+                : std::optional<int>(direction_ == Direction::Outgoing && offered != leg.payloadType ? offered : *leg.dtmfPt);
             return leg;
         }
 
@@ -681,6 +994,7 @@ export namespace imsd::engine {
             return a;
         }
         Action StartMediaAct(const MediaLeg& leg) {
+            dtmfPt_ = leg.dtmfPt;
             Action a{Action::Type::StartMedia};
             a.media = leg;
             return a;

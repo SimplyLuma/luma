@@ -1,36 +1,106 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
 # Maintainer: Jorijn van der Graaf <jorijnvdgraaf@catcrafts.net>
-# Interim packaging: wraps a crafter-build binary cross-compiled on a dev box
-# (see README "Cross-compiling") into a proper apk, so the daemon is
-# apk-managed on the phone while crafter-build itself isn't packaged for
-# Alpine yet. The source tarball is produced by packaging/make-bin-tarball.sh.
+# Binary packaging: wraps a crafter-build binary cross-compiled per the
+# cross-compiling flow of AGENTS.md §4.3 into a proper apk — used by this repo's
+# package CI (packaging/build-package.sh, which also seds pkgver from
+# implementations/main.cpp) and runnable by hand. The source tarball is
+# produced by packaging/make-bin-tarball.sh; the desktop/preset files and
+# the install scripts (*.post-upgrade, *.post-install) live next to it in
+# packaging/ (copy them beside this file). Since 2026-09-02
+# this is the only imsd packaging: fp6-img images install the apk this
+# builds from the registry rather than building their own.
 pkgname=imsd
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=0
 pkgdesc="Userspace IMS/VoLTE daemon for mainline Linux phones"
 url="https://forgejo.catcrafts.net/Catcrafts/imsd"
 arch="aarch64"
 license="GPL-3.0-only"
-# the media leg dlopen's the AMR-WB codecs; pw-record/pw-play drive PipeWire
-depends="modemmanager libc++ opencore-amr vo-amrwbenc pipewire-tools"
+# the media leg dlopen's the AMR-WB codecs; pw-record/pw-play drive PipeWire;
+# polkit answers the daemons' call-control check (ImsdBus)
+depends="modemmanager libc++ opencore-amr vo-amrwbenc pipewire-tools polkit"
 # versioned provides = imsd satisfies soc-qcom-modem's 81voltd dependency AND
 # excludes the real package: 81voltd serves the modem's own ims-PDN requests,
 # which races imsd for the PDN and flaps it with a new prefix every ~2.5 min
 # (fp6 journal/ims.md s57) — the two IMS stacks cannot share one PDN
 provides="81voltd=$pkgver-r$pkgrel"
-options="!check"
-source="imsd-$pkgver.tar.gz"
+# no OpenRC service yet: the unit's PDN-bring-up/env-file sequencing is only
+# tested under systemd; an initd is welcome once someone can verify one.
+# see packaging/APKBUILD: the org.ofono shim for GNOME Calls is opt-in
+# (ofono before systemd: systemd() amoves all of usr/lib/systemd/system,
+# so ofono() must take imsd-ofonod.service first)
+subpackages="$pkgname-ofono:ofono $pkgname-systemd"
+# restart the running daemons onto an upgrade (systemd's enqueue-marked); the
+# systemd subpackage marks imsd.service too, since it brings the unit file
+install="$pkgname.post-upgrade $pkgname.post-install $pkgname-ofono.post-upgrade $pkgname-ofono.post-install $pkgname-systemd.post-upgrade $pkgname-systemd.post-install"
+options="!check !tracedeps"
+source="
+	imsd-$pkgver.tar.gz
+	org.kde.modem.daemon.desktop
+	80-imsd.preset
+"
 
 package() {
     cd "$srcdir/imsd-$pkgver"
     install -Dm755 imsd "$pkgdir"/usr/bin/imsd
     install -Dm755 imsd-media "$pkgdir"/usr/libexec/imsd-media
+    install -Dm755 imsd-pcscf "$pkgdir"/usr/libexec/imsd-pcscf
     install -Dm755 imsd-dialerd "$pkgdir"/usr/bin/imsd-dialerd
     install -Dm755 ims-pdn-up.sh "$pkgdir"/usr/libexec/ims-pdn-up.sh
+    install -Dm755 imsd-handover.sh "$pkgdir"/usr/libexec/imsd-handover.sh
     install -Dm644 imsd.service "$pkgdir"/usr/lib/systemd/system/imsd.service
     install -Dm644 imsd-dialerd.desktop \
         "$pkgdir"/etc/xdg/autostart/imsd-dialerd.desktop
     install -Dm644 net.catcrafts.IMS1.conf \
         "$pkgdir"/usr/share/dbus-1/system.d/net.catcrafts.IMS1.conf
+    install -Dm644 net.catcrafts.IMS1.policy \
+        "$pkgdir"/usr/share/polkit-1/actions/net.catcrafts.IMS1.policy
+    # the skel override hides kde-telephony's modem daemon autostart for the
+    # account created at install — imsd-dialerd owns those session bus names
+    install -Dm644 "$srcdir"/org.kde.modem.daemon.desktop \
+        "$pkgdir"/etc/skel/.config/autostart/org.kde.modem.daemon.desktop
+    # enabled by preset: VoLTE surviving reboots must not depend on a manual
+    # systemctl enable. Since 1.0.0 the unit needs no configuration file (the
+    # P-CSCF comes from the PDN's PCO) and starts on every phone with the
+    # package; without a SIM it exits cleanly and stays inactive (IMSD_IDLE),
+    # and `systemctl mask --now imsd` opts out (a disable is undone by
+    # imsd-ofonod's Wants=imsd.service)
+    install -Dm644 "$srcdir"/80-imsd.preset \
+        "$pkgdir"/usr/lib/systemd/system-preset/80-imsd.preset
+    mkdir -p "$pkgdir"/etc/systemd/system/multi-user.target.wants
+    ln -s /usr/lib/systemd/system/imsd.service \
+        "$pkgdir"/etc/systemd/system/multi-user.target.wants/imsd.service
+    install -Dm755 imsd-ofonod "$pkgdir"/usr/bin/imsd-ofonod
+    install -Dm755 imsd-ofono-restart-calls.sh \
+        "$pkgdir"/usr/libexec/imsd-ofono-restart-calls.sh
+    install -Dm644 imsd-ofonod.service \
+        "$pkgdir"/usr/lib/systemd/system/imsd-ofonod.service
+    install -Dm644 org.ofono.conf \
+        "$pkgdir"/usr/share/dbus-1/system.d/imsd-ofono.conf
+    install -Dm644 90_imsd-ofono.gschema.override \
+        "$pkgdir"/usr/share/glib-2.0/schemas/90_imsd-ofono.gschema.override
+    install -Dm644 80-imsd-ofono.preset \
+        "$pkgdir"/usr/lib/systemd/system-preset/80-imsd-ofono.preset
+}
+
+ofono() {
+    pkgdesc="GNOME Calls (Phosh, GNOME Mobile) backend for imsd"
+    depends="$pkgname=$pkgver-r$pkgrel calls"
+    amove usr/bin/imsd-ofonod
+    amove usr/libexec/imsd-ofono-restart-calls.sh
+    amove usr/lib/systemd/system/imsd-ofonod.service
+    amove usr/share/dbus-1/system.d/imsd-ofono.conf
+    amove usr/share/glib-2.0/schemas/90_imsd-ofono.gschema.override
+    amove usr/lib/systemd/system-preset/80-imsd-ofono.preset
+    # enabled on install, like imsd.service in the main package
+    mkdir -p "$subpkgdir"/etc/systemd/system/multi-user.target.wants
+    ln -s /usr/lib/systemd/system/imsd-ofonod.service \
+        "$subpkgdir"/etc/systemd/system/multi-user.target.wants/imsd-ofonod.service
+}
+
+systemd() {
+    install_if="$pkgname=$pkgver-r$pkgrel systemd"
+
+    amove usr/lib/systemd/system
 }

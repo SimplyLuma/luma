@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?> <!--*-nxml-*-->
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts® -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Call control on imsd (net.catcrafts.IMS1) and imsd-ofonod (org.ofono):
+     both daemons ask polkit about this action before they place, answer or
+     end a call for a caller. The defaults are ModemManager's Voice action as
+     the permissive polkit build ships it (the strict build has
+     allow_active auth_self_keep): the active local session, not an ssh
+     login, an inactive session or a system service account. root is always
+     allowed.
+     Install: /usr/share/polkit-1/actions/net.catcrafts.IMS1.policy -->
+<policyconfig>
+  <vendor>Catcrafts</vendor>
+  <vendor_url>https://forgejo.catcrafts.net/Catcrafts/imsd</vendor_url>
+  <action id="net.catcrafts.IMS1.Voice">
+    <description>Place, answer and end voice calls over IMS</description>
+    <message>System policy prevents voice calls.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

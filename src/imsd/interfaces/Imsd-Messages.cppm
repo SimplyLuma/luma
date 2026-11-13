@@ -29,14 +29,19 @@ import :Sip;
 export namespace imsd::msg {
 
     // Everything the builders need that is stable for the life of a
-    // registration. Ports default to the fixed protected values; route/ppi/
-    // securityServer are filled in from the REGISTER 200 OK.
+    // registration. Ports default to the fixed protected values; route and
+    // ppi are filled in from the REGISTER 200 OK, securityServer from the
+    // 401 (at a resume, from the state file).
     struct Context {
         imsd::aka::Identity id;
         std::string local;
         int portUc = imsd::util::PortUc;
         int portUs = imsd::util::PortUs;
         int initPort = 5060;
+        // Transport of the protected leg (REGISTER 2 onwards): the Via token
+        // of every request we send over it. TCP unless the engine fell back
+        // to, or was told to use, UDP.
+        std::string transport = "TCP";
         std::string ealgOffer = "aes-cbc";
         // RFC 7254 IMEI URN for +sip.instance (e.g. urn:gsma:imei:35999999-
         // 000000-1); empty omits the parameter.
@@ -67,7 +72,7 @@ export namespace imsd::msg {
                                       // self-targeted requests like reg-event
                                       // SUBSCRIBE; the temporary (IMSI-derived)
                                       // IMPU is barred for anything but REGISTER
-        std::string securityServer;   // Security-Verify value (the network's ss)
+        std::string securityServer;   // Security-Verify value: the 401's Security-Server list (from the state file on a resume)
         // P-Access-Network-Info value (imsd::aka::ParsePani from live mmcli
         // location: real MCC/MNC/TAC/ECI, FDD). Empty omits the header —
         // never fabricate one: the network reads it to learn which access
@@ -91,9 +96,15 @@ export namespace imsd::msg {
         return std::format("Via: SIP/2.0/{} {};branch=z9hG4bK{};rport", transport, imsd::util::HostPort(c.local, port), branch);
     }
 
-    // Security-Client value carrying our in-use client SPIs + protected ports.
+    // Security-Client value: the SPIs and protected ports offered for the SA
+    // pairs this REGISTER may set up — the in-use ones on an initial
+    // registration, new SPIs and a new client port on a reregistration
+    // (TS 24.229 5.1.1.4.2 d; TS 33.203 7.4.0: the server port stays).
+    inline std::string SecurityClient(const Context& c, std::uint32_t spiUc, std::uint32_t spiUs, int portUc, int portUs) {
+        return std::format("Security-Client: ipsec-3gpp; alg=hmac-sha-1-96; ealg={}; " "spi-c={}; spi-s={}; port-c={}; port-s={}", c.ealgOffer, spiUc, spiUs, portUc, portUs);
+    }
     inline std::string SecurityClient(const Context& c, std::uint32_t spiUc, std::uint32_t spiUs) {
-        return std::format("Security-Client: ipsec-3gpp; alg=hmac-sha-1-96; ealg={}; " "spi-c={}; spi-s={}; port-c={}; port-s={}", c.ealgOffer, spiUc, spiUs, c.portUc, c.portUs);
+        return SecurityClient(c, spiUc, spiUs, c.portUc, c.portUs);
     }
 
     // Authorization line with an empty (unchallenged) digest — the first
@@ -224,7 +235,7 @@ export namespace imsd::msg {
         return std::format("{}\r\n", detail::Join(l));
     }
 
-    // A protected REGISTER over IPsec/TCP. The Contact explicitly carries
+    // A protected REGISTER over IPsec. Over TCP the Contact explicitly carries
     // transport=tcp because sip: defaults to UDP (RFC 3261 19.1.2). This is
     // not cosmetic when the registrar declines RFC 5626 outbound: TS 24.229
     // 5.1.1.2.1 then binds terminating routing to the Contact address and its
@@ -236,24 +247,32 @@ export namespace imsd::msg {
     // i.e. the route every terminating request (NOTIFY, MT INVITE) takes.
     // The stock oracle sends it in BOTH REGISTERs (2026-07-21 capture,
     // reg2 build at 19:30:44); an earlier reading that reg2 omits it was
-    // wrong. `authLine` is a full
-    // Authorization line (AuthEmpty for the refresh's first try, AuthAka
-    // once challenged).
-    std::string BuildRegisterProtected(const Context& c, std::string_view callid, std::string_view ftag, std::string_view branch, int cseq, std::uint32_t spiUc, std::uint32_t spiUs, std::string_view authLine) {
+    // wrong and cost us all terminating delivery. `authLine` is a full
+    // Authorization line: AuthAka with the challenge's answer for the
+    // initial registration's second REGISTER and, verbatim, for every
+    // reregistration after it (TS 24.229 5.1.1.4.2 a: the last received
+    // nonce, the last calculated response); AuthEmpty for a registration
+    // resumed from a pre-0.3.11 state file, on every reregistration until
+    // its next fresh registration. A
+    // reregistration also passes NEW SPIs and the client port it proposes
+    // for a re-authentication's SA pairs (`portUc`, TS 33.203 7.4.0: the
+    // server port stays); 0 offers the in-use client port, the initial
+    // registration's case.
+    std::string BuildRegisterProtected(const Context& c, std::string_view callid, std::string_view ftag, std::string_view branch, int cseq, std::uint32_t spiUc, std::uint32_t spiUs, std::string_view authLine, int portUc = 0) {
         std::vector<std::string> l = {
             std::format("REGISTER {} SIP/2.0", c.id.regUri),
-            ViaLine(c, "TCP", c.portUs, branch),
+            ViaLine(c, c.transport, c.portUs, branch),
             "Max-Forwards: 70",
             std::format("From: <{}>;tag={}", c.id.impu, ftag),
             std::format("To: <{}>", c.id.impu),
             std::format("Call-ID: {}", callid),
             std::format("CSeq: {} REGISTER", cseq),
-            std::format("Contact: <sip:{}@{};transport=tcp>{};expires=600000", ContactUser(c), imsd::util::HostPort(c.local, c.portUs), ContactFeatures(c)),
+            std::format("Contact: <sip:{}@{}{}>{};expires=600000", ContactUser(c), imsd::util::HostPort(c.local, c.portUs), c.transport == "TCP" ? ";transport=tcp" : "", ContactFeatures(c)),
             "Allow: INVITE, ACK, BYE, CANCEL, OPTIONS, NOTIFY, PRACK, UPDATE, MESSAGE, REFER",
             std::string(authLine),
             "Require: sec-agree",
             "Proxy-Require: sec-agree",
-            SecurityClient(c, spiUc, spiUs),
+            SecurityClient(c, spiUc, spiUs, portUc ? portUc : c.portUc, c.portUs),
             std::format("Security-Verify: {}", c.securityServer),
         };
         l.push_back(std::format("Supported: {}", RegisterSupported(c)));
@@ -276,7 +295,7 @@ export namespace imsd::msg {
                                              : std::string_view(c.aor);
         std::vector<std::string> l = {
             std::format("SUBSCRIBE {} SIP/2.0", aor),
-            ViaLine(c, "TCP", c.portUs, branch),
+            ViaLine(c, c.transport, c.portUs, branch),
             "Max-Forwards: 70",
             std::format("Route: {}", c.route),
             std::format("From: <{}>;tag={}", aor, ftag),
@@ -314,7 +333,27 @@ export namespace imsd::msg {
         std::optional<std::string> dialogTo;     // remote To/From incl. tag, once known
         std::vector<std::string> recordRoute;    // route set, UAC order (see DialogRoute)
         std::optional<std::string> remoteTarget; // remote Contact URI
+        std::string localUri;       // our URI in this dialog: the UAS takes the
+                                    // INVITE's To URI; empty = CallerId(c) (UAC)
     };
+
+    // The identity we sign our own requests with: the registered public
+    // identity (P-Associated-URI sip: entry), else the tel: one, and the
+    // IMSI-derived temporary IMPU only before either is learned. 3GPP allows
+    // the temporary IMPU in REGISTER alone; a P-CSCF that does not overwrite
+    // From shows it to the callee (Telia, 2026-09-01: the reporter's IMSI on
+    // the far phone) and a strict one may reject the request.
+    inline std::string_view CallerId(const Context& c) {
+        if (!c.aor.empty()) return c.aor;
+        if (!c.ppi.empty()) return c.ppi;
+        return c.id.impu;
+    }
+
+    // From URI of a request inside a dialog (RFC 3261 12.2.1.1: the dialog's
+    // local URI — as UAS that is the INVITE's To, as UAC our caller identity).
+    inline std::string_view FromUri(const Context& c, const Dialog& d) {
+        return d.localUri.empty() ? CallerId(c) : std::string_view(d.localUri);
+    }
 
     // Dialog route set: the reversed Record-Route, or the registration Route
     // when none was recorded (imsd._dialog_route).
@@ -339,10 +378,10 @@ export namespace imsd::msg {
                                         : "100rel, timer";
         std::vector<std::string> l = {
             std::format("INVITE {} SIP/2.0", d.ruri),
-            std::format("Via: SIP/2.0/TCP {};branch=z9hG4bK{};rport", imsd::util::HostPort(c.local, c.portUs), d.invBranch),
+            ViaLine(c, c.transport, c.portUs, d.invBranch),
             "Max-Forwards: 70",
             std::format("Route: {}", c.route),
-            std::format("From: <{}>;tag={}", c.id.impu, d.itag),
+            std::format("From: <{}>;tag={}", FromUri(c, d), d.itag),
             std::format("To: <{}>", d.ruri),
             std::format("Call-ID: {}", d.callid),
             "CSeq: 1 INVITE",
@@ -377,10 +416,10 @@ export namespace imsd::msg {
         std::string to = d.dialogTo.value_or(std::format("<{}>", d.ruri));
         std::vector<std::string> l = {
             std::format("{} {} SIP/2.0", method, target),
-            ViaLine(c, "TCP", c.portUs, viaBranch),
+            ViaLine(c, c.transport, c.portUs, viaBranch),
             "Max-Forwards: 70",
             std::format("Route: {}", DialogRoute(c, d)),
-            std::format("From: <{}>;tag={}", c.id.impu, d.itag),
+            std::format("From: <{}>;tag={}", FromUri(c, d), d.itag),
             std::format("To: {}", to),
             std::format("Call-ID: {}", d.callid),
             std::format("CSeq: {} {}", cseq, method),
@@ -404,10 +443,10 @@ export namespace imsd::msg {
         std::string to = d.dialogTo.value_or(std::string(toHeader));
         std::vector<std::string> l = {
             std::format("ACK {} SIP/2.0", target),
-            ViaLine(c, "TCP", c.portUs, viaBranch),
+            ViaLine(c, c.transport, c.portUs, viaBranch),
             "Max-Forwards: 70",
             std::format("Route: {}", DialogRoute(c, d)),
-            std::format("From: <{}>;tag={}", c.id.impu, d.itag),
+            std::format("From: <{}>;tag={}", FromUri(c, d), d.itag),
             std::format("To: {}", to),
             std::format("Call-ID: {}", d.callid),
             "CSeq: 1 ACK",
@@ -421,10 +460,10 @@ export namespace imsd::msg {
     std::string BuildAckNon2xx(const Context& c, const Dialog& d, std::string_view toHeader) {
         std::vector<std::string> l = {
             std::format("ACK {} SIP/2.0", d.ruri),
-            std::format("Via: SIP/2.0/TCP {};branch=z9hG4bK{};rport", imsd::util::HostPort(c.local, c.portUs), d.invBranch),
+            ViaLine(c, c.transport, c.portUs, d.invBranch),
             "Max-Forwards: 70",
             std::format("Route: {}", c.route),
-            std::format("From: <{}>;tag={}", c.id.impu, d.itag),
+            std::format("From: <{}>;tag={}", FromUri(c, d), d.itag),
             std::format("To: {}", toHeader),
             std::format("Call-ID: {}", d.callid),
             "CSeq: 1 ACK",
@@ -437,10 +476,10 @@ export namespace imsd::msg {
     std::string BuildCancel(const Context& c, const Dialog& d) {
         std::vector<std::string> l = {
             std::format("CANCEL {} SIP/2.0", d.ruri),
-            std::format("Via: SIP/2.0/TCP {};branch=z9hG4bK{};rport", imsd::util::HostPort(c.local, c.portUs), d.invBranch),
+            ViaLine(c, c.transport, c.portUs, d.invBranch),
             "Max-Forwards: 70",
             std::format("Route: {}", c.route),
-            std::format("From: <{}>;tag={}", c.id.impu, d.itag),
+            std::format("From: <{}>;tag={}", FromUri(c, d), d.itag),
             std::format("To: <{}>", d.ruri),
             std::format("Call-ID: {}", d.callid),
             "CSeq: 1 CANCEL",

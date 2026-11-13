@@ -1,0 +1,50 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+#
+# Restart imsd onto the upgraded binary once apk is done: the systemd
+# trigger restarts every unit marked needs-restart (enqueue-marked). A
+# changed bus policy is live the moment apk writes it (dbus-broker-launch
+# reloads on its own), so it must not be left facing the old daemon. The
+# restart resumes the registration over its existing SAs, goes on waiting
+# when the network had imsd wait, or — an upper-case, zero-padded or uncompressed PCSCF=,
+# accepted until 0.3.12 — stops at bring-up with the spelling to use; a
+# call in progress ends.
+#
+# Also installed as imsd.post-install: `apk del imsd` removes the files
+# and leaves the daemon running, so a later `apk add` of the package is
+# this upgrade for that daemon, and apk runs post-install for it. A first
+# install finds no unit active and marks nothing. On the binary route
+# (APKBUILD.binary) the unit file ships in imsd-systemd, installed after
+# this package; its imsd-systemd.post-upgrade marks the unit then.
+#
+# A daemon older than 0.3.10 kept its bring-up throttle wait in memory
+# only, so a restart inside it registered fresh at once instead of
+# waiting the schedule out. Before marking, record the running
+# invocation in /run/imsd.handover: the next start (imsd-handover.sh, an
+# ExecStartPre after ims-pdn-up.sh) reads that invocation's last bring-up
+# line once the daemon has stopped and hands what is left of its wait over
+# as imsd's holds file (on another address only the verdict that its
+# registration is gone). Read then, not here: a wait that ends between this
+# script and the restart at the end of the transaction — the old daemon
+# making another attempt — is read as it ended.
+
+# A unit whose file an apk del removed is not-found to systemd until a
+# reload and refuses properties ("failed to load properly"); its file is
+# back on disk by the time post-install runs, so reload and mark again.
+mark() {
+	systemctl set-property "$1" Markers=+needs-restart 2>/dev/null && return 0
+	systemctl daemon-reload && systemctl set-property "$1" Markers=+needs-restart || :
+}
+
+record_old_invocation() {
+	[ -e /run/imsd.holds ] && return 0   # a 0.3.10 or later daemon keeps its own holds
+	inv=$(systemctl show -P InvocationID imsd.service 2>/dev/null)
+	[ -n "$inv" ] && echo "$inv" > /run/imsd.handover
+}
+
+if [ -d /run/systemd/system ] && systemctl is-active -q imsd.service; then
+	record_old_invocation
+	mark imsd.service
+fi
+exit 0

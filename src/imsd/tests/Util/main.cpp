@@ -3,7 +3,8 @@
 
 // lint-disable-file fixed-width-types
 // Imsd:Util unit tests — MD5 against the RFC 1321 test suite, base64/hex
-// decoding, host/port formatting, and the deterministic-seed RNG. MD5 and
+// decoding, host/port formatting, the RFC 5952 canonical IPv6 text and the
+// address-list parser, and the deterministic-seed RNG. MD5 and
 // base64 are our own (the standard library ships neither) and the AKAv1-MD5
 // digest depends on them exactly, so these are pinned hard.
 import std;
@@ -93,6 +94,47 @@ int main() {
             if (i != 8 && i != 13 && i != 18 && i != 23) Check((u[i] >= '0' && u[i] <= '9') || (u[i] >= 'a' && u[i] <= 'f'), "uuid hex alphabet");
         Rng r2(42);
         Check(Uuid4(r2) == u, "same seed -> same uuid");
+    }
+
+    // ---- CanonicalIp6: RFC 5952 §4 — the text iproute2/inet_ntop print.
+    // Global addresses from the documentation prefix only (2001:db8::/32); the
+    // link-local one is synthetic.
+    {
+        auto c = [](std::string_view s) { return CanonicalIp6(s).value_or("<nullopt>"); };
+        Check(c("2001:DB8:E000:100::105") == "2001:db8:e000:100::105", "canon upper case");
+        Check(c("2001:0db8:e000:0100:0000:0000:0000:0105") == "2001:db8:e000:100::105", "canon uncompressed, leading zeros");
+        Check(c("2001:db8:e000:100:0:0:0:105") == "2001:db8:e000:100::105", "canon zero fields -> ::");
+        Check(c("2001:db8:0:0:1:0:0:1") == "2001:db8::1:0:0:1", "canon first of two equal runs (5952 4.2.3)");
+        Check(c("2001:0:0:1:0:0:0:1") == "2001:0:0:1::1", "canon the longer run wins (4.2.3)");
+        Check(c("2001:db8:0:1:1:1:1:1") == "2001:db8:0:1:1:1:1:1", "canon a single zero field stays (4.2.2)");
+        Check(c("2001:0db8::0001") == "2001:db8::1", "canon leading zeros dropped (RFC 5952 4.1)");
+        Check(c("2001:db8:0:0:0:0:2:1") == "2001:db8::2:1", "canon the zero run compressed (4.2.1)");
+        Check(c("2001:db8::0:1") == "2001:db8::1", "canon :: takes the whole run (4.2.1)");
+        Check(c("1:2:3:4:5:6:7::") == "1:2:3:4:5:6:7:0", "canon :: standing for one field is written out");
+        Check(c("::1") == "::1", "canon ::1");
+        Check(c("::") == "::", "canon ::");
+        Check(c("1::") == "1::", "canon 1::");
+        Check(c("[2001:db8::1]") == "2001:db8::1", "canon brackets stripped");
+        // idempotence on inet_ntop-shaped input: the holds file and the state
+        // file were written in that shape by 0.3.12 and must still compare
+        for (std::string_view s : {"2001:db8:1111:2222:3333:4444:5555:db43", "2001:db8::105", "2001:db8::1:0:0:1", "fe80::db8:ff:fe00:1"})
+            Check(c(s) == s, std::format("canon idempotent on {}", s));
+        for (std::string_view s : {"2001:db8::1::2", "2001:db8:1", "12345::1", "2001:db8::1%qmapmux0.0", "[fe80::1]:5060", "::ffff:10.0.0.1", "10.0.0.1", "pcscf.example.com", "", ":1::2", "1:::2", "::1:", "1:2:3:4:5:6:7:8:9", "2001:db8::g"})
+            Check(!CanonicalIp6(s), std::format("canon rejects '{}'", s));
+        Check(CanonicalAddr("2001:DB8::105") == "2001:db8::105", "CanonicalAddr v6");
+        Check(CanonicalAddr("10.0.0.1") == "10.0.0.1", "CanonicalAddr v4 untouched");
+        Check(CanonicalAddr("2001:db8::g") == "2001:db8::g", "CanonicalAddr passes a malformed v6 through");
+    }
+
+    // ---- ParseAddressList: the PCSCF_DISCOVERED= hand-off
+    {
+        std::vector<std::string> rejected;
+        auto l = ParseAddressList("2001:DB8::105, 2001:db8::23,,10.1.1.1,2001:db8:0::105, pcscf.example , ", &rejected);
+        Check(l.size() == 2 && l[0] == "2001:db8::105" && l[1] == "2001:db8::23", "list: canonical, ordered, deduped");
+        Check(rejected.size() == 2 && rejected[0] == "10.1.1.1" && rejected[1] == "pcscf.example", "list: rejects reported in order");
+        Check(ParseAddressList("").empty(), "list: empty string");
+        Check(ParseAddressList(" , ,").empty(), "list: blanks only");
+        Check(ParseAddressList("2001:db8::1").size() == 1, "list: single entry, no rejected sink");
     }
 
     if (Failures == 0) std::println("Util: all tests passed");

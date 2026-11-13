@@ -5,10 +5,12 @@
 # canonical build description; this Makefile mirrors it for environments
 # where crafter-build isn't packaged — same clang module pipeline, same
 # flags. Keep the two in sync when products, module partitions or link
-# flags change.
+# flags change. Upstream dropped its Makefile in 0.3.10; Luma keeps this
+# one because Fedora does not package crafter-build.
 #
-#   make          -> build/make/{imsd,imsd-media,imsd-dialerd}
-#   make check    -> build + run the 7 unit-test suites
+#   make          -> build/make/{imsd,imsd-media,imsd-dialerd,imsd-ofonod,
+#                    imsd-pcscf}
+#   make check    -> build + run the 8 unit-test suites
 #   make install  -> DESTDIR/PREFIX staged install (binaries + systemd
 #                    unit, D-Bus policy, dialerd autostart, ims-pdn-up.sh)
 #
@@ -47,14 +49,15 @@ endif
 # Imsd module partitions, plus the primary interface last. The BMI file
 # names must stay <module>-<partition>.pcm — that is how clang resolves
 # `import :Part;` under -fprebuilt-module-path.
-PARTITIONS   = Imsd-Util Imsd-Sip Imsd-Sdp Imsd-Aka Imsd-Ipsec \
+PARTITIONS   = Imsd-Util Imsd-Sip Imsd-Sdp Imsd-Aka Imsd-Ipsec Imsd-Qmi \
                Imsd-Messages Imsd-Engine
 CORE_MODULES = $(PARTITIONS) Imsd
 CORE_OBJS    = $(CORE_MODULES:%=$(OBJ)/%.o)
 
-TESTS = Util Aka Ipsec Messages Engine Sip Sdp
+TESTS = Util Aka Ipsec Qmi Messages Engine Sip Sdp
 
-all: $(O)/imsd $(O)/imsd-media $(O)/imsd-dialerd
+all: $(O)/imsd $(O)/imsd-media $(O)/imsd-dialerd $(O)/imsd-ofonod \
+     $(O)/imsd-pcscf
 
 # ---- module BMIs ----------------------------------------------------------
 
@@ -66,12 +69,23 @@ $(PCM)/%.pcm: interfaces/%.cppm $(PCM)/std.pcm | $(PCM)
 	$(CXX) $(ALL_CXXFLAGS) -fprebuilt-module-path=$(PCM) --precompile $< -o $@
 
 # partition import graph (see the `import :X;` lines in interfaces/)
-$(PCM)/Imsd-Aka.pcm $(PCM)/Imsd-Ipsec.pcm: $(PCM)/Imsd-Util.pcm
+$(PCM)/Imsd-Aka.pcm $(PCM)/Imsd-Ipsec.pcm $(PCM)/Imsd-Qmi.pcm: \
+    $(PCM)/Imsd-Util.pcm
 $(PCM)/Imsd-Messages.pcm: $(PCM)/Imsd-Util.pcm $(PCM)/Imsd-Aka.pcm \
     $(PCM)/Imsd-Sip.pcm
 $(PCM)/Imsd-Engine.pcm: $(PCM)/Imsd-Util.pcm $(PCM)/Imsd-Sip.pcm \
     $(PCM)/Imsd-Sdp.pcm $(PCM)/Imsd-Messages.pcm
 $(PCM)/Imsd.pcm: $(PARTITIONS:%=$(PCM)/%.pcm)
+
+# ImsdBus — the polkit gate imsd and imsd-ofonod share; GLib, so outside
+# imsd-core and precompiled with the gio include path.
+$(PCM)/ImsdBus.pcm: interfaces/ImsdBus.cppm $(PCM)/std.pcm | $(PCM)
+	$(CXX) $(ALL_CXXFLAGS) $(GIO_CFLAGS) -fprebuilt-module-path=$(PCM) \
+	    --precompile $< -o $@
+
+$(OBJ)/ImsdBus.o: $(PCM)/ImsdBus.pcm | $(OBJ)
+	$(CXX) $(ALL_CXXFLAGS) $(GIO_CFLAGS) -fprebuilt-module-path=$(PCM) \
+	    -c $< -o $@
 
 # ---- imsd-core (static lib of the pure-C++ engine modules) ----------------
 
@@ -83,11 +97,11 @@ $(O)/libimsd-core.a: $(CORE_OBJS)
 
 # ---- executables -----------------------------------------------------------
 
-$(OBJ)/main.o: implementations/main.cpp $(PCM)/Imsd.pcm | $(OBJ)
+$(OBJ)/main.o: implementations/main.cpp $(PCM)/Imsd.pcm $(PCM)/ImsdBus.pcm | $(OBJ)
 	$(CXX) $(ALL_CXXFLAGS) $(GIO_CFLAGS) -fprebuilt-module-path=$(PCM) \
 	    -c $< -o $@
 
-$(O)/imsd: $(OBJ)/main.o $(O)/libimsd-core.a
+$(O)/imsd: $(OBJ)/main.o $(OBJ)/ImsdBus.o $(O)/libimsd-core.a
 	$(CXX) $(ALL_CXXFLAGS) $(ALL_LDFLAGS) $^ $(GIO_LIBS) -lpthread -o $@
 
 $(OBJ)/media.o: implementations/media.cpp $(PCM)/std.pcm | $(OBJ)
@@ -102,6 +116,19 @@ $(OBJ)/dialerd.o: implementations/dialerd.cpp $(PCM)/std.pcm | $(OBJ)
 
 $(O)/imsd-dialerd: $(OBJ)/dialerd.o
 	$(CXX) $(ALL_CXXFLAGS) $(ALL_LDFLAGS) $^ $(GIO_LIBS) -o $@
+
+$(OBJ)/ofonod.o: implementations/ofonod.cpp $(PCM)/ImsdBus.pcm | $(OBJ)
+	$(CXX) $(ALL_CXXFLAGS) $(GIO_CFLAGS) -fprebuilt-module-path=$(PCM) \
+	    -c $< -o $@
+
+$(O)/imsd-ofonod: $(OBJ)/ofonod.o $(OBJ)/ImsdBus.o
+	$(CXX) $(ALL_CXXFLAGS) $(ALL_LDFLAGS) $^ $(GIO_LIBS) -o $@
+
+$(OBJ)/pcscf.o: implementations/pcscf.cpp $(PCM)/Imsd.pcm | $(OBJ)
+	$(CXX) $(ALL_CXXFLAGS) -fprebuilt-module-path=$(PCM) -c $< -o $@
+
+$(O)/imsd-pcscf: $(OBJ)/pcscf.o $(O)/libimsd-core.a
+	$(CXX) $(ALL_CXXFLAGS) $(ALL_LDFLAGS) $^ -lpthread -o $@
 
 # ---- tests -----------------------------------------------------------------
 
@@ -122,6 +149,8 @@ install: all
 	install -Dm755 $(O)/imsd $(DESTDIR)$(PREFIX)/bin/imsd
 	install -Dm755 $(O)/imsd-dialerd $(DESTDIR)$(PREFIX)/bin/imsd-dialerd
 	install -Dm755 $(O)/imsd-media $(DESTDIR)$(PREFIX)/libexec/imsd-media
+	install -Dm755 $(O)/imsd-pcscf $(DESTDIR)$(PREFIX)/libexec/imsd-pcscf
+	install -Dm755 $(O)/imsd-ofonod $(DESTDIR)$(PREFIX)/bin/imsd-ofonod
 	install -Dm755 packaging/ims-pdn-up.sh \
 	    $(DESTDIR)$(PREFIX)/libexec/ims-pdn-up.sh
 	install -Dm644 packaging/imsd.service \
@@ -130,6 +159,8 @@ install: all
 	    $(DESTDIR)/etc/xdg/autostart/imsd-dialerd.desktop
 	install -Dm644 packaging/net.catcrafts.IMS1.conf \
 	    $(DESTDIR)$(PREFIX)/share/dbus-1/system.d/net.catcrafts.IMS1.conf
+	install -Dm644 packaging/net.catcrafts.IMS1.policy \
+	    $(DESTDIR)$(PREFIX)/share/polkit-1/actions/net.catcrafts.IMS1.policy
 
 $(PCM) $(OBJ) $(O)/tests:
 	mkdir -p $@

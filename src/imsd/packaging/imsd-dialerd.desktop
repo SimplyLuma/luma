@@ -7,5 +7,6 @@ Comment=Plasma Dialer backend for imsd (replaces plasma-dialer's modem-daemon)
 Exec=/usr/bin/imsd-dialerd
 Icon=call-start
 NoDisplay=true
+OnlyShowIn=KDE;
 X-KDE-autostart-phase=1
 X-KDE-StartupNotify=false
