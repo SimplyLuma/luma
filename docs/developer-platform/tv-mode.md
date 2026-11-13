@@ -64,7 +64,7 @@ not dim or blank on its own. A delay the person chose is kept.
   posture).
 - A sidebar app gets the floating island with no TV code: its sidebar lifts
   off the window edge beside the page (Up/Down in the island opens each page,
-  Right steps into the page and folds the island to a rail, Back returns).
+  Right steps into the page while the island stays open beside it, Back returns).
   A window showing one island and no sidebar (a welcome, an error) is drawn
   centred in the safe area. `LumaApplicationWindow` (C) and `AppWindow`
   (luma_appkit: `IslandSplitView` or a box with a `NavigationSidebar` beside an
@@ -81,9 +81,15 @@ first user, the `test-tv-island` "Pantry" fixture the second):
 - The sidebar lifts into a floating island (bar material, radius 36, rows 68
   at 24/600, icons 30); a sidebar section becomes a hairline. Up/Down in the
   island opens each page at once; Right enters the page at its first row (the
-  hero or first group, never a switch beside the title); the island folds to a
-  100-wide rail; Left off the page's edge or Back returns to it; Back in the
-  island minimises the window.
+  hero or first group, never a switch beside the title); the island stays open
+  beside the page, the open page a chip (it never folds on its own); Left off
+  the page's edge or Back returns to it; Back in the island minimises the
+  window. A list longer than the island scrolls inside its plate and fades at
+  the plate's top and bottom while more lies past them (`tv.scroll` fade_top
+  each way), the plate itself whole; the remote never rests in a fade, as the
+  list scrolls on so the row is whole and the next one peeks. The frame does
+  this for any sidebar, a `LumaNavigationSidebar` or an app's own (told by the
+  `lumaui-tv-island` class).
 - The page keeps the desktop's order and draws its parts at TV size. Name them
   with `luma_ui_set_part`: `header`, `back`, `hero`, `group`, `card`, `row`,
   and for rows of choices drawn as themselves `chips` (the row's container),
@@ -101,8 +107,68 @@ first user, the `test-tv-island` "Pantry" fixture the second):
   row first. Questions over the page are TV sheets driven by the remote, Cancel
   focused, over a dimmed page. A focused field's row lifts above the TV
   keyboard once the page has shrunk.
-- The page fades out at an edge only while content continues past it (48
-  units at the top, 128 at the bottom, eased).
+- The page fades out at an edge only while content continues past it
+  (`tv.scroll`: fade_top at the top, fade_bottom at the bottom, eased; the
+  page's and the island's fades are one implementation, `luma-tv-fade.c`).
+- A page whose Back is not a visible control (up a level, end a search) gives
+  the page an unfocusable `lumaui-part-back` button, never drawn; the frame
+  presses it on Back. With none, Back returns to the island.
+- Sandboxed apps get the room too: inside a Flatpak the room reads the
+  person's wallpaper through `/run/host`, and Luma's default wallpaper (set in
+  the system dconf database, which a sandbox can't read) when the person
+  hasn't chosen one.
+
+### The action bar on a TV
+
+An app's `LumaActionCenter` attached to the page's layer host
+(`luma_action_center_attach`) is the TV's action bar, with no TV code in the
+app:
+
+- It is hidden until asked for: the remote's menu key, or OK held 0.5 s on an
+  item that has no menu of its own (a file in a grid, a row). A focused item
+  that offers `menu.popup` keeps its own menu.
+- It holds the remote while it is up, as a question over the page does. The
+  remote lands on its first button, never in a field: the TV keyboard waits
+  until the person chooses the search field. Enter in the field (the
+  keyboard's Done) puts the bar away and the remote on the page: search takes
+  you to the results.
+- Back folds a grown row first, then puts the bar away; an action that has
+  acted puts it away too. Either way the remote returns to the item it came
+  from, which stays a chip beneath the bar while the bar acts on it; if that
+  item has gone, the page takes the remote.
+- It is drawn at TV size (the mockups' `.tv-ab`). A grown row of chips or
+  tiles (`luma_panel_choices`, `luma_bar_tiles`) is one centred line with its
+  heading first; a tile is a chip with its words and its quiet second line
+  (`luma_bar_tile_set_subtitle`) side by side, dimmed while insensitive; a
+  `lumaui-panel-note` label can stand in for them. A grown row of
+  `luma_bar_panel_add_row` rows keeps its list.
+- The app decides only what the bar holds on a TV: rebuild it with
+  `luma_action_center_show_bar()` while `luma_window_get_tv_active()` is true.
+  `luma_action_center_grow_panel()` called by the app (not by a bar button)
+  brings the bar up with that row grown, the remote on it.
+
+### Grids, lists, layers and panels
+
+- A `GtkGridView` or `GtkListView` on a TV page: the focused item is the key,
+  the whole item; a chosen item is a chip. The app sizes its items.
+- A widget with the class `lumaui-tv-layer`, added over the window's content,
+  is a full-screen layer (a guard, a viewer): it holds the remote, and Back
+  presses its `lumaui-dialog-cancel` button, or reaches the layer's own key
+  handler when it has none.
+- `lumaui-tv-transport` is a full-screen activity's two-row transport (the
+  mockups' `.tv-ab.transport`): a `.top` row (`label.title`, `label.figure`
+  such as "3 of 44", `label.note`) over an `.acts` row of
+  `button.lumaui-tv-transport-item` (`.lumaui-tv-transport-round` for ‹ › and
+  play) with a `.rule` between groups; `.calm` hides it while it rests. It is
+  never narrower than 960 units: without a track (a photograph, a file) centre
+  it so it is as wide as what it holds; with a track (a film) let it fill.
+- A floating panel over the dimmed screen (Info, a game's page): a
+  `lumaui-tv-layer` that is also `lumaui-tv-scrim`, holding a
+  `lumaui-tv-panel` (the sheet material). Its parts: `.lumaui-tv-meta`,
+  `.lumaui-tv-h1`, a `.lumaui-tv-card` of `.lumaui-tv-fact` rows (a
+  `label.name` and a `label.value`), `.lumaui-tv-note`, and a `.lumaui-tv-acts`
+  row of `button.lumaui-tv-button` (`.go` for what OK does, in the accent).
+  The app lays the panel out; the kit gives the materials.
 
 ## The TV scale
 

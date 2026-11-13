@@ -38,6 +38,11 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-toggle-row { spacing: 8px; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle:checked,
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle .quick-toggle, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle .quick-toggle:checked { background-color: transparent; border: 0; padding: 2px 0; box-shadow: none; min-height: 0; }
+/* Tiling and Cast are menu toggles carrying the pill classes (0164): the
+ * pill's 8px bottom margin and its 10/999px corners would make them sit
+ * higher and rounder than the plain toggles in the same row. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle .quick-toggle { margin: 0; border-radius: 14px; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle .quick-toggle-icon { icon-size: 18px; padding: 13px; border-radius: 99px; background-color: rgba(255,255,255,.07); color: rgba(238,240,244,.65); }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle:checked .quick-toggle-icon { background-color: #318bd5; color: white; box-shadow: 0 4px 12px -4px rgba(49,139,213,.7); }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-round-toggle .quick-toggle > StBoxLayout,

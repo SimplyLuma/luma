@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Handheld short press locks and blanks; logind retains emergency long press.
+// Holding the key must not toggle the display on every key repeat.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -61,8 +62,10 @@ export class HandheldPowerButton {
                 this._blanked = false;
                 this._setMode(0);
             } else {
-                // Secure the session before switching off its display.
-                Main.screenShield.lock(false);
+                // Secure the session before switching off its display. The
+                // login screen has no session yet, so it only blanks.
+                if (!Main.sessionMode.isGreeter)
+                    Main.screenShield.lock(false);
                 this._blanked = true;
                 this._setMode(3);
             }
@@ -70,12 +73,12 @@ export class HandheldPowerButton {
         let attempts = 0;
         const grab = () => {
             if (!this._action) {
-                this._action = global.display.grab_accelerator('XF86PowerOff', Meta.KeyBindingFlags.NONE);
+                this._action = global.display.grab_accelerator('XF86PowerOff', Meta.KeyBindingFlags.IGNORE_AUTOREPEAT);
                 if (this._action)
                     Main.wm.allowKeybinding(Meta.external_binding_name_for_action(this._action), Shell.ActionMode.ALL);
             }
             if (!this._wakeAction) {
-                this._wakeAction = global.display.grab_accelerator('XF86WakeUp', Meta.KeyBindingFlags.NONE);
+                this._wakeAction = global.display.grab_accelerator('XF86WakeUp', Meta.KeyBindingFlags.IGNORE_AUTOREPEAT);
                 if (this._wakeAction)
                     Main.wm.allowKeybinding(Meta.external_binding_name_for_action(this._wakeAction), Shell.ActionMode.ALL);
             }

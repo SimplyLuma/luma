@@ -16,8 +16,8 @@
  *    (luma_ui_set_part: header, hero, group, card, row) drawn at TV size.
  *
  * The remote: while the focus is in the island, Up/Down opens each page at once; Right (or OK)
- * steps into the page and folds the island to a 100-wide rail of icons with the open page a chip;
- * Left off the page's left edge (or off a slider at its minimum) opens it again; Back in the page
+ * steps into the page, and the island stays open beside it with the open page a chip (it does not fold
+ * on its own: Nick, 10 Nov); Left off the page's left edge (or off a slider at its minimum) returns to it; Back in the page
  * goes up a level (a page's "back" part) or returns to the island; Back in the island minimises
  * the window, which returns to the TV home's Apps. Inside the page, Up/Down/Left/Right move the
  * focus spatially and OK acts through the widgets' own behaviour (a switch row flips, a choice
@@ -30,6 +30,8 @@
 #include "luma-ui-private.h"
 #include "luma-ui-tokens-private.h"
 #include "luma-navigation-sidebar.h"
+#include "luma-action-center.h"
+#include "luma-layer-host.h"
 #include <adwaita.h>
 #include <math.h>
 #include <string.h>
@@ -108,7 +110,25 @@ static char *wallpaper_path(void) {
   const char *key = adw_style_manager_get_dark(adw_style_manager_get_default()) &&
                     g_settings_schema_has_key(schema, "picture-uri-dark") ? "picture-uri-dark" : "picture-uri";
   g_autofree char *uri = g_settings_get_string(settings, key);
-  return uri != NULL && *uri != '\0' ? g_filename_from_uri(uri, NULL, NULL) : NULL;
+  char *path = uri != NULL && *uri != '\0' ? g_filename_from_uri(uri, NULL, NULL) : NULL;
+  /* In a Flatpak the host's /usr (where the shell's wallpapers live) is at /run/host/usr, and Luma's own
+   * default (the system dconf database) is not visible: the sandbox reads GNOME's built-in value. A
+   * wallpaper the person chose is in their own dconf and is read as usual. Without this every sandboxed
+   * app's room was black. */
+  g_autoptr(GVariant) chosen = g_settings_get_user_value(settings, key);
+  if (g_file_test("/.flatpak-info", G_FILE_TEST_EXISTS) && (chosen == NULL || path == NULL || !g_file_test(path, G_FILE_TEST_EXISTS))) {
+    char *host = chosen != NULL && path != NULL ? g_build_filename("/run/host", path, NULL) : NULL;
+    if (host == NULL || !g_file_test(host, G_FILE_TEST_EXISTS)) {
+      g_free(host);
+      host = g_strdup("/run/host/usr/share/backgrounds/luma/prism.png");
+    }
+    if (g_file_test(host, G_FILE_TEST_EXISTS)) {
+      g_free(path);
+      return host;
+    }
+    g_free(host);
+  }
+  return path;
 }
 
 static void saturate(GdkPixbuf *pixbuf, double k) {
@@ -260,7 +280,7 @@ typedef struct {
   GtkEventController *keys;
   GSettings *interface, *state, *a11y;
   double unit;
-  gboolean active, rail, opaque;
+  gboolean active, opaque;
   guint clock_id, settle_id, relax_id, restyle_id;
   gulong focus_id, visible_id;
   int sidebar_width, sidebar_height, sidebar_margin;
@@ -314,9 +334,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame > .luma-navigation-sidebar { margin: 166tv 0 56tv 96tv; min-width: 376tv; padding: 12tv; border-radius: 36tv;\n"
 "  background-color: @bar@; background-image: none; border: none; outline: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
-".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail { min-width: 76tv; }\n"
+".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail { min-width: 68tv; }\n"
 /* a choice's drop list (a LumaUI floating menu, lumaui-tv-menu): the mockup's .drop and .opt */
-".lumaui-tv-menu { padding: 12tv; border-radius: 30tv; border: none; border-spacing: 2tv; background-color: rgba(34, 36, 40, 0.95); background-image: none;\n"
+".lumaui-tv-menu { padding: 12tv; border-radius: 30tv; border: none; border-spacing: 2tv; background-color: @bar_solid@; background-image: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
 ".lumaui-tv-menu button.lumaui-menu-item { min-height: 68tv; padding: 0 22tv; margin: 0; border-radius: 20tv; border: none; outline: none;\n"
 "  background: none; box-shadow: none; color: @ink@; }\n"
@@ -326,8 +346,9 @@ static const char *const tv_sheet =
 ".lumaui-tv-menu button.lumaui-menu-item:focus-visible, .lumaui-tv-menu button.lumaui-menu-item:focus {\n"
 "  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
 "  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
-/* folded, a row's icon keeps its place (19 in, as open), not centred in the rail */
-".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail .luma-navigation-row { padding: 0 27tv 0 19tv; }\n"
+/* folded, a row's icon keeps its place (19 in, as open), and the rail is 19 + 30 + 19 inside, so the icon is centred in its
+ * chip (Nick, 10 Nov: the rail had 27 to the right of the icon, 19 to its left) */
+".lumaui-tv-frame > .luma-navigation-sidebar.lumaui-tv-rail .luma-navigation-row { padding: 0 19tv; }\n"
 ".lumaui-tv-frame > .luma-navigation-sidebar scrolledwindow, .lumaui-tv-frame > .luma-navigation-sidebar list {\n"
 "  background: none; padding: 0; margin: 0; border: none; box-shadow: none; }\n"
 ".lumaui-tv-frame scrollbar { opacity: 0; min-width: 0; min-height: 0; }\n"
@@ -345,7 +366,130 @@ static const char *const tv_sheet =
 ".lumaui-tv-frame .luma-navigation-section { min-height: 1.5tv; margin: 8tv 18tv; padding: 0; border-radius: 0;\n"
 "  background-color: alpha(white, 0.1); background-image: none; box-shadow: none; }\n"
 ".lumaui-tv-frame .luma-navigation-section * { min-height: 0; margin: 0; padding: 0; }\n"
-/* the page */
+/* the action bar on demand (an action center on a TV page, luma-action-center.c): the mockups' .tv-ab, the desktop's
+ * floating bar grown for the couch; it comes up with the menu key or a held OK. Near opaque over the page, as the
+ * drop lists: there is no live blur. */
+".lumaui-action-center.lumaui-tv-demand box.lumaui-ac-bar { min-height: 76tv; padding: 10tv; border-radius: 32tv; border-spacing: 6tv;\n"
+"  background-color: @bar_solid@; background-image: none; border: none; box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+".lumaui-action-center.lumaui-tv-demand { margin-bottom: 56tv; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-button { min-height: 76tv; min-width: 76tv; padding: 0 24tv; margin: 0; border-radius: 22tv;\n"
+"  border: none; outline: none; background: none; box-shadow: none; color: @ink_2@; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-button box { border-spacing: 12tv; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-button label { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 650; color: inherit; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-button image { -gtk-icon-size: 32tv; color: inherit; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-button.on { background-color: @chip@; color: @ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+".lumaui-action-center.lumaui-tv-demand button:focus-visible, .lumaui-action-center.lumaui-tv-demand entry:focus-within {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+".lumaui-action-center.lumaui-tv-demand button:focus-visible label, .lumaui-action-center.lumaui-tv-demand button:focus-visible image { color: @key_ink@; }\n"
+".lumaui-action-center.lumaui-tv-demand .lumaui-bar-rule { min-width: 1.5tv; min-height: 48tv; margin: 0 10tv; background-color: alpha(white, 0.14); }\n"
+".lumaui-action-center.lumaui-tv-demand entry.lumaui-bar-search { min-height: 76tv; min-width: 76tv; padding: 0 24tv; border-radius: 22tv;\n"
+"  background-color: transparent; box-shadow: none; color: @ink_2@; }\n"
+".lumaui-action-center.lumaui-tv-demand entry.lumaui-bar-search text { font-size: 24tv; font-weight: 650; }\n"
+".lumaui-action-center.lumaui-tv-demand entry.lumaui-bar-search image { -gtk-icon-size: 32tv; }\n"
+/* a grown row: the panel above the bar's row in the same glass (the mockups' .tv-ab.grown) */
+".lumaui-action-center.lumaui-tv-demand .lumaui-panel-heading { font-size: 24tv; font-weight: 650; color: @ink@; padding: 0 18tv; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-panel-row, .lumaui-action-center.lumaui-tv-demand button.lumaui-panel-choice {\n"
+"  min-height: 68tv; padding: 0 22tv; border-radius: 20tv; border: none; outline: none; background: none; box-shadow: none; color: @ink@; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-panel-row label, .lumaui-action-center.lumaui-tv-demand button.lumaui-panel-choice label {\n"
+"  font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 600; color: inherit; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-panel-row image, .lumaui-action-center.lumaui-tv-demand button.lumaui-panel-choice image {\n"
+"  -gtk-icon-size: 26tv; color: inherit; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-panel-choice.on { background-color: @chip@; color: @ink@; }\n"
+/* a grown row of chips or tiles (Sort by, Copy to: the mockups' .tv-ab.grown > .tv-ab-row.top), one centred line, the
+ * heading first; a tile is a chip with its words and its quiet second line (.tv-ab-item small); one that can't act now
+ * (a disk that isn't here) is dimmed (.tv-ab-item.off) */
+".lumaui-action-center.lumaui-tv-demand .lumaui-panel-list.lumaui-tv-row { border-spacing: 6tv; padding: 0 0 10tv; }\n"
+".lumaui-action-center.lumaui-tv-demand .lumaui-panel-list.lumaui-tv-row > .lumaui-panel-heading { padding: 0 14tv 0 18tv; color: @ink_2@; }\n"
+".lumaui-action-center.lumaui-tv-demand .lumaui-panel-list.lumaui-tv-row .lumaui-panel-choices { border-spacing: 6tv; }\n"
+".lumaui-action-center.lumaui-tv-demand .lumaui-panel-note { font-family: Figtree, sans-serif; font-size: 22tv; font-weight: 600; color: @ink_3@; padding: 0 18tv; min-height: 76tv; }\n"
+".lumaui-action-center.lumaui-tv-demand .lumaui-bar-tiles { margin: 0; padding: 0; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile { min-height: 76tv; min-width: 76tv; padding: 0 24tv; margin: 0; border-radius: 22tv;\n"
+"  border: none; outline: none; background: none; box-shadow: none; color: @ink@; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile .lumaui-bar-tile-stack { border-spacing: 12tv; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile label { font-family: Figtree, sans-serif; font-size: 24tv; font-weight: 650; color: inherit; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile label.lumaui-bar-tile-sub { font-size: 19tv; font-weight: 600; color: @ink_3@; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile image { -gtk-icon-size: 32tv; color: inherit; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile:disabled { opacity: 0.35; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile:focus-visible {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+".lumaui-action-center.lumaui-tv-demand button.lumaui-bar-tile:focus-visible label.lumaui-bar-tile-sub { color: alpha(@key_ink@, 0.62); }\n"
+/* a full-screen activity's transport (a photograph, a film, a file: the mockups' .tv-ab.transport): the bar as two
+ * rows, where you are on top (.title, a .figure such as "3 of 44", a quiet .note) and what you can do below (.acts:
+ * lumaui-tv-transport-item buttons, lumaui-tv-transport-round for ‹ › and play, a .rule between groups). .calm while it
+ * rests: it leaves after 3 s and any press brings it back (the app's timer). It is as wide as what it holds, centred,
+ * never narrower than 960 (so it keeps its width from file to file) unless it holds a track (a film's), which runs the
+ * room's width: the app centres it (halign) or fills it (Nick, 10 Nov: edge to edge it was "super long"). */
+"window.lumaui-tv .lumaui-tv-transport { margin: 0 96tv 56tv; padding: 10tv; border-radius: 32tv; border-spacing: 0; min-width: 960tv;\n"
+"  background-color: @bar_solid@; background-image: none; box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@;\n"
+"  transition: opacity 300ms; }\n"
+"window.lumaui-tv .lumaui-tv-transport.calm { opacity: 0; }\n"
+"window.lumaui-tv .lumaui-tv-transport > .top { min-height: 76tv; padding: 0 18tv 10tv; margin-bottom: 10tv; border-spacing: 20tv;\n"
+"  border-bottom: 1.5tv solid alpha(white, 0.1); }\n"
+"window.lumaui-tv .lumaui-tv-transport label { font-family: Figtree, sans-serif; }\n"
+"window.lumaui-tv .lumaui-tv-transport label.title { font-size: 26tv; font-weight: 700; color: @ink@; }\n"
+"window.lumaui-tv .lumaui-tv-transport label.figure { font-size: 22tv; font-weight: 650; color: @ink_2@; }\n"
+"window.lumaui-tv .lumaui-tv-transport label.note { font-size: 22tv; font-weight: 600; color: @ink_3@; }\n"
+"window.lumaui-tv .lumaui-tv-transport > .acts { border-spacing: 6tv; }\n"
+"window.lumaui-tv .lumaui-tv-transport > .acts > .rule { min-width: 1.5tv; min-height: 48tv; margin: 0 10tv; background-color: alpha(white, 0.14); }\n"
+"window.lumaui-tv .lumaui-tv-transport button.lumaui-tv-transport-item { min-height: 76tv; min-width: 76tv; padding: 0 24tv; border-radius: 22tv;\n"
+"  border: none; outline: none; background: none; box-shadow: none; color: @ink_2@; }\n"
+"window.lumaui-tv .lumaui-tv-transport button.lumaui-tv-transport-round { padding: 0; border-radius: 9999px; }\n"
+"window.lumaui-tv .lumaui-tv-transport button.lumaui-tv-transport-item box { border-spacing: 12tv; }\n"
+"window.lumaui-tv .lumaui-tv-transport button.lumaui-tv-transport-item label { font-size: 24tv; font-weight: 650; color: inherit; }\n"
+"window.lumaui-tv .lumaui-tv-transport button.lumaui-tv-transport-item image { -gtk-icon-size: 32tv; color: inherit; }\n"
+"window.lumaui-tv .lumaui-tv-transport button.lumaui-tv-transport-item:focus-visible {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+/* items of a grid or a list on the page (a file, a photo, a row of a list view): the whole item takes the
+ * key, as the mockup's file tile (a drawn folder has no rectangle to ring); a chosen item is a chip (what the
+ * action bar acts on while the remote is in it), the focus the one bright thing */
+".lumaui-tv-frame > .luma-island gridview > child, .lumaui-tv-frame > .luma-island listview > row {\n"
+"  border-radius: 24tv; outline: none; background: none; box-shadow: none; }\n"
+".lumaui-tv-frame > .luma-island gridview > child:selected, .lumaui-tv-frame > .luma-island listview > row:selected {\n"
+"  background-color: @chip@; background-image: none; color: @ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+".lumaui-tv-frame > .luma-island gridview > child:focus-visible, .lumaui-tv-frame > .luma-island listview > row:focus-visible {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+".lumaui-tv-frame > .luma-island gridview > child:focus-visible label, .lumaui-tv-frame > .luma-island listview > row:focus-visible label {\n"
+"  color: @key_ink@; }\n"
+/* a layer over the whole frame (lumaui-tv-layer: a guard, a full-screen view): it holds the remote, Back
+ * presses its lumaui-dialog-cancel; it is not a sheet */
+"window.lumaui-tv .lumaui-tv-layer { margin: 0; padding: 0; border-radius: 0; border: none; box-shadow: none; }\n"
+/* a floating panel over the dimmed screen (the mockups' .scrim and .panel: Filer's Info, OpenEmu's game page): the layer
+ * dims what is under it (lumaui-tv-scrim), the panel is bar material; its parts: a quiet .lumaui-tv-meta line, a
+ * .lumaui-tv-h1 name, a .lumaui-tv-card of .lumaui-tv-fact rows (a name and a value), lumaui-tv-button buttons (.go the
+ * blue one: what OK would do). The app lays the panel out; the kit gives the materials. */
+"window.lumaui-tv .lumaui-tv-layer.lumaui-tv-scrim { background-color: @scrim@; }\n"
+"window.lumaui-tv .lumaui-tv-panel { padding: 48tv; border-radius: 44tv; border-spacing: 52tv; background-color: @sheet@;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv .lumaui-tv-panel label { font-family: Figtree, sans-serif; }\n"
+"window.lumaui-tv .lumaui-tv-panel .lumaui-tv-meta { font-size: 20tv; font-weight: 600; color: @ink_3@; }\n"
+"window.lumaui-tv .lumaui-tv-panel .lumaui-tv-h1 { font-size: 46tv; font-weight: 750; letter-spacing: -1.4tv; color: @ink@; margin: 10tv 0 26tv; }\n"
+"window.lumaui-tv .lumaui-tv-panel .lumaui-tv-note { font-size: 22tv; font-weight: 500; color: @ink_2@; margin-top: 22tv; }\n"
+"window.lumaui-tv .lumaui-tv-card { padding: 8tv; border-radius: 30tv; border-spacing: 0; background-color: @bar@;\n"
+"  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
+"window.lumaui-tv .lumaui-tv-card > .lumaui-tv-fact { min-height: 64tv; padding: 8tv 22tv; border-spacing: 20tv; }\n"
+"window.lumaui-tv .lumaui-tv-card > .lumaui-tv-fact + .lumaui-tv-fact { border-top: 1.5tv solid @divider@; }\n"
+"window.lumaui-tv .lumaui-tv-fact label.name { font-size: 25tv; font-weight: 600; color: @ink@; }\n"
+"window.lumaui-tv .lumaui-tv-fact label.value { font-size: 23tv; font-weight: 600; color: @ink_2@; }\n"
+"window.lumaui-tv .lumaui-tv-panel .lumaui-tv-acts { margin-top: 30tv; border-spacing: 14tv; }\n"
+"window.lumaui-tv button.lumaui-tv-button { min-height: 66tv; padding: 0 30tv; border-radius: 22tv; border: none; outline: none;\n"
+"  background-color: @chip@; background-image: none; color: @ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @chip_glint@, 0 0 0 1.5tv @chip_rim@, 0 2tv 5tv @chip_drop@; }\n"
+"window.lumaui-tv button.lumaui-tv-button box { border-spacing: 12tv; }\n"
+"window.lumaui-tv button.lumaui-tv-button label { font-size: 25tv; font-weight: 650; color: inherit; }\n"
+"window.lumaui-tv button.lumaui-tv-button image { -gtk-icon-size: 26tv; color: inherit; }\n"
+"window.lumaui-tv button.lumaui-tv-button.go { background-image: linear-gradient(180deg, @accent@, @accent_low@); color: @accent_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 alpha(white, 0.25), 0 0 0 1.5tv alpha(black, 0.4); }\n"
+"window.lumaui-tv button.lumaui-tv-button:focus-visible {\n"
+"  background-image: linear-gradient(180deg, @key_top@, @key_bottom@); color: @key_ink@;\n"
+"  box-shadow: inset 0 1.5tv 0 @key_glint@, 0 0 0 1.5tv @key_rim@, 0 3tv 10tv @key_drop@; }\n"
+"window.lumaui-tv button.lumaui-tv-button.go:focus-visible { background-image: linear-gradient(180deg, @accent_focus@, @accent_fill@); color: @accent_ink@; }\n"
+"/* the page */\n"
 ".lumaui-tv-frame > .luma-island { margin: 166tv 96tv 0 44tv; padding: 0; border-radius: 0; border: none; outline: none;\n"
 "  background: none; box-shadow: none; color: @ink@; }\n"
 ".lumaui-tv-frame > .luma-island label { color: inherit; }\n"
@@ -623,7 +767,7 @@ static const char *const tv_parts_sheet =
 ".lumaui-tv-frame > .lumaui-tv-island { margin: 166tv 0 56tv 96tv; min-width: 376tv; padding: 12tv; border-radius: 36tv;\n"
 "  background-color: @bar@; background-image: none; border: none; outline: none;\n"
 "  box-shadow: inset 0 1.5tv 0 @bar_glint@, 0 0 0 1.5tv @bar_rim@, 0 18tv 44tv -10tv @bar_drop@; }\n"
-".lumaui-tv-frame > .lumaui-tv-island.lumaui-tv-rail { min-width: 76tv; }\n"
+".lumaui-tv-frame > .lumaui-tv-island.lumaui-tv-rail { min-width: 68tv; }\n"
 ".lumaui-tv-frame > .lumaui-tv-island scrolledwindow, .lumaui-tv-frame > .lumaui-tv-island list, .lumaui-tv-frame > .lumaui-tv-island viewport {\n"
 "  background: none; padding: 0; margin: 0; border: none; box-shadow: none; }\n"
 ".lumaui-tv-frame > .lumaui-tv-island .luma-navigation-face, .lumaui-tv-frame > .lumaui-tv-island .luma-navigation-icon {\n"
@@ -856,6 +1000,11 @@ static void tv_css(TvFrame *f) {
     {"@bar@", LUMA_UI_TV_MATERIALS_BAR}, {"@bar_rim@", LUMA_UI_TV_MATERIALS_BAR_RIM},
     {"@bar_drop@", LUMA_UI_TV_MATERIALS_BAR_DROP}, {"@bar_glint@", LUMA_UI_TV_MATERIALS_BAR_GLINT},
     {"@sheet_solid@", "rgba(36, 38, 42, 0.97)"},
+    /* the bar's material where nothing behind it is blurred (a drop list, the action bar, a transport) */
+    {"@bar_solid@", "rgba(34, 36, 40, 0.95)"},
+    {"@scrim@", LUMA_UI_TV_MATERIALS_SCRIM},
+    {"@accent_low@", LUMA_UI_TV_MATERIALS_ACCENT_LOW}, {"@accent_focus@", LUMA_UI_TV_MATERIALS_ACCENT_FOCUS},
+    {"@accent_ink@", LUMA_UI_TV_MATERIALS_ACCENT_INK},
     {"@sheet@", LUMA_UI_TV_MATERIALS_SHEET}, {"@accent@", LUMA_UI_TV_MATERIALS_ACCENT},
     /* a filled accent surface (a hero's tile, a switch that is on, a slider's fill): the mockup's oklch(0.62 0.15 250) */
     {"@accent_fill@", LUMA_UI_TV_MATERIALS_ACCENT_FOCUS_LOW},
@@ -1167,9 +1316,18 @@ static gboolean button_line(GtkWidget *button) {
 /* The sidebar in (or out of) the island. A LumaNavigationSidebar does it itself; any other sidebar
  * is told by its classes (lumaui-tv-island, with lumaui-tv-rail while folded) and is sized here:
  * as tall as its rows, a long list stopping at the bottom safe line. */
+/* The island's list scrolls inside its plate: what runs on past the plate's top or bottom fades there as a
+ * page's top does (tv.scroll fade_top, each way), the plate itself whole (luma-tv-fade.c). */
+static void island_fades(TvFrame *f, gboolean tv) {
+  GtkWidget *scroll = f->generic ? f->scroll : first_of_type(f->sidebar, GTK_TYPE_SCROLLED_WINDOW);
+  if (scroll != NULL)
+    luma_tv_fade_wrap(GTK_SCROLLED_WINDOW(scroll), tv, LUMA_UI_TV_SCROLL_FADE_TOP, LUMA_UI_TV_SCROLL_FADE_TOP);
+}
+
 static void sidebar_set_tv(TvFrame *f, gboolean tv, gboolean rail) {
   if (!f->generic) {
     luma_navigation_sidebar_set_tv(LUMA_NAVIGATION_SIDEBAR(f->sidebar), tv, rail);
+    island_fades(f, tv);
     return;
   }
   if (tv && !gtk_widget_has_css_class(f->sidebar, "lumaui-tv-island")) {
@@ -1180,6 +1338,7 @@ static void sidebar_set_tv(TvFrame *f, gboolean tv, gboolean rail) {
   sidebar_lines(f->sidebar, tv); /* a row's lead and title 18 apart, by the TV sheet alone */
   gtk_widget_set_valign(f->sidebar, tv ? GTK_ALIGN_START : f->sidebar_valign);
   luma_ui_set_css_class(f->sidebar, "lumaui-tv-island", tv);
+  island_fades(f, tv);
 }
 
 static gboolean row_reachable(GtkListBoxRow *row) {
@@ -1197,16 +1356,6 @@ static GtkListBoxRow *selected_row(TvFrame *f) {
     if (row_reachable(row))
       return row;
   return NULL;
-}
-
-static void set_rail(TvFrame *f, gboolean rail) {
-  if (f->rail == rail || f->sidebar == NULL)
-    return;
-  f->rail = rail;
-  if (f->room != NULL)
-    gtk_widget_queue_draw(f->room); /* the island's glass follows its new width */
-  luma_ui_set_css_class(f->sidebar, "lumaui-tv-rail", rail);
-  sidebar_set_tv(f, TRUE, rail);
 }
 
 /* The page's parts and its clamp, while on a TV.
@@ -2154,8 +2303,6 @@ static void focus_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
   } else if (in_sidebar(f, focus)) {
     f->page_zone = FALSE;
   }
-  if (in_page(f, focus) || in_sidebar(f, focus))
-    set_rail(f, in_page(f, focus));
   queue_relax(f);
 }
 
@@ -2165,7 +2312,6 @@ static void to_island(TvFrame *f) {
   GtkListBoxRow *row = selected_row(f);
   if (row != NULL)
     gtk_widget_grab_focus(GTK_WIDGET(row));
-  set_rail(f, FALSE);
 }
 
 /* Into the page at its first row: the hero or the first group, past the header's own controls
@@ -2189,7 +2335,6 @@ static gboolean to_page(TvFrame *f) {
     to_island(f);
     return FALSE;
   }
-  set_rail(f, TRUE);
   return TRUE;
 }
 
@@ -2339,7 +2484,40 @@ static gboolean editable(GtkWidget *focus) {
 /* A question over the page (LumaUI's dialog in the window's modal layer, a libadwaita dialog): on a
  * TV it is driven like the page, the remote's focus held inside it, Back as its Cancel. */
 static gboolean is_modal(GtkWidget *w) {
-  return gtk_widget_has_css_class(w, "lumaui-dialog") || gtk_widget_has_css_class(w, "lumaui-modal") || ADW_IS_DIALOG(w);
+  return gtk_widget_has_css_class(w, "lumaui-dialog") || gtk_widget_has_css_class(w, "lumaui-modal") || ADW_IS_DIALOG(w) ||
+         gtk_widget_has_css_class(w, "lumaui-tv-layer") ||
+         (LUMA_IS_ACTION_CENTER(w) && luma_action_center_get_tv_open(LUMA_ACTION_CENTER(w)));
+}
+
+/* The page's action center: on a TV it is the action bar on demand (the menu key, a held OK). */
+/* The page's bar is the action center attached to a layer host on the page (luma_action_center_attach),
+ * never a toolbar-mode center that is part of the page (a tab strip). */
+static LumaActionCenter *attached_center(GtkWidget *w) {
+  if (LUMA_IS_LAYER_HOST(w)) {
+    LumaActionCenter *own = g_object_get_data(G_OBJECT(w), "lumaui-action-center");
+    if (own != NULL && gtk_widget_get_parent(GTK_WIDGET(own)) == w)
+      return own;
+  }
+  for (GtkWidget *c = gtk_widget_get_first_child(w); c != NULL; c = gtk_widget_get_next_sibling(c)) {
+    LumaActionCenter *found = attached_center(c);
+    if (found != NULL) return found;
+  }
+  return NULL;
+}
+
+static LumaActionCenter *page_center(TvFrame *f) {
+  LumaActionCenter *center = f->island != NULL ? attached_center(f->island) : NULL;
+  if (center == NULL) return NULL;
+  luma_action_center_set_tv_demand(center, TRUE);
+  return center;
+}
+
+static gboolean open_bar(TvFrame *f, GtkWidget *from) {
+  LumaActionCenter *center = page_center(f);
+  if (center == NULL || from == NULL || gtk_widget_is_ancestor(from, GTK_WIDGET(center)))
+    return FALSE;
+  luma_action_center_tv_open(center, from);
+  return luma_action_center_get_tv_open(center);
 }
 
 static GtkWidget *find_modal(GtkWidget *w) {
@@ -2459,6 +2637,17 @@ static gboolean modal_key(TvFrame *f, GtkWidget *modal, guint key) {
   case GDK_KEY_Left: case GDK_KEY_KP_Left: dir = GTK_DIR_LEFT; break;
   case GDK_KEY_Right: case GDK_KEY_KP_Right: dir = GTK_DIR_RIGHT; break;
   default:
+    if ((key == GDK_KEY_Escape || key == GDK_KEY_Back) && LUMA_IS_ACTION_CENTER(modal)) {
+      /* the bar on demand: a grown row folds first, then the bar gives the remote back */
+      LumaActionCenter *center = LUMA_ACTION_CENTER(modal);
+      if (luma_action_center_get_grown(center) != NULL) {
+        luma_action_center_fold(center);
+        gtk_widget_child_focus(modal, GTK_DIR_TAB_FORWARD);
+      } else {
+        luma_action_center_tv_close(center);
+      }
+      return GDK_EVENT_STOP;
+    }
     if (key == GDK_KEY_Escape || key == GDK_KEY_Back) {
       GtkWidget *back = back_part(modal);
       GtkWidget *cancel = find_class(modal, "lumaui-dialog-cancel");
@@ -2488,6 +2677,7 @@ typedef struct {
   GtkWidget *item;   /* weak: OK is down on it */
   guint source;      /* the hold timer */
   gboolean opened;   /* the menu opened: the release does nothing */
+  gboolean bar;      /* the hold brings up the page's action bar, not an item's menu */
 } TvHold;
 
 static gboolean offers_menu(GtkWidget *w) {
@@ -2522,7 +2712,10 @@ static gboolean hold_elapsed(gpointer data) {
   hold->source = 0;
   if (hold->item != NULL && f->active) {
     hold->opened = TRUE;
-    gtk_widget_activate_action(hold->item, "menu.popup", NULL);
+    if (hold->bar)
+      open_bar(f, hold->item);
+    else
+      gtk_widget_activate_action(hold->item, "menu.popup", NULL);
   }
   return G_SOURCE_REMOVE;
 }
@@ -2530,9 +2723,14 @@ static gboolean hold_elapsed(gpointer data) {
 /* OK pressed on an item with a menu: nothing yet; the release is the OK, the hold the menu. */
 static gboolean hold_begin(TvFrame *f, GtkWidget *focus) {
   GtkWidget *item = menu_item(focus, gtk_widget_get_parent(f->island));
-  if (item == NULL || editable(focus))
+  LumaActionCenter *center = item == NULL ? page_center(f) : NULL;
+  /* without a menu of its own, a held OK brings up the page's action bar (an item in a grid, a row) */
+  gboolean bar = item == NULL && center != NULL && focus != NULL && !GTK_IS_BUTTON(focus) &&
+                 !gtk_widget_is_ancestor(focus, GTK_WIDGET(center));
+  if ((item == NULL && !bar) || editable(focus))
     return FALSE;
   TvHold *hold = tv_hold(f);
+  hold->bar = bar;
   g_clear_handle_id(&hold->source, g_source_remove);
   g_clear_weak_pointer(&hold->item);
   g_set_weak_pointer(&hold->item, focus);
@@ -2629,6 +2827,7 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
   if (key == GDK_KEY_Menu && !text) {
     GtkWidget *item = menu_item(focus, gtk_widget_get_parent(f->island));
     if (item != NULL) gtk_widget_activate_action(item, "menu.popup", NULL);
+    else open_bar(f, focus); /* the menu key is the action bar's (tv-mode.md, Remotes) */
     return GDK_EVENT_STOP;
   }
   if (is_back(key)) {
@@ -2691,8 +2890,7 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
   if (moved && dir == GTK_DIR_UP && !in_page(f, focus_of(f))) {
     /* GTK's Up off the page's top row spills into the island beside it: the bar's cluster instead */
     f->page_zone = TRUE;
-    if (to_cluster(f, focus))
-      set_rail(f, TRUE); /* the island stays folded beside the page the remote came from */
+    to_cluster(f, focus);
   } else if (!moved) {
     if (dir == GTK_DIR_LEFT && f->sidebar != NULL)
       to_island(f); /* off the page's left edge: the island opens again */
@@ -2856,7 +3054,6 @@ static void active_changed(GtkWindow *window, GParamSpec *pspec, TvFrame *f) {
 
 static void enter(TvFrame *f) {
   f->active = TRUE;
-  f->rail = FALSE;
   gtk_widget_add_css_class(f->frame, "lumaui-tv-frame");
   f->solo = f->sidebar == NULL && f->island != NULL && find_class(f->island, "lumaui-part-header") != NULL;
   luma_ui_set_css_class(f->frame, "lumaui-tv-centred", centred(f));
@@ -2930,6 +3127,7 @@ static void enter(TvFrame *f) {
     f->active_id = g_signal_connect(f->window, "notify::is-active", G_CALLBACK(active_changed), f);
   clock_tick(f);
   gtk_window_set_focus_visible(f->window, TRUE);
+  page_center(f); /* the page's action center becomes the bar on demand */
   queue_settle(f);
 }
 
@@ -2966,6 +3164,9 @@ static void leave(TvFrame *f) {
   adw_application_window_set_content(ADW_APPLICATION_WINDOW(f->window), f->content);
   g_object_unref(f->content);
 
+  LumaActionCenter *center = attached_center(f->island);
+  if (center != NULL)
+    luma_action_center_set_tv_demand(center, FALSE);
   restore_page(f->island);
   page_modal_end(f);
   GtkWidget *modal = find_modal(GTK_WIDGET(f->window));
@@ -2980,7 +3181,6 @@ static void leave(TvFrame *f) {
   gtk_widget_remove_css_class(f->frame, "lumaui-tv-frame");
   gtk_widget_remove_css_class(f->frame, "lumaui-tv-centred");
   gtk_widget_remove_css_class(f->frame, "lumaui-tv-solo");
-  f->rail = FALSE;
 }
 
 static void frame_free(TvFrame *f) {

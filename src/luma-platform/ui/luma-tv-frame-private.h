@@ -22,4 +22,23 @@ gboolean luma_tv_frame_key_release(GtkWindow *window, guint keyval);
 typedef void (*LumaTvKeyboardFunc)(guint height, gpointer data);
 gpointer luma_tv_keyboard_watch(LumaTvKeyboardFunc func, gpointer data);
 void luma_tv_keyboard_unwatch(gpointer watch);
+/* The TV action bar on demand (luma-action-center.c): on a TV page an action center shows only while
+ * the remote asked for it (the menu key, a held OK), holds the remote, and gives it back on Back or
+ * once an action has acted. */
+typedef struct _LumaActionCenter LumaActionCenter;
+void luma_action_center_set_tv_demand(LumaActionCenter *self, gboolean demand);
+gboolean luma_action_center_get_tv_demand(LumaActionCenter *self);
+void luma_action_center_tv_open(LumaActionCenter *self, GtkWidget *from);
+void luma_action_center_tv_close(LumaActionCenter *self);
+gboolean luma_action_center_get_tv_open(LumaActionCenter *self);
+/* TV posture's eased edge fades (luma-tv-fade.c), the mockups' .tv-page / .tv-fade: @draw draws what fades.
+ * FALSE (nothing drawn) off a TV. */
+typedef void (*LumaTvFadeDraw)(GtkWidget *widget, GtkSnapshot *snapshot);
+double luma_tv_fade_unit(GtkWidget *widget);
+gboolean luma_tv_fade_snapshot(GtkWidget *widget, GtkSnapshot *snapshot, GtkAdjustment *adjustment,
+                               double top_units, double bottom_units, LumaTvFadeDraw draw);
+/* A scrolled list's fades (the floating island's): put between @scroll and what it scrolls, or taken away. */
+#define LUMA_TYPE_TV_FADE (luma_tv_fade_get_type())
+G_DECLARE_FINAL_TYPE(LumaTvFade, luma_tv_fade, LUMA, TV_FADE, GtkWidget)
+void luma_tv_fade_wrap(GtkScrolledWindow *scroll, gboolean tv, double top_units, double bottom_units);
 G_END_DECLS
