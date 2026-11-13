@@ -43,19 +43,10 @@ SLOT_MINUTES = 15
 # ── Time, the way this person reads it ────────────────────────────────────
 
 def uses_24_hour() -> bool:
-    """GNOME's clock-format setting, then the locale."""
-    override = os.environ.get("LUMA_CLOCK_HOUR_FORMAT", "").strip()
-    if override in {"12", "24"}:
-        return override == "24"
+    """GNOME's clock-format setting, then the locale (shared with Clock)."""
     try:
-        schema = Gio.SettingsSchemaSource.get_default().lookup("org.gnome.desktop.interface", True)
-        if schema is not None and schema.has_key("clock-format"):
-            return Gio.Settings.new("org.gnome.desktop.interface").get_string("clock-format") == "24h"
-    except Exception:
-        pass
-    try:
-        from .clock_backend import uses_24_hour as locale_24_hour
-        return locale_24_hour()
+        from .clock_backend import uses_24_hour as system_24_hour
+        return system_24_hour()
     except Exception:
         return False
 

@@ -53,6 +53,19 @@ cache.write_text(json.dumps(payload))
 assert snapshot()['weather']['value'] == '22°', 'widget must advance to the current forecast hour'
 payload.pop('hours')
 cache.write_text(json.dumps(payload))
+# Automatic units follow the first named locale: LC_ALL, LC_MEASUREMENT, LANG.
+places.write_text(places.read_text().replace('"metric"', '"automatic"'))
+for name in ('LC_ALL', 'LC_MEASUREMENT', 'LANG'):
+    os.environ.pop(name, None)
+os.environ['LC_MEASUREMENT'] = 'en_US.UTF-8'
+os.environ['LANG'] = 'C.UTF-8'
+assert snapshot()['weather']['value'] == '68°', 'a US measurement locale reads Fahrenheit'
+os.environ['LC_ALL'] = 'en_GB.UTF-8'
+assert snapshot()['weather']['value'] == '20°', 'LC_ALL overrides LC_MEASUREMENT'
+os.environ.pop('LC_ALL'); os.environ['LC_MEASUREMENT'] = ''; os.environ['LANG'] = 'en_US.UTF-8'
+assert snapshot()['weather']['value'] == '68°', 'an empty LC_MEASUREMENT falls through to LANG'
+places.write_text(places.read_text().replace('"automatic"', '"metric"'))
+assert snapshot()['weather']['value'] == '20°', "Weather's own unit setting wins"
 places.write_text(places.read_text().replace('metric', 'imperial'))
 assert snapshot()['weather']['value'] == '68°'
 payload['fetched_at'] = (datetime.now(timezone.utc)-timedelta(hours=7)).isoformat()

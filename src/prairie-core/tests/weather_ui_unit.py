@@ -103,7 +103,7 @@ class ForecastProgressTests(unittest.TestCase):
         essential, sunrise, completed = 'essential', 'sunrise', 'completed'
         window = SimpleNamespace(closed=False, fixture=False, generation=1,
                                  places=(place,), snapshots={}, selected=place.uid,
-                                 units='metric', _refresh_serial={place.uid: 1},
+                                 units='metric', twelve_hour=True, _refresh_serial={place.uid: 1},
                                  _render_sidebar=Mock(), _render=Mock(),
                                  _current_alerts=Mock(return_value=()),
                                  _with_plans=lambda _place, snapshot: snapshot)
@@ -133,7 +133,7 @@ class ForecastProgressTests(unittest.TestCase):
         place = Place('city', 'Test City')
         window = SimpleNamespace(closed=False, fixture=False, generation=1,
                                  places=(place,), snapshots={}, selected=place.uid,
-                                 units='metric', _refresh_serial={place.uid: 1},
+                                 units='metric', twelve_hour=True, _refresh_serial={place.uid: 1},
                                  _render_sidebar=Mock(), _render=Mock(),
                                  _current_alerts=Mock(return_value=()),
                                  _with_plans=lambda _place, snapshot: snapshot)

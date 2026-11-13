@@ -275,11 +275,31 @@ def hour_format_from_pattern(pattern: str) -> bool:
     return "%p" not in pattern and "%I" not in pattern and "%r" not in pattern
 
 
+def _clock_format_setting() -> str | None:
+    """org.gnome.desktop.interface clock-format ("12h"/"24h"), or None without the schema."""
+    try:
+        from gi.repository import Gio
+        source = Gio.SettingsSchemaSource.get_default()
+        schema = source.lookup("org.gnome.desktop.interface", True) if source else None
+        if schema is None or not schema.has_key("clock-format"):
+            return None
+        return Gio.Settings.new("org.gnome.desktop.interface").get_string("clock-format")
+    except Exception:  # noqa: BLE001 - an absent schema falls back to the locale
+        return None
+
+
 def uses_24_hour() -> bool:
-    """Follow the system locale. The simulator hard-codes en-US; that is a placeholder."""
+    """The system clock-format setting, then the locale's time pattern.
+
+    The setting comes first: a process that never called setlocale(LC_TIME), or
+    a locale glibc does not have installed, reports C's 24-hour pattern.
+    """
     override = os.environ.get("LUMA_CLOCK_HOUR_FORMAT", "").strip()
     if override in {"12", "24"}:
         return override == "24"
+    setting = _clock_format_setting()
+    if setting in {"12h", "24h"}:
+        return setting == "24h"
     try:
         pattern = _locale.nl_langinfo(_locale.T_FMT)
     except (AttributeError, ValueError):

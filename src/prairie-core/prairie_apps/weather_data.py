@@ -215,7 +215,8 @@ def plans_for(snapshot: Snapshot, events, moment: datetime) -> tuple[Plan, ...]:
 
 
 def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime | None = None,
-                           observation: Observation | None = None, alerts: tuple[Alert, ...] = ()) -> Snapshot:
+                           observation: Observation | None = None, alerts: tuple[Alert, ...] = (),
+                           twelve_hour: bool = True) -> Snapshot:
     current, place = forecast.current, forecast.place
     moment = local_now(place, now)
     timed_hours = [(hour, to_local(place, hour.time)) for hour in forecast.hours]
@@ -266,7 +267,7 @@ def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime 
         if at is None:
             continue
         kind = condition_for(hour.symbol)
-        hours.append(Hour("Now" if covered and index == 0 else hour_label(at, twelve_hour=True).replace(" ", ""),
+        hours.append(Hour("Now" if covered and index == 0 else hour_label(at, twelve_hour=twelve_hour).replace(" ", ""),
                           temperature_text(hour.temperature_c, units), kind.glyph, _night_at(hour.symbol, at),
                           f"{js_round(hour.precipitation_probability)}%"
                           if hour.precipitation_probability else "",
@@ -312,9 +313,9 @@ def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime 
         target, previous = (sunrise, sunset) if night else (sunset, sunrise)
         progress = None if night else max(0, min(1, (moment - sunrise) / (sunset - sunrise)))
         metrics.append(Metric("sun", "Sunrise" if night else "Sunset", "sunrise" if night else "sunset",
-                              clock_text(target, twelve_hour=True),
+                              clock_text(target, twelve_hour=twelve_hour),
                               f"{'Sunset' if night else 'Sunrise'} {'was' if previous <= moment else 'at'} "
-                              f"{clock_text(previous, twelve_hour=True)}", progress))
+                              f"{clock_text(previous, twelve_hour=twelve_hour)}", progress))
     if current.humidity is not None:
         # MET's current model does not supply dew point. Never invent one.
         metrics.append(Metric("humidity", "Humidity", "droplets", f"{js_round(current.humidity)}%"))
@@ -336,28 +337,28 @@ def snapshot_from_forecast(forecast: CityForecast, units: str, *, now: datetime 
         tiles.append(Tile("uv", "UV", "sun", f"{current.uv_index:g}", uv_word(current.uv_index).capitalize()))
     if sunrise is not None and sunset is not None and sunrise < sunset:
         tiles.append(Tile("sun", "Sunrise" if night else "Sunset", "sunrise" if night else "sunset",
-                          clock_text(sunrise if night else sunset, twelve_hour=True)))
+                          clock_text(sunrise if night else sunset, twelve_hour=twelve_hour)))
     if current.humidity is not None:
         tiles.append(Tile("humidity", "Humidity", "droplets", f"{js_round(current.humidity)}%"))
     changes = _changes(hours, moment, sunrise, sunset, night)
     observed_at = to_local(place, observation.observed_at) if observation else None
     fetched_at_local = to_local(place, forecast.fetched_at)
-    provenance = (f"NWS observed · {observation.station_name} · {clock_text(observed_at, twelve_hour=True)}"
+    provenance = (f"NWS observed · {observation.station_name} · {clock_text(observed_at, twelve_hour=twelve_hour)}"
                   if observation and observed_at else
-                  f"MET forecast · updated {clock_text(fetched_at_local, twelve_hour=True)}"
+                  f"MET forecast · updated {clock_text(fetched_at_local, twelve_hour=twelve_hour)}"
                   if fetched_at_local else "MET forecast · update time unavailable")
     if observation:
         provenance += " · Other details: MET forecast"
     elif forecast.age_seconds(now) is None or forecast.age_seconds(now) > 2 * 60 * 60:
         provenance = "Cached " + provenance
-    return Snapshot(place, clock_text(moment, twelve_hour=True), temperature_text(current.temperature_c, units),
+    return Snapshot(place, clock_text(moment, twelve_hour=twelve_hour), temperature_text(current.temperature_c, units),
                     observation.description if observation else condition.text,
                     "ncloud" if night and condition.glyph == "partly" else glyph_at(condition.glyph, night), sky,
                     temperature_text(current.high_c, units), temperature_text(current.low_c, units),
                     summary_sentence(condition,
                                      tuple(replace(hour, time=at.isoformat())
                                            for hour, at in visible_hours if at is not None),
-                                     moment, twelve_hour=True, include_first=not covered),
+                                     moment, twelve_hour=twelve_hour, include_first=not covered),
                     tuple(hours), tuple(days), tuple(metrics), current_value=current.temperature_c,
                     provenance=provenance, alerts=tuple(alerts), changes=changes, tiles=tuple(tiles),
-                    clock=clock_text(moment, twelve_hour=True), forecast=forecast)
+                    clock=clock_text(moment, twelve_hour=twelve_hour), forecast=forecast)

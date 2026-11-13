@@ -1125,8 +1125,8 @@ class ClockWindow(AppWindow):
         if self.timer_done:
             self.timer_note.set_text(f"{self.timer_label} is done")
         elif self.countdown.running:
-            rings = (self._now() + timedelta(seconds=remaining)).strftime("%-I:%M %p")
-            self.timer_note.set_text(f"Rings at {rings}")
+            clock, period = format_clock(self._now() + timedelta(seconds=remaining), hour24=self.hour24)
+            self.timer_note.set_text(f"Rings at {clock}{' ' + period if period else ''}")
         else:
             self.timer_note.set_text("Paused" if remaining < self.countdown.total else "Ready")
         self._updating_presets = True
