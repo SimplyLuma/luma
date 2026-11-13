@@ -16,7 +16,7 @@
 # not relicensed here.
 Name:           luma-monitor
 Version:        0.1.0
-Release:        1.luma.21%{?dist}
+Release:        1.luma.22%{?dist}
 Summary:        Native application activity monitor for Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/
@@ -94,7 +94,7 @@ grep -Fxq 'Exec=%{_bindir}/io.luma.Monitor' %{buildroot}%{_datadir}/dbus-1/servi
 test -f %{buildroot}%{_datadir}/%{name}/data/monitor.css
 test -f %{buildroot}%{_datadir}/%{name}/data/machine.css
 %{python3} counted-unittest.py --self-test
-PYTHONPATH=$PWD/src/luma-monitor %{python3} counted-unittest.py src/luma-monitor/tests 91
+PYTHONPATH=$PWD/src/luma-monitor %{python3} counted-unittest.py src/luma-monitor/tests 99
 # The installed tree imports as the launcher imports it, and the stylesheets
 # the app resolves from its own location are there.
 PYTHONPATH= %{python3} -c "
@@ -129,6 +129,10 @@ dbus-run-session -- xvfb-run -a env GSK_RENDERER=cairo LUMA_MONITOR_STYLE_PATH=$
 %{_datadir}/dbus-1/services/org.projectluma.MonitorHost1.service
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.22
+- GPU: utilisation per GPU and per app from DRM fdinfo engine counters (i915, xe,
+  amdgpu, msm and others); "Not available" when a driver reports none
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.21
 - Round the installed memory in the sidebar to one decimal
 

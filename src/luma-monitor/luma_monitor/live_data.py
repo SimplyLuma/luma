@@ -80,7 +80,7 @@ def resource_facts(snapshot, *, proc='/proc', sys='/sys'):
 # names, PIDs, users or command lines.
 VIEW_VERSION=1
 VIEW_LIMIT=256*1024
-APP_FIELDS=('cpu','mem','disk','net','en')
+APP_FIELDS=('cpu','mem','disk','net','en','gpu')
 
 
 def _number(value):
