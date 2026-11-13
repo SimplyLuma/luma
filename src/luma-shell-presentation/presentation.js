@@ -37,8 +37,10 @@ const PATH = '/org/project_luma/ShellState1';
 const GESTURE_HEIGHT = 28;
 // Logical height of the handheld status bar drawn over applications.
 const STATUS_HEIGHT = 44;
-// Interval between status-ink samples while the screen repaints.
+// Quiet time after the last repaint before status ink is sampled.
 const INK_SAMPLE_MS = 400;
+// Longest a sample waits while the screen keeps repainting (video, a game).
+const INK_SETTLE_MAX_MS = 2000;
 
 // Pick one stage pixel; GJS returns the colour alone or after the boolean.
 function pickColor(screenshot, x, y) {
@@ -947,9 +949,22 @@ export class Presentation {
     }
 
     _queueInkSample() {
-        if (this._inkSampleSource || this._inkSampling || this._home.visible || !this._statusWindow ||
+        if (this._inkSampling || this._home.visible || !this._statusWindow ||
             this.mode === 'desktop' || Main.sessionMode.isLocked || Main.sessionMode.isGreeter)
             return;
+        // Sample once the stage has settled. Every pick repaints the stage off
+        // screen and reads it back on the compositor thread, about a frame
+        // each, so sampling while content moves (a scroll, an animation)
+        // dropped a run of frames every INK_SAMPLE_MS. Content that never
+        // stops painting is still sampled every INK_SETTLE_MAX_MS.
+        const now = GLib.get_monotonic_time() / 1000;
+        if (this._inkSampleSource) {
+            if (now - this._inkSampleQueuedAt >= INK_SETTLE_MAX_MS - INK_SAMPLE_MS)
+                return;
+            GLib.source_remove(this._inkSampleSource);
+        } else {
+            this._inkSampleQueuedAt = now;
+        }
         this._inkSampleSource = GLib.timeout_add(GLib.PRIORITY_LOW, INK_SAMPLE_MS, () => {
             this._inkSampleSource = 0;
             this._sampleInk();
