@@ -9,7 +9,7 @@ import fakes
 from fakes import NOW, graph_doc
 from luma_update.config import Paths, Settings
 from luma_update.graph import GraphError, check_freshness, parse_graph
-from luma_update.hardware import FP6, RPI5, TITAN2E, graph_slug, require_commit_target, require_device_target
+from luma_update.hardware import FP6, RPI5, SP12IN, TITAN2E, graph_slug, require_commit_target, require_device_target
 from luma_update.engine import Engine, UpdateError
 
 
@@ -49,6 +49,17 @@ class DeviceIdentity(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.paths = Paths(Path(self.tmp.name))
         self.paths.device_tree_compatible.parent.mkdir(parents=True)
+
+    def test_surface_requires_its_own_stream_and_exact_board(self):
+        self.paths.device_tree_compatible.write_bytes(b"microsoft,surface-pro-12in\0qcom,x1p42100\0")
+        require_device_target(self.paths, SP12IN, "aarch64")
+        self.assertEqual(graph_slug(SP12IN, "aarch64"), "microsoft-sp12in")
+        for target, arch in (("", "aarch64"), (SP12IN, "x86_64"), (FP6, "aarch64")):
+            with self.subTest(target=target, arch=arch), self.assertRaises(ValueError):
+                require_device_target(self.paths, target, arch)
+        self.paths.device_tree_compatible.write_bytes(b"microsoft,surface-pro-11\0")
+        with self.assertRaises(ValueError):
+            require_device_target(self.paths, SP12IN, "aarch64")
 
     def test_fp6_requires_target_and_actual_arm_architecture(self):
         self.paths.device_tree_compatible.write_bytes(b"fairphone,fp6\0qcom,milos\0")

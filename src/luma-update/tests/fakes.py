@@ -221,11 +221,14 @@ class FakeHttp:
         self.offline = False
         self.responses: dict[str, tuple[int, dict]] = {}
         self.gets: list[str] = []
+        self.statuses: dict[str, int] = {}
 
     def get(self, url, max_bytes, headers=None):
         self.gets.append(url)
         if self.offline:
             raise HttpError("offline")
+        if url in self.statuses:
+            raise HttpError(f"{url} answered HTTP {self.statuses[url]}", self.statuses[url])
         if url not in self.files:
             raise HttpError(f"{url} answered HTTP 404", 404)
         return self.files[url]

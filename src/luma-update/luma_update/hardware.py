@@ -4,14 +4,17 @@
 FP6 = "fairphone,fp6"
 TITAN2E = "unihertz,titan2e"
 RPI5 = "raspberrypi,rpi5"
+SP12IN = "microsoft,sp12in"
 
 # Hardware targets with their own update stream: the board compatible strings
 # the kernel's device tree must list (any one), the only architecture it runs,
 # the stream's slug, and whether that board may only follow its own stream.
 # A Fairphone 6, a Raspberry Pi 5 and a Titan 2 Elite run the generic ARM
 # image (the device's kernel and platform come from its device repository), so
-# their streams are not exclusive.
+# their streams are not exclusive. A Surface Pro 12-inch boots its own kernel and
+# device tree from its image, so it may only follow its own stream.
 DEVICES = {
+    SP12IN: (("microsoft,surface-pro-12in",), "aarch64", "microsoft-sp12in", True),
     FP6: (("fairphone,fp6",), "aarch64", "fairphone-fp6", False),
     TITAN2E: (("unihertz,titan2-elite",), "aarch64", "unihertz-titan2e", False),
     RPI5: (("raspberrypi,5-model-b", "raspberrypi,5-model-b-d0", "raspberrypi,500",

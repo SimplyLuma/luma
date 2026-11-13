@@ -91,6 +91,37 @@ class Checking(EngineCase):
         self.engine.automatic()
         self.assertEqual(self.engine.status().state, "staged")
 
+    def test_unpublished_channel_graph_is_not_a_network_failure(self):
+        url = self.rig.settings.graph_url.format(channel="stable", arch="x86_64")
+        for status in (404, 410):
+            with self.subTest(status=status):
+                self.rig.http.statuses[url] = status
+                self.assertIsNone(self.engine.check())
+                published = self.engine.status()
+                self.assertEqual((published.state, published.last_error_class), ("error", "channel-unavailable"))
+                self.assertEqual(published.last_error, "No updates are published for this device's channel yet.")
+                self.assertNotIn("reach", published.last_error)
+
+    def test_server_errors_on_the_graph_stay_network(self):
+        url = self.rig.settings.graph_url.format(channel="stable", arch="x86_64")
+        self.rig.http.statuses[url] = 503
+        self.assertIsNone(self.engine.check())
+        self.assertEqual(self.engine.status().last_error_class, "network")
+
+    def test_unpublished_channel_keeps_the_check_spacing(self):
+        # A network change must not start a fresh check against a graph that is not there.
+        url = self.rig.settings.graph_url.format(channel="stable", arch="x86_64")
+        self.rig.http.statuses[url] = 404
+        self.engine.automatic()
+        self.assertEqual(self.engine.status().last_error_class, "channel-unavailable")
+        fetched = self.rig.http.gets.count(url)
+        self.rig.now += 600
+        self.engine.automatic()
+        self.assertEqual(self.rig.http.gets.count(url), fetched)
+        self.rig.now += self.rig.settings.minimum_check_spacing_seconds
+        self.engine.automatic()
+        self.assertEqual(self.rig.http.gets.count(url), fetched + 1)
+
     def test_update_found_on_mobile_data_downloads_on_wifi(self):
         self.rig.probes.net.metered = True
         self.engine.automatic()

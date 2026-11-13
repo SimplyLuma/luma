@@ -25,6 +25,7 @@ from . import graph as graphmod
 from . import kargs as kargsmod
 from . import minisign, names, preview, redact, reporting, rpmver, versions
 from .config import CHANNELS, PREVIEW_CHANNELS, Paths, Settings
+from .http import HttpError
 from .origin import ChannelOrigin, parse_origin, refspec_for
 from .state import StateStore, atomic_write, barrier_retry_due, load_wariness
 from .status import (AVAILABLE, BARRIER_BLOCKED, CHECKING, DOWNLOADING, ERROR, IDLE, RESTART_REQUIRED, STAGED,
@@ -39,6 +40,10 @@ redact.install(log)
 DECISION_MAX_AGE = 3600
 PERSON_WAIT_SECONDS = 20 * 60
 GREENBOOT_UNIT = "/usr/lib/systemd/system/greenboot-healthcheck.service"
+
+
+#: HTTP answers that mean no graph is published for a channel (not a network failure).
+GRAPH_ABSENT_STATUSES = frozenset({404, 410})
 
 
 class UpdateError(Exception):
@@ -70,6 +75,7 @@ class NotOurs(UpdateError):
 
 FRIENDLY = {
     "network": "Luma couldn't reach its update server. It will try again later.",
+    "channel-unavailable": "No updates are published for this device's channel yet.",
     "added-package-newer": ("This computer has a newer copy of a package this update includes, so Luma kept yours "
                             "and is waiting. It updates once Luma ships that version, or after you remove your copy."),
     "signature": "The update information wasn't signed by Luma, so it was ignored.",
@@ -837,7 +843,15 @@ class Engine:
         if arch != self.arch or self.arch not in ("x86_64", "aarch64"):
             raise UpdateError(f"requested graph is for {arch}, this computer is {self.arch}", "architecture")
         url = self.settings.graph(channel, arch)
-        data = self.http.get(url, graphmod.MAX_GRAPH_BYTES)
+        try:
+            data = self.http.get(url, graphmod.MAX_GRAPH_BYTES)
+        except HttpError as error:
+            if error.status in GRAPH_ABSENT_STATUSES:
+                # The server answered: nothing is published at this channel's graph
+                # (a device ref with no public stream). Not a network failure, so no
+                # retry on the next connectivity change; the hourly spacing holds.
+                raise UpdateError(str(error), "channel-unavailable") from None
+            raise
         signature = self.http.get(url + ".minisig", minisign.MAX_SIGNATURE_BYTES)
         keys = minisign.load_keys(self.paths.graph_key_dirs)
         if not keys:
