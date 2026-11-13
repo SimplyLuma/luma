@@ -1,0 +1,202 @@
+{
+  "schema": "org.projectluma.os-app-baseline-lock/v1",
+  "baselines": {
+    "aarch64": {
+      "manifest_sha256": "d8a57d1b39a776d56d3f4613dfe73fed31159417564f44f2102a0c80da463732"
+    },
+    "x86_64": {
+      "manifest_sha256": "fa8cfa474b68a47bab5511045c7ea5ec85f4cb3bc9066f329998194983e351b2"
+    }
+  },
+  "applications": {
+    "com.rhyme.viola": {
+      "commits": {
+        "aarch64": "150f1a6556f8073cdb4fe292e20a502bd0d495cacad8902630cb1141317b8862",
+        "x86_64": "1750a927ce9c394249e56f41d2a3426e60e00cc1e4e611936d0bc5b4aa17f4f8"
+      },
+      "pending": {
+        "reason": "Viola is rebuilt and published by its own Depot pipeline; #369 (native44) is not in the 2026-11-09 bundle",
+        "expires": "2026-11-16"
+      },
+      "source_sha256": null
+    },
+    "io.luma.Monitor": {
+      "commits": {
+        "aarch64": "5e4e15b55d56f519aaefa31cf4a6daf0a19480c4c3268285a35269bd995a595c",
+        "x86_64": "33d6542d0621a910fe42b0b0753b5c2f4fd6f046ddfb89f7a9faaa1b3153de02"
+      },
+      "source_sha256": "2670db22c8574e2f2452005197a3bee543ab1a4afe5644130fa7e7ef1735d200",
+      "version": "0.1.3"
+    },
+    "org.gnome.Nautilus": {
+      "commits": {
+        "aarch64": "2dd6a2f61e02fda48e68aae47c85296eea2e52f2218604f6cbf55fea02e4ba76",
+        "x86_64": "42150c846612aa9a98e16f74a6335d1bede3767a1cae3e31c48139463d06dfa4"
+      },
+      "pending": {
+        "reason": "Filer needs the native Filer build; shell-state schema and build-script changes since 2026-10-31 are not in its bundle",
+        "expires": "2026-11-16"
+      },
+      "source_sha256": null
+    },
+    "org.projectluma.Ari": {
+      "commits": {
+        "aarch64": "db50b9ee21d05012416871df9a1c47a3cb14bb6a2788dea2a65d9f316c0351ae",
+        "x86_64": "4e209e625d9ea33cbbebfce77ad0a0a664dfa8386825783a2f435054fa6a0953"
+      },
+      "source_sha256": "79d2a96d501d0ad5de2e26c90a0c40731c54d2c07a02e67f1dfeb535a4cd18af",
+      "version": "0.2.1"
+    },
+    "org.projectluma.Calendar": {
+      "commits": {
+        "aarch64": "5302ce7757211a0482003ef37030cf89d2ff6f97cb0e21c5865b386e6218a939",
+        "x86_64": "045ac645e76003d85eabbff6c845f23e8775be80b3cd59c86001541b393ec185"
+      },
+      "source_sha256": "5ed87fbe0edd1ff4e8c0ba42a3514388acbc0ecbf2857d5c66c49724403473aa",
+      "version": "0.1.2"
+    },
+    "org.projectluma.Camera": {
+      "commits": {
+        "aarch64": "0718e39c147b95c2423ab5e2c59347e875a4ef6d5615044e0fe6b7a950b760b7",
+        "x86_64": "cfed7460fab63aaa92042ee764d23827965c3007fea22f8f4c6af84c09ff1112"
+      },
+      "source_sha256": "c62654c780e940d3d0dbd6bf70aad56ae945c1a65a087c5207016e4682177685",
+      "version": "0.1.2"
+    },
+    "org.projectluma.Charlie": {
+      "commits": {
+        "aarch64": "ee9e173c7b3f6cc4ab0763bef19b1d94160937a0bd95f27a90b8bbfdf08f61d9",
+        "x86_64": "a8ccda24d500b17d78856b97b2afe04c3258d2893806840cb04bed8798cb2cf1"
+      },
+      "source_sha256": "ca18f3c0d5d517963faaf0705bfe92eef2ac11ae634075c3ad35145e4e122959",
+      "version": "0.2.14.7"
+    },
+    "org.projectluma.Clock": {
+      "commits": {
+        "aarch64": "8d062e34c8b35a5fee2bb760862c528a66d7c34bcfe1680ef82354dd06dc4069",
+        "x86_64": "e0a37ed568cb9ee348ac0a79461189855f336813e6fbd9096e5da7442424409c"
+      },
+      "source_sha256": "c871661f330885bad199f3ff7f5c7cfcdd11965a8cdcd1dbd4291aff57db0800",
+      "version": "0.1.2"
+    },
+    "org.projectluma.Connect": {
+      "commits": {
+        "aarch64": "be8428a054b5443915bfcbddb083621e9ef42aecdd11db35d7e73cea88ab194d",
+        "x86_64": "2252c22d923cfa7166184b075384a87687e64e392994a9f8073c49681f353c04"
+      },
+      "source_sha256": "32f76e9aeb7efab566b0c04e1548fb6897eb75720c67adf26becbcc41609bdea",
+      "version": "0.65.1"
+    },
+    "org.projectluma.Contacts": {
+      "commits": {
+        "aarch64": "60523ef356193a5b68636f48011f8f50a4c680269007c44fc33a690b754d003e",
+        "x86_64": "18713b03a0e2da0f8d0fad6e4a1c4c76ac1a1fbaf59ec2e55bd87c5a3b35c01e"
+      },
+      "source_sha256": "06e5721b6b3595d32329434e4284afb399a4cdbefc15fbbe76aff7ac0948c46f",
+      "version": "0.1.2"
+    },
+    "org.projectluma.Depot": {
+      "commits": {
+        "aarch64": "0e040e9a9e2d17d159f9f9dbdccb5b67d3218b5ee17005af4a93b865df9ce955",
+        "x86_64": "44513fefd516e88bdfea4acc9f177e1b47d1fdfbb8619ee20e89a38264f44c95"
+      },
+      "source_sha256": "bf42043cb94a1de530e04e566e18aacb0bc3d86c68a3ace784ba6f6e3c816bcb",
+      "version": "0.1.3"
+    },
+    "org.projectluma.Imager": {
+      "commits": {
+        "aarch64": "3240acf1797723e4543ad6a044b4a303fc732874e00c597199854e63a38c0872",
+        "x86_64": "ae723bf3760b581df2ee414dec826ebd1b40f3e7edc62a8c091f5e73cea7427a"
+      },
+      "source": "external"
+    },
+    "org.projectluma.Leaf": {
+      "commits": {
+        "aarch64": "d64e738ca89f915636bc751236c523b9a6b0a71b3db487317480d1fb5591b701",
+        "x86_64": "accba71c648e4d23c2b3c57e666f2a98fe5417a2363f7c945ea7246f0b475cc9"
+      },
+      "source_sha256": "02e1fc75c801ea194a3dd8c649f3ccc5e08a1d104833e3fc80618ea6ea992607",
+      "version": "0.1.1"
+    },
+    "org.projectluma.Messages": {
+      "commits": {
+        "aarch64": "5416c3b6826547081cf5e1c737dd795b1bd07638180a1b6858d99adf5135603e",
+        "x86_64": "4a5021249b91be091295f20dfb1151a8b702fb9255bb34bfa291c5d59aac8528"
+      },
+      "source_sha256": "6acb6787aebfae2f1751ce0eabd69db1ec09076f166e67399a544f2499c2c83a",
+      "version": "0.1.4"
+    },
+    "org.projectluma.Mods": {
+      "commits": {
+        "aarch64": "675006f74d7096fc2078aa5f184d42e0b890b07bef6f07d4d13605c0cdf7e970",
+        "x86_64": "083cf29b18bbe124fcfd008865fd1eae5325490f662ff9c8db617300dad90f58"
+      },
+      "source_sha256": "df3d10951e371a7c41c6922d4ca30488e6602193eeaf738d7104974f363713bb",
+      "version": "0.1.1"
+    },
+    "org.projectluma.Notes": {
+      "commits": {
+        "aarch64": "54df220445aad0ad01d32d647116043f6c9f5901aa9c18130663d7017e1214b1",
+        "x86_64": "a8ff0621e8fa9280171a637b7c5a50e585b47f8b318bd0aba3dc9dee4690e13d"
+      },
+      "source_sha256": "b3ae48363c184a0135a82fde7732b4dd598957e83514b1ff8410de41244cf3a2",
+      "version": "0.1.1"
+    },
+    "org.projectluma.Phone": {
+      "commits": {
+        "aarch64": "4fe0d1bb7e45ce6f55130cde629a300c77947ae43ba1a4526e84ce9e0148d0cc",
+        "x86_64": "98ad7846623b981ae14e1ba08ce0a764b34f0c917bb2b573f8a487e631e8664d"
+      },
+      "source_sha256": "757ad760ea16d2e07047f2e2e4bba6d48576b95713b9a73cfeb9da7534480b22",
+      "version": "0.1.3"
+    },
+    "org.projectluma.Photos": {
+      "commits": {
+        "aarch64": "d08e9ca1a8af82623b0e656322df33b2a249f94770af02105f767304d3506988",
+        "x86_64": "5d480e3e70643a806c49adba95d907c9e535a7b22b3819276eec759760a39bb3"
+      },
+      "source_sha256": "798d0e9a11d6d7185c4539c54e5de78e7a73a6749a472cec8cfc1ef2a6ba2ed2",
+      "version": "0.1.3"
+    },
+    "org.projectluma.Tasks": {
+      "commits": {
+        "aarch64": "6caf1d22c69b26938842c7415618a521f17283cca52a9ed7ea554745f704cdb2",
+        "x86_64": "26d9b92c9f71799614b7732b2579cf6f11fd9d41880fc9476b2e27f30621f86b"
+      },
+      "source_sha256": "62ecb94cb25cb637af0b913c15f862372d102d9b6ae871d3bce155b1558bc19a",
+      "version": "0.1.3"
+    },
+    "org.projectluma.Tide": {
+      "commits": {
+        "aarch64": "574a8c1354246d7fa4c7947b4fd6b2bcfafc7fb6b196ac29e4c68f81539f2fc9",
+        "x86_64": "730abf720540033361fda0f5e1d5e28547e24dbcc8a4a185dc86fa863e93fd40"
+      },
+      "source_sha256": "9c63adedf6e0993d9487056cbc1051fda6624edd06707940bcede3797e3d6715",
+      "version": "0.1.1"
+    },
+    "org.projectluma.Viewer": {
+      "commits": {
+        "aarch64": "8acc1f79bcd8320203a6e6cc9fb91b5edfdde8a10aeeed5090499f10751ff239",
+        "x86_64": "1eb7381f001bd15daf28085fb14db3b49a5f000a7f10ce71342c80e5b7c82eb5"
+      },
+      "source_sha256": "8cfc3c3658cde1b331da0ca9d9e828ce17b362c398bef206b1076a2bdeb80385",
+      "version": "0.1.1"
+    },
+    "org.projectluma.VoiceMemos": {
+      "commits": {
+        "aarch64": "dec63dbdee457bad63a47c2d60d3d2bb6ff96e1f2ed8848d70899f62931c1cdd",
+        "x86_64": "86e230bb5dae0bb9b8a62db096d267b0a6482596227eab56677ea11d7ee8af49"
+      },
+      "source_sha256": "684235484a65240f68c2b8454a2f6b5d337b78ed3460fb19bc317d18dc8bd377",
+      "version": "0.1.2"
+    },
+    "org.projectluma.Weather": {
+      "commits": {
+        "aarch64": "15dece3bd11d4a35fd05d75255348835cef54d09184ff4ad88cfb956fc6c12d6",
+        "x86_64": "424d54995f00886401e6192dca86a72783f6bc0b0a0e99d09799a02ffcb92ec5"
+      },
+      "source_sha256": "bf41ea3dd57ff40946f90fbe14dec1d39400f24d9db2fef7f3600297d06f8e82",
+      "version": "0.1.2"
+    }
+  }
+}
