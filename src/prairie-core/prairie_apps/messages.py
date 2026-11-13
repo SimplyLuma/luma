@@ -532,10 +532,16 @@ class MessagesWindow(AppWindow):
         # Network accounts are connected by the Messages agent (ADR-033) so they
         # keep working with this window closed; the window asks it for sends,
         # reactions and retries. Without the agent the window runs them itself.
-        if not self._fixture_mode:
-            from .messages_app_client import sandboxed, ApplicationAccounts
-            if sandboxed():
-                self.accounts = ApplicationAccounts(self.agent)
+        from .messages_app_client import sandboxed
+        # A sandboxed window opens on this device's mailbox and asks the host
+        # owner for its phones, accounts and first conversations off the main
+        # thread once it is on screen (_load_host_services).
+        self._host_loading = not self._fixture_mode and sandboxed()
+        self._host_changed = False
+        self._primed_cloud = None
+        if self._host_loading:
+            from .messages_app_client import ApplicationAccounts
+            self.accounts = ApplicationAccounts(self.agent)
         self.services = ([MessageService(NATIVE_SERVICE, "This device", FixtureMessageStore(Path(self._fixture_path)),
                                          FixtureTransport(), FixtureTransport(),
                                          capability=MessagingCapability(True, ""))]
@@ -543,14 +549,14 @@ class MessagesWindow(AppWindow):
         # A phone's conversations are what a computer without a modem is for;
         # a device with its own messages opens on those.
         self.service = next((service for service in self.services if not service.native), self.services[0])
-        for service in self.services:
-            service.store.recover_interrupted()
-            service.incoming_revision = service.store.external_revision()
+        if not self._host_loading:
+            for service in self.services:
+                service.store.recover_interrupted()
+                service.incoming_revision = service.store.external_revision()
         # Other devices' history from the Luma Hub: shown beside this device's
         # own conversations, never written here.
-        from .messages_app_client import sandboxed
         self.cloud = (CloudHistory(reader=lambda: []) if self._fixture_mode else
-                      CloudHistory(reader=lambda: json.loads(self.agent.call('ApplicationCloud')[0])) if sandboxed() else CloudHistory())
+                      CloudHistory(reader=self._host_cloud_rows) if sandboxed() else CloudHistory())
         self.content_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="messages-content")
         # Pictures decode off the main thread, into a cache bounded by bytes.
         self.picture_worker = ThreadPoolExecutor(max_workers=2, thread_name_prefix="messages-pictures")
@@ -620,17 +626,20 @@ class MessagesWindow(AppWindow):
         keys = Gtk.EventControllerKey(); keys.connect("key-pressed", self._key_pressed); self.add_controller(keys)
         if self._fixture_mode:
             GLib.idle_add(self._open_fixture_conversation)
-        else:
+        elif not self._host_loading:
             GLib.idle_add(self._restore_last_conversation)
         self.connect("close-request", self._close_requested)
         self.connect("notify::is-active", self._update_agent_viewing)
         if not self._fixture_mode:
             self._watch_wake()
-        self._reload_threads()
-        if not self._fixture_mode:
-            for service in self.services:
-                self._start_provider(service)
-            GLib.idle_add(self._start_external_context_load)
+        if self._host_loading:
+            GLib.idle_add(self._load_host_services)
+        else:
+            self._reload_threads()
+            if not self._fixture_mode:
+                for service in self.services:
+                    self._start_provider(service)
+                GLib.idle_add(self._start_external_context_load)
         for problem in self._service_problems:
             GLib.idle_add(lambda message=problem: (self._notice(message), GLib.SOURCE_REMOVE)[1])
 
@@ -677,16 +686,10 @@ class MessagesWindow(AppWindow):
     def _discover_services(self, application) -> list[MessageService]:
         from .messages_app_client import sandboxed, ApplicationStore, NativeProvider
         if sandboxed():
+            # Phones and accounts follow from _load_host_services.
             native = NativeProvider(self.agent)
-            services = [MessageService(NATIVE_SERVICE, 'This device', ApplicationStore(self.agent, 'native'),
-                                       native.sms_transport(), native.mms_transport(), native)]
-            from .messages_app_client import PhoneProvider
-            for phone in json.loads(self.agent.call('ApplicationPhones')[0]):
-                provider = PhoneProvider(self.agent, phone['id'])
-                services.append(MessageService(phone['id'], phone['label'], ApplicationStore(self.agent, phone['id']),
-                    provider.sms_transport(), provider.mms_transport(), provider))
-            for account in self.accounts.list(): services.append(self._account_service(account, services))
-            return services
+            return [MessageService(NATIVE_SERVICE, 'This device', ApplicationStore(self.agent, 'native'),
+                                   native.sms_transport(), native.mms_transport(), native)]
         services = [MessageService(NATIVE_SERVICE, "This device", MessageStore(),
                                    ModemMessagingTransport(), MmsMessagingTransport())]
         providers = []
@@ -727,6 +730,161 @@ class MessagesWindow(AppWindow):
             except (KeyError, ValueError, OSError):
                 continue  # an account for a network this build no longer knows
         return services
+
+    # The agent answers four mailbox requests at once; one stays free for the window.
+    HOST_REQUESTS = 3
+
+    def _load_host_services(self) -> bool:
+        """Ask the host owner for everything the first fill shows, in parallel and off the main thread."""
+        if self.closed:
+            return GLib.SOURCE_REMOVE
+        native = self.native_service
+        surface = getattr(self, "surface", None)
+        query = surface.query if surface is not None else self.search.get_text()
+        threading.Thread(target=self._fetch_host_services, args=(native, surface, query), daemon=True,
+                         name="messages-host-services").start()
+        return GLib.SOURCE_REMOVE
+
+    def _fetch_host_services(self, native: MessageService, surface, query: str) -> None:
+        from .messages_app_client import ApplicationStore, PhoneProvider
+        services, cloud, problem = [native], None, None
+        with ThreadPoolExecutor(max_workers=self.HOST_REQUESTS, thread_name_prefix="messages-host-load") as pool:
+            phones = pool.submit(lambda: json.loads(self.agent.call('ApplicationPhones')[0]))
+            accounts = pool.submit(self.accounts.list)
+            states_reply = pool.submit(self.agent.states)
+            cloud_reply = pool.submit(lambda: json.loads(self.agent.call('ApplicationCloud')[0]))
+            try:
+                for phone in phones.result():
+                    provider = PhoneProvider(self.agent, phone['id'])
+                    services.append(MessageService(phone['id'], phone['label'], ApplicationStore(self.agent, phone['id']),
+                        provider.sms_transport(), provider.mms_transport(), provider))
+                for account in accounts.result():
+                    try:
+                        services.append(self._account_service(account, services))
+                    except (KeyError, ValueError, OSError):
+                        continue  # an account for a network this build no longer knows
+            except Exception as error:  # the agent stopped or refused; this device's mailbox still opens
+                print(f"messages: host services not loaded: {type(error).__name__}", file=sys.stderr)
+                problem = "Messages couldn't load your phones and accounts. Reopen Messages to try again."
+            states_reply.result()
+            try: cloud = cloud_reply.result()
+            except Exception: cloud = None  # read again by the first fill
+
+            def recover(service):
+                service.store.recover_interrupted()
+
+            def mailbox(service):
+                service.incoming_revision = service.store.external_revision()
+                return service.store.threads(query), service.store.threads()
+
+            def warm(read, *args):
+                try: read(*args)
+                except Exception: pass  # not kept: the first fill asks for it itself
+            # Writes first, so that none of them makes the reads below stale.
+            for future in [pool.submit(warm, recover, service) for service in services]:
+                future.result()
+            listed = {}
+            for service, future in [(service, pool.submit(mailbox, service)) for service in services]:
+                try: listed[service.id] = future.result()[0]
+                except Exception: listed[service.id] = ()
+            # What the first fill reads for each conversation, asked for side by side.
+            def conversation(service, record):
+                if luma.is_luma(service):
+                    self._luma_flags(service, record)
+                participants = getattr(service.store, "conversation_participants", None)
+                if self._is_group(service, record) and surface is not None and callable(participants):
+                    participants(record.address)
+            for future in [pool.submit(warm, conversation, service, record)
+                           for service in services for record in listed[service.id]]:
+                future.result()
+            if surface is None and cloud is not None:
+                warm(lambda: merge_threads(listed[native.id], CloudHistory(reader=lambda: cloud).by_address(
+                    native.store.canonical_address), native.store.thread, query))
+        GLib.idle_add(self._host_services_loaded, services, cloud, problem)
+
+    def _host_cloud_rows(self) -> list:
+        primed = self._primed_cloud
+        return primed if primed is not None else json.loads(self.agent.call('ApplicationCloud')[0])
+
+    def _host_services_loaded(self, services: list[MessageService], cloud, problem) -> bool:
+        if self.closed:
+            for service in services[1:]:
+                if service.provider is not None:
+                    service.provider.close()
+            return GLib.SOURCE_REMOVE
+        self._host_loading = False
+        known = {service.id for service in self.services}
+        for service in services:
+            if service.id not in known:
+                self.services.append(service)
+            elif service not in self.services and service.provider is not None:
+                service.provider.close()  # added meanwhile by a finished sign-in
+        if self.current_address is None:
+            # A phone's conversations are what a computer without a modem is for.
+            self.service = next((service for service in self.services if not service.native), self.services[0])
+            self._set_transport_status(self.capability.reason, self.capability.available)
+        changed, self._host_changed = self._host_changed, False
+        # The agent's replies to the reads above answer this fill (AgentClient
+        # keeps them until something changes); the history from other devices
+        # is kept for this fill only, as before.
+        self._primed_cloud = cloud
+        try:
+            self._services_changed()
+            for service in self.services:
+                self._start_provider(service)
+        finally:
+            self._primed_cloud = None
+        if changed:
+            self._store_changed()
+        if problem:
+            self._notice(problem)
+        # The list is on screen; the conversation that opens first follows
+        # once its messages are in.
+        conversations = self._first_conversations()
+        self._first_open_from = self.current_address
+        threading.Thread(target=self._fetch_conversations, args=(conversations,), daemon=True,
+                         name="messages-first-conversation").start()
+        return GLib.SOURCE_REMOVE
+
+    def _first_conversations(self) -> list[tuple[MessageService, str]]:
+        key = self.recall("conversation")
+        if not isinstance(key, str) or not key:
+            return []
+        service, address = self._conversation_from_key(key)
+        return [(service or self.native_service, address)]
+
+    def _fetch_conversations(self, conversations: list[tuple[MessageService, str]]) -> None:
+        def read(store, name, *args):
+            try: return getattr(store, name)(*args)
+            except Exception: return ()  # not kept: opening the conversation asks for it itself
+
+        def conversation(service, address):
+            store = service.store
+            for name in ("canonical_address", "conversation_kind", "conversation_phone", "draft",
+                         "draft_attachments", "draft_reply", "luma_flags"):
+                read(store, name, address)
+            return read(store, "thread", address)
+
+        with ThreadPoolExecutor(max_workers=self.HOST_REQUESTS, thread_name_prefix="messages-host-load") as pool:
+            threads = [pool.submit(conversation, service, address) for service, address in conversations]
+            messages = [(service, message) for (service, _address), future in zip(conversations, threads)
+                        for message in future.result()]
+            for future in [pool.submit(read, service.store, name, message.uid) for service, message in messages
+                           for name in ("sender", "reactions", "media_parts")]:
+                future.result()
+        GLib.idle_add(self._open_first_conversations)
+
+    def _open_first_conversations(self) -> bool:
+        if self.closed:
+            return GLib.SOURCE_REMOVE
+        if self.current_address == self._first_open_from:  # unless a person opened one meanwhile
+            self._host_services_ready()
+            self._restore_last_conversation()
+        GLib.idle_add(self._start_external_context_load)
+        return GLib.SOURCE_REMOVE
+
+    def _host_services_ready(self) -> None:
+        """Every service is known and listed; a view that opened before that catches up here."""
 
     @staticmethod
     def _connect_agent(application):
@@ -1128,7 +1286,7 @@ class MessagesWindow(AppWindow):
         if hasattr(self, "thread_list"): self._reload_threads()
 
     def _reload_threads(self) -> None:
-        if self.closed:
+        if self.closed or getattr(self, "_host_loading", False):
             return
         self._reloading_threads = True
         empty_parent = self.list_empty.get_parent()
@@ -3117,6 +3275,9 @@ class MessagesWindow(AppWindow):
     def _refresh_external_store(self) -> bool:
         self.store_refresh_source = 0
         if self.closed: return GLib.SOURCE_REMOVE
+        if self._host_loading:
+            self._host_changed = True  # refreshed again once the services are in
+            return GLib.SOURCE_REMOVE
         changed = False
         for service in self.services:
             revision = service.store.external_revision()

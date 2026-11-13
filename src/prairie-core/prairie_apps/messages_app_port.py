@@ -48,6 +48,18 @@ class LumaUIMessagesWindow(MessagesWindow):
                     self.surface.render_details()
                     self.surface._composer()
 
+    def _first_conversations(self):
+        conversations = super()._first_conversations()
+        if self.surface is not None and self.surface.current is None:
+            entries = self.surface._entries()  # the one host_loaded opens
+            if entries and entries[0]["service"] is not None:
+                conversations.append((entries[0]["service"], entries[0]["address"]))
+        return conversations
+
+    def _host_services_ready(self) -> None:
+        if self.surface is not None:
+            self.surface.host_loaded()
+
     def _render_messages(self, *, to_end: bool = False) -> None:
         if self.surface is None:
             super()._render_messages(to_end=to_end)
