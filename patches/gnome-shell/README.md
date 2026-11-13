@@ -640,3 +640,12 @@ profile) also sets media-keys `power-static=@as []`
 (config/mobile/luma-greeter-handheld.dconf), as luma-shell-handheld.dconf
 does for the session, or gsd-media-keys takes the key first at boot.
 Shell .175.
+
+`0338-window-corners-flatpak-instance.patch`: corner ownership covers a
+Flatpak's whole instance. Mutter reports the D-Bus peer as the PID of a client
+it connected through its service channel, and Filer connects that way, so its
+windows carried the instance's xdg-dbus-proxy, which never loads libadwaita:
+Filer was masked like a Chromium window and, maximized, the mask cut its own
+shadow out of the corner squares. A window whose process did not load
+libadwaita is now left alone when another process in its `app-flatpak-*.scope`
+did. Test: `window-corners-first-commit.js` in %check. Shell .176.

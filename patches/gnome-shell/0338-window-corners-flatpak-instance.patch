@@ -1,0 +1,64 @@
+From: Project Luma
+Subject: [PATCH] windows: decide corner ownership for a Flatpak's whole instance
+
+Mutter reports the D-Bus peer as the PID of a client it connected through
+its service channel. Filer connects that way, so its windows carried its
+instance's xdg-dbus-proxy, which never loads libadwaita, and Filer was masked
+like a Chromium window: maximized, the mask cut its own shadow out of the
+corner squares. Every process of a Flatpak instance shares its app-flatpak
+scope; a window is left alone when any of them loaded libadwaita.
+
+diff --git a/js/ui/lumaWindowCorners.js b/js/ui/lumaWindowCorners.js
+index 973a1c1..b010cc5 100644
+--- a/js/ui/lumaWindowCorners.js
++++ b/js/ui/lumaWindowCorners.js
+@@ -165,18 +165,46 @@ class WindowCornerMask extends Shell.GLSLEffect {
+ // Whether the window's process draws Luma's radius itself. Unreadable
+ // processes (other users, sandboxes) are masked: the mask is the same curve
+ // libadwaita draws, so a libadwaita app masked by mistake looks unchanged.
++//
++// A window's PID is not always the process that draws it. For a client that
++// Mutter connected through its service channel (Filer, the file chooser),
++// Mutter reports the D-Bus peer that asked for the connection; for a Flatpak
++// that peer is the instance's xdg-dbus-proxy, which never loads libadwaita.
++// Filer was then masked like a Chromium window: its own shadow was cut out of
++// its maximized corners. Every process of a Flatpak instance shares its
++// app-flatpak scope, so the decision covers the instance, not the proxy.
+ function roundsItself(window) {
+     const pid = window.get_pid();
+     if (pid <= 0)
+         return false;
++    return loadsLibadwaita(pid) ||
++        flatpakInstance(pid).some(other => other !== pid && loadsLibadwaita(other));
++}
++
++function readProcessFile(path) {
+     try {
+-        const [ok, contents] = GLib.file_get_contents(`/proc/${pid}/maps`);
+-        return ok && new TextDecoder().decode(contents).includes('/libadwaita-1.so');
++        const [ok, contents] = GLib.file_get_contents(path);
++        return ok ? new TextDecoder().decode(contents) : '';
+     } catch {
+-        return false;
++        return '';
+     }
+ }
+ 
++function loadsLibadwaita(pid) {
++    return readProcessFile(`/proc/${pid}/maps`).includes('/libadwaita-1.so');
++}
++
++// The processes of the Flatpak instance pid runs in; none outside one.
++function flatpakInstance(pid) {
++    const cgroup = readProcessFile(`/proc/${pid}/cgroup`).split('\n')
++        .find(line => line.startsWith('0::'))?.slice(3) ?? '';
++    const scope = cgroup.slice(cgroup.lastIndexOf('/') + 1);
++    if (!scope.startsWith('app-flatpak-') || !scope.endsWith('.scope'))
++        return [];
++    return readProcessFile(`/sys/fs/cgroup${cgroup}/cgroup.procs`).split('\n')
++        .map(Number).filter(other => other > 0);
++}
++
+ function wantsMask(window) {
+     if (window.is_override_redirect() || !MASKED_TYPES.has(window.get_window_type()))
+         return false;
