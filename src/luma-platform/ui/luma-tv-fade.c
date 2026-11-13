@@ -26,10 +26,20 @@ static void fade_follow(GtkWidget *widget, GtkAdjustment *adjustment) {
                          g_object_unref);
 }
 
+/* The unit the frame styles with (luma-tv-frame.c screen_unit): the window's screen, else the window.
+ * The fades and the rows they keep clear are measured in the same unit as everything else the frame draws. */
 double luma_tv_fade_unit(GtkWidget *widget) {
   GtkRoot *root = gtk_widget_get_root(widget);
   if (root == NULL || !gtk_widget_has_css_class(GTK_WIDGET(root), "lumaui-tv"))
     return 0;
+  GdkSurface *surface = GTK_IS_NATIVE(root) ? gtk_native_get_surface(GTK_NATIVE(root)) : NULL;
+  GdkMonitor *monitor = surface != NULL ? gdk_display_get_monitor_at_surface(gtk_widget_get_display(widget), surface) : NULL;
+  if (monitor != NULL) {
+    GdkRectangle geometry;
+    gdk_monitor_get_geometry(monitor, &geometry);
+    if (geometry.width > 0 && geometry.height > 0)
+      return luma_ui_tv_unit(geometry.width, geometry.height);
+  }
   return luma_ui_tv_unit(gtk_widget_get_width(GTK_WIDGET(root)), gtk_widget_get_height(GTK_WIDGET(root)));
 }
 
