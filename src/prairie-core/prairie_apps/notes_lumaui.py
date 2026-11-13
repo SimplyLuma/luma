@@ -11,6 +11,7 @@ import json
 import uuid
 import random
 import sqlite3
+import time
 from dataclasses import replace
 from threading import Thread
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gsk, Gtk, Pango
@@ -197,14 +198,25 @@ class NotesLumaWindow(NotesPhone, NotesWindow):
         self._page_mark_subject_id = None
         self._document_selection = False
         self._ui_loading = True
+        # In a sandbox the Connect account that shared notes are kept under is
+        # the host's, asked off the main thread (_collaboration_client).
+        self._sandboxed = bool(os.environ.get('FLATPAK_ID'))
+        self._connect_client = None
+        self._connect_client_at = None
+        self._connect_fetching = False
+        self._connect_generation = 0
+        self._connect_listed = None
+        self._connect_listener = None
         super().__init__(application)
         self._ui_loading = False
+        if not self.fixture and not self.independent_account and self._sandboxed:
+            from . import collaboration_transport
+            self._connect_listener = lambda: GLib.idle_add(self._connect_account_changed)
+            collaboration_transport.add_invalidation_listener(self._connect_listener)
         if not self.fixture and not self.independent_account:
             try:
-                from .collaboration import CollaborationCache
-                cache = CollaborationCache()
-                path = cache.path
-                cache.close()
+                path = self._collaboration_path()
+                path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 self._collaboration_monitor = Gio.File.new_for_path(str(path.parent)).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
                 self._collaboration_monitor.set_rate_limit(100)
                 def changed(_monitor, file, _other, _event):
@@ -222,7 +234,82 @@ class NotesLumaWindow(NotesPhone, NotesWindow):
         if monitor is not None:
             monitor.cancel()
             self._collaboration_monitor = None
+        if self._connect_listener is not None:
+            from . import collaboration_transport
+            collaboration_transport.remove_invalidation_listener(self._connect_listener)
+            self._connect_listener = None
         return super()._close_notes(window)
+
+    # The Connect account is display context for the local collaboration
+    # state (which notes are shared, their role and comments); every
+    # operation still goes through Connect's own checks.
+    CONNECT_ACCOUNT_SECONDS = 30.0
+
+    @staticmethod
+    def _collaboration_path():
+        from .connect_sync import connect_data_directory
+        return connect_data_directory() / 'collaboration.sqlite3'
+
+    def _collaboration_client(self):
+        """The client the local collaboration state is keyed on, or None.
+
+        Outside a sandbox it is read from this device's Connect registration.
+        In a sandbox only the host's Connect service knows it: it is asked off
+        the main thread, None until it answers or after a sign-in change, and
+        asked again in the background once it is CONNECT_ACCOUNT_SECONDS old.
+        """
+        if not self._sandboxed:
+            from .collaboration import CollaborationClient
+            return CollaborationClient()
+        at = self._connect_client_at
+        if at is None or time.monotonic() - at > self.CONNECT_ACCOUNT_SECONDS:
+            self._fetch_connect_account()
+        return self._connect_client
+
+    def _fetch_connect_account(self):
+        if self._connect_fetching or getattr(self, '_closed', False):
+            return
+        self._connect_fetching = True
+        generation = self._connect_generation
+
+        def fetch():
+            try:
+                from .collaboration import CollaborationClient
+                client = CollaborationClient()
+            except Exception:
+                client = None  # signed out, or Connect unavailable: shared notes stay read-only
+            GLib.idle_add(self._connect_account_loaded, generation, client)
+        Thread(target=fetch, daemon=True, name='notes-connect-account').start()
+
+    @staticmethod
+    def _connect_key(client):
+        return None if client is None else (client.address, client.identity.device_id)
+
+    def _connect_account_loaded(self, generation, client):
+        self._connect_fetching = False
+        if getattr(self, '_closed', False):
+            return GLib.SOURCE_REMOVE
+        if generation != self._connect_generation:
+            self._fetch_connect_account()  # signed in or out meanwhile
+            return GLib.SOURCE_REMOVE
+        key, before = self._connect_key(client), self._connect_key(self._connect_client)
+        self._connect_client, self._connect_client_at = client, time.monotonic()
+        if key != self._connect_listed:  # the shared pages and invitations the list shows
+            self._connect_listed = key
+            self._reload_sidebar()
+        if key != before:
+            self._apply_collaboration_role()
+        return GLib.SOURCE_REMOVE
+
+    def _connect_account_changed(self):
+        """Connect's state or owner changed: forget the account until it answers again."""
+        if getattr(self, '_closed', False) or self._connect_client_at is None and not self._connect_fetching:
+            return GLib.SOURCE_REMOVE
+        self._connect_generation += 1
+        self._connect_client, self._connect_client_at = None, None
+        self._apply_collaboration_role()  # a shared note is read-only until then
+        self._fetch_connect_account()
+        return GLib.SOURCE_REMOVE
 
     def _fixture_focus(self):
         if os.environ.get('LUMA_NOTES_QUERY'):
@@ -1033,10 +1120,13 @@ class NotesLumaWindow(NotesPhone, NotesWindow):
                     if parents.get(child.id) == note.id:
                         leaf(child, depth + 1)
         shared_ids, invitations = set(), []
-        if not self.fixture and not self.independent_account:
+        if not self.fixture and not self.independent_account and self._collaboration_path().is_file():
             try:
-                from .collaboration import CollaborationCache, CollaborationClient
-                client, cache = CollaborationClient(), CollaborationCache(read_only=True)
+                from .collaboration import CollaborationCache
+                client = self._collaboration_client()
+                if client is None:
+                    raise LookupError('the Connect account is not known yet')
+                cache = CollaborationCache(read_only=True)
                 try:
                     shared_ids = {r['local_id'] for r in cache.mappings(client, 'note') if r['role'] not in ('owner', 'revoked')}
                     invitations = cache.db.execute('SELECT * FROM invitations WHERE hub=? AND device=? AND kind=?', (client.address, client.identity.device_id, 'note')).fetchall()
@@ -1088,12 +1178,12 @@ class NotesLumaWindow(NotesPhone, NotesWindow):
     def _collaboration_role(self, note_id):
         if self.fixture or self.independent_account:
             return 'owner'
-        from .connect_sync import connect_data_directory, load_identity
+        from .connect_sync import load_identity
         try:
-            from .collaboration import CollaborationCache, CollaborationClient
+            from .collaboration import CollaborationCache
             # Personal and revoked recoverable copies remain editable offline.
             # Only a current shared mapping needs current account metadata.
-            path = connect_data_directory() / 'collaboration.sqlite3'
+            path = self._collaboration_path()
             if not path.exists():
                 return 'owner'
             local = CollaborationCache(read_only=True)
@@ -1103,9 +1193,12 @@ class NotesLumaWindow(NotesPhone, NotesWindow):
                 local.close()
             if shared is None:
                 return 'owner'
-            if load_identity() is None:
+            if not self._sandboxed and load_identity() is None:
                 return 'unknown'
-            client, cache = CollaborationClient(), CollaborationCache(read_only=True)
+            client = self._collaboration_client()
+            if client is None:
+                return 'unknown'  # asked off the main thread; applied again once known
+            cache = CollaborationCache(read_only=True)
             try:
                 return next((row['role'] for row in cache.mappings(client, 'note') if row['local_id'] == note_id), 'owner')
             finally:
@@ -1129,10 +1222,15 @@ class NotesLumaWindow(NotesPhone, NotesWindow):
     def _refresh_collaboration_comments(self):
         if self.fixture or self.independent_account or not self.current or not hasattr(self, '_shared_comments'):
             return
-        from .collaboration import CollaborationClient, CollaborationCache
+        from .collaboration import CollaborationCache
         snapshot = None
         try:
-            client, cache = CollaborationClient(), CollaborationCache(read_only=True)
+            if not self._collaboration_path().is_file():
+                raise LookupError('nothing has been shared')
+            client = self._collaboration_client()
+            if client is None:
+                raise LookupError('the Connect account is not known yet')
+            cache = CollaborationCache(read_only=True)
             try:
                 mapping = next((r for r in cache.mappings(client, 'note') if r['local_id'] == self.current.id and r['role'] != 'revoked'), None)
                 row = cache.db.execute('SELECT snapshot FROM snapshots WHERE id=?', (mapping['id'],)).fetchone() if mapping else None
@@ -1173,6 +1271,7 @@ class NotesLumaWindow(NotesPhone, NotesWindow):
             self._shared_comment_sending = True
             def worker():
                 try:
+                    from .collaboration import CollaborationClient
                     client = CollaborationClient()
                     client.operation(document_id, 'comments', {'id': str(uuid.uuid4()), 'body': body})
                     latest = client.read(document_id)

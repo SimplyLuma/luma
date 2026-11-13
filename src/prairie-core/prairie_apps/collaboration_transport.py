@@ -67,6 +67,23 @@ _metadata = _MetadataCache()
 _invalidation_connection = None
 _invalidation_subscriptions = []
 _invalidation_lock = threading.Lock()
+_invalidation_listeners = []
+
+
+def add_invalidation_listener(callback):
+    """Call back (on the main loop) whenever Connect's state or owner changes."""
+    _invalidation_listeners.append(callback)
+
+
+def remove_invalidation_listener(callback):
+    try: _invalidation_listeners.remove(callback)
+    except ValueError: pass
+
+
+def _invalidated(*_args):
+    _metadata.invalidate()
+    for callback in list(_invalidation_listeners):
+        callback()
 
 
 def _subscribe_invalidations():
@@ -76,7 +93,7 @@ def _subscribe_invalidations():
         if _invalidation_connection is not None:
             return
         connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        callback = lambda *_: _metadata.invalidate()
+        callback = _invalidated
         subscriptions = []
         try:
             subscriptions.append(connection.signal_subscribe(BUS, BUS,
