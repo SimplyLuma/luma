@@ -420,6 +420,7 @@ class Engine:
         self._publish_lock = threading.Lock()
         self._published_serial = 0
         self._operation = threading.Lock()
+        self._flush = threading.Lock()  # one report flush at a time; held while posting
         self._download_lock = threading.Lock()
         self._download_cancel = None          # the running download's cancellable
         self._download_automatic = False
@@ -1911,34 +1912,47 @@ class Engine:
     def flush_reports(self) -> int:
         """Send the weekly check-in and queued transitions.
 
-        Runs as an operation, so it never overlaps a check, a download or a
-        person's change on another thread; if one is running the reports stay
-        queued for the next time. The state file lock is not held while posting."""
-        try:
-            self._begin()
-        except Busy:
-            log.info("reports stay queued: an update operation is running")
+        The queue is read as an operation, so it never overlaps a check, a
+        download or a person's change on another thread; if one is running the
+        reports stay queued for the next time. Posting happens after the
+        operation ends: a slow or unreachable events server never makes a
+        download or a person's change that follows a check report Busy. One
+        flush posts at a time; the state file lock is not held while posting."""
+        if not self._flush.acquire(blocking=False):
+            log.info("reports stay queued: another flush is sending them")
             return 0
         try:
-            return self._flush_locked()
+            try:
+                self._begin()
+            except Busy:
+                log.info("reports stay queued: an update operation is running")
+                return 0
+            try:
+                batch = self._reports_to_send()
+            finally:
+                self._end()
+            return self._send_reports(*batch) if batch is not None else 0
         finally:
-            self._end()
+            self._flush.release()
 
-    def _flush_locked(self) -> int:
+    def _reports_to_send(self):
         try:
             view = self._view()
         except Exception:
-            return 0
+            return None
         now = self.clock()
         with self.store.locked():
             if not reporting.statistics_enabled(self.paths):
                 self.store.data["reports"] = []
-                return 0
+                return None
             countme = None
             if view.origin is not None:
                 countme = reporting.countme_payload(self.store, channel=view.origin.channel,
                                                     version=view.booted.version, arch=view.origin.arch, now=now)
             reports = [item for item in self.store.data.get("reports") or [] if isinstance(item, dict)]
+        return now, countme, reports
+
+    def _send_reports(self, now: float, countme, reports: list) -> int:
         counted = False
         delivered = 0
         sent = 0

@@ -162,5 +162,56 @@ class EngineThreads(unittest.TestCase):
         self.assertEqual(self.state()["reports"], [])
 
 
+class BlockingPosts(fakes.FakeHttp):
+    """An events server that does not answer until the test lets it."""
+
+    def __init__(self):
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def request_json(self, method, url, payload, headers=None, max_bytes=65536):
+        self.entered.set()
+        self.release.wait(10)
+        return super().request_json(method, url, payload, headers, max_bytes)
+
+
+class SlowReports(unittest.TestCase):
+    """A check is followed by a report flush (daemon _do_check, automatic()).
+    An events server that hangs (no internet) must not make the next
+    operation Busy once the check has published its result."""
+
+    def setUp(self):
+        self.rig = fakes.Rig()
+        self.rig.http = BlockingPosts()
+        self.rig.publish(graph_doc([release("1.0.0", 1), release("1.0.1", 2)]))
+        self.engine = self.rig.engine()
+
+    def tearDown(self):
+        self.rig.http.release.set()
+        self.rig.close()
+
+    def test_download_after_a_check_is_not_busy_while_reports_post(self):
+        self.assertEqual(self.engine.check().action, "update")
+        with self.engine.store.locked():
+            self.engine.store.queue_report({"channel": "stable", "from_version": "a", "to_version": "b",
+                                            "arch": "x86_64", "result": "failed", "error_class": ""})
+        flush = threading.Thread(target=self.engine.flush_reports)
+        flush.start()
+        self.assertTrue(self.rig.http.entered.wait(5))
+
+        self.assertFalse(self.engine._operation.locked())
+        self.assertEqual(self.engine.flush_reports(), 0)  # one flush posts at a time
+        self.assertTrue(self.engine.download(user_initiated=True))
+        self.assertEqual(self.engine.status().state, "staged")
+
+        self.rig.http.release.set()
+        flush.join(10)
+        self.assertFalse(flush.is_alive())
+        # The queued report was delivered; the download's own report waits for the next flush.
+        self.assertEqual([r["result"] for r in json.loads(self.rig.paths.state_file.read_text())["reports"]],
+                         ["staged"])
+
+
 if __name__ == "__main__":
     unittest.main()
