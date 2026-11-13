@@ -280,7 +280,7 @@ xvfb-run -a --server-args="-screen 0 1920x1080x24" dbus-run-session -- \
   env GDK_BACKEND=x11 GSK_RENDERER=cairo G_DEBUG=fatal-criticals \
   python3 tests/save_sheet.py
 # Current shared runtime regressions execute against the staged installed kit.
-for regression in identity_menu_position action_center_grown_inset details_pane_footer sidebar_header application_directory share_capabilities share_layout_runtime media_transport_fit media_memory media_cover_memory media_crop sdk_app_updates migration_repair_screen icon_button_accessibility; do
+for regression in identity_menu_position action_center_grown_inset details_pane_footer sidebar_header application_directory share_capabilities share_layout_runtime media_transport_fit media_memory media_cover_memory media_crop sdk_app_updates migration_repair_screen icon_button_accessibility tooltip_lifecycle; do
   scale=1
   case "$regression" in media_memory|media_cover_memory) scale=3 ;; esac
   GI_TYPELIB_PATH="$PWD/%{_vpath_builddir}/appearance:$PWD/%{_vpath_builddir}/ui:$PWD/%{_vpath_builddir}/semantics" \
