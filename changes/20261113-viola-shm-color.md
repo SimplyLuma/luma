@@ -1,5 +1,5 @@
 ---
-type: fix
+type: improvement
 component: Viola
 packages: [viola-browser-stable]
 highlight: false
