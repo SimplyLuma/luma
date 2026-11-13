@@ -19,10 +19,13 @@ config = "luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1"
 config_fragments = ["config/kernel/fp6.fragment"]
 # Applied over the tag in order (scripts/kernel/build-fp6.sh).
 patches = [
+  "patches/linux-milos/0039-iio-fp6-add-motion-environment-sensor-stack.patch",
+  "patches/linux-milos/0040-iio-imu-inv-icm42600-add-icm42630.patch",
   "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch",
   "patches/linux-milos/0042-Input-eswin_eph861x-reset-the-controller-before-unmasking.patch",
 ]
 dtb = "qcom/milos-fairphone-fp6.dtb"
+# The boot DTB is the built dtb with these overlays (scripts/kernel/compose-fp6-dtb.sh).
 dtb_overlays = "luma/fp6/alpha1/dtb"
 
 [boot]

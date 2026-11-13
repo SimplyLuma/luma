@@ -5,3 +5,14 @@
 # rpm-ostree runs package scripts on a FUSE mount, including the transaction
 # that installs the device repository on a fresh phone.
 CONFIG_FUSE_FS=y
+
+# Motion and environment sensors (patches 0039/0040), for iio-sensor-proxy:
+# the sensor I2C and IMU SPI pads have no AP QUP function, so both buses are
+# bit-banged. ICM-42630 accelerometer/gyroscope, STK36C61 light/proximity,
+# QMC6308 magnetometer, SPL07-003 barometer.
+CONFIG_I2C_GPIO=m
+CONFIG_SPI_GPIO=m
+CONFIG_INV_ICM42600_SPI=m
+CONFIG_STK3310=m
+CONFIG_QMC6308=m
+CONFIG_DPS310=m
