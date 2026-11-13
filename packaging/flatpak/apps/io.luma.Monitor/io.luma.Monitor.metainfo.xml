@@ -14,6 +14,7 @@
     <name>Project Luma</name>
   </developer>
   <releases>
+    <release version="0.1.2" date="2026-11-13"><description><p>Shows installed memory rounded to one decimal.</p></description></release>
     <release version="0.1.1" date="2026-11-07"><description><p>Opens on the last app list and shows live activity sooner.</p></description></release>
     <release version="0.1.0" date="2026-10-07" />
   </releases>

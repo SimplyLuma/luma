@@ -15,7 +15,7 @@ import threading
 import time
 from pathlib import Path
 from collections import deque
-from .v70_data import (FixtureSource, sorted_apps, format_value, fixture_totals,
+from .v70_data import (FixtureSource, sorted_apps, format_value, memory_summary, fixture_totals,
                        fixture_properties, filler_processes)
 
 _fixture_home=None
@@ -155,7 +155,7 @@ class MonitorWindow(AppWindow):
         initial=not hasattr(self,'resource_rows')
         t=self.totals
         values={'cpu':f"{int(t.get('cpu',0)+.5)}%" if t.get('cpu') is not None else '—',
-                'mem':f"{t.get('mem',0)/1024:.1f} of {(16384 if self.fixture else t.get('totalMem',0))/1024:g} GB" if t.get('mem') is not None else '—',
+                'mem':memory_summary(t.get('mem',0),16384 if self.fixture else t.get('totalMem',0)) if t.get('mem') is not None else '—',
                 'disk':format_value((t.get('read') or 0)+(t.get('write') or 0),'disk') if t.get('read') is not None else '—',
                 'net':'↓ '+format_value(t.get('down'),'net'),'en':('74% · '+('4 h' if t['en']>60 else '6 h')+' left') if self.fixture else t.get('batteryText','—')}
         if initial:self.resource_rows={}
