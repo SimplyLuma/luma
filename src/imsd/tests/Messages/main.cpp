@@ -96,14 +96,18 @@ namespace {
         "s=-\r\n"
         "c=IN IP6 2001:db8::db43\r\n"
         "t=0 0\r\n"
-        "m=audio 50004 RTP/AVP 97 98\r\n"
+        "m=audio 50004 RTP/AVP 97 99 98 100\r\n"
         "b=AS:41\r\n"
         "b=RS:512\r\n"
         "b=RR:1536\r\n"
         "a=rtpmap:97 AMR-WB/16000/1\r\n"
         "a=fmtp:97 octet-align=1;mode-change-capability=2;max-red=0\r\n"
+            "a=rtpmap:99 AMR/8000/1\r\n"
+            "a=fmtp:99 octet-align=1;mode-change-capability=2;max-red=0\r\n"
         "a=rtpmap:98 telephone-event/16000\r\n"
         "a=fmtp:98 0-15\r\n"
+            "a=rtpmap:100 telephone-event/8000\r\n"
+            "a=fmtp:100 0-15\r\n"
         "a=ptime:20\r\n"
         "a=maxptime:240\r\n"
         "a=sendrecv\r\n";
@@ -113,7 +117,7 @@ namespace {
         "Via: SIP/2.0/TCP [2001:db8::db43]:45062;branch=z9hG4bKINVBRANCH0000000000;rport\r\n"
         "Max-Forwards: 70\r\n"
         "Route: <sip:[2001:db8::105]:6000;lr>\r\n"
-        "From: <sip:001010123456789@ims.mnc001.mcc001.3gppnetwork.org>;tag=ITAG123456\r\n"
+        "From: <tel:+31611111111>;tag=ITAG123456\r\n"
         "To: <sip:1233;phone-context=ims.mnc001.mcc001.3gppnetwork.org@ims.mnc001.mcc001.3gppnetwork.org;user=phone>\r\n"
         "Call-ID: CALLID789@2001:db8::db43\r\n"
         "CSeq: 1 INVITE\r\n"
@@ -130,21 +134,25 @@ namespace {
         "Session-Expires: 1800;refresher=uac\r\n"
         "Min-SE: 90\r\n"
         "Content-Type: application/sdp\r\n"
-        "Content-Length: 323\r\n"
+        "Content-Length: 466\r\n"
         "\r\n"
         "v=0\r\n"
         "o=- 7777777 7777777 IN IP6 2001:db8::db43\r\n"
         "s=-\r\n"
         "c=IN IP6 2001:db8::db43\r\n"
         "t=0 0\r\n"
-        "m=audio 50004 RTP/AVP 97 98\r\n"
+        "m=audio 50004 RTP/AVP 97 99 98 100\r\n"
         "b=AS:41\r\n"
         "b=RS:512\r\n"
         "b=RR:1536\r\n"
         "a=rtpmap:97 AMR-WB/16000/1\r\n"
         "a=fmtp:97 octet-align=1;mode-change-capability=2;max-red=0\r\n"
+            "a=rtpmap:99 AMR/8000/1\r\n"
+            "a=fmtp:99 octet-align=1;mode-change-capability=2;max-red=0\r\n"
         "a=rtpmap:98 telephone-event/16000\r\n"
         "a=fmtp:98 0-15\r\n"
+            "a=rtpmap:100 telephone-event/8000\r\n"
+            "a=fmtp:100 0-15\r\n"
         "a=ptime:20\r\n"
         "a=maxptime:240\r\n"
         "a=sendrecv\r\n";
@@ -185,6 +193,35 @@ int main() {
            Reg2, "protected REGISTER");
     }
 
+    // ---- a reregistration (the keepalive refresh, a resume): the last
+    // challenge answer verbatim, new SPIs and a new client port in
+    // Security-Client, the server port unchanged (TS 24.229 5.1.1.4.2,
+    // TS 33.203 7.4.0)
+    {
+        std::string auth = AuthAka(c, "NONCEXYZ", "CNONCE0123456789", "RESP0000");
+        std::string r3 = BuildRegisterProtected(c, "REGCALLID@2001:db8::db43", "FTAG5678", "REGBRANCH123456", 3, 55555u, 66666u, auth, 45063);
+        Check(r3.contains("\r\nSecurity-Client: ipsec-3gpp; alg=hmac-sha-1-96; ealg=aes-cbc; spi-c=55555; spi-s=66666; port-c=45063; port-s=45062\r\n"), "refresh Security-Client: new SPIs, a new client port, the same server port");
+        Check(r3.contains("\r\nCSeq: 3 REGISTER\r\n") && r3.contains("\r\nVia: SIP/2.0/TCP [2001:db8::db43]:45062;") && r3.contains("@[2001:db8::db43]:45062;transport=tcp>"), "refresh: CSeq+1, the server port in Via and Contact");
+        Check(r3.contains(std::format("\r\n{}\r\n", auth)), "refresh carries the last challenge answer verbatim");
+        std::string r3same = BuildRegisterProtected(c, "REGCALLID@2001:db8::db43", "FTAG5678", "REGBRANCH123456", 3, 55555u, 66666u, auth);
+        Check(r3same.contains("port-c=45061; port-s=45062\r\n"), "without a client port the in-use one is offered (the initial registration's second REGISTER)");
+    }
+
+    // ---- protected-leg transport follows Context.transport (SIP_TRANSPORT=udp,
+    // or the auto fallback): every protected request's Via says UDP, the
+    // challenge's Via stays UDP either way, and TCP is the untouched default.
+    {
+        Context cu = c;
+        cu.transport = "UDP";
+        std::string auth = AuthAka(cu, "NONCEXYZ", "CNONCE0123456789", "RESP0000");
+        std::string r2u = BuildRegisterProtected(cu, "REGCALLID@2001:db8::db43", "FTAG5678", "REGBRANCH123456", 2, 7449812u, 176466735u, auth);
+        Check(r2u.contains("\r\nVia: SIP/2.0/UDP [2001:db8::db43]:45062;branch=z9hG4bKREGBRANCH123456;rport\r\n"), "protected REGISTER Via follows transport=UDP");
+        Check(!r2u.contains("SIP/2.0/TCP"), "no TCP token left in a UDP protected REGISTER");
+        Check(BuildSubscribeReg(cu, "SUBCALLID@2001:db8::db43", "STAG1234", "SUBBRANCH0000000000").contains("\r\nVia: SIP/2.0/UDP [2001:db8::db43]:45062;"), "SUBSCRIBE Via follows transport=UDP");
+        Check(BuildRegisterInitial(cu, "REGCALLID@2001:db8::db43", "FTAG5678", "REGBRANCH123456", 7449812u, 176466735u).contains("\r\nVia: SIP/2.0/UDP [2001:db8::db43]:5060;"), "initial REGISTER Via is UDP regardless");
+        Check(BuildRegisterProtected(c, "REGCALLID@2001:db8::db43", "FTAG5678", "REGBRANCH123456", 2, 7449812u, 176466735u, auth).contains("\r\nVia: SIP/2.0/TCP [2001:db8::db43]:45062;"), "default transport stays TCP");
+    }
+
     // ---- RuriFor variants
     Eq(RuriFor("1233", c.id.domain), "sip:1233;phone-context=ims.mnc001.mcc001.3gppnetwork.org@ims.mnc001.mcc001.3gppnetwork.org;user=phone", "ruri short code");
     Eq(RuriFor("+31612345678", c.id.domain), "sip:+31612345678@ims.mnc001.mcc001.3gppnetwork.org;user=phone", "ruri E.164");
@@ -221,6 +258,38 @@ int main() {
         d.itag = "ITAG123456";
         d.invBranch = "INVBRANCH0000000000";
         Eq(BuildInvite(c, d, Sdp, /*precond=*/false), Invite, "INVITE + AMR-WB SDP offer");
+    }
+
+    // ---- From carries our PUBLIC identity, never the IMSI-derived temporary
+    //      IMPU once anything better is known (ledger F1: a Telia P-CSCF showed
+    //      the reporter's IMSI to the callee). aor > tel: ppi > temp IMPU; the
+    //      same URI on every request of the dialog; a UAS signs with the
+    //      INVITE's To.
+    {
+        Dialog d;
+        d.ruri = RuriFor("1233", c.id.domain);
+        d.callid = "CID@x"; d.itag = "it"; d.invBranch = "ib";
+        Context c2 = MakeCtx();
+        c2.aor = "sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org";
+        std::string inv = BuildInvite(c2, d, "v=0\r\n", false);
+        Check(inv.contains("\r\nFrom: <sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org>;tag=it\r\n"), "INVITE From is the registered sip: identity when known");
+        Check(!inv.contains("001010123456789@ims"), "INVITE never carries the IMSI IMPU once the aor is known");
+        Check(inv.contains("\r\nP-Preferred-Identity: <tel:+31611111111>\r\n"), "P-Preferred-Identity unchanged");
+        Check(BuildCancel(c2, d).contains("\r\nFrom: <sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org>;tag=it\r\n"), "CANCEL From follows");
+        Check(BuildAckNon2xx(c2, d, "<sip:x@y>;tag=r").contains("\r\nFrom: <sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org>;tag=it\r\n"), "non-2xx ACK From follows");
+        d.dialogTo = "<sip:x@y>;tag=r"; d.remoteTarget = "sip:x@[2001:db8::9]:5060";
+        Check(BuildAck2xx(c2, d, "ab", "<sip:x@y>;tag=r").contains("\r\nFrom: <sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org>;tag=it\r\n"), "2xx ACK From follows");
+        Check(BuildInDialog(c2, d, "BYE", 2, "bb").contains("\r\nFrom: <sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org>;tag=it\r\n"), "BYE From follows");
+        // only tel: known (pre-aor): the tel: identity, as the pinned INVITE shows
+        Check(BuildInvite(c, d, "v=0\r\n", false).contains("\r\nFrom: <tel:+31611111111>;tag=it\r\n"), "INVITE From falls back to the tel: identity");
+        // nothing learned yet: the temporary IMPU is all there is
+        Context c4 = MakeCtx();
+        c4.ppi.clear();
+        Check(BuildInvite(c4, d, "v=0\r\n", false).contains("\r\nFrom: <sip:001010123456789@ims.mnc001.mcc001.3gppnetwork.org>;tag=it\r\n"), "INVITE From is the temporary IMPU only before any identity is learned");
+        // UAS: the dialog's local URI is the INVITE's To, whatever we registered as
+        Dialog du = d;
+        du.localUri = "sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org;user=phone";
+        Check(BuildInDialog(c4, du, "BYE", 1, "cc").contains("\r\nFrom: <sip:+31611111111@ims.mnc001.mcc001.3gppnetwork.org;user=phone>;tag=it\r\n"), "UAS BYE From is the INVITE's To URI");
     }
 
     // ---- emergency INVITE: byte-identical to the plain INVITE except the

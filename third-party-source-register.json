@@ -3292,9 +3292,6 @@
     "src/imsd/README.md": [
       "GPL-3.0-only"
     ],
-    "src/imsd/lint-rules.h": [
-      "LGPL-3.0-only"
-    ],
     "src/imsd/project.cpp": [
       "GPL-3.0-only"
     ],
@@ -9040,9 +9037,6 @@
     "src/imsd/interfaces/Imsd.cppm": [
       "GPL-3.0-only"
     ],
-    "src/imsd/packaging/APKBUILD": [
-      "GPL-3.0-only"
-    ],
     "src/imsd/packaging/APKBUILD.binary": [
       "GPL-3.0-only"
     ],
@@ -13862,6 +13856,72 @@
     ],
     "assets/boot/grub-theme/theme.txt": [
       "Apache-2.0"
+    ],
+    "src/imsd/AGENTS.md": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/implementations/ofonod.cpp": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/implementations/pcscf.cpp": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/interfaces/Imsd-Qmi.cppm": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/interfaces/ImsdBus.cppm": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/80-imsd-ofono.preset": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/80-imsd.preset": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/90_imsd-ofono.gschema.override": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/build-package.sh": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd-handover.sh": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd-ofono-restart-calls.sh": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd-ofono.post-install": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd-ofono.post-upgrade": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd-ofonod.service": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd-systemd.post-install": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd-systemd.post-upgrade": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd.post-install": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/imsd.post-upgrade": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/net.catcrafts.IMS1.policy": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/org.kde.modem.daemon.desktop": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/packaging/org.ofono.conf": [
+      "GPL-3.0-only"
+    ],
+    "src/imsd/tests/Qmi/main.cpp": [
+      "GPL-3.0-only"
     ]
   },
   "retained_notice_paths": [

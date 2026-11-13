@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+#
+# imsd.service ships in this subpackage, which apk installs after imsd.
+# When imsd is added back over a daemon an `apk del` left running,
+# imsd.post-install runs before this unit file is on disk and cannot mark
+# the unit (not-found to systemd), so the package that brings the file
+# marks it too; on an upgrade both mark it, which is one marker.
+# Also installed as imsd-systemd.post-install.
+
+# A unit whose file an apk del removed is not-found to systemd until a
+# reload and refuses properties ("failed to load properly"); the file is
+# on disk by now, so reload and mark again.
+mark() {
+	systemctl set-property "$1" Markers=+needs-restart 2>/dev/null && return 0
+	systemctl daemon-reload && systemctl set-property "$1" Markers=+needs-restart || :
+}
+
+if [ -d /run/systemd/system ] && systemctl is-active -q imsd.service; then
+	mark imsd.service
+fi
+exit 0

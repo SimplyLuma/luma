@@ -121,6 +121,93 @@ export namespace imsd::sip {
         return v;
     }
 
+    // True for a response of the transaction (callid, cseq) — the reply a
+    // wait for that request may judge. A request, another transaction's
+    // response or anything else a socket delivers is not.
+    bool ResponseOf(std::string_view msg, std::string_view callid, std::string_view cseq) {
+        return Status(msg).has_value() && Header(msg, "Call-ID") == callid && Header(msg, "CSeq") == cseq;
+    }
+
+    // Retry-After of a response (RFC 3261 20.33), in seconds; nullopt when
+    // absent or not a number.
+    std::optional<long> RetryAfter(std::string_view msg) {
+        auto v = Header(msg, "Retry-After");
+        if (!v) return std::nullopt;
+        return LeadingDigits(*v);
+    }
+
+    // A refused final for the journal: its status line, then the headers
+    // that say who refused and for how long — Retry-After (RFC 3261 20.33),
+    // Warning (20.43: the node's own words), Reason (RFC 3326), Server
+    // (20.35). "503 Service Unavailable; Retry-After: 60; Warning: 399
+    // pcscf1.example \"...\"". A bare status code says neither which node
+    // nor why: O2 UK answered a refresh 503 twenty-one times and a
+    // subscription 500 (alyx, 2026-09-24) and the journal could not tell
+    // the P-CSCF from the S-CSCF (ims ledger F17).
+    std::string RefusalSummary(std::string_view msg) {
+        std::string_view line = msg.substr(0, msg.find_first_of("\r\n"));
+        if (line.starts_with("SIP/2.0 ")) line.remove_prefix(8);
+        std::string s(Trim(line));
+        for (std::string_view name : {"Retry-After", "Warning", "Reason", "Server"})
+            for (std::string_view v : Headers(msg, name))
+                s += std::format("; {}: {}", name, v);
+        return s;
+    }
+
+    // Our binding in a reg-event NOTIFY body (RFC 3680 reginfo): the
+    // <contact> whose <uri> carries `user` as its SIP user part, across every
+    // <registration> of the implicit set (the sip: and the tel: identity
+    // list the same contact). Active anywhere = Active; otherwise the first
+    // terminated occurrence's event and retry-after attribute; NotListed
+    // when no contact of ours is in the document — a partial update about
+    // other bindings, or a previous registration's binding (the contact our
+    // own fresh registration deactivated, O2 UK 2026-09-24).
+    struct RegInfoContact {
+        enum class State { NotListed, Active, Terminated };
+        State state = State::NotListed;
+        std::string event;     // terminated: deactivated | probation | rejected | unregistered | expired | …
+        long retryAfter = 0;   // terminated: the retry-after attribute (probation), seconds
+    };
+    RegInfoContact RegInfoContactState(std::string_view reginfo, std::string_view user) {
+        constexpr std::size_t npos = std::string_view::npos;
+        RegInfoContact out;
+        std::string needle = std::format(":{}@", user);   // sip:<user>@… / sips:<user>@…
+        std::size_t pos = 0;
+        while ((pos = reginfo.find("<contact", pos)) != npos) {
+            std::size_t tagEnd = reginfo.find('>', pos);
+            if (tagEnd == npos) break;
+            std::string_view tag = reginfo.substr(pos, tagEnd - pos);
+            std::size_t end = reginfo.find("</contact>", tagEnd);
+            std::string_view body = reginfo.substr(tagEnd + 1, end == npos ? npos : end - tagEnd - 1);
+            pos = end == npos ? reginfo.size() : end + 10;
+            std::size_t u = body.find("<uri>");
+            if (u == npos) continue;
+            std::size_t ue = body.find("</uri>", u);
+            std::string_view uri = Trim(body.substr(u + 5, ue == npos ? npos : ue - u - 5));
+            if (!uri.contains(needle)) continue;
+            auto attr = [&](std::string_view name) -> std::string_view {
+                std::string key = std::format(" {}=\"", name);
+                std::size_t a = tag.find(key);
+                if (a == npos) return {};
+                std::size_t b = tag.find('"', a + key.size());
+                return tag.substr(a + key.size(), b == npos ? npos : b - a - key.size());
+            };
+            std::string_view state = attr("state");
+            if (state == "active") {
+                out.state = RegInfoContact::State::Active;
+                out.event.clear();
+                out.retryAfter = 0;
+                return out;
+            }
+            if (state == "terminated" && out.state == RegInfoContact::State::NotListed) {
+                out.state = RegInfoContact::State::Terminated;
+                out.event = std::string(attr("event"));
+                out.retryAfter = LeadingDigits(attr("retry-after")).value_or(0);
+            }
+        }
+        return out;
+    }
+
     // Where a UDP response to this request must go (RFC 3261 18.2.2): the
     // top Via's sent-by port — unless the Via carries rport, in which case
     // the caller should reply to the request's source port instead
@@ -233,4 +320,36 @@ export namespace imsd::sip {
     private:
         std::string buf_;
     };
+
+    // The SIP message carried by one UDP datagram (RFC 3261 18.3): a
+    // datagram is never accumulated with the next. Leading CRLFs (an RFC
+    // 5626 keepalive pong) are not a message → nullopt, no problem. A
+    // Content-Length that fits truncates the body to it; one that does not
+    // fit is a truncated datagram → nullopt with `problem` set; no
+    // Content-Length means the body is the rest of the datagram. A datagram
+    // without a header terminator is malformed → nullopt with `problem`.
+    std::optional<std::string> DatagramMessage(std::string_view d, std::string* problem = nullptr) {
+        std::size_t start = d.find_first_not_of("\r\n");
+        if (start == std::string_view::npos) return std::nullopt;
+        d.remove_prefix(start);
+        std::size_t idx = d.find("\r\n\r\n");
+        if (idx == std::string_view::npos) {
+            if (problem) *problem = std::format("datagram without a header terminator ({} bytes)", d.size());
+            return std::nullopt;
+        }
+        std::size_t bodyStart = idx + 4;
+        std::size_t body = d.size() - bodyStart;
+        if (auto v = Header(d.substr(0, idx), "Content-Length")) {
+            std::size_t clen = 0; int digits = 0;
+            for (char c : *v) { if (c < '0' || c > '9' || digits == 9) break; clen = clen * 10 + static_cast<std::size_t>(c - '0'); digits++; }
+            if (digits) {
+                if (clen > body) {
+                    if (problem) *problem = std::format("datagram truncated (Content-Length {} > {} body bytes)", clen, body);
+                    return std::nullopt;
+                }
+                return std::string(d.substr(0, bodyStart + clen));
+            }
+        }
+        return std::string(d);
+    }
 }

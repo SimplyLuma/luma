@@ -4,8 +4,9 @@
 // lint-disable-file fixed-width-types
 /*
 Imsd:Util — small self-contained primitives the rest of the engine builds on:
-random SIP tokens, IPv6 detection + host/port formatting, hex/base64 decoding,
-and MD5 (RFC 1321). None of the standard library ships these last three, and
+random SIP tokens, IPv6 detection + host/port formatting, the RFC 5952
+canonical IPv6 text and the address-list parser, hex/base64 decoding, and MD5
+(RFC 1321). None of the standard library ships these last three, and
 the IMS AKAv1-MD5 digest (Imsd:Aka) needs MD5 over raw bytes plus base64 to
 unwrap the RAND||AUTN nonce, so they live here rather than pulling in a crypto
 dependency. Pure std C++ (no GLib, no I/O); behavior is pinned by tests/Util.
@@ -24,6 +25,12 @@ export namespace imsd::util {
     // an installed package's nftables accept rules.
     constexpr int PortUc = 45061;
     constexpr int PortUs = 45062;
+    // The client port a reregistration proposes for the SA pairs a
+    // re-authentication would set up: TS 33.203 7.4.0 keeps the server
+    // ports (port_us, port_ps) and changes the client ports (port_uc,
+    // port_pc). imsd answers such a challenge with a fresh registration, so
+    // nothing is bound here and the firewall rules need not open it.
+    constexpr int PortUcNext = 45063;
 
     // An address is IPv6 iff it contains a colon (matches the Python is6()).
     inline bool Is6(std::string_view addr) { return addr.contains(':'); }
@@ -32,6 +39,114 @@ export namespace imsd::util {
     inline std::string HostPort(std::string_view addr, int port) {
         return Is6(addr) ? std::format("[{}]:{}", addr, port)
                          : std::format("{}:{}", addr, port);
+    }
+
+    // The RFC 5952 §4 text of an IPv6 address: lowercase hex, no leading
+    // zeros, the longest run of two or more zero fields as "::" (the first
+    // on a tie), never a single zero field. This is the form iproute2 and
+    // inet_ntop print, so addresses canonicalised here compare as text
+    // against `ip xfrm` output whatever spelling they arrived in (an
+    // upper-case or uncompressed PCSCF= in /etc/imsd.env never matched the
+    // kernel's text before). Surrounding brackets are accepted. nullopt for
+    // anything that is not a plain IPv6 literal: a zone ("%dev"), a "]:port",
+    // a dotted-quad tail ("::ffff:1.2.3.4" — RFC 5952 §5 keeps that dotted and
+    // an IPv6-only PDN never produces it; the same address spelled in hex,
+    // "::ffff:a00:1", is accepted and comes back in hex — §4 form, where
+    // inet_ntop prints it dotted), two "::", more than eight fields,
+    // a field over four digits, an IPv4 address, a name.
+    inline std::optional<std::string> CanonicalIp6(std::string_view s) {
+        if (s.size() >= 2 && s.front() == '[' && s.back() == ']') s = s.substr(1, s.size() - 2);
+        if (s.empty()) return std::nullopt;
+        auto nibble = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
+        for (char c : s) if (c != ':' && nibble(c) < 0) return std::nullopt;
+        // "a:b" fields of one part (no "::" inside); false on an empty or
+        // over-long field
+        auto fields = [&](std::string_view part, std::vector<std::uint16_t>& out) -> bool {
+            if (part.empty()) return true;
+            std::size_t start = 0;
+            while (true) {
+                std::size_t colon = part.find(':', start);
+                std::string_view f = part.substr(start, colon == std::string_view::npos ? std::string_view::npos : colon - start);
+                if (f.empty() || f.size() > 4) return false;
+                unsigned v = 0;
+                for (char c : f) v = v * 16 + static_cast<unsigned>(nibble(c));
+                out.push_back(static_cast<std::uint16_t>(v));
+                if (colon == std::string_view::npos) return true;
+                start = colon + 1;
+            }
+        };
+        std::vector<std::uint16_t> head;
+        std::vector<std::uint16_t> tail;
+        std::size_t dc = s.find("::");
+        if (dc == std::string_view::npos) {
+            if (!fields(s, head) || head.size() != 8) return std::nullopt;
+        } else {
+            if (s.find("::", dc + 1) != std::string_view::npos) return std::nullopt;
+            if (!fields(s.substr(0, dc), head) || !fields(s.substr(dc + 2), tail)) return std::nullopt;
+            if (head.size() + tail.size() > 7) return std::nullopt;
+        }
+        std::array<std::uint16_t, 8> g{};
+        std::copy(head.begin(), head.end(), g.begin());
+        std::copy(tail.begin(), tail.end(), g.end() - static_cast<std::ptrdiff_t>(tail.size()));
+        int bestStart = -1;
+        int bestLen = 1;  // a run must beat one field to be compressed
+        for (int i = 0; i < 8;) {
+            if (g[static_cast<std::size_t>(i)] != 0) { i++; continue; }
+            int j = i;
+            while (j < 8 && g[static_cast<std::size_t>(j)] == 0) j++;
+            if (j - i > bestLen) { bestStart = i; bestLen = j - i; }
+            i = j;
+        }
+        std::string out;
+        for (int i = 0; i < 8;) {
+            if (i == bestStart) {
+                out += "::";
+                i += bestLen;
+                continue;
+            }
+            if (!out.empty() && out.back() != ':') out += ':';
+            out += std::format("{:x}", g[static_cast<std::size_t>(i)]);
+            i++;
+        }
+        return out;
+    }
+
+    // The canonical text of any address imsd compares or logs: an IPv6
+    // literal in RFC 5952 form, anything else (an IPv4 address, a malformed
+    // IPv6 that the caller's own checks will refuse) unchanged.
+    inline std::string CanonicalAddr(std::string_view s) {
+        if (!Is6(s)) return std::string(s);
+        return CanonicalIp6(s).value_or(std::string(s));
+    }
+
+    // A comma-separated address list (PCSCF_DISCOVERED=) → the canonical IPv6
+    // literals in it, in order, duplicates dropped. Entries that are not an
+    // IPv6 literal (an IPv4 address, a name, garbage) go to `rejected` when
+    // the caller asks for them; blanks are skipped.
+    inline std::vector<std::string> ParseAddressList(std::string_view list, std::vector<std::string>* rejected = nullptr) {
+        std::vector<std::string> out;
+        std::size_t start = 0;
+        while (start <= list.size()) {
+            std::size_t comma = list.find(',', start);
+            std::string_view item = list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+            while (!item.empty() && (item.front() == ' ' || item.front() == '\t')) item.remove_prefix(1);
+            while (!item.empty() && (item.back() == ' ' || item.back() == '\t')) item.remove_suffix(1);
+            if (!item.empty()) {
+                if (auto c = CanonicalIp6(item)) {
+                    if (std::find(out.begin(), out.end(), *c) == out.end()) out.push_back(*c);
+                } else if (rejected) {
+                    rejected->emplace_back(item);
+                }
+            }
+            if (comma == std::string_view::npos) break;
+            start = comma + 1;
+        }
+        return out;
     }
 
     // A random token of `n` chars over [a-z0-9] — SIP branch/tag/Call-ID

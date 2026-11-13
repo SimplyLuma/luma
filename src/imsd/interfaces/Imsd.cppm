@@ -9,6 +9,7 @@ export module Imsd;
 export import :Util;
 export import :Aka;
 export import :Ipsec;
+export import :Qmi;
 export import :Sip;
 export import :Sdp;
 export import :Messages;

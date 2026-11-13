@@ -1,0 +1,21 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+#
+# As imsd.post-upgrade, for imsd-ofonod: restarted once apk is done, and
+# its ExecStartPost restarts GNOME Calls with it. Also installed as
+# imsd-ofono.post-install, for a package added again over the daemon an
+# `apk del` left running.
+
+# A unit whose file an apk del removed is not-found to systemd until a
+# reload and refuses properties ("failed to load properly"); its file is
+# back on disk by the time post-install runs, so reload and mark again.
+mark() {
+	systemctl set-property "$1" Markers=+needs-restart 2>/dev/null && return 0
+	systemctl daemon-reload && systemctl set-property "$1" Markers=+needs-restart || :
+}
+
+if [ -d /run/systemd/system ] && systemctl is-active -q imsd-ofonod.service; then
+	mark imsd-ofonod.service
+fi
+exit 0

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only AND Apache-2.0
 
 Name:           luma-imsd
-Version:        0.3.0
-Release:        1.luma.6%{?dist}
+Version:        1.1.0
+Release:        1.luma.1%{?dist}
 Summary:        Native Linux IMS and VoLTE service for Project Luma
 License:        GPL-3.0-only AND Apache-2.0
 URL:            https://forgejo.catcrafts.net/Catcrafts/imsd
@@ -33,9 +33,11 @@ Requires:       bash
 Requires:       glib2
 Requires:       iproute
 Requires:       libcxx
+Requires:       libqmi-utils
 Requires:       nftables
 Requires:       opencore-amr
 Requires:       pipewire-utils
+Requires:       polkit
 Requires:       systemd
 Requires:       vo-amrwbenc
 Provides:       imsd = %{version}-%{release}
@@ -55,6 +57,7 @@ cp %{SOURCE5} LICENSE.luma
 %install
 install -D -m 0755 build/make/imsd %{buildroot}%{_sbindir}/imsd
 install -D -m 0755 build/make/imsd-media %{buildroot}%{_libexecdir}/imsd-media
+install -D -m 0755 build/make/imsd-pcscf %{buildroot}%{_libexecdir}/imsd-pcscf
 install -D -m 0755 build/make/imsd-dialerd %{buildroot}%{_bindir}/imsd-dialerd
 install -D -m 0644 packaging/imsd-dialerd.desktop \
   %{buildroot}%{_sysconfdir}/xdg/autostart/imsd-dialerd.desktop
@@ -66,6 +69,8 @@ install -D -m 0755 %{SOURCE3} \
   %{buildroot}%{_libexecdir}/luma-fp6-ims-state-guard
 install -D -m 0644 %{SOURCE4} \
   %{buildroot}%{_datadir}/dbus-1/system.d/net.catcrafts.IMS1.conf
+install -D -m 0644 packaging/net.catcrafts.IMS1.policy \
+  %{buildroot}%{_datadir}/polkit-1/actions/net.catcrafts.IMS1.policy
 
 %check
 %make_build check CXXFLAGS="%{imsd_cxxflags}" LDFLAGS="%{imsd_ldflags}"
@@ -85,13 +90,24 @@ install -D -m 0644 %{SOURCE4} \
 %{_sbindir}/imsd
 %{_bindir}/imsd-dialerd
 %{_libexecdir}/imsd-media
+%{_libexecdir}/imsd-pcscf
 %{_libexecdir}/luma-fp6-ims-pdn-up
 %{_libexecdir}/luma-fp6-ims-state-guard
 %{_unitdir}/luma-fp6-imsd.service
 %{_datadir}/dbus-1/system.d/net.catcrafts.IMS1.conf
+%{_datadir}/polkit-1/actions/net.catcrafts.IMS1.policy
 %config(noreplace) %{_sysconfdir}/xdg/autostart/imsd-dialerd.desktop
 
 %changelog
+* Thu Nov 12 2026 Project Luma <maintainers@projectluma.org> - 1.1.0-1.luma.1
+- Rebase on imsd 1.1.0, carrying the Luma registration, terminating-call,
+  ISIM identity, emergency and media changes
+- Discover the P-CSCF from the IMS PDN's PCO with imsd-pcscf when PCSCF= is
+  not configured, and hand imsd the PDN's own address
+- Install the polkit voice action; the emergency ABI stays ungated
+- Keep the reg-event subscription opt-in (REG_EVENT=1)
+- Send DTMF as RFC 4733 events; play AMR-NB and G.711 calls
+
 * Tue Sep 01 2026 Project Luma <maintainers@projectluma.org> - 0.3.0-1.luma.6
 - Gate IMS bearer creation on completed ModemManager registration and a live
   Messaging.List boundary so boot cannot skip native SMS initialization

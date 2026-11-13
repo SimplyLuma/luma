@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+# imsd-ofono is the opt-in GNOME Calls backend: installing it is the choice
+# to run it (the unit itself refuses to coexist with a real ofonod).
+enable imsd-ofonod.service

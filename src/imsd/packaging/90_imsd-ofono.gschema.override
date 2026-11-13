@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 Catcrafts®
+#
+# GNOME Calls autoloads ["mm", "sip"] by default. imsd is reached through the
+# `ofono` provider (imsd-ofonod), so point Calls at that one instead.
+#
+# "mm" is dropped on purpose rather than appended: it would add the real
+# ModemManager modem as a second, competing origin, and on a phone whose voice
+# path is imsd the modem's own CS/voice route carries no audio — a dial that
+# picks that origin fails silently. Re-add it if your device has a working
+# ModemManager voice path and you want both.
+#
+# Install: /usr/share/glib-2.0/schemas/90_imsd-ofono.gschema.override
+# then run glib-compile-schemas /usr/share/glib-2.0/schemas (the distro's
+# package trigger normally does this for you).
+[org.gnome.Calls]
+autoload-plugins=['ofono']

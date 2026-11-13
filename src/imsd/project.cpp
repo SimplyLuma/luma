@@ -4,7 +4,8 @@
 // lint-disable-file no-char-pointer
 import std;
 import Crafter.Build;
-#include "lint-rules.h"
+#pragma crafter dependency "https://forgejo.catcrafts.net/Catcrafts/Crafter.LintRules.git" commit "e906f797da2cd0b1776dd1b420f9b04d3cd24baf"
+import Crafter.LintRules;
 namespace fs = std::filesystem;
 using namespace Crafter;
 
@@ -57,8 +58,26 @@ static void ApplyGioFlags(Configuration& cfg) {
     }
 }
 
+// ImsdBus — the polkit gate imsd and imsd-ofonod put in front of call
+// control. A static library of its own: GLib, so outside imsd-core.
+static std::unique_ptr<Configuration> BusLibrary(std::span<const std::string_view> args) {
+    auto bus = std::make_unique<Configuration>();
+    bus->path = "./";
+    bus->name = "imsd-bus";
+    bus->outputName = "imsd-bus";
+    ApplyStandardArgs(*bus, args);
+    bus->type = ConfigurationType::LibraryStatic;
+    {
+        std::array<fs::path, 1> ifaces = { "interfaces/ImsdBus" };
+        std::array<fs::path, 0> impls = {};
+        bus->GetInterfacesAndImplementations(ifaces, impls);
+    }
+    ApplyGioFlags(*bus);
+    return bus;
+}
+
 extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> args) {
-    // Three executables come out of this repo; which one a build produces is
+    // Five executables come out of this repo; which one a build produces is
     // chosen by `--product=`:
     //   daemon (default) — imsd, the control-plane daemon (GDBus + engine),
     //                      and the unit tests, which link imsd-core.
@@ -68,11 +87,41 @@ extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> a
     //   dialerd          — imsd-dialerd, the session-bus Plasma Dialer
     //                      backend (org.kde.telephony.*) bridging to imsd
     //                      (pure GDBus translation, no core).
+    //   ofonod           — imsd-ofonod, the system-bus GNOME Calls backend
+    //                      (org.ofono.*) bridging to imsd, for Phosh and
+    //                      GNOME Mobile (GDBus translation plus the imsd-bus
+    //                      polkit gate on its callers, no core).
+    //   pcscf            — imsd-pcscf, the P-CSCF reader ims-pdn-up.sh runs
+    //                      once the ims PDN is up: one QMI WDS client over a
+    //                      raw QRTR socket (pure std + POSIX, links the core
+    //                      for Imsd:Qmi, no GLib).
     bool wantMedia = false;
     bool wantDialerd = false;
+    bool wantOfonod = false;
+    bool wantPcscf = false;
     for (std::string_view a : args) {
         if (a == "--product=media") wantMedia = true;
         if (a == "--product=dialerd") wantDialerd = true;
+        if (a == "--product=ofonod") wantOfonod = true;
+        if (a == "--product=pcscf") wantPcscf = true;
+    }
+    if (wantOfonod) {
+        Configuration ofonod;
+        ofonod.path = "./";
+        ofonod.name = "imsd-ofonod";
+        ofonod.outputName = "imsd-ofonod";
+        ApplyStandardArgs(ofonod, args);
+        ofonod.type = ConfigurationType::Executable;
+        static auto Bus = BusLibrary(args);
+        ofonod.dependencies = { Bus.get() };
+        {
+            std::array<fs::path, 0> ifaces = {};
+            std::array<fs::path, 1> impls = { "implementations/ofonod" };
+            ofonod.GetInterfacesAndImplementations(ifaces, impls);
+        }
+        ApplyGioFlags(ofonod);
+        LintRules::AddRules(ofonod);
+        return ofonod;
     }
     if (wantDialerd) {
         Configuration dialerd;
@@ -87,7 +136,7 @@ extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> a
             dialerd.GetInterfacesAndImplementations(ifaces, impls);
         }
         ApplyGioFlags(dialerd);
-        ProjectLint::AddProjectLintRules(dialerd);
+        LintRules::AddRules(dialerd);
         return dialerd;
     }
     if (wantMedia) {
@@ -104,7 +153,7 @@ extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> a
         }
         media.linkFlags.push_back("-ldl");       // dlopen the AMR-WB codecs
         media.linkFlags.push_back("-lpthread");  // std::jthread playout/mic
-        ProjectLint::AddProjectLintRules(media);
+        LintRules::AddRules(media);
         return media;
     }
 
@@ -118,11 +167,12 @@ extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> a
     ApplyStandardArgs(*Core, args);
     Core->type = ConfigurationType::LibraryStatic;
     {
-        std::array<fs::path, 8> ifaces = {
+        std::array<fs::path, 9> ifaces = {
             "interfaces/Imsd",
             "interfaces/Imsd-Util",
             "interfaces/Imsd-Aka",
             "interfaces/Imsd-Ipsec",
+            "interfaces/Imsd-Qmi",
             "interfaces/Imsd-Sip",
             "interfaces/Imsd-Sdp",
             "interfaces/Imsd-Messages",
@@ -130,6 +180,23 @@ extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> a
         };
         std::array<fs::path, 0> impls = {};
         Core->GetInterfacesAndImplementations(ifaces, impls);
+    }
+
+    if (wantPcscf) {
+        Configuration pcscf;
+        pcscf.path = "./";
+        pcscf.name = "imsd-pcscf";
+        pcscf.outputName = "imsd-pcscf";
+        ApplyStandardArgs(pcscf, args);
+        pcscf.type = ConfigurationType::Executable;
+        pcscf.dependencies = { Core.get() };
+        {
+            std::array<fs::path, 0> ifaces = {};
+            std::array<fs::path, 1> impls = { "implementations/pcscf" };
+            pcscf.GetInterfacesAndImplementations(ifaces, impls);
+        }
+        LintRules::AddRules(pcscf);
+        return pcscf;
     }
 
     // imsd — the daemon executable: GLib main loop + GDBus service
@@ -140,7 +207,8 @@ extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> a
     cfg.outputName = "imsd";
     ApplyStandardArgs(cfg, args);
     cfg.type = ConfigurationType::Executable;
-    cfg.dependencies = { Core.get() };
+    static auto Bus = BusLibrary(args);
+    cfg.dependencies = { Core.get(), Bus.get() };
     {
         std::array<fs::path, 0> ifaces = {};
         std::array<fs::path, 1> impls = { "implementations/main" };
@@ -153,12 +221,13 @@ extern "C" Configuration CrafterBuildProject(std::span<const std::string_view> a
     cfg.AddTest("Util").Dependencies({ Core.get() });
     cfg.AddTest("Aka").Dependencies({ Core.get() });
     cfg.AddTest("Ipsec").Dependencies({ Core.get() });
+    cfg.AddTest("Qmi").Dependencies({ Core.get() });
     cfg.AddTest("Messages").Dependencies({ Core.get() });
     cfg.AddTest("Engine").Dependencies({ Core.get() });
     cfg.AddTest("Sip").Dependencies({ Core.get() });
     cfg.AddTest("Sdp").Dependencies({ Core.get() });
 
-    ProjectLint::AddProjectLintRules(cfg);
+    LintRules::AddRules(cfg);
 
     return cfg;
 }

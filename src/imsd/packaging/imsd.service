@@ -9,21 +9,32 @@ Wants=ModemManager.service
 
 [Service]
 Type=simple
-# bring up the ims PDN first; waits for modem + LTE attach, idempotent.
-# worst case ~4 min (modem wait + connect retries), hence TimeoutStartSec
+# bring up the ims PDN first; waits for modem + network registration,
+# idempotent. worst case ~14 min (2 min modem wait + 5 min registration
+# gate + connect retries), hence TimeoutStartSec
 ExecStartPre=/usr/libexec/ims-pdn-up.sh
-TimeoutStartSec=600
-# /run/imsd.env: written by ims-pdn-up.sh (DEV= the connected ims netdev).
-# /etc/imsd.env: admin configuration — PCSCF= is REQUIRED (the carrier's
-# P-CSCF address; see the README's Configuration section) and wins over the
-# runtime-derived values.
+# a daemon older than 0.3.10 that an upgrade restarted inside its bring-up
+# throttle wait: the wait — on another address only the verdict that its
+# registration is gone — is handed over from its journal now that it has
+# stopped (imsd.post-upgrade recorded the invocation in /run/imsd.handover)
+ExecStartPre=-/usr/libexec/imsd-handover.sh
+TimeoutStartSec=900
+# /run/imsd.env: written by ims-pdn-up.sh (DEV= the connected ims netdev,
+# LOCAL= the PDN address ModemManager assigned to it, PCSCF_DISCOVERED= the
+# P-CSCF list the network put in the PDN's PCO, read from the modem,
+# PCSCF_DISCOVERY= how that list came to be: found, none, failed, skipped;
+# or IMSD_IDLE=<reason> alone when the bring-up found nothing to do).
+# /etc/imsd.env: admin configuration, none required where discovery finds a
+# P-CSCF (AGENTS.md §10, the README); it wins over the runtime-derived values
+# — PCSCF= overrides discovery.
 EnvironmentFile=-/run/imsd.env
 EnvironmentFile=-/etc/imsd.env
 # registration state (imsreg.state) + media stats live here
 StateDirectory=imsd
 ExecStart=/usr/bin/imsd
 # registration: resume an existing SA when possible (avoids fresh-SA
-# throttles); a failed bring-up exits nonzero and systemd retries
+# throttles); a failed bring-up exits nonzero and systemd retries, as does
+# a registered imsd whose PDN address left the netdev
 Restart=on-failure
 RestartSec=120
 # SIGTERM: engine keeps the SA + registration state for the next resume

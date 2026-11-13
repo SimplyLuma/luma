@@ -11,6 +11,45 @@ umask 077
 log() { printf 'luma-ims-pdn: %s\n' "$*"; }
 kv() { mmcli "$@" -K 2>/dev/null; }
 
+# Hand the IMS netdev, the PDN's own address and the P-CSCF list to imsd
+# (/run/imsd.env). PCSCF= in /etc/imsd.env wins; otherwise imsd-pcscf reads
+# the list the network delivered in the PDN's PCO over a second QMI WDS
+# client bound to the same mux, without touching ModemManager's call. imsd
+# registers on LOCAL= rather than on a temporary SLAAC address.
+write_handoff() {
+    local iface=$1 address=$2 mux out rc line discovered= discovery=skipped
+    if [[ -z ${PCSCF:-} ]]; then
+        mux=$(ip -d link show dev "$iface" 2>/dev/null |
+            sed -n 's/.*rmnet mux_id \([0-9][0-9]*\).*/\1/p' | head -n1)
+        if [[ -z $mux ]]; then
+            log "P-CSCF discovery: no rmnet mux id on $iface"
+        else
+            discovery=failed
+            rc=0
+            out=$(/usr/libexec/imsd-pcscf --mux "$mux" --timeout 10 2>/dev/null) || rc=$?
+            while IFS= read -r line; do
+                [[ $line =~ ^[0-9a-f:]+$ && $line == *:* ]] || continue
+                discovered=${discovered:+$discovered,}$line
+            done <<<"$out"
+            if [[ -n $discovered ]]; then
+                discovery=found
+                ip -6 route replace "${discovered%%,*}/128" dev "$iface" || true
+            elif [[ $rc -eq 2 ]]; then
+                discovery=none
+            fi
+            log "P-CSCF discovery: $discovery"
+        fi
+    fi
+    printf 'DEV=%s\nLOCAL=%s\nPCSCF_DISCOVERED=%s\nPCSCF_DISCOVERY=%s\nAUDIO_USER=luma\n' \
+        "$iface" "$address" "$discovered" "$discovery" > /run/imsd.env
+    chmod 0600 /run/imsd.env
+}
+
+pdn_address() {
+    ip -6 -o addr show dev "$1" scope global -temporary 2>/dev/null |
+        awk 'NR == 1 { sub(/\/.*/, "", $4); print $4 }'
+}
+
 bearer_paths() {
     busctl --system tree org.freedesktop.ModemManager1 --list 2>/dev/null |
         sed -n 's,^\(/org/freedesktop/ModemManager1/Bearer/[0-9][0-9]*\)$,\1,p'
@@ -69,8 +108,7 @@ if [[ -r /run/imsd.env ]]; then
     if [[ $existing_iface =~ ^[A-Za-z0-9_.:-]+$ ]] &&
        ip link show dev "$existing_iface" >/dev/null 2>&1 &&
        ip -6 addr show dev "$existing_iface" scope global | grep -q 'inet6 '; then
-        printf 'DEV=%s\nAUDIO_USER=luma\n' "$existing_iface" > /run/imsd.env
-        chmod 0600 /run/imsd.env
+        write_handoff "$existing_iface" "$(pdn_address "$existing_iface")"
         log 'reusing healthy IMS bearer after Messaging readiness'
         exit 0
     fi
@@ -106,8 +144,7 @@ for _ in $(seq 1 10); do
     sleep 1
 done
 
-printf 'DEV=%s\nAUDIO_USER=luma\n' "$iface" > /run/imsd.env
-chmod 0600 /run/imsd.env
+write_handoff "$iface" "$address"
 
 if nft list table inet filter >/dev/null 2>&1 &&
    ! nft list chain inet filter input | grep -q imsd-protected-ports; then
