@@ -19,6 +19,8 @@ config = "luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1"
 config_fragments = ["config/kernel/fp6.fragment"]
 # Applied over the tag in order (scripts/kernel/build-fp6.sh).
 patches = [
+  "patches/linux-milos/0002-drm-msm-a810-gmu-timeout-diagnostics.patch",
+  "patches/linux-milos/0004-drm-msm-a810-use-gen8-3-gmu-boot-rate.patch",
   "patches/linux-milos/0039-iio-fp6-add-motion-environment-sensor-stack.patch",
   "patches/linux-milos/0040-iio-imu-inv-icm42600-add-icm42630.patch",
   "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch",
@@ -49,7 +51,7 @@ qualified_gpu_inputs = ""
 qualified_notes_sha256 = ""
 # Stamped by `fp6-android-gpu-admission.py stamp`; CI fails when the [kernel]
 # inputs change without restamping.
-kernel_inputs = "1d1ab90542843e84cfc1e9bf72fd04bcc59239c1336a68cb265fb9b0ceb8e92f"
+kernel_inputs = "6317899b5398d7d5076924aeafe0d9cb2d4a5b4a2680ded28da9c6dceec25930"
 admitted = false
 
 [boot]
