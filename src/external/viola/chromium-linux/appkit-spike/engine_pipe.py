@@ -72,8 +72,13 @@ class EnginePipe:
         # This Chromium Wayland build rejects Vulkan surface creation, and
         # its Vulkan copy-output cleanup crashed on the actual Intel display.
         # Keep GPU/DMA-BUF rendering through ANGLE OpenGL instead.
+        # The private display is never shown; the host gives each frame its
+        # color state. With wp_color_manager_v1 on that display, GPU capture
+        # is tagged BT.709/gamma 2.2, which the shared-memory transport
+        # (engine patch 0002) rejects, so the page never appears. Keep the
+        # engine on its default sRGB output for both transports.
         probe_flags = ['--viola-native-frame-probe', '--enable-logging=stderr',
-                       '--disable-features=Vulkan', '--use-angle=gl',
+                       '--disable-features=Vulkan,WaylandWpColorManagerV1', '--use-angle=gl',
                        # Chromium 151 names: these are already default-on with
                        # USE_VAAPI. Pin the supported GL path in our launcher;
                        # obsolete VaapiVideoDecoder flags do not select it.
