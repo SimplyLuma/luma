@@ -40,14 +40,13 @@ assert(pixel.layout.roomy && pixel.layout.widgetFontSize > 12, 'Pixel 9 widget t
 // (presentation.css .roomy-home), never below Home's app labels: scaled with
 // the rows they fell to 10.1/10.6 px on a 1080-wide phone at 300%.
 async function readText(relative) {
-    const url = new URL(relative, import.meta.url);
-    try {
+    if (typeof globalThis.process === 'object') {
         const fs = await import('node:fs');
-        return fs.readFileSync(url, 'utf8');
-    } catch {
-        const {default: GLib} = await import('gi://GLib');
-        return new TextDecoder().decode(GLib.file_get_contents(GLib.filename_from_uri(url.href)[0])[1]);
+        return fs.readFileSync(new URL(relative, import.meta.url), 'utf8');
     }
+    const {default: Gio} = await import('gi://Gio');
+    const file = Gio.File.new_for_uri(import.meta.url).get_parent().resolve_relative_path(relative);
+    return new TextDecoder().decode(file.load_contents(null)[1]);
 }
 const tokens = JSON.parse(await readText('../../../config/shared/design-tokens.d/home-widgets.json')).lumaui.home_widget;
 const sheet = await readText('../../../src/luma-shell-presentation/presentation.css');
