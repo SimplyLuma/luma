@@ -105,7 +105,10 @@ def arguments(text):
 
 
 def authenticate_caller(connection, sender):
-    """Native same-user clients retain native authority; sandboxes need signed identity."""
+    """Native same-user clients retain native authority; sandboxes need signed identity.
+
+    Returns the verified sandboxed application, or None for a native caller.
+    """
     def credential(method):
         return connection.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus',
             'org.freedesktop.DBus', method, GLib.Variant('(s)', (sender,)),
@@ -118,9 +121,10 @@ def authenticate_caller(connection, sender):
         Path(f'/proc/{pid}/root/.flatpak-info').stat()
     except FileNotFoundError:
         if _start(pid) != before: raise PermissionError('Messages caller changed')
-        return
-    ApplicationMailbox.authenticate(connection, sender)
+        return None
+    app = ApplicationMailbox.authenticate(connection, sender)
     if _start(pid) != before: raise PermissionError('Messages caller changed')
+    return app
 
 
 class ApplicationMailbox:
@@ -147,11 +151,14 @@ class ApplicationMailbox:
         self.closed = False
         self.native_error = False
 
+    APP = 'org.projectluma.Messages'
+
     @staticmethod
     def authenticate(connection, sender):
         from luma_installer.app_data_broker import authenticate
-        if authenticate(connection, sender) != 'org.projectluma.Messages':
+        if authenticate(connection, sender) != ApplicationMailbox.APP:
             raise PermissionError('This mailbox belongs to Messages')
+        return ApplicationMailbox.APP
 
     def store(self, account, *, delivery=False):
         if account == 'native':
@@ -432,10 +439,13 @@ class ApplicationMailbox:
             entry[1].submit(data['field'], data['value']); return None
         raise ValueError('Unsupported sign-in action')
 
-    def call(self, connection, sender, method, parameters, invocation):
+    def call(self, connection, sender, method, parameters, invocation, *, verified=None):
+        """verified: the application authenticate_caller verified for this same
+        request, just before; otherwise the caller is verified here."""
         if not method.startswith('Application'): return False
         try:
-            self.authenticate(connection, sender)
+            if verified != self.APP:
+                self.authenticate(connection, sender)
             if not self.slots.acquire(blocking=False):
                 raise RuntimeError('The mailbox is busy; try again')
         except Exception:

@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.135%{?dist}
+Release:        1.luma.136%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -707,6 +707,10 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.136
+- Messages agent: a mailbox request verifies its sandboxed caller once before
+  it is queued, not twice.
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.135
 - Notes: a sandboxed window opens before Connect answers for its shared pages.
 
