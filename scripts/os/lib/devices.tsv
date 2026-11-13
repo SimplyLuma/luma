@@ -10,6 +10,9 @@
 # required_labels  repository-relative SELinux label list, or - for a target
 #                  without SELinux (skips the label and policy verification)
 # image_id         os-release IMAGE_ID of the target's images (release_identity.py)
+#
+# The Raspberry Pi 5 is not a target: it runs the generic ARM commit with its
+# kernel as a client-side override (config/os/desktop-targets.json
+# device_repositories).
 fairphone,fp6	fairphone-fp6	aarch64	oci	rootfs	config/mobile/fp6-required-labels.tsv	luma-mobile-fp6
 unihertz,titan2e	unihertz-titan2e	aarch64	ostree	ostree	-	luma-mobile-titan2e
-raspberrypi,rpi5	raspberrypi-rpi5	aarch64	oci	desktop	-	luma-desktop

@@ -129,8 +129,10 @@ luma-vitals-power-guard-0.1.0-1.luma.16.fc44.noarch
 viola-browser-stable-151.0.7922.72-15.viola8210.native44.creator20261113.1.fc44.x86_64
 luma-messages-e2ee-0.1.0-1.luma.2.creator20261007.1.fc44.x86_64
 
-# Raspberry Pi 5 hardware target only (config/os/desktop-targets.json
-# hardware_targets): the Luma Pi kernel replaces Fedora's, platform support,
+# Raspberry Pi 5. kernel-luma-rpi is published only in the Pi device
+# repository (config/os/desktop-targets.json device_repositories) and runs as a
+# client-side override; the rest is in every ARM image (hardware_packages),
+# gated on the Pi 5 device tree or inert elsewhere: platform support,
 # Bluetooth patch RAM, GStreamer with the Pi HEVC decoder fix.
 kernel-luma-rpi-7.2.15-1.luma.rpi.fc44.aarch64
 luma-rpi5-platform-0.4.0-1.luma.2.fc44.noarch

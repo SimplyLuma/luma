@@ -7,6 +7,9 @@ Only explicitly scoped hardware packages may differ between architectures.
 A hardware target (config/os/desktop-targets.json hardware_targets, admitted
 in lib/devices.tsv) is the same desktop plus its device packages, optionally
 on its own kernel, published on its own ref luma/<major>/<arch>/<slug>/.
+A device repository (device_repositories) holds packages no image carries,
+which a device installs as client-side overrides of the generic commit (the
+Raspberry Pi 5 kernel).
 """
 import argparse
 import json
@@ -62,9 +65,29 @@ def hardware(root, architecture, name):
 
 
 def device_package_names(root):
-    """Every package name some hardware target owns; generic images never get them."""
+    """Every package name some hardware target or device repository owns; generic images never get them."""
     registry = json.loads((root / 'config/os/desktop-targets.json').read_text())
-    return {name for row in registry.get('hardware_targets', {}).values() for name in row['packages']}
+    return ({name for row in registry.get('hardware_targets', {}).values() for name in row['packages']}
+            | {name for row in registry.get('device_repositories', {}).values() for name in row['packages']})
+
+
+def device_repository(root, name):
+    """A device repository's row and its pinned NEVRAs (config/desktop/packages.txt)."""
+    registry = json.loads((root / 'config/os/desktop-targets.json').read_text())
+    repositories = registry.get('device_repositories', {})
+    if name not in repositories:
+        raise ValueError(f'Unknown device repository: {name}')
+    row = repositories[name]
+    if row['architecture'] not in ARCHITECTURES:
+        raise ValueError(f'Device repository {name} has an unsupported architecture')
+    wanted = set(row['packages'])
+    pins = [value for value in lines(root / 'config/desktop/packages.txt')
+            if re.search(r'\.(aarch64|x86_64|noarch)$', value) and package_name(value) in wanted]
+    pins = [re.sub(r'\.(x86_64|aarch64)$', '.' + row['architecture'], value) for value in pins]
+    missing = wanted - {package_name(value) for value in pins}
+    if missing:
+        raise ValueError(f'Device repository packages without a pin: {", ".join(sorted(missing))}')
+    return row, pins
 
 
 def package_name(nevra):
@@ -161,9 +184,12 @@ def main():
     parser.add_argument('--arch', choices=ARCHITECTURES, required=True)
     parser.add_argument('--profile', default=os.environ.get('LUMA_OS_PROFILE', 'full'))
     parser.add_argument('--hardware-target', default=os.environ.get('LUMA_OS_HARDWARE_TARGET', ''))
-    parser.add_argument('output', choices=('pins', 'fedora', 'contract', 'plan', 'roles', 'capabilities'))
+    parser.add_argument('--device-repository', default='')
+    parser.add_argument('output', choices=('pins', 'fedora', 'contract', 'plan', 'roles', 'capabilities', 'device-repository'))
     args = parser.parse_args()
-    if args.output == 'contract':
+    if args.output == 'device-repository':
+        print('\n'.join(device_repository(args.root, args.device_repository)[1]))
+    elif args.output == 'contract':
         print('\n'.join(f'{key}={value}' for key, value in contract(args.root, args.arch, args.profile, args.hardware_target).items()))
     elif args.output in ('pins', 'fedora'):
         print('\n'.join(packages(args.root, args.arch, fedora=args.output == 'fedora', profile_name=args.profile,
