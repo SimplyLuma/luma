@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.18%{?dist}
+Release:        1.luma.19%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -76,6 +76,7 @@ for key in power-button-action sleep-inactive-ac-type sleep-inactive-battery-typ
   line=$(grep -x "$key='[a-z-]*'" %{buildroot}%{_sysconfdir}/dconf/db/luma.d/10-luma-handheld)
   grep -Fxq "$line" %{buildroot}%{_sysconfdir}/dconf/db/gdm.d/10-luma-handheld
 done
+grep -Fxq 'power-static=@as []' %{buildroot}%{_sysconfdir}/dconf/db/gdm.d/10-luma-handheld
 if grep -rIl -e greetd -e phosh -e stevia %{buildroot}%{_unitdir} %{buildroot}%{_libexecdir}; then exit 1; fi
 test ! -e %{buildroot}%{_prefix}/lib/firmware
 test ! -e %{buildroot}%{_prefix}/lib/greenboot
@@ -115,6 +116,10 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.19
+- The login screen leaves the power key to the Shell (media-keys
+  power-static empty), so a short press blanks and wakes it.
+
 * Wed Nov 11 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.18
 - The cellular link follows the mobile data switch: NetworkManager's WWAN
   state and the Mobile Network panel's per-SIM data setting. Off disconnects

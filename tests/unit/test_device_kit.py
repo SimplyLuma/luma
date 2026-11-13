@@ -78,9 +78,9 @@ class KitManifest(unittest.TestCase):
     def test_login_screen_keeps_the_handheld_power_defaults(self):
         def keys(name):
             lines = (ROOT / "config/mobile" / name).read_text().splitlines()
-            return {line for line in lines if line.startswith(("power-button-action=", "sleep-inactive-", "idle-delay=", "color-scheme="))}
+            return {line for line in lines if line.startswith(("power-button-action=", "sleep-inactive-", "idle-delay=", "color-scheme=", "power-static="))}
         greeter = keys("luma-greeter-handheld.dconf")
-        self.assertEqual(len(greeter), 5)
+        self.assertEqual(len(greeter), 6)
         self.assertEqual(greeter, keys("luma-shell-handheld.dconf"))
         spec = (ROOT / "packaging/rpm/luma-fp6-platform.spec").read_text()
         self.assertIn("%{_sysconfdir}/dconf/db/gdm.d/10-luma-handheld", spec)
