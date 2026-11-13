@@ -67,6 +67,44 @@ def usable(value: str) -> bool:
     return bool(value and value != "--")
 
 
+def family_config(bearer_values: dict[str, str], family: str) -> tuple[str, str, str] | None:
+    """Address, prefix and gateway ModemManager reports for one IP family.
+
+    IPv4 needs all three. IPv6 needs an address and prefix; the link is
+    point-to-point, so its default route needs no gateway."""
+    address = suffix(bearer_values, f".{family}-config.address")
+    prefix = suffix(bearer_values, f".{family}-config.prefix")
+    gateway = suffix(bearer_values, f".{family}-config.gateway")
+    if not (usable(address) and prefix.isdigit()):
+        return None
+    if family == "ipv4" and not (usable(gateway) and 1 <= int(prefix) <= 32):
+        return None
+    if family == "ipv6" and not 1 <= int(prefix) <= 128:
+        return None
+    return address, prefix, gateway if usable(gateway) else ""
+
+
+def family_dns(bearer_values: dict[str, str], family: str) -> tuple[str, ...]:
+    found = [
+        item
+        for key, value in bearer_values.items()
+        if key.endswith(f".{family}-config.dns") or f".{family}-config.dns.value[" in key
+        for item in re.split(r"[, ]+", value)
+        if item and item != "--"
+    ]
+    return tuple(sorted(set(found)))
+
+
+def error_summary(text: str | None) -> str:
+    """First line of a command's error, log-safe: no long digit runs (a SIM or
+    modem identifier never reaches the journal), no control characters."""
+    line = next((item.strip() for item in (text or "").splitlines() if item.strip()), "")
+    line = re.sub(r"^error:\s*", "", line)
+    line = re.sub(r"\d{6,}", "#", line)
+    line = re.sub(r"[^A-Za-z0-9 .,:;()'_/=-]", "", line)
+    return line[:200] or "none"
+
+
 def read_selection(path: Path = Path("/run/luma/fp6-carrier.json")) -> tuple[str, str]:
     """Carrier decision from the active SIM (luma-fp6-carrier-select); /etc wins."""
     try:
@@ -206,6 +244,22 @@ class CellularLink:
         except (OSError, subprocess.SubprocessError):
             return True
 
+    def networkmanager_owns_data(self) -> bool:
+        """NetworkManager's own GSM connection is up or coming up (Settings
+        activates the Mobile Data profile on the modem). The data bearer and
+        its addresses then belong to NetworkManager, and this helper keeps out
+        of the way rather than configure the same link a second time."""
+        try:
+            output = run(["nmcli", "--terse", "--escape", "no", "--fields",
+                          "TYPE,STATE", "connection", "show", "--active"])
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return any(
+            line.split(":", 1)[0] == "gsm"
+            and line.split(":", 1)[-1] in {"activating", "activated"}
+            for line in output.splitlines()
+        )
+
     def data_bearers(self, modem_values: dict[str, str]) -> tuple[list, str]:
         paths = set(re.findall(r"/Bearer/(\d+)", "\n".join(modem_values.values())))
         entries = []
@@ -256,9 +310,7 @@ class CellularLink:
                 and bearer_apn == connect_apn
                 and suffix(bearer_values, ".status.connected") == "yes"
                 and re.fullmatch(r"qmapmux\d+\.\d+", interface)
-                and usable(suffix(bearer_values, ".ipv4-config.address"))
-                and usable(suffix(bearer_values, ".ipv4-config.prefix"))
-                and usable(suffix(bearer_values, ".ipv4-config.gateway"))
+                and (family_config(bearer_values, "ipv4") or family_config(bearer_values, "ipv6"))
             ):
                 return bearer, bearer_values
         if not connect_apn:
@@ -269,37 +321,48 @@ class CellularLink:
         # A different APN (especially IMS) is a foreign bearer, not stale
         # helper state. Simple.Connect owns selecting/creating the requested
         # data bearer; this helper has no authority to disconnect/delete others.
+        # Dual stack: the network grants the families the APN supports, and
+        # T-Mobile's default APN is IPv6 first.
         run(
             [
                 "mmcli",
                 "-m",
                 modem,
-                f"--simple-connect=apn={connect_apn},ip-type=ipv4",
+                f"--simple-connect=apn={connect_apn},ip-type=ipv4v6",
             ]
         )
         return None
 
     def network_matches(self, desired: tuple) -> bool:
         """Only skip when native link and complete NM configuration still match."""
-        requested, gateway, dns, mtu = desired
-        interface, address, prefix = requested
+        requested, dns4, dns6, mtu = desired
+        interface, ip4, ip6 = requested
         try:
             state = values(run([
                 "nmcli", "--terse", "--escape", "no", "--fields",
-                "GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS",
+                "GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,"
+                "IP6.ADDRESS,IP6.DNS",
                 "device", "show", interface,
             ]))
-            addresses = {value for key, value in state.items() if key.startswith("IP4.ADDRESS[")}
-            actual_dns = {value for key, value in state.items() if key.startswith("IP4.DNS[")}
+
+            def listed(prefix: str) -> set[str]:
+                return {value for key, value in state.items() if key.startswith(prefix)}
+
+            addresses4 = listed("IP4.ADDRESS[")
+            # NetworkManager also lists the kernel's link-local IPv6 address.
+            addresses6 = {value for value in listed("IP6.ADDRESS[")
+                          if not value.casefold().startswith("fe80:")}
             links = json.loads(run(["ip", "-j", "link", "show", "dev", interface]))
             return (
                 state.get("GENERAL.STATE", "").split()[0:1] == ["100"]
                 and state.get("GENERAL.CONNECTION") == CONNECTION_NAME
                 and self.active_uuid is not None
                 and self.active_identity(interface) == (self.active_uuid, self.active_ifindex)
-                and addresses == {f"{address}/{prefix}"}
-                and state.get("IP4.GATEWAY") == gateway
-                and actual_dns == set(dns)
+                and addresses4 == ({f"{ip4[0]}/{ip4[1]}"} if ip4 else set())
+                and (not ip4 or state.get("IP4.GATEWAY") == ip4[2])
+                and listed("IP4.DNS[") == set(dns4)
+                and addresses6 == ({f"{ip6[0]}/{ip6[1]}"} if ip6 else set())
+                and listed("IP6.DNS[") == set(dns6)
                 and len(links) == 1 and links[0].get("ifname") == interface
                 and "UP" in links[0].get("flags", [])
                 and (mtu is None or links[0].get("mtu") == mtu)
@@ -367,36 +430,31 @@ class CellularLink:
                 self.cleanup()
                 self.stop_data(modem_values)
                 return GLib.SOURCE_REMOVE
+            if self.networkmanager_owns_data():
+                self.cleanup()
+                return GLib.SOURCE_REMOVE
             bearer = self.connected_bearer(modems[0], modem_values)
             if not bearer:
                 self.cleanup()
                 return GLib.SOURCE_REMOVE
             bearer_values = bearer[1]
             interface = suffix(bearer_values, ".status.interface")
-            address = suffix(bearer_values, ".ipv4-config.address")
-            prefix = suffix(bearer_values, ".ipv4-config.prefix")
-            gateway = suffix(bearer_values, ".ipv4-config.gateway")
             if not re.fullmatch(r"qmapmux\d+\.\d+", interface):
                 raise RuntimeError("ModemManager returned a non-qmap bearer")
-            if not all(usable(value) for value in (address, prefix, gateway)):
-                raise RuntimeError("ModemManager returned incomplete IPv4 configuration")
-            requested = (interface, address, prefix)
+            ip4 = family_config(bearer_values, "ipv4")
+            ip6 = family_config(bearer_values, "ipv6")
+            if not (ip4 or ip6):
+                raise RuntimeError("ModemManager returned no usable IP configuration")
+            requested = (interface, ip4, ip6)
             if self.active and self.active != requested:
                 if not self.cleanup():
                     return GLib.SOURCE_REMOVE
-            mtu = suffix(bearer_values, ".ipv4-config.mtu")
-            dns_values = [
-                value
-                for key, value in bearer_values.items()
-                if key.endswith(".ipv4-config.dns")
-                or ".ipv4-config.dns.value[" in key
-            ]
-            dns = [
-                item for value in dns_values for item in re.split(r"[, ]+", value)
-                if item and item != "--"
-            ]
-            desired = (requested, gateway, tuple(sorted(set(dns))),
-                       int(mtu) if mtu.isdigit() and 1280 <= int(mtu) <= 9000 else None)
+            mtu = next((value for value in (suffix(bearer_values, ".ipv4-config.mtu"),
+                                            suffix(bearer_values, ".ipv6-config.mtu"))
+                        if value.isdigit() and 1280 <= int(value) <= 9000), "")
+            dns4 = family_dns(bearer_values, "ipv4") if ip4 else ()
+            dns6 = family_dns(bearer_values, "ipv6") if ip6 else ()
+            desired = (requested, dns4, dns6, int(mtu) if mtu else None)
             if self.active == requested and self.applied_network == desired and self.network_matches(desired):
                 return GLib.SOURCE_REMOVE
             profiles = self.named_profiles()
@@ -405,7 +463,7 @@ class CellularLink:
             if not self.cleanup():
                 return GLib.SOURCE_REMOVE
             run_retry(["ip", "link", "set", interface, "up"])
-            if mtu.isdigit() and 1280 <= int(mtu) <= 9000:
+            if mtu:
                 run_retry(["ip", "link", "set", interface, "mtu", mtu])
             run(["nmcli", "device", "set", interface, "managed", "yes"])
             # A freshly recreated qmap link is disconnected, so `device modify`
@@ -420,15 +478,33 @@ class CellularLink:
                 "con-name", CONNECTION_NAME,
                 "connection.uuid", created_uuid,
                 "save", "no",
-                "ip4", f"{address}/{prefix}",
-                "gw4", gateway,
                 "--",
-                "ipv4.route-metric", "700",
-                "ipv4.ignore-auto-dns", "no",
-                "ipv6.method", "disabled",
             ]
-            if dns:
-                nmcli_add.extend(["ipv4.dns", ",".join(dns)])
+            if ip4:
+                nmcli_add.extend([
+                    "ipv4.method", "manual",
+                    "ipv4.addresses", f"{ip4[0]}/{ip4[1]}",
+                    "ipv4.gateway", ip4[2],
+                    "ipv4.route-metric", "700",
+                    "ipv4.ignore-auto-dns", "no",
+                ])
+                if dns4:
+                    nmcli_add.extend(["ipv4.dns", ",".join(dns4)])
+            else:
+                nmcli_add.extend(["ipv4.method", "disabled"])
+            if ip6:
+                # Point-to-point raw-IP link: the default route is the link
+                # itself, whatever gateway the network named.
+                nmcli_add.extend([
+                    "ipv6.method", "manual",
+                    "ipv6.addresses", f"{ip6[0]}/{ip6[1]}",
+                    "ipv6.routes", "::/0",
+                    "ipv6.route-metric", "700",
+                ])
+                if dns6:
+                    nmcli_add.extend(["ipv6.dns", ",".join(dns6)])
+            else:
+                nmcli_add.extend(["ipv6.method", "disabled"])
             # Do not retry profile creation after an ambiguous result: another
             # add could manufacture duplicate profiles. Query and retain only
             # the exact newly created UUID before any activation.
@@ -455,10 +531,13 @@ class CellularLink:
             operation = (
                 str(error.cmd[2]) if error.cmd and len(error.cmd) > 2 else "unknown"
             )
+            # Several mmcli calls start `mmcli -m N`; the option tells them apart.
+            option = next((str(item).split("=", 1)[0] for item in (error.cmd or [])[3:]
+                           if str(item).startswith("--")), "none")
             print(
                 f"cellular-link: command={command} action={action} "
-                f"operation={operation} "
-                f"returncode={error.returncode}",
+                f"operation={operation} option={option} "
+                f"returncode={error.returncode} error={error_summary(error.stderr)}",
                 flush=True,
             )
             self.cleanup()

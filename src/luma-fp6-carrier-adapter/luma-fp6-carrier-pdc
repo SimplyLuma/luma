@@ -73,6 +73,25 @@ active_id() {
     }
   ' | tr -d ':' | tr '[:upper:]' '[:lower:]'
 }
+# Description of the Active configuration (operator data, never an identifier
+# of the subscriber), reduced to a log-safe token.
+active_description() {
+  awk '
+    /^Configuration / { description="" }
+    /^[[:space:]]*Description:/ { sub(/^[^:]*:[[:space:]]*/, ""); description=$0 }
+    /^[[:space:]]*Status:[[:space:]]*Active/ { print description; exit }
+  ' | tr -cd 'A-Za-z0-9_.-' | cut -c1-64
+}
+# Modem software configurations that already carry a profile's carrier
+# settings. The modem firmware builds its own T-Mobile configuration
+# (Commercial-TMO); its ID changes with the firmware release, so the stock
+# description is accepted as well as the known IDs.
+profile_already_active() {
+  local profile=$1 selected=$2 id=$3 description=$4
+  [[ $id == "$selected" ]] && return 0
+  [[ $profile == tmo-qrel1695 ]] || return 1
+  [[ $id == "$tmo_stock_id" || $description == Commercial-TMO ]]
+}
 
 # Exact stock Milos platform identities observed in the retained native catalog.
 # Inactive stock profiles are preserved; selection never deletes a profile.
@@ -105,14 +124,20 @@ validate_platform_catalog() {
   done
 }
 
-# Exact stock Milos software identities observed in the retained native catalog.
-# Inactive stock profiles are preserved; selection never deletes a profile.
+# Stock Milos software identities observed in the retained native catalog.
+# Selection never deletes or changes a profile other than the selected one.
+# Other modem firmware releases carry their own built-in configurations with
+# other IDs: an unknown Inactive one is counted and left alone; an unknown
+# Active one is refused by the caller unless it already carries the selected
+# carrier's settings.
 validate_software_catalog() {
   local catalog=$1 count id
   local -a ids
+  unknown_software=0
+  unknown_software_active=false
   count=$(grep -c '^Configuration ' <<<"$catalog" || true)
   mapfile -t ids < <(compact_ids <<<"$catalog")
-  [[ $count -le 26 && ${#ids[@]} -eq $count ]] || fail software_catalog_shape
+  [[ $count -le 48 && ${#ids[@]} -eq $count ]] || fail software_catalog_shape
   [[ $(printf '%s\n' "${ids[@]}" | sed '/^$/d' | sort -u | wc -l) -eq $count ]] || fail software_catalog_duplicate
   [[ $(grep -c '^[[:space:]]*Status:[[:space:]]*Active' <<<"$catalog" || true) -le 1 ]] || fail software_catalog_active
   [[ $(grep -Ec '^[[:space:]]*Status:[[:space:]]*(Active|Inactive)[[:space:]]*$' <<<"$catalog" || true) -eq $count ]] || fail software_catalog_status
@@ -145,7 +170,10 @@ validate_software_catalog() {
       41ff7dff36133c8bfc714a88e31cf78fd7f54d0c|\
       d79404b5091c0a025bc688b052fdcd3c57a1d514|\
       444954dcfbd6d5bf196cd8fecf6770ff3c6b34fc) ;;
-      *) fail unexpected_software ;;
+      *)
+        unknown_software=$((unknown_software + 1))
+        if [[ $id == "$(active_id <<<"$catalog")" ]]; then unknown_software_active=true; fi
+        ;;
     esac
   done
 }
@@ -261,9 +289,15 @@ main() {
   mapfile -t software_ids < <(compact_ids <<<"$software")
   software_ids_before=$(compact_ids <<<"$software" | sort)
   active=$(active_id <<<"$software")
-  if [[ $active == "$selected_id" || ( $profile == tmo-qrel1695 && $active == "$tmo_stock_id" ) ]]; then
-    event "state=already-active profile=$profile persistence=private-file-store identifiers_logged=0"
+  active_config=$(active_description <<<"$software")
+  if profile_already_active "$profile" "$selected_id" "$active" "$active_config"; then
+    event "state=already-active profile=$profile active_config=${active_config:-none} unknown_configs=$unknown_software persistence=private-file-store identifiers_logged=0"
     exit 0
+  fi
+  if [[ $unknown_software_active == true ]]; then
+    # Never switch the modem away from a configuration Luma does not know.
+    event "state=unavailable reason=unexpected_software active_config=${active_config:-none} unknown_configs=$unknown_software identifiers_logged=0" >&2
+    exit 3
   fi
 
   if [[ ! " ${software_ids[*]} " =~ " $selected_id " ]]; then
@@ -296,7 +330,7 @@ main() {
   [[ $(compact_ids <<<"$software" | sort) == "$software_ids_expected" ]] || fail software_catalog_changed
   unset software activation_status software_ids_before software_ids_expected
 
-  event "state=active profile=$profile persistence=private-file-store identifiers_logged=0"
+  event "state=active profile=$profile unknown_configs=$unknown_software persistence=private-file-store identifiers_logged=0"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

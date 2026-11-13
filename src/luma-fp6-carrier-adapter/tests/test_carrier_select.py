@@ -29,6 +29,10 @@ def identity(mcc, mnc, gid1='', spn=''):
 MBPI = '''<?xml version="1.0"?><serviceproviders format="2.0">
  <country code="de"><provider><name>Telekom</name><gsm><network-id mcc="262" mnc="01"/>
   <apn value="internet.telekom"><usage type="internet"/></apn><apn value="mms.t-d1.de"><usage type="mms"/></apn></gsm></provider></country>
+ <country code="us"><provider><name>T-Mobile</name><gsm><network-id mcc="310" mnc="260"/><network-id mcc="310" mnc="240"/><network-id mcc="310" mnc="160"/>
+  <apn value="fast.t-mobile.com"><usage type="internet"/></apn><apn value="epc.tmobile.com"><usage type="internet"/></apn><apn value="mms.example"><usage type="mms"/></apn></gsm></provider>
+  <provider><name>Mint</name><gsm><network-id mcc="310" mnc="260"/><apn value="wholesale"><usage type="internet"/></apn></gsm></provider>
+  <provider><name>US</name><gsm><network-id mcc="310" mnc="260"/><apn value="pwg"><usage type="internet"/></apn></gsm></provider></country>
  <country code="nl"><provider><name>A</name><gsm><network-id mcc="204" mnc="08"/><apn value="a.example"/></gsm></provider>
   <provider><name>B</name><gsm><network-id mcc="204" mnc="08"/><apn value="b.example"/></gsm></provider></country>
 </serviceproviders>'''
@@ -74,15 +78,35 @@ class Selection(unittest.TestCase):
         return m.decide(ident, ROWS, att, self.mbpi)
 
     def test_tello_reference(self):
-        # As read from a Tello eSIM: 310240, GID1 6941, no EF_SPN.
+        # As read from a Tello eSIM: 310240, GID1 6941, no EF_SPN. The data
+        # APN is T-Mobile's default from the carrier database, not a table value.
         d = self.decide(identity('310', '240', gid1='6941'))
-        self.assertEqual((d['mcfg'], d['apn'], d['allowed_modes'], d['verified']), ('tmo-qrel1695', 'wholesale', '4g', True))
+        self.assertEqual((d['carrier'], d['mcfg'], d['apn'], d['apn_source'], d['allowed_modes'], d['verified']),
+                         ('Tello (T-Mobile US network)', 'tmo-qrel1695', 'fast.t-mobile.com',
+                          'mobile-broadband-provider-info', '4g', True))
 
-    def test_tmobile_network_without_mvno_match_uses_attach_apn(self):
+    def test_tmobile_network_uses_the_operators_default_apn(self):
+        # MVNOs share 310260 in the database; the operator lists all its codes.
         self.assertEqual(self.decide(identity('310', '240', gid1='FFFF'))['carrier'], 'T-Mobile US')
         d = self.decide(identity('310', '260', spn='Other'))
-        self.assertEqual((d['carrier'], d['mcfg'], d['apn'], d['apn_source']), ('T-Mobile US', 'tmo-qrel1695', '', 'network-attach'))
+        self.assertEqual((d['carrier'], d['mcfg'], d['apn'], d['apn_source']),
+                         ('T-Mobile US', 'tmo-qrel1695', 'fast.t-mobile.com', 'mobile-broadband-provider-info'))
         self.assertFalse(d['verified'])
+
+    def test_tmobile_without_a_database_uses_the_attach_apn(self):
+        d = m.decide(identity('310', '260'), ROWS, False, self.mbpi.with_name('missing.xml'))
+        self.assertEqual((d['apn'], d['apn_source']), ('', 'network-attach'))
+
+    def test_active_profile_equivalents(self):
+        listing = ('Configuration 1:\n\tDescription: Commercial-TMO\n\tStatus: Active\n'
+                   '\tID: 01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67\n'
+                   'Configuration 2:\n\tDescription: Other\n\tStatus: Inactive\n\tID: 88:F5\n')
+        self.assertEqual(m.active_software(listing), ('0123456789abcdef0123456789abcdef01234567', 'Commercial-TMO'))
+        self.assertTrue(m.profile_active('tmo-qrel1695', listing))
+        self.assertFalse(m.profile_active('att-qrel1695', listing))
+        self.assertTrue(m.profile_active('tmo-qrel1695', listing.replace('Commercial-TMO', 'x').replace(
+            '01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67', '88:F5:89:36:9F:F3:A0:66:51:1D:D1:B2:1E:D4:2C:F3:49:66:86:A3')))
+        self.assertFalse(m.profile_active('tmo-qrel1695', listing.replace('Commercial-TMO', 'x')))
 
     def test_att_keeps_factory_profile_without_its_file(self):
         self.assertEqual(self.decide(identity('310', '410'))['mcfg'], 'factory')

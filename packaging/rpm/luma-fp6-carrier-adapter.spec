@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name: luma-fp6-carrier-adapter
 Version: 0.1.0
-Release: 1.luma.12%{?dist}
+Release: 1.luma.13%{?dist}
 Summary: Native Fairphone 6 carrier and SIM session admission
 License: Apache-2.0
 Source0: luma-fp6-carrier-pdc
@@ -178,6 +178,17 @@ done
 %{_userunitdir}/graphical-session.target.wants/luma-fp6-modem-state-notify.service
 
 %changelog
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.13
+- carrier-pdc: software configurations of other modem firmware releases no
+  longer stop the profile selection. An unknown Inactive configuration is
+  counted and left alone; the firmware's own Commercial-TMO counts as active
+  for tmo-qrel1695; an unknown Active one is still refused and its
+  description logged. Catalog bound 26 -> 48 entries.
+- carrier-select: T-Mobile and Tello use T-Mobile's default data APN from
+  mobile-broadband-provider-info (the provider listing the most network codes
+  for a shared network) instead of a table APN or the attach APN; it accepts
+  the same active-configuration equivalents as carrier-pdc.
+
 * Mon Nov 09 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.12
 - Source moved to SimplyLuma/luma (1.luma.11 source).
 - tmo-qrel1695 loads the T-Mobile commercial configuration from

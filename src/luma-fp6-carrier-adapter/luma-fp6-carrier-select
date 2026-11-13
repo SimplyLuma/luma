@@ -31,6 +31,11 @@ PROFILE_IDS = {
     "tmo-qrel1695": "88f589369ff3a066511dd1b21ed42cf3496686a3",
     "att-qrel1695": "444954dcfbd6d5bf196cd8fecf6770ff3c6b34fc",
 }
+# Modem configurations that already carry a profile's carrier settings, as
+# luma-fp6-carrier-pdc accepts them: the modem firmware's own Commercial-TMO
+# (its ID changes with the firmware release).
+EQUIVALENT_IDS = {"tmo-qrel1695": {"4ea00db36530421c79794b4ba87686fa0a31f31b"}}
+EQUIVALENT_DESCRIPTIONS = {"tmo-qrel1695": {"Commercial-TMO"}}
 APN_RE = re.compile(r"[A-Za-z0-9.-]{1,100}")
 # North American numbering uses three-digit MNCs when EF_AD does not say.
 THREE_DIGIT_MNC_MCC = {"302", "310", "311", "312", "313", "316", "334", "338", "342", "344", "346", "348"}
@@ -133,7 +138,13 @@ def match(rows: list[dict], identity: dict) -> dict | None:
 
 
 def mbpi_apn(identity: dict, path: Path = MBPI) -> str:
-    """The internet APN mobile-broadband-provider-info lists for exactly this network."""
+    """The default internet APN mobile-broadband-provider-info lists for this network.
+
+    Each provider's default is its first internet APN, as the database orders
+    them. Several providers can share a network: MVNOs list the host's network
+    code once, the network operator lists all of its own, so the provider with
+    the most network codes is the operator. A tie between different APNs is
+    ambiguous and gives no answer."""
     try:
         root = ET.parse(path).getroot()
     except (OSError, ET.ParseError):
@@ -149,9 +160,13 @@ def mbpi_apn(identity: dict, path: Path = MBPI) -> str:
         for apn in gsm.findall("apn"):
             usage = apn.find("usage")
             if (usage is None or usage.get("type") == "internet") and APN_RE.fullmatch(apn.get("value", "")):
-                candidates.append(apn.get("value"))
-    # Several providers can share a network (MVNOs); only an unambiguous answer is used.
-    return candidates[0] if len(set(candidates)) == 1 else ""
+                candidates.append((len(codes), apn.get("value")))
+                break
+    if not candidates:
+        return ""
+    widest = max(count for count, _apn in candidates)
+    answers = {apn for count, apn in candidates if count == widest}
+    return answers.pop() if len(answers) == 1 else ""
 
 
 def decide(identity: dict | None, rows: list[dict], att_available: bool, mbpi: Path = MBPI) -> dict:
@@ -177,15 +192,26 @@ def decide(identity: dict | None, rows: list[dict], att_available: bool, mbpi: P
     return decision
 
 
-def active_software_id() -> str:
-    output = qmi("--pdc-list-configs=software")
-    active = False
+def active_software(output: str) -> tuple[str, str]:
+    """ID and description of the Active modem software configuration."""
+    active, description = False, ""
     for line in output.splitlines():
-        if re.match(r"\s*Status:\s*Active", line):
+        if line.startswith("Configuration "):
+            active, description = False, ""
+        elif re.match(r"\s*Description:", line):
+            description = line.split(":", 1)[1].strip()
+        elif re.match(r"\s*Status:\s*Active", line):
             active = True
         elif active and re.match(r"\s*ID:", line):
-            return line.split(":", 1)[1].replace(":", "").strip().lower()
-    return ""
+            return line.split(":", 1)[1].replace(":", "").strip().lower(), description
+    return "", ""
+
+
+def profile_active(mcfg: str, output: str) -> bool:
+    found, description = active_software(output)
+    return bool(found) and (found == PROFILE_IDS.get(mcfg)
+                            or found in EQUIVALENT_IDS.get(mcfg, set())
+                            or description in EQUIVALENT_DESCRIPTIONS.get(mcfg, set()))
 
 
 def write(decision: dict) -> None:
@@ -205,7 +231,7 @@ def main() -> int:
     event(state=decision["state"], mcfg=decision["mcfg"], apn_source=decision.get("apn_source", "none"),
           verified=str(decision["verified"]).lower(), identifiers_logged=0)
     wanted = PROFILE_IDS.get(decision["mcfg"])
-    if not wanted or PDC_OVERRIDE.exists() or active_software_id() == wanted:
+    if not wanted or PDC_OVERRIDE.exists() or profile_active(decision["mcfg"], qmi("--pdc-list-configs=software")):
         return 0
     # carrier-pdc exits 3 for conditions a retry cannot change (for example no
     # platform profile on this modem); it has already said why, once.
