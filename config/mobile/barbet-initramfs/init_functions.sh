@@ -1,4 +1,6 @@
 #!/bin/busybox ash
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Derived from the postmarketOS initramfs init_functions.sh.
 # This file will be in /init_functions.sh inside the initramfs.
 
 # NOTE!!! The file is sourced again in init_2nd.sh, avoid

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build the barbet boot image: the kernel and DTB from scripts/kernel/build-barbet.sh,
-# the FP6 Alpha 1 ramdisk as the base, and a barbet initramfs overlay with the
-# shared OSTree resolver and the device platform. Android boot v2, 4096-byte
-# pages, AVB hash footer NONE and the boot_b policy. Never flashes.
+# Build the barbet boot image: a kernel and DTB built from the Luma sm7250
+# tag, the postmarketOS initramfs as the base, and a barbet initramfs overlay
+# with the shared OSTree resolver and the device platform. Android boot v2,
+# 4096-byte pages, AVB hash footer NONE and the boot_b policy. Never flashes.
 #
-# usage: build-barbet-boot-image.sh --kernel FILE --dtb FILE --alpha-boot FILE
+# usage: build-barbet-boot-image.sh --kernel FILE --dtb FILE --initramfs FILE
 #                                   [--hook FILE] --output FILE
 set -euo pipefail
 
@@ -17,18 +17,18 @@ shared="$repo_root/scripts/mobile/common/initramfs"
 fail() { printf 'build-barbet-boot-image: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-kernel="" dtb="" alpha="" hook="" output=""
+kernel="" dtb="" initramfs_base="" hook="" output=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --kernel) kernel=$(realpath -e "${2:?}"); shift 2 ;;
     --dtb) dtb=$(realpath -e "${2:?}"); shift 2 ;;
-    --alpha-boot) alpha=$(realpath -e "${2:?}"); shift 2 ;;
+    --initramfs) initramfs_base=$(realpath -e "${2:?}"); shift 2 ;;
     --hook) hook=$(realpath -e "${2:?}"); shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
     *) usage ;;
   esac
 done
-[ -n "$kernel" ] && [ -n "$dtb" ] && [ -n "$alpha" ] && [ -n "$output" ] || usage
+[ -n "$kernel" ] && [ -n "$dtb" ] && [ -n "$initramfs_base" ] && [ -n "$output" ] || usage
 for f in "$shared/luma-ostree-boot.sh" "$shared/hooks-extra/50-luma-ostree-default.sh" \
          "$initramfs/init_functions.sh" "$initramfs/init_2nd.sh" "$manifest"; do
   [ -f "$f" ] || fail "missing $f"
@@ -40,7 +40,6 @@ firmware_store=/var/lib/luma/device-firmware
 cmdline="earlycon=qcom_geni,0x888000 keep_bootcon console=ttyMSM0,115200n8 console=tty0 ignore_loglevel loglevel=8 panic=15 rdinit=/init pmos_rootfsopts=defaults rootwait ro init=/init pmos_root_uuid=$root_uuid pmos_boot_uuid=$boot_uuid ostree=/ostree/root.a firmware_class.path=/var/lib/luma/device-firmware"
 
 mkbootimg=${MKBOOTIMG:-mkbootimg}
-unpack=${UNPACK_BOOTIMG:-unpack_bootimg}
 avbtool=${AVBTOOL:-avbtool}
 lz4=${LZ4:-lz4}
 partition_size=100663296
@@ -65,7 +64,7 @@ PY
 "$lz4" -9 -c "$work/kernel" >"$work/kernel.lz4"
 python3 -c "d=open('$work/kernel.lz4','rb').read(4); assert d==bytes.fromhex('04224d18'), d"
 
-"$unpack" --boot_img "$alpha" --out "$work/alpha" --format mkbootimg >"$work/alpha.args"
+gzip -t "$initramfs_base" || fail "$initramfs_base is not a postmarketOS initramfs (gzip cpio)"
 
 o="$work/overlay"
 install -D -m 0644 "$initramfs/init_functions.sh" "$o/init_functions.sh"
@@ -80,7 +79,7 @@ fi
 find "$o" -type d -exec chmod 00755 {} +
 find "$o" -exec touch -h -d @0 {} +
 (cd "$o" && find . -mindepth 1 | LC_ALL=C sort | cpio --quiet --reproducible -o -H newc -R 0:0) | gzip -9n >"$work/overlay.cpio.gz"
-cat "$work/alpha/ramdisk" "$work/overlay.cpio.gz" >"$work/ramdisk"
+cat "$initramfs_base" "$work/overlay.cpio.gz" >"$work/ramdisk"
 
 "$mkbootimg" --header_version 2 --pagesize 4096 --base 0 \
   --kernel_offset 0x00008000 --ramdisk_offset 0x10000000 --second_offset 0 \

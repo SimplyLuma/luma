@@ -1,35 +1,29 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Assemble the full barbet test set: the boot image from the source lock and the
-# shared ARM userdata image, with SHA256SUMS and the exact install commands.
-# Builds only the device parts; the OS userdata is the shared image. Never
-# flashes and never overwrites an existing set.
+# Assemble the full barbet test set from the shared ARM userdata image and a
+# boot image built from the Luma sm7250 tag, with SHA256SUMS and the exact
+# install commands. Never flashes and never overwrites an existing set.
 #
 # usage: build-barbet-install.sh --userdata FILE --userdata-sha256 SHA256
-#          --output DIR [--boot-image FILE]
-#          [--cache DIR --alpha-boot FILE]   # when --boot-image is absent
+#          --boot-image FILE --output DIR
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-kernel_build="$repo_root/scripts/kernel/build-barbet.sh"
-boot_build="$repo_root/scripts/mobile/build-barbet-boot-image.sh"
 fail() { printf 'build-barbet-install: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-userdata="" userdata_sha="" boot_image="" cache="" alpha="" output=""
+userdata="" userdata_sha="" boot_image="" output=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --userdata) userdata=$(realpath -e "${2:?}"); shift 2 ;;
     --userdata-sha256) userdata_sha=${2:?}; shift 2 ;;
     --boot-image) boot_image=$(realpath -e "${2:?}"); shift 2 ;;
-    --cache) cache=$(realpath -e "${2:?}"); shift 2 ;;
-    --alpha-boot) alpha=$(realpath -e "${2:?}"); shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
     *) usage ;;
   esac
 done
-[ -n "$userdata" ] && [ -n "$userdata_sha" ] && [ -n "$output" ] || usage
+[ -n "$userdata" ] && [ -n "$userdata_sha" ] && [ -n "$boot_image" ] && [ -n "$output" ] || usage
 [ ! -e "$output" ] || fail "output exists; never overwrite a set: $output"
 
 actual=$(sha256sum "$userdata" | cut -d' ' -f1)
@@ -41,15 +35,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/barbet-install.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 umask 022
 
-if [ -z "$boot_image" ]; then
-  [ -n "$cache" ] && [ -n "$alpha" ] ||
-    fail "--cache and --alpha-boot are required to build the boot image"
-  "$kernel_build" --cache "$cache" "$work/kernel" >/dev/null
-  "$boot_build" --kernel "$work/kernel/Image" \
-    --dtb "$work/kernel/qcom/sm7250-google-barbet.dtb" \
-    --alpha-boot "$alpha" --output "$work/boot.img" >/dev/null
-  boot_image="$work/boot.img"
-fi
+[ -n "$boot_image" ] || fail "--boot-image is required"
 [ "$(stat -c %s "$boot_image")" = "$partition_size" ] ||
   fail "boot image is not the $partition_size-byte boot_b image"
 
