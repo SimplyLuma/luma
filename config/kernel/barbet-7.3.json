@@ -108,6 +108,11 @@
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0003-remoteproc-add-the-sm7250-adsp-resource.patch",
       "sha256": "6f90043fc50f473994b7097eae53f7d9cf15dee1eec9807e1af5a3f62553b50f"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0004-net-qrtr-and-barbet-modem.patch",
+      "sha256": "1a6adb0913e06b8510cd8009dbac9bdc8f3e41fe814c656cf9e5d9f8a25899ec"
     }
   ]
 }
