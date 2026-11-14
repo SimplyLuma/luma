@@ -71,7 +71,7 @@ class BarbetInitramfs(unittest.TestCase):
         self.assertLess(adsp_stop, modem_start)
         self.assertLess(modem_start, wlan0_wait)
         unit = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-wifi.service").read_text()
-        self.assertIn("Before=luma-barbet-audio.service", unit)
+        self.assertIn("After=local-fs.target luma-barbet-audio.service", unit)
 
     def test_audio_uses_the_firmware_store(self) -> None:
         service = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-audio.service").read_text()
@@ -79,6 +79,9 @@ class BarbetInitramfs(unittest.TestCase):
         script = (TREE / "luma-barbet/etc/luma/barbet-audio-start.sh").read_text()
         self.assertIn("device-firmware-barbet", script)
         self.assertNotIn("modemst", script)
+        self.assertIn('for file in "$src"/*', script, "merge both stores per file")
+        self.assertNotIn('ln -sfn "$barbet/qcom/sm7250/google/barbet"', script,
+                         "a whole-directory link would shadow the shared store")
 
 
 if __name__ == "__main__":

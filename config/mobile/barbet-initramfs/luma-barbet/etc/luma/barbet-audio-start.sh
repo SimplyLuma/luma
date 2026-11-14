@@ -9,7 +9,10 @@ barbet=/var/lib/luma/device-firmware-barbet
 [ -d "$shared" ] || [ -d "$barbet" ] ||
     { echo "no barbet firmware store" >&2; exit 1; }
 
-mkdir -p /dev/luma-fw/qcom/sm7250/google
+# Merge both stores into one firmware view. The shared store holds the modem
+# and WLAN files, the barbet store holds ADSP; linking either directory whole
+# would shadow the other and break the modem/WLAN load.
+mkdir -p /dev/luma-fw/qcom/sm7250/google/barbet
 for store in "$shared" "$barbet"; do
     [ -d "$store" ] || continue
     for entry in "$store"/*; do
@@ -19,13 +22,15 @@ for store in "$shared" "$barbet"; do
     done
     for entry in "$store"/qcom/*; do
         name=${entry##*/}
+        [ "$name" = sm7250 ] && continue
         [ -e "/dev/luma-fw/qcom/$name" ] || ln -s "$entry" "/dev/luma-fw/qcom/$name"
     done
+    src="$store/qcom/sm7250/google/barbet"
+    [ -d "$src" ] || continue
+    for file in "$src"/*; do
+        ln -sfn "$file" "/dev/luma-fw/qcom/sm7250/google/barbet/${file##*/}"
+    done
 done
-# The ADSP tree lives under the barbet store on the current image.
-if [ -d "$barbet/qcom/sm7250/google/barbet" ]; then
-    ln -sfn "$barbet/qcom/sm7250/google/barbet" /dev/luma-fw/qcom/sm7250/google/barbet
-fi
 
 for n in 1 2 3 4; do
     found=""

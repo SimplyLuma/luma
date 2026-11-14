@@ -27,6 +27,14 @@ done
 
 systemctl start tqftpserv.service 2>/dev/null || true
 
+# luma-barbet-audio runs first and stages /dev/luma-fw; the modem uses that
+# path for the WLAN firmware, matching the sequence that booted the chip.
+i=0
+while [ ! -e /dev/luma-fw ] && [ "$i" -lt 300 ]; do
+    i=$((i + 1))
+    sleep 0.1
+done
+
 # Wait until the TFTP service is actually visible over QRTR before the modem
 # starts asking for firmware.
 i=0
