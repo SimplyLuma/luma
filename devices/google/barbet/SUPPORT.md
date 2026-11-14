@@ -6,7 +6,7 @@ who did not go looking for it.
 
 | Area | Status | Evidence and limits |
 | --- | --- | --- |
-| Boot / full install | built, full-install gate pending | The source lock builds kernel `7.3.0-rc7`, DTB, boot image and the full set; the set is hash-verified. The install writes `userdata` + `boot_a` and preserves the identity/boot-chain partitions. |
+| Boot / full install | built, full-install gate pending | The source lock builds kernel `7.3.0-rc7`, DTB, boot image and the full set; the set is hash-verified. The install writes `userdata` + `boot_b` and preserves the identity/boot-chain partitions. |
 | Display | works | `card0-DSI-1` enabled at 1080x2400; brightness changes are visible. Panel calibration/linearity is not qualified. |
 | Touch | works | ST FTS SPI contacts reach the input node, including release; the full-area coordinate calibration is not qualified. |
 | Keys | works | Power and volume-down generate input events. |
@@ -29,5 +29,5 @@ who did not go looking for it.
   `INSTALL.md`.
 - The WCN3990 board calibration and `tqftpserv` packaging remain the Wi-Fi
   blocker.
-- The install is full-disk on slot `a`; the factory image is the recovery
+- The install is full-disk on slot `b`; the factory image is the recovery
   path.

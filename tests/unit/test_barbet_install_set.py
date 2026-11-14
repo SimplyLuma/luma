@@ -39,7 +39,7 @@ class BarbetInstallSet(unittest.TestCase):
                                    capture_output=True, text=True)
             self.assertEqual(check.returncode, 0, check.stderr)
 
-    def test_install_commands_only_touch_userdata_and_boot_a(self) -> None:
+    def test_install_commands_only_touch_userdata_and_boot_b(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             userdata = tmp_path / "userdata.img"
@@ -50,10 +50,10 @@ class BarbetInstallSet(unittest.TestCase):
             self.assertEqual(run(userdata, sha(userdata), boot, out).returncode, 0)
             text = (out / "INSTALL.txt").read_text()
             for command in ("fastboot flash userdata userdata.img",
-                            "fastboot flash boot_a boot.img",
-                            "fastboot --set-active=a", "fastboot reboot"):
+                            "fastboot flash boot_b boot.img",
+                            "fastboot --set-active=b", "fastboot reboot"):
                 self.assertIn(command, text)
-            for forbidden in ("flash boot_b", "flash dtbo", "flash vbmeta",
+            for forbidden in ("flash boot_a", "flash dtbo", "flash vbmeta",
                               "flash modemst", "flash fsg", "flash fsc",
                               "flash persist", "flash super"):
                 self.assertNotIn(forbidden, text)

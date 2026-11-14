@@ -77,13 +77,13 @@ images or release/signing infrastructure.
   `linux-7.3-rc7.tar.gz` is truncated; re-download and hash the pinned
   archives at lock time.
 - Repository patches apply after the overlay patches, in numeric order.
-- Boot policy: Android boot v2, 4096-byte pages, partition `boot_a`
+- Boot policy: Android boot v2, 4096-byte pages, partition `boot_b`
   (`100663296` bytes), AVB hash footer `NONE`, rollback `1783209600`,
   `vbmeta` untouched, `dtbo` untouched. `fastboot boot` of a custom image
   is rejected on this phone; install is a flash.
-- Full install writes `userdata` and `boot_a`, then sets slot `a` active.
+- Full install writes `userdata` and `boot_b`, then sets slot `b` active.
   It never writes `modemst1/2`, `fsg`, `fsc`, `persist`, `dtbo`, `vbmeta`,
-  the bootloader, `super` or slot metadata beyond selecting `a`. Android
+  the bootloader, `super` or slot metadata beyond selecting `b`. Android
   and its userdata are erased; the factory image is the recovery path.
 - Firmware is out of band in `/var/lib/luma/device-firmware-barbet`;
   `firmware.manifest` records names, modes and SHA-256 only.
@@ -215,7 +215,7 @@ DTB and ramdisk, stop and report; do not silently drop a service.
   release) and verifies its SHA-256;
 - writes `boot.img`, the userdata image reference/copy, `SHA256SUMS` and
   `INSTALL.txt` containing the exact `fastboot flash userdata` /
-  `fastboot flash boot_a` / `--set-active=a` commands and the preserved
+  `fastboot flash boot_b` / `--set-active=b` commands and the preserved
   partitions;
 - refuses a mismatched device, an oversized boot image or an unverified
   userdata image, and never flashes anything itself.
@@ -233,13 +233,13 @@ image is the shared ARM/nightly image, not rebuilt by this PR.
   `[initramfs]` and `[updates] ostree_ref = "luma/1/aarch64/nightly"` for
   the maintainers to point the nightly at after merge. The patch series
   lives in the source lock, not the manifest.
-- `boot.toml`: `partition = "boot_a"`, v2/4096/100663296/NONE/1783209600,
+- `boot.toml`: `partition = "boot_b"`, v2/4096/100663296/NONE/1783209600,
   `vbmeta = untouched`, `dtbo policy = none`, explicit cmdline and
   generated UUID/ostree entries.
 - `firmware.manifest`: generated from the operator's store; includes ADSP,
   GPU (a650/zap), WCN3990, RT5514P DSP and board-2; hashes only.
 - `INSTALL.md`: full install (`fastboot flash userdata`,
-  `fastboot flash boot_a`, `fastboot --set-active=a`, `fastboot reboot`),
+  `fastboot flash boot_b`, `fastboot --set-active=b`, `fastboot reboot`),
   preserved partitions, recovery, firmware extraction.
 - `SUPPORT.md`: the user-facing status matrix.
 - `tests/test_google_barbet.py`: lock/patch order, config, boot policy,
@@ -327,7 +327,7 @@ blocked half is reported in the PR description, not hidden.
 - Two stacked PRs (user choice), one branch.
 - Strict `experimental` device, `@Gibbz` as maintainer, full install.
   Nightly wiring is left to the maintainers after merge.
-- Install writes `userdata` + `boot_a`, sets slot `a`; the phone's
+- Install writes `userdata` + `boot_b`, sets slot `b`; the phone's
   identity/calibration partitions and `vbmeta`/`dtbo` are preserved.
 - Platform files travel in the boot initramfs (Fold-style); no signed
   device repository.

@@ -24,7 +24,7 @@ class BarbetBootImage(unittest.TestCase):
             "--kernel_offset 0x00008000", "--ramdisk_offset 0x10000000",
             "--dtb_offset 0x18000000", "partition_size=100663296",
             "rollback_index=1783209600", "--algorithm NONE",
-            "firmware_store=/var/lib/luma/device-firmware-barbet",
+            "firmware_store=/var/lib/luma/device-firmware",
         ):
             self.assertIn(needle, text)
 

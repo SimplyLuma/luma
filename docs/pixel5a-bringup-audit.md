@@ -1226,7 +1226,7 @@ blocked-audio entries above.
 - The full set builds from the lock: a 100663296-byte boot image (AVB NONE,
   rollback 1783209600), the shared ARM userdata, `SHA256SUMS` and the exact
   install commands. The full-install hardware gate still has to run on the
-  slot-a install.
+  slot-b install.
 - Wi-Fi: WCN3990/QRTR kernel support and a start service are present, but the
   WCN3990 firmware and `tqftpserv` are not in the current firmware set. The
   earlier manual association is historical evidence only.
@@ -1235,7 +1235,7 @@ blocked-audio entries above.
 
 ### Limits
 
-The install writes `userdata` + `boot_a`, sets slot a and erases Android; the
+The install writes `userdata` + `boot_b`, sets slot b and erases Android; the
 factory image is the recovery path. `modemst1/2`, `fsg`, `fsc`, `persist`,
 `dtbo`, `vbmeta`, the bootloader and `super` are preserved. SELinux remains
 permissive while the device is `experimental`. No firmware, private captures,

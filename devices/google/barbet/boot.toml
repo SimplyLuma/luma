@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Boot policy for the Pixel 5a. Format, page size and offsets come from
-# socs/qcom/sm7250/soc.toml. The full install writes this image to boot_a.
+# socs/qcom/sm7250/soc.toml. The full install writes this image to boot_b.
 schema = 1
-partition = "boot_a"
+partition = "boot_b"
 partition_size = 100663296
 os_version = "99.87.36"
 os_patch_level = "2099-12-31"
@@ -21,7 +21,7 @@ args = [
   "rootwait",
   "ro",
   "init=/init",
-  "firmware_class.path=/var/lib/luma/device-firmware-barbet",
+  "firmware_class.path=/var/lib/luma/device-firmware",
 ]
 generated = ["pmos_root_uuid", "pmos_boot_uuid", "ostree"]
 forbidden = ["selinux=0", "lsm="]

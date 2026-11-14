@@ -1,7 +1,9 @@
 [Unit]
 Description=Barbet ADSP firmware and built-in audio routes
 After=local-fs.target
-ConditionPathExists=/var/lib/luma/device-firmware-barbet/rt5514p_dsp_fw1.bin
+ConditionPathExists=|/var/lib/luma/device-firmware/rt5514p_dsp_fw1.bin
+ConditionPathExists=|/var/lib/luma/device-firmware-barbet/rt5514p_dsp_fw1.bin
+ConditionPathExists=|/dev/luma-codec-firmware/rt5514p_dsp_fw1.bin
 
 [Service]
 Type=oneshot

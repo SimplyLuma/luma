@@ -51,7 +51,7 @@ if [ -z "$boot_image" ]; then
   boot_image="$work/boot.img"
 fi
 [ "$(stat -c %s "$boot_image")" = "$partition_size" ] ||
-  fail "boot image is not the $partition_size-byte boot_a image"
+  fail "boot image is not the $partition_size-byte boot_b image"
 
 mkdir -p "$output"
 cp "$boot_image" "$output/boot.img"
@@ -60,17 +60,17 @@ cp --reflink=auto "$userdata" "$output/userdata.img"
 
 cat >"$output/INSTALL.txt" <<'EOF'
 Pixel 5a (barbet) full install. This erases Android and userdata.
-Preserved: modemst1, modemst2, fsg, fsc, persist, dtbo, vbmeta, bootloader,
-super, the partition table and slot metadata beyond selecting slot a.
+Preserved: boot_a (Android), modemst1, modemst2, fsg, fsc, persist, dtbo, vbmeta,
+bootloader, super, the partition table and slot metadata beyond selecting slot b.
 
   fastboot flash userdata userdata.img
-  fastboot flash boot_a boot.img
-  fastboot --set-active=a
+  fastboot flash boot_b boot.img
+  fastboot --set-active=b
   fastboot reboot
 
 After the first boot, place the operator-extracted firmware in
-/var/lib/luma/device-firmware-barbet (ADSP, GPU, WCN3990, RT5514P DSP and
-board-2) before testing audio or Wi-Fi. Never write dtbo, vbmeta, modemst*,
+/var/lib/luma/device-firmware (ADSP, GPU, WCN3990, RT5514P DSP and
+board-2) before testing audio or Wi-Fi. Never write boot_a, dtbo, vbmeta, modemst*,
 fsg, fsc, persist, super, the bootloader or the partition table.
 EOF
 printf 'SET=%s\nBOOT_SHA256=%s\nUSERDATA_SHA256=%s\n' "$output" \

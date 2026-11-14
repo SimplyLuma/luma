@@ -1,22 +1,43 @@
 #!/bin/sh
 # Barbet platform: ADSP firmware staging and the verified built-in audio routes.
-# Firmware lives in the operator's store, never in the repository.
+# Firmware lives in the operator's store, never in the repository. The shared
+# store also serves the GPU; the barbet tree holds the ADSP; the RT5514P DSP
+# blobs may be in either store or the boot hook's /dev/luma-codec-firmware.
 set -eu
-store=/var/lib/luma/device-firmware-barbet
-[ -d "$store" ] || { echo "barbet firmware store missing: $store" >&2; exit 1; }
+shared=/var/lib/luma/device-firmware
+barbet=/var/lib/luma/device-firmware-barbet
+[ -d "$shared" ] || [ -d "$barbet" ] ||
+    { echo "no barbet firmware store" >&2; exit 1; }
 
 mkdir -p /dev/luma-fw
-for entry in "$store"/*; do
-    name=${entry##*/}
-    ln -sfn "$entry" "/dev/luma-fw/$name"
+for store in "$shared" "$barbet"; do
+    [ -d "$store" ] || continue
+    for entry in "$store"/*; do
+        name=${entry##*/}
+        [ -e "/dev/luma-fw/$name" ] || ln -s "$entry" "/dev/luma-fw/$name"
+    done
 done
-for n in 1 2 3 4; do
-    test -s "$store/rt5514p_dsp_fw$n.bin" ||
-        { echo "missing $store/rt5514p_dsp_fw$n.bin" >&2; exit 1; }
-    ln -sf "$store/rt5514p_dsp_fw$n.bin" "/dev/luma-fw/rt5514p_dsp_fw$n.bin"
-done
-echo /dev/luma-fw > /sys/module/firmware_class/parameters/path
+# The ADSP tree lives under the barbet store on the current image.
+if [ -d "$barbet/qcom/sm7250/google/barbet" ]; then
+    ln -sfn "$barbet/qcom/sm7250/google/barbet" /dev/luma-fw/qcom/sm7250/google/barbet
+fi
 
+for n in 1 2 3 4; do
+    found=""
+    for candidate in \
+        "/dev/luma-codec-firmware/rt5514p_dsp_fw$n.bin" \
+        "$shared/rt5514p_dsp_fw$n.bin" \
+        "$barbet/rt5514p_dsp_fw$n.bin"; do
+        if [ -s "$candidate" ]; then
+            ln -sf "$candidate" "/dev/luma-fw/rt5514p_dsp_fw$n.bin"
+            found=1
+            break
+        fi
+    done
+    [ -n "$found" ] || { echo "missing rt5514p_dsp_fw$n.bin" >&2; exit 1; }
+done
+
+echo /dev/luma-fw > /sys/module/firmware_class/parameters/path
 if [ "$(cat /sys/class/remoteproc/remoteproc0/state)" = offline ]; then
     echo start > /sys/class/remoteproc/remoteproc0/state
 fi

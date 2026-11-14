@@ -29,20 +29,20 @@ install is a flash. The commands below are the only partition writes:
 fastboot devices
 fastboot getvar product          # must print barbet
 fastboot flash userdata userdata.img
-fastboot flash boot_a boot.img
-fastboot --set-active=a
+fastboot flash boot_b boot.img
+fastboot --set-active=b
 fastboot reboot
 ```
 
 `fastboot flash userdata` erases Android and all existing Luma data. The
-install never writes `modemst1`, `modemst2`, `fsg`, `fsc`, `persist`, `misc`,
+install never writes `boot_a` (Android), `modemst1`, `modemst2`, `fsg`, `fsc`, `persist`, `misc`,
 `dtbo_a`, `dtbo_b`, `vbmeta_a`, `vbmeta_b`, `bootloader_a`, `bootloader_b`,
 `super` or `frp`; do not add commands that do.
 
 ## Firmware
 
 The first boot needs the operator-extracted firmware at
-`/var/lib/luma/device-firmware-barbet`. The manifest lists the files and
+`/var/lib/luma/device-firmware`. The manifest lists the files and
 hashes; extract them from the matching factory image, never from another
 build:
 

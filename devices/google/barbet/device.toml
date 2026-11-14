@@ -37,15 +37,15 @@ ostree_source = "config/mobile/fp6-ostree-source.json"
 manifest = "firmware.manifest"
 manifest_sha256 = "e7f53dd18ad825b3a26d4f9a9e91679251ddfc59fa5685e5093aeaa039ea8919"
 files = 45
-store = "/var/lib/luma/device-firmware-barbet"
+store = "/var/lib/luma/device-firmware"
 
 [install]
 guide = "INSTALL.md"
 method = "fastboot"
-# The full install writes userdata and boot_a only. These partitions hold the
+# The full install writes userdata and boot_b only. These partitions hold the
 # phone's identity/calibration or the boot chain and are never written.
 preserve = [
-  "modemst1", "modemst2", "fsg", "fsc", "persist", "misc",
+  "boot_a", "modemst1", "modemst2", "fsg", "fsc", "persist", "misc",
   "dtbo_a", "dtbo_b", "vbmeta_a", "vbmeta_b",
   "bootloader_a", "bootloader_b", "super", "frp",
 ]

@@ -15,8 +15,8 @@
 - Source lock: `org.projectluma.kernel-source/v1`; exactly `sources.linux` and `sources.overlay`; repository patches after overlay patches in numeric order.
 - Base: Linux `24a19b953e2a3d0ea5a8c4951a0ab8f32720c907` (`v7.3-rc7`); overlay `780934bbcc758694a9e4e8950eed9c040725df4d`.
 - Authoritative tested baseline: image `v161-speaker-volume.img` (SHA-256 `9c64293f54567e319caeaf945692fb8aade2df12c4bda906320b99ee0f98b994`), kernel `#124`, DTB SHA-256 `761d489dfff689aa6f665af2a8a47c4f77f23d0da487cc3fc2a5fa5947368234`.
-- Boot policy: Android boot v2, 4096-byte pages, `boot_a`, `100663296` bytes, AVB `NONE`, rollback `1783209600`, `vbmeta` untouched, `dtbo` untouched.
-- Full install writes `userdata` + `boot_a`, sets slot `a`. Never write `modemst1/2`, `fsg`, `fsc`, `persist`, `dtbo`, `vbmeta`, bootloader, `super` or slot metadata beyond selecting `a`.
+- Boot policy: Android boot v2, 4096-byte pages, `boot_b`, `100663296` bytes, AVB `NONE`, rollback `1783209600`, `vbmeta` untouched, `dtbo` untouched.
+- Full install writes `userdata` + `boot_b`, sets slot `b`. Never write `modemst1/2`, `fsg`, `fsc`, `persist`, `dtbo`, `vbmeta`, bootloader, `super` or slot metadata beyond selecting `b`.
 - Firmware stays out of band in `/var/lib/luma/device-firmware-barbet`; manifest records names, modes and SHA-256 only.
 - Tier `experimental`; maintainer `@Gibbz`; SELinux may be permissive until a later gate.
 - No device-specific signed repo, release image, nightly publication or signing in this work; the maintainers wire nightly after merge.
@@ -401,7 +401,7 @@ git commit -m "config/mobile/barbet: add the boot initramfs and platform hooks"
 
 **Interfaces:**
 - Consumes: Task 3 `Image`/DTB, Task 11 initramfs, the FP6 Alpha 1 ramdisk base.
-- Produces: `boot.img` (100663296 bytes) with header v2, page 4096, AVB `NONE`, rollback `1783209600`, `text_offset=0x80000`, standard LZ4 kernel, `boot_a` policy.
+- Produces: `boot.img` (100663296 bytes) with header v2, page 4096, AVB `NONE`, rollback `1783209600`, `text_offset=0x80000`, standard LZ4 kernel, `boot_b` policy.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -440,7 +440,7 @@ git commit -m "scripts/mobile: add the barbet boot-image builder"
 
 - [ ] **Step 1: Write the failing tests**
 
-Cases: `test_sha256sums_cover_every_artifact`, `test_install_commands_only_touch_userdata_and_boot_a`, `test_wrong_device_or_userdata_rejected`, `test_oversize_boot_preserves_existing_set`, `test_no_flash_side_effects`.
+Cases: `test_sha256sums_cover_every_artifact`, `test_install_commands_only_touch_userdata_and_boot_b`, `test_wrong_device_or_userdata_rejected`, `test_oversize_boot_preserves_existing_set`, `test_no_flash_side_effects`.
 
 - [ ] **Step 2: Run RED**
 
@@ -490,12 +490,12 @@ The `[initramfs]` section uses the FP6 Alpha 1 base
 `ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"`),
 `init_functions = "config/mobile/barbet-initramfs/init_functions.sh"` with
 its SHA-256, and the shared OSTree package/source. `boot.toml` uses
-`partition="boot_a"`, the offsets, the v161 command line, AVB `NONE`,
+`partition="boot_b"`, the offsets, the v161 command line, AVB `NONE`,
 rollback `1783209600`, `dtbo policy="none"`.
 
 - [ ] **Step 2: Write INSTALL.md**
 
-Full install: extract firmware, `fastboot flash userdata`, `fastboot flash boot_a`, `fastboot --set-active=a`, `fastboot reboot`; preserved partitions; factory recovery; no `dtbo`/`vbmeta`/`modemst` writes. State that Android/userdata are erased.
+Full install: extract firmware, `fastboot flash userdata`, `fastboot flash boot_b`, `fastboot --set-active=b`, `fastboot reboot`; preserved partitions; factory recovery; no `dtbo`/`vbmeta`/`modemst` writes. State that Android/userdata are erased.
 
 - [ ] **Step 3: Write device tests**
 
@@ -582,9 +582,9 @@ Run `scripts/mobile/build-barbet-install.sh --userdata <shared ARM userdata imag
 
 - [ ] **Step 2: Full install**
 
-Verify the device product/slot and the boot image hash. Use the shared ARM
+Verify the device product/slot bnd the boot image hash. Use the shared ARM
 userdata image (verify its SHA-256), then flash only `userdata` and
-`boot_a`, set active `a`, and reboot. Because `userdata` is erased, copy
+`boot_b`, set active `a`, and reboot. Because `userdata` is erased, copy
 the operator's extracted firmware into
 `/var/lib/luma/device-firmware-barbet` again before the first boot. Record
 the exact commands and the preserved-partition check.
@@ -707,6 +707,6 @@ python3 -B tools/check-devices.py
 
 - **Spec coverage:** PR 1 covers source lock, config, builder, board DTS, touch, display, GPU, Wi-Fi, audio, mic, initramfs/platform, boot builder, device manifest, firmware, status and install. PR 2 covers charger, gauge and haptics. No spec goal lacks a task.
 - **Step scan:** every step names a file, a command or a test; no “handle edge cases” or “TBD”.
-- **Type consistency:** `build-barbet.sh [--cache DIR] OUTPUT_DIR`, `build-barbet-boot-image.sh`, `soc="qcom/sm7250"`, `source_lock="config/kernel/barbet-7.3.json"`, `config="config/kernel/barbet.config"`, `dtb="qcom/sm7250-google-barbet.dtb"`, `partition="boot_a"`, `ostree_ref="luma/1/aarch64/nightly"` are used consistently.
+- **Type consistency:** `build-barbet.sh [--cache DIR] OUTPUT_DIR`, `build-barbet-boot-image.sh`, `soc="qcom/sm7250"`, `source_lock="config/kernel/barbet-7.3.json"`, `config="config/kernel/barbet.config"`, `dtb="qcom/sm7250-google-barbet.dtb"`, `partition="boot_b"`, `ostree_ref="luma/1/aarch64/nightly"` are used consistently.
 - **Review focus:** install preservation (Task 13/16), lock integrity (Task 2/3), boot-image failure (Task 12), acoustic audio (Task 9/16), battery/haptics/suspend (Task 17–20) each have a test or checklist.
 - **Proportion:** the plan is task-level, not a code transcript; the exact patch bodies are left to the extraction tasks, which have comparison and hardware gates.

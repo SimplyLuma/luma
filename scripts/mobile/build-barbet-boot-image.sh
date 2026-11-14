@@ -4,10 +4,10 @@
 # Build the barbet boot image: the kernel and DTB from scripts/kernel/build-barbet.sh,
 # the FP6 Alpha 1 ramdisk as the base, and a barbet initramfs overlay with the
 # shared OSTree resolver and the device platform. Android boot v2, 4096-byte
-# pages, AVB hash footer NONE and the boot_a policy. Never flashes.
+# pages, AVB hash footer NONE and the boot_b policy. Never flashes.
 #
 # usage: build-barbet-boot-image.sh --kernel FILE --dtb FILE --alpha-boot FILE
-#                                   --output FILE
+#                                   [--hook FILE] --output FILE
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -17,12 +17,13 @@ shared="$repo_root/scripts/mobile/common/initramfs"
 fail() { printf 'build-barbet-boot-image: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-kernel="" dtb="" alpha="" output=""
+kernel="" dtb="" alpha="" hook="" output=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --kernel) kernel=$(realpath -e "${2:?}"); shift 2 ;;
     --dtb) dtb=$(realpath -e "${2:?}"); shift 2 ;;
     --alpha-boot) alpha=$(realpath -e "${2:?}"); shift 2 ;;
+    --hook) hook=$(realpath -e "${2:?}"); shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
     *) usage ;;
   esac
@@ -35,8 +36,8 @@ done
 
 root_uuid=03797c05-cf87-4eda-adc4-6ce111baf2d3
 boot_uuid=032D-57AD
-firmware_store=/var/lib/luma/device-firmware-barbet
-cmdline="earlycon=qcom_geni,0x888000 keep_bootcon console=ttyMSM0,115200n8 console=tty0 ignore_loglevel loglevel=8 panic=15 rdinit=/init pmos_rootfsopts=defaults rootwait ro init=/init pmos_root_uuid=$root_uuid pmos_boot_uuid=$boot_uuid ostree=/ostree/root.a firmware_class.path=/var/lib/luma/device-firmware-barbet"
+firmware_store=/var/lib/luma/device-firmware
+cmdline="earlycon=qcom_geni,0x888000 keep_bootcon console=ttyMSM0,115200n8 console=tty0 ignore_loglevel loglevel=8 panic=15 rdinit=/init pmos_rootfsopts=defaults rootwait ro init=/init pmos_root_uuid=$root_uuid pmos_boot_uuid=$boot_uuid ostree=/ostree/root.a firmware_class.path=/var/lib/luma/device-firmware"
 
 mkbootimg=${MKBOOTIMG:-mkbootimg}
 unpack=${UNPACK_BOOTIMG:-unpack_bootimg}
@@ -73,6 +74,9 @@ install -D -m 0644 "$shared/luma-ostree-boot.sh" "$o/usr/lib/luma/ostree-boot.sh
 install -D -m 0755 "$shared/hooks-extra/50-luma-ostree-default.sh" "$o/hooks-extra/50-luma-ostree-default.sh"
 cp -a "$initramfs/luma-barbet" "$o/luma-barbet"
 cp -a "$initramfs/hooks-cleanup" "$o/hooks-cleanup"
+if [ -n "$hook" ]; then
+  install -D -m 0755 "$hook" "$o/hooks-extra/60-luma-barbet-provision.sh"
+fi
 find "$o" -type d -exec chmod 00755 {} +
 find "$o" -exec touch -h -d @0 {} +
 (cd "$o" && find . -mindepth 1 | LC_ALL=C sort | cpio --quiet --reproducible -o -H newc -R 0:0) | gzip -9n >"$work/overlay.cpio.gz"

@@ -61,7 +61,7 @@ class GoogleBarbet(unittest.TestCase):
 
     def test_boot_policy(self) -> None:
         boot = toml("boot.toml")
-        self.assertEqual(boot["partition"], "boot_a")
+        self.assertEqual(boot["partition"], "boot_b")
         self.assertEqual(boot["partition_size"], 100663296)
         self.assertEqual(boot["avb"]["footer"], "hash")
         self.assertEqual(boot["avb"]["algorithm"], "NONE")
@@ -69,12 +69,12 @@ class GoogleBarbet(unittest.TestCase):
         self.assertEqual(boot["avb"]["vbmeta"], "untouched")
         self.assertEqual(boot["dtbo"]["policy"], "none")
 
-    def test_install_writes_only_userdata_and_boot_a(self) -> None:
+    def test_install_writes_only_userdata_and_boot_b(self) -> None:
         text = (DEVICE / "INSTALL.md").read_text()
         device = toml("device.toml")
         for command in ("fastboot flash userdata userdata.img",
-                        "fastboot flash boot_a boot.img",
-                        "fastboot --set-active=a",
+                        "fastboot flash boot_b boot.img",
+                        "fastboot --set-active=b",
                         "fastboot reboot"):
             self.assertIn(command, text)
         for partition in device["install"]["preserve"]:
@@ -95,7 +95,7 @@ class GoogleBarbet(unittest.TestCase):
         self.assertEqual(int(header[1]), len(files))
         self.assertEqual(device["firmware"]["files"], len(files))
         self.assertEqual(device["firmware"]["store"],
-                         "/var/lib/luma/device-firmware-barbet")
+                         "/var/lib/luma/device-firmware")
 
     def test_initramfs_manifest(self) -> None:
         listed = {}
