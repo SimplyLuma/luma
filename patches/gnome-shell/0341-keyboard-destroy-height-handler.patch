@@ -1,0 +1,22 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: a destroyed keyboard drops its height handler
+
+The keyboard follows the keyboard box's height once it has shown, and
+only hiding it disconnected that handler. A keyboard destroyed while
+shown (a mouse or keyboard plugged in turns the on-screen keyboard off)
+left the handler on the box, so every later monitor change wrote
+translation-y to a disposed actor. _onDestroy disconnects it.
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -1878,6 +1878,10 @@ export const Keyboard = GObject.registerClass({
+         this._stopLayerWarm();
+         if (this._priorsIdleId)
+             GLib.source_remove(this._priorsIdleId);
++        if (this._keyboardHeightNotifyId) {
++            Main.layoutManager.keyboardBox.disconnect(this._keyboardHeightNotifyId);
++            this._keyboardHeightNotifyId = 0;
++        }
+         Main.inputMethod.disconnectObject(this);
+         Main.sessionMode.disconnectObject(this);
+         this._watchedFocus?.disconnectObject(this);
