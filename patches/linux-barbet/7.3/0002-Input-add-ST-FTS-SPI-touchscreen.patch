@@ -1029,3 +1029,10 @@
 +	  be called stfts-spi.
 +
  endif
+--- a/drivers/input/touchscreen/Makefile
++++ b/drivers/input/touchscreen/Makefile
+@@ -120,3 +120,4 @@
+ obj-$(CONFIG_TOUCHSCREEN_IQS7211)	+= iqs7211.o
+ obj-$(CONFIG_TOUCHSCREEN_ZINITIX)	+= zinitix.o
+ obj-$(CONFIG_TOUCHSCREEN_HIMAX_HX83112B)	+= himax_hx83112b.o
++obj-$(CONFIG_TOUCHSCREEN_STFTS_SPI) += stfts-spi.o

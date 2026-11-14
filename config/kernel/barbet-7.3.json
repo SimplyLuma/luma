@@ -102,7 +102,7 @@
     {
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0002-Input-add-ST-FTS-SPI-touchscreen.patch",
-      "sha256": "47f8dd8ccede7671db5dc303cd70280c4d84fbca2eaff3e9dc4d38d38964dfac"
+      "sha256": "d3a57fd17ab9a2835716ec9536e92ec1f61091a66124a4797c5bc0dac57b8c0a"
     },
     {
       "source": "repository",
