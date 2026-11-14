@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Barbet boot-image builder: policy, failure paths and no side effects."""
+import gzip
 import os
 import struct
 import subprocess
@@ -41,12 +42,12 @@ class BarbetBootImage(unittest.TestCase):
             kernel.write_text("this is not an arm64 Image\n")
             dtb = tmp_path / "board.dtb"
             dtb.write_text("dtb")
-            alpha = tmp_path / "alpha.bin"
-            alpha.write_text("alpha")
+            base = tmp_path / "initramfs.gz"
+            base.write_bytes(gzip.compress(b"postmarketos initramfs"))
             out = tmp_path / "boot.img"
             result = subprocess.run(
                 [str(BUILD), "--kernel", str(kernel), "--dtb", str(dtb),
-                 "--alpha-boot", str(alpha), "--output", str(out)],
+                 "--initramfs", str(base), "--output", str(out)],
                 capture_output=True, text=True,
             )
             self.assertNotEqual(result.returncode, 0)
@@ -61,27 +62,25 @@ class BarbetBootImage(unittest.TestCase):
             kernel.write_bytes(data)
             dtb = tmp_path / "board.dtb"
             dtb.write_text("dtb")
-            alpha = tmp_path / "alpha.bin"
-            alpha.write_text("alpha")
+            base = tmp_path / "initramfs.gz"
+            base.write_bytes(gzip.compress(b"postmarketos initramfs"))
             out = tmp_path / "boot.img"
             out.write_text("previous set")
             tools = tmp_path / "tools"
             tools.mkdir()
             tool(tools / "lz4", "printf '\\004\\042\\115\\030'\nfor last; do :; done\ncat \"$last\"\n")
-            tool(tools / "unpack", "out=''\nwhile [ $# -gt 0 ]; do [ \"$1\" = --out ] && out=$2; shift; done\nmkdir -p \"$out/alpha\"\nprintf x > \"$out/alpha/ramdisk\"\n")
             tool(tools / "mkbootimg", "out=''\nwhile [ $# -gt 0 ]; do [ \"$1\" = --output ] && out=$2; shift; done\ntruncate -s 100663297 \"$out\"\n")
             tool(tools / "avbtool", "exit 0\n")
             env = {
                 **os.environ,
                 "TMPDIR": str(tmp_path),
                 "LZ4": str(tools / "lz4"),
-                "UNPACK_BOOTIMG": str(tools / "unpack"),
                 "MKBOOTIMG": str(tools / "mkbootimg"),
                 "AVBTOOL": str(tools / "avbtool"),
             }
             result = subprocess.run(
                 [str(BUILD), "--kernel", str(kernel), "--dtb", str(dtb),
-                 "--alpha-boot", str(alpha), "--output", str(out)],
+                 "--initramfs", str(base), "--output", str(out)],
                 env=env, capture_output=True, text=True,
             )
             self.assertNotEqual(result.returncode, 0)

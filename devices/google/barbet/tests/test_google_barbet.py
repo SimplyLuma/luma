@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Pixel 5a: the manifests, source lock, boot policy and install must agree."""
+"""Pixel 5a: the manifests, kernel tag, boot policy and install must agree."""
 import hashlib
-import json
 import re
 import tomllib
 import unittest
@@ -10,7 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 DEVICE = ROOT / "devices/google/barbet"
 BUILD = ROOT / "scripts/mobile/build-barbet-boot-image.sh"
-LOCK = ROOT / "config/kernel/barbet-7.3.json"
 SOC = ROOT / "socs/qcom/sm7250/soc.toml"
 INITRAMFS = ROOT / "config/mobile/barbet-initramfs"
 INITRAMFS_MANIFEST = ROOT / "config/mobile/barbet-initramfs.manifest"
@@ -30,36 +28,15 @@ class GoogleBarbet(unittest.TestCase):
         self.assertEqual(device["maintainers"], ["@Gibbz"])
         self.assertEqual(device["fastboot_product"], "barbet")
 
-    def test_source_lock_pins_the_tree(self) -> None:
+    def test_kernel_tag_and_fragment(self) -> None:
         device = toml("device.toml")
-        lock = json.loads(LOCK.read_text())
-        self.assertEqual(device["kernel"]["source_lock"],
-                         "config/kernel/barbet-7.3.json")
-        self.assertEqual(device["kernel"]["release"], lock["release"])
-        self.assertEqual(device["kernel"]["dtb"], lock["device_tree"])
-        config = ROOT / device["kernel"]["config"]
-        self.assertEqual(
-            hashlib.sha256(config.read_bytes()).hexdigest(),
-            lock["base_config"]["sha256"],
-        )
-        self.assertEqual(len(lock["patches"]), 29)
-        self.assertEqual([p["path"] for p in lock["patches"][14:]], [
-            "patches/linux-barbet/7.3/0001-arm64-dts-qcom-add-google-barbet.patch",
-            "patches/linux-barbet/7.3/0002-Input-add-ST-FTS-SPI-touchscreen.patch",
-            "patches/linux-barbet/7.3/0003-remoteproc-add-the-sm7250-adsp-resource.patch",
-            "patches/linux-barbet/7.3/0004-net-qrtr-and-barbet-modem.patch",
-            "patches/linux-barbet/7.3/0005-ASoC-qcom-barbet-speaker.patch",
-            "patches/linux-barbet/7.3/0006-ASoC-qcom-barbet-microphone.patch",
-            "patches/linux-barbet/7.3/0007-drm-panel-add-the-barbet-sofef01-panel-mode.patch",
-            "patches/linux-barbet/7.3/0008-arm64-dts-qcom-add-the-barbet-ipcrtr-channel.patch",
-            "patches/linux-barbet/7.3/0009-arm64-dts-qcom-use-the-barbet-modem-memory-map.patch",
-            "patches/linux-barbet/7.3/0010-power-barbet-charger.patch",
-            "patches/linux-barbet/7.3/0012-input-add-drv2624.patch",
-            "patches/linux-barbet/7.3/0013-ASoC-rt5514-reset-the-barbet-codec.patch",
-            "patches/linux-barbet/7.3/0014-power-supply-add-the-barbet-battery-gauge.patch",
-            "patches/linux-barbet/7.3/0015-arm64-dts-qcom-wire-the-barbet-rt5514-dsp.patch",
-            "patches/linux-barbet/7.3/0016-ASoC-qcom-pin-the-barbet-capture-rate.patch",
-        ])
+        kernel = device["kernel"]
+        self.assertTrue(kernel["tag"].startswith("luma-kernel-"))
+        self.assertEqual(kernel["release"], "7.2.15-sm7250")
+        self.assertEqual(kernel["dtb"], "qcom/sm7250-google-barbet.dtb")
+        self.assertTrue((ROOT / kernel["config"]).is_file())
+        self.assertNotIn("source_lock", kernel)
+        self.assertNotIn("patches", kernel)
 
     def test_boot_cmdline_matches_the_builder(self) -> None:
         boot = toml("boot.toml")["cmdline"]

@@ -12,24 +12,23 @@ maintainers = ["@Gibbz"]
 fastboot_product = "barbet"
 
 [kernel]
-# No SimplyLuma/linux tag yet: the source lock pins v7.3-rc7 plus the avicii
-# SM7250 overlay and the repository board/driver patches.
-source_lock = "config/kernel/barbet-7.3.json"
-release = "7.3.0-rc7"
-config = "config/kernel/barbet.config"
+# Built from the SimplyLuma/linux sm7250 branch (v7.2.15 family base).
+tag = "luma-kernel-7.2.15-sm7250"
+release = "7.2.15-sm7250"
+config = "config/kernel/sm7250.fragment"
 dtb = "qcom/sm7250-google-barbet.dtb"
 
 [boot]
 config = "boot.toml"
 
 [initramfs]
-# The boot ramdisk is the FP6 Alpha 1 postmarketOS base plus the barbet
-# overlay (init_functions.sh, init_2nd.sh, the platform hook and the shared
-# OSTree resolver); the maintainers wire the nightly after merge.
+# The boot ramdisk is the postmarketOS initramfs plus the barbet overlay
+# (init_functions.sh, init_2nd.sh, the platform hook and the shared OSTree
+# resolver); the maintainers wire the nightly after merge.
 ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"
 base = "postmarketos-initramfs 3.12.0-r0"
 init_functions = "config/mobile/barbet-initramfs/init_functions.sh"
-init_functions_sha256 = "443d8d64faee8d30eaab5f7715e33e40722432c6dddc165614047deaa99cf879"
+init_functions_sha256 = "695b5c44d71d8bf8c03efa75de70ba4e5ed530a599bc45378a6894569d26a3e0"
 ostree_package = "ostree-2026.5-1.luma.2.fc44"
 ostree_source = "config/mobile/fp6-ostree-source.json"
 

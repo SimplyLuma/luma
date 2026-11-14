@@ -48,10 +48,9 @@ class BarbetInitramfs(unittest.TestCase):
         hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
         self.assertNotRegex(hook, re.compile(r"modemst|fsg|fsc|persist|vbmeta|dtbo", re.I))
 
-    def test_hook_masks_the_fp6_platform_units(self) -> None:
+    def test_hook_leaves_the_shared_platform_units_alone(self) -> None:
         hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
-        self.assertIn("luma-fp6-*.service", hook)
-        self.assertIn('ln -sf /dev/null "/sysroot/etc/systemd/system/${unit##*/}"', hook)
+        self.assertNotIn("luma-fp6-", hook)
 
     def test_wifi_starts_the_modem_after_ath10k_binds(self) -> None:
         script = (TREE / "luma-barbet/etc/luma/barbet-wifi-start.sh").read_text()
