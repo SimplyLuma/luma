@@ -42,16 +42,6 @@ const INK_SAMPLE_MS = 400;
 // Longest a sample waits while the screen keeps repainting (video, a game).
 const INK_SETTLE_MAX_MS = 2000;
 
-// Pick one stage pixel; GJS returns the colour alone or after the boolean.
-function pickColor(screenshot, x, y) {
-    return new Promise((resolve, reject) => screenshot.pick_color(x, y, (source, result) => {
-        try {
-            const value = source.pick_color_finish(result);
-            resolve(Array.isArray(value) ? value[value.length - 1] : value);
-        } catch (error) { reject(error); }
-    }));
-}
-
 function move(actor, parent) {
     actor.get_parent()?.remove_child(actor);
     parent.add_child(actor);
@@ -985,19 +975,21 @@ export class Presentation {
     // get ink for the colour under the bar: its top pixel row, clear of the
     // clock, indicators and the centred island. The gesture handle follows
     // the bottom row beside it.
-    async _sampleInk() {
+    _sampleInk() {
         const display = Main.layoutManager.primaryMonitor;
         if (!display || this._home.visible || !this._statusWindow || this.mode === 'desktop') return;
         this._inkSampling = true;
         try {
             this._screenshot ??= new Shell.Screenshot();
             const edge = Math.round(this._scale ?? 1);
-            const pick = (fraction, y) => pickColor(this._screenshot, display.x + Math.round(display.width * fraction), y);
-            const colors = [], bottom = [];
-            for (const fraction of [0.06, 0.3, 0.7, 0.94])
-                colors.push(await pick(fraction, display.y + edge));
-            for (const fraction of [0.06, 0.94])
-                bottom.push(await pick(fraction, display.y + display.height - 1 - edge));
+            const point = (fraction, y) => [display.x + Math.round(display.width * fraction), y];
+            const points = [0.06, 0.3, 0.7, 0.94].map(fraction => point(fraction, display.y + edge));
+            points.push(...[0.06, 0.94].map(fraction => point(fraction,
+                display.y + display.height - 1 - edge)));
+            const pixels = this._screenshot.pick_colors(new GLib.Variant('a(ii)', points))?.deep_unpack();
+            if (pixels?.length !== points.length) throw Error('Status ink capture failed');
+            const colors = pixels.slice(0, 4).map(([red, green, blue]) => ({red, green, blue}));
+            const bottom = pixels.slice(4).map(([red, green, blue]) => ({red, green, blue}));
             const sampled = {all: inkFor(colors), left: inkFor(colors.slice(0, 2)),
                 right: inkFor(colors.slice(2)), bottom: inkFor(bottom)};
             if (!this._destroyed && JSON.stringify(sampled) !== JSON.stringify(this._sampledInk)) {
