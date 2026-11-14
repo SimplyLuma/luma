@@ -1,0 +1,35 @@
+From 2c74ac611432c225d70cd9b7ce8b033670fd8840 Mon Sep 17 00:00:00 2001
+From: Luma <noreply@projectluma.org>
+Date: Sat, 14 Nov 2026 13:40:00 -0600
+Subject: [PATCH] poll-light: poll no faster than the default interval
+
+get_interval() used the sensor's integration time as the polling
+interval. Integration times are a few milliseconds on common ambient
+light sensors (5.92 ms on the STK36C61, down to 185 us), so the light
+level was read up to 200 times a second, or in a busy loop for an
+integration time below 1 ms. Each read is an I2C transfer: on a bus
+where a read costs 0.69 ms of CPU the daemon used 13-17% of a CPU
+whenever light was claimed.
+
+Keep reading the integration time, but never poll faster than
+DEFAULT_POLL_TIME (0.8 s). The accelerometer and proximity pollers
+already use a fixed 700 ms.
+---
+ src/drv-iio-poll-light.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/drv-iio-poll-light.c b/src/drv-iio-poll-light.c
+index 59241c2..f0dc6df 100644
+--- a/src/drv-iio-poll-light.c
++++ b/src/drv-iio-poll-light.c
+@@ -105,7 +105,9 @@ get_interval (GUdevDevice *device)
+ 	g_free (path);
+ 
+ out:
+-	return (time * 1000);
++	/* The integration time is when a reading can be ready, not how
++	 * often a light level is worth reading. */
++	return MAX (time, DEFAULT_POLL_TIME) * 1000;
+ }
+ 
+ static void

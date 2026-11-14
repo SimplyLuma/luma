@@ -19,6 +19,12 @@
         "patches/fwupd/"
       ]
     },
+    "iio-sensor-proxy": {
+      "recipe": "scripts/packages/build-iio-sensor-proxy.sh",
+      "paths": [
+        "patches/iio-sensor-proxy/"
+      ]
+    },
     "plymouth": {
       "recipe": "scripts/packages/build-plymouth.sh",
       "paths": [
