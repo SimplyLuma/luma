@@ -10,7 +10,8 @@ Fairphone 6 device repository as a client-side layer:
 - Bluetooth address from the persist partition (read-only);
 - camera GPU fault guard;
 - wall clock kept across shutdown (no RTC battery);
-- the A/B slot marked successful after each boot (qbootctl -m);
+- the A/B slot marked successful after each boot (qbootctl -m), except while
+  luma-device-boot has a boot image on trial;
 - the handheld device class and the shared handheld dconf defaults
   (config/mobile/luma-shell-handheld.dconf);
 - updates on request only (/etc/luma/update.conf).

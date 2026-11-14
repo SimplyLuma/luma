@@ -76,7 +76,10 @@ slot active and restarts once, before the display manager starts. It opens for
 writing only the partitions `[boot_update] partitions` names, of the kinds
 boot, dtbo, init_boot and vendor_boot, and never opens modemst1, modemst2, fsg,
 fsc or persist. `luma-device-boot-confirm.service` marks the slot successful
-once the declared kernel runs (release and `/sys/kernel/notes` digest). A slot
+once the declared kernel runs (release and `/sys/kernel/notes` digest), and
+marks the running slot on any boot with no attempt pending. A device's own
+unit that marks slots must skip while `/var/lib/luma-device-boot/pending.json`
+exists, so a kernel that is not the declared one never marks its slot. A slot
 that does not boot is left by the bootloader's A/B fallback; the next boot
 records its image as failed and never writes it again
 (`luma-device-boot status`, `luma-device-boot retry`). `luma.device_boot=0` on

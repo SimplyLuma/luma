@@ -103,6 +103,8 @@ PY_MODES
     grep -Fxq "enable luma-device-boot.service" usr/lib/systemd/system-preset/80-luma-update.preset
     grep -Fxq "enable luma-device-boot-confirm.service" usr/lib/systemd/system-preset/80-luma-update.preset
     grep -Fxq "ConditionDirectoryNotEmpty=/usr/lib/luma/device-boot" usr/lib/systemd/system/luma-device-boot.service
+    # 1.0.0-1.luma.36: confirm marks the running slot on every boot, a trial slot only for its kernel.
+    grep -Fxq "ConditionDirectoryNotEmpty=/usr/lib/luma/device-boot" usr/lib/systemd/system/luma-device-boot-confirm.service
     grep -Fxq "ConditionPathExists=!/usr/lib/systemd/system/greenboot-healthcheck.service" \
       usr/lib/systemd/user/grub-boot-success.timer.d/50-luma-greenboot.conf
     desktop-file-validate usr/share/applications/org.projectluma.Update.desktop

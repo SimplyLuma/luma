@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 [Unit]
-Description=Mark the boot slot successful after its new kernel booted
+Description=Mark the boot slot successful
 Documentation=https://github.com/SimplyLuma/luma/blob/main/devices/README.md
-# Only while a slot written by luma-device-boot.service is on trial. A trial
-# boot that never gets here is undone by the bootloader's A/B fallback.
+# On a device that declares a boot image. A slot written by
+# luma-device-boot.service is marked only once its declared kernel runs; a trial
+# boot that never gets there is undone by the bootloader's A/B fallback.
 ConditionPathExists=/run/ostree-booted
-ConditionPathExists=/var/lib/luma-device-boot/pending.json
+ConditionDirectoryNotEmpty=/usr/lib/luma/device-boot
 After=multi-user.target luma-device-boot.service
 
 [Service]
