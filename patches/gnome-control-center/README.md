@@ -299,3 +299,9 @@ treats that state as on. The switch now reports on there, a first saved
 profile keeps data on, and turning data off with no profile binds the
 carrier's first listed APN with autoconnect off, so the link sees it. Roaming
 stays off by default.
+
+`0104-lumaui-phone-requested-page-leaves-list.patch`: on a phone a page asked
+for from outside was pushed over the list only when the page changed, so
+`gnome-control-center wwan` after Back from Mobile Network left the list
+showing. The command line and the launch-panel action now show the requested
+page once the shell has opened it.

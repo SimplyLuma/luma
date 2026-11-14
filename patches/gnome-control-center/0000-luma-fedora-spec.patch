@@ -1,6 +1,6 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,130 @@
+@@ -28,14 +28,131 @@
  
  Name:           gnome-control-center
  Version:        50.4
@@ -119,6 +119,7 @@
 +Patch1100:      0101-lumaui-mobile-network-with-a-modem.patch
 +Patch1101:      0102-lumaui-phone-panel-status-inset.patch
 +Patch1102:      0103-wwan-mobile-data-on-by-default.patch
++Patch1103:      0104-lumaui-phone-requested-page-leaves-list.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.123
