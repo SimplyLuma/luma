@@ -69,7 +69,9 @@ class NativePreparationTests(unittest.TestCase):
             *(["['file:///tmp']", '{}'] if method == 'Open' else ['{}'])], check=True, capture_output=True, timeout=5)
         out, error = self.child.communicate(timeout=5)
         self.assertEqual(self.child.returncode, 0, error.decode())
-        self.assertEqual(self.record.read_text().split(), ['2' if method == 'Open' else '1', str(self.original_oom), '0', '1'])
+        # The last field: the shown window's surface was made by the launch, not
+        # left over from preparation (sized before the real output was known).
+        self.assertEqual(self.record.read_text().split(), ['2' if method == 'Open' else '1', str(self.original_oom), '0', '1', '1'])
 
     def test_prepared_view_is_reused_without_leaking_preload_to_children(self):
         self.assert_activated()

@@ -68,13 +68,18 @@ static void low_memory(GMemoryMonitor *monitor, GMemoryMonitorWarningLevel level
     }
 }
 
-static void activated(GApplication *app, Preparation *self) {
-    (void)app;
-    if (preparing || self->used) return;
+static void use_preparation(Preparation *self) {
+    if (self->used) return;
     self->used = TRUE;
     oom_score(self->original_oom);
-    release_surface(self);
     if (self->held) { self->held = FALSE; g_application_release(self->app); }
+}
+
+static void activated(GApplication *app, Preparation *self) {
+    (void)app;
+    if (preparing) return;
+    use_preparation(self);
+    release_surface(self);
 }
 
 static void window_added(GtkApplication *app, GtkWindow *window, Preparation *self) {
@@ -116,27 +121,50 @@ static void finish_views(GtkWindow *presented) {
     g_ptr_array_unref(views);
 }
 
+// A prepared view was realized while the app was prepared, often at session
+// start before the outputs, their scale and the shell's posture were final.
+// Its surface must not outlive that guess: the launch shows the view on a new
+// surface, created and laid out against the output it actually opens on, as a
+// cold start would.
+static void renew_surface(GtkWindow *window) {
+    if (!current || !current->views || gtk_widget_get_mapped(GTK_WIDGET(window))) return;
+    if (!g_ptr_array_find(current->views, window, NULL)) return;
+    if (gtk_widget_get_realized(GTK_WIDGET(window))) gtk_widget_unrealize(GTK_WIDGET(window));
+    gtk_widget_queue_resize(GTK_WIDGET(window));
+}
+
+// Returns the preparation whose helper surface to release once the real view
+// is realized, so the display's GPU context stays warm across the launch.
+static Preparation *before_present(GtkWindow *window) {
+    Preparation *self = current;
+    if (!self) return NULL;
+    use_preparation(self);
+    renew_surface(window);
+    finish_views(window);
+    return self;
+}
+
 // Preparation builds only these explicitly opted-in OS apps' initial view.
 // Defer presentation while their ordinary activate handler constructs it;
 // the next real activation presents the same window through the normal API.
 void gtk_window_present(GtkWindow *window) {
     if (preparing) { gtk_widget_realize(GTK_WIDGET(window)); return; }
-    if (current) activated(current->app, current);
-    finish_views(window);
+    Preparation *self = before_present(window);
     void (*present)(GtkWindow *) = NULL;
     void *symbol = dlsym(RTLD_NEXT, "gtk_window_present");
     memcpy(&present, &symbol, sizeof present);
     if (present) present(window);
+    if (self) release_surface(self);
 }
 
 void gtk_window_present_with_time(GtkWindow *window, guint32 timestamp) {
     if (preparing) { gtk_widget_realize(GTK_WIDGET(window)); return; }
-    if (current) activated(current->app, current);
-    finish_views(window);
+    Preparation *self = before_present(window);
     void (*present)(GtkWindow *, guint32) = NULL;
     void *symbol = dlsym(RTLD_NEXT, "gtk_window_present_with_time");
     memcpy(&present, &symbol, sizeof present);
     if (present) present(window, timestamp);
+    if (self) release_surface(self);
 }
 
 static gboolean prepare_view(gpointer data) {
