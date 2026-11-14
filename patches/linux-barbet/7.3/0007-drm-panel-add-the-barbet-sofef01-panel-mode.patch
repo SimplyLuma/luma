@@ -1,0 +1,71 @@
+--- a/drivers/gpu/drm/panel/panel-samsung-sofef00.c
++++ b/drivers/gpu/drm/panel/panel-samsung-sofef00.c
+@@ -23,6 +23,7 @@
+ 	struct mipi_dsi_device *dsi;
+ 	struct regulator_bulk_data *supplies;
+ 	struct gpio_desc *reset_gpio;
++	const struct drm_display_mode *mode;
+ };
+ 
+ static const struct regulator_bulk_data sofef00_supplies[] = {
+@@ -159,9 +160,34 @@
+ 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
+ };
+ 
++/*
++ * Google Pixel 5a (barbet) Samsung SOFEF01: 1080x2400 at 60 Hz. Timings from
++ * the device's factory panel node (h porch 32/32/98, v porch 8/1/8).
++ */
++static const struct drm_display_mode sofef01_panel_mode = {
++	.clock = (1080 + 32 + 32 + 98) * (2400 + 8 + 1 + 8) * 60 / 1000,
++
++	.hdisplay = 1080,
++	.hsync_start = 1080 + 32,
++	.hsync_end = 1080 + 32 + 32,
++	.htotal = 1080 + 32 + 32 + 98,
++
++	.vdisplay = 2400,
++	.vsync_start = 2400 + 8,
++	.vsync_end = 2400 + 8 + 1,
++	.vtotal = 2400 + 8 + 1 + 8,
++
++	.width_mm = 68,
++	.height_mm = 151,
++
++	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++};
++
+ static int sofef00_panel_get_modes(struct drm_panel *panel, struct drm_connector *connector)
+ {
+-	return drm_connector_helper_get_modes_fixed(connector, &ams628nw01_panel_mode);
++	struct sofef00_panel *ctx = to_sofef00_panel(panel);
++
++	return drm_connector_helper_get_modes_fixed(connector, ctx->mode);
+ }
+ 
+ static const struct drm_panel_funcs sofef00_panel_panel_funcs = {
+@@ -236,6 +262,9 @@
+ 				     "Failed to get reset-gpios\n");
+ 
+ 	ctx->dsi = dsi;
++	ctx->mode = of_device_get_match_data(dev);
++	if (!ctx->mode)
++		ctx->mode = &ams628nw01_panel_mode;
+ 	mipi_dsi_set_drvdata(dsi, ctx);
+ 
+ 	dsi->lanes = 4;
+@@ -275,8 +304,12 @@
+ }
+ 
+ static const struct of_device_id sofef00_panel_of_match[] = {
+-	{ .compatible = "samsung,sofef00" }, /* legacy */
+-	{ .compatible = "samsung,sofef00-ams628nw01" },
++	{ .compatible = "samsung,sofef00", /* legacy */
++	  .data = &ams628nw01_panel_mode },
++	{ .compatible = "samsung,sofef00-ams628nw01",
++	  .data = &ams628nw01_panel_mode },
++	{ .compatible = "samsung,sofef01",
++	  .data = &sofef01_panel_mode },
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(of, sofef00_panel_of_match);

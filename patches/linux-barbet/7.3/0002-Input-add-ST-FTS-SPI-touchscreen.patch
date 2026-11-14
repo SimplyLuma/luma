@@ -1,0 +1,1038 @@
+--- /dev/null
++++ b/drivers/input/touchscreen/stfts-spi.c
+@@ -0,0 +1,1009 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * ST FingerTipS SPI touchscreen transport for the Pixel 5a (barbet).
++ *
++ * The panel is st,fts on QUP0 SE0; there is no upstream SPI transport. The
++ * protocol and the boot initialization come from the vendor driver in
++ * kernel/msm-modules/fts_touch, branch android-msm-barbet-4.19-android11-d2:
++ *
++ *   HW register read:  0xFB | 4-byte big-endian address; the controller
++ *                      prefixes reads with one dummy byte (a plain read is
++ *                      shifted by one and returns 00 36, the dummy read
++ *                      returns 36 48).
++ *   Framebuffer read:  0xA7 | 2-byte big-endian address, dummy-prefixed.
++ *   FIFO read:         0x87, then 8 bytes per event, also dummy-prefixed.
++ *   Event layout:      [0] id (0x13 enter, 0x23 motion, 0x33 leave)
++ *                      [1] touch id << 4 | type
++ *                      [2..3] x = ((e[3] & 0x0f) << 8) | e[2]
++ *                      [4..3] y = (e[4] << 4) | ((e[3] & 0xf0) >> 4)
++ *                      [5] pressure
++ *
++ * The bus ownership switch is held high to keep the AP in control.
++ *
++ * Boot flow (vendor fts_fw_update / production_test_initialization /
++ * fts_init_sensing): reset and wait for the controller-ready event, read
++ * SYS_INFO, run SPECIAL_PANEL_INIT when the config version matches
++ * st,force-pi-cfg-ver-map, reset again, then enable active scan with 0xFF.
++ */
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/input.h>
++#include <linux/input/mt.h>
++#include <linux/input/touchscreen.h>
++#include <linux/interrupt.h>
++#include <linux/jiffies.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/pm.h>
++#include <linux/regulator/consumer.h>
++#include <linux/spi/spi.h>
++#include <linux/sysfs.h>
++
++#define STFTS_CMD_HW_REG_R	0xFB
++#define STFTS_ADDR_DCHIP_ID	0x20000000u
++#define STFTS_ADDR_SIZE		4
++#define STFTS_CMD_HW_REG_W	0xFA
++#define STFTS_ADDR_SYSTEM_RESET	0x20000024u
++#define STFTS_SYSTEM_RESET_VAL	0x81
++#define STFTS_CMD_FIFO_READ	0x87
++#define STFTS_CMD_FRAMEBUFFER_R	0xA7
++#define STFTS_CMD_SYSTEM	0xA4
++#define STFTS_CMD_SAVE_GOLDEN_MS_RAW	0xC0
++#define STFTS_EVENT_SIZE	8
++#define STFTS_MAX_EVENTS	16
++#define STFTS_CS_DELAY_US	10
++
++#define STFTS_SYS_CMD_SPECIAL	0x00
++#define STFTS_SYS_CMD_LOAD_DATA	0x06
++#define STFTS_SPECIAL_PANEL_INIT	0x02
++#define STFTS_SPECIAL_FULL_PANEL_INIT	0x03
++#define STFTS_LOAD_SYS_INFO	0x01
++
++#define STFTS_SYS_INFO_SIZE	216
++/*
++ * SE0 is a FIFO-only GENI SPI master here (the wrapper iommus are removed
++ * because apps_smmu does not probe).  A transfer larger than the SE FIFO
++ * makes the SPI core map SG buffers and the GENI driver switch to SE DMA,
++ * which does not complete on this board.  Read the framebuffer in chunks
++ * small enough that every transfer stays on the FIFO path.
++ */
++#define STFTS_FB_CHUNK_SIZE	16
++#define STFTS_HEADER_SIGNATURE	0xA5
++#define STFTS_SYSINFO_TIMEOUT_MS	400
++
++#define STFTS_TIMEOUT_RESET_MS	750
++#define STFTS_TIMEOUT_PANEL_MS	10000
++#define STFTS_TIMEOUT_ECHO_MS	50
++#define STFTS_RETRY_INIT	3
++
++#define STFTS_EVT_READY		0x03
++#define STFTS_EVT_ENTER		0x10
++#define STFTS_EVT_MOTION	0x20
++#define STFTS_EVT_LEAVE		0x30
++#define STFTS_EVT_NOEVENT	0x00
++#define STFTS_EVT_MASK		0xf0
++#define STFTS_EVT_STATUS	0x43
++#define STFTS_EVT_STATUS_ECHO	0x01
++#define STFTS_EVT_STATUS_FORCE	0x05
++#define STFTS_EVT_STATUS_WATER	0x06
++
++#define STFTS_ID0		0x36
++#define STFTS_MAX_FINGERS	10
++
++#define STFTS_INIT_NONE		0
++#define STFTS_INIT_PANEL	STFTS_SPECIAL_PANEL_INIT
++#define STFTS_INIT_FULL		STFTS_SPECIAL_FULL_PANEL_INIT
++
++struct stfts_spi {
++	struct spi_device *spi;
++	struct input_dev *input;
++	struct touchscreen_properties prop;
++	struct gpio_desc *reset;
++	struct gpio_desc *lpi2ap;
++	struct gpio_desc *ap2lpi;
++	struct regulator *vdd;
++	unsigned long active;
++	bool irq_requested;
++	bool irq_enabled;
++	bool suspended;
++	bool ready;
++	bool golden_saved;
++	/* Lifecycle operations mask IRQs before taking the transport lock. */
++	struct mutex lifecycle_lock;
++	struct mutex lock;
++	u32 panel_index;
++
++	u8 sysinfo[STFTS_SYS_INFO_SIZE];
++	bool sysinfo_valid;
++	u16 fw_ver;
++	u16 cfg_ver;
++	u16 cx_ver;
++	u16 cfg_project_id;
++	u8 cfg_afe;
++	u8 cx_afe;
++	u8 panel_afe;
++	u8 mp_flag;
++	u8 protocol;
++	u16 res_x;
++	u16 res_y;
++	u8 tx_len;
++	u8 rx_len;
++	u8 force_len;
++
++	u8 rx[1 + STFTS_SYS_INFO_SIZE];
++	u8 last_event[STFTS_EVENT_SIZE];
++};
++
++static u16 stfts_get_le16(const u8 *p)
++{
++	return p[0] | (p[1] << 8);
++}
++
++static int stfts_transfer(struct stfts_spi *st, const u8 *tx, size_t tx_len,
++			  u8 *rx, size_t rx_len)
++{
++	struct spi_transfer xfer[2] = {0};
++	struct spi_message msg;
++
++	xfer[0].tx_buf = tx;
++	xfer[0].len = tx_len;
++	if (rx) {
++		xfer[1].rx_buf = rx;
++		xfer[1].len = rx_len;
++		xfer[1].delay.value = STFTS_CS_DELAY_US;
++		xfer[1].delay.unit = SPI_DELAY_UNIT_USECS;
++	}
++
++	spi_message_init(&msg);
++	spi_message_add_tail(&xfer[0], &msg);
++	if (rx)
++		spi_message_add_tail(&xfer[1], &msg);
++
++	return spi_sync(st->spi, &msg);
++}
++
++static int stfts_write(struct stfts_spi *st, const u8 *tx, size_t tx_len)
++{
++	struct spi_transfer xfer = {0};
++	struct spi_message msg;
++
++	xfer.tx_buf = tx;
++	xfer.len = tx_len;
++	xfer.delay.value = STFTS_CS_DELAY_US;
++	xfer.delay.unit = SPI_DELAY_UNIT_USECS;
++
++	spi_message_init(&msg);
++	spi_message_add_tail(&xfer, &msg);
++
++	return spi_sync(st->spi, &msg);
++}
++
++/* Read exactly count event bytes; the controller prefixes a dummy byte. */
++static int stfts_read_fifo(struct stfts_spi *st, u8 *out, size_t count)
++{
++	u8 cmd = STFTS_CMD_FIFO_READ;
++	size_t done = 0;
++	int ret;
++
++	if (count % STFTS_EVENT_SIZE)
++		return -EINVAL;
++	/* Never select the non-working GENI DMA path for a batch of events. */
++	while (done < count) {
++		size_t len = min_t(size_t, STFTS_EVENT_SIZE, count - done);
++
++		ret = stfts_transfer(st, &cmd, 1, st->rx, len + 1);
++		if (ret)
++			return ret;
++		memcpy(out + done, st->rx + 1, len);
++		done += len;
++	}
++	return 0;
++}
++
++/*
++ * Read from the framebuffer; the controller prefixes a dummy byte.  The
++ * address is the byte offset inside the framebuffer and must be advanced by
++ * the caller when a read is split into chunks.
++ */
++static int stfts_read_framebuffer(struct stfts_spi *st, u16 address, u8 *out,
++				  size_t count)
++{
++	u8 cmd[3] = { STFTS_CMD_FRAMEBUFFER_R, address >> 8, address & 0xff };
++	int ret;
++
++	if (count + 1 > sizeof(st->rx))
++		return -EINVAL;
++	ret = stfts_transfer(st, cmd, sizeof(cmd), st->rx, count + 1);
++	if (ret)
++		return ret;
++	memcpy(out, st->rx + 1, count);
++	return 0;
++}
++
++static int stfts_read_framebuffer_chunked(struct stfts_spi *st, u8 *out,
++					  size_t count)
++{
++	size_t done = 0;
++	int ret;
++
++	while (done < count) {
++		size_t len = min_t(size_t, STFTS_FB_CHUNK_SIZE, count - done);
++
++		ret = stfts_read_framebuffer(st, done, out + done, len);
++		if (ret)
++			return ret;
++		done += len;
++	}
++
++	return 0;
++}
++
++static int stfts_write_u8ux(struct stfts_spi *st, u8 cmd, u64 address,
++			    const u8 *data, size_t len)
++{
++	u8 buf[1 + STFTS_ADDR_SIZE + 4];
++	int i;
++
++	if (len > 4)
++		return -EINVAL;
++	buf[0] = cmd;
++	for (i = 0; i < STFTS_ADDR_SIZE; i++)
++		buf[1 + i] = (address >> ((STFTS_ADDR_SIZE - 1 - i) * 8)) & 0xff;
++	memcpy(buf + 1 + STFTS_ADDR_SIZE, data, len);
++
++	return stfts_write(st, buf, 1 + STFTS_ADDR_SIZE + len);
++}
++
++/* Poll the FIFO until want[0..len-1] matches, logging what else arrives. */
++static int stfts_wait_event(struct stfts_spi *st, const u8 *want, int len,
++			    int timeout_ms)
++{
++	unsigned long deadline = jiffies + msecs_to_jiffies(timeout_ms);
++	u8 event[STFTS_EVENT_SIZE];
++	int ret;
++
++	while (time_before(jiffies, deadline)) {
++		ret = stfts_read_fifo(st, event, sizeof(event));
++		if (ret) {
++			dev_warn_ratelimited(&st->spi->dev,
++					     "FIFO poll failed: %d\n", ret);
++			msleep(5);
++			continue;
++		}
++
++		if (event[0] == 0xff || event[0] == STFTS_EVT_NOEVENT) {
++			msleep(5);
++			continue;
++		}
++
++		dev_info_ratelimited(&st->spi->dev, "event %*ph\n",
++				     (int)sizeof(event), event);
++
++		if (!memcmp(event, want, len))
++			return 0;
++
++		msleep(5);
++	}
++
++	dev_err(&st->spi->dev, "timeout waiting for %*ph\n", len, want);
++	return -ETIMEDOUT;
++}
++
++static int stfts_system_reset(struct stfts_spi *st)
++{
++	static const u8 ready = STFTS_EVT_READY;
++	u8 data = STFTS_SYSTEM_RESET_VAL;
++	int ret = 0, i;
++
++	for (i = 0; i < STFTS_RETRY_INIT; i++) {
++		if (st->reset) {
++			gpiod_set_value_cansleep(st->reset, 1);
++			msleep(10);
++			gpiod_set_value_cansleep(st->reset, 0);
++		} else {
++			ret = stfts_write_u8ux(st, STFTS_CMD_HW_REG_W,
++					       STFTS_ADDR_SYSTEM_RESET, &data, 1);
++			if (ret)
++				continue;
++		}
++
++		ret = stfts_wait_event(st, &ready, 1,
++				       STFTS_TIMEOUT_RESET_MS);
++		if (!ret)
++			return 0;
++
++		dev_warn(&st->spi->dev, "reset attempt %d/%d failed\n",
++			 i + 1, STFTS_RETRY_INIT);
++	}
++
++	return ret;
++}
++
++static int stfts_write_sys_cmd(struct stfts_spi *st, u8 sys_cmd, u8 arg,
++			       int timeout_ms)
++{
++	static const u8 preamble[7] = { 0xFA, 0x20, 0, 0, 0, 0, 0 };
++	u8 cmd[3] = { STFTS_CMD_SYSTEM, sys_cmd, arg };
++	u8 echo[5] = { STFTS_EVT_STATUS, STFTS_EVT_STATUS_ECHO,
++		       STFTS_CMD_SYSTEM, sys_cmd, arg };
++	int ret;
++
++	ret = stfts_write(st, preamble, sizeof(preamble));
++	if (ret)
++		return ret;
++	msleep(5);
++	ret = stfts_write(st, cmd, sizeof(cmd));
++	if (ret)
++		return ret;
++
++	return stfts_wait_event(st, echo, sizeof(echo), timeout_ms);
++}
++
++static int stfts_request_sysinfo(struct stfts_spi *st)
++{
++	static const u8 preamble[7] = { 0xFA, 0x20, 0, 0, 0, 0, 0 };
++	u8 cmd[3] = { STFTS_CMD_SYSTEM, STFTS_SYS_CMD_LOAD_DATA,
++		      STFTS_LOAD_SYS_INFO };
++	u8 hdr[4];
++	int count, new_count, ret, i;
++
++	ret = stfts_read_framebuffer_chunked(st, hdr, sizeof(hdr));
++	if (ret)
++		return ret;
++	count = stfts_get_le16(hdr + 2);
++
++	ret = stfts_write(st, preamble, sizeof(preamble));
++	if (ret)
++		return ret;
++	msleep(5);
++	ret = stfts_write(st, cmd, sizeof(cmd));
++	if (ret)
++		return ret;
++
++	for (i = 0; i < STFTS_SYSINFO_TIMEOUT_MS / 50; i++) {
++		msleep(50);
++		ret = stfts_read_framebuffer_chunked(st, hdr, sizeof(hdr));
++		if (ret)
++			continue;
++		if (hdr[0] != STFTS_HEADER_SIGNATURE ||
++		    hdr[1] != STFTS_LOAD_SYS_INFO)
++			continue;
++		new_count = stfts_get_le16(hdr + 2);
++		if (new_count != count) {
++			dev_dbg(&st->spi->dev,
++				"sysinfo count %d -> %d\n", count, new_count);
++			return 0;
++		}
++	}
++
++	return -ETIMEDOUT;
++}
++
++static int stfts_read_sysinfo(struct stfts_spi *st)
++{
++	int ret;
++
++	dev_info(&st->spi->dev,
++		 "reading sysinfo (%d bytes in %d-byte chunks)\n",
++		 STFTS_SYS_INFO_SIZE, STFTS_FB_CHUNK_SIZE);
++	ret = stfts_read_framebuffer_chunked(st, st->sysinfo,
++					     sizeof(st->sysinfo));
++	if (ret)
++		return ret;
++	if (st->sysinfo[0] != STFTS_HEADER_SIGNATURE) {
++		dev_err(&st->spi->dev, "sysinfo signature %02x != %02x\n",
++			st->sysinfo[0], STFTS_HEADER_SIGNATURE);
++		return -EINVAL;
++	}
++
++	st->fw_ver = stfts_get_le16(st->sysinfo + 16);
++	st->cfg_ver = stfts_get_le16(st->sysinfo + 20);
++	st->cfg_project_id = stfts_get_le16(st->sysinfo + 22);
++	st->cx_ver = stfts_get_le16(st->sysinfo + 24);
++	st->cfg_afe = st->sysinfo[28];
++	st->cx_afe = st->sysinfo[29];
++	st->panel_afe = st->sysinfo[30];
++	st->protocol = st->sysinfo[31];
++	st->mp_flag = st->sysinfo[68];
++	/*
++	 * Vendor readSysInfo() walks the header (4), the version fields (28),
++	 * die info (16), release info (8), the two CRCs (8), the reserved word
++	 * and mp flag (8), then four bytes of scan-select/reserved before the
++	 * geometry: scrResX at 80, scrResY at 82, TX at 84, RX at 85, key at
++	 * 86, force at 87.
++	 */
++	st->res_x = stfts_get_le16(st->sysinfo + 80);
++	st->res_y = stfts_get_le16(st->sysinfo + 82);
++	st->tx_len = st->sysinfo[84];
++	st->rx_len = st->sysinfo[85];
++	st->force_len = st->sysinfo[87];
++	st->sysinfo_valid = true;
++
++	dev_info(&st->spi->dev,
++		 "sysinfo: fw=%04x cfg=%04x project=%04x cx=%04x afe cfg/cx/panel=%02x/%02x/%02x mp=%02x proto=%02x res=%ux%u tx=%u rx=%u force=%u\n",
++		 st->fw_ver, st->cfg_ver, st->cfg_project_id, st->cx_ver,
++		 st->cfg_afe, st->cx_afe, st->panel_afe, st->mp_flag,
++		 st->protocol, st->res_x, st->res_y, st->tx_len,
++		 st->rx_len, st->force_len);
++	return 0;
++}
++
++static u32 stfts_panel_index(struct stfts_spi *st)
++{
++	struct of_phandle_args panelmap;
++	int ret;
++
++	if (!of_property_read_bool(st->spi->dev.of_node, "st,panel_map"))
++		return 0;
++
++	ret = of_parse_phandle_with_fixed_args(st->spi->dev.of_node,
++					       "st,panel_map", 1, 0, &panelmap);
++	if (ret)
++		return 0;
++
++	of_node_put(panelmap.np);
++	return panelmap.args[0];
++}
++
++/* Vendor fts_fw_update(): pick the initialization type from SYS_INFO. */
++static int stfts_init_type(struct stfts_spi *st)
++{
++	struct device_node *np = st->spi->dev.of_node;
++	u32 cfg;
++	int count, i;
++
++	count = of_property_count_u32_elems(np, "st,force-pi-cfg-ver-map");
++	for (i = 0; i < count; i++) {
++		if (of_property_read_u32_index(np, "st,force-pi-cfg-ver-map",
++					       i, &cfg))
++			continue;
++		if (cfg == st->cfg_ver) {
++			dev_info(&st->spi->dev,
++				 "force pi cfg map %04x -> panel init\n", cfg);
++			return STFTS_INIT_PANEL;
++		}
++	}
++
++	if (st->cfg_afe != st->panel_afe) {
++		dev_info(&st->spi->dev,
++			 "AFE cfg %02x != panel %02x -> panel init\n",
++			 st->cfg_afe, st->panel_afe);
++		return STFTS_INIT_PANEL;
++	}
++
++	return STFTS_INIT_NONE;
++}
++
++static int stfts_save_golden_ms_raw(struct stfts_spi *st);
++
++static int stfts_panel_init(struct stfts_spi *st, u8 type)
++{
++	int ret = 0, i;
++
++	for (i = 0; i < STFTS_RETRY_INIT; i++) {
++		ret = stfts_system_reset(st);
++		if (ret)
++			continue;
++
++		dev_info(&st->spi->dev, "panel init type %02x attempt %d\n",
++			 type, i + 1);
++		ret = stfts_write_sys_cmd(st, STFTS_SYS_CMD_SPECIAL, type,
++					  STFTS_TIMEOUT_PANEL_MS);
++		if (!ret)
++			break;
++
++		dev_err(&st->spi->dev, "panel init attempt %d failed: %d\n",
++			i + 1, ret);
++	}
++
++	if (ret)
++		return ret;
++
++	ret = stfts_request_sysinfo(st);
++	if (ret) {
++		dev_err(&st->spi->dev, "sysinfo refresh failed: %d\n", ret);
++		return ret;
++	}
++
++	ret = stfts_read_sysinfo(st);
++	if (ret)
++		return ret;
++
++	if (!st->golden_saved &&
++	    of_property_read_bool(st->spi->dev.of_node, "st,save-golden-ms-raw")) {
++		ret = stfts_save_golden_ms_raw(st);
++		if (ret)
++			return ret;
++		st->golden_saved = true;
++	}
++
++	return 0;
++}
++
++/* Vendor fts_chip_initialization(): persist the golden mutual raw before reset. */
++static int stfts_save_golden_ms_raw(struct stfts_spi *st)
++{
++	static const u8 cmd[3] = { STFTS_CMD_SAVE_GOLDEN_MS_RAW, 0x01, 0x01 };
++	int ret;
++
++	ret = stfts_write(st, cmd, sizeof(cmd));
++	if (ret)
++		dev_err(&st->spi->dev, "save golden MS raw failed: %d\n", ret);
++	else
++		/* Vendor allows 90 ms for the save to complete. */
++		msleep(150);
++
++	return ret;
++}
++
++static int stfts_scan_mode(struct stfts_spi *st, u8 mode, u8 settings)
++{
++	static const u8 preamble[7] = { 0xFA, 0x20, 0, 0, 0, 0, 0 };
++	u8 cmd[3] = { 0xA0, mode, settings };
++	int ret;
++
++	ret = stfts_write(st, preamble, sizeof(preamble));
++	if (ret)
++		return ret;
++	msleep(5);
++
++	return stfts_write(st, cmd, sizeof(cmd));
++}
++
++/* Vendor fts_init_sensing(): reset, initialize if needed, then sense on. */
++static int stfts_initialize(struct stfts_spi *st)
++{
++	int init_type = STFTS_INIT_NONE;
++	int ret;
++
++	ret = stfts_system_reset(st);
++	if (ret) {
++		dev_err(&st->spi->dev, "initial reset failed: %d\n", ret);
++		return ret;
++	}
++
++	ret = stfts_read_sysinfo(st);
++	if (ret) {
++		dev_err(&st->spi->dev,
++			"cannot read sysinfo (%d), running full panel init\n",
++			ret);
++		init_type = STFTS_INIT_FULL;
++	} else {
++		init_type = stfts_init_type(st);
++	}
++
++	if (init_type != STFTS_INIT_NONE) {
++		ret = stfts_panel_init(st, init_type);
++		if (ret) {
++			dev_err(&st->spi->dev, "panel init failed: %d\n", ret);
++			return ret;
++		}
++		dev_info(&st->spi->dev, "panel init complete\n");
++
++		ret = stfts_system_reset(st);
++		if (ret) {
++			dev_err(&st->spi->dev, "post-init reset failed: %d\n",
++				ret);
++			return ret;
++		}
++
++		if (stfts_read_sysinfo(st))
++			dev_warn(&st->spi->dev,
++				 "cannot re-read sysinfo after init\n");
++	}
++
++	dev_info(&st->spi->dev, "sense on (all scan types)\n");
++	ret = stfts_scan_mode(st, 0x00, 0xff);
++	if (ret)
++		dev_err(&st->spi->dev, "scan mode failed: %d\n", ret);
++
++	return ret;
++}
++
++static void stfts_release_all(struct stfts_spi *st)
++{
++	int i;
++
++	for_each_set_bit(i, &st->active, STFTS_MAX_FINGERS) {
++		input_mt_slot(st->input, i);
++		input_mt_report_slot_state(st->input, MT_TOOL_FINGER, false);
++	}
++	st->active = 0;
++	input_report_key(st->input, BTN_TOUCH, false);
++	input_mt_sync_frame(st->input);
++	input_sync(st->input);
++}
++
++static irqreturn_t stfts_irq(int irq, void *data)
++{
++	struct stfts_spi *st = data;
++	u8 events[STFTS_EVENT_SIZE * STFTS_MAX_EVENTS];
++	int i, ret, contacts = 0, remaining;
++
++	mutex_lock(&st->lock);
++	if (!st->ready || st->suspended)
++		goto out;
++	ret = stfts_read_fifo(st, events, STFTS_EVENT_SIZE);
++	if (ret) {
++		dev_warn_ratelimited(&st->spi->dev, "FIFO read failed: %d\n", ret);
++		stfts_release_all(st);
++		goto out;
++	}
++	dev_dbg(&st->spi->dev, "irq event %*ph\n", STFTS_EVENT_SIZE, events);
++	remaining = events[7] & 0x1f;
++	if (remaining > STFTS_MAX_EVENTS - 1)
++		remaining = STFTS_MAX_EVENTS - 1;
++	if (remaining > 0) {
++		ret = stfts_read_fifo(st, events + STFTS_EVENT_SIZE,
++				      remaining * STFTS_EVENT_SIZE);
++		if (ret)
++			remaining = 0;
++	} else {
++		remaining = 0;
++	}
++
++	for (i = 0; i <= remaining; i++) {
++		u8 *e = events + i * STFTS_EVENT_SIZE;
++		u8 id = e[0];
++		u8 touch = e[1] >> 4;
++
++		memcpy(st->last_event, e, sizeof(st->last_event));
++		if (id == STFTS_EVT_READY) {
++			stfts_release_all(st);
++			continue;
++		}
++		if (id == STFTS_EVT_NOEVENT)
++			break;
++		if (touch >= STFTS_MAX_FINGERS)
++			continue;
++
++		if ((id & STFTS_EVT_MASK) == STFTS_EVT_ENTER ||
++		    (id & STFTS_EVT_MASK) == STFTS_EVT_MOTION) {
++			int x = ((e[3] & 0x0f) << 8) | e[2];
++			int y = (e[4] << 4) | ((e[3] & 0xf0) >> 4);
++
++			if (x > st->prop.max_x || y > st->prop.max_y)
++				continue;
++
++			input_mt_slot(st->input, touch);
++			input_mt_report_slot_state(st->input, MT_TOOL_FINGER, true);
++			touchscreen_report_pos(st->input, &st->prop, x, y, true);
++			input_report_abs(st->input, ABS_MT_PRESSURE, e[5]);
++			__set_bit(touch, &st->active);
++		} else if ((id & STFTS_EVT_MASK) == STFTS_EVT_LEAVE) {
++			input_mt_slot(st->input, touch);
++			input_mt_report_slot_state(st->input, MT_TOOL_FINGER, false);
++			__clear_bit(touch, &st->active);
++		}
++	}
++
++	for_each_set_bit(i, &st->active, STFTS_MAX_FINGERS)
++		contacts++;
++	input_report_key(st->input, BTN_TOUCH, contacts > 0);
++	input_mt_sync_frame(st->input);
++	input_sync(st->input);
++out:
++	mutex_unlock(&st->lock);
++	return IRQ_HANDLED;
++}
++
++static void stfts_quiesce(struct stfts_spi *st)
++{
++	if (st->irq_enabled) {
++		disable_irq(st->spi->irq);
++		st->irq_enabled = false;
++	}
++}
++
++static void stfts_unquiesce(struct stfts_spi *st)
++{
++	if (!st->irq_enabled && !st->suspended && st->ready) {
++		enable_irq(st->spi->irq);
++		st->irq_enabled = true;
++	}
++}
++
++static int stfts_suspend(struct device *dev)
++{
++	struct stfts_spi *st = dev_get_drvdata(dev);
++	int ret = 0;
++
++	mutex_lock(&st->lifecycle_lock);
++	if (st->suspended)
++		goto out;
++	stfts_quiesce(st);
++	mutex_lock(&st->lock);
++	stfts_release_all(st);
++	ret = stfts_scan_mode(st, 0x00, 0x00);
++	if (!ret) {
++		st->suspended = true;
++		gpiod_set_value_cansleep(st->reset, 1);
++	}
++	mutex_unlock(&st->lock);
++	if (ret)
++		stfts_unquiesce(st);
++out:
++	mutex_unlock(&st->lifecycle_lock);
++	return ret;
++}
++
++static int stfts_resume(struct device *dev)
++{
++	struct stfts_spi *st = dev_get_drvdata(dev);
++	int ret = 0;
++
++	mutex_lock(&st->lifecycle_lock);
++	if (!st->suspended)
++		goto out;
++	mutex_lock(&st->lock);
++	ret = stfts_initialize(st);
++	st->ready = !ret;
++	if (!ret)
++		st->suspended = false;
++	mutex_unlock(&st->lock);
++	stfts_unquiesce(st);
++out:
++	mutex_unlock(&st->lifecycle_lock);
++	return ret;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(stfts_pm_ops, stfts_suspend, stfts_resume);
++
++static ssize_t fifo_show(struct device *dev, struct device_attribute *attr,
++			 char *buf)
++{
++	struct stfts_spi *st = dev_get_drvdata(dev);
++	u8 events[STFTS_EVENT_SIZE] = {0};
++
++	/* A diagnostic read must never consume a live input event. */
++	mutex_lock(&st->lock);
++	memcpy(events, st->last_event, sizeof(events));
++	mutex_unlock(&st->lock);
++	return sysfs_emit(buf, "%*ph\n", (int)sizeof(events), events);
++}
++static DEVICE_ATTR_RO(fifo);
++
++static ssize_t sysinfo_show(struct device *dev, struct device_attribute *attr,
++			    char *buf)
++{
++	struct stfts_spi *st = dev_get_drvdata(dev);
++	ssize_t ret;
++
++	mutex_lock(&st->lock);
++	if (!st->sysinfo_valid) {
++		ret = -ENODATA;
++		goto out;
++	}
++
++	ret = sysfs_emit(buf,
++			  "fw=%04x cfg=%04x project=%04x cx=%04x afe=%02x/%02x/%02x mp=%02x proto=%02x res=%ux%u tx=%u rx=%u force=%u\n",
++			  st->fw_ver, st->cfg_ver, st->cfg_project_id,
++			  st->cx_ver, st->cfg_afe, st->cx_afe, st->panel_afe,
++			  st->mp_flag, st->protocol, st->res_x, st->res_y,
++			  st->tx_len, st->rx_len, st->force_len);
++out:
++	mutex_unlock(&st->lock);
++	return ret;
++}
++static DEVICE_ATTR_RO(sysinfo);
++
++static ssize_t init_store(struct device *dev, struct device_attribute *attr,
++			  const char *buf, size_t count)
++{
++	struct stfts_spi *st = dev_get_drvdata(dev);
++	u8 type;
++	int ret;
++
++	if (sysfs_streq(buf, "panel") || sysfs_streq(buf, "2"))
++		type = STFTS_INIT_PANEL;
++	else if (sysfs_streq(buf, "full") || sysfs_streq(buf, "3"))
++		type = STFTS_INIT_FULL;
++	else if (sysfs_streq(buf, "boot") || sysfs_streq(buf, "0"))
++		type = STFTS_INIT_NONE;
++	else
++		return -EINVAL;
++
++	mutex_lock(&st->lifecycle_lock);
++	if (st->suspended) {
++		ret = -EBUSY;
++		goto out;
++	}
++	stfts_quiesce(st);
++	mutex_lock(&st->lock);
++	stfts_release_all(st);
++
++	if (type == STFTS_INIT_NONE) {
++		ret = stfts_initialize(st);
++	} else {
++		ret = stfts_panel_init(st, type);
++		if (!ret) {
++			ret = stfts_system_reset(st);
++			if (!ret)
++				ret = stfts_scan_mode(st, 0x00, 0xff);
++		}
++	}
++
++	st->ready = !ret;
++	mutex_unlock(&st->lock);
++	stfts_unquiesce(st);
++out:
++	mutex_unlock(&st->lifecycle_lock);
++
++	return ret ? ret : count;
++}
++static DEVICE_ATTR_WO(init);
++
++static int stfts_read_chip_id(struct stfts_spi *st)
++{
++	u8 cmd[1 + STFTS_ADDR_SIZE];
++	u8 buf[3] = {0};
++	int i, ret;
++
++	cmd[0] = STFTS_CMD_HW_REG_R;
++	for (i = 0; i < STFTS_ADDR_SIZE; i++)
++		cmd[1 + i] = (STFTS_ADDR_DCHIP_ID >>
++			      ((STFTS_ADDR_SIZE - 1 - i) * 8)) & 0xff;
++
++	ret = stfts_transfer(st, cmd, sizeof(cmd), buf, sizeof(buf));
++	if (ret)
++		return ret;
++	return (buf[1] << 8) | buf[2];	/* skip the dummy byte */
++}
++
++static void stfts_power_off(void *data)
++{
++	struct stfts_spi *st = data;
++
++	gpiod_set_value_cansleep(st->reset, 1);
++	regulator_disable(st->vdd);
++}
++
++static int stfts_spi_probe(struct spi_device *spi)
++{
++	struct stfts_spi *st;
++	int ret, id, attempt;
++
++	st = devm_kzalloc(&spi->dev, sizeof(*st), GFP_KERNEL);
++	if (!st)
++		return -ENOMEM;
++	st->spi = spi;
++	mutex_init(&st->lifecycle_lock);
++	mutex_init(&st->lock);
++	spi_set_drvdata(spi, st);
++
++	st->reset = devm_gpiod_get_optional(&spi->dev, "reset", GPIOD_OUT_HIGH);
++	if (IS_ERR(st->reset))
++		return dev_err_probe(&spi->dev, PTR_ERR(st->reset), "reset GPIO\n");
++	st->lpi2ap = devm_gpiod_get_optional(&spi->dev, "lpi2ap", GPIOD_OUT_HIGH);
++	if (IS_ERR(st->lpi2ap))
++		return dev_err_probe(&spi->dev, PTR_ERR(st->lpi2ap), "lpi2ap GPIO\n");
++	st->ap2lpi = devm_gpiod_get_optional(&spi->dev, "ap2lpi", GPIOD_IN);
++	if (IS_ERR(st->ap2lpi))
++		return dev_err_probe(&spi->dev, PTR_ERR(st->ap2lpi), "ap2lpi GPIO\n");
++
++	st->vdd = devm_regulator_get(&spi->dev, "vdd");
++	if (IS_ERR(st->vdd))
++		return dev_err_probe(&spi->dev, PTR_ERR(st->vdd), "analog supply\n");
++	ret = regulator_enable(st->vdd);
++	if (ret)
++		return dev_err_probe(&spi->dev, ret, "enable analog supply\n");
++	ret = devm_add_action_or_reset(&spi->dev, stfts_power_off, st);
++	if (ret)
++		return ret;
++
++	spi->bits_per_word = 8;
++	ret = spi_setup(spi);
++	if (ret)
++		return dev_err_probe(&spi->dev, ret, "spi_setup\n");
++
++	/*
++	 * The switch is high for AP ownership (upstream FTS5 keeps the AP on);
++	 * driving it low leaves the chip in sensor-DSP mode.
++	 */
++	st->panel_index = stfts_panel_index(st);
++	dev_info(&spi->dev, "panel index %u\n", st->panel_index);
++
++	ret = stfts_initialize(st);
++	if (ret)
++		return dev_err_probe(&spi->dev, ret, "controller initialization\n");
++
++	for (attempt = 0, id = -1; attempt < 10; attempt++) {
++		id = stfts_read_chip_id(st);
++		if (id >= 0 && (id >> 8) == STFTS_ID0)
++			break;
++		msleep(20);
++	}
++	if (id < 0)
++		return dev_err_probe(&spi->dev, id, "chip ID read failed\n");
++	dev_info(&spi->dev, "chip ID 0x%04x\n", id);
++	if ((id >> 8) != STFTS_ID0)
++		return dev_err_probe(&spi->dev, -ENODEV,
++				     "unexpected chip ID 0x%04x\n", id);
++
++	st->input = devm_input_allocate_device(&spi->dev);
++	if (!st->input)
++		return -ENOMEM;
++	st->input->name = "stfts_spi";
++	st->input->phys = "stfts_spi/input0";
++	st->input->id.bustype = BUS_SPI;
++	st->input->id.vendor = 0x0483;
++	st->input->id.product = 0x5720;
++
++	input_set_abs_params(st->input, ABS_MT_POSITION_X, 0, 1079, 0, 0);
++	input_set_abs_params(st->input, ABS_MT_POSITION_Y, 0, 2399, 0, 0);
++	input_set_abs_params(st->input, ABS_MT_PRESSURE, 0, 255, 0, 0);
++	touchscreen_parse_properties(st->input, true, &st->prop);
++	input_set_capability(st->input, EV_KEY, BTN_TOUCH);
++
++	/* The FIFO contains incremental updates, not a full contact snapshot. */
++	ret = input_mt_init_slots(st->input, STFTS_MAX_FINGERS, INPUT_MT_DIRECT);
++	if (ret)
++		return dev_err_probe(&spi->dev, ret, "input_mt_init_slots\n");
++
++	ret = input_register_device(st->input);
++	if (ret)
++		return dev_err_probe(&spi->dev, ret, "input_register_device\n");
++
++	st->ready = true;
++	ret = devm_request_threaded_irq(&spi->dev, spi->irq, NULL, stfts_irq,
++				   IRQF_ONESHOT | IRQF_NO_AUTOEN,
++				   "stfts_spi", st);
++	if (ret)
++		return dev_err_probe(&spi->dev, ret, "request_irq\n");
++	st->irq_requested = true;
++	stfts_unquiesce(st);
++
++	dev_info(&spi->dev, "touchscreen ready (irq %d)\n", spi->irq);
++	return 0;
++}
++
++static void stfts_spi_remove(struct spi_device *spi)
++{
++	struct stfts_spi *st = spi_get_drvdata(spi);
++
++	mutex_lock(&st->lifecycle_lock);
++	stfts_quiesce(st);
++	mutex_lock(&st->lock);
++	st->ready = false;
++	stfts_release_all(st);
++	mutex_unlock(&st->lock);
++	mutex_unlock(&st->lifecycle_lock);
++}
++
++static struct attribute *stfts_attrs[] = {
++	&dev_attr_fifo.attr,
++	&dev_attr_sysinfo.attr,
++	&dev_attr_init.attr,
++	NULL,
++};
++ATTRIBUTE_GROUPS(stfts);
++
++static const struct of_device_id stfts_spi_of_match[] = {
++	{ .compatible = "st,fts-spi" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, stfts_spi_of_match);
++
++static const struct spi_device_id stfts_spi_ids[] = {
++	{ "fts-spi" },
++	{ }
++};
++MODULE_DEVICE_TABLE(spi, stfts_spi_ids);
++
++static struct spi_driver stfts_spi_driver = {
++	.driver = {
++		.name = "stfts-spi",
++		.of_match_table = stfts_spi_of_match,
++		.pm = pm_sleep_ptr(&stfts_pm_ops),
++		.dev_groups = stfts_groups,
++	},
++	.probe = stfts_spi_probe,
++	.remove = stfts_spi_remove,
++	.id_table = stfts_spi_ids,
++};
++module_spi_driver(stfts_spi_driver);
++
++MODULE_AUTHOR("Luma barbet bring-up");
++MODULE_DESCRIPTION("ST FTS SPI touchscreen (Pixel 5a)");
++MODULE_LICENSE("GPL");
+--- a/drivers/input/touchscreen/Kconfig
++++ b/drivers/input/touchscreen/Kconfig
+@@ -1427,4 +1427,16 @@
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called himax_hx83112b.
+ 
++config TOUCHSCREEN_STFTS_SPI
++	tristate "ST FingerTipS SPI touchscreen"
++	depends on SPI && GPIOLIB && REGULATOR
++	help
++	  SPI transport for the ST FingerTipS controller used on the Google
++	  Pixel 5a (barbet), using the firmware installed on the controller.
++	  Reports multitouch input and supports system sleep/resume. Firmware
++	  updates and sensor-DSP gesture wake are not supported.
++
++	  To compile this driver as a module, choose M here. The module will
++	  be called stfts-spi.
++
+ endif
+--- a/drivers/input/touchscreen/Makefile
++++ b/drivers/input/touchscreen/Makefile
+@@ -120,3 +120,4 @@
+ obj-$(CONFIG_TOUCHSCREEN_IQS7211)	+= iqs7211.o
+ obj-$(CONFIG_TOUCHSCREEN_ZINITIX)	+= zinitix.o
+ obj-$(CONFIG_TOUCHSCREEN_HIMAX_HX83112B)	+= himax_hx83112b.o
++obj-$(CONFIG_TOUCHSCREEN_STFTS_SPI) += stfts-spi.o

@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# Boot policy for the Pixel 5a. Format, page size and offsets come from
+# socs/qcom/sm7250/soc.toml. The full install writes this image to boot_b.
+schema = 1
+partition = "boot_b"
+partition_size = 100663296
+os_version = "99.87.36"
+os_patch_level = "2099-12-31"
+
+[cmdline]
+args = [
+  "earlycon=qcom_geni,0x888000",
+  "keep_bootcon",
+  "console=ttyMSM0,115200n8",
+  "console=tty0",
+  "ignore_loglevel",
+  "loglevel=8",
+  "panic=15",
+  "rdinit=/init",
+  "pmos_rootfsopts=defaults",
+  "rootwait",
+  "ro",
+  "init=/init",
+  "firmware_class.path=/var/lib/luma/device-firmware",
+]
+generated = ["pmos_root_uuid", "pmos_boot_uuid", "ostree"]
+forbidden = ["selinux=0", "lsm="]
+
+[avb]
+# Unsigned AVB hash footer, like the bring-up image: an integrity envelope for
+# an unlocked bootloader, not verified boot. vbmeta stays as Google ships it.
+footer = "hash"
+algorithm = "NONE"
+hash_algorithm = "sha256"
+rollback_index = 1783209600
+vbmeta = "untouched"
+
+[dtbo]
+# The complete DTB lives in the boot image; the stock overlays are not applied
+# and the partition is never written by this install.
+policy = "none"

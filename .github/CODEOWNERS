@@ -10,9 +10,11 @@
 
 # SoC families
 /socs/qcom/milos/       @nmcmil
+/socs/qcom/sm7250/      @Gibbz
 
 # Devices
 /devices/fairphone/fp6/ @nmcmil
+/devices/google/barbet/ @Gibbz
 
 /socs/qcom/purwa/       @nmcmil
 /devices/microsoft/sp12in/ @nmcmil
