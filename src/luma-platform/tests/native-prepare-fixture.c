@@ -4,6 +4,12 @@
 #include <stdlib.h>
 static GtkWindow *window;
 static guint constructions;
+static guint activations;
+static guint realized_at;  // the activation during which the window's surface was made
+static void realized(GtkWidget *widget, gpointer data) {
+    (void)widget; (void)data;
+    realized_at = activations;
+}
 static gboolean quit_later(gpointer data) {
     g_application_quit(data);
     return G_SOURCE_REMOVE;
@@ -14,9 +20,10 @@ static gboolean record_mapped(gpointer data) {
     if (status) { if (fscanf(status, "%d", &oom) != 1) oom = -999; fclose(status); }
     FILE *record = fopen(g_getenv("LUMA_PREPARE_TEST_RECORD"), "w");
     if (record) {
-        fprintf(record, "%u %d %d %u\n", constructions, oom,
+        fprintf(record, "%u %d %d %u %d\n", constructions, oom,
             g_getenv("LUMA_APP_PREPARE") != NULL || g_getenv("LD_PRELOAD") != NULL,
-            g_list_length(gtk_application_get_windows(GTK_APPLICATION(data))));
+            g_list_length(gtk_application_get_windows(GTK_APPLICATION(data))),
+            realized_at == activations);
         fclose(record);
     }
     g_timeout_add(250, quit_later, data);
@@ -28,12 +35,14 @@ static void mapped(GtkWidget *widget, gpointer data) {
 }
 static void activated(GtkApplication *app, gpointer data) {
     (void)data;
+    activations++;
     if (!window) {
         constructions++;
         window = GTK_WINDOW(gtk_application_window_new(app));
         gtk_window_set_default_size(window, 100, 100);
         gtk_window_set_child(window, gtk_label_new("Launch preparation test"));
         g_signal_connect(window, "map", G_CALLBACK(mapped), app);
+        g_signal_connect(window, "realize", G_CALLBACK(realized), NULL);
     }
     gtk_window_present(window);
 }

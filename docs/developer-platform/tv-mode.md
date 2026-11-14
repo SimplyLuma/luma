@@ -747,7 +747,8 @@ C apps through `libluma-app-prepare.so`, Python apps through
 `luma_appkit.prepare`, which the kit installs when it is imported with that
 variable. The app runs as its D-Bus service (whatever its own argv), holds
 itself and runs its own `activate` once: its window is built, styled and
-realized, never mapped. A launch (D-Bus Activate) then only maps that window;
+realized, never mapped. A launch (D-Bus Activate) then shows that window on a
+new surface laid out for the output it opens on;
 one that arrives while the app is still preparing is kept and shown as soon as
 it is ready. A prepared app that is closed is prepared again; one already
 running, or a session that is no longer a TV, is left alone. A Flatpak's data

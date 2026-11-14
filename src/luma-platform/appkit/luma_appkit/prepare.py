@@ -10,7 +10,7 @@ Unix datagram socket), the application runs as its D-Bus service, holds
 itself, and runs its own ``activate`` once: its window is built, styled and
 realized, but not mapped. Then it reports ready on the socket. The next
 activation is a launch, and a launch only maps the window that already
-exists: a present, not a start. A launch that arrives while the app is still
+exists, on a surface made for the output it opens on: a present, not a start. A launch that arrives while the app is still
 preparing is kept, and the window shows as soon as it is ready. Nothing else
 about the app changes; an app that is never prepared never loads this module.
 
@@ -49,6 +49,18 @@ def install() -> None:
 
     original_present = Gtk.Window.present
 
+    def show(window, *args):
+        # The window was realized while preparing, often at session start before
+        # the outputs, their scale and the shell's posture were final. Shown, it
+        # gets a new surface laid out against the output it opens on, as a cold
+        # start would; the built and styled widgets are kept.
+        if window in _deferred:
+            _deferred.remove(window)
+            if window.get_realized() and not window.get_mapped():
+                window.unrealize()
+                window.queue_resize()
+        return original_present(window, *args)
+
     def present(window, *args):
         global _preparing
         if _preparing:
@@ -57,7 +69,7 @@ def install() -> None:
             if window not in _deferred:
                 _deferred.append(window)
             return None
-        return original_present(window, *args)
+        return show(window, *args)
 
     Gtk.Window.present = present
 
@@ -102,7 +114,7 @@ def install() -> None:
             if own["wanted"]:
                 # Someone opened the app while it was preparing: show it now.
                 for window in list(_deferred):
-                    original_present(window)
+                    show(window)
             return GLib.SOURCE_REMOVE
 
         def startup(_application) -> None:

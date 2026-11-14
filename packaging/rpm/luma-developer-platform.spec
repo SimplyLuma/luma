@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.127%{?dist}
+Release:        1.luma.128%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -376,6 +376,12 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.128
+- Prepared launch: a prepared app's window is shown on a new surface made at
+  the launch, not the one realized while preparing (often at session start,
+  before the outputs and their scale were final), and is laid out again for
+  the output it opens on (libluma-app-prepare and luma_appkit.prepare).
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.127
 - TV posture: the island stays open beside the page, its list fading at the
   plate's edges (LumaTvFade, shared with the page); an attached

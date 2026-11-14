@@ -140,6 +140,7 @@ APP = textwrap.dedent("""
         if window is None:
             window = Gtk.Window(application=app)
             window.connect("map", lambda *_: open(record, "a").write("mapped\\n"))
+            window.connect("realize", lambda *_: open(record, "a").write("realized\\n"))
             open(record, "a").write("built\\n")
         window.present()
 
@@ -183,7 +184,7 @@ class PreparedPythonApp(unittest.TestCase):
     def test_built_unseen_then_a_launch_only_presents(self):
         self.assertEqual(int(self.ready.recv(64)), self.child.pid)
         time.sleep(0.5)
-        self.assertEqual(self.lines(), ["built"])  # the window exists, nobody sees it
+        self.assertEqual(self.lines(), ["built", "realized"])  # the window exists, nobody sees it
         path = "/" + self.app_id.replace(".", "/")
         subprocess.run(["gdbus", "call", "--session", "--dest", self.app_id, "--object-path", path,
                         "--method", "org.freedesktop.Application.Activate", "{}"],
@@ -191,15 +192,16 @@ class PreparedPythonApp(unittest.TestCase):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and "mapped" not in self.lines():
             time.sleep(0.1)
-        # The launch showed the window it already had: no second window, no start.
-        self.assertEqual(self.lines(), ["built", "mapped"])
+        # The launch showed the window it already had: no second window, no start,
+        # on a surface made at the launch for the real output (not at preparation).
+        self.assertEqual(self.lines(), ["built", "realized", "realized", "mapped"])
         self.assertIsNone(self.child.poll())
 
     def test_drop_argv_an_app_that_drops_its_argv_still_waits_unseen(self):
         # run([]) would activate the app at its own start; prepared, it must not show.
         self.assertEqual(int(self.ready.recv(64)), self.child.pid)
         time.sleep(1.0)
-        self.assertEqual(self.lines(), ["built"])
+        self.assertEqual(self.lines(), ["built", "realized"])
         self.assertIsNone(self.child.poll())
 
 
