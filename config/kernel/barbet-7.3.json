@@ -93,6 +93,11 @@
       "source": "overlay",
       "path": "patches/14-dts.patch",
       "sha256": "93a8c05478ffa9deb40ca8da0b43e6c778c9fae6aab1b7da4ae8666b284d667b"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0001-arm64-dts-qcom-add-google-barbet.patch",
+      "sha256": "57633e76c9fff3e6cfb330eb735a7e3e0efa1be071932e088049d70db39162c3"
     }
   ]
 }
