@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: Apache-2.0
+# Shared configuration for devices on Qualcomm SM7250 (lito).
+schema = 1
+vendor = "qcom"
+family = "sm7250"
+name = "Qualcomm SM7250 (lito)"
+arch = "aarch64"
+part_numbers = ["SM7250"]
+
+[kernel]
+# The SM7250 family branch carries the SoC support and the device trees.
+repository = "https://github.com/SimplyLuma/linux"
+branch = "sm7250"
+upstream = "https://github.com/lazybrar/avicii-mainline"
+dts_directory = "arch/arm64/boot/dts/qcom"
+
+[boot]
+# Android bootloader (ABL) defaults for this family.
+format = "android-boot-v2"
+page_size = 4096
+slots = "ab"
+dtb_in_boot_image = true
+
+[boot.offsets]
+base = 0x00000000
+kernel = 0x00008000
+ramdisk = 0x10000000
+second = 0x00000000
+tags = 0x00000100
+dtb = 0x18000000
+
+[firmware]
+# Device firmware lives under this path on the phone, never in git.
+directory = "qcom/sm7250"

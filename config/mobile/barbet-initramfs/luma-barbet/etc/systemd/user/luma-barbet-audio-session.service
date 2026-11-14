@@ -1,0 +1,9 @@
+[Unit]
+Description=Start PipeWire and WirePlumber for the barbet sound card
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user start pipewire.service wireplumber.service
+
+[Install]
+WantedBy=default.target
