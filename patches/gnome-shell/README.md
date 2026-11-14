@@ -684,3 +684,11 @@ lifting, opens it, unless the field arrives with its text selected (focused
 by the application, as a page opening selects its first field). Touch events
 come only from touchscreens, so pointer and keyboard use are unchanged.
 Test: `keycap-policy.js` in %check. Shell .180.
+
+`0343-keyboard-first-touch-arms-tap.patch`: the keyboard manager, not the
+keyboard, records the window under the last touch for 0342. The manager
+creates the keyboard only after it learns the last device is a touchscreen,
+which is after that touch went down, so the first touch after startup or
+after a mouse or touchpad was used went unrecorded, and a field focused from
+the release (Notes' search) got no keyboard on that tap.
+Test: `keycap-policy.js` in %check. Shell .181.

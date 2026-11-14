@@ -562,8 +562,11 @@ for (const body of handlers) {
         keyboard.indexOf('\n    }\n', keyboard.indexOf('    _onStageTouch(stage, event) {')));
     const focus = keyboard.slice(keyboard.indexOf('    _tapFieldFocus() {'),
         keyboard.indexOf('\n    }\n', keyboard.indexOf('    _tapFieldFocus() {')));
-    assert(/'captured-event', this\._onStageTouch\.bind\(this\)/.test(keyboard),
-        'the keyboard watches the stage for touches');
+    const manager = keyboard.slice(keyboard.indexOf('export class KeyboardManager'),
+        keyboard.indexOf('export const Keyboard = '));
+    assert(/global\.stage\.connect\('captured-event', this\._onStageTouch\.bind\(this\)\)/.test(manager) &&
+        manager.includes('    _onStageTouch(stage, event) {'),
+        'the keyboard manager watches the stage for touches, so the touch that creates the keyboard counts');
     assert(touch.includes('Clutter.EventType.TOUCH_BEGIN') && !/BUTTON_PRESS|KEY_PRESS/.test(touch) &&
         touch.includes('window === global.display.focus_window'),
         'only a touch on the focused window arms the tap');
@@ -571,7 +574,7 @@ for (const body of handlers) {
         'watching touches never takes them from the window');
     assert(/this\._tvFieldFocus\(\);\s*this\._tapFieldFocus\(\);/.test(keyboard),
         'a text input focus-in checks for the tap');
-    assert(focus.includes('monotonicMs() - tap.upMs > FIELD_TAP_TIME') && focus.includes('this._fieldTap = null;') &&
+    assert(focus.includes('monotonicMs() - tap.upMs > FIELD_TAP_TIME') && focus.includes('const tap = Main.keyboard.fieldTap;') && focus.includes('Main.keyboard.fieldTap = null;') &&
         focus.includes('this.open();') && focus.includes('this._tv'),
         'a recent tap opens the keyboard once, outside TV posture');
     assert(focus.includes('getSurroundingText()') && focus.includes('cursor !== anchor'),

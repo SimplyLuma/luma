@@ -1,0 +1,113 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: the first touch arms a tap-focused field too
+
+0342 records the window under the last touch from the keyboard. The
+keyboard manager creates the keyboard only once the last input device is
+a touchscreen, which it learns after that touch went down, so the first
+touch after startup, or after a mouse or touchpad was used, was never
+recorded. A field that takes the focus after the finger lifts (Notes'
+search opens its field from the release) then got a bare focus and no
+keyboard on that first tap.
+
+The keyboard manager, which lives for the whole session, records the
+touch; the keyboard reads it when a field takes the focus.
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -1567,6 +1567,12 @@
+         this._seat.connect('device-added', this._syncEnabled.bind(this));
+         this._seat.connect('device-removed', this._syncEnabled.bind(this));
+ 
++        // The keyboard is created once a touch has been seen, after that
++        // touch went down, so the touch record lives here, where it sees
++        // every touch, the first one included.
++        this.fieldTap = null;
++        global.stage.connect('captured-event', this._onStageTouch.bind(this));
++
+         this._lastDevice = null;
+         global.backend.connect('last-device-changed', (backend, device) => {
+             if (device.device_type === Clutter.InputDeviceType.KEYBOARD_DEVICE)
+@@ -1597,6 +1603,28 @@
+         this._bottomDragGesture = bottomDragGesture;
+ 
+         this._syncEnabled();
++    }
++
++    // Which window the last finger went down on (the focused window, or
++    // none), and when it lifted. Only touchscreens send touch events.
++    _onStageTouch(stage, event) {
++        const type = event.type();
++        if (type === Clutter.EventType.TOUCH_BEGIN) {
++            let actor = stage.get_event_actor(event);
++            while (actor && !(actor instanceof Meta.WindowActor))
++                actor = actor.get_parent();
++            const window = actor?.get_meta_window() ?? null;
++            this.fieldTap = {
++                window: window && window === global.display.focus_window ? window : null,
++                down: true,
++                upMs: 0,
++            };
++        } else if (this.fieldTap?.down &&
++                   (type === Clutter.EventType.TOUCH_END || type === Clutter.EventType.TOUCH_CANCEL)) {
++            this.fieldTap.down = false;
++            this.fieldTap.upMs = monotonicMs();
++        }
++        return Clutter.EVENT_PROPAGATE;
+     }
+ 
+     _lastDeviceIsTouchscreen() {
+@@ -2351,8 +2379,7 @@
+             'content-hints-changed', this._onContentHintsChanged.bind(this),
+             this);
+         global.stage.connectObject('notify::key-focus',
+-            this._onKeyFocusChanged.bind(this),
+-            'captured-event', this._onStageTouch.bind(this), this);
++            this._onKeyFocusChanged.bind(this), this);
+         Main.sessionMode.connectObject('updated', this._onSessionModeUpdated.bind(this), this);
+         global.display.get_selection().connectObject('owner-changed',
+             this._onSelectionOwnerChanged.bind(this), this);
+@@ -2550,29 +2577,7 @@
+                 this._showIdleId = 0;
+             });
+             GLib.Source.set_name_by_id(this._showIdleId, '[gnome-shell] this.open');
+-        }
+-    }
+-
+-    // Which window the last finger went down on (the focused window, or
+-    // none), and when it lifted. Only touchscreens send touch events.
+-    _onStageTouch(stage, event) {
+-        const type = event.type();
+-        if (type === Clutter.EventType.TOUCH_BEGIN) {
+-            let actor = stage.get_event_actor(event);
+-            while (actor && !(actor instanceof Meta.WindowActor))
+-                actor = actor.get_parent();
+-            const window = actor?.get_meta_window() ?? null;
+-            this._fieldTap = {
+-                window: window && window === global.display.focus_window ? window : null,
+-                down: true,
+-                upMs: 0,
+-            };
+-        } else if (this._fieldTap?.down &&
+-                   (type === Clutter.EventType.TOUCH_END || type === Clutter.EventType.TOUCH_CANCEL)) {
+-            this._fieldTap.down = false;
+-            this._fieldTap.upMs = monotonicMs();
+         }
+-        return Clutter.EVENT_PROPAGATE;
+     }
+ 
+     // A client turns its text input on only once a field has the focus.
+@@ -2583,12 +2588,12 @@
+     // arrives as a bare focus. A field focused by a tap on its own window
+     // opens the keyboard, as a second tap would.
+     _tapFieldFocus() {
+-        const tap = this._fieldTap;
++        const tap = Main.keyboard.fieldTap;
+         if (this._tv || !Main.inputMethod.currentFocus || !tap?.window ||
+             tap.window !== global.display.focus_window ||
+             (!tap.down && monotonicMs() - tap.upMs > FIELD_TAP_TIME))
+             return;
+-        this._fieldTap = null;
++        Main.keyboard.fieldTap = null;
+         if (this._tapFocusId)
+             return;
+         // The field's text comes in the same request as the focus. A tap
