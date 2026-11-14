@@ -1221,15 +1221,28 @@ blocked-audio entries above.
 - `s2idle` suspend/wake with display/touch restored and a post-resume USB
   rebind.
 
+### Verified on the repo-built kernel (2026-11-14, 22-patch lock)
+
+- Boot from `boot_b` with slot b active; SSH and USB-NCM come up.
+- Display: `card0-DSI-1` connected at 1080x2400, panel init complete,
+  backlight registered. GPU: `gpu-initialized: 1`, Phoc on `drm:card0`.
+- Touch: `stfts_spi` (chip `0x3648`) reaches `/dev/input/event2`.
+- Speaker: audible through PipeWire after the barbet card is pinned to S16;
+  PipeWire otherwise negotiates S24, starts the TDM backend at the wrong slot
+  width and is silent.
+- Microphone: not working. Capture returns a constant DC offset with 2-3 LSB
+  of noise; the DMIC/TDM capture route still needs work.
+- Wi-Fi: the ADSP `IPCRTR` (QRTR) channel, `tqftpserv`, the WCN3990 firmware
+  and `board-2.bin` are now in place, but `WLFW` is provided by the modem
+  firmware. Starting the modem on barbet needs a larger memory carveout that
+  previously hard-reset the phone, so Wi-Fi stays out of PR 1.
+
 ### Built but not yet a works claim
 
 - The full set builds from the lock: a 100663296-byte boot image (AVB NONE,
   rollback 1783209600), the shared ARM userdata, `SHA256SUMS` and the exact
   install commands. The full-install hardware gate still has to run on the
   slot-b install.
-- Wi-Fi: WCN3990/QRTR kernel support and a start service are present, but the
-  WCN3990 firmware and `tqftpserv` are not in the current firmware set. The
-  earlier manual association is historical evidence only.
 - Battery and vibrate are PR 2: the PM7250B charger is disabled and there is
   no battery gauge or DRV2624 haptics driver yet.
 
