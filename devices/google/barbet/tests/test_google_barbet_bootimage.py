@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 BUILD = ROOT / "scripts/mobile/build-barbet-boot-image.sh"
 
 

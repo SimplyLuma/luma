@@ -6,7 +6,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 TREE = ROOT / "config/mobile/barbet-initramfs"
 MANIFEST = ROOT / "config/mobile/barbet-initramfs.manifest"
 

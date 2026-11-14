@@ -9,7 +9,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 BUILD = ROOT / "scripts/kernel/build-barbet.sh"
 LOCK = ROOT / "config/kernel/barbet-7.3.json"
 CONFIG = ROOT / "config/kernel/barbet.config"

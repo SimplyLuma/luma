@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - reported as exit 2
     jsonschema = None
 
 DEVICE_FILES = {"device.toml", "boot.toml", "firmware.manifest", "INSTALL.md", "tests"}
-DEVICE_OPTIONAL = {"SUPPORT.md"}
+DEVICE_OPTIONAL = {"SUPPORT.md", "docs"}
 SOC_FILES = {"soc.toml"}
 SCHEMA_FILES = {"device.schema.json", "boot.schema.json", "soc.schema.json"}
 MAX_FILE_BYTES = 512 * 1024

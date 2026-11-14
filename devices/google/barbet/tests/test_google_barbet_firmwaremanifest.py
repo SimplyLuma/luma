@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 TOOL = ROOT / "scripts/mobile/barbet/firmware-manifest.py"
 
 
