@@ -7,12 +7,12 @@ who did not go looking for it.
 | Area | Status | Evidence and limits |
 | --- | --- | --- |
 | Boot / full install | built, full-install gate pending | The source lock builds kernel `7.3.0-rc7`, DTB, boot image and the full set; the set is hash-verified. The install writes `userdata` + `boot_b` and preserves the identity/boot-chain partitions. |
-| Display | works | `card0-DSI-1` enabled at 1080x2400; brightness changes are visible. Panel calibration/linearity is not qualified. |
+| Display | works | Repo-built kernel: `card0-DSI-1` connected at 1080x2400, panel init complete, backlight present. Panel calibration/linearity is not qualified. |
 | Touch | works | ST FTS SPI contacts reach the input node, including release; the full-area coordinate calibration is not qualified. |
 | Keys | works | Power and volume-down generate input events. |
 | GPU | works | `gpu-initialized: 1`; Phoc/Phosh use the render node. |
-| Speaker | works | Both TAS2562 amps active (`PWR_CTRL=0x0c`), TDM clock `0x44`; a 2 kHz tone recorded through the mic is ~143x the no-tone baseline. |
-| Microphone | works | RT5514P capture: nonzero RMS and ~19.7k distinct values over 5 s. |
+| Speaker | works | Both TAS2562 amps active; audible through PipeWire once the barbet card is pinned to S16 (24-bit negotiation starts the TDM backend at the wrong slot width and is silent). |
+| Microphone | not working | RT5514P DSP firmware loads, but capture returns a constant DC offset with 2-3 LSB of noise; the DMIC/TDM capture route still needs work. |
 | Suspend | works (bounded) | `s2idle` enters and wakes by power key; display/touch restore and a post-resume `dwc3` rebind restores USB-NCM. Battery drain is not measured. |
 | Wi-Fi | not working | WCN3990/QRTR kernel support and a start service are present, but the WCN3990 firmware and `tqftpserv` are not in the current firmware set. The earlier manual association is historical evidence, not a works claim. |
 | Battery | not working | No `power_supply` device yet; the PM7250B charger is PR 2. |

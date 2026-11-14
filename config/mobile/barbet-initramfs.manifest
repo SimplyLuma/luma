@@ -10,3 +10,4 @@ F	0644	a559b29e11d03de88c9c8b3aef263d02f8cd615b361bbb8732eecdc277afce61	luma-bar
 F	0644	d87099c1e344d2da90f91f0d24787d323a090bfc4b055062c267126a5bb8d9e7	luma-barbet/etc/systemd/system/luma-barbet-wifi.service	branch
 F	0755	e5207f41b8ff43f3cd1800396e2c52e4eff00506aec06a8c9d16681876d1a258	luma-barbet/etc/systemd/system-sleep/50-barbet-usb	branch
 F	0644	7725ab8826ba38b97cef7a9126a8df5483680e108fd58af82fb01f91dcc6e164	luma-barbet/etc/udev/rules.d/89-barbet-audio.rules	branch
+F	0644	caeab5b8ea6599d6ef14564d59d196a5917417fdf1b7280922e670557960fe61	luma-barbet/etc/wireplumber/wireplumber.conf.d/51-barbet-s16.conf	branch
