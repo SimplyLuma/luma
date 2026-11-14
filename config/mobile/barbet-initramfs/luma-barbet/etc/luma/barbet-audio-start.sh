@@ -9,12 +9,17 @@ barbet=/var/lib/luma/device-firmware-barbet
 [ -d "$shared" ] || [ -d "$barbet" ] ||
     { echo "no barbet firmware store" >&2; exit 1; }
 
-mkdir -p /dev/luma-fw
+mkdir -p /dev/luma-fw/qcom/sm7250/google
 for store in "$shared" "$barbet"; do
     [ -d "$store" ] || continue
     for entry in "$store"/*; do
         name=${entry##*/}
-        [ -e "/dev/luma-fw/$name" ] || ln -s "$entry" "/dev/luma-fw/$name"
+        [ "$name" = qcom ] && continue
+        ln -sfn "$entry" "/dev/luma-fw/$name"
+    done
+    for entry in "$store"/qcom/*; do
+        name=${entry##*/}
+        [ -e "/dev/luma-fw/qcom/$name" ] || ln -s "$entry" "/dev/luma-fw/qcom/$name"
     done
 done
 # The ADSP tree lives under the barbet store on the current image.

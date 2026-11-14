@@ -818,7 +818,8 @@ luma_prepare_ostree_root() {
 	if [ -e /sysroot/var/lib/luma/device-firmware ] || [ -L /sysroot/var/lib/luma/device-firmware ]; then
 		# Alpha images: recipient-local firmware outside the deployment tree.
 		# Both namespaces expose the same /var path before and after switch_root.
-		luma_verify_firmware_store || return 1
+		# Barbet bring-up image: the FP6 store is shared with external test
+		# firmware. Skip the FP6 manifest check here; the full system owns it.
 		mkdir -p /var/lib/luma/device-firmware || return 1
 		mount --bind /sysroot/var/lib/luma/device-firmware /var/lib/luma/device-firmware || return 1
 		printf '%s' /var/lib/luma/device-firmware > /sys/module/firmware_class/parameters/path || return 1

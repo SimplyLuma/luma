@@ -29,7 +29,7 @@ config = "boot.toml"
 ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"
 base = "postmarketos-initramfs 3.12.0-r0"
 init_functions = "config/mobile/barbet-initramfs/init_functions.sh"
-init_functions_sha256 = "7ab22459bb10d7bc40045a405747f58d151c1c053060d95476de7cb27ee208c0"
+init_functions_sha256 = "443d8d64faee8d30eaab5f7715e33e40722432c6dddc165614047deaa99cf879"
 ostree_package = "ostree-2026.5-1.luma.2.fc44"
 ostree_source = "config/mobile/fp6-ostree-source.json"
 
