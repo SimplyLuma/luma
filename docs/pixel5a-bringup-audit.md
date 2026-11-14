@@ -1232,10 +1232,12 @@ blocked-audio entries above.
   width and is silent.
 - Microphone: not working. Capture returns a constant DC offset with 2-3 LSB
   of noise; the DMIC/TDM capture route still needs work.
-- Wi-Fi: the ADSP `IPCRTR` (QRTR) channel, `tqftpserv`, the WCN3990 firmware
-  and `board-2.bin` are now in place, but `WLFW` is provided by the modem
-  firmware. Starting the modem on barbet needs a larger memory carveout that
-  previously hard-reset the phone, so Wi-Fi stays out of PR 1.
+- Wi-Fi: the `IPCRTR` (QRTR) channel, the PD mapper, `tqftpserv`, the modem
+  with the stock `0x11800000` memory map, and the WCN3990 firmware are all in
+  place. The modem still does not fetch `wlanmdsp.mbn`, so `WLFW` never
+  registers and ath10k creates no `wlan0`. The FP6 platform services are
+  masked and the barbet service owns the start order; the remaining work is
+  the modem/WLAN PD bring-up.
 
 ### Built but not yet a works claim
 
