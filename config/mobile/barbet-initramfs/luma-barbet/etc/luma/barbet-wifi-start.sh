@@ -56,7 +56,7 @@ fi
 i=0
 while [ ! -e /sys/class/net/wlan0 ]; do
     i=$((i + 1))
-    [ "$i" -lt 1200 ] || { echo "wlan0 did not appear; check the WLAN firmware" >&2; exit 1; }
+    [ "$i" -lt 3000 ] || { echo "wlan0 did not appear; check the WLAN firmware" >&2; exit 1; }
     sleep 0.1
 done
 
