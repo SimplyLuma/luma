@@ -967,18 +967,23 @@ export class Presentation {
         // dropped a run of frames every INK_SAMPLE_MS. Content that never
         // stops painting is still sampled every INK_SETTLE_MAX_MS.
         const now = GLib.get_monotonic_time() / 1000;
-        if (this._inkSampleSource) {
-            if (now - this._inkSampleQueuedAt >= INK_SETTLE_MAX_MS - INK_SAMPLE_MS)
-                return;
-            GLib.source_remove(this._inkSampleSource);
-        } else {
-            this._inkSampleQueuedAt = now;
-        }
-        this._inkSampleSource = GLib.timeout_add(GLib.PRIORITY_LOW, INK_SAMPLE_MS, () => {
+        this._inkSampleLastPaintAt = now;
+        if (this._inkSampleSource) return;
+        this._inkSampleQueuedAt = now;
+        const sampleWhenDue = () => {
+            const current = GLib.get_monotonic_time() / 1000;
+            const due = Math.min(this._inkSampleLastPaintAt + INK_SAMPLE_MS,
+                this._inkSampleQueuedAt + INK_SETTLE_MAX_MS);
+            if (current < due) {
+                this._inkSampleSource = GLib.timeout_add(GLib.PRIORITY_LOW,
+                    Math.ceil(due - current), sampleWhenDue);
+                return GLib.SOURCE_REMOVE;
+            }
             this._inkSampleSource = 0;
             this._sampleInk();
             return GLib.SOURCE_REMOVE;
-        });
+        };
+        this._inkSampleSource = GLib.timeout_add(GLib.PRIORITY_LOW, INK_SAMPLE_MS, sampleWhenDue);
     }
 
     // Applications without an explicit hint (Android, X11, other toolkits)
