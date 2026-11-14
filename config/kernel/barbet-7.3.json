@@ -113,6 +113,11 @@
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0004-net-qrtr-and-barbet-modem.patch",
       "sha256": "1a6adb0913e06b8510cd8009dbac9bdc8f3e41fe814c656cf9e5d9f8a25899ec"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0005-ASoC-qcom-barbet-speaker.patch",
+      "sha256": "955347ae849d75437b8bce8699df21d1abe3a1f391c47d3c7b8bc0a01b264437"
     }
   ]
 }

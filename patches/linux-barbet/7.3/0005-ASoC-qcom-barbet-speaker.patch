@@ -1,0 +1,1109 @@
+--- a/sound/soc/codecs/tas2562.c
++++ b/sound/soc/codecs/tas2562.c
+@@ -5,6 +5,7 @@
+ 
+ 
+ #include <linux/module.h>
++#include <linux/pinctrl/consumer.h>
+ #include <linux/errno.h>
+ #include <linux/device.h>
+ #include <linux/i2c.h>
+@@ -48,8 +49,14 @@
+ 	struct snd_soc_component *component;
+ 	struct gpio_desc *sdz_gpio;
+ 	struct regmap *regmap;
++	struct regmap *right_regmap;
+ 	struct device *dev;
+ 	struct i2c_client *client;
++	struct gpio_desc *reset_gpio_l;
++	struct gpio_desc *reset_gpio_r;
++	bool paired;
++	u32 right_addr;
++	unsigned int tx_mask;
+ 	int v_sense_slot;
+ 	int i_sense_slot;
+ 	int volume_lvl;
+@@ -64,6 +71,43 @@
+ 	TAS2110,
+ };
+ 
++static void tas2562_sync_pair(struct tas2562_data *tas2562)
++{
++	static const unsigned int regs[] = {
++		TAS2562_PWR_CTRL, TAS2562_PB_CFG1, TAS2562_TDM_CFG0,
++		TAS2562_TDM_CFG1, TAS2562_TDM_CFG2,
++		TAS2562_DVC_CFG1, TAS2562_DVC_CFG2,
++		TAS2562_DVC_CFG3, TAS2562_DVC_CFG4,
++	};
++	unsigned int val;
++	int i;
++
++	if (!tas2562->paired || !tas2562->right_regmap)
++		return;
++
++	for (i = 0; i < ARRAY_SIZE(regs); i++) {
++		if (!regmap_read(tas2562->regmap, regs[i], &val))
++			regmap_write(tas2562->right_regmap, regs[i], val);
++	}
++
++	/* Left amp reads slot 0, right amp reads slot 1. */
++	regmap_update_bits(tas2562->regmap, TAS2562_TDM_CFG2,
++			   GENMASK(5, 4), 1 << 4);
++	regmap_update_bits(tas2562->right_regmap, TAS2562_TDM_CFG2,
++			   GENMASK(5, 4), 2 << 4);
++
++	if (tas2562->tx_mask) {
++		unsigned int mask = tas2562->tx_mask << 1;
++		int left = __ffs(mask);
++		int right;
++
++		mask &= ~BIT(left);
++		right = mask ? __ffs(mask) : left;
++		val = (right << TAS2562_RIGHT_SLOT_SHIFT) | left;
++		regmap_write(tas2562->right_regmap, TAS2562_TDM_CFG3, val);
++	}
++}
++
+ static int tas2562_set_samplerate(struct tas2562_data *tas2562, int samplerate)
+ {
+ 	int samp_rate;
+@@ -150,6 +194,12 @@
+ 	int slots_cfg;
+ 	int ret;
+ 
++	tas2562->tx_mask = tx_mask;
++
++	dev_info(component->dev,
++		 "set_tdm_slot: tx_mask=0x%x rx_mask=0x%x slots=%d width=%d\n",
++		 tx_mask, rx_mask, slots, slot_width);
++
+ 	if (!tx_mask) {
+ 		dev_err(component->dev, "tx masks must not be 0\n");
+ 		return -EINVAL;
+@@ -220,6 +270,8 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
++	tas2562_sync_pair(tas2562);
++
+ 	return 0;
+ }
+ 
+@@ -281,6 +333,8 @@
+ 	return 0;
+ }
+ 
++static int tas2562_update_pwr_ctrl(struct tas2562_data *tas2562);
++
+ static int tas2562_hw_params(struct snd_pcm_substream *substream,
+ 			     struct snd_pcm_hw_params *params,
+ 			     struct snd_soc_dai *dai)
+@@ -289,6 +343,16 @@
+ 	struct tas2562_data *tas2562 = snd_soc_component_get_drvdata(component);
+ 	int ret;
+ 
++	/*
++	 * The LPASS power-up wipes the LPI pad mux, so the pinctrl applied
++	 * at probe is gone by the time audio starts. Vendor reapplies it in
++	 * kona_tdm_snd_startup(); force sleep->default here to reprogram it.
++	 */
++	if (tas2562->dev) {
++		pinctrl_pm_select_sleep_state(tas2562->dev);
++		pinctrl_pm_select_default_state(tas2562->dev);
++	}
++
+ 	ret = tas2562_set_bitwidth(tas2562, params_format(params));
+ 	if (ret) {
+ 		dev_err(tas2562->dev, "set bitwidth failed, %d\n", ret);
+@@ -299,6 +363,11 @@
+ 	if (ret)
+ 		dev_err(tas2562->dev, "set sample rate failed, %d\n", ret);
+ 
++	ret = snd_soc_component_update_bits(component, TAS2562_MISC_CLASSD,
++					     TAS2562_CMP_HYST_MASK,
++					     TAS2562_CMP_HYST_MASK);
++	tas2562_sync_pair(tas2562);
++
+ 	return ret;
+ }
+ 
+@@ -349,6 +418,8 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
++	tas2562_sync_pair(tas2562);
++
+ 	return 0;
+ }
+ 
+@@ -362,21 +433,40 @@
+ 		val = tas2562->unmuted ?
+ 			TAS2562_ACTIVE : TAS2562_MUTE;
+ 	else
+-		val = TAS2562_SHUTDOWN;
++		val = TAS2562_MUTE;
+ 
++	dev_info(tas2562->dev, "pwr: dac=%d unmuted=%d val=%u\n",
++		 tas2562->dac_powered, tas2562->unmuted, val);
+ 	ret = snd_soc_component_update_bits(component, TAS2562_PWR_CTRL,
+ 					    TAS2562_MODE_MASK, val);
++	dev_info(tas2562->dev, "pwr: update_bits ret=%d\n", ret);
+ 	if (ret < 0)
+ 		return ret;
+ 
++	tas2562_sync_pair(tas2562);
++
+ 	return 0;
+ }
+ 
+ static int tas2562_mute(struct snd_soc_dai *dai, int mute, int direction)
+ {
+ 	struct tas2562_data *tas2562 = snd_soc_component_get_drvdata(dai->component);
++	int ret;
+ 
++	dev_info(tas2562->dev, "mute: mute=%d dac=%d\n", mute,
++		 tas2562->dac_powered);
+ 	tas2562->unmuted = !mute;
++	if (mute)
++		return tas2562_update_pwr_ctrl(tas2562);
++
++	/* DAPM may already have powered the DAC, so force active explicitly. */
++	ret = snd_soc_component_update_bits(tas2562->component,
++					    TAS2562_PWR_CTRL,
++					    TAS2562_MODE_MASK,
++					    TAS2562_ACTIVE);
++	if (ret < 0)
++		return ret;
++
+ 	return tas2562_update_pwr_ctrl(tas2562);
+ }
+ 
+@@ -388,6 +478,10 @@
+ 
+ 	if (tas2562->sdz_gpio)
+ 		gpiod_set_value_cansleep(tas2562->sdz_gpio, 1);
++	if (tas2562->reset_gpio_l)
++		gpiod_set_value_cansleep(tas2562->reset_gpio_l, 1);
++	if (tas2562->reset_gpio_r)
++		gpiod_set_value_cansleep(tas2562->reset_gpio_r, 1);
+ 
+ 	return 0;
+ }
+@@ -440,6 +534,8 @@
+ 	struct tas2562_data *tas2562 = snd_soc_component_get_drvdata(component);
+ 	int ret = 0;
+ 
++	dev_info(tas2562->dev, "dac event=%d dac=%d\n", event,
++		 tas2562->dac_powered);
+ 	switch (event) {
+ 	case SND_SOC_DAPM_POST_PMU:
+ 		tas2562->dac_powered = true;
+@@ -472,7 +568,7 @@
+ {
+ 	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+ 	struct tas2562_data *tas2562 = snd_soc_component_get_drvdata(component);
+-	int ret, index;
++	int ret, index, i;
+ 	u32 reg_val;
+ 
+ 	if (tas2562->volume_lvl == ucontrol->value.integer.value[0])
+@@ -508,6 +604,17 @@
+ 	if (ret)
+ 		return ret;
+ 
++	/* The paired amp also needs all four bytes, with CFG4 written last. */
++	if (tas2562->paired && tas2562->right_regmap) {
++		for (i = 0; i < 4; i++) {
++			ret = regmap_write(tas2562->right_regmap,
++					   TAS2562_DVC_CFG1 + i,
++					   (reg_val >> (24 - i * 8)) & 0xff);
++			if (ret)
++				return ret;
++		}
++	}
++
+ 	tas2562->volume_lvl = ucontrol->value.integer.value[0];
+ 
+ 	return 1;
+@@ -674,6 +781,7 @@
+ static int tas2562_parse_dt(struct tas2562_data *tas2562)
+ {
+ 	struct device *dev = tas2562->dev;
++	u32 left_addr, right_addr;
+ 	int ret = 0;
+ 
+ 	tas2562->sdz_gpio = devm_gpiod_get_optional(dev, "shutdown", GPIOD_OUT_HIGH);
+@@ -699,6 +807,31 @@
+ 		}
+ 	}
+ 
++	if (fwnode_property_read_u32(dev->fwnode, "ti,left-channel",
++				     &left_addr) == 0 &&
++	    fwnode_property_read_u32(dev->fwnode, "ti,right-channel",
++				     &right_addr) == 0 &&
++	    right_addr != left_addr) {
++		tas2562->paired = true;
++		tas2562->right_addr = right_addr;
++	}
++
++	tas2562->reset_gpio_l = devm_gpiod_get_index_optional(dev, "reset",
++							      0, GPIOD_OUT_HIGH);
++	if (IS_ERR(tas2562->reset_gpio_l)) {
++		if (PTR_ERR(tas2562->reset_gpio_l) == -EPROBE_DEFER)
++			return -EPROBE_DEFER;
++		tas2562->reset_gpio_l = NULL;
++	}
++
++	tas2562->reset_gpio_r = devm_gpiod_get_index_optional(dev, "reset",
++							      1, GPIOD_OUT_HIGH);
++	if (IS_ERR(tas2562->reset_gpio_r)) {
++		if (PTR_ERR(tas2562->reset_gpio_r) == -EPROBE_DEFER)
++			return -EPROBE_DEFER;
++		tas2562->reset_gpio_r = NULL;
++	}
++
+ 	if (tas2562->model_id == TAS2110)
+ 		return ret;
+ 
+@@ -724,7 +857,7 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	return ret;
++	return 0;
+ }
+ 
+ static const struct i2c_device_id tas2562_id[] = {
+@@ -751,7 +884,9 @@
+ 	/* Register default is 0x40400000, this is closest */
+ 	data->volume_lvl = (ARRAY_SIZE(float_vol_db_lookup) - 1) * 2;
+ 
+-	tas2562_parse_dt(data);
++	ret = tas2562_parse_dt(data);
++	if (ret)
++		return ret;
+ 
+ 	data->regmap = devm_regmap_init_i2c(client, &tas2562_regmap_config);
+ 	if (IS_ERR(data->regmap)) {
+@@ -760,6 +895,20 @@
+ 		return ret;
+ 	}
+ 
++	if (data->paired) {
++		struct i2c_client *right;
++
++		right = devm_i2c_new_dummy_device(dev, client->adapter,
++						  data->right_addr);
++		if (IS_ERR(right))
++			return PTR_ERR(right);
++
++		data->right_regmap = devm_regmap_init_i2c(right,
++							  &tas2562_regmap_config);
++		if (IS_ERR(data->right_regmap))
++			return PTR_ERR(data->right_regmap);
++	}
++
+ 	dev_set_drvdata(&client->dev, data);
+ 
+ 	if (data->model_id == TAS2110)
+--- a/sound/soc/codecs/tas2562.h
++++ b/sound/soc/codecs/tas2562.h
+@@ -16,6 +16,8 @@
+ 
+ #define TAS2562_SW_RESET	TAS2562_REG(0, 0x01)
+ #define TAS2562_PWR_CTRL	TAS2562_REG(0, 0x02)
++#define TAS2562_MISC_CLASSD	TAS2562_REG(1, 0x21)
++#define TAS2562_CMP_HYST_MASK	BIT(3)
+ #define TAS2562_PB_CFG1		TAS2562_REG(0, 0x03)
+ #define TAS2562_MISC_CFG1	TAS2562_REG(0, 0x04)
+ #define TAS2562_MISC_CFG2	TAS2562_REG(0, 0x05)
+--- a/sound/soc/qcom/sm8250.c
++++ b/sound/soc/qcom/sm8250.c
+@@ -2,6 +2,7 @@
+ // Copyright (c) 2020, Linaro Limited
+ 
+ #include <dt-bindings/sound/qcom,q6afe.h>
++#include <linux/clk.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <sound/soc.h>
+@@ -15,6 +16,7 @@
+ #include "common.h"
+ #include "usb_offload_utils.h"
+ #include "sdw.h"
++#include "../codecs/rt5514.h"
+ 
+ #define MI2S_BCLK_RATE		1536000
+ 
+@@ -28,6 +30,58 @@
+ 	bool jack_setup;
+ };
+ 
++static int cap_codec_tdm;
++module_param(cap_codec_tdm, int, 0644);
++static int cap_codec_mclk = 12288000;
++module_param(cap_codec_mclk, int, 0644);
++/* Barbet has no MCLK wire to the RT5514; derive its clock from BCLK. */
++static int cap_pll_from_bclk = 1;
++module_param(cap_pll_from_bclk, int, 0644);
++/*
++ * Actual TDM bit clock the codec sees: nslots * slot_width * rate. This is
++ * NOT tdm_clk_rate, which is the LPASS interface clock requested from the DSP.
++ */
++static int cap_bclk_rate = 12288000;
++module_param(cap_bclk_rate, int, 0644);
++static int tdm_slots = 8;
++module_param(tdm_slots, int, 0644);
++static int tdm_slot_width = 32;
++module_param(tdm_slot_width, int, 0644);
++/*
++ * Slot mask must have one bit per active channel: we route two channels at
++ * slot indices 0 and 4 (see rx_slots[] below). 0xFF (all eight slots with
++ * ch=2) is rejected by the ADSP: AFE_PORT_CMD_DEVICE_START comes back
++ * ADSP_EFAILED (-EINVAL at snd_soc_dai_prepare).
++ */
++static int tdm_rx_mask = 0x11;
++module_param(tdm_rx_mask, int, 0644);
++/*
++ * The stock machine driver uses four slots, but this mainline clock path
++ * rejects 6.144 MHz. Eight slots at 12.288 MHz have been verified with
++ * live TAS2562 clock status and acoustic tone captures on barbet.
++ */
++static int quin_tdm_slots = 8;
++module_param(quin_tdm_slots, int, 0644);
++/* 0 = derive rate*slot_width*slots; override for clock debugging. */
++static int quin_clk_rate;
++module_param(quin_clk_rate, int, 0644);
++static int quin_clk_id = Q6AFE_LPASS_CLK_ID_QUIN_TDM_IBIT;
++module_param(quin_clk_id, int, 0644);
++static int tdm_clk_rate = 12288000;
++module_param(tdm_clk_rate, int, 0644);
++static int tdm_clk_id = Q6AFE_LPASS_CLK_ID_QUIN_TDM_IBIT;
++module_param(tdm_clk_id, int, 0644);
++/* Byte offsets of the two capture channels in the TDM frame. Stock barbet
++ * puts its mics at 0 and 8 ("1st-mic-only" / "2nd-mic-only"). */
++/* Stock sets the PRI TDM interface clock through LPAIF_DIG_CLK (clk_id 0 in
++ * the vendor driver), not through the LPASS TDM IBIT clock id. */
++static int tdm_pri_clk_id = LPAIF_DIG_CLK;
++module_param(tdm_pri_clk_id, int, 0644);
++static int tdm_off0;
++module_param(tdm_off0, int, 0644);
++static int tdm_off1 = 4;
++module_param(tdm_off1, int, 0644);
++
+ static int sm8250_snd_init(struct snd_soc_pcm_runtime *rtd)
+ {
+ 	struct sm8250_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+@@ -63,10 +117,26 @@
+ 	struct snd_interval *channels = hw_param_interval(params,
+ 					SNDRV_PCM_HW_PARAM_CHANNELS);
+ 	struct snd_mask *fmt = hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	unsigned int format = SNDRV_PCM_FORMAT_S16_LE;
++
++	/*
++	 * Stock barbet feeds the TAS2562 speaker on QUIN TDM RX as S24_LE
++	 * (mixer_paths_bolero_snd.xml: "QUIN_TDM_RX_0 Format" = S24_LE).
++	 * Forcing S16_LE there leaves the amp decoding mostly-zero words.
++	 */
++	if (cpu_dai && cpu_dai->id == QUINARY_TDM_RX_0)
++		format = SNDRV_PCM_FORMAT_S24_LE;
+ 
+ 	rate->min = rate->max = 48000;
+ 	channels->min = channels->max = 2;
+-	snd_mask_set_format(fmt, SNDRV_PCM_FORMAT_S16_LE);
++	/*
++	 * snd_mask_set_format() only adds to the allowed set, so the FE's
++	 * format would still win.  Clear the mask to actually force the BE
++	 * format (stock barbet runs QUIN TDM RX as S24_LE).
++	 */
++	snd_mask_none(fmt);
++	snd_mask_set_format(fmt, format);
+ 
+ 	return 0;
+ }
+@@ -79,6 +149,11 @@
+ 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+ 	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+ 
++	dev_info(rtd->card->dev,
++		 "startup: link=%s cpu_dai=%s id=%d slots=%d width=%d rx_mask=0x%x clk_rate=%d clk_id=%d\n",
++		 rtd->dai_link->name, cpu_dai->name, cpu_dai->id, tdm_slots,
++		 tdm_slot_width, tdm_rx_mask, tdm_clk_rate, tdm_clk_id);
++
+ 	switch (cpu_dai->id) {
+ 	case PRIMARY_MI2S_RX:
+ 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
+@@ -128,6 +203,113 @@
+ 		snd_soc_dai_set_fmt(cpu_dai, fmt);
+ 		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+ 		break;
++	case PRIMARY_TDM_TX_0: {
++		/*
++		 * Barbet's built-in microphones are DMICs on the RT5514P, read
++		 * over PRIMARY_TDM_TX_0. This mirrors the vendor machine driver
++		 * (kona_tdm_be_hw_params): 8 slots of 32 bits, all slots in the
++		 * mask, one capture channel at byte offset 0, the LPASS
++		 * interface clock at rate*width*slots, and the codec in TDM
++		 * (PCM_A) mode with only slot 0 as its own TX channel.
++		 */
++		unsigned int tx_slots[] = { tdm_off0, tdm_off1 };
++		int ret_pll, ret_clk, ret_ctdm, ret_cfmt;
++		int ret_cpu_clk, ret_cpu_tdm, ret_cpu_map;
++
++		ret_cpu_clk = snd_soc_dai_set_sysclk(cpu_dai,
++				       tdm_pri_clk_id,
++				       tdm_clk_rate,
++				       SNDRV_PCM_STREAM_CAPTURE);
++		ret_cpu_tdm = snd_soc_dai_set_tdm_slot(cpu_dai, tdm_rx_mask, 0,
++					 tdm_slots, tdm_slot_width);
++		ret_cpu_map = snd_soc_dai_set_channel_map(cpu_dai, 2, tx_slots,
++							  0, NULL);
++
++		ret_ctdm = snd_soc_dai_set_tdm_slot(codec_dai, 1, 0,
++						    tdm_slots, tdm_slot_width);
++		ret_cfmt = snd_soc_dai_set_fmt(codec_dai,
++					       SND_SOC_DAIFMT_DSP_A |
++					       SND_SOC_DAIFMT_NB_NF);
++
++		/*
++		 * There is no MCLK wire to the RT5514 on barbet: the codec PLL
++		 * runs from the TDM bit clock, and stock programs it with the
++		 * bit clock as both input and output.
++		 */
++		if (cap_pll_from_bclk) {
++			ret_pll = snd_soc_dai_set_pll(codec_dai, 0,
++						      RT5514_PLL_S_BCLK,
++						      cap_bclk_rate,
++						      cap_bclk_rate);
++			ret_clk = snd_soc_dai_set_sysclk(codec_dai,
++							 RT5514_SCLK_S_PLL,
++							 cap_bclk_rate,
++							 SND_SOC_CLOCK_IN);
++		} else {
++			ret_pll = 0;
++			ret_clk = snd_soc_dai_set_sysclk(codec_dai,
++							 RT5514_SCLK_S_MCLK,
++							 cap_codec_mclk,
++							 SND_SOC_CLOCK_IN);
++		}
++		dev_info(rtd->card->dev,
++			 "cap: cpu(clk=%d tdm=%d map=%d) codec(tdm=%d fmt=%d pll=%d clk=%d) slots=%d width=%d mask=0x%x\n",
++			 ret_cpu_clk, ret_cpu_tdm, ret_cpu_map, ret_ctdm, ret_cfmt,
++			 ret_pll, ret_clk, tdm_slots, tdm_slot_width,
++			 tdm_rx_mask);
++		break;
++	}
++
++		case QUINARY_TDM_RX_0: {
++		unsigned int rx_slots[] = { 0, tdm_slot_width / 8 };
++		unsigned int quin_slots = quin_tdm_slots > 0 ?
++					  quin_tdm_slots : 8;
++		/* Two channels live in slots 0 and 1 (byte offsets 0 and 4). */
++		unsigned int quin_mask = (1U << 2) - 1;
++		unsigned int quin_rate = quin_clk_rate > 0 ? quin_clk_rate :
++					 quin_slots * tdm_slot_width * 48000;
++		int ret_sysclk, ret_tdm, ret_map;
++		int i;
++
++		/*
++		 * Barbet speakers: TAS2562 on Quinary TDM RX.  Stock runs
++		 * 4 slots of 32 bits at 48 kHz (6.144 MHz), both channels in
++		 * slots 0 and 1, with DSP_A sync. This clock path requires
++		 * eight slots at 12.288 MHz; keep slots 0 and 1 enabled for
++		 * the paired amplifiers. RX offset 1 is a bit delay, not a
++		 * channel-slot selection.
++		 * Stock's mux/clock is re-applied at stream start in
++		 * tas2562_hw_params(); the LPASS power-up otherwise wipes the
++		 * LPI pad mux.
++		 */
++		ret_sysclk = snd_soc_dai_set_sysclk(cpu_dai, quin_clk_id,
++						    quin_rate,
++						    SNDRV_PCM_STREAM_PLAYBACK);
++		ret_tdm = snd_soc_dai_set_tdm_slot(cpu_dai, 0, quin_mask,
++						   quin_slots, tdm_slot_width);
++		ret_map = snd_soc_dai_set_channel_map(cpu_dai, 0, NULL, 2,
++						      rx_slots);
++		dev_info(rtd->card->dev,
++			 "quin cpu: sysclk=%d tdm_slot=%d chan_map=%d slots=%u mask=0x%x rate=%u\n",
++			 ret_sysclk, ret_tdm, ret_map, quin_slots, quin_mask,
++			 quin_rate);
++		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_DSP_A;
++		snd_soc_dai_set_fmt(cpu_dai, fmt);
++		i = 0;
++		for_each_rtd_codec_dais(rtd, i, codec_dai) {
++			unsigned int mask = 1U << i;
++			int ret_ctdm, ret_cfmt;
++
++			ret_ctdm = snd_soc_dai_set_tdm_slot(codec_dai, mask, mask,
++							    quin_slots,
++							    tdm_slot_width);
++			ret_cfmt = snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
++			dev_info(rtd->card->dev,
++				 "quin codec %s i=%d mask=0x%x tdm_slot=%d fmt=%d\n",
++				 codec_dai->name, i, mask, ret_ctdm, ret_cfmt);
++		}
++		break;
++	}
+ 	default:
+ 		break;
+ 	}
+@@ -195,6 +377,43 @@
+ 	card->dev = dev;
+ 	dev_set_drvdata(dev, card);
+ 	snd_soc_card_set_drvdata(card, data);
++
++	struct clk *lpass_clk, *dcodec_clk, *tdm_clk;
++	static const char * const tdm_clk_names[] = {
++		"lpass_pri_tdm_ibit", "lpass_quin_tdm_ibit",
++	};
++	int i;
++
++	lpass_clk = devm_clk_get_optional_enabled(dev, "lpass_audio_hw_vote");
++	if (IS_ERR(lpass_clk))
++		return dev_err_probe(dev, PTR_ERR(lpass_clk),
++				     "failed to enable LPASS vote clock\n");
++
++	dcodec_clk = devm_clk_get_optional_enabled(dev, "lpass_dcodec_hw_vote");
++	if (IS_ERR(dcodec_clk))
++		dev_warn(dev, "failed to enable LPASS dcodec vote: %ld\n",
++			 PTR_ERR(dcodec_clk));
++
++	/*
++	 * Enabling these makes q6afe issue a global AFE_PARAM_ID_CLOCK_SET for
++	 * the TDM bit clocks, which is what actually starts the LPASS TDM
++	 * clock generators. Do not fail the card if the DSP rejects them.
++	 */
++	for (i = 0; i < ARRAY_SIZE(tdm_clk_names); i++) {
++		tdm_clk = devm_clk_get_optional(dev, tdm_clk_names[i]);
++		if (IS_ERR(tdm_clk)) {
++			dev_warn(dev, "failed to get %s: %ld\n",
++				 tdm_clk_names[i], PTR_ERR(tdm_clk));
++			continue;
++		}
++		if (!tdm_clk)
++			continue;
++		clk_set_rate(tdm_clk, tdm_clk_rate);
++		ret = clk_prepare_enable(tdm_clk);
++		dev_info(dev, "%s: rate=%u enable_ret=%d\n", tdm_clk_names[i],
++			 tdm_clk_rate, ret);
++	}
++
+ 	ret = qcom_snd_parse_of(card);
+ 	if (ret)
+ 		return ret;
+--- a/sound/soc/qcom/qdsp6/q6afe.c
++++ b/sound/soc/qcom/qdsp6/q6afe.c
+@@ -29,6 +29,7 @@
+ #define AFE_PORT_CMD_DEVICE_STOP	0x000100E6
+ #define AFE_PORT_CMD_SET_PARAM_V2	0x000100EF
+ #define AFE_SVC_CMD_SET_PARAM		0x000100f3
++#define AFE_SVC_CMD_SET_PARAM_V2	0x000100fc
+ #define AFE_PORT_CMDRSP_GET_PARAM_V2	0x00010106
+ #define AFE_PARAM_ID_HDMI_CONFIG	0x00010210
+ #define AFE_MODULE_AUDIO_DEV_INTERFACE	0x0001020C
+@@ -44,6 +45,37 @@
+ #define AFE_PARAM_ID_SLIMBUS_CONFIG    0x00010212
+ #define AFE_PARAM_ID_I2S_CONFIG	0x0001020D
+ #define AFE_PARAM_ID_TDM_CONFIG	0x0001029D
++
++/* TDM group device: the vendor firmware requires this for primary TDM TX. */
++#define AFE_MODULE_GROUP_DEVICE			0x00010254
++#define AFE_PARAM_ID_GROUP_DEVICE_ENABLE	0x00010256
++#define AFE_PARAM_ID_GROUP_DEVICE_TDM_CONFIG	0x0001029E
++#define AFE_PARAM_ID_TDM_LANE_CONFIG		0x000102C1
++#define AFE_API_VERSION_GROUP_DEVICE_TDM_CONFIG	0x1
++#define AFE_GROUP_DEVICE_NUM_PORTS		8
++
++struct afe_param_id_group_device_tdm_cfg {
++	u32	group_device_cfg_minor_version;
++	u16	group_id;
++	u16	reserved;
++	u16	port_id[AFE_GROUP_DEVICE_NUM_PORTS];
++	u32	num_channels;
++	u32	sample_rate;
++	u32	bit_width;
++	u16	nslots_per_frame;
++	u16	slot_width;
++	u32	slot_mask;
++} __packed;
++
++struct afe_group_device_enable {
++	u16	group_id;
++	u16	enable;
++} __packed;
++
++struct afe_param_id_tdm_lane_cfg {
++	u16	port_id;
++	u16	lane_mask;
++} __packed;
+ #define AFE_PARAM_ID_PORT_SLOT_MAPPING_CONFIG	0x00010297
+ #define AFE_PARAM_ID_CODEC_DMA_CONFIG	0x000102B8
+ #define AFE_PARAM_ID_USB_AUDIO_CONFIG    0x000102A4
+@@ -380,7 +412,10 @@
+ #define Q6AFE_LPASS_CLK_ROOT_DEFAULT 0
+ #define AFE_API_VERSION_TDM_CONFIG              1
+ #define AFE_API_VERSION_SLOT_MAPPING_CONFIG	1
++#define AFE_API_VERSION_SLOT_MAPPING_CONFIG_V2	2
+ #define AFE_API_VERSION_CODEC_DMA_CONFIG	1
++/* AFE service API version from which the 32-channel slot map is required. */
++#define AFE_API_VERSION_V3			3
+ 
+ #define TIMEOUT_MS 3000
+ #define AFE_CMD_RESP_AVAIL	0
+@@ -646,10 +681,22 @@
+ 	u16	ch_mapping[AFE_PORT_MAX_AUDIO_CHAN_CNT];
+ } __packed;
+ 
++/* AFE API v3 widened the channel map to 32 entries; the DSP rejects the
++ * shorter v1 payload outright.
++ */
++struct afe_param_id_slot_mapping_cfg_v2 {
++	u32	minor_version;
++	u16	num_channels;
++	u16	bitwidth;
++	u32	data_align_type;
++	u16	ch_mapping[AFE_PORT_MAX_AUDIO_CHAN_CNT_V2];
++} __packed;
++
+ struct q6afe_port {
+ 	wait_queue_head_t wait;
+ 	union afe_port_config port_cfg;
+ 	struct afe_param_id_slot_mapping_cfg *scfg;
++	struct afe_param_id_slot_mapping_cfg_v2 *scfg_v2;
+ 	struct aprv2_ibasic_rsp_result_t result;
+ 	int token;
+ 	int id;
+@@ -659,6 +706,21 @@
+ 	struct list_head node;
+ };
+ 
++/*
++ * Select the slot-map payload the running DSP accepts. -1 asks the reported
++ * AFE service version; 0/1 force the legacy/wide format for experiments.
++ */
++static int tdm_slot_map_v2 = -1;
++module_param(tdm_slot_map_v2, int, 0644);
++
++/*
++ * Some firmware revisions were reported to need an explicit group device
++ * around the primary TDM TX. Stock does not send one, and it interposes
++ * between the TDM and slot-map parameters, so it is off unless asked for.
++ */
++static int tdm_group_enable;
++module_param(tdm_group_enable, int, 0644);
++
+ struct afe_cmd_remote_lpass_core_hw_vote_request {
+ 	uint32_t  hw_block_id;
+ 	char client_name[8];
+@@ -985,6 +1047,7 @@
+ 	scoped_guard(spinlock_irqsave, &afe->port_list_lock)
+ 		list_del(&port->node);
+ 	kfree(port->scfg);
++	kfree(port->scfg_v2);
+ 	kfree(port);
+ }
+ 
+@@ -1026,6 +1089,7 @@
+ 		case AFE_PORT_CMD_DEVICE_STOP:
+ 		case AFE_PORT_CMD_DEVICE_START:
+ 		case AFE_SVC_CMD_SET_PARAM:
++		case AFE_SVC_CMD_SET_PARAM_V2:
+ 			port = q6afe_find_port(afe, hdr->token);
+ 			if (port) {
+ 				port->result = *res;
+@@ -1221,9 +1285,32 @@
+ 				       sizeof(*cfg));
+ }
+ 
++/*
++ * AFE API v7 service params use the wide (instance-id) header, while the
++ * port SET_PARAM_V2 path still uses afe_port_param_data_v2. Sending the
++ * 12-byte v2 header on the service path shifts instance_id/param_id and the
++ * DSP answers ADSP_EBADPARAM.
++ */
++struct q6afe_param_hdr_v3 {
++	u32 module_id;
++	u16 instance_id;
++	u16 reserved;
++	u32 param_id;
++	u32 param_size;
++} __packed;
++
++/* AFE_SVC_CMD_SET_PARAM_V2: mem_hdr precedes payload_size. */
++struct q6afe_svc_set_param_v2 {
++	u32 payload_address_lsw;
++	u32 payload_address_msw;
++	u32 mem_map_handle;
++	u32 payload_size;
++} __packed;
++
+ static int q6afe_set_lpass_clock_v2(struct q6afe_port *port,
+ 				 struct afe_clk_set *cfg)
+ {
++	/* v130 path: per-port SET_PARAM, accepted by this DSP. */
+ 	return q6afe_port_set_param(port, cfg, AFE_PARAM_ID_CLOCK_SET,
+ 				    AFE_MODULE_CLOCK_SET, sizeof(*cfg));
+ }
+@@ -1391,10 +1478,24 @@
+  * @cfg: TDM configuration for the afe port
+  *
+  */
++/**
++ * q6afe_slot_map_v2() - Use the wide (32-channel) slot-map payload.
++ *
++ * AFE service API v3 and later reject the legacy 8-channel payload, so pick
++ * the format from the version the DSP reported unless overridden.
++ */
++static bool q6afe_slot_map_v2(struct q6afe *afe)
++{
++	if (tdm_slot_map_v2 >= 0)
++		return tdm_slot_map_v2;
++	return afe->ainfo.api_version >= AFE_API_VERSION_V3;
++}
++
+ void q6afe_tdm_port_prepare(struct q6afe_port *port,
+ 			     struct q6afe_tdm_cfg *cfg)
+ {
+ 	union afe_port_config *pcfg = &port->port_cfg;
++	int i;
+ 
+ 	pcfg->tdm_cfg.tdm_cfg_minor_version = AFE_API_VERSION_TDM_CONFIG;
+ 	pcfg->tdm_cfg.num_channels = cfg->num_channels;
+@@ -1403,10 +1504,30 @@
+ 	pcfg->tdm_cfg.data_format = cfg->data_format;
+ 	pcfg->tdm_cfg.sync_mode = cfg->sync_mode;
+ 	pcfg->tdm_cfg.sync_src = cfg->sync_src;
++	pcfg->tdm_cfg.ctrl_data_out_enable = cfg->data_out_enable;
++	pcfg->tdm_cfg.ctrl_invert_sync_pulse = cfg->invert_sync;
++	pcfg->tdm_cfg.ctrl_sync_data_delay = cfg->sync_data_delay;
+ 	pcfg->tdm_cfg.nslots_per_frame = cfg->nslots_per_frame;
+ 
+ 	pcfg->tdm_cfg.slot_width = cfg->slot_width;
+ 	pcfg->tdm_cfg.slot_mask = cfg->slot_mask;
++
++	if (q6afe_slot_map_v2(port->afe)) {
++		port->scfg_v2 = kzalloc_obj(*port->scfg_v2);
++		if (!port->scfg_v2)
++			return;
++
++		port->scfg_v2->minor_version = AFE_API_VERSION_SLOT_MAPPING_CONFIG_V2;
++		port->scfg_v2->num_channels = cfg->num_channels;
++		port->scfg_v2->bitwidth = cfg->bit_width;
++		port->scfg_v2->data_align_type = cfg->data_align_type;
++		for (i = 0; i < AFE_PORT_MAX_AUDIO_CHAN_CNT_V2; i++)
++			port->scfg_v2->ch_mapping[i] = 0xFFFF;
++		memcpy(port->scfg_v2->ch_mapping, cfg->ch_mapping,
++				sizeof(u16) * AFE_PORT_MAX_AUDIO_CHAN_CNT);
++		return;
++	}
++
+ 	port->scfg = kzalloc_obj(*port->scfg);
+ 	if (!port->scfg)
+ 		return;
+@@ -1706,6 +1827,61 @@
+  *
+  * Return: Will be an negative on packet size on success.
+  */
++/**
++ * q6afe_tdm_group_enable() - configure and enable the TDM group device
++ *
++ * The vendor DSP firmware needs a group device enabled for primary TDM TX
++ * before the port itself will run.
++ */
++static int q6afe_tdm_group_enable(struct q6afe *afe, int port_id,
++				  struct afe_param_id_tdm_cfg *tdm)
++{
++	struct afe_param_id_group_device_tdm_cfg gcfg = {0};
++	struct afe_param_id_tdm_lane_cfg lcfg = {0};
++	struct afe_group_device_enable ecfg = {0};
++	u16 group_id;
++	int ret;
++
++	if (port_id != AFE_PORT_ID_PRIMARY_TDM_TX)
++		return 0;
++
++	group_id = AFE_PORT_ID_PRIMARY_TDM_TX + 0x100;
++
++	gcfg.group_device_cfg_minor_version =
++		AFE_API_VERSION_GROUP_DEVICE_TDM_CONFIG;
++	gcfg.group_id = group_id;
++	gcfg.port_id[0] = port_id;
++	gcfg.num_channels = tdm->num_channels;
++	gcfg.sample_rate = tdm->sample_rate;
++	gcfg.bit_width = tdm->bit_width;
++	gcfg.nslots_per_frame = tdm->nslots_per_frame;
++	gcfg.slot_width = tdm->slot_width;
++	gcfg.slot_mask = tdm->slot_mask;
++
++	ret = q6afe_set_param(afe, NULL, &gcfg,
++			      AFE_PARAM_ID_GROUP_DEVICE_TDM_CONFIG,
++			      AFE_MODULE_GROUP_DEVICE, sizeof(gcfg),
++			      AFE_CLK_TOKEN);
++	if (ret)
++		return ret;
++
++	lcfg.port_id = group_id;
++	lcfg.lane_mask = 0;
++	ret = q6afe_set_param(afe, NULL, &lcfg, AFE_PARAM_ID_TDM_LANE_CONFIG,
++			      AFE_MODULE_GROUP_DEVICE, sizeof(lcfg),
++			      AFE_CLK_TOKEN);
++	if (ret)
++		return ret;
++
++	ecfg.group_id = group_id;
++	ecfg.enable = 1;
++
++	return q6afe_set_param(afe, NULL, &ecfg,
++			       AFE_PARAM_ID_GROUP_DEVICE_ENABLE,
++			       AFE_MODULE_GROUP_DEVICE, sizeof(ecfg),
++			       AFE_CLK_TOKEN);
++}
++
+ int q6afe_port_start(struct q6afe_port *port)
+ {
+ 	struct afe_port_cmd_device_start *start;
+@@ -1724,13 +1900,61 @@
+ 		return ret;
+ 	}
+ 
+-	if (port->scfg) {
++	if (param_id == AFE_PARAM_ID_TDM_CONFIG) {
++		struct afe_param_id_tdm_cfg *t = &port->port_cfg.tdm_cfg;
++
++		dev_info(afe->dev,
++			 "tdm start: dai=%d port=0x%x ch=%u rate=%u bw=%u fmt=%u sync_mode=%u sync_src=%u nslots=%u dout=%u inv=%u delay=%u slot_w=%u mask=0x%x\n",
++			 port->id, port_id, t->num_channels, t->sample_rate,
++			 t->bit_width, t->data_format, t->sync_mode,
++			 t->sync_src, t->nslots_per_frame,
++			 t->ctrl_data_out_enable, t->ctrl_invert_sync_pulse,
++			 t->ctrl_sync_data_delay, t->slot_width, t->slot_mask);
++		if (port->scfg_v2)
++			dev_info(afe->dev,
++				 "tdm map v2: ch=%u bw=%u align=%u slots=%u,%u,%u,%u\n",
++				 port->scfg_v2->num_channels,
++				 port->scfg_v2->bitwidth,
++				 port->scfg_v2->data_align_type,
++				 port->scfg_v2->ch_mapping[0],
++				 port->scfg_v2->ch_mapping[1],
++				 port->scfg_v2->ch_mapping[2],
++				 port->scfg_v2->ch_mapping[3]);
++		else if (port->scfg)
++			dev_info(afe->dev,
++				 "tdm map: ch=%u bw=%u align=%u slots=%u,%u,%u,%u\n",
++				 port->scfg->num_channels, port->scfg->bitwidth,
++				 port->scfg->data_align_type,
++				 port->scfg->ch_mapping[0],
++				 port->scfg->ch_mapping[1],
++				 port->scfg->ch_mapping[2],
++				 port->scfg->ch_mapping[3]);
++
++		if (tdm_group_enable) {
++			ret = q6afe_tdm_group_enable(afe, port_id, t);
++			dev_info(afe->dev, "tdm group: port=0x%x rc=%d\n",
++				 port_id, ret);
++		}
++	}
++
++	if (port->scfg_v2) {
++		ret  = q6afe_port_set_param_v2(port, port->scfg_v2,
++					AFE_PARAM_ID_PORT_SLOT_MAPPING_CONFIG,
++					AFE_MODULE_TDM, sizeof(*port->scfg_v2));
++		if (ret) {
++			dev_err(afe->dev,
++				"tdm slot map v2 for port 0x%x failed %d\n",
++				port_id, ret);
++			return ret;
++		}
++	} else if (port->scfg) {
+ 		ret  = q6afe_port_set_param_v2(port, port->scfg,
+ 					AFE_PARAM_ID_PORT_SLOT_MAPPING_CONFIG,
+ 					AFE_MODULE_TDM, sizeof(*port->scfg));
+ 		if (ret) {
+-			dev_err(afe->dev, "AFE enable for port 0x%x failed %d\n",
+-			port_id, ret);
++			dev_err(afe->dev,
++				"tdm slot map v1 for port 0x%x failed %d\n",
++				port_id, ret);
+ 			return ret;
+ 		}
+ 	}
+@@ -1758,6 +1982,9 @@
+ 	if (ret)
+ 		dev_err(afe->dev, "AFE enable for port 0x%x failed %d\n",
+ 			port_id, ret);
++	else
++		dev_info(afe->dev, "port started: id=0x%x param=0x%x\n",
++			 port_id, param_id);
+ 
+ 	return ret;
+ }
+@@ -1970,6 +2197,8 @@
+ 		return -ENOMEM;
+ 
+ 	q6core_get_svc_api_info(adev->svc_id, &afe->ainfo);
++	dev_info(dev, "AFE service API version %u, slot map v%u\n",
++		 afe->ainfo.api_version, q6afe_slot_map_v2(afe) ? 2 : 1);
+ 	afe->apr = adev;
+ 	mutex_init(&afe->lock);
+ 	init_waitqueue_head(&afe->wait);
+--- a/sound/soc/qcom/qdsp6/q6afe-dai.c
++++ b/sound/soc/qcom/qdsp6/q6afe-dai.c
+@@ -265,6 +265,21 @@
+ 	return rc;
+ }
+ 
++static int tdm_sync_mode = 1;
++module_param(tdm_sync_mode, int, 0644);
++static int tdm_sync_src = -1;
++module_param(tdm_sync_src, int, 0644);
++static int tdm_data_out = -1;
++module_param(tdm_data_out, int, 0644);
++static int tdm_invert_sync = -1;
++module_param(tdm_invert_sync, int, 0644);
++static int tdm_data_delay = -1;
++module_param(tdm_data_delay, int, 0644);
++static int tdm_data_align = -1;
++module_param(tdm_data_align, int, 0644);
++static int tdm_clk_attr = -1;
++module_param(tdm_clk_attr, int, 0644);
++
+ static int q6tdm_hw_params(struct snd_pcm_substream *substream,
+ 			   struct snd_pcm_hw_params *params,
+ 			   struct snd_soc_dai *dai)
+@@ -275,9 +290,21 @@
+ 	tdm->bit_width = params_width(params);
+ 	tdm->sample_rate = params_rate(params);
+ 	tdm->num_channels = params_channels(params);
+-	tdm->data_align_type = dai_data->priv[dai->id].data_align;
+-	tdm->sync_src = dai_data->priv[dai->id].sync_src;
+-	tdm->sync_mode = dai_data->priv[dai->id].sync_mode;
++	dev_info(dai->dev, "tdm hw_params: id=%d rate=%u ch=%u width=%u\n",
++		 dai->id, params_rate(params), params_channels(params),
++		 params_width(params));
++	tdm->data_align_type = tdm_data_align >= 0 ? tdm_data_align :
++		dai_data->priv[dai->id].data_align;
++	tdm->data_out_enable = tdm_data_out >= 0 ? tdm_data_out :
++		dai_data->priv[dai->id].data_out_enable;
++	tdm->invert_sync = tdm_invert_sync >= 0 ? tdm_invert_sync :
++		dai_data->priv[dai->id].invert_sync;
++	tdm->sync_data_delay = tdm_data_delay >= 0 ? tdm_data_delay :
++		dai_data->priv[dai->id].data_delay;
++	tdm->sync_src = tdm_sync_src >= 0 ? tdm_sync_src :
++		dai_data->priv[dai->id].sync_src;
++	tdm->sync_mode = tdm_sync_mode >= 0 ? tdm_sync_mode :
++		dai_data->priv[dai->id].sync_mode;
+ 
+ 	return 0;
+ }
+@@ -510,8 +537,13 @@
+ 					     Q6AFE_LPASS_CLK_ROOT_DEFAULT,
+ 					     freq, dir);
+ 	case Q6AFE_LPASS_CLK_ID_PRI_TDM_IBIT ... Q6AFE_LPASS_CLK_ID_QUIN_TDM_EBIT:
++		/*
++		 * Which attribute this DSP accepts depends on the rate; expose
++		 * it so it can be swept without rebuilding.
++		 */
+ 		return q6afe_port_set_sysclk(port, clk_id,
+-					     Q6AFE_LPASS_CLK_ATTRIBUTE_INVERT_COUPLE_NO,
++					     tdm_clk_attr >= 0 ? tdm_clk_attr :
++					     Q6AFE_LPASS_CLK_ATTRIBUTE_COUPLE_NO,
+ 					     Q6AFE_LPASS_CLK_ROOT_DEFAULT,
+ 					     freq, dir);
+ 	}
+--- a/sound/soc/qcom/qdsp6/q6afe.h
++++ b/sound/soc/qcom/qdsp6/q6afe.h
+@@ -14,6 +14,7 @@
+ 
+ #define AFE_MAX_CHAN_COUNT	8
+ #define AFE_PORT_MAX_AUDIO_CHAN_CNT	0x8
++#define AFE_PORT_MAX_AUDIO_CHAN_CNT_V2	0x20
+ 
+ #define Q6AFE_LPASS_CLK_SRC_INTERNAL 1
+ #define Q6AFE_LPASS_CLK_ROOT_DEFAULT 0
+@@ -189,6 +190,9 @@
+ 	u16	data_format;
+ 	u16	sync_mode;
+ 	u16	sync_src;
++	u16	data_out_enable;
++	u16	invert_sync;
++	u16	sync_data_delay;
+ 	u16	nslots_per_frame;
+ 	u16	slot_width;
+ 	u16	slot_mask;
+--- a/sound/soc/qcom/qdsp6/q6asm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6asm-dai.c
+@@ -339,6 +339,9 @@
+ 	struct snd_pcm_runtime *runtime = substream->runtime;
+ 	struct q6asm_dai_rtd *prtd = runtime->private_data;
+ 
++	dev_info(component->dev, "asm trigger: cmd=%d stream=%d\n",
++		 cmd, prtd->stream_id);
++
+ 	switch (cmd) {
+ 	case SNDRV_PCM_TRIGGER_START:
+ 	case SNDRV_PCM_TRIGGER_RESUME:
+@@ -359,6 +362,7 @@
+ 		ret = -EINVAL;
+ 		break;
+ 	}
++	dev_info(component->dev, "asm trigger: cmd=%d ret=%d\n", cmd, ret);
+ 
+ 	return ret;
+ }
+@@ -1009,6 +1013,9 @@
+ 	struct q6asm_dai_rtd *prtd = runtime->private_data;
+ 	int ret = 0;
+ 
++	dev_info(component->dev, "asm trigger: cmd=%d stream=%d\n",
++		 cmd, prtd->stream_id);
++
+ 	switch (cmd) {
+ 	case SNDRV_PCM_TRIGGER_START:
+ 	case SNDRV_PCM_TRIGGER_RESUME:
+@@ -1217,8 +1224,13 @@
+ 	SND_SOC_DAPM_AIF_OUT("MM_UL8", "MultiMedia8 Capture", 0, SND_SOC_NOPM, 0, 0),
+ };
+ 
++static int q6asm_of_xlate_dai_name(struct snd_soc_component *component,
++				   const struct of_phandle_args *args,
++				   const char **dai_name);
++
+ static const struct snd_soc_component_driver q6asm_fe_dai_component = {
+ 	.name			= DRV_NAME,
++	.of_xlate_dai_name	= q6asm_of_xlate_dai_name,
+ 	.open			= q6asm_dai_open,
+ 	.hw_params		= q6asm_dai_hw_params,
+ 	.close			= q6asm_dai_close,
+@@ -1244,6 +1256,18 @@
+ 	Q6ASM_FEDAI_DRIVER(8),
+ };
+ 
++static int q6asm_of_xlate_dai_name(struct snd_soc_component *component,
++				   const struct of_phandle_args *args,
++				   const char **dai_name)
++{
++	if (args->args_count != 1 ||
++	    args->args[0] >= ARRAY_SIZE(q6asm_fe_dais_template))
++		return -EINVAL;
++
++	*dai_name = q6asm_fe_dais_template[args->args[0]].name;
++	return 0;
++}
++
+ static const struct snd_soc_dai_ops q6asm_dai_ops = {
+ 	.compress_new = snd_soc_new_compress,
+ };
+--- a/sound/soc/qcom/Kconfig
++++ b/sound/soc/qcom/Kconfig
+@@ -190,6 +190,10 @@
+ 	select SND_SOC_QDSP6
+ 	select SND_SOC_QCOM_COMMON
+ 	select SND_SOC_QCOM_SDW
++	select SND_SOC_RT5514
++	# The RT5514 capture path runs through the codec's internal DSP, whose
++	# firmware is loaded over SPI; without this the ADC/I2S path stays silent.
++	select SND_SOC_RT5514_SPI
+ 	help
+ 	  To add support for audio on Qualcomm Technologies Inc.
+ 	  SM8250 SoC-based systems.
