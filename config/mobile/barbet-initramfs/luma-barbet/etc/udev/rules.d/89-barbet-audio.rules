@@ -1,0 +1,3 @@
+# Barbet (Pixel 5a) mainline sm8250 sound card: expose a normal stereo
+# speaker sink (hw:0,3) and mono mic (hw:0,0) instead of pro-audio nodes.
+SUBSYSTEM=="sound", KERNEL=="card*", ATTR{id}=="barbet", ENV{ACP_PROFILE_SET}="/etc/alsa-card-profile/mixer/profile-sets/barbet.conf"

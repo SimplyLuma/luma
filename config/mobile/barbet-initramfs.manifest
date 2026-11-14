@@ -1,0 +1,12 @@
+# Pixel 5a (barbet) boot initramfs overlay: every branch file.
+# kind<TAB>mode<TAB>sha256<TAB>path<TAB>origin
+F	0755	f1b0abff09398c56dad20816dec1c8900cc75f4fee7819b06faca85325d78745	hooks-cleanup/60-barbet-platform.sh	branch
+F	0644	7fdccfdd2beae83115277c7edc9879312457146ed5096af1bed869757773d412	init_2nd.sh	branch
+F	0644	7ab22459bb10d7bc40045a405747f58d151c1c053060d95476de7cb27ee208c0	init_functions.sh	branch
+F	0644	4ed26d1798efb31a619b1b0db412cf1f27e9fd3016ff29bd042c38157402e8ca	luma-barbet/etc/alsa-card-profile/mixer/profile-sets/barbet.conf	branch
+F	0755	6e04417ed301ccc97125503276c1cc7ac1386d36ca0afd9e487b528d43f161c0	luma-barbet/etc/luma/barbet-audio-start.sh	branch
+F	0755	d4ebb13291344ffd8ce1a1826499e828ade4435c8f8ceeb0dd5a08a5f591888a	luma-barbet/etc/luma/barbet-wifi-start.sh	branch
+F	0644	d99ad23ab82db582c93d5cb943de644b69bf2e1cc34d5c22e5dbd20a0f468d58	luma-barbet/etc/systemd/system/luma-barbet-audio.service	branch
+F	0644	d87099c1e344d2da90f91f0d24787d323a090bfc4b055062c267126a5bb8d9e7	luma-barbet/etc/systemd/system/luma-barbet-wifi.service	branch
+F	0755	e5207f41b8ff43f3cd1800396e2c52e4eff00506aec06a8c9d16681876d1a258	luma-barbet/etc/systemd/system-sleep/50-barbet-usb	branch
+F	0644	7725ab8826ba38b97cef7a9126a8df5483680e108fd58af82fb01f91dcc6e164	luma-barbet/etc/udev/rules.d/89-barbet-audio.rules	branch
