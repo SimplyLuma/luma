@@ -14,6 +14,10 @@
 # (scripts/kernel/fp6-android-gpu-admission.py), so luma-android-runtime admits
 # exactly the kernel this package belongs to, and only when device.toml
 # [kernel.android_gpu] qualified its GPU inputs.
+# It carries that kernel's boot image too, with its declaration for
+# luma-device-boot (luma-update) in /usr/lib/luma/device-boot/fairphone-fp6/:
+# a deployment that brings these modules writes the image to the inactive boot
+# slot and restarts into it once (device.toml [boot_update]).
 %global kver 7.1.2-luma-fp-ims1.gmu2.selinux1
 %global debug_package %{nil}
 %global __strip /bin/true
@@ -21,13 +25,16 @@
 
 Name:           kernel-modules-luma-fp6
 Version:        7.1.2
-Release:        1.luma.ims1.gmu2.selinux1.5%{?dist}
+Release:        1.luma.ims1.gmu2.selinux1.6%{?dist}
 Summary:        Kernel modules for the Fairphone 6 kernel
 License:        GPL-2.0-only
 URL:            https://github.com/SimplyLuma/linux/tree/luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1
 Source0:        fp6-kernel-modules.tar
 ExclusiveArch:  aarch64
 AutoReqProv:    no
+BuildRequires:  python3
+# The slot tool the boot image declaration names.
+Requires:       qbootctl
 
 %description
 Loadable modules (and their modules.* indexes) for the Fairphone 6 kernel
@@ -47,7 +54,23 @@ cp -a usr/lib/modules/%{kver} %{buildroot}/usr/lib/modules/
 install -D -m 0644 usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.d/%{kver}.sha256 \
   %{buildroot}%{_datadir}/luma/android/hardware/fairphone-fp6-kernel-notes.d/%{kver}.sha256
 
+install -d %{buildroot}%{_prefix}/lib/luma/device-boot
+cp -a usr/lib/luma/device-boot/fairphone-fp6 %{buildroot}%{_prefix}/lib/luma/device-boot/
+
 %check
+# The boot image and its declaration agree, and it writes only boot_a/boot_b.
+d=%{buildroot}%{_prefix}/lib/luma/device-boot/fairphone-fp6
+python3 - $d <<'PY'
+import hashlib, json, sys
+d = sys.argv[1]
+m = json.load(open(f"{d}/device-boot.json"))
+assert m["schema"] == 1 and m["slots"] == "qbootctl" and m["kernel_release"] == "%{kver}", m
+assert sorted(m["partitions"]) == ["boot_a", "boot_b"], m["partitions"]
+(image,) = m["images"]
+data = open(f"{d}/{image['file']}", "rb").read()
+assert image["partition"] == "boot" and data[:8] == b"ANDROID!"
+assert len(data) == image["size"] <= image["partition_size"] and hashlib.sha256(data).hexdigest() == image["sha256"]
+PY
 m=%{buildroot}/usr/lib/modules/%{kver}
 test ! -e $m/vmlinuz && test ! -e $m/initramfs.img && test ! -e $m/aboot.img
 test -f $m/kernel/fs/erofs/erofs.ko.zst && test -f $m/kernel/fs/overlayfs/overlay.ko.zst
@@ -69,8 +92,19 @@ done
 /usr/lib/modules/%{kver}/modules.*
 %dir %{_datadir}/luma/android/hardware/fairphone-fp6-kernel-notes.d
 %{_datadir}/luma/android/hardware/fairphone-fp6-kernel-notes.d/%{kver}.sha256
+%dir %{_prefix}/lib/luma
+%dir %{_prefix}/lib/luma/device-boot
+%{_prefix}/lib/luma/device-boot/fairphone-fp6/
 
 %changelog
+* Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.6
+- Carry the boot image of this kernel build and its luma-device-boot
+  declaration in /usr/lib/luma/device-boot/fairphone-fp6/, so installed phones
+  get the kernel these modules belong to (written to the inactive boot slot,
+  one restart, bootloader fallback). Requires qbootctl.
+- The kernel with 0002, 0004 and 0039-0042 (notes bd0064a7) passed the
+  Android GPU qualification: the admission entry now admits it.
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.5
 - Rebuilt with the A810 GMU patches 0002 (timeout diagnostics) and 0004
   (Gen8.3 650 MHz GMU boot rate) over 0039-0042: the Android GPU candidate

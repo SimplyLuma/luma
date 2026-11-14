@@ -119,6 +119,15 @@
         "install": {"description": "Packages layered on top (rpm-ostree install).", "type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/package"}}
       }
     },
+    "boot_update": {
+      "description": "The device's boot image ships in a device package and follows the deployment (luma-device-boot, luma-update): written to the inactive A/B slot, made active for one try, marked successful once its kernel runs; the bootloader falls back otherwise.",
+      "type": "object", "additionalProperties": false, "required": ["package", "slots", "partitions"],
+      "properties": {
+        "package": {"description": "The package that carries the boot image with its kernel's modules; one of [device_repo] install.", "$ref": "#/$defs/package"},
+        "slots": {"description": "The slot tool luma-device-boot drives.", "enum": ["qbootctl"]},
+        "partitions": {"description": "The only partitions luma-device-boot may write, both slots of each.", "type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string", "pattern": "^(boot|dtbo|init_boot|vendor_boot)_[ab]$"}}
+      }
+    },
     "kit": {
       "description": "The device kit (scripts/devices/build-device-kit.py): boot image, offline device repository on the generic phone userdata image's LumaBoot, flash steps.",
       "type": "object", "additionalProperties": false, "required": ["compatible", "flash"],

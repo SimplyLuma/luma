@@ -97,6 +97,12 @@ PY_MODES
     grep -Fxq "WantedBy=ostree-finalize-staged.service" usr/lib/systemd/system/luma-greenboot-arm.service
     grep -Fxq "enable luma-greenboot-arm.service" usr/lib/systemd/system-preset/80-luma-update.preset
     grep -Fxq "enable luma-greenboot-fallback.service" usr/lib/systemd/system-preset/80-luma-update.preset
+    # 1.0.0-1.luma.35: device boot images follow the deployment (luma-device-boot).
+    test -x usr/libexec/luma-device-boot
+    test -d usr/lib/luma/device-boot
+    grep -Fxq "enable luma-device-boot.service" usr/lib/systemd/system-preset/80-luma-update.preset
+    grep -Fxq "enable luma-device-boot-confirm.service" usr/lib/systemd/system-preset/80-luma-update.preset
+    grep -Fxq "ConditionDirectoryNotEmpty=/usr/lib/luma/device-boot" usr/lib/systemd/system/luma-device-boot.service
     grep -Fxq "ConditionPathExists=!/usr/lib/systemd/system/greenboot-healthcheck.service" \
       usr/lib/systemd/user/grub-boot-success.timer.d/50-luma-greenboot.conf
     desktop-file-validate usr/share/applications/org.projectluma.Update.desktop

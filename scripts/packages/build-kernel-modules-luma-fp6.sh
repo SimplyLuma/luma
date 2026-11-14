@@ -10,13 +10,26 @@
 # android-gpu-admission.sha256 build-fp6.sh wrote beside DIR; an OSTree commit
 # has none, so its package admits no kernel.
 #
-#   build-kernel-modules-luma-fp6.sh --tree OUTPUT_DIR/modules
-#   build-kernel-modules-luma-fp6.sh OSTREE_REPO COMMIT
+# The package also carries the boot image of the same kernel (--boot-image,
+# scripts/mobile/build-fp6-boot-image.sh --kernel) and its declaration for
+# luma-device-boot (scripts/devices/device-boot-manifest.py, from
+# device.toml [boot_update]) in /usr/lib/luma/device-boot/fairphone-fp6/, so
+# an update that brings new modules also brings the kernel that loads them.
+# With --tree, the boot image's kernel must be the Image.gz of manifest.env
+# beside DIR (IMAGE_SHA256), whose KERNEL_NOTES_SHA256 the declaration keeps.
+#
+#   build-kernel-modules-luma-fp6.sh --boot-image FILE --tree OUTPUT_DIR/modules
+#   build-kernel-modules-luma-fp6.sh --boot-image FILE OSTREE_REPO COMMIT
 
 set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-usage='usage: build-kernel-modules-luma-fp6.sh --tree DIR | OSTREE_REPO COMMIT'
-tree="" ostree_repo="" commit=""
+usage='usage: build-kernel-modules-luma-fp6.sh --boot-image FILE (--tree DIR | OSTREE_REPO COMMIT)'
+tree="" ostree_repo="" commit="" boot_image=""
+if [ "${1:-}" = --boot-image ]; then
+  boot_image=$(realpath -e "${2:?$usage}")
+  shift 2
+fi
+[ -n "$boot_image" ] || { echo "$usage" >&2; exit 2; }
 if [ "${1:-}" = --tree ]; then
   tree=$(realpath -e "${2:?$usage}")
 else
@@ -53,6 +66,17 @@ else
     >"$admission_dir/$kver.sha256"
 fi
 rm -rf "$work_dir/tree/usr/lib/modules/$kver/dtb"
+kernel_sha="" notes_sha=""
+if [ -n "$tree" ]; then
+  manifest="$(dirname "$tree")/manifest.env"
+  [ -f "$manifest" ] || { echo "error: $manifest is missing (build the kernel with scripts/kernel/build-fp6.sh)" >&2; exit 1; }
+  kernel_sha=$(sed -n 's/^IMAGE_SHA256=//p' "$manifest")
+  notes_sha=$(sed -n 's/^KERNEL_NOTES_SHA256=//p' "$manifest")
+  [ -n "$kernel_sha" ] || { echo "error: $manifest has no IMAGE_SHA256" >&2; exit 1; }
+fi
+python3 "$repo_root/scripts/devices/device-boot-manifest.py" --device "$repo_root/devices/fairphone/fp6" \
+  --boot-image "$boot_image" --kernel-sha256 "$kernel_sha" --kernel-notes-sha256 "$notes_sha" \
+  --output "$work_dir/tree/usr/lib/luma/device-boot/fairphone-fp6"
 tar -C "$work_dir/tree" --sort=name --owner=0 --group=0 --numeric-owner -cf "$rpmbuild_dir/SOURCES/fp6-kernel-modules.tar" usr
 install -m 0644 "$repo_root/packaging/rpm/kernel-modules-luma-fp6.spec" "$rpmbuild_dir/SPECS/"
 # Nothing is compiled: the aarch64 package is assembled on any host.

@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.34%{?dist}
+Release:        1.luma.35%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -84,8 +84,11 @@ install -D -m 0755 bin/luma-updated %{buildroot}%{_libexecdir}/luma-updated
 install -D -m 0755 bin/luma-update-notifier %{buildroot}%{_libexecdir}/luma-update-notifier
 install -D -m 0755 bin/luma-update-boot %{buildroot}%{_libexecdir}/luma-update-boot
 install -D -m 0755 bin/luma-device-layer %{buildroot}%{_libexecdir}/luma-device-layer
+install -D -m 0755 bin/luma-device-boot %{buildroot}%{_libexecdir}/luma-device-boot
+# Device packages that boot their own kernel declare its boot image here.
+install -d -m 0755 %{buildroot}%{_prefix}/lib/luma/device-boot
 
-for unit in luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-device-layer.service; do
+for unit in luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-device-layer.service luma-device-boot.service luma-device-boot-confirm.service; do
   install -D -m 0644 data/systemd/$unit %{buildroot}%{_unitdir}/$unit
 done
 for unit in luma-update-notifier.service luma-update-notifier.path luma-update-notifier.timer; do
@@ -153,11 +156,11 @@ python3 -c "import gi, shutil; gi.require_version('OSTree', '1.0'); from gi.repo
 python3 -m unittest discover -v -s tests -p 'test_*.py'
 
 %post
-%systemd_post luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service luma-device-layer.service
+%systemd_post luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service luma-device-layer.service luma-device-boot.service luma-device-boot-confirm.service
 %systemd_user_post luma-update-notifier.path luma-update-notifier.timer
 
 %preun
-%systemd_preun luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service luma-device-layer.service
+%systemd_preun luma-updated.service luma-update-check.service luma-updated.timer luma-update-boot.service luma-greenboot-arm.service luma-greenboot-fallback.service luma-device-layer.service luma-device-boot.service luma-device-boot-confirm.service
 %systemd_user_preun luma-update-notifier.path luma-update-notifier.timer
 
 %postun
@@ -174,11 +177,14 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_libexecdir}/luma-update-notifier
 %{_libexecdir}/luma-update-boot
 %{_libexecdir}/luma-device-layer
+%{_libexecdir}/luma-device-boot
 %{_unitdir}/luma-updated.service
 %{_unitdir}/luma-update-check.service
 %{_unitdir}/luma-updated.timer
 %{_unitdir}/luma-update-boot.service
 %{_unitdir}/luma-device-layer.service
+%{_unitdir}/luma-device-boot.service
+%{_unitdir}/luma-device-boot-confirm.service
 %{_userunitdir}/luma-update-notifier.service
 %{_userunitdir}/luma-update-notifier.path
 %{_userunitdir}/luma-update-notifier.timer
@@ -212,6 +218,7 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/NetworkManager/dispatcher.d/90-luma-update
 %dir %attr(0755,root,root) %{_prefix}/lib/luma
 %{_prefix}/lib/luma/update.conf
+%dir %attr(0755,root,root) %{_prefix}/lib/luma/device-boot
 %dir %attr(0755,root,root) %{_sysconfdir}/luma
 %config(noreplace) %{_sysconfdir}/luma/statistics.conf
 %dir %attr(0755,root,root) %{_sysconfdir}/luma/update-graph-keys.d
@@ -231,6 +238,17 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.35
+- luma-device-boot: a device package that boots its own kernel from an A/B
+  boot partition declares the boot image it pairs with in
+  /usr/lib/luma/device-boot/<name>/device-boot.json. On a boot whose running
+  slot does not hold it, luma-device-boot.service checks the image digest,
+  writes it to the inactive slot (only boot/dtbo/init_boot/vendor_boot
+  partitions the manifest names, never modemst1/modemst2/fsg/fsc/persist),
+  reads it back, refuses when any other A/B pair differs between slots, sets
+  that slot active and restarts once. luma-device-boot-confirm.service marks
+  the slot successful once the declared kernel runs; a slot that does not boot
+  falls back to the previous one and its image is not tried again.
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.34
 - A graph answered with HTTP 404 or 410 is error class channel-unavailable
   ("No updates are published for this device's channel yet."), not network:
