@@ -295,13 +295,15 @@ bar in the status bar row. The panel host keeps the status inset
 
 `0103-wwan-mobile-data-on-by-default.patch`: with no NetworkManager profile
 bound to the SIM, the Mobile Data switch said off while the FP6 cellular link
-treats that state as on. The switch now reports on there, a first saved
-profile keeps data on, and turning data off with no profile binds the
-carrier's first listed APN with autoconnect off, so the link sees it. Roaming
-stays off by default. A new APN profile belongs to the person
+treats that state as on. The switch now reports on there. Turning data off
+with no profile saves the carrier's first listed APN, bound to the SIM with
+autoconnect off and marked as the switch's own
+(`org.projectluma.mobile-data.switch-only`), which the link reads as off;
+turning data on removes that profile so the link carries data again instead of
+NetworkManager activating an APN the link did not choose. Profiles saved from
+Access Point Names are unchanged. New APN profiles belong to the person
 (`connection.permissions` user:<name>): a phone's session holds
-`settings.modify.own` but not `settings.modify.system`, and NetworkManager
-refused a system-wide profile there.
+`settings.modify.own` but not `settings.modify.system`. Roaming stays off.
 
 `0104-lumaui-phone-requested-page-leaves-list.patch`: on a phone a page asked
 for from outside was pushed over the list only when the page changed, so
