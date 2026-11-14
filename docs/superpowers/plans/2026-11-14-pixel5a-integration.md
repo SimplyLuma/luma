@@ -136,8 +136,17 @@ Expected: PASS.
 
 - [ ] **Step 5: Build the overlay-only baseline**
 
-Run: `scripts/kernel/build-barbet.sh --cache /home/bronson/luma-barbet-work/barbet-integration/cache /tmp/barbet-base`
-Expected: release `7.3.0-rc7`, Image and DTB present for the base plus the fourteen overlay patches. The full lock build with repository patches is Task 16.
+Build the base `Image` (the barbet DTB arrives in Task 4):
+
+```sh
+prep=/home/bronson/luma-barbet-work/barbet-build/task2/linux/linux-7.3-rc7
+obj=/home/bronson/luma-barbet-work/barbet-build/task3-obj
+mkdir -p "$obj" && cp config/kernel/barbet.config "$obj/.config"
+make -s -C "$prep" O="$obj" ARCH=arm64 LLVM=1 olddefconfig
+make -s -C "$prep" O="$obj" ARCH=arm64 LLVM=1 -j24 Image
+```
+
+Expected: `make -s -C "$prep" O="$obj" ARCH=arm64 LLVM=1 kernelrelease` prints `7.3.0-rc7`, and `arch/arm64/boot/Image` exists. The builder's full DTB build is Task 16.
 
 - [ ] **Step 6: Commit**
 
