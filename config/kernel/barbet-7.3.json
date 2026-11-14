@@ -123,6 +123,11 @@
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0006-ASoC-qcom-barbet-microphone.patch",
       "sha256": "6bde80bde6efb7415f7953ae7d0e41ec08ba7419fdee50c599a4798fadee8aab"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0007-drm-panel-add-the-barbet-sofef01-panel-mode.patch",
+      "sha256": "7eee9da5a5648bcefd79234677e2eb10c5f47527efbb04eb328a689a3d3ea955"
     }
   ]
 }
