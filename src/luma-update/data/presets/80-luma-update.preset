@@ -4,3 +4,5 @@ enable luma-update-boot.service
 enable luma-greenboot-arm.service
 enable luma-greenboot-fallback.service
 enable luma-device-layer.service
+enable luma-device-boot.service
+enable luma-device-boot-confirm.service

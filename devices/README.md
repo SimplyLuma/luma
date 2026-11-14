@@ -51,6 +51,30 @@ rollback, power lost before finalisation) it stops and logs why
 (`journalctl -u luma-device-layer`, `luma-device-layer status`).
 `luma-device-layer apply --retry` starts over.
 
+## Boot image updates
+
+A phone's kernel boots from its A/B boot partition, outside the OS commit, and
+its modules come from the device repository. A device with `[boot_update]`
+ships the boot image of the same kernel build in that package
+(`[boot_update] package`, under `/usr/lib/luma/device-boot/<vendor>-<codename>/`
+with `device-boot.json`, written by `scripts/devices/device-boot-manifest.py`),
+so new modules and the kernel that loads them arrive in one deployment.
+
+On every boot `luma-device-boot.service` (luma-update) compares the image with
+the running slot's boot partition. When they differ it checks the image's
+digest, requires the running slot to be marked successful, requires every A/B
+pair it does not write to be identical on both slots (`qbootctl` switches the
+whole chain), writes the image to the inactive slot, reads it back, sets that
+slot active and restarts once, before the display manager starts. It opens for
+writing only the partitions `[boot_update] partitions` names, of the kinds
+boot, dtbo, init_boot and vendor_boot, and never opens modemst1, modemst2, fsg,
+fsc or persist. `luma-device-boot-confirm.service` marks the slot successful
+once the declared kernel runs (release and `/sys/kernel/notes` digest). A slot
+that does not boot is left by the bootloader's A/B fallback; the next boot
+records its image as failed and never writes it again
+(`luma-device-boot status`, `luma-device-boot retry`). `luma.device_boot=0` on
+the kernel command line turns the service off for `fastboot boot` test kernels.
+
 | Device | `[device_repo]` | Kit |
 |---|---|---|
 | Fairphone 6 | `luma-fairphone-fp6`: modules, firmware, platform, IMS, eSIM, modem stack | boot image + `…-kit.sparse` |

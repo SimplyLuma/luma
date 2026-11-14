@@ -131,6 +131,19 @@ url = "https://dl.simplyluma.com/os/devices/aarch64/fairphone-fp6/"
 replace = ["ModemManager", "ModemManager-glib", "libqmi", "libqmi-utils", "libcamera", "libcamera-ipa", "libcamera-gstreamer"]
 install = ["kernel-modules-luma-fp6", "luma-fp6-firmware", "luma-fp6-platform", "luma-fp6-carrier-adapter", "luma-imsd", "luma-esim-broker", "lpac-fp6", "qbootctl", "tqftpserv"]
 
+[boot_update]
+# kernel-modules-luma-fp6 carries the boot image of its own kernel build
+# (scripts/packages/build-kernel-modules-luma-fp6.sh --boot-image) in
+# /usr/lib/luma/device-boot/fairphone-fp6/, so the modules and the kernel that
+# loads them change together. luma-device-boot (luma-update) writes it to the
+# inactive slot, sets that slot active with qbootctl and restarts once; the
+# bootloader returns to the previous slot when the new kernel does not boot.
+# qbootctl switches every A/B pair, so all the others (dtbo, firmware) must be
+# identical on both slots; dtbo stays blank on both and is never written.
+package = "kernel-modules-luma-fp6"
+slots = "qbootctl"
+partitions = ["boot_a", "boot_b"]
+
 [kit]
 compatible = ["fairphone,fp6"]
 # The first start is `fastboot boot`, never a reboot: a normal first restart

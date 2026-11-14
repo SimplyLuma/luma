@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Bring the boot partition in step with this deployment's kernel
+Documentation=https://github.com/SimplyLuma/luma/blob/main/devices/README.md
+# Only a device package that boots its own kernel from an A/B boot partition
+# declares an image (/usr/lib/luma/device-boot/<name>/device-boot.json).
+ConditionPathExists=/run/ostree-booted
+ConditionDirectoryNotEmpty=/usr/lib/luma/device-boot
+# Off for a `fastboot boot` test kernel.
+ConditionKernelCommandLine=!luma.device_boot=0
+After=local-fs.target
+# When the image changed it is written to the inactive slot and the phone
+# restarts once: before anyone signs in and before any update transaction.
+Before=display-manager.service luma-device-layer.service luma-updated.service luma-update-check.service greenboot-healthcheck.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/luma-device-boot apply
+RemainAfterExit=yes
+# Reading the A/B pairs and writing one boot image: seconds on a phone.
+TimeoutStartSec=10min
+StateDirectory=luma-device-boot
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

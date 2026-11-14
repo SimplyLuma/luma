@@ -373,6 +373,27 @@ class Checker:
         if "{kit}" in joined and not device.get("device_repo"):
             self.error(where, "[kit] flash writes {kit} but the device has no [device_repo]")
 
+    def check_boot_update(self, device_dir: Path, device: dict, boot: dict) -> None:
+        """Boot image updates write only both slots of the device's own boot partitions."""
+        update = device.get("boot_update")
+        if update is None:
+            return
+        where = device_dir / "device.toml"
+        partitions = update.get("partitions", [])
+        preserve = set(device.get("install", {}).get("preserve", []))
+        for name in partitions:
+            if name in preserve:
+                self.error(where, f"[boot_update] writes preserved partition {name!r}")
+            twin = name[:-1] + ("b" if name.endswith("a") else "a")
+            if twin not in partitions:
+                self.error(where, f"[boot_update] lists {name} without {twin}")
+        if boot.get("partition") and f"{boot['partition']}_a" not in partitions:
+            self.error(where, f"[boot_update] does not write the boot partition {boot['partition']!r}")
+        if update.get("package") not in device.get("device_repo", {}).get("install", []):
+            self.error(where, "[boot_update] package must be one of [device_repo] install")
+        if "partition_size" not in boot:
+            self.error(device_dir / "boot.toml", "[boot_update] needs the boot partition_size")
+
     def check_tests(self, device_dir: Path, vendor: str, codename: str) -> list[Path]:
         tests = device_dir / "tests"
         found = sorted(tests.glob("test_*.py")) if tests.is_dir() else []
@@ -438,6 +459,7 @@ class Checker:
                 if (device_dir / "INSTALL.md").is_file():
                     self.check_install_guide(device_dir, device.get("install", {}))
                 self.check_kit(device_dir, device)
+                self.check_boot_update(device_dir, device, boot)
                 test_files += self.check_tests(device_dir, vendor.name, device_dir.name)
                 owned.append((device_dir, device.get("maintainers", [])))
         return test_files, owned
