@@ -10,6 +10,13 @@ store=/var/lib/luma/device-firmware
 command -v tqftpserv >/dev/null ||
     { echo "tqftpserv is not installed; Wi-Fi not started" >&2; exit 1; }
 
+# tqftpserv resolves TFTP requests from /lib/firmware (plus the vendor paths),
+# and the image mounts that read-only. Bind the operator store over it so the
+# modem can fetch wlanmdsp.mbn/bdwlan.bin.
+if [ -s "$store/wlanmdsp.mbn" ] && [ ! -e /lib/firmware/wlanmdsp.mbn ]; then
+    mount --bind "$store" /lib/firmware
+fi
+
 # ath10k probes asynchronously; its QMI client must exist before the chip.
 i=0
 while [ ! -e /sys/bus/platform/devices/18800000.wifi/driver ]; do
@@ -19,6 +26,15 @@ while [ ! -e /sys/bus/platform/devices/18800000.wifi/driver ]; do
 done
 
 systemctl start tqftpserv.service 2>/dev/null || true
+
+# Wait until the TFTP service is actually visible over QRTR before the modem
+# starts asking for firmware.
+i=0
+while ! qrtr-lookup 2>/dev/null | awk '$1 == 4096 { found = 1 } END { exit !found }'; do
+    i=$((i + 1))
+    [ "$i" -lt 100 ] || { echo "tqftpserv did not register over QRTR" >&2; exit 1; }
+    sleep 0.1
+done
 
 # The WLAN subsystem belongs to the modem while the ADSP is down.
 if [ -e /sys/class/remoteproc/remoteproc0/state ] &&
@@ -40,7 +56,7 @@ fi
 i=0
 while [ ! -e /sys/class/net/wlan0 ]; do
     i=$((i + 1))
-    [ "$i" -lt 600 ] || { echo "wlan0 did not appear; check the WLAN firmware" >&2; exit 1; }
+    [ "$i" -lt 1200 ] || { echo "wlan0 did not appear; check the WLAN firmware" >&2; exit 1; }
     sleep 0.1
 done
 

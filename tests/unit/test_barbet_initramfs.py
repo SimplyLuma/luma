@@ -60,6 +60,8 @@ class BarbetInitramfs(unittest.TestCase):
         self.assertLess(bind, start, "the modem must start after ath10k binds")
         self.assertIn("tqftpserv", script)
         self.assertIn("wlan0", script)
+        self.assertIn('mount --bind "$store" /lib/firmware', script)
+        self.assertIn("4096", script, "wait for the TFTP service over QRTR")
 
     def test_wifi_hands_the_wlan_subsystem_to_the_modem_first(self) -> None:
         script = (TREE / "luma-barbet/etc/luma/barbet-wifi-start.sh").read_text()
