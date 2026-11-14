@@ -41,14 +41,18 @@ install never writes `boot_a` (Android), `modemst1`, `modemst2`, `fsg`, `fsc`, `
 
 ## Firmware
 
-The first boot needs the operator-extracted firmware at
-`/var/lib/luma/device-firmware`. The manifest lists the files and
-hashes; extract them from the matching factory image, never from another
-build:
+The first boot needs the operator-extracted firmware in the shared store
+`/var/lib/luma/device-firmware`. The manifest lists the files and hashes;
+extract them from the matching factory image, never from another build:
 
-- `qcom/sm7250/google/barbet/adsp.*` — ADSP;
 - `qcom/a650_sqe.fw`, `qcom/a650_gmu.bin`, `qcom/a620_zap.*` — GPU;
-- `rt5514p_dsp_fw1.bin` … `rt5514p_dsp_fw4.bin` — RT5514P microphone DSP.
+- `qcom/sm7250/google/barbet/adsp.*` — ADSP, in
+  `/var/lib/luma/device-firmware-barbet` on this install;
+- `rt5514p_dsp_fw1.bin` … `rt5514p_dsp_fw4.bin` — RT5514P microphone DSP,
+  accepted from either store.
+
+The WCN3990 WLAN firmware and `board-2.bin` are listed for the follow-up
+Wi-Fi work; they do not make Wi-Fi work until the modem/WLFW stack is enabled.
 
 After the first boot, copy the tree to the phone (USB-NCM/SSH or the installer
 path you normally use) and restart the audio service. The current set does not

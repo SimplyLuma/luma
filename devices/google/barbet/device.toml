@@ -35,8 +35,8 @@ ostree_source = "config/mobile/fp6-ostree-source.json"
 
 [firmware]
 manifest = "firmware.manifest"
-manifest_sha256 = "e7f53dd18ad825b3a26d4f9a9e91679251ddfc59fa5685e5093aeaa039ea8919"
-files = 45
+manifest_sha256 = "f2335d6d4a7d374997b5875ed2c7891e4554ef9b3554773e77a6924c56eb4e58"
+files = 49
 store = "/var/lib/luma/device-firmware"
 
 [install]
