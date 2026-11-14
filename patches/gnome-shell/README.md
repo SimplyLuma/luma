@@ -649,3 +649,10 @@ Filer was masked like a Chromium window and, maximized, the mask cut its own
 shadow out of the corner squares. A window whose process did not load
 libadwaita is now left alone when another process in its `app-flatpak-*.scope`
 did. Test: `window-corners-first-commit.js` in %check. Shell .176.
+
+`0339-search-names-phone-and-tablet.patch`: Search names the device it runs
+on. The mobile presentation says "Search this phone" and "Everything on this
+phone, in one place.", the tablet presentation "tablet", and both hide the
+"esc" chip, which means nothing without an Esc key; an outside tap still
+closes Search. The desktop keeps "this machine" and the chip. Test:
+`search-keyboard-policy.js` in %check. Shell .177.
