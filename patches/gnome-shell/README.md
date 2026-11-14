@@ -666,3 +666,9 @@ symbol pages, where `_` and `/` sit beside it; a nine-key middle row is inset
 by half a key on each side. `Keycap.phoneLevels()` builds the rows from each
 language's layout file. Number pads, terminal layouts and TV are unchanged.
 Test: `keycap-policy.js` in %check. Shell .178.
+
+`0341-keyboard-destroy-height-handler.patch`: a keyboard destroyed while shown
+(a mouse or keyboard plugged in turns the on-screen keyboard off) disconnects
+the keyboard box's height handler that showing it connected. The handler
+outlived the actor and wrote translation-y to it on every later monitor change.
+Test: `keycap-policy.js` in %check. Shell .179.

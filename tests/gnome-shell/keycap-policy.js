@@ -545,4 +545,13 @@ for (const body of handlers) {
     assert(/const phone = Main\.presentation\s*\?\s*Main\.presentation\.mode === 'mobile'\s*:\s*GLib\.getenv\('LUMA_DEVICE_CLASS'\) === 'handheld';/.test(build),
         'the phone arrangement follows Mobile, and a handheld greeter');
 }
+// A keyboard destroyed while shown (a mouse or keyboard plugged in) stops
+// following the keyboard box's height; a leaked handler wrote to the disposed
+// actor on every later monitor change.
+{
+    const at = keyboard.indexOf('        this._destroyed = true;');
+    const body = keyboard.slice(at, keyboard.indexOf('\n    }', at));
+    assert(at > 0 && body.includes('keyboardBox.disconnect(this._keyboardHeightNotifyId)'),
+        'a destroyed keyboard drops its keyboard-box height handler');
+}
 console.log('PASS Keycap privacy, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');
