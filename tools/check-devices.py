@@ -7,7 +7,8 @@ INSTALL.md and tests/, plus an optional SUPPORT.md (hardware support matrix). Ma
 firmware manifest and initramfs sources against the hashes device.toml records, and the whole tree
 against the rules that keep it public: text only, no firmware blobs, no IMEI
 or ICCID values, and an owner in .github/CODEOWNERS for every directory.
-Each device's own tests then run.
+Kernels follow docs/kernel.md: a device points at a SimplyLuma/linux tag, and
+kernel patches stay out of this repository. Each device's own tests then run.
 
 Usage:  tools/check-devices.py [--root DIR] [--no-tests]
 Exit:   0 valid, 1 invalid, 2 could not run.
@@ -43,6 +44,19 @@ MANIFEST_PATH = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9_.,/+-]*$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 DIGITS = re.compile(r"(?<![0-9A-Za-z])[0-9]{15,20}(?![0-9A-Za-z])")
 REQUIRED_ENFORCING = "enforcing=1"
+# docs/kernel.md, "Transition": these devices keep the kernel they had until
+# they move to the Luma base. Every other device points at a SimplyLuma/linux tag.
+TRANSITIONAL_KERNELS = {"fairphone/fp6", "microsoft/sp12in", "raspberrypi/rpi5"}
+# Kernel patch directories from before docs/kernel.md. New kernel work is a
+# pull request to SimplyLuma/linux, not a patches/linux-* directory.
+LEGACY_KERNEL_PATCH_DIRS = {
+    "linux-android-container", "linux-milos", "linux-milos-fingerprint", "linux-milos-nfc",
+    "linux-mt6878", "linux-qcomtee-control-v18", "linux-qcomtee-control-v22",
+    "linux-qcomtee-control-v23", "linux-qcomtee-control-v24", "linux-qcomtee-control-v25",
+    "linux-qseecom", "linux-qseecom-dedicated-heaps", "linux-qseecom-qseelog",
+    "linux-qseecom-shmbridge", "linux-qseecom-stock-heaps", "linux-surface-pro12", "linux-zumapro",
+}
+LUMA_KERNEL_REPOSITORY = "https://github.com/SimplyLuma/linux"
 KCONFIG_LINE = re.compile(r"CONFIG_[A-Z0-9_]+=.+|# CONFIG_[A-Z0-9_]+ is not set|#( .*)?")
 
 
@@ -282,6 +296,33 @@ class Checker:
         except (ValueError, KeyError, TypeError, OSError) as exc:
             self.error(where, f"invalid kernel source lock: {exc}")
 
+    def check_kernel_policy(self, device_dir: Path, key: str, device: dict, soc: dict | None) -> None:
+        """docs/kernel.md: one Luma kernel; vendor or source-locked kernels stay experimental."""
+        kernel = device.get("kernel", {})
+        where = device_dir / "device.toml"
+        codename = device.get("codename", device_dir.name)
+        if kernel.get("source_lock") and device.get("tier") != "experimental":
+            self.error(where, "a source-locked kernel is not on the Luma base; the tier stays 'experimental'")
+        tag = kernel.get("tag", "")
+        prefixes = ("luma-kernel-", f"luma-{codename}-") if key in TRANSITIONAL_KERNELS else ("luma-kernel-",)
+        if tag and not tag.startswith(prefixes):
+            self.error(where, "kernel.tag must start with " + " or ".join(repr(p) for p in prefixes))
+        if key in TRANSITIONAL_KERNELS:
+            return
+        if kernel.get("source_lock") or kernel.get("patches"):
+            self.error(where, "kernel must be a SimplyLuma/linux tag; source locks and kernel patches "
+                              "in this repository are refused (docs/kernel.md)")
+        if tag and (soc or {}).get("kernel", {}).get("repository") != LUMA_KERNEL_REPOSITORY:
+            self.error(where, f"the SoC's kernel.repository must be {LUMA_KERNEL_REPOSITORY}")
+
+    def check_kernel_patch_dirs(self) -> None:
+        base = self.root / "patches"
+        if not base.is_dir():
+            return
+        for path in sorted(p for p in base.iterdir() if p.is_dir() and p.name.startswith("linux-")):
+            if path.name not in LEGACY_KERNEL_PATCH_DIRS:
+                self.error(path, "kernel patches go to SimplyLuma/linux as commits (docs/kernel.md)")
+
     def check_distribution_kernel(self, device_dir: Path, kernel: dict, soc: dict | None) -> None:
         """A distribution kernel's release must be exactly its package NEVR on the SoC's architecture."""
         if not kernel.get("distribution"):
@@ -442,9 +483,8 @@ class Checker:
                 soc = socs.get(device.get("soc", ""))
                 if soc is None:
                     self.error(device_dir / "device.toml", f"soc {device.get('soc')!r} has no socs/ directory")
+                self.check_kernel_policy(device_dir, f"{vendor.name}/{device_dir.name}", device, soc)
                 tag = device.get("kernel", {}).get("tag", "")
-                if tag and not tag.startswith(f"luma-{codename}-"):
-                    self.error(device_dir / "device.toml", f"kernel.tag must start with 'luma-{codename}-'")
                 release = device.get("kernel", {}).get("release", "")
                 if tag and release and not tag.endswith("-" + release):
                     self.error(device_dir / "device.toml", "kernel.tag must end with the kernel release")
@@ -470,6 +510,7 @@ class Checker:
                 self.error(base, "missing directory")
                 return []
             self.check_public_tree(self.root / base)
+        self.check_kernel_patch_dirs()
         socs = self.check_socs()
         test_files, owned = self.check_devices(socs)
         soc_dirs = [(self.root / "socs" / key, []) for key in socs]
