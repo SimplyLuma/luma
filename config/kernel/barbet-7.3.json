@@ -128,6 +128,11 @@
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0007-drm-panel-add-the-barbet-sofef01-panel-mode.patch",
       "sha256": "7eee9da5a5648bcefd79234677e2eb10c5f47527efbb04eb328a689a3d3ea955"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0008-arm64-dts-qcom-add-the-barbet-ipcrtr-channel.patch",
+      "sha256": "7f32866966a6a0ae8d8b5846ebae0973c5a15dbc3c4472ecf5b7664e7006e155"
     }
   ]
 }
