@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Land the Google Pixel 5a (barbet) as a strict `experimental` Luma device with a full install, in two stacked pull requests: verified bring-up, then battery and haptics.
+**Goal:** Land the Google Pixel 5a (barbet) as a strict `experimental` Luma device with a full install, in two stacked pull requests: verified bring-up, then battery, haptics and microphone capture.
 
 **Architecture:** Pin Linux v7.3-rc7 plus the avicii SM7250 overlay, carry board/driver changes as repository patches, build with clang/LLD from a committed config, and install the shared ARM userdata plus a barbet boot image. Platform services travel in the boot initramfs, Fold-style, so the maintainers can wire nightly after merge without a signed device repository.
 
@@ -601,7 +601,7 @@ Display/mode, touch contacts, GPU client, speaker 2 kHz + mic capture, suspend c
 
 **Files:**
 - Modify: `config/kernel/barbet.config` (`CONFIG_CHARGER_QCOM_PM7250B=y`)
-- Modify: `patches/linux-barbet/7.3/0008-power-barbet-charger.patch` (board DTS node)
+- Modify: `patches/linux-barbet/7.3/0010-power-barbet-charger.patch` (board DTS node)
 - Test: `power_supply` sysfs
 
 **Interfaces:**
@@ -622,14 +622,14 @@ Plug/unplug, `status`, `charge_behaviour`; assert no write outside the charge-en
 - [ ] **Step 4: Commit**
 
 ```bash
-git add config/kernel/barbet.config patches/linux-barbet/7.3/0008-power-barbet-charger.patch
+git add config/kernel/barbet.config patches/linux-barbet/7.3/0010-power-barbet-charger.patch
 git commit -m "power: supply: enable the PM7250B charger"
 ```
 
 ### Task 18: PR 2 — battery gauge
 
 **Files:**
-- Create: `patches/linux-barbet/7.3/0009-power-barbet-battery.patch`
+- Create: `patches/linux-barbet/7.3/0011-power-barbet-battery.patch`
 - Maybe: `drivers/power/supply/qcom_pm7250b_bms.c`
 - Test: capacity/percent movement
 
@@ -647,14 +647,14 @@ If safe, add the gauge driver and DT, enable it, and verify percent movement ove
 - [ ] **Step 3: Commit**
 
 ```bash
-git add patches/linux-barbet/7.3/0009-power-barbet-battery.patch devices/google/barbet/SUPPORT.md
+git add patches/linux-barbet/7.3/0011-power-barbet-battery.patch devices/google/barbet/SUPPORT.md
 git commit -m "power: supply: add barbet battery capacity"
 ```
 
 ### Task 19: PR 2 — DRV2624 haptics
 
 **Files:**
-- Create: `patches/linux-barbet/7.3/0010-input-add-drv2624.patch`
+- Create: `patches/linux-barbet/7.3/0012-input-add-drv2624.patch`
 - Create: `drivers/input/misc/drv2624.c` (inside the patch)
 - Modify: `drivers/input/misc/Kconfig`, `Makefile`, board DTS
 - Test: FF effect + felt vibration
@@ -677,8 +677,36 @@ Regmap I2C, reset GPIO, the stock `ti,*` tuning properties, input FF device. No 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add patches/linux-barbet/7.3/0010-input-add-drv2624.patch
+git add patches/linux-barbet/7.3/0012-input-add-drv2624.patch
 git commit -m "input: add the TI DRV2624 haptics driver"
+```
+
+### Task 19b: PR 2 — microphone capture
+
+**Files:**
+- Modify: `patches/linux-barbet/7.3/0006-ASoC-qcom-barbet-microphone.patch` or add `0013-ASoC-barbet-microphone-capture.patch`
+- Test: `pw-record`/`arecord` capture statistics and audible playback
+
+**Interfaces:**
+- Produces: a real capture stream (varying samples), replacing the current constant DC offset.
+
+- [ ] **Step 1: Characterise the capture**
+
+Record 5 s with no playback and with a known tone, in S16_LE and S32_LE, mono and stereo. Record RMS, distinct values and peak. A constant 0x4000 offset means the slot/format is wrong, not an acoustic problem.
+
+- [ ] **Step 2: Check the route**
+
+Confirm `Stereo1 DMIC Mux`, `Sto1 ADC MIXL DMIC`, `ADC1`, `MultiMedia1 Mixer PRIMARY_TDM_TX_0`, the TDM TX slot width and the RT5514P DSP firmware load. Fix the mux/clock/slot width in the machine driver or DTS.
+
+- [ ] **Step 3: Verify**
+
+A 5 s capture has thousands of distinct values, a sane noise floor and a visible tone; playback of the capture is audible. Record the commands/output in SUPPORT.md.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add patches/linux-barbet/7.3/0013-ASoC-barbet-microphone-capture.patch config/kernel/barbet.config
+git commit -m "ASoC: qcom: fix the barbet microphone capture path"
 ```
 
 ### Task 20: PR 2 validation and status
@@ -689,11 +717,11 @@ git commit -m "input: add the TI DRV2624 haptics driver"
 
 - [ ] **Step 1: Run the PR 2 gates**
 
-Charger status/percent, plug/unplug, suspend after haptics, no identity writes. Record the commands/output.
+Charger status/percent (or the documented gauge blocker), plug/unplug, felt vibration, a real microphone capture, suspend after haptics, no identity writes. Record the commands/output.
 
 - [ ] **Step 2: Update the matrix**
 
-Battery and vibrate move from “not working” to the actual status; any blocker is explicit.
+Battery, vibrate and microphone move from “not working” to the actual status; any blocker is explicit.
 
 - [ ] **Step 3: Commit and run checks**
 
@@ -705,8 +733,8 @@ python3 -B tools/check-devices.py
 
 ## Self-Review
 
-- **Spec coverage:** PR 1 covers source lock, config, builder, board DTS, touch, display, GPU, Wi-Fi, audio, mic, initramfs/platform, boot builder, device manifest, firmware, status and install. PR 2 covers charger, gauge and haptics. No spec goal lacks a task.
+- **Spec coverage:** PR 1 covers source lock, config, builder, board DTS, touch, display, GPU, Wi-Fi, audio, mic, initramfs/platform, boot builder, device manifest, firmware, status and install. PR 2 covers charger, gauge, haptics and microphone capture. No spec goal lacks a task.
 - **Step scan:** every step names a file, a command or a test; no “handle edge cases” or “TBD”.
 - **Type consistency:** `build-barbet.sh [--cache DIR] OUTPUT_DIR`, `build-barbet-boot-image.sh`, `soc="qcom/sm7250"`, `source_lock="config/kernel/barbet-7.3.json"`, `config="config/kernel/barbet.config"`, `dtb="qcom/sm7250-google-barbet.dtb"`, `partition="boot_b"`, `ostree_ref="luma/1/aarch64/nightly"` are used consistently.
-- **Review focus:** install preservation (Task 13/16), lock integrity (Task 2/3), boot-image failure (Task 12), acoustic audio (Task 9/16), battery/haptics/suspend (Task 17–20) each have a test or checklist.
+- **Review focus:** install preservation (Task 13/16), lock integrity (Task 2/3), boot-image failure (Task 12), acoustic audio (Task 9/16), battery/haptics/microphone/suspend (Task 17–20) each have a test or checklist.
 - **Proportion:** the plan is task-level, not a code transcript; the exact patch bodies are left to the extraction tasks, which have comparison and hardware gates.
