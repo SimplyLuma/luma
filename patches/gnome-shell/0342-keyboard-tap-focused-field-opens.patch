@@ -1,0 +1,121 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: a field focused by a tap opens the keyboard
+
+Mutter shows the on-screen keyboard for a text-input-v3 client only when
+the client enables a text input that is already focused: the first enable
+is a bare focus-in. GTK asks for the keyboard from the text widget's click
+release, and that request is lost whenever the field takes the input focus
+after it: the first field in a process (GTK binds the text input lazily,
+after the finger lifts) or a field that takes the focus on release. The
+first tap focused the field and the second one opened the keyboard.
+
+The keyboard remembers the window under the last touch and when it lifted.
+A text input focus-in on that window, while the finger is down or within
+500 ms of it lifting, opens the keyboard as the second tap would, unless
+the field arrives with its text selected: a tap leaves a caret, and a
+selected field was focused by the application (a page opening selects its
+first field), which keeps the keyboard closed as before. Only touchscreens
+send touch events, so pointer and keyboard use, and systems without a
+touchscreen, are unchanged.
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -26,6 +26,9 @@ import {tv as TV_TOKENS} from './lumaPresentation/tvTokens.js';
+ export const KEYBOARD_ANIMATION_TIME = 150;
+ const KEYBOARD_REST_TIME = KEYBOARD_ANIMATION_TIME * 2;
+ const KEY_LONG_PRESS_TIME = 250;
++// A text field that takes the input focus this soon after a finger lifts
++// from its window was tapped.
++const FIELD_TAP_TIME = 500;
+ 
+ const A11Y_APPLICATIONS_SCHEMA = 'org.gnome.desktop.a11y.applications';
+ const SHOW_KEYBOARD = 'screen-keyboard-enabled';
+@@ -1878,6 +1881,8 @@ export const Keyboard = GObject.registerClass({
+         this._stopLayerWarm();
+         if (this._priorsIdleId)
+             GLib.source_remove(this._priorsIdleId);
++        if (this._tapFocusId)
++            GLib.source_remove(this._tapFocusId);
+         if (this._keyboardHeightNotifyId) {
+             Main.layoutManager.keyboardBox.disconnect(this._keyboardHeightNotifyId);
+             this._keyboardHeightNotifyId = 0;
+@@ -2292,7 +2297,10 @@ export const Keyboard = GObject.registerClass({
+         Main.inputMethod.connectObject('surrounding-text-set',
+             this._onSurroundingText.bind(this), this);
+         Main.inputMethod.connectObject('physical-key', () => this._tvPhysicalKey(), this);
+-        Main.inputMethod.connectObject('focus-changed', () => this._tvFieldFocus(), this);
++        Main.inputMethod.connectObject('focus-changed', () => {
++            this._tvFieldFocus();
++            this._tapFieldFocus();
++        }, this);
+         global.display.connectObject(
+             'accelerator-activated', (_display, action) => this._tvAccelerator(action),
+             'accelerator-deactivated', (_display, action) => this._tvAcceleratorUp(action), this);
+@@ -2343,7 +2351,8 @@ export const Keyboard = GObject.registerClass({
+             'content-hints-changed', this._onContentHintsChanged.bind(this),
+             this);
+         global.stage.connectObject('notify::key-focus',
+-            this._onKeyFocusChanged.bind(this), this);
++            this._onKeyFocusChanged.bind(this),
++            'captured-event', this._onStageTouch.bind(this), this);
+         Main.sessionMode.connectObject('updated', this._onSessionModeUpdated.bind(this), this);
+         global.display.get_selection().connectObject('owner-changed',
+             this._onSelectionOwnerChanged.bind(this), this);
+@@ -2544,6 +2553,57 @@ export const Keyboard = GObject.registerClass({
+         }
+     }
+ 
++    // Which window the last finger went down on (the focused window, or
++    // none), and when it lifted. Only touchscreens send touch events.
++    _onStageTouch(stage, event) {
++        const type = event.type();
++        if (type === Clutter.EventType.TOUCH_BEGIN) {
++            let actor = stage.get_event_actor(event);
++            while (actor && !(actor instanceof Meta.WindowActor))
++                actor = actor.get_parent();
++            const window = actor?.get_meta_window() ?? null;
++            this._fieldTap = {
++                window: window && window === global.display.focus_window ? window : null,
++                down: true,
++                upMs: 0,
++            };
++        } else if (this._fieldTap?.down &&
++                   (type === Clutter.EventType.TOUCH_END || type === Clutter.EventType.TOUCH_CANCEL)) {
++            this._fieldTap.down = false;
++            this._fieldTap.upMs = monotonicMs();
++        }
++        return Clutter.EVENT_PROPAGATE;
++    }
++
++    // A client turns its text input on only once a field has the focus.
++    // When a tap is what gave a field the focus (applications start their
++    // input method on the first field focused, and many fields take the
++    // focus as the finger lifts), the request to show the keyboard that
++    // the tap made came first and went nowhere, and the field's text input
++    // arrives as a bare focus. A field focused by a tap on its own window
++    // opens the keyboard, as a second tap would.
++    _tapFieldFocus() {
++        const tap = this._fieldTap;
++        if (this._tv || !Main.inputMethod.currentFocus || !tap?.window ||
++            tap.window !== global.display.focus_window ||
++            (!tap.down && monotonicMs() - tap.upMs > FIELD_TAP_TIME))
++            return;
++        this._fieldTap = null;
++        if (this._tapFocusId)
++            return;
++        // The field's text comes in the same request as the focus. A tap
++        // leaves a caret; a field that takes the focus with its text
++        // selected was focused by the application (opening a page selects
++        // its first field), and the keyboard stays closed as before.
++        this._tapFocusId = GLib.idle_add_once(GLib.PRIORITY_HIGH, () => {
++            this._tapFocusId = 0;
++            const [text, cursor, anchor] = Main.inputMethod.getSurroundingText();
++            if (Main.inputMethod.currentFocus && !(text && cursor !== anchor))
++                this.open();
++        });
++        GLib.Source.set_name_by_id(this._tapFocusId, '[gnome-shell] this._tapFieldFocus');
++    }
++
+     _locked() {
+         return Main.sessionMode.isLocked || Main.sessionMode.isGreeter;
+     }
