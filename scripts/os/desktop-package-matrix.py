@@ -68,6 +68,7 @@ def matrix(root, changed=None, previous_registry=None, previous_workflow=None,
             # Shell packages are checked by the native UI workflow.
             'GNOME_SHELL_': set(),
             'PRAIRIE_ICON_THEME_': {'icon-theme', 'ari'},
+            'IIO_SENSOR_PROXY_': {'iio-sensor-proxy'},
             'LUMA_APPLICATION_INSTALLER_': {'application-installer', 'ari'},
             'LUMA_DEVELOPER_PLATFORM_': {group for group, row in registry['groups'].items()
                                         if row.get('toolkit', False)},

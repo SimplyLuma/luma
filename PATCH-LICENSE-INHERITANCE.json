@@ -350,6 +350,16 @@
       "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
     },
     {
+      "family": "iio-sensor-proxy",
+      "path": "patches/iio-sensor-proxy/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-3.0-only"
+      ],
+      "note": "The modified src/drv-iio-poll-light.c carries Bastien Nocera's 2014 copyright and a GNU GPL version 3 notice (the Fedora package aggregate is GPL-3.0-or-later). Preserve that upstream notice."
+    },
+    {
       "family": "latinime",
       "path": "patches/latinime/",
       "status": "upstream-license-not-established-by-this-audit",

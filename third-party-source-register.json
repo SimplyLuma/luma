@@ -13389,6 +13389,9 @@
     "scripts/packages/build-gnome-text-editor.sh": [
       "Apache-2.0"
     ],
+    "scripts/packages/build-iio-sensor-proxy.sh": [
+      "Apache-2.0"
+    ],
     "scripts/packages/build-luma-logos.sh": [
       "Apache-2.0"
     ],
