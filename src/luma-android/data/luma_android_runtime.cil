@@ -3,3 +3,9 @@
 ; This module adds no allow rules.
 (filecon "/usr/libexec/luma-waydroid-container" file
     (system_u object_r waydroid_exec_t ((s0) (s0))))
+; Built-in Binder devices (no binderfs) are devtmpfs nodes and default to
+; device_t. Give them the type binderfs nodes get from genfscon, which the
+; provider's policy already lets the container use. binderfs symlinks keep
+; their own label: this context matches character devices only.
+(filecon "/dev/(hw|vnd)?binder" char
+    (system_u object_r binder_device_t ((s0) (s0))))

@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.114%{?dist}
+Release:        1.luma.115%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -152,6 +152,8 @@ if ! install -p -m 0755 -- %{_libexecdir}/luma-waydroid-container "$runtime_entr
     exit 1
 fi
 /usr/sbin/restorecon %{_libexecdir}/luma-waydroid-container >/dev/null 2>&1 || :
+# Relabel built-in Binder nodes on a running system; boots get it from udev.
+/usr/sbin/restorecon /dev/binder /dev/hwbinder /dev/vndbinder >/dev/null 2>&1 || :
 /usr/bin/systemctl daemon-reload >/dev/null 2>&1 || :
 update-mime-database %{_datadir}/mime >/dev/null 2>&1 || :
 update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
@@ -220,6 +222,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-android-recover@.service
 
 %changelog
+* Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.115
+- Label built-in Binder devices binder_device_t instead of device_t
+
 * Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.114
 - Render Android on the Fairphone 6 GPU when its kernel is admitted or under qualification; keep the CPU renderer otherwise
 
