@@ -1190,3 +1190,53 @@ command: the touch panel's analog rail was never enabled.
 This is still the bring-up driver, not a release driver. Suspend/resume,
 firmware update, gesture/grip handling and coordinate calibration across
 the full 1080x2400 area remain untested.
+
+## 2026-11-14 repository integration, v161 source baseline
+
+The bring-up tree is now a reviewable repository integration rather than an
+external source pile. The authoritative tested baseline is the **v161 / kernel
+124** image and its DTB, not the earlier v24/v154 images or the historical
+blocked-audio entries above.
+
+### What is in the tree
+
+- Source lock `config/kernel/barbet-7.3.json`: Linux v7.3-rc7 plus the avicii
+  SM7250 overlay and the `patches/linux-barbet/7.3` board/driver series.
+- `socs/qcom/sm7250/soc.toml`, the strict `devices/google/barbet` manifest,
+  boot policy, firmware manifest and tests.
+- `scripts/kernel/build-barbet.sh`, `scripts/mobile/build-barbet-boot-image.sh`
+  and `scripts/mobile/build-barbet-install.sh`: prepare, build and assemble a
+  full test set from the lock.
+- `config/mobile/barbet-initramfs`: the boot overlay, ADSP/audio service,
+  ACP profile, Wi-Fi service and the post-resume `dwc3` hook.
+
+### Verified on the v161 device
+
+- Display, backlight, touch contacts and the power/volume keys.
+- Adreno GPU initialized and used by Phoc/Phosh.
+- Speaker: both TAS2562 amps active (`PWR_CTRL=0x0c`), TDM clock `0x44`, and a
+  2 kHz tone recorded through the mic at about 143x the no-tone baseline.
+- Microphone: RT5514P capture with real samples (nonzero RMS, ~19.7k distinct
+  values over five seconds).
+- `s2idle` suspend/wake with display/touch restored and a post-resume USB
+  rebind.
+
+### Built but not yet a works claim
+
+- The full set builds from the lock: a 100663296-byte boot image (AVB NONE,
+  rollback 1783209600), the shared ARM userdata, `SHA256SUMS` and the exact
+  install commands. The full-install hardware gate still has to run on the
+  slot-a install.
+- Wi-Fi: WCN3990/QRTR kernel support and a start service are present, but the
+  WCN3990 firmware and `tqftpserv` are not in the current firmware set. The
+  earlier manual association is historical evidence only.
+- Battery and vibrate are PR 2: the PM7250B charger is disabled and there is
+  no battery gauge or DRV2624 haptics driver yet.
+
+### Limits
+
+The install writes `userdata` + `boot_a`, sets slot a and erases Android; the
+factory image is the recovery path. `modemst1/2`, `fsg`, `fsc`, `persist`,
+`dtbo`, `vbmeta`, the bootloader and `super` are preserved. SELinux remains
+permissive while the device is `experimental`. No firmware, private captures,
+identities or release images are in the repository.
