@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.113%{?dist}
+Release:        1.luma.114%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -220,6 +220,9 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-android-recover@.service
 
 %changelog
+* Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.114
+- Render Android on the Fairphone 6 GPU when its kernel is admitted or under qualification; keep the CPU renderer otherwise
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.113
 - Admit FP6 kernels from the entry kernel-modules-luma-fp6 ships for its own kernel instead of a hand-edited list
 - Admit a kernel under on-phone qualification through a root-written, reboot-cleared digest marker
