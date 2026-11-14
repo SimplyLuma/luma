@@ -1,0 +1,98 @@
+{
+  "schema": "org.projectluma.kernel-source/v1",
+  "version": "7.3-rc7",
+  "release": "7.3.0-rc7",
+  "architecture": "aarch64",
+  "device_tree": "qcom/sm7250-google-barbet.dtb",
+  "sources": {
+    "linux": {
+      "name": "linux-v7.3-rc7.tar.gz",
+      "url": "https://github.com/torvalds/linux/archive/refs/tags/v7.3-rc7.tar.gz",
+      "sha256": "f789fc0d7b3713b6be23284f2a9c35bf41fb86785b24cfcc506c20d8ff712523",
+      "size": 269820344
+    },
+    "overlay": {
+      "name": "avicii-780934bbcc758694a9e4e8950eed9c040725df4d.tar.gz",
+      "url": "https://github.com/lazybrar/avicii-mainline/archive/780934bbcc758694a9e4e8950eed9c040725df4d.tar.gz",
+      "sha256": "5b151b749dc11c746b20268554a2cc5e72ba5f1a5a0f86fa66a6aca8c24ccc0f",
+      "size": 146568,
+      "revision": "780934bbcc758694a9e4e8950eed9c040725df4d"
+    }
+  },
+  "base_config": {
+    "config": "config/kernel/barbet.config",
+    "sha256": "43d3ace336d10e404c1d4847e5a0ca5d4a05e21179aa9d660ac1eefcbaf50c59"
+  },
+  "patches": [
+    {
+      "source": "overlay",
+      "path": "patches/01-bindings.patch",
+      "sha256": "ef8dd351453943e76a4eeea7212e5bf88fcca839e5a70e2120ca7b3ff45b6273"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/02-clk.patch",
+      "sha256": "2630e6e4f50627b96dd3660b62bad9cda618ac172cdcb71feaa1d971b7712d67"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/03-pinctrl.patch",
+      "sha256": "343a695b388a89c95da29b60f5cd8111ce546eaef0bcdb43da92ca3047b89676"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/04-interconnect.patch",
+      "sha256": "f3efeef9fbc336b9ff0bcb42a3fc8a06801fef56ee0e283d0b904170ae0e7105"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/05-soc-pm.patch",
+      "sha256": "d108a869c7138cadd80a758eee826766fd61e10ea357c894a828fdc85bdd4ab4"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/06-ufs.patch",
+      "sha256": "ef59fc15d3f89b7d1baac94a51c480127bf81ddee40b65100780663df5b402d1"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/07-display.patch",
+      "sha256": "3438ec3cb2965c17c0c159fd6788619df4d743fcf4e468e7b1d11059dbcc472a"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/08-iommu.patch",
+      "sha256": "4086112d51160caf24496006ce93fadabdbac8cb45c03bdb0fb914a7e2a0a4af"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/09-power.patch",
+      "sha256": "6aa8b6825e55cd0410ce5525e8ff2c2291825dacc08f1855936dc8cfdddf584b"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/10-touch.patch",
+      "sha256": "03966a5f9d5fd5f685cc5925b783529ea4858fe585e6ef0ea2482c5c013b7e46"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/11-remoteproc.patch",
+      "sha256": "1d8c4df6a0594eb2b2b9096c7ad10550da39d07a0c9195204671119de4055b47"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/12-audio.patch",
+      "sha256": "18a6cdcf62be625d97f3aabab8b49349024c598ea3787ca1d4af27bca2f108d2"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/13-media.patch",
+      "sha256": "917405ebb04780977579a7333863606462440a5cf300cdcd8e57ecb9cee1ad1f"
+    },
+    {
+      "source": "overlay",
+      "path": "patches/14-dts.patch",
+      "sha256": "93a8c05478ffa9deb40ca8da0b43e6c778c9fae6aab1b7da4ae8666b284d667b"
+    }
+  ]
+}
