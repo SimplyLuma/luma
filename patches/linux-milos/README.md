@@ -54,8 +54,8 @@ process identity, a 44.4-degree Celsius cold-start peak that settled to 37
 degrees, and zero GMU, GPU, or DPU fault signatures. This is enough to retain
 the candidate for repetition, not enough to promote it: the Android boundary
 remained CPU-rendered at 30 Hz and its cold-start frame statistics were still
-poor. Repeat cold boot, display-power, interactive direct-render, and idle
-power gates remain open.
+poor. The repeat cold boot, display-power, interactive direct-render, and
+idle power gates stayed open until the 2026-11-14 qualification below.
 
 Promotion requires physical FP6 evidence showing:
 
@@ -63,6 +63,17 @@ Promotion requires physical FP6 evidence showing:
 - native Waydroid surfaces run without an Adreno hangcheck;
 - Android applications are managed as ordinary Luma application windows; and
 - idle-power measurements are understood.
+
+On 2026-11-14 the kernel built from the tag with 0002, 0004 and 0039-0042
+(`/sys/kernel/notes` sha256 `bd0064a7...c617`) passed the physical Android GPU
+qualification on an FP6 with `luma-android-runtime` 1.luma.114: three normal
+cold boots with a cold launch each, 69 minutes of Android rendered by
+freedreno on the A810 (apps switched every five minutes), ten display-power
+cycles, five s2idle `rtcwake` cycles with relaunch, and a 30-minute idle soak.
+No GMU, GPU, DPU or SMMU fault line, no watchdog latch, no thermal trip or
+throttle event, and GNOME Shell kept rendering. Peaks: GPU zones 76.2 C (first
+passive trip 85 C), CPU zones 80.8 C (first trip 110 C), battery 42 C; each run
+settled to within 1 C of its idle reading within five minutes.
 
 Android GPU admission follows `devices/fairphone/fp6/device.toml`
 `[kernel.android_gpu]`: it requires 0002 and 0004, refuses 0003, and the
