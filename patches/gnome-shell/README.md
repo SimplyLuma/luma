@@ -666,3 +666,9 @@ symbol pages, where `_` and `/` sit beside it; a nine-key middle row is inset
 by half a key on each side. `Keycap.phoneLevels()` builds the rows from each
 language's layout file. Number pads, terminal layouts and TV are unchanged.
 Test: `keycap-policy.js` in %check. Shell .178.
+
+`0341-screenshot-pick-colors-once.patch`: handheld status and gesture ink
+samples its six application-edge points from one full-stage paint instead of
+six. The bounded native `pick_colors()` call preserves the existing backdrop
+blur capture and releases the image immediately. Test:
+`tests/gnome-shell/presentation/status-ink-capture.js`. Shell .179.
