@@ -53,15 +53,22 @@ if [ -e /sys/class/remoteproc/remoteproc1/state ] &&
     echo start > /sys/class/remoteproc/remoteproc1/state
 fi
 
+# The WLAN boot is normally quick. Do not delay audio for minutes when it
+# fails: wait briefly, then hand the system back and record the failure.
 i=0
-while [ ! -e /sys/class/net/wlan0 ]; do
+while [ ! -e /sys/class/net/wlan0 ] && [ "$i" -lt 300 ]; do
     i=$((i + 1))
-    [ "$i" -lt 3000 ] || { echo "wlan0 did not appear; check the WLAN firmware" >&2; exit 1; }
     sleep 0.1
 done
+if [ -e /sys/class/net/wlan0 ]; then
+    ip link set wlan0 up 2>/dev/null || true
+    echo "wlan0 ready; NetworkManager owns association"
+else
+    echo "wlan0 did not appear; check the WLAN firmware" >&2
+fi
 
-ip link set wlan0 up 2>/dev/null || true
-
-# luma-barbet-audio.service runs after this one and starts the ADSP with its
-# firmware path staged, so it owns bringing audio back after the WLAN boot.
-echo "wlan0 ready; NetworkManager owns association"
+# Bring audio back whether or not Wi-Fi came up; luma-barbet-audio runs next.
+if [ -e /sys/class/remoteproc/remoteproc0/state ] &&
+   [ "$(cat /sys/class/remoteproc/remoteproc0/state)" != running ]; then
+    echo start > /sys/class/remoteproc/remoteproc0/state
+fi

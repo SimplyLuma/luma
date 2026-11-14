@@ -8,7 +8,7 @@ ConditionPathExists=/var/lib/luma/device-firmware-barbet
 Type=oneshot
 ExecStart=/etc/luma/barbet-wifi-start.sh
 RemainAfterExit=yes
-TimeoutStartSec=360
+TimeoutStartSec=60
 
 [Install]
 WantedBy=multi-user.target
