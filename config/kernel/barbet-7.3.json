@@ -118,6 +118,11 @@
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0005-ASoC-qcom-barbet-speaker.patch",
       "sha256": "955347ae849d75437b8bce8699df21d1abe3a1f391c47d3c7b8bc0a01b264437"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0006-ASoC-qcom-barbet-microphone.patch",
+      "sha256": "6bde80bde6efb7415f7953ae7d0e41ec08ba7419fdee50c599a4798fadee8aab"
     }
   ]
 }
