@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import configparser
 import importlib.machinery
 import importlib.util
 import io
@@ -393,6 +394,7 @@ class PolicyTests(unittest.TestCase):
                     "LUMA_DEVICE_TREE_COMPATIBLE": str(compatible),
                     "LUMA_WAYDROID_CONFIG": str(config),
                     "LUMA_WAYDROID_EXECUTABLE": "/usr/bin/true",
+                    "PYTHONPATH": str(REPO_ROOT / "src/luma-android"),
                 },
             )
             text = config.read_text(encoding="utf-8")
@@ -408,6 +410,54 @@ class PolicyTests(unittest.TestCase):
             self.assertIn("persist.waydroid.use_subsurface = false", text)
             self.assertIn("persist.waydroid.cursor_on_subsurface = false", text)
             self.assertEqual(config.stat().st_mode & 0o777, 0o644)
+
+    def test_fp6_graphics_helper_follows_kernel_admission(self) -> None:
+        helper = _load_script("luma-waydroid-fp6-graphics-compat")
+        closed = KernelAdmission(False, "a" * 64, "kernel-not-admitted")
+        qualifying = KernelAdmission(True, "b" * 64, "qualifying-kernel")
+        latched = KernelAdmission(False, reason="gpu-fault-latched")
+        software = ("default", "angle", "pastel")
+        keys = ("ro.hardware.gralloc", "ro.hardware.egl", "ro.hardware.vulkan")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compatible = root / "compatible"
+            compatible.write_bytes(b"fairphone,fp6\0qcom,milos\0")
+            config = root / "waydroid.cfg"
+            config.write_text("[waydroid]\narch = arm64_only\n", encoding="utf-8")
+
+            def run(admission):
+                parser = configparser.ConfigParser(interpolation=None)
+                with mock.patch.dict(os.environ, {
+                    "LUMA_DEVICE_TREE_COMPATIBLE": str(compatible),
+                    "LUMA_WAYDROID_CONFIG": str(config),
+                    "LUMA_WAYDROID_EXECUTABLE": "/usr/bin/true",
+                }), mock.patch.object(
+                    helper, "fp6_kernel_admission", return_value=admission
+                ), mock.patch.object(helper.subprocess, "run") as init, mock.patch.object(
+                    helper.os, "chown"
+                ):
+                    self.assertEqual(helper.main(), 0)
+                parser.read(config, encoding="utf-8")
+                props = parser["properties"]
+                return (tuple(props.get(key) for key in keys),
+                        props.get("persist.luma.fp6_graphics"), init.call_count)
+
+            self.assertEqual(run(closed), (software, "software-v1", 1))
+            self.assertEqual(run(closed), (software, "software-v1", 0))
+            # Admitted: Waydroid's own render-node selection (gbm, Mesa, turnip).
+            self.assertEqual(run(qualifying), ((None, None, None), "gpu-v1", 1))
+            self.assertEqual(run(qualifying), ((None, None, None), "gpu-v1", 0))
+            self.assertEqual(run(latched), (software, "software-v1", 1))
+            # Explicit lab choices survive both directions.
+            text = config.read_text(encoding="utf-8").replace(
+                "ro.hardware.egl = angle", "ro.hardware.egl = custom"
+            )
+            config.write_text(text, encoding="utf-8")
+            self.assertEqual(run(qualifying), ((None, "custom", None), "gpu-v1", 1))
+            self.assertEqual(run(closed), (("default", "custom", "pastel"), "software-v1", 1))
+            text = config.read_text(encoding="utf-8")
+            self.assertIn("persist.waydroid.use_subsurface = false", text)
+            self.assertIn("persist.luma.fp6_software_canvas = 558x1088-sdl-2x-v1", text)
 
     def test_fp6_graphics_helper_migrates_stale_explicit_canvas_once(self) -> None:
         helper = REPO_ROOT / "src/luma-android/bin/luma-waydroid-fp6-graphics-compat"
@@ -430,6 +480,7 @@ class PolicyTests(unittest.TestCase):
                     "LUMA_DEVICE_TREE_COMPATIBLE": str(compatible),
                     "LUMA_WAYDROID_CONFIG": str(config),
                     "LUMA_WAYDROID_EXECUTABLE": "/usr/bin/true",
+                    "PYTHONPATH": str(REPO_ROOT / "src/luma-android"),
                 },
             )
             text = config.read_text(encoding="utf-8")
