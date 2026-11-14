@@ -286,3 +286,16 @@ after Wi-Fi only then, and the sidebar follows a modem coming or going. Before
 the panel opens, the NMClient and MMManager it reads from the object storage
 are created, as GNOME's window does at startup, so the `wwan` deep link works
 too. Test: `luma-settings-live-modem` against a stand-in ModemManager.
+
+`0102-lumaui-phone-panel-status-inset.patch`: on a phone the window bleeds
+under the status bar and a LumaUI page sets its title island below it, but a
+page still drawn by its GNOME panel (Mobile Network, Printers) put its header
+bar in the status bar row. The panel host keeps the status inset
+(`--lumaui-phone-frame-status`) on a phone, however the panel was opened.
+
+`0103-wwan-mobile-data-on-by-default.patch`: with no NetworkManager profile
+bound to the SIM, the Mobile Data switch said off while the FP6 cellular link
+treats that state as on. The switch now reports on there, a first saved
+profile keeps data on, and turning data off with no profile binds the
+carrier's first listed APN with autoconnect off, so the link sees it. Roaming
+stays off by default.

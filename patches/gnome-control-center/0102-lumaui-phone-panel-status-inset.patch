@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 13 Nov 2026 22:22:02 -0600
+Subject: [PATCH] LumaUI Settings: a GNOME panel keeps the phone's status
+ inset
+
+On a phone the window bleeds under the status bar and a LumaUI page
+places its own title island below it. A page still drawn by its GNOME
+panel (Mobile Network, Printers) had no such inset: its header bar sat in
+the status bar row, title and switch under the clock and indicators, in
+every way the panel was opened. The panel host now keeps the status
+bar's height clear on a phone. Computers and LumaUI pages are unchanged.
+---
+ shell/luma-settings.css | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/shell/luma-settings.css b/shell/luma-settings.css
+index 5118dec..b0e1828 100644
+--- a/shell/luma-settings.css
++++ b/shell/luma-settings.css
+@@ -145,6 +145,9 @@ button.cf-crumb image { -gtk-icon-size: 12px; }
+   border: none; outline: none; color: @luma_muted; }
+ .cf-panel-host headerbar button.image-button:hover, .cf-panel-host headerbar button.back:hover { background: @luma_hover; color: @luma_ink; }
+ .cf-panel-host headerbar button image { -gtk-icon-size: 16px; }
++/* A phone: the window bleeds under the status bar and a LumaUI page sets its title island below it.
++ * A GNOME panel's header bar has no such inset, so its host keeps the status bar's height clear. */
++window.lumaui-phone-device.lumaui-bleed .cf-panel-host { padding-top: var(--lumaui-phone-frame-status); }
+ 
+ .cf-card {
+   background: @luma_well;
