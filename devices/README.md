@@ -3,12 +3,15 @@
 One directory per supported device, `devices/<vendor>/<codename>/`, each a
 strict manifest checked by `tools/check-devices.py`. Shared chip-family
 configuration is in `../socs/`. See [docs/devices.md](../docs/devices.md) for
-the layout, support tiers and how to add a device.
+the layout, support tiers and how to add a device, and
+[docs/kernel.md](../docs/kernel.md) for the one Luma kernel every ARM device
+builds from (SimplyLuma/linux `luma-7.2` plus one branch per SoC family).
 
 | Device | Directory | SoC | Tier |
 |---|---|---|---|
 | Fairphone 6 | [fairphone/fp6](fairphone/fp6) | Qualcomm SM7635 (milos) | supported |
 | Raspberry Pi 5 | [raspberrypi/rpi5](raspberrypi/rpi5) | Broadcom BCM2712 | experimental |
+| Surface Pro 12-inch | [microsoft/sp12in](microsoft/sp12in) | Qualcomm X1P-42-100 (purwa) | experimental |
 
 ## Phones: one image plus a device kit
 
@@ -28,6 +31,10 @@ Every phone installs the same two-part download:
      `kit.json.asc`, and `repo/`, the signed rpm-md device repository) as an
      Android sparse image that writes only `LumaBoot`'s range of userdata;
    - `FLASH.txt`: `[kit] flash`, the fastboot commands in order.
+
+Hardware updates (the device repository and boot images) reach adopted
+devices only; experimental devices get OS and app updates
+([docs/kernel.md](../docs/kernel.md#update-streams)).
 
 On the first boot `luma-device-layer.service` (luma-update; the image names the
 kit's filesystem in `/etc/luma/device-kit.conf`):

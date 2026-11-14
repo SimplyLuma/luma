@@ -4,6 +4,7 @@ import importlib.util
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -140,7 +141,24 @@ class DeviceTree(unittest.TestCase):
 
     def test_kernel_tag_names_the_device_and_release(self):
         self.edit(self.fp6 / "device.toml", 'tag = "luma-fp6-', 'tag = "luma-fp5-')
-        self.assertRejected("kernel.tag must start with 'luma-fp6-'")
+        self.assertRejected("kernel.tag must start with 'luma-kernel-' or 'luma-fp6-'")
+
+    def test_new_device_kernel_is_a_luma_tag(self):
+        with mock.patch.object(check_devices, "TRANSITIONAL_KERNELS", set()):
+            errors = self.errors()
+        refused = "source locks and kernel patches in this repository are refused"
+        for device in ("fairphone/fp6", "microsoft/sp12in", "raspberrypi/rpi5"):
+            self.assertTrue(any(e.startswith(f"devices/{device}/") and refused in e for e in errors), errors)
+        self.assertTrue(any("kernel.tag must start with 'luma-kernel-'" in e for e in errors), errors)
+
+    def test_source_locked_kernel_stays_experimental(self):
+        self.edit(self.root / "devices/raspberrypi/rpi5/device.toml", 'tier = "experimental"', 'tier = "community"')
+        self.assertRejected("a source-locked kernel is not on the Luma base")
+
+    def test_new_kernel_patch_directory_is_refused(self):
+        (self.root / "patches/linux-barbet").mkdir()
+        (self.root / "patches/linux-barbet/0001-x.patch").write_text("diff --git a/x b/x\n")
+        self.assertRejected("kernel patches go to SimplyLuma/linux")
 
     def distribution_kernel(self, release="7.2.11-200.fc44.aarch64", extra=""):
         """Turn the Pi 5 into a device on Fedora's unmodified kernel."""

@@ -2,7 +2,8 @@
 
 Luma Mobile runs on many phones from one source tree. Each device is a small,
 strict manifest; everything a device shares with others lives in its SoC
-family; kernels live in their own repository. This page explains the layout,
+family; the kernel is one Luma kernel in its own repository
+([kernel.md](kernel.md)). This page explains the layout,
 the support tiers and how to add a device.
 
 ## Layout
@@ -24,12 +25,18 @@ socs/
 
 A device directory holds exactly those five entries. Anything else fails CI.
 
-**Kernels** are in [SimplyLuma/linux](https://github.com/SimplyLuma/linux), one
-branch per SoC family (`milos` for SM7635). Each kernel Luma ships has a tag,
-`luma-<codename>-<release>-<kernel release>`, whose message names the
-published boot image and the SHA-256 of its kernel, DTB, `.config` and modules.
-The device's exact `.config`, device-tree overlays and build steps are in
-`luma/<codename>/<release>/` on that branch. `device.toml` points at the tag.
+**Kernels** are in [SimplyLuma/linux](https://github.com/SimplyLuma/linux): one
+base branch on the current upstream stable series (`luma-7.2`) and one branch
+per SoC family carrying only patches on top of it. Each release merges every
+family onto the base and builds one arm64 kernel for all ARM devices, tagged
+`luma-kernel-<kernel release>`. `device.toml` points at that tag; kernel
+patches never live in this repository. See [kernel.md](kernel.md).
+
+Devices from before the one kernel (Fairphone 6, Raspberry Pi 5, Surface Pro
+12-inch) keep their current kernels until they move. The Fairphone 6 tag,
+`luma-fp6-<release>-<kernel release>` on `milos`, names the published boot
+image and the SHA-256 of its kernel, DTB, `.config` and modules; its
+`.config`, overlays and build steps are in `luma/fp6/<release>/`.
 
 **Distribution kernels.** A device that boots its distribution's stock
 kernel, unmodified, has no tag, source lock or `.config`. Its `[kernel]`
@@ -62,9 +69,17 @@ against it before boot, and `device.toml` records the manifest's own SHA-256.
 
 | Tier | What it means | What it needs |
 |---|---|---|
-| `supported` | Luma publishes install images and OS updates for it, tests every release on the real device, and treats a regression as a release blocker. | A maintainer on the Luma team, at least one entry in `releases`, an update ref, and device tests. |
-| `community` | Builds from this tree and is looked after by a named outside maintainer. Luma reviews changes but does not test releases on it or block on it. | A maintainer who answers issues, device tests. |
-| `experimental` | Bring-up. It may not boot, may lose features between releases, and may be removed if nobody maintains it. Never offered to people who did not go looking for it. | A maintainer. May run SELinux permissive; every other tier must boot with `enforcing=1`. |
+| `supported` | Luma publishes install images, OS and hardware updates for it, has the device, tests every release on it, and treats a regression as a release blocker. | The `community` needs, a maintainer on the Luma team, at least one entry in `releases`, an update ref. |
+| `community` | On the Luma kernel base and looked after by a named outside maintainer. Luma reviews changes but does not test releases on it or block on it. | A kernel tag on the Luma base, a maintainer who answers issues, device tests. |
+| `experimental` | Bring-up. It may not boot, may lose features between releases, and may be removed if nobody maintains it. Never offered to people who did not go looking for it. Gets OS and app updates only. | A maintainer. May run SELinux permissive; every other tier must boot with `enforcing=1`. |
+
+A device on a vendor kernel, a source lock or any tree other than the Luma
+base stays `experimental`, as do the devices of a family that did not rebase
+onto a new base in time (for that cycle). The three devices from before the
+one kernel keep their tiers while they move. The website lists a device as
+Alpha only once it passes the gate in [kernel.md](kernel.md#alpha-listing-gate).
+Adopted devices (Luma builds, signs and publishes the kernel and device
+repository) are described in [kernel.md](kernel.md#adopted-devices).
 
 A device moves up a tier by pull request, with the evidence (which releases
 were tested and how) in the description. A device whose maintainer leaves
@@ -73,12 +88,17 @@ drops to `experimental` until someone takes it over.
 ## Adding a device
 
 1. Check whether its SoC family exists under `socs/`. If it does not, add
-   `socs/<vendor>/<family>/soc.toml` and create the family's branch in
-   SimplyLuma/linux from a public upstream tree. Name families after the
-   upstream kernel's name for the chip, lower case.
-2. Get the kernel building on that branch. Put the device's `.config`, DT
-   overlays and build steps under `luma/<codename>/<release>/` and tag the
-   commit you ship.
+   `socs/<vendor>/<family>/soc.toml` (`repository` SimplyLuma/linux, `branch`
+   the family) and ask for the family branch in SimplyLuma/linux; Luma
+   creates it at the current base. Name families after the upstream kernel's
+   name for the chip, lower case.
+2. Open a pull request against the family branch with your kernel work,
+   rebased onto the current Luma base: real commits with authorship,
+   `Signed-off-by` and SPDX lines intact, source device trees (mainline or
+   upstreamable, never decompiled), the family's config fragment. Send what
+   you can upstream. Rules: [kernel.md](kernel.md#contributing-kernel-work).
+   Point `device.toml` `[kernel] tag` at the `luma-kernel-…` release that
+   carries it.
 3. Create `devices/<vendor>/<codename>/` with the five entries. The codename is
    the one the vendor and upstream kernel use, lower case. Copy the Fairphone
    6 directory as a starting point and remove what does not apply.
@@ -114,7 +134,12 @@ python3 -m venv /tmp/devices && /tmp/devices/bin/pip install jsonschema==4.23.0
 - the kernel command line drops `enforcing=1` (outside `experimental`) or
   contains a forbidden argument such as `selinux=0`;
 - the install guide flashes or erases a partition the device must preserve;
-- a device or SoC directory has no owner in `.github/CODEOWNERS`.
+- a device or SoC directory has no owner in `.github/CODEOWNERS`;
+- a device outside the transition list uses a kernel source lock or
+  `[kernel] patches`, a tag other than `luma-kernel-…`, or a SoC whose
+  kernel repository is not SimplyLuma/linux;
+- a source-locked kernel is above `experimental`;
+- a new `patches/linux-*` directory appears.
 
 It then runs every device's own tests.
 
