@@ -10,13 +10,6 @@ store=/var/lib/luma/device-firmware
 command -v tqftpserv >/dev/null ||
     { echo "tqftpserv is not installed; Wi-Fi not started" >&2; exit 1; }
 
-# tqftpserv resolves TFTP requests from /lib/firmware (plus the vendor paths),
-# and the image mounts that read-only. Bind the operator store over it so the
-# modem can fetch wlanmdsp.mbn/bdwlan.bin.
-if [ -s "$store/wlanmdsp.mbn" ] && [ ! -e /lib/firmware/wlanmdsp.mbn ]; then
-    mount --bind "$store" /lib/firmware
-fi
-
 # ath10k probes asynchronously; its QMI client must exist before the chip.
 i=0
 while [ ! -e /sys/bus/platform/devices/18800000.wifi/driver ]; do
