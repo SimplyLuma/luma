@@ -692,3 +692,9 @@ which is after that touch went down, so the first touch after startup or
 after a mouse or touchpad was used went unrecorded, and a field focused from
 the release (Notes' search) got no keyboard on that tap.
 Test: `keycap-policy.js` in %check. Shell .181.
+
+`0344-screenshot-pick-colors-once.patch`: handheld status and gesture ink
+samples its six application-edge points from one full-stage paint instead of
+six. The bounded native `pick_colors()` call preserves the existing backdrop
+blur capture and releases the image immediately. Test:
+`tests/gnome-shell/presentation/status-ink-capture.js`. Shell .182.
