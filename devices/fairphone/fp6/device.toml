@@ -47,12 +47,12 @@ required_patches = [
 rejected_patches = ["patches/linux-milos/0003-drm-msm-a810-use-gen8-3-ahb-fence-range.patch"]
 # Set by `fp6-android-gpu-admission.py qualify` after the on-phone
 # qualification passes; "" = no kernel has passed.
-qualified_gpu_inputs = ""
-qualified_notes_sha256 = ""
+qualified_gpu_inputs = "3a677fbc9d995fdfea158333f9e79836a441b88f42d324f012409bddd5b64265"
+qualified_notes_sha256 = "bd0064a79692982e68a272389017eb4018cd58b7bd3b82787af5b7574859c617"
 # Stamped by `fp6-android-gpu-admission.py stamp`; CI fails when the [kernel]
 # inputs change without restamping.
 kernel_inputs = "6317899b5398d7d5076924aeafe0d9cb2d4a5b4a2680ded28da9c6dceec25930"
-admitted = false
+admitted = true
 
 [boot]
 config = "boot.toml"
