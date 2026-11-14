@@ -48,6 +48,19 @@ class BarbetInitramfs(unittest.TestCase):
         hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
         self.assertNotRegex(hook, re.compile(r"modemst|fsg|fsc|persist|vbmeta|dtbo", re.I))
 
+    def test_hook_masks_the_fp6_platform_units(self) -> None:
+        hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
+        self.assertIn("luma-fp6-*.service", hook)
+        self.assertIn('ln -sf /dev/null "/sysroot/etc/systemd/system/${unit##*/}"', hook)
+
+    def test_wifi_starts_the_modem_after_ath10k_binds(self) -> None:
+        script = (TREE / "luma-barbet/etc/luma/barbet-wifi-start.sh").read_text()
+        bind = script.index("/sys/bus/platform/devices/18800000.wifi/driver")
+        start = script.index("/sys/class/remoteproc/remoteproc1/state")
+        self.assertLess(bind, start, "the modem must start after ath10k binds")
+        self.assertIn("tqftpserv", script)
+        self.assertIn("wlan0", script)
+
     def test_audio_uses_the_firmware_store(self) -> None:
         service = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-audio.service").read_text()
         self.assertIn("/var/lib/luma/device-firmware-barbet/rt5514p_dsp_fw1.bin", service)
