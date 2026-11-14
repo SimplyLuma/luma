@@ -672,3 +672,13 @@ Test: `keycap-policy.js` in %check. Shell .178.
 the keyboard box's height handler that showing it connected. The handler
 outlived the actor and wrote translation-y to it on every later monitor change.
 Test: `keycap-policy.js` in %check. Shell .179.
+
+`0342-keyboard-tap-focused-field-opens.patch`: a text field focused by a tap
+opens the on-screen keyboard on the first tap. Mutter shows the keyboard only
+when a client enables a text input that is already focused, and GTK asks from
+the click release, which comes before the focus for the first field in a
+process (the text input is bound lazily) and for fields that take the focus on
+release. The keyboard remembers the window under the last touch; a text input
+focus-in on that window while the finger is down, or within 500 ms of it
+lifting, opens it. Touch events come only from touchscreens, so pointer and
+keyboard use are unchanged. Test: `keycap-policy.js` in %check. Shell .180.

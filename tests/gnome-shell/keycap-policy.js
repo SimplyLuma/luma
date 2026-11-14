@@ -554,4 +554,25 @@ for (const body of handlers) {
     assert(at > 0 && body.includes('keyboardBox.disconnect(this._keyboardHeightNotifyId)'),
         'a destroyed keyboard drops its keyboard-box height handler');
 }
-console.log('PASS Keycap privacy, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');
+// A text field focused by a tap on its own window opens the keyboard: the
+// client's own request to show it came before the focus and went nowhere.
+// Only touch events arm it, so pointer and keyboard use stay as they were.
+{
+    const touch = keyboard.slice(keyboard.indexOf('    _onStageTouch(stage, event) {'),
+        keyboard.indexOf('\n    }\n', keyboard.indexOf('    _onStageTouch(stage, event) {')));
+    const focus = keyboard.slice(keyboard.indexOf('    _tapFieldFocus() {'),
+        keyboard.indexOf('\n    }\n', keyboard.indexOf('    _tapFieldFocus() {')));
+    assert(/'captured-event', this\._onStageTouch\.bind\(this\)/.test(keyboard),
+        'the keyboard watches the stage for touches');
+    assert(touch.includes('Clutter.EventType.TOUCH_BEGIN') && !/BUTTON_PRESS|KEY_PRESS/.test(touch) &&
+        touch.includes('window === global.display.focus_window'),
+        'only a touch on the focused window arms the tap');
+    assert(touch.includes('return Clutter.EVENT_PROPAGATE;') && !touch.includes('EVENT_STOP'),
+        'watching touches never takes them from the window');
+    assert(/this\._tvFieldFocus\(\);\s*this\._tapFieldFocus\(\);/.test(keyboard),
+        'a text input focus-in checks for the tap');
+    assert(focus.includes('monotonicMs() - tap.upMs > FIELD_TAP_TIME') && focus.includes('this._fieldTap = null;') &&
+        focus.includes('this.open();') && focus.includes('this._tv'),
+        'a recent tap opens the keyboard once, outside TV posture');
+}
+console.log('PASS Keycap privacy, tap-focused fields, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');
