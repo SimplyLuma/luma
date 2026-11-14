@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 14 Nov 2026 02:44:48 -0600
+Subject: [PATCH] LumaUI Settings: a page asked for again leaves the phone's
+ list
+
+On a phone a page opened from outside (gnome-control-center wwan, the
+launch-panel action) is pushed over the list only when the page changes.
+After Back from that page the list showed, and asking for the same page
+again left the list in place. The command line and launch-panel now show
+the requested page on a phone once the shell has opened it.
+---
+ shell/cc-application.c |  9 ++++++++-
+ shell/cc-luma-window.c | 10 ++++++++++
+ shell/cc-luma-window.h |  2 ++
+ 3 files changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/shell/cc-application.c b/shell/cc-application.c
+index 5f017e6..2bdfcf1 100644
+--- a/shell/cc-application.c
++++ b/shell/cc-application.c
+@@ -200,6 +200,8 @@ launch_panel_activated (GSimpleAction *action,
+ 
+   if (!cc_shell_set_active_panel_from_id (current_shell (self), panel_id, parameters, &error))
+     g_warning ("Failed to activate the '%s' panel: %s", panel_id, error->message);
++  else if (self->luma_ui && self->luma_window)
++    cc_luma_window_show_page (self->luma_window);
+ }
+ 
+ static void
+@@ -356,7 +358,12 @@ cc_application_command_line (GApplication            *application,
+       for (i = 1; start_panels[i] != NULL; i++)
+         g_variant_builder_add (&builder, "v", g_variant_new_string (start_panels[i]));
+       parameters = g_variant_builder_end (&builder);
+-      if (!cc_shell_set_active_panel_from_id (current_shell (self), start_id, parameters, &err))
++      if (cc_shell_set_active_panel_from_id (current_shell (self), start_id, parameters, &err))
++        {
++          if (self->luma_ui && self->luma_window)
++            cc_luma_window_show_page (self->luma_window);
++        }
++      else
+         {
+           g_warning ("Could not load setting panel \"%s\": %s", start_id,
+                      (err) ? err->message : "Unknown error");
+diff --git a/shell/cc-luma-window.c b/shell/cc-luma-window.c
+index a79ee8e..3566197 100644
+--- a/shell/cc-luma-window.c
++++ b/shell/cc-luma-window.c
+@@ -529,6 +529,16 @@ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model
+   return window;
+ }
+ 
++void
++cc_luma_window_show_page (GtkWindow *window)
++{
++  Frame *f = window ? g_object_get_data (G_OBJECT (window), "cf-frame") : NULL;
++  /* follow_page pushes a page only when it changes; the same page asked for again after Back
++   * (gnome-control-center wwan, a second time) must leave the list too. */
++  if (f && f->stack && !g_str_equal (luma_list_first_get_showing (LUMA_LIST_FIRST (f->stack)), "detail"))
++    luma_list_first_show_detail (LUMA_LIST_FIRST (f->stack));
++}
++
+ void
+ cc_luma_window_search (GtkWindow *window, const char *text)
+ {
+diff --git a/shell/cc-luma-window.h b/shell/cc-luma-window.h
+index ef715da..486b0b3 100644
+--- a/shell/cc-luma-window.h
++++ b/shell/cc-luma-window.h
+@@ -11,4 +11,6 @@ G_BEGIN_DECLS
+ GtkWidget *cc_luma_window_new (GtkApplication *application, CcLumaFixture *model, GtkWidget *view);
+ /* Search settings from the sidebar foot, as `gnome-control-center --search`. */
+ void cc_luma_window_search (GtkWindow *window, const char *text);
++/* A page asked for from outside (a deep link, launch-panel): on a phone, show it, not the list. */
++void cc_luma_window_show_page (GtkWindow *window);
+ G_END_DECLS

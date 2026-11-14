@@ -1,0 +1,167 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 13 Nov 2026 22:22:02 -0600
+Subject: [PATCH] Mobile Network: mobile data is on until it is turned off
+
+With no NetworkManager profile bound to the SIM the Mobile Data switch
+said off, while the phone's own cellular link treats that state as on
+and connects. The switch now reports on in that state. Turning data off
+with no profile saves the carrier's first listed APN bound to the SIM
+with autoconnect off, marked as the switch's own (user data
+org.projectluma.mobile-data.switch-only), instead of asking for an APN
+first; the cellular link reads it as off. Turning data on again removes
+that profile, so the cellular link carries data again rather than
+NetworkManager activating an APN it did not choose. A profile saved from
+Access Point Names is unchanged. Roaming stays off by default.
+
+A new APN profile belongs to the person (connection.permissions
+user:<name>): a phone's session holds settings.modify.own but not
+settings.modify.system, and adding a system-wide profile was refused
+there, so the switch could not be turned off.
+---
+ panels/wwan/cc-wwan-data.c        | 58 ++++++++++++++++++++++++++++++-
+ panels/wwan/cc-wwan-data.h        |  3 ++
+ panels/wwan/cc-wwan-device-page.c | 19 ++++++++++
+ 3 files changed, 79 insertions(+), 1 deletion(-)
+
+diff --git a/panels/wwan/cc-wwan-data.c b/panels/wwan/cc-wwan-data.c
+index 30b12c0..f8576cf 100644
+--- a/panels/wwan/cc-wwan-data.c
++++ b/panels/wwan/cc-wwan-data.c
+@@ -187,6 +187,11 @@ wwan_data_get_nm_connection (CcWwanDataApn *apn)
+                 NM_SETTING_CONNECTION_UUID, uuid,
+                 NM_SETTING_CONNECTION_TYPE, NM_SETTING_GSM_SETTING_NAME,
+                 NULL);
++  /* Luma: the APN is the person's, as the SIM's data switch is. A profile of
++   * their own needs only NetworkManager's settings.modify.own, which a phone's
++   * session holds; a system-wide one was refused there (Insufficient
++   * privileges), so the Mobile Data switch could not be turned off. */
++  nm_setting_connection_add_permission (NM_SETTING_CONNECTION (setting), "user", g_get_user_name (), NULL);
+   nm_connection_add_setting (connection, setting);
+ 
+   setting = nm_setting_serial_new ();
+@@ -474,6 +479,10 @@ static void
+ cc_wwan_data_init (CcWwanData *self)
+ {
+   self->home_only = TRUE;
++  /* Luma: a SIM's mobile data is on until the person turns it off. Without a
++   * NetworkManager profile bound to the SIM the device's own cellular link
++   * connects it, so the switch says on, and the first APN saved keeps it on. */
++  self->data_enabled = TRUE;
+   self->priority = CC_WWAN_APN_PRIORITY_LOW;
+ }
+ 
+@@ -1036,6 +1045,53 @@ cc_wwan_data_delete_apn (CcWwanData     *self,
+   return FALSE;
+ }
+ 
++/* Luma: on a phone the device's own cellular link carries mobile data while no
++ * profile bound to the SIM says otherwise. Turning data off saves a profile
++ * whose only job is that answer, marked here; turning data on again removes it
++ * rather than activate it, so NetworkManager does not take the data bearer over
++ * with an APN the link did not choose. A profile the person saved stays theirs. */
++#define LUMA_SWITCH_ONLY_KEY "org.projectluma.mobile-data.switch-only"
++
++void
++cc_wwan_data_mark_switch_only (CcWwanData *self)
++{
++  NMConnection *connection;
++  NMSettingUser *user;
++
++  g_return_if_fail (CC_IS_WWAN_DATA (self));
++  if (!self->default_apn || self->default_apn->remote_connection)
++    return;
++  connection = wwan_data_get_nm_connection (self->default_apn);
++  user = NM_SETTING_USER (nm_connection_get_setting (connection, NM_TYPE_SETTING_USER));
++  if (!user)
++    {
++      user = NM_SETTING_USER (nm_setting_user_new ());
++      nm_connection_add_setting (connection, NM_SETTING (user));
++    }
++  nm_setting_user_set_data (user, LUMA_SWITCH_ONLY_KEY, "yes", NULL);
++}
++
++gboolean
++cc_wwan_data_forget_switch_only (CcWwanData *self)
++{
++  NMRemoteConnection *remote;
++  NMSettingUser *user;
++  g_autoptr(GError) error = NULL;
++
++  g_return_val_if_fail (CC_IS_WWAN_DATA (self), FALSE);
++  if (!self->default_apn || !self->default_apn->remote_connection)
++    return FALSE;
++  remote = self->default_apn->remote_connection;
++  user = NM_SETTING_USER (nm_connection_get_setting (NM_CONNECTION (remote), NM_TYPE_SETTING_USER));
++  if (!user || g_strcmp0 (nm_setting_user_get_data (user, LUMA_SWITCH_ONLY_KEY), "yes") != 0)
++    return FALSE;
++  nm_remote_connection_delete_async (remote, NULL, NULL, NULL);
++  wwan_data_apn_reset (self->default_apn);
++  self->default_apn->modified = FALSE;
++  self->data_enabled = TRUE;
++  return TRUE;
++}
++
+ CcWwanDataApn *
+ cc_wwan_data_get_default_apn (CcWwanData *self)
+ {
+@@ -1096,7 +1152,7 @@ cc_wwan_data_get_enabled (CcWwanData *self)
+     return TRUE;
+ 
+   if (!self->default_apn || !self->default_apn->remote_connection)
+-    return FALSE;
++    return self->data_enabled;
+ 
+   connection = NM_CONNECTION (self->default_apn->remote_connection);
+   setting = nm_connection_get_setting_connection (connection);
+diff --git a/panels/wwan/cc-wwan-data.h b/panels/wwan/cc-wwan-data.h
+index 6644c45..cc2cf89 100644
+--- a/panels/wwan/cc-wwan-data.h
++++ b/panels/wwan/cc-wwan-data.h
+@@ -66,6 +66,9 @@ gboolean       cc_wwan_data_delete_apn            (CcWwanData          *self,
+ gboolean       cc_wwan_data_set_default_apn       (CcWwanData          *self,
+                                                    CcWwanDataApn       *apn);
+ CcWwanDataApn *cc_wwan_data_get_default_apn       (CcWwanData          *self);
++/* Luma: a profile saved only to hold the Mobile Data switch off. */
++void           cc_wwan_data_mark_switch_only      (CcWwanData          *self);
++gboolean       cc_wwan_data_forget_switch_only    (CcWwanData          *self);
+ gboolean       cc_wwan_data_get_enabled           (CcWwanData          *self);
+ void           cc_wwan_data_set_enabled           (CcWwanData          *self,
+                                                    gboolean             enabled);
+diff --git a/panels/wwan/cc-wwan-device-page.c b/panels/wwan/cc-wwan-device-page.c
+index 6fbbc6f..9dc2c96 100644
+--- a/panels/wwan/cc-wwan-device-page.c
++++ b/panels/wwan/cc-wwan-device-page.c
+@@ -124,6 +124,13 @@ wwan_device_page_handle_data_row (CcWwanDevicePage *self,
+ 
+   active = adw_switch_row_get_active (data_row);
+ 
++  /* Luma: on again after the switch alone turned data off: the cellular link
++   * carries it once that profile is gone. Off with nothing saved is marked. */
++  if (data_row == self->data_enable_row && active && cc_wwan_data_forget_switch_only (self->wwan_data))
++    return;
++  if (data_row == self->data_enable_row && !active)
++    cc_wwan_data_mark_switch_only (self->wwan_data);
++
+   if (data_row == self->data_enable_row)
+     cc_wwan_data_set_enabled (self->wwan_data, active);
+   else
+@@ -349,6 +356,18 @@ wwan_data_settings_changed_cb (CcWwanDevicePage *self,
+ 
+   if (cc_wwan_data_get_default_apn (self->wwan_data) == NULL)
+     {
++      /* Luma: data is on while no profile is bound to the SIM. Turning it off
++       * binds the carrier's first listed APN with autoconnect off, so the
++       * answer persists without asking for an APN to switch something off. */
++      GListModel *apns = cc_wwan_data_get_apn_list (self->wwan_data);
++      if (data_row == self->data_enable_row && !adw_switch_row_get_active (data_row) &&
++          apns && g_list_model_get_n_items (apns) > 0)
++        {
++          g_autoptr(CcWwanDataApn) apn = g_list_model_get_item (apns, 0);
++          cc_wwan_data_set_default_apn (self->wwan_data, apn);
++          wwan_device_page_handle_data_row (self, data_row);
++          return;
++        }
+       wwan_data_show_apn_dialog (self);
+       g_object_set_data (G_OBJECT (self->apn_dialog), "row", data_row);
+     }
