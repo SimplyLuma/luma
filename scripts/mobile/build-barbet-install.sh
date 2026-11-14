@@ -68,9 +68,11 @@ bootloader, super, the partition table and slot metadata beyond selecting slot b
   fastboot --set-active=b
   fastboot reboot
 
-After the first boot, place the operator-extracted firmware in
-/var/lib/luma/device-firmware (ADSP, GPU, WCN3990, RT5514P DSP and
-board-2) before testing audio or Wi-Fi. Never write boot_a, dtbo, vbmeta, modemst*,
+After the first boot, place the operator-extracted firmware in the shared
+store /var/lib/luma/device-firmware (GPU zap/gmu/sqe; the RT5514P DSP blobs
+are accepted from there or from /var/lib/luma/device-firmware-barbet) and the
+ADSP/WLAN files in /var/lib/luma/device-firmware-barbet. Wi-Fi stays off until
+the modem/WLFW stack is enabled. Never write boot_a, dtbo, vbmeta, modemst*,
 fsg, fsc, persist, super, the bootloader or the partition table.
 EOF
 printf 'SET=%s\nBOOT_SHA256=%s\nUSERDATA_SHA256=%s\n' "$output" \
