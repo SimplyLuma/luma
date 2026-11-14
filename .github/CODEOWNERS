@@ -18,3 +18,6 @@
 /devices/microsoft/sp12in/ @nmcmil
 /socs/broadcom/bcm2712/  @nmcmil
 /devices/raspberrypi/rpi5/ @nmcmil
+
+/socs/qcom/sdm845/      @adewaleafolabi
+/devices/oneplus/fajita/ @adewaleafolabi
