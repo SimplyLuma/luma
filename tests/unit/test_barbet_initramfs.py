@@ -61,6 +61,16 @@ class BarbetInitramfs(unittest.TestCase):
         self.assertIn("tqftpserv", script)
         self.assertIn("wlan0", script)
 
+    def test_wifi_hands_the_wlan_subsystem_to_the_modem_first(self) -> None:
+        script = (TREE / "luma-barbet/etc/luma/barbet-wifi-start.sh").read_text()
+        adsp_stop = script.index('echo stop > /sys/class/remoteproc/remoteproc0/state')
+        modem_start = script.index('echo start > /sys/class/remoteproc/remoteproc1/state')
+        wlan0_wait = script.index("/sys/class/net/wlan0")
+        self.assertLess(adsp_stop, modem_start)
+        self.assertLess(modem_start, wlan0_wait)
+        unit = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-wifi.service").read_text()
+        self.assertIn("Before=luma-barbet-audio.service", unit)
+
     def test_audio_uses_the_firmware_store(self) -> None:
         service = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-audio.service").read_text()
         self.assertIn("/var/lib/luma/device-firmware-barbet/rt5514p_dsp_fw1.bin", service)

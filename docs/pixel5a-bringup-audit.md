@@ -1232,12 +1232,14 @@ blocked-audio entries above.
   width and is silent.
 - Microphone: not working. Capture returns a constant DC offset with 2-3 LSB
   of noise; the DMIC/TDM capture route still needs work.
-- Wi-Fi: the `IPCRTR` (QRTR) channel, the PD mapper, `tqftpserv`, the modem
-  with the stock `0x11800000` memory map, and the WCN3990 firmware are all in
-  place. The modem still does not fetch `wlanmdsp.mbn`, so `WLFW` never
-  registers and ath10k creates no `wlan0`. The FP6 platform services are
-  masked and the barbet service owns the start order; the remaining work is
-  the modem/WLAN PD bring-up.
+- Wi-Fi: works. The `IPCRTR` (QRTR) channel, PD mapper, `tqftpserv`, the modem
+  with the stock `0x11800000` memory map and the WCN3990 firmware are in
+  place. The ADSP owns the WLAN subsystem while running, so the barbet service
+  stops the ADSP, starts the modem (the WCN3990 boots and `WLFW` registers),
+  and the audio service restarts the ADSP afterwards. `wlan0` associated to
+  `spud_2`, got DHCP `192.168.1.193`, resolved DNS and fetched
+  `fedoraproject.org` over HTTPS (200). The FP6 platform services are masked
+  on this device.
 
 ### Built but not yet a works claim
 

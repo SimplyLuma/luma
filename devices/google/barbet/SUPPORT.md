@@ -14,7 +14,7 @@ who did not go looking for it.
 | Speaker | works | Both TAS2562 amps active; audible through PipeWire once the barbet card is pinned to S16 (24-bit negotiation starts the TDM backend at the wrong slot width and is silent). |
 | Microphone | not working | RT5514P DSP firmware loads, but capture returns a constant DC offset with 2-3 LSB of noise; the DMIC/TDM capture route still needs work. |
 | Suspend | works (bounded) | `s2idle` enters and wakes by power key; display/touch restore and a post-resume `dwc3` rebind restores USB-NCM. Battery drain is not measured. |
-| Wi-Fi | not working | QRTR/`IPCRTR`, the PD mapper, `tqftpserv` and the WCN3990 firmware are in place, and the modem starts with the stock memory map. The modem does not yet fetch `wlanmdsp.mbn`, so `WLFW` never registers and ath10k creates no `wlan0`. The FP6 platform services are masked and `luma-barbet-wifi.service` owns the start order; the remaining gap is the modem/WLAN PD bring-up. |
+| Wi-Fi | works | The FP6 platform services are masked; `luma-barbet-wifi.service` serves the firmware, stops the ADSP, starts the modem so the WCN3990 boots, then audio restarts the ADSP. `wlan0` associates (`spud_2`), gets DHCP, and resolves DNS/HTTP (200 from fedoraproject.org). The 2.4 GHz link reported 5.5 Mbit/s; throughput is not qualified. |
 | Battery | not working | No `power_supply` device yet; the PM7250B charger is PR 2. |
 | Vibrate | not working | No DRV2624 haptics driver yet; PR 2. |
 | Storage | works | UFS LUNs and the Luma root filesystem mount; the full install erases `userdata`. |

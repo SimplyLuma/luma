@@ -5,9 +5,9 @@ F	0644	7fdccfdd2beae83115277c7edc9879312457146ed5096af1bed869757773d412	init_2nd
 F	0644	443d8d64faee8d30eaab5f7715e33e40722432c6dddc165614047deaa99cf879	init_functions.sh	branch
 F	0644	4ed26d1798efb31a619b1b0db412cf1f27e9fd3016ff29bd042c38157402e8ca	luma-barbet/etc/alsa-card-profile/mixer/profile-sets/barbet.conf	branch
 F	0755	e5dc08148041a76d0ab41d011fca0539dada93a58c3e29627339d71342a332fd	luma-barbet/etc/luma/barbet-audio-start.sh	branch
-F	0755	e01d3afcd0a1d6da399cbb45729342fb712153de00d5e9e5ba248bde1f697cad	luma-barbet/etc/luma/barbet-wifi-start.sh	branch
+F	0755	dc0f3501519f4e0b53ebc0aa03103ad208a8416c73f9237ec4c869f087b7dcde	luma-barbet/etc/luma/barbet-wifi-start.sh	branch
 F	0644	a559b29e11d03de88c9c8b3aef263d02f8cd615b361bbb8732eecdc277afce61	luma-barbet/etc/systemd/system/luma-barbet-audio.service	branch
-F	0644	d87099c1e344d2da90f91f0d24787d323a090bfc4b055062c267126a5bb8d9e7	luma-barbet/etc/systemd/system/luma-barbet-wifi.service	branch
+F	0644	330958e7d972df9812e030b43e291f28ea790e69dcad9a916e40c4a208f41d1b	luma-barbet/etc/systemd/system/luma-barbet-wifi.service	branch
 F	0755	e5207f41b8ff43f3cd1800396e2c52e4eff00506aec06a8c9d16681876d1a258	luma-barbet/etc/systemd/system-sleep/50-barbet-usb	branch
 F	0644	7725ab8826ba38b97cef7a9126a8df5483680e108fd58af82fb01f91dcc6e164	luma-barbet/etc/udev/rules.d/89-barbet-audio.rules	branch
 F	0644	caeab5b8ea6599d6ef14564d59d196a5917417fdf1b7280922e670557960fe61	luma-barbet/etc/wireplumber/wireplumber.conf.d/51-barbet-s16.conf	branch
