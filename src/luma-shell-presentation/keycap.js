@@ -402,6 +402,141 @@ export function standaloneInset(monitor, handheld, corner = 0) {
         corner);
 }
 
+// Phone key arrangement (Gboard, AOSP LatinIME rows_qwerty/rows_symbols): the
+// layout files' letters and symbols, with delete at the right of the last
+// letter row and the bottom row as ?123, comma, one optional key (language
+// with several input sources, else emoji), space, period and Enter. Shift,
+// delete, ?123 and Enter are 1.5 keys wide (shift and delete give way to a
+// last letter row of more than seven letters); space takes the rest (at least
+// 4 keys, 3 where symbol pages keep characters such as _ and / beside it).
+// Rows narrower than the widest are centred, so a nine-letter middle row is
+// inset by half a key on each side. The bottom row does not widen the
+// letters' grid while space can shrink to 2.5 keys (URL fields: www. : /),
+// and a comma brought down from the letters gives way to them first (it
+// stays on period's long press). Hide lives in the tool strip.
+// Layouts with modifier keys (terminal) or without space and delete (number
+// pads) are returned unchanged. Widths are multiples of half a key.
+const SIDE_KEY = 1.5;
+const WIDE_SIDE_KEY = 2;
+const MIN_SPACE = 4;
+const MIN_SPACE_BESIDE_SYMBOLS = 3;
+const NARROWEST_SPACE = 2.5;
+
+const keyWidth = key => key.width ?? 1;
+const rowWidth = row => row.reduce((sum, key) => sum + keyWidth(key), 0);
+const floorHalf = value => Math.floor(value * 2) / 2;
+const isEnterKey = key => parseInt(key.keyval, 16) === 0xff0d || key.iconName === 'osk-enter-symbolic';
+const isSpaceKey = key => key.strings?.[0] === ' ';
+const isPunctuationKey = (key, mark) => !key.action && !key.keyval && key.strings?.[0] === mark;
+
+function phoneLevel(rows, {emoji, languages}) {
+    if (rows.length < 2 || rows.some(row => row.some(key => key.action === 'modifier')))
+        return null;
+    let deleteKey = null, enterKey = null;
+    const strip = row => row.map(key => ({...key, strings: key.strings ? [...key.strings] : key.strings}))
+        .filter(key => {
+            if (key.action === 'delete') {
+                deleteKey ??= key;
+                return false;
+            }
+            if (isEnterKey(key)) {
+                enterKey ??= key;
+                return false;
+            }
+            return true;
+        });
+    const letters = rows.slice(0, -1).map(strip);
+    const bottom = strip(rows.at(-1));
+    const space = bottom.find(isSpaceKey);
+    if (!space || !deleteKey)
+        return null;
+
+    // Last letter row: its first level switch (shift, =\<) stays at the left,
+    // a second one goes, and comma and period move down beside space.
+    const last = letters.at(-1);
+    const lead = last[0]?.action === 'levelSwitch' ? last[0] : null;
+    const moved = {};
+    const body = last.filter(key => {
+        if (key === lead || key.action === 'levelSwitch')
+            return false;
+        for (const mark of [',', '.']) {
+            if (isPunctuationKey(key, mark) && !moved[mark]) {
+                moved[mark] = key;
+                return false;
+            }
+        }
+        return true;
+    });
+
+    let comma = bottom.find(key => isPunctuationKey(key, ',')) ?? moved[','];
+    const period = bottom.find(key => isPunctuationKey(key, '.')) ?? moved['.'];
+    const levelKey = bottom.find(key => key.action === 'levelSwitch');
+    const language = languages > 1 ? bottom.find(key => key.action === 'languageMenu') : null;
+    const emojiKey = emoji ? bottom.find(key => key.action === 'emoji') : null;
+    const slot = language ?? emojiKey;
+    const extras = bottom.filter(key => key !== space && key !== comma && key !== period &&
+        key !== levelKey && !['emoji', 'languageMenu', 'hide'].includes(key.action));
+    for (const key of [levelKey, enterKey].filter(Boolean))
+        key.width = SIDE_KEY;
+    for (const key of [comma, period, slot].filter(Boolean))
+        key.width = 1;
+
+    const half = Math.ceil(extras.length / 2);
+    const lettersWidth = Math.max(...letters.slice(0, -1).map(rowWidth), 0,
+        rowWidth(body) + (lead ? 2 : 1));
+    let minSpace = extras.length ? MIN_SPACE_BESIDE_SYMBOLS : MIN_SPACE;
+    const fixedWidth = () => rowWidth([levelKey, comma, ...extras, period, enterKey].filter(Boolean));
+    if (comma === moved[','] && comma && period && fixedWidth() + minSpace > lettersWidth) {
+        if (!period.strings.includes(','))
+            period.strings.splice(1, 0, ',');
+        comma = null;
+    }
+    const fixed = fixedWidth();
+    minSpace = Math.max(NARROWEST_SPACE, Math.min(minSpace, lettersWidth - fixed));
+    return {
+        letters: letters.slice(0, -1),
+        body, lead, deleteKey, space, slot, minSpace, fixed,
+        left: [levelKey, comma, ...extras.slice(0, half)].filter(Boolean),
+        right: [...extras.slice(half), period, enterKey].filter(Boolean),
+        width: Math.max(lettersWidth, fixed + minSpace),
+    };
+}
+
+function centred(row, width) {
+    const keys = row.map(key => ({...key, leftOffset: undefined}));
+    if (keys.length)
+        keys[0].leftOffset = Math.floor(Math.max(0, width - rowWidth(keys))) / 2 || undefined;
+    return keys;
+}
+
+export function phoneLevels(levels, {emoji = true, languages = 1} = {}) {
+    const plans = levels.map(level => phoneLevel(level.rows, {emoji, languages}));
+    if (!plans.length || plans.some(plan => !plan))
+        return levels;
+    return levels.map((level, i) => {
+        const plan = plans[i];
+        const {width} = plan;
+        const gap = width - rowWidth(plan.body);
+        const side = Math.min(WIDE_SIDE_KEY, floorHalf(gap / 2));
+        plan.deleteKey.width = Math.min(WIDE_SIDE_KEY, gap - (plan.lead ? side : 0));
+        if (plan.lead)
+            plan.lead.width = side;
+        const last = [plan.lead, ...plan.body, plan.deleteKey].filter(Boolean);
+
+        let middle = [plan.space];
+        plan.space.width = width - plan.fixed;
+        if (plan.slot && width - plan.fixed - 1 >= plan.minSpace) {
+            middle = [plan.slot, plan.space];
+            plan.space.width -= 1;
+        }
+        const bottom = [...plan.left, ...middle, ...plan.right];
+        return {
+            ...level,
+            rows: [...plan.letters, last, bottom].map(row => centred(row, width)),
+        };
+    });
+}
+
 // Horizontal drag on space moves the caret one character per step once the
 // drag is clearly sideways; returns the caret steps not yet sent.
 export function spaceCursorSteps(dx, dy, sent) {
