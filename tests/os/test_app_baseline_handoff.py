@@ -34,12 +34,13 @@ class Handoff(unittest.TestCase):
             body=ref.encode();h=hashlib.sha256(body).hexdigest();(self.root/(h+'.flatpak')).write_bytes(body)
             self.rows.append({'ref':ref,'commit':h,'sha256':h,'bytes':len(body),'file':h+'.flatpak'})
         self.manifest={'schema':'org.projectluma.offline-app-baseline/v1','architecture':'x86_64','selection_scope':'os-shipping','shipping_contract_sha256':baseline.digest(self.root/'shipping.json'),'role_contract_sha256':baseline.digest(self.root/'roles.json'),'public_key_sha256':baseline.digest(self.root/'luma-depot.gpg'),'bundles':self.rows}
-        self.write('manifest.json',self.manifest);self.installed={};self.calls=[]
+        self.write('manifest.json',self.manifest);self.installed={};self.calls=[];self.inventories=0
     def tearDown(self):self.tmp.cleanup()
     def write(self,name,value):(self.root/name).write_text(json.dumps(value)+'\n')
-    def install(self,path,key,row):self.calls.append(row['ref']);self.installed[row['ref']]=Ref(row['commit'])
+    def inventory(self):self.inventories+=1;return self.installed
+    def install(self,path,key,row):self.calls.append(row['ref']);self.installed[row['ref']]=Ref(row['commit']);return self.installed[row['ref']]
     def verify(self,ref,expected):self.assertIn(expected,self.installed)
-    def run_handoff(self,install=None):return baseline.handoff(self.root,self.state,'x86_64',lambda:self.installed,self.verify,install or self.install)
+    def run_handoff(self,install=None):return baseline.handoff(self.root,self.state,'x86_64',self.inventory,self.verify,install or self.install)
     def test_retirement_runs_before_completed_baseline_shortcut_and_retries(self):
         from luma_installer import retired_apps
         from unittest import mock
@@ -74,9 +75,18 @@ class Handoff(unittest.TestCase):
     def test_interruption_preserves_successful_transactions_and_resumes_only_missing(self):
         def fail(path,key,row):
             if len(self.calls)==2:raise RuntimeError('interrupted transaction')
-            self.install(path,key,row)
+            return self.install(path,key,row)
         with self.assertRaises(RuntimeError):self.run_handoff(fail)
         self.assertFalse((self.state/'installed-v1.json').exists());first=set(self.calls);self.calls.clear();self.run_handoff();self.assertFalse(first&set(self.calls))
+
+    def test_installed_refs_are_inventoried_once(self):
+        self.assertEqual(self.run_handoff(),'completed')
+        self.assertEqual(self.inventories,1)
+
+    def test_install_must_return_the_exact_deployed_commit(self):
+        with self.assertRaisesRegex(ValueError,'did not deploy'):
+            self.run_handoff(lambda path,key,row:Ref('f'*64))
+        self.assertFalse((self.state/'installed-v1.json').exists())
     def test_foreign_existing_signature_refusal_never_replaces_it(self):
         row=self.rows[0];self.installed[row['ref']]=Ref(row['commit'])
         self.verify=lambda *args:(_ for _ in ()).throw(ValueError('foreign signature'))

@@ -116,11 +116,9 @@ def handoff(root,state,architecture,installation,verify,install,progress=lambda 
     apps=sum(row['ref'].startswith('app/') for row in rows);ready=0
     progress(ready,apps)
     for row in rows:
-        refs=installation()
-        existing=refs.get(row['ref'])
+        existing=existing_refs.get(row['ref'])
         if existing is None:
-            install(root/row['file'],root/'luma-depot.gpg',row)
-            existing=installation().get(row['ref'])
+            existing=install(root/row['file'],root/'luma-depot.gpg',row)
             if existing is None or existing.get_commit()!=row['commit']:raise ValueError('Normal Flatpak install did not deploy the exact signed bundle.')
         # Existing signed deployments are preserved, including newer independent
         # updates. Conflicting origins or signature failures abort the handoff.
@@ -194,6 +192,11 @@ def run(progress):
         verify_deployed_commit(instance,actual,commit=row['commit'],exact_ref=row['ref'])
         subprocess.run(['flatpak','install','--system','--noninteractive',
                         '--no-pull','--no-deps','--no-related','luma',row['ref']],check=True)
+        instance.drop_caches(None)
+        kind,name,arch,branch=row['ref'].split('/')
+        return instance.get_installed_ref(
+            Flatpak.RefKind.APP if kind=='app' else Flatpak.RefKind.RUNTIME,
+            name,arch,branch,None)
     return handoff(BASELINE,STATE,platform.machine(),installed,verify,install,progress.step)
 
 
