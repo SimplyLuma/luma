@@ -14,6 +14,7 @@ Luma base.
 | `sdm845` | Qualcomm SDM845 family patches. Empty. | `497791a0a96b` |
 | `sc7280` | Qualcomm SC7280/QCM6490 family patches. Empty. | `497791a0a96b` |
 | `zuma` | Google Tensor G3 (zuma) family patches. Empty. | `497791a0a96b` |
+| `msm8953` | Qualcomm MSM8953 (Snapdragon 625/450/632) family patches. Empty. | `497791a0a96b` |
 | `milos` | Qualcomm SM7635, on milos-mainline 7.1.2. Moves to `luma-7.2` first (see Transition). | `c098393e36c0` |
 
 `497791a0a96b866d90add64041c47acdff49cae6` is the upstream `v7.2.15` commit.
@@ -24,7 +25,7 @@ Luma base.
   (`luma/config/luma.fragment`: SELinux, binder, DMA heaps and the rest every
   device needs).
 - **Family branches**, one per SoC family, named as the upstream kernel names
-  the chip, lower case (`milos`, `sm7250`, `sdm845`, `sc7280`, `zuma`, …).
+  the chip, lower case (`milos`, `sm7250`, `sdm845`, `sc7280`, `zuma`, `msm8953`, …).
   They carry only patches on top of the current base, plus the family's
   config fragment (`luma/config/<family>.fragment`) and its device trees.
   A family branch is never another project's tree and never an Android
