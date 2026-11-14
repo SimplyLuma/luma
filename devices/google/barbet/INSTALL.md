@@ -46,13 +46,16 @@ The first boot needs the operator-extracted firmware in the shared store
 extract them from the matching factory image, never from another build:
 
 - `qcom/a650_sqe.fw`, `qcom/a650_gmu.bin`, `qcom/a620_zap.*` — GPU;
+- `qcom/sm7250/google/barbet/modem.*` — modem, which also boots the WCN3990;
+- `wlanmdsp.mbn`, `bdwlan.bin`,
+  `ath10k/WCN3990/hw1.0/{board-2.bin,firmware-5.bin}` — WLAN;
 - `qcom/sm7250/google/barbet/adsp.*` — ADSP, in
   `/var/lib/luma/device-firmware-barbet` on this install;
 - `rt5514p_dsp_fw1.bin` … `rt5514p_dsp_fw4.bin` — RT5514P microphone DSP,
   accepted from either store.
 
-The WCN3990 WLAN firmware and `board-2.bin` are listed for the follow-up
-Wi-Fi work; they do not make Wi-Fi work until the modem/WLFW stack is enabled.
+Wi-Fi needs the modem and WLAN files in the shared store because the barbet
+service starts the modem before the audio service stages the barbet store.
 
 After the first boot, copy the tree to the phone (USB-NCM/SSH or the installer
 path you normally use) and restart the audio service. The current set does not
