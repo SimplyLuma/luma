@@ -3,6 +3,7 @@
 import math
 import time
 from gi.repository import GLib, Gtk
+from native_footer import BAR_PROMPTS
 from native_sidebar import reconcile
 
 
@@ -32,8 +33,8 @@ class NativeMini:
         window.set_identity_subtitle(title[:160])
         window.sidebar.footer.state = state
         prompt = state.get('permissionPrompt')
-        if prompt and prompt.get('type') == 'login':
-            prompt = None  # the bar grows the sign-in (native_signin.py)
+        if prompt and prompt.get('type') in BAR_PROMPTS:
+            prompt = None  # the bar grows it (native_signin.py, native_extension_prompt.py)
         reconcile(self.permission, [window.sidebar.footer.card(prompt)] if prompt else [])
         self.permission.set_visible(bool(prompt))
 

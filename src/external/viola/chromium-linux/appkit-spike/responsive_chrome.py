@@ -11,6 +11,7 @@ from luma_appkit.bar_share import ShareSheet, ShareSubject, ShareTarget
 from luma_appkit.bar_panel import PanelRow, panel_list
 from native_footer import NativeFooter
 from native_signin import SignInPanel, is_signin
+from native_extension_prompt import ExtensionPromptPanel, is_extension_prompt
 from native_address_focus import AddressEdit
 
 
@@ -189,11 +190,12 @@ class ResponsiveChrome:
         self.render_bar(force=force)
         self.sync_signin()
 
-    # A site's sign-in grows from the bar until it is answered: a fold without
-    # an answer (a rebuilt bar, a hidden bar, a click away) grows it again.
+    # A site's sign-in or an extension prompt grows from the bar until it is
+    # answered: a fold without an answer (a rebuilt bar, a hidden bar, a click
+    # away) grows it again.
     def sync_signin(self):
         prompt = (self.host.state or {}).get('permissionPrompt')
-        if not is_signin(prompt) or prompt['id'] == self.signin_answered:
+        if not (is_signin(prompt) or is_extension_prompt(prompt)) or prompt['id'] == self.signin_answered:
             if self.signin is not None and self.center.grown == 'signin':
                 self.signin = None
                 self.center.fold()
@@ -201,7 +203,8 @@ class ResponsiveChrome:
         if self.signin is not None and self.signin.prompt_id == prompt['id'] and self.center.grown == 'signin':
             return
         self.reveal_bar()
-        self.signin = SignInPanel(prompt, self.answer_signin)
+        self.signin = (SignInPanel(prompt, self.answer_signin) if is_signin(prompt)
+                       else ExtensionPromptPanel(prompt, self.answer_extension))
         self.center.grow('signin', self.signin, on_fold=self.signin_folded)
         self.panel = 'signin'
         GLib.idle_add(lambda: (self.signin is not None and self.signin.grab_focus(), False)[1])
@@ -227,6 +230,13 @@ class ResponsiveChrome:
                                                   'username': username, 'password': password})
         else:
             self.host.send('permission:respond', {'id': key, 'decision': 'dismiss'})
+        if self.center.grown == 'signin':
+            self.center.fold()
+
+    def answer_extension(self, key, accepted):
+        self.signin_answered = key
+        self.signin = None
+        self.host.send('permission:respond', {'id': key, 'decision': 'allow' if accepted else 'dismiss'})
         if self.center.grown == 'signin':
             self.center.fold()
 

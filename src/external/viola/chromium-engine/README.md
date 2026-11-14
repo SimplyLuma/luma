@@ -47,6 +47,18 @@ media preview reads back every frame of a background tab's video
 (`captureStream()` into WebRTC), and on ANGLE GL that readback fails for
 hardware-decoded and other GPU video frames, so without this patch a playing
 video freezes its tab once the tab is in the background.
+`0006-native-extension-prompts.patch` applies after `0005`: on Linux, when a
+Viola window draws the tab (or, for an extension's own page or a re-enable,
+the profile's most recent Viola window), Chromium's extension install,
+re-enable and permission prompts go to the host on the permission notice
+channel as `{type: 'extension'}` (title, permission heading and lines, accept
+and cancel labels) instead of a browser-modal dialog on the undisplayed
+window. The host answers `permission:respond` with `allow` to accept, or
+`dismiss`. The installed notice goes the same way as
+`{type: 'extension-installed'}`, and an update that adds permissions (which
+disables the extension) asks to accept them and re-enable it. Prompts queue
+one at a time after sign-ins.
+
 Do not replace a released engine merely because these inputs build successfully;
 its native rendering, input, resize and window lifecycle checks must also pass.
 
@@ -141,6 +153,10 @@ git apply --check /path/to/chromium-engine/patches/0003-native-incognito-single-
 git apply /path/to/chromium-engine/patches/0003-native-incognito-single-tab.patch
 git apply --check /path/to/chromium-engine/patches/0004-native-http-auth.patch
 git apply /path/to/chromium-engine/patches/0004-native-http-auth.patch
+git apply --check /path/to/chromium-engine/patches/0005-webrtc-readback-fallback-outside-context-lock.patch
+git apply /path/to/chromium-engine/patches/0005-webrtc-readback-fallback-outside-context-lock.patch
+git apply --check /path/to/chromium-engine/patches/0006-native-extension-prompts.patch
+git apply /path/to/chromium-engine/patches/0006-native-extension-prompts.patch
 # Set the version environment above; choose an admitted output tree and job count.
 cat /path/to/chromium-engine/profiles/common.gn /path/to/chromium-engine/profiles/arm64.gn > "$ENGINE_OUT/args.gn"
 gn gen "$ENGINE_OUT" --root-target=//chrome:chrome --root-pattern=//chrome:chrome
