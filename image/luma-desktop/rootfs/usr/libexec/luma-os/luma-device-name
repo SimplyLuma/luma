@@ -3,8 +3,8 @@
 """Give a Luma computer its name: "Nick’s ThinkPad" (nicks-thinkpad).
 
 The pretty hostname is "<first name>’s <model>", the static hostname its slug.
-The model is a known product line read from DMI, else the chassis type, else
-"Computer". A slug another machine already answers for on the local network
+The model is a known product line read from DMI, else the chassis type (DMI's,
+else systemd's: a handset is a "Phone"), else "Computer". A slug another machine already answers for on the local network
 (mDNS <slug>.local) gets "-2", "-3", ... appended.
 
   luma-device-name install --root DIR [--user NAME]
@@ -89,6 +89,14 @@ CHASSIS = {
     11: "Tablet", 30: "Tablet",
 }
 
+# systemd chassis types (machine-info(5); hostnamed reads them from DMI, ACPI
+# or the device tree's chassis-type). Phones and tablets have no DMI.
+SYSTEMD_CHASSIS = {
+    "handset": "Phone", "tablet": "Tablet", "laptop": "Laptop", "convertible": "Laptop",
+    "desktop": "Desktop",
+}
+DEVICE_TREE_CHASSIS = "/sys/firmware/devicetree/base/chassis-type"
+
 
 def log(message):
     print(f"{IDENTIFIER}: {message}", file=sys.stderr, flush=True)
@@ -105,6 +113,18 @@ def read_dmi(directory=DMI):
         except OSError:
             values[key] = ""
     return values
+
+
+def read_chassis(root="/", device_tree=DEVICE_TREE_CHASSIS):
+    """systemd's chassis type: CHASSIS= in machine-info, else the device tree's."""
+    chassis = machine_info_value(read_machine_info(os.path.join(root, "etc/machine-info")), "CHASSIS")
+    if chassis:
+        return chassis.strip().lower()
+    try:
+        with open(device_tree, "rb") as handle:
+            return handle.read().split(b"\0", 1)[0].decode("ascii", "replace").strip().lower()
+    except OSError:
+        return ""
 
 
 def model_name(dmi):
@@ -124,7 +144,7 @@ def model_name(dmi):
         chassis = int((dmi.get("chassis_type") or "").strip())
     except ValueError:
         chassis = 0
-    return CHASSIS.get(chassis, "Computer")
+    return CHASSIS.get(chassis) or SYSTEMD_CHASSIS.get((dmi.get("chassis") or "").strip().lower(), "Computer")
 
 
 def first_name(gecos, username):
@@ -370,7 +390,9 @@ def install(root, username=None, dmi=None, taken=mdns_name_taken):
             log("no account yet; the first login names this computer")
         return 0
 
-    pretty, static_new = derive(dmi if dmi is not None else read_dmi(), person[0], person[1], taken)
+    if dmi is None:
+        dmi = dict(read_dmi(), chassis=read_chassis(root))
+    pretty, static_new = derive(dmi, person[0], person[1], taken)
     _write(hostname_path, static_new + "\n")
     kept = [line for line in info if not line.startswith("PRETTY_HOSTNAME=")]
     _write(info_path, "\n".join(kept + ["PRETTY_HOSTNAME=" + _quote(pretty)]) + "\n")
@@ -401,6 +423,14 @@ def hostnamed_set(method, value):
         raise RuntimeError(f"hostnamed refused {method}: {result.stderr.strip()}")
 
 
+def hostnamed_chassis(getter=hostnamed_get):
+    """hostnamed's chassis type, else the one this helper finds itself."""
+    try:
+        return (getter("Chassis") or "").strip().lower() or read_chassis()
+    except (RuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return read_chassis()
+
+
 def write_stamp(path, text):
     try:
         _write(path, text + "\n")
@@ -423,8 +453,9 @@ def login(uid, stamp=STAMP, getter=hostnamed_get, setter=hostnamed_set, dmi=None
     if not is_default(static, pretty_now):
         write_stamp(stamp, f"kept {pretty_now or static}")
         return 0
-    pretty, static_new = derive(dmi if dmi is not None else read_dmi(), account.pw_name,
-                                account.pw_gecos, taken)
+    if dmi is None:
+        dmi = dict(read_dmi(), chassis=hostnamed_chassis(getter))
+    pretty, static_new = derive(dmi, account.pw_name, account.pw_gecos, taken)
     setter("SetStaticHostname", static_new)
     setter("SetPrettyHostname", pretty)
     write_stamp(stamp, f"named {pretty} ({static_new}) at the login of {account.pw_name}")
@@ -455,7 +486,8 @@ def main(argv=None):
         if args.mode == "login":
             return login(args.uid, taken=taken)
         account = pwd.getpwnam(args.user) if args.user else pwd.getpwuid(os.getuid())
-        pretty, static = derive(read_dmi(), account.pw_name, account.pw_gecos, taken)
+        pretty, static = derive(dict(read_dmi(), chassis=hostnamed_chassis()), account.pw_name,
+                                account.pw_gecos, taken)
         print(f"{pretty}\n{static}")
         return 0
     except Exception as error:  # the name is a nicety: never fail an install or a login over it

@@ -11,6 +11,7 @@ import pwd
 import struct
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 HELPER = os.path.join(ROOT, "image", "luma-desktop", "rootfs", "usr", "libexec", "luma-os", "luma-device-name")
@@ -58,6 +59,30 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(ldn.model_name({"chassis_type": "30"}), "Tablet")
         self.assertEqual(ldn.model_name({"chassis_type": "2"}), "Computer")
 
+    def test_systemd_chassis_without_dmi(self):
+        # A phone or tablet has no DMI; hostnamed's chassis (from its device
+        # tree) names it. A DMI chassis still wins where there is one.
+        self.assertEqual(ldn.model_name({"chassis": "handset"}), "Phone")
+        self.assertEqual(ldn.model_name({"chassis": "tablet"}), "Tablet")
+        self.assertEqual(ldn.model_name({"chassis": "convertible"}), "Laptop")
+        self.assertEqual(ldn.model_name({"chassis": "vm"}), "Computer")
+        self.assertEqual(ldn.model_name({"chassis": ""}), "Computer")
+        self.assertEqual(ldn.model_name(dict(QEMU, chassis="vm")), "Computer")
+        self.assertEqual(ldn.model_name(dict(LATITUDE, chassis="handset")), "Latitude")
+        self.assertEqual(ldn.model_name({"chassis_type": "10", "chassis": "handset"}), "Laptop")
+
+    def test_read_chassis(self):
+        with tempfile.TemporaryDirectory() as root:
+            tree = os.path.join(root, "chassis-type")
+            with open(tree, "wb") as handle:
+                handle.write(b"handset\0")
+            self.assertEqual(ldn.read_chassis(root, tree), "handset")
+            os.makedirs(os.path.join(root, "etc"))
+            with open(os.path.join(root, "etc/machine-info"), "w", encoding="utf-8") as handle:
+                handle.write('PRETTY_HOSTNAME="x"\nCHASSIS=tablet\n')
+            self.assertEqual(ldn.read_chassis(root, tree), "tablet")
+            self.assertEqual(ldn.read_chassis(os.path.join(root, "none"), os.path.join(root, "none")), "")
+
     def test_no_false_product_lines(self):
         self.assertEqual(ldn.model_name({"product_name": "System Product Name", "chassis_type": "3"}), "Desktop")
         self.assertEqual(ldn.model_name({"product_name": "To be filled by O.E.M."}), "Computer")
@@ -79,6 +104,10 @@ class NameTests(unittest.TestCase):
         pretty, static = ldn.derive(MACBOOK, "jgarcia", "José García", FREE)
         self.assertEqual(pretty, f"José{APOS}s MacBook Pro")
         self.assertEqual(static, "joses-macbook-pro")
+
+    def test_phone(self):
+        self.assertEqual(ldn.derive({"chassis": "handset"}, "luma", "Luma", FREE),
+                         (f"Luma{APOS}s Phone", "lumas-phone"))
 
     def test_name_without_latin_letters_uses_username(self):
         pretty, static = ldn.derive(QEMU, "lilei", "李雷", FREE)
@@ -164,6 +193,15 @@ class LoginTests(unittest.TestCase):
             self.run_login(1000, static, pretty)
             self.assertEqual(self.calls, [], static)
             self.assertTrue(os.path.exists(self.stamp))
+
+    def test_phone_takes_hostnamed_chassis(self):
+        properties = {"StaticHostname": "localhost", "PrettyHostname": "", "Chassis": "handset"}
+        with unittest.mock.patch.object(ldn, "read_dmi", lambda: {}):
+            ldn.login(1000, stamp=self.stamp, getter=properties.__getitem__,
+                      setter=lambda method, value: self.calls.append((method, value)),
+                      taken=FREE, lookup=lambda _uid: account(1000, "luma", "Luma"))
+        self.assertEqual(self.calls, [("SetStaticHostname", "lumas-phone"),
+                                      ("SetPrettyHostname", f"Luma{APOS}s Phone")])
 
     def test_system_accounts_are_ignored(self):
         self.run_login(42, "", "", who=account(42, "gdm", "GNOME Display Manager", "/usr/sbin/nologin"))
