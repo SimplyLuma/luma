@@ -1,7 +1,7 @@
 ---
 type: feature
 component: Updates
-packages: [luma-update, kernel-modules-luma-fp6]
+packages: [luma-update]
 highlight: false
 ---
 Summary: Phone kernels update with the system
