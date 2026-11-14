@@ -29,9 +29,11 @@ slot's partitions already hold the images, nothing happens. Otherwise, once:
    try, clears its successful flag and keeps the running slot successful),
    and the phone restarts once.
 
-`confirm` runs after multi-user.target on the trial boot: when the running
-slot is the one written, holds the images and runs the declared kernel, the
-slot is marked successful. A trial boot that never gets there is retried by
+`confirm` runs after multi-user.target on every boot: on the trial boot it
+marks the slot successful only when the running slot is the one written, holds
+the images and runs the declared kernel; with no attempt pending it marks the
+running slot successful, so a device with a manifest needs no unit of its own
+that marks slots regardless of the trial. A trial boot that never gets there is retried by
 nobody: the bootloader's A/B fallback boots the previous slot, and the next
 `apply` records the images as failed and never writes them again
 (`luma-device-boot retry` forgets that).
@@ -585,7 +587,7 @@ class DeviceBoot:
     def confirm(self) -> int:
         pending = self.state.pending
         if not pending:
-            return 0
+            return self.mark_running()
         manifest = self.manifest()
         if manifest is None:
             raise BootError("an attempt is pending but no boot image is declared")
@@ -619,6 +621,21 @@ class DeviceBoot:
         log(f"slot _{current} booted {manifest.kernel_release}; marked successful")
         return 0
 
+    def mark_running(self) -> int:
+        """No attempt pending: an ordinary boot that reached multi-user.target."""
+        manifest = self.manifest()
+        if manifest is None:
+            return 0
+        tool = self.slots(manifest)
+        current = self.running_slot(tool)
+        if tool.successful(current):
+            return 0
+        tool.mark_successful(current)
+        if not tool.successful(current):
+            raise BootError(f"slot _{current} is still not marked successful")
+        log(f"slot _{current} marked successful")
+        return 0
+
     # -- commands for people
 
     def retry(self) -> int:
@@ -649,7 +666,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     apply = sub.add_parser("apply", help="write the boot image to the inactive slot when it changed (boot service)")
     apply.add_argument("--no-reboot", action="store_true", help="switch slots but do not restart")
-    sub.add_parser("confirm", help="mark the trial slot successful (boot service)")
+    sub.add_parser("confirm", help="mark the running slot successful, a trial slot only when its kernel runs (boot service)")
     sub.add_parser("status", help="print the declared image and past attempts")
     sub.add_parser("retry", help="forget failed or unconfirmed images so the next boot tries again")
     args = parser.parse_args(argv)

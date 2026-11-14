@@ -303,6 +303,23 @@ class TrialTest(unittest.TestCase):
         self.assertEqual(phone.reboots, 1)
         self.assertEqual(phone.updater().confirm(), 0)          # nothing pending
 
+    def test_without_an_attempt_the_running_slot_is_marked(self):
+        phone = Phone(self, image=OLD)                         # slot a holds the image
+        phone.slots.flags["a"]["successful"] = False           # e.g. a fresh flash
+        self.assertEqual(phone.updater().apply(), 0)
+        self.assertEqual(phone.updater().confirm(), 0)
+        self.assertTrue(phone.slots.successful("a"))
+        self.assertEqual(phone.slots.calls, [("mark_successful", "a")])
+        phone.updater().confirm()                              # already successful: no call
+        self.assertEqual(len(phone.slots.calls), 1)
+
+    def test_without_a_manifest_confirm_does_nothing(self):
+        phone = Phone(self)
+        (phone.root / "usr/lib/luma/device-boot/fairphone-fp6/device-boot.json").unlink()
+        phone.slots.flags["a"]["successful"] = False
+        self.assertEqual(phone.updater().confirm(), 0)
+        self.assertEqual(phone.slots.calls, [])
+
     def test_retry_forgets_the_failure(self):
         phone = Phone(self)
         phone.updater().apply()

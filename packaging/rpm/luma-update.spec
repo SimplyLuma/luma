@@ -2,7 +2,7 @@
 
 Name:           luma-update
 Version:        1.0.0
-Release:        1.luma.35%{?dist}
+Release:        1.luma.36%{?dist}
 Summary:        Luma system update agent: signed channels, staged rollouts, rollback
 License:        Apache-2.0
 URL:            https://github.com/ProjectLuma/Luma
@@ -238,6 +238,10 @@ python3 -m unittest discover -v -s tests -p 'test_*.py'
 %{_prefix}/lib/luma-update/graph-keys.d/luma-update-graph.pub
 
 %changelog
+* Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.36
+- luma-device-boot-confirm.service runs on every boot of a device that
+  declares a boot image: with no attempt pending it marks the running slot
+  successful; a trial slot is still marked only once its declared kernel runs.
 * Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 1.0.0-1.luma.35
 - luma-device-boot: a device package that boots its own kernel from an A/B
   boot partition declares the boot image it pairs with in

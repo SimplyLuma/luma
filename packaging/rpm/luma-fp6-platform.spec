@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.20%{?dist}
+Release:        1.luma.21%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -67,6 +67,7 @@ ln -s ../luma-clock-save.timer %{buildroot}%{_unitdir}/timers.target.wants/luma-
 grep -Fxq 'LUMA_DEVICE_CLASS=handheld' %{buildroot}%{_prefix}/lib/environment.d/90-luma-handheld.conf
 grep -Fxq 'automatic_download = false' %{buildroot}%{_sysconfdir}/luma/update.conf
 grep -Fxq 'ConditionFirmware=device-tree-compatible(fairphone,fp6)' %{buildroot}%{_unitdir}/luma-fp6-boot-success.service
+grep -Fxq 'ConditionPathExists=!/var/lib/luma-device-boot/pending.json' %{buildroot}%{_unitdir}/luma-fp6-boot-success.service
 test ! -s %{buildroot}%{_unitdir}/boot.automount
 grep -Fxq 'wifi.powersave=2' %{buildroot}%{_prefix}/lib/NetworkManager/conf.d/50-luma-fp6-wifi.conf
 grep -Fxq 'MemorySleepMode=s2idle' %{buildroot}%{_prefix}/lib/systemd/sleep.conf.d/50-luma-fp6.conf
@@ -116,6 +117,10 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.21
+- luma-fp6-boot-success.service skips while luma-device-boot has a boot image
+  on trial (/var/lib/luma-device-boot/pending.json): luma-device-boot-confirm
+  marks that slot only once the declared kernel runs.
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.20
 - The cellular link requests a dual-stack data bearer (ip-type=ipv4v6) and
   configures each IP family the network grants; an IPv6-only bearer gets an

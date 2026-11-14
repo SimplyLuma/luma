@@ -2,7 +2,10 @@
 Description=Fairphone 6: mark the running boot slot successful
 Documentation=man:qbootctl(8)
 ConditionFirmware=device-tree-compatible(fairphone,fp6)
-After=multi-user.target
+# While a boot image from luma-device-boot is on trial, luma-device-boot-confirm
+# decides: a kernel that is not the declared one must not mark its slot.
+ConditionPathExists=!/var/lib/luma-device-boot/pending.json
+After=multi-user.target luma-device-boot.service
 
 [Service]
 Type=oneshot
