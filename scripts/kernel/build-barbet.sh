@@ -60,7 +60,6 @@ if [ -n "$source_dir" ]; then
   src=$source_dir
 else
   [ -n "$cache" ] || fail "--cache or --source is required"
-  mkdir -p "$work/prepared"
   python3 "$repo_root/scripts/kernel/prepare-source.py" \
     --lock "$lock" --cache "$cache" --output "$work/prepared" $offline >/dev/null
   src=$(python3 -c \
@@ -79,10 +78,6 @@ kbuild=(O="$obj" ARCH=arm64 LLVM=1 LOCALVERSION=
         KBUILD_BUILD_VERSION="${KBUILD_BUILD_VERSION:-1}"
         KBUILD_BUILD_TIMESTAMP="${KBUILD_BUILD_TIMESTAMP:-2026-11-14 00:00:00 UTC}")
 
-kernel_release=$("$make" -s -C "$src" "${kbuild[@]}" kernelrelease)
-[ "$kernel_release" = "$release" ] ||
-  fail "kernel release $kernel_release does not match the lock ($release)"
-
 if ! "$make" -s -C "$src" "${kbuild[@]}" olddefconfig; then
   fail "olddefconfig failed"
 fi
@@ -90,6 +85,9 @@ if ! cmp -s "$obj/.config" "$config"; then
   diff -u "$config" "$obj/.config" >&2 || true
   fail "the committed config does not survive olddefconfig"
 fi
+kernel_release=$("$make" -s -C "$src" "${kbuild[@]}" kernelrelease)
+[ "$kernel_release" = "$release" ] ||
+  fail "kernel release $kernel_release does not match the lock ($release)"
 
 if ! "$make" -s -C "$src" "${kbuild[@]}" -j"$jobs" \
       Image qcom/sm7250-google-barbet.dtb; then

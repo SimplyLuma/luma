@@ -50,8 +50,18 @@ class BarbetKernel(unittest.TestCase):
             [p["path"] for p in lock["patches"]][:2],
             ["patches/01-bindings.patch", "patches/02-clk.patch"],
         )
-        self.assertEqual(len(lock["patches"]), 14)
-        self.assertTrue(all(p["source"] == "overlay" for p in lock["patches"]))
+        self.assertEqual(len(lock["patches"]), 20)
+        self.assertTrue(all(p["source"] == "overlay" for p in lock["patches"][:14]))
+        self.assertEqual([p["source"] for p in lock["patches"][14:]],
+                         ["repository"] * 6)
+        self.assertEqual([p["path"] for p in lock["patches"][14:]], [
+            "patches/linux-barbet/7.3/0001-arm64-dts-qcom-add-google-barbet.patch",
+            "patches/linux-barbet/7.3/0002-Input-add-ST-FTS-SPI-touchscreen.patch",
+            "patches/linux-barbet/7.3/0003-remoteproc-add-the-sm7250-adsp-resource.patch",
+            "patches/linux-barbet/7.3/0004-net-qrtr-and-barbet-modem.patch",
+            "patches/linux-barbet/7.3/0005-ASoC-qcom-barbet-speaker.patch",
+            "patches/linux-barbet/7.3/0006-ASoC-qcom-barbet-microphone.patch",
+        ])
 
     def test_config_hash_matches(self) -> None:
         lock = json.loads(LOCK.read_text())
