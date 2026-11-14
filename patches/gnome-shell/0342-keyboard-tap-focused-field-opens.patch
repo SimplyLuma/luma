@@ -11,9 +11,12 @@ first tap focused the field and the second one opened the keyboard.
 
 The keyboard remembers the window under the last touch and when it lifted.
 A text input focus-in on that window, while the finger is down or within
-500 ms of it lifting, opens the keyboard as the second tap would. Only
-touchscreens send touch events, so pointer and keyboard use, and systems
-without a touchscreen, are unchanged.
+500 ms of it lifting, opens the keyboard as the second tap would, unless
+the field arrives with its text selected: a tap leaves a caret, and a
+selected field was focused by the application (a page opening selects its
+first field), which keeps the keyboard closed as before. Only touchscreens
+send touch events, so pointer and keyboard use, and systems without a
+touchscreen, are unchanged.
 
 --- a/js/ui/keyboard.js
 +++ b/js/ui/keyboard.js
@@ -27,7 +30,16 @@ without a touchscreen, are unchanged.
  
  const A11Y_APPLICATIONS_SCHEMA = 'org.gnome.desktop.a11y.applications';
  const SHOW_KEYBOARD = 'screen-keyboard-enabled';
-@@ -2292,7 +2295,10 @@ export const Keyboard = GObject.registerClass({
+@@ -1878,6 +1881,8 @@ export const Keyboard = GObject.registerClass({
+         this._stopLayerWarm();
+         if (this._priorsIdleId)
+             GLib.source_remove(this._priorsIdleId);
++        if (this._tapFocusId)
++            GLib.source_remove(this._tapFocusId);
+         if (this._keyboardHeightNotifyId) {
+             Main.layoutManager.keyboardBox.disconnect(this._keyboardHeightNotifyId);
+             this._keyboardHeightNotifyId = 0;
+@@ -2292,7 +2297,10 @@ export const Keyboard = GObject.registerClass({
          Main.inputMethod.connectObject('surrounding-text-set',
              this._onSurroundingText.bind(this), this);
          Main.inputMethod.connectObject('physical-key', () => this._tvPhysicalKey(), this);
@@ -39,7 +51,7 @@ without a touchscreen, are unchanged.
          global.display.connectObject(
              'accelerator-activated', (_display, action) => this._tvAccelerator(action),
              'accelerator-deactivated', (_display, action) => this._tvAcceleratorUp(action), this);
-@@ -2343,7 +2349,8 @@ export const Keyboard = GObject.registerClass({
+@@ -2343,7 +2351,8 @@ export const Keyboard = GObject.registerClass({
              'content-hints-changed', this._onContentHintsChanged.bind(this),
              this);
          global.stage.connectObject('notify::key-focus',
@@ -49,7 +61,7 @@ without a touchscreen, are unchanged.
          Main.sessionMode.connectObject('updated', this._onSessionModeUpdated.bind(this), this);
          global.display.get_selection().connectObject('owner-changed',
              this._onSelectionOwnerChanged.bind(this), this);
-@@ -2544,6 +2551,45 @@ export const Keyboard = GObject.registerClass({
+@@ -2544,6 +2553,57 @@ export const Keyboard = GObject.registerClass({
          }
      }
  
@@ -89,7 +101,19 @@ without a touchscreen, are unchanged.
 +            (!tap.down && monotonicMs() - tap.upMs > FIELD_TAP_TIME))
 +            return;
 +        this._fieldTap = null;
-+        this.open();
++        if (this._tapFocusId)
++            return;
++        // The field's text comes in the same request as the focus. A tap
++        // leaves a caret; a field that takes the focus with its text
++        // selected was focused by the application (opening a page selects
++        // its first field), and the keyboard stays closed as before.
++        this._tapFocusId = GLib.idle_add_once(GLib.PRIORITY_HIGH, () => {
++            this._tapFocusId = 0;
++            const [text, cursor, anchor] = Main.inputMethod.getSurroundingText();
++            if (Main.inputMethod.currentFocus && !(text && cursor !== anchor))
++                this.open();
++        });
++        GLib.Source.set_name_by_id(this._tapFocusId, '[gnome-shell] this._tapFieldFocus');
 +    }
 +
      _locked() {

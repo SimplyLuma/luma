@@ -574,5 +574,9 @@ for (const body of handlers) {
     assert(focus.includes('monotonicMs() - tap.upMs > FIELD_TAP_TIME') && focus.includes('this._fieldTap = null;') &&
         focus.includes('this.open();') && focus.includes('this._tv'),
         'a recent tap opens the keyboard once, outside TV posture');
+    assert(focus.includes('getSurroundingText()') && focus.includes('cursor !== anchor'),
+        'a field focused with its text selected (by the application) stays without the keyboard');
+    assert(/if \(this\._tapFocusId\)\s*GLib\.source_remove\(this\._tapFocusId\);/.test(keyboard),
+        'a destroyed keyboard drops a pending tap focus');
 }
 console.log('PASS Keycap privacy, tap-focused fields, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');

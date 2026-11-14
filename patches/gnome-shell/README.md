@@ -680,5 +680,7 @@ the click release, which comes before the focus for the first field in a
 process (the text input is bound lazily) and for fields that take the focus on
 release. The keyboard remembers the window under the last touch; a text input
 focus-in on that window while the finger is down, or within 500 ms of it
-lifting, opens it. Touch events come only from touchscreens, so pointer and
-keyboard use are unchanged. Test: `keycap-policy.js` in %check. Shell .180.
+lifting, opens it, unless the field arrives with its text selected (focused
+by the application, as a page opening selects its first field). Touch events
+come only from touchscreens, so pointer and keyboard use are unchanged.
+Test: `keycap-policy.js` in %check. Shell .180.
