@@ -42,7 +42,7 @@ class GoogleBarbet(unittest.TestCase):
             hashlib.sha256(config.read_bytes()).hexdigest(),
             lock["base_config"]["sha256"],
         )
-        self.assertEqual(len(lock["patches"]), 22)
+        self.assertEqual(len(lock["patches"]), 23)
         self.assertEqual([p["path"] for p in lock["patches"][14:]], [
             "patches/linux-barbet/7.3/0001-arm64-dts-qcom-add-google-barbet.patch",
             "patches/linux-barbet/7.3/0002-Input-add-ST-FTS-SPI-touchscreen.patch",
@@ -52,6 +52,7 @@ class GoogleBarbet(unittest.TestCase):
             "patches/linux-barbet/7.3/0006-ASoC-qcom-barbet-microphone.patch",
             "patches/linux-barbet/7.3/0007-drm-panel-add-the-barbet-sofef01-panel-mode.patch",
             "patches/linux-barbet/7.3/0008-arm64-dts-qcom-add-the-barbet-ipcrtr-channel.patch",
+            "patches/linux-barbet/7.3/0009-arm64-dts-qcom-use-the-barbet-modem-memory-map.patch",
         ])
 
     def test_boot_cmdline_matches_the_builder(self) -> None:

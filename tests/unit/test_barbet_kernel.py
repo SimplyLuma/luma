@@ -50,10 +50,10 @@ class BarbetKernel(unittest.TestCase):
             [p["path"] for p in lock["patches"]][:2],
             ["patches/01-bindings.patch", "patches/02-clk.patch"],
         )
-        self.assertEqual(len(lock["patches"]), 22)
+        self.assertEqual(len(lock["patches"]), 23)
         self.assertTrue(all(p["source"] == "overlay" for p in lock["patches"][:14]))
         self.assertEqual([p["source"] for p in lock["patches"][14:]],
-                         ["repository"] * 8)
+                         ["repository"] * 9)
         self.assertEqual([p["path"] for p in lock["patches"][14:]], [
             "patches/linux-barbet/7.3/0001-arm64-dts-qcom-add-google-barbet.patch",
             "patches/linux-barbet/7.3/0002-Input-add-ST-FTS-SPI-touchscreen.patch",
@@ -63,6 +63,7 @@ class BarbetKernel(unittest.TestCase):
             "patches/linux-barbet/7.3/0006-ASoC-qcom-barbet-microphone.patch",
             "patches/linux-barbet/7.3/0007-drm-panel-add-the-barbet-sofef01-panel-mode.patch",
             "patches/linux-barbet/7.3/0008-arm64-dts-qcom-add-the-barbet-ipcrtr-channel.patch",
+            "patches/linux-barbet/7.3/0009-arm64-dts-qcom-use-the-barbet-modem-memory-map.patch",
         ])
 
     def test_config_hash_matches(self) -> None:

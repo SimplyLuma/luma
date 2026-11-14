@@ -1,0 +1,11 @@
+--- a/arch/arm64/boot/dts/qcom/sm7250-google-barbet.dts
++++ b/arch/arm64/boot/dts/qcom/sm7250-google-barbet.dts
+@@ -534,7 +534,7 @@
+ 		};
+ 
+ 		modem-wlan@8c000000 {
+-			reg = <0x00 0x8c000000 0x00 0xf800000>;
++			reg = <0x00 0x8c000000 0x00 0x11800000>;
+ 			no-map;
+ 			phandle = <0x90>;
+ 		};

@@ -133,6 +133,11 @@
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0008-arm64-dts-qcom-add-the-barbet-ipcrtr-channel.patch",
       "sha256": "7f32866966a6a0ae8d8b5846ebae0973c5a15dbc3c4472ecf5b7664e7006e155"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0009-arm64-dts-qcom-use-the-barbet-modem-memory-map.patch",
+      "sha256": "a32ab05a95b68dd58a018a0ef124fe7fedffd961a8d8606b8b9bdb776f01a8fc"
     }
   ]
 }
