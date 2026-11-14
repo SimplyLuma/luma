@@ -58,9 +58,13 @@ Wi-Fi needs the modem and WLAN files in the shared store because the barbet
 service starts the modem before the audio service stages the barbet store.
 
 After the first boot, copy the tree to the phone (USB-NCM/SSH or the installer
-path you normally use) and restart the audio service. The current set does not
-include the WCN3990 Wi-Fi firmware or `tqftpserv`; see `SUPPORT.md`, Wi-Fi is
-not a working function yet.
+path you normally use) and restart the audio service.
+
+Wi-Fi uses the WCN3990 firmware above and the base image's `tqftpserv`.
+`luma-barbet-wifi.service` serves the firmware over QRTR, starts the modem and
+waits for the WLFW QRTR service before the audio service starts the ADSP.
+`rmtfs` runs read-only (`rmtfs -r -P -s`, or the read-only fallback of the
+shared image's wrapper), so `modemst1`, `modemst2` and `fsg` are never written.
 
 ## After the first boot
 

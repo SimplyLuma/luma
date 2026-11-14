@@ -19,3 +19,13 @@
 /devices/microsoft/sp12in/ @nmcmil
 /socs/broadcom/bcm2712/  @nmcmil
 /devices/raspberrypi/rpi5/ @nmcmil
+
+# SM7250 (Google Pixel 5a)
+/socs/qcom/sm7250/        @Gibbz
+/devices/google/barbet/   @Gibbz
+/config/kernel/sm7250.fragment @Gibbz
+/config/mobile/barbet-initramfs/ @Gibbz
+/config/mobile/barbet-initramfs.manifest @Gibbz
+/scripts/mobile/barbet/   @Gibbz
+/scripts/mobile/build-barbet-boot-image.sh @Gibbz
+/scripts/mobile/build-barbet-install.sh @Gibbz
