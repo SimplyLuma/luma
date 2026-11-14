@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "google"
+codename = "barbet"
+name = "Google Pixel 5a"
+marketing_name = "Pixel 5a"
+form_factor = "phone"
+year = 2021
+soc = "qcom/sm7250"
+tier = "experimental"
+maintainers = ["@Gibbz"]
+fastboot_product = "barbet"
+
+[kernel]
+# No SimplyLuma/linux tag yet: the source lock pins v7.3-rc7 plus the avicii
+# SM7250 overlay and the repository board/driver patches.
+source_lock = "config/kernel/barbet-7.3.json"
+release = "7.3.0-rc7"
+config = "config/kernel/barbet.config"
+dtb = "qcom/sm7250-google-barbet.dtb"
+
+[boot]
+config = "boot.toml"
+
+[initramfs]
+# The boot ramdisk is the FP6 Alpha 1 postmarketOS base plus the barbet
+# overlay (init_functions.sh, init_2nd.sh, the platform hook and the shared
+# OSTree resolver); the maintainers wire the nightly after merge.
+ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"
+base = "postmarketos-initramfs 3.12.0-r0"
+init_functions = "config/mobile/barbet-initramfs/init_functions.sh"
+init_functions_sha256 = "7ab22459bb10d7bc40045a405747f58d151c1c053060d95476de7cb27ee208c0"
+ostree_package = "ostree-2026.5-1.luma.2.fc44"
+ostree_source = "config/mobile/fp6-ostree-source.json"
+
+[firmware]
+manifest = "firmware.manifest"
+manifest_sha256 = "e7f53dd18ad825b3a26d4f9a9e91679251ddfc59fa5685e5093aeaa039ea8919"
+files = 45
+store = "/var/lib/luma/device-firmware-barbet"
+
+[install]
+guide = "INSTALL.md"
+method = "fastboot"
+# The full install writes userdata and boot_a only. These partitions hold the
+# phone's identity/calibration or the boot chain and are never written.
+preserve = [
+  "modemst1", "modemst2", "fsg", "fsc", "persist", "misc",
+  "dtbo_a", "dtbo_b", "vbmeta_a", "vbmeta_b",
+  "bootloader_a", "bootloader_b", "super", "frp",
+]
+
+[updates]
+ostree_ref = "luma/1/aarch64/nightly"

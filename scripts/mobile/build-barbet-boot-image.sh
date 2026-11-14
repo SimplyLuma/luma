@@ -36,7 +36,7 @@ done
 root_uuid=03797c05-cf87-4eda-adc4-6ce111baf2d3
 boot_uuid=032D-57AD
 firmware_store=/var/lib/luma/device-firmware-barbet
-cmdline="earlycon=qcom_geni,0x888000 keep_bootcon console=ttyMSM0,115200n8 console=tty0 ignore_loglevel loglevel=8 panic=15 rdinit=/init pmos_rootfsopts=defaults rootwait ro init=/init pmos_root_uuid=$root_uuid pmos_boot_uuid=$boot_uuid ostree=/ostree/root.a firmware_class.path=$firmware_store"
+cmdline="earlycon=qcom_geni,0x888000 keep_bootcon console=ttyMSM0,115200n8 console=tty0 ignore_loglevel loglevel=8 panic=15 rdinit=/init pmos_rootfsopts=defaults rootwait ro init=/init pmos_root_uuid=$root_uuid pmos_boot_uuid=$boot_uuid ostree=/ostree/root.a firmware_class.path=/var/lib/luma/device-firmware-barbet"
 
 mkbootimg=${MKBOOTIMG:-mkbootimg}
 unpack=${UNPACK_BOOTIMG:-unpack_bootimg}
