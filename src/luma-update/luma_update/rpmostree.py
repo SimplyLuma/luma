@@ -6,7 +6,8 @@ Interfaces used, as published by rpm-ostree 2026.1
 
 * ``Sysroot``: ``RegisterClient``, ``Reload``, ``ReloadConfig``, ``GetOS``, and
   the ``Deployments`` and ``ActiveTransaction`` properties;
-* ``OS``: ``UpdateDeployment(modifiers, options)``, ``Rollback(options)`` and
+* ``OS``: ``UpdateDeployment(modifiers, options)``, ``Rollback(options)``,
+  ``RefreshMd(options)`` and
   ``KernelArgs(existing, added, replaced, removed, options)``, each returning
   the address of a private transaction bus, and ``GetDeploymentBootConfig``;
 * ``Transaction`` on that private bus: ``Start``, then ``Finished``,
@@ -272,6 +273,13 @@ class RpmOstree:
 
     def rollback(self, *, message=None) -> None:
         self._run("Rollback", GLib.Variant("(a{sv})", ({"reboot": GLib.Variant("b", False)},)),
+                  None, message, None)
+
+    def refresh_md(self, *, force: bool = True, message=None) -> None:
+        """Download fresh rpm-md metadata for the configured repositories
+        (``rpm-ostree refresh-md --force``), so a release published to a
+        device repository resolves now rather than when the cache expires."""
+        self._run("RefreshMd", GLib.Variant("(a{sv})", ({"force": GLib.Variant("b", bool(force))},)),
                   None, message, None)
 
     def cleanup_pending(self, *, message=None) -> None:

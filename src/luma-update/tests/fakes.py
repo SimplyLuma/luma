@@ -86,6 +86,9 @@ class FakeRpmOstree:
         self.reloads = 0
         self.during_download = None
         self.commit_metadata = {}
+        #: revision -> the checksum rpm-ostree gives the deployment after layering
+        #: packages on it (device packages that changed); absent: the revision.
+        self.layered_checksums: dict[str, str] = {}
 
     def deployments(self):
         return list(self.list)
@@ -116,8 +119,16 @@ class FakeRpmOstree:
         booted = next(d for d in self.list if d.booted)
         origin = refspec or booted.origin
         self.list = [d for d in self.list if not d.staged]
-        self.list.insert(0, FakeDeployment(revision, self.versions.get(revision, "?"), origin, staged=True,
-                                           kargs=booted.kargs))
+        checksum = self.layered_checksums.get(revision, revision)
+        if checksum == booted.checksum:
+            return  # rpm-ostree: "No change."
+        self.list.insert(0, FakeDeployment(checksum, self.versions.get(revision, booted.version
+                                           if revision == booted.base_commit else "?"), origin, staged=True,
+                                           kargs=booted.kargs,
+                                           base_checksum=revision if checksum != revision else ""))
+
+    def refresh_md(self, *, force=True, message=None):
+        self.calls.append(("refresh-md", force))
 
     def commit_target_metadata(self, revision):
         self.calls.append(("commit-metadata", revision))
@@ -274,7 +285,7 @@ class Rig:
         from luma_update.engine import Engine
         return Engine(self.paths, self.settings, self.backend, self.probes, self.http,
                       clock=lambda: self.now, arch="x86_64", boot_id=lambda: kwargs.pop("boot", "boot-1"),
-                      greenboot_installed=kwargs.pop("greenboot", True))
+                      greenboot_installed=kwargs.pop("greenboot", True), device=kwargs.pop("device", None))
 
     def close(self):
         self.tmp.cleanup()

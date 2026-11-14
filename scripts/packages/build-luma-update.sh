@@ -128,6 +128,8 @@ PY_MODES
     # 1.0.0-1.luma.17: an added copy identical to the base goes, a newer one is kept.
     grep -Fq "def added_packages_in_conflict" usr/lib/python3*/site-packages/luma_update/engine.py
     grep -Fq "def rpmvercmp" usr/lib/python3*/site-packages/luma_update/rpmver.py
+    grep -Fq "def newer" usr/lib/python3*/site-packages/luma_update/device_repo.py
+    grep -Fq "RefreshMd" usr/lib/python3*/site-packages/luma_update/rpmostree.py
     grep -Fq '"added-package-newer"' usr/lib/python3*/site-packages/luma_update/engine.py
     grep -Fq "\"kept_packages\": \"as\"" usr/lib/python3*/site-packages/luma_update/status.py
     grep -Fq "def set_aside" usr/lib/python3*/site-packages/luma_update/preview.py
