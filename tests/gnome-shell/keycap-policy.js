@@ -489,4 +489,60 @@ for (const body of handlers) {
     const result = handle.call(owner, Clutter, stage, null, {type: () => Clutter.EventType.TOUCH_BEGIN});
     assert(closed && result === Clutter.EVENT_PROPAGATE, 'a press outside the menu closes it and propagates');
 }
-console.log('PASS Keycap privacy, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');
+// Phone key arrangement (Gboard / AOSP LatinIME) from the shipped us layout.
+{
+    const layouts = absolute(args[1]).replace(/js\/ui\/keyboard\.js$/, 'data/osk-layouts/');
+    const us = JSON.parse(read(`${layouts}us.json`)).levels;
+    const name = key => key.label ?? (key.strings?.[0] === ' ' ? 'space' : key.strings?.[0]) ??
+        (key.keyval === '0xff0d' ? 'enter' : key.iconName === 'osk-shift-symbolic' ? 'shift' : key.action);
+    const plan = levels => levels.map(level => level.rows.map(row => row.map(key =>
+        `${key.leftOffset ? `+${key.leftOffset} ` : ''}${name(key)}${(key.width ?? 1) !== 1 ? `:${key.width}` : ''}`).join(' ')));
+    const [letters, shifted, symbols, more] = plan(Keycap.phoneLevels(us));
+    assert(JSON.stringify(letters) === JSON.stringify([
+        'q w e r t y u i o p',
+        '+0.5 a s d f g h j k l',
+        'shift:1.5 z x c v b n m delete:1.5',
+        '?123:1.5 , emoji space:4 . enter:1.5',
+    ]), `letters: delete after m, Enter bottom right, ?123 , emoji space . Enter (${JSON.stringify(letters)})`);
+    assert(shifted[2] === 'shift:1.5 Z X C V B N M delete:1.5', 'capitals keep the arrangement');
+    assert(JSON.stringify(symbols) === JSON.stringify([
+        '1 2 3 4 5 6 7 8 9 0',
+        '+0.5 @ # $ % & - + ( )',
+        '=/<:1.5 * " \' : ; ! ? delete:1.5',
+        'ABC:1.5 , _ space:3 / . enter:1.5',
+    ]), `symbols keep the skeleton, _ and / beside space (${JSON.stringify(symbols)})`);
+    assert(more[2].endsWith('delete:1.5') && more[3] === 'ABC:1.5 , < space:3 > . enter:1.5', 'second symbol page too');
+    const twoLanguages = plan(Keycap.phoneLevels(us, {languages: 2}));
+    assert(twoLanguages[0][3] === '?123:1.5 , languageMenu space:4 . enter:1.5',
+        'several input sources: the language key takes the emoji slot (emoji stays in the strip)');
+    const noEmoji = plan(Keycap.phoneLevels(us, {emoji: false}));
+    assert(noEmoji[0][3] === '?123:1.5 , space:5 . enter:1.5', 'fields without emoji give its width to space');
+    const period = Keycap.phoneLevels(us)[0].rows[3].find(key => key.strings?.[0] === '.');
+    assert(period.strings.includes('!') && period.strings.includes('?'), 'period keeps its long-press punctuation');
+    for (const file of ['email', 'url', 'de', 'fr', 'ru', 'th', 'il', 'ara']) {
+        for (const level of Keycap.phoneLevels(JSON.parse(read(`${layouts}${file}.json`)).levels)) {
+            const widths = level.rows.map(row => row.reduce((sum, key) => sum + (key.leftOffset ?? 0) + (key.width ?? 1), 0));
+            const all = level.rows.flat().flatMap(key => [key.width ?? 1, key.leftOffset ?? 0]);
+            assert(all.every(value => value >= 0 && Number.isInteger(value * 2)), `${file}: half-key grid`);
+            assert(widths.every(width => width <= Math.max(...widths)) && widths.at(-1) === Math.max(...widths),
+                `${file}/${level.level}: the bottom row spans the grid`);
+            const last = level.rows.at(-2), bottom = level.rows.at(-1);
+            assert(last.at(-1).action === 'delete', `${file}/${level.level}: delete ends the last letter row`);
+            assert(bottom.at(-1).keyval === '0xff0d', `${file}/${level.level}: Enter ends the bottom row`);
+            assert(!level.rows.flat().some(key => key.action === 'hide'), `${file}: hide lives in the strip`);
+        }
+    }
+    const url = Keycap.phoneLevels(JSON.parse(read(`${layouts}url.json`)).levels)[0];
+    assert(url.rows[3].find(key => key.strings?.[0] === ' ').width >= 2.5 &&
+        url.rows[3].reduce((sum, key) => sum + (key.width ?? 1), 0) === 10, 'URL keys fit the letters\' ten columns');
+    for (const file of ['digits', 'number', 'phone', 'us-extended']) {
+        const levels = JSON.parse(read(`${layouts}${file}.json`)).levels;
+        assert(Keycap.phoneLevels(levels) === levels, `${file} keeps its own arrangement`);
+    }
+    const build = keyboard.slice(keyboard.indexOf('    _updateLayout('), keyboard.indexOf('    _keycapRow('));
+    assert(/pad \|\| this\._tv \|\| !phone\s*\?\s*keyboardModel\.getLevels\(\)\s*:\s*Keycap\.phoneLevels\(/.test(build),
+        'the keyboard uses the phone arrangement except on number pads, TV, Tablet and Desktop');
+    assert(/const phone = Main\.presentation\s*\?\s*Main\.presentation\.mode === 'mobile'\s*:\s*GLib\.getenv\('LUMA_DEVICE_CLASS'\) === 'handheld';/.test(build),
+        'the phone arrangement follows Mobile, and a handheld greeter');
+}
+console.log('PASS Keycap privacy, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');

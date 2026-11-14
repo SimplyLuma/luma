@@ -1,0 +1,42 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: phone key arrangement
+
+The letter and symbol pages take the phone arrangement Gboard and AOSP
+LatinIME use: delete at the right of the last letter row (after M), Enter
+at the right of the bottom row, and the bottom row as ?123, comma, language
+or emoji, space and period. Shift, delete, ?123 and Enter are 1.5 keys wide
+and a nine-key middle row is inset by half a key on each side, with nothing
+after L. Keycap.phoneLevels() (lumaPresentation/keycap.js) builds the rows
+from the layout files, so every language keeps its own letters. Mobile and
+the greeter on a handheld take it; Tablet, Desktop, number pads, terminal
+layouts and the TV arrangement are unchanged.
+
+---
+diff --git a/js/ui/keyboard.js b/js/ui/keyboard.js
+index 71f3097..d3870d2 100644
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -2617,12 +2617,22 @@ export const Keyboard = GObject.registerClass({
+         this._tvKeys = [];
+         this._tvActionKeys = [];
+         this._tvBuiltPurpose = purpose;
++        // A phone (Mobile, or the greeter on a handheld) takes the phone
++        // arrangement (Gboard's): delete ends the last letter row, and the
++        // bottom row is ?123, comma, language or emoji, space, period and
++        // Enter. Tablet, Desktop and number pads keep their own.
++        const phone = Main.presentation
++            ? Main.presentation.mode === 'mobile'
++            : GLib.getenv('LUMA_DEVICE_CLASS') === 'handheld';
++        const sources = Object.keys(InputSourceManager.getInputSourceManager().inputSources).length;
+         const levels = this._tv && !pad
+             ? TvKeyboard.tvLevels(keyboardModel.getLevels(), {
+                 keepExtras: purpose === Clutter.InputContentPurpose.EMAIL ||
+                     purpose === Clutter.InputContentPurpose.URL,
+             })
+-            : keyboardModel.getLevels();
++            : pad || this._tv || !phone
++                ? keyboardModel.getLevels()
++                : Keycap.phoneLevels(keyboardModel.getLevels(), {emoji: emojiVisible, languages: sources});
+ 
+         levels.forEach(currentLevel => {
+             const levelLayout = new KeyContainer();

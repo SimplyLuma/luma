@@ -656,3 +656,13 @@ phone, in one place.", the tablet presentation "tablet", and both hide the
 "esc" chip, which means nothing without an Esc key; an outside tap still
 closes Search. The desktop keeps "this machine" and the chip. Test:
 `search-keyboard-policy.js` in %check. Shell .177.
+
+`0340-keycap-phone-key-arrangement.patch`: the letter and symbol pages take
+the phone arrangement of Gboard and AOSP LatinIME. Delete ends the last letter
+row (after M), Enter ends the bottom row, and the bottom row is ?123, comma,
+language (several input sources) or emoji, space and period. Shift, delete,
+?123 and Enter are 1.5 keys wide; space is 4 on the letter pages and 3 on the
+symbol pages, where `_` and `/` sit beside it; a nine-key middle row is inset
+by half a key on each side. `Keycap.phoneLevels()` builds the rows from each
+language's layout file. Number pads, terminal layouts and TV are unchanged.
+Test: `keycap-policy.js` in %check. Shell .178.
