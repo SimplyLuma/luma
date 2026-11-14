@@ -10,16 +10,33 @@ first saved from the panel keeps data on unless the switch says off.
 Turning data off with no profile bound binds the carrier's first listed
 APN with autoconnect off instead of asking for an APN first, so the
 cellular link sees the answer. Roaming stays off by default.
+
+A new APN profile belongs to the person (connection.permissions
+user:<name>): a phone's session holds settings.modify.own but not
+settings.modify.system, and adding a system-wide profile was refused
+there, so the switch could not be turned off.
 ---
- panels/wwan/cc-wwan-data.c        |  6 +++++-
+ panels/wwan/cc-wwan-data.c        | 11 ++++++++++-
  panels/wwan/cc-wwan-device-page.c | 12 ++++++++++++
- 2 files changed, 17 insertions(+), 1 deletion(-)
+ 2 files changed, 22 insertions(+), 1 deletion(-)
 
 diff --git a/panels/wwan/cc-wwan-data.c b/panels/wwan/cc-wwan-data.c
-index 30b12c0..4ec43c7 100644
+index 30b12c0..a8edbb8 100644
 --- a/panels/wwan/cc-wwan-data.c
 +++ b/panels/wwan/cc-wwan-data.c
-@@ -474,6 +474,10 @@ static void
+@@ -187,6 +187,11 @@ wwan_data_get_nm_connection (CcWwanDataApn *apn)
+                 NM_SETTING_CONNECTION_UUID, uuid,
+                 NM_SETTING_CONNECTION_TYPE, NM_SETTING_GSM_SETTING_NAME,
+                 NULL);
++  /* Luma: the APN is the person's, as the SIM's data switch is. A profile of
++   * their own needs only NetworkManager's settings.modify.own, which a phone's
++   * session holds; a system-wide one was refused there (Insufficient
++   * privileges), so the Mobile Data switch could not be turned off. */
++  nm_setting_connection_add_permission (NM_SETTING_CONNECTION (setting), "user", g_get_user_name (), NULL);
+   nm_connection_add_setting (connection, setting);
+ 
+   setting = nm_setting_serial_new ();
+@@ -474,6 +479,10 @@ static void
  cc_wwan_data_init (CcWwanData *self)
  {
    self->home_only = TRUE;
@@ -30,7 +47,7 @@ index 30b12c0..4ec43c7 100644
    self->priority = CC_WWAN_APN_PRIORITY_LOW;
  }
  
-@@ -1096,7 +1100,7 @@ cc_wwan_data_get_enabled (CcWwanData *self)
+@@ -1096,7 +1105,7 @@ cc_wwan_data_get_enabled (CcWwanData *self)
      return TRUE;
  
    if (!self->default_apn || !self->default_apn->remote_connection)

@@ -298,7 +298,10 @@ bound to the SIM, the Mobile Data switch said off while the FP6 cellular link
 treats that state as on. The switch now reports on there, a first saved
 profile keeps data on, and turning data off with no profile binds the
 carrier's first listed APN with autoconnect off, so the link sees it. Roaming
-stays off by default.
+stays off by default. A new APN profile belongs to the person
+(`connection.permissions` user:<name>): a phone's session holds
+`settings.modify.own` but not `settings.modify.system`, and NetworkManager
+refused a system-wide profile there.
 
 `0104-lumaui-phone-requested-page-leaves-list.patch`: on a phone a page asked
 for from outside was pushed over the list only when the page changed, so
