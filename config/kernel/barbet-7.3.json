@@ -103,6 +103,11 @@
       "source": "repository",
       "path": "patches/linux-barbet/7.3/0002-Input-add-ST-FTS-SPI-touchscreen.patch",
       "sha256": "47f8dd8ccede7671db5dc303cd70280c4d84fbca2eaff3e9dc4d38d38964dfac"
+    },
+    {
+      "source": "repository",
+      "path": "patches/linux-barbet/7.3/0003-remoteproc-add-the-sm7250-adsp-resource.patch",
+      "sha256": "6f90043fc50f473994b7097eae53f7d9cf15dee1eec9807e1af5a3f62553b50f"
     }
   ]
 }
