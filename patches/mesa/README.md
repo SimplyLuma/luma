@@ -1,7 +1,7 @@
 # mesa patches
 
-Applied by `0000-luma-fedora-spec.patch` to Fedora's mesa 26.2.5-1 spec
-(release `.luma.N`) on top of `mesa-26.2.5.tar.xz`; built by
+Applied by `0000-luma-fedora-spec.patch` to Fedora's mesa 26.3.0-1 (fc46) spec,
+rebuilt for Fedora 44 (release `.luma.N`) on top of `mesa-26.3.0.tar.xz`; built by
 `scripts/packages/build-mesa.sh` (desktop-components group `mesa`).
 
 | Patch | Origin | Why |
