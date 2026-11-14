@@ -59,9 +59,3 @@ if [ -e /sys/class/net/wlan0 ]; then
 else
     echo "wlan0 did not appear; check the WLAN firmware" >&2
 fi
-
-# Bring audio back whether or not Wi-Fi came up; luma-barbet-audio runs next.
-if [ -e /sys/class/remoteproc/remoteproc0/state ] &&
-   [ "$(cat /sys/class/remoteproc/remoteproc0/state)" != running ]; then
-    echo start > /sys/class/remoteproc/remoteproc0/state
-fi
