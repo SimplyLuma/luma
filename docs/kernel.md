@@ -15,7 +15,8 @@ Luma base.
 | `sc7280` | Qualcomm SC7280/QCM6490 family patches. Empty. | `497791a0a96b` |
 | `zuma` | Google Tensor G3 (zuma) family patches. Empty. | `497791a0a96b` |
 | `msm8953` | Qualcomm MSM8953 (Snapdragon 625/450/632) family patches. Empty. | `497791a0a96b` |
-| `milos` | Qualcomm SM7635, on milos-mainline 7.1.2. Moves to `luma-7.2` first (see Transition). | `c098393e36c0` |
+| `milos` | Qualcomm SM7635, on milos-mainline 7.1.2 (Alpha 1). | `c098393e36c0` |
+| `milos-7.2` | Qualcomm SM7635 on `luma-7.2`: the Fairphone 6 kernel. Replaces `milos`. | `f20e69edcd1c` |
 
 `497791a0a96b866d90add64041c47acdff49cae6` is the upstream `v7.2.15` commit.
 `main` is the repository's fork point and is not used for builds.
@@ -135,10 +136,9 @@ Existing devices keep their current kernels until they move:
 
 | Device | Kernel today |
 |---|---|
-| Fairphone 6 | `milos`, milos-mainline 7.1.2, plus `patches/linux-milos` |
 | Raspberry Pi 5 | Raspberry Pi tree, source lock |
 | Surface Pro 12-inch | upstream 7.3 plus a patch overlay, source lock and `patches/linux-surface-pro12` |
 
-The Fairphone 6 moves to `luma-7.2` first, as the reference family. Each
-device leaves `TRANSITIONAL_KERNELS` in `tools/check-devices.py` when it
-moves.
+The Fairphone 6, the reference family, is on `luma-7.2`
+(`luma-kernel-7.2.15-luma1`). Each device leaves `TRANSITIONAL_KERNELS` in
+`tools/check-devices.py` when it moves.

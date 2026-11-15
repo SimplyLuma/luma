@@ -72,7 +72,7 @@ class Fp6AndroidGpuAdmission(unittest.TestCase):
         kernel, record = admission.load()
         _, admitted, reasons = admission.expected(kernel, record)
         self.assertEqual(admitted, record["admitted"])
-        for patch in record["required_patches"]:
+        for patch in record.get("required_patches", []):
             if patch not in kernel.get("patches", []):
                 self.assertFalse(admitted)
 

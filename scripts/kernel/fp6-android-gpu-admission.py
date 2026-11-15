@@ -10,8 +10,10 @@ kernel build time, for the kernel it belongs to.
 
 devices/fairphone/fp6/device.toml [kernel.android_gpu] is the record:
 
-  required_patches      GPU patches every admitted kernel must carry
-  rejected_patches      patches no admitted kernel may carry
+  required_patches      GPU patches in this repository every admitted kernel
+                        must carry (optional; a kernel built from a tag alone
+                        carries its GPU changes as commits of that tag)
+  rejected_patches      patches no admitted kernel may carry (optional)
   qualified_gpu_inputs  GPU inputs (tag + every patch touching drivers/gpu/)
                         that passed the physical qualification; "" = none
   qualified_notes_sha256  the kernel that qualification ran on (provenance)
@@ -70,7 +72,12 @@ def gpu_inputs(kernel: dict, root: Path = ROOT) -> str:
 def kernel_inputs(kernel: dict, root: Path = ROOT) -> str:
     lines = [f"{key} {kernel.get(key, '')}" for key in ("tag", "release", "config", "dtb", "dtb_overlays")]
     for fragment in kernel.get("config_fragments", []):
-        lines.append(f"fragment {fragment} {file_sha256(root / fragment)}")
+        # A fragment in the kernel tree is pinned by the tag; one in this
+        # repository (transitional kernels) by its digest.
+        if (root / fragment).is_file():
+            lines.append(f"fragment {fragment} {file_sha256(root / fragment)}")
+        else:
+            lines.append(f"fragment {fragment}")
     for patch in kernel.get("patches", []):
         lines.append(f"patch {patch} {file_sha256(root / patch)}")
     return hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()

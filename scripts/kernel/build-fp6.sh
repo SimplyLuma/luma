@@ -2,15 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Build the Fairphone 6 kernel: the SimplyLuma/linux tag in
-# devices/fairphone/fp6/device.toml [kernel] with its patches applied, its
-# config with the config_fragments merged over it, cross-compiled as
-# luma/fp6/alpha1/BUILD.md in that tag describes (clang/LLVM/LLD 22.1.8 and
-# pahole 1.30 on Fedora 44).
+# devices/fairphone/fp6/device.toml [kernel], its config (a defconfig in that
+# tree) with the tree's config_fragments merged over it, cross-compiled with
+# clang/LLVM/LLD 22.1.8 and pahole 1.30 on Fedora 44 (docs/kernel.md).
 #
 # OUTPUT_DIR receives:
 #   Image.gz  the kernel for the boot image (scripts/mobile/build-fp6-boot-image.sh --kernel)
-#   dtb       the boot DTB: the built DTB with the tag's overlays
-#             (scripts/kernel/compose-fp6-dtb.sh; build-fp6-boot-image.sh --dtb)
+#   dtb       the built DTB (build-fp6-boot-image.sh --dtb)
 #   config    the merged configuration
 #   android-gpu-admission.sha256
 #             the kernel's Android GPU admission entry, empty unless
@@ -22,8 +20,7 @@
 #
 # usage: build-fp6.sh [--source DIR] OUTPUT_DIR
 #   --source  an unpacked tree of the tag (default: fetched and exported without
-#             .git, so the kernel release carries no -g<commit> suffix); patches
-#             it does not carry yet are applied to it
+#             .git, so the kernel release carries no -g<commit> suffix)
 #
 # JOBS (default 16), KBUILD_BUILD_VERSION and KBUILD_BUILD_TIMESTAMP override
 # the build defaults below.
@@ -50,7 +47,6 @@ import shlex, sys, tomllib
 k = tomllib.load(open(sys.argv[1], "rb"))["kernel"]
 print(f"tag={shlex.quote(k['tag'])} release={shlex.quote(k['release'])} config={shlex.quote(k['config'])}")
 print(f"dtb={shlex.quote(k['dtb'])} fragments=({' '.join(shlex.quote(f) for f in k.get('config_fragments', []))})")
-print(f"patches=({' '.join(shlex.quote(f) for f in k.get('patches', []))})")
 PY
 )"
 
@@ -66,10 +62,8 @@ if [ -z "$source_dir" ]; then
 fi
 [ ! -e "$source_dir/.git" ] || fail "$source_dir is a git checkout; export it so the release has no -g<commit> suffix"
 [ -f "$source_dir/$config" ] || fail "$source_dir has no $config (not the $tag tree)"
-for p in "${patches[@]}"; do
-  # Already applied when it reverses cleanly.
-  patch -d "$source_dir" -p1 -R -f -s --dry-run <"$repo_root/$p" >/dev/null 2>&1 && continue
-  patch -d "$source_dir" -p1 -N -s <"$repo_root/$p" || fail "$p does not apply to $source_dir"
+for fragment in "${fragments[@]}"; do
+  [ -f "$source_dir/$fragment" ] || fail "$source_dir has no $fragment"
 done
 
 obj="$out/obj"
@@ -86,14 +80,14 @@ K=(make O="$obj" ARCH=arm64 LLVM=1 LOCALVERSION="$localversion"
 cp "$config" "$obj/.config.base"
 cp "$obj/.config.base" "$obj/.config.new"
 for fragment in "${fragments[@]}"; do
-  scripts/kconfig/merge_config.sh -m -O "$obj" "$obj/.config.new" "$repo_root/$fragment" >/dev/null
+  scripts/kconfig/merge_config.sh -m -O "$obj" "$obj/.config.new" "$source_dir/$fragment" >/dev/null
   mv "$obj/.config" "$obj/.config.new"
 done
 mv "$obj/.config.new" "$obj/.config"
 "${K[@]}" -s olddefconfig
 # Every fragment assignment must survive olddefconfig (no unmet dependencies).
 for fragment in "${fragments[@]}"; do
-  grep -E '^(CONFIG_[A-Z0-9_]+=|# CONFIG_[A-Z0-9_]+ is not set)' "$repo_root/$fragment" | while IFS= read -r line; do
+  grep -E '^(CONFIG_[A-Z0-9_]+=|# CONFIG_[A-Z0-9_]+ is not set)' "$source_dir/$fragment" | while IFS= read -r line; do
     grep -qxF -- "$line" "$obj/.config" || fail "$fragment: '$line' did not survive olddefconfig"
   done
 done
@@ -106,7 +100,7 @@ rm -rf "$out/modules"
 rm -f "$out/modules/lib/modules/$release/build" "$out/modules/lib/modules/$release/source"
 install -m 0644 "$obj/arch/arm64/boot/vmlinuz" "$out/Image.gz"
 install -m 0644 "$obj/.config" "$out/config"
-"$repo_root/scripts/kernel/compose-fp6-dtb.sh" "$source_dir" "$obj/arch/arm64/boot/dts/$dtb" "$out/dtb" >/dev/null
+install -m 0644 "$obj/arch/arm64/boot/dts/$dtb" "$out/dtb"
 admission=$(python3 "$repo_root/scripts/kernel/fp6-android-gpu-admission.py" emit \
   --source "$source_dir" --vmlinux "$obj/vmlinux" --output "$out/android-gpu-admission.sha256") ||
   fail "Android GPU admission"
@@ -114,7 +108,6 @@ inputs=$(python3 "$repo_root/scripts/kernel/fp6-android-gpu-admission.py" inputs
 {
   printf 'TAG=%s\nRELEASE=%s\n' "$tag" "$release"
   printf 'FRAGMENTS=%s\n' "${fragments[*]}"
-  printf 'PATCHES=%s\n' "${patches[*]}"
   printf 'IMAGE_SHA256=%s\n' "$(sha256sum "$out/Image.gz" | cut -d' ' -f1)"
   printf 'CONFIG_SHA256=%s\n' "$(sha256sum "$out/config" | cut -d' ' -f1)"
   printf 'DTB_SHA256=%s\n' "$(sha256sum "$out/dtb" | cut -d' ' -f1)"

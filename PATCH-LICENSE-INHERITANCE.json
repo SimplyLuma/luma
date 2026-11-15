@@ -429,17 +429,6 @@
       "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
     },
     {
-      "family": "linux-milos",
-      "path": "patches/linux-milos/",
-      "status": "upstream-license-not-established-by-this-audit",
-      "observed_patch_headers": {
-        "patches/linux-milos/0005-media-i2c-add-fp6-s5kkd1sp-front-camera.patch": [
-          "GPL-2.0"
-        ]
-      },
-      "note": "Keep patch copyright/author and upstream file notices. Determine the exact modified upstream file license before adding an annotation; do not apply the original-Luma Apache default automatically."
-    },
-    {
       "family": "linux-milos-fingerprint",
       "path": "patches/linux-milos-fingerprint/",
       "status": "documented",
