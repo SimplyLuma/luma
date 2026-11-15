@@ -1,0 +1,13 @@
+[Unit]
+Description=Pixel 5a: mark the running boot slot successful
+Documentation=man:qbootctl(8)
+ConditionPathExists=/usr/bin/qbootctl
+ConditionFirmware=device-tree-compatible(google,barbet)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/qbootctl -m
+
+[Install]
+WantedBy=multi-user.target

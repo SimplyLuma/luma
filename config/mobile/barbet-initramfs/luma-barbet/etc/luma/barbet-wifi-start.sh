@@ -10,6 +10,20 @@ store=/var/lib/luma/device-firmware
 command -v tqftpserv >/dev/null ||
     { echo "tqftpserv is not installed; Wi-Fi not started" >&2; exit 1; }
 
+# tqftpserv answers the modem's /readonly requests with files next to the
+# modem firmware, so the WLAN images have to sit in that directory.
+for s in "$store" /var/lib/luma/device-firmware-barbet; do
+    dir="$s/qcom/sm7250/google/barbet"
+    [ -d "$dir" ] || continue
+    for f in wlanmdsp.mbn bdwlan.bin; do
+        [ -s "$s/$f" ] && ln -sfn "$s/$f" "$dir/$f"
+    done
+    for f in board-2.bin firmware-5.bin; do
+        [ -s "$s/ath10k/WCN3990/hw1.0/$f" ] &&
+            ln -sfn "$s/ath10k/WCN3990/hw1.0/$f" "$dir/$f"
+    done
+done
+
 # ath10k probes asynchronously; its QMI client must exist before the chip.
 i=0
 while [ ! -e /sys/bus/platform/devices/18800000.wifi/driver ]; do

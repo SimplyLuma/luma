@@ -10,7 +10,7 @@ cp -a /luma-barbet/etc/. /sysroot/etc/
 
 mkdir -p /sysroot/etc/systemd/system/multi-user.target.wants
 for unit in luma-barbet-audio.service luma-barbet-audio-rescan.service \
-            luma-barbet-wifi.service; do
+            luma-barbet-wifi.service luma-barbet-boot-success.service; do
     ln -sf "../$unit" "/sysroot/etc/systemd/system/multi-user.target.wants/$unit"
 done
 

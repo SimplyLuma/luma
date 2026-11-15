@@ -1,3 +1,7 @@
 # Barbet (Pixel 5a) mainline sm8250 sound card: expose a normal stereo
 # speaker sink (hw:0,1) and mono mic (hw:0,0) instead of pro-audio nodes.
 SUBSYSTEM=="sound", KERNEL=="card*", ATTR{id}=="barbet", ENV{ACP_PROFILE_SET}="/etc/alsa-card-profile/mixer/profile-sets/barbet.conf"
+# The phone's primary user must reach the sound nodes without a seat session
+# (serial or SSH); the image's user is not always in the audio group.
+SUBSYSTEM=="sound", KERNEL=="controlC*|pcmC*", TAG+="uaccess"
+SUBSYSTEM=="sound", KERNEL=="controlC*|pcmC*", RUN+="/usr/bin/setfacl -m u:luma:rw /dev/%k"

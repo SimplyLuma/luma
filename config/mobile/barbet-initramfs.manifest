@@ -1,19 +1,20 @@
 # Pixel 5a (barbet) boot initramfs overlay: every branch file.
 # kind<TAB>mode<TAB>sha256<TAB>path<TAB>origin
 F	0644	75d466edea39ac1001ff20c0ead9083de1ecc76ee1e3864ef6011bc0d7affd23	deviceinfo	branch
-F	0755	472cd53b5ffcfb25bcbb4b5159f7e339a961c2aa13442fac6acc7c4938e8a5da	hooks-cleanup/60-barbet-platform.sh	branch
+F	0644	4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865	etc/luma-ostree	branch
+F	0755	6d975285117d42dd8c452f292ee5b2460d755c39bbf1bcacc8ef0f0944944346	hooks-cleanup/60-barbet-platform.sh	branch
 F	0644	7fdccfdd2beae83115277c7edc9879312457146ed5096af1bed869757773d412	init_2nd.sh	branch
 F	0644	fb49ef0bf49f1f7bd86a12786709df6f42ae20d5d9bacc880d3527382531eb47	init_functions.sh	branch
 F	0644	c2a6f2f0eacaf9910874082d869874f171f24c1d75dc3aa0448978c81cdcc4f1	luma-barbet/etc/alsa-card-profile/mixer/profile-sets/barbet.conf	branch
 F	0755	d8219e6e58c8fb342fae5d1afd649479142a8d5169c3dbc10fdd500d43043b3e	luma-barbet/etc/luma/barbet-audio-rescan.sh	branch
 F	0755	7796d3fd7f5e5ad01f97fc9949f963d67781034c0cf8c4461bdd8f79b1b16141	luma-barbet/etc/luma/barbet-audio-start.sh	branch
-F	0755	ae147902e987823dc5f0f7335fd5be060bfcebbf31e25656c762c804749a3566	luma-barbet/etc/luma/barbet-wifi-start.sh	branch
+F	0755	b82d45ee07c3312a990b55586a8005fe9032f2d0058fe237742013dafc51bcea	luma-barbet/etc/luma/barbet-wifi-start.sh	branch
+F	0755	e5207f41b8ff43f3cd1800396e2c52e4eff00506aec06a8c9d16681876d1a258	luma-barbet/etc/systemd/system-sleep/50-barbet-usb	branch
 F	0644	bad11bcf270480660da62fa12fc05555ebe3c659a3289871613e7383dceaf61b	luma-barbet/etc/systemd/system/luma-barbet-audio-rescan.service	branch
 F	0644	a559b29e11d03de88c9c8b3aef263d02f8cd615b361bbb8732eecdc277afce61	luma-barbet/etc/systemd/system/luma-barbet-audio.service	branch
+F	0644	c01c7dc57aa317445d58d159865a58bc57f6d0f8fce67d88cf6a804db0edaf64	luma-barbet/etc/systemd/system/luma-barbet-boot-success.service	branch
 F	0644	37c0432f8d45a8f64f04533b68c5ba7f6e59efe673e6cad9246308654d700a31	luma-barbet/etc/systemd/system/luma-barbet-wifi.service	branch
 F	0644	59d7bf7553237fdf825b1c0d4af0f188f3cc5d45a2060dbcd5e366a6b2d1832c	luma-barbet/etc/systemd/system/rmtfs.service.d/99-barbet-read-only.conf	branch
-F	0755	e5207f41b8ff43f3cd1800396e2c52e4eff00506aec06a8c9d16681876d1a258	luma-barbet/etc/systemd/system-sleep/50-barbet-usb	branch
 F	0644	ce4b9d532688f876335e2a0589fdc9efee8b861ab748533bd978c142b0e28c4b	luma-barbet/etc/systemd/user/luma-barbet-audio-session.service	branch
-F	0644	eaea318797941b08e0525e705e4973aabb678da245a42bc428d08f843f4244c2	luma-barbet/etc/udev/rules.d/89-barbet-audio.rules	branch
-F	0644	35af797eec3c2e8bba21ef5fb79d19a16fc104a456100ae993963691b6cafd01	luma-barbet/etc/wireplumber/wireplumber.conf.d/51-barbet-s16.conf	branch
-F	0644	4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865	etc/luma-ostree	branch
+F	0644	d57bf9d7dbc46d1864e133cd02ec0639ebdb3845a9f623aa09eabcf82cc6d479	luma-barbet/etc/udev/rules.d/89-barbet-audio.rules	branch
+F	0644	49ddc8f31c39836979410dc40d42f914742b37dd47d79136081371b9febdceb0	luma-barbet/etc/wireplumber/wireplumber.conf.d/51-barbet-s16.conf	branch
