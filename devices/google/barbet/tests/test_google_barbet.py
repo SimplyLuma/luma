@@ -31,10 +31,11 @@ class GoogleBarbet(unittest.TestCase):
     def test_kernel_tag_and_fragment(self) -> None:
         device = toml("device.toml")
         kernel = device["kernel"]
-        self.assertTrue(kernel["tag"].startswith("luma-kernel-"))
-        self.assertEqual(kernel["release"], "7.2.15-sm7250")
+        self.assertTrue(kernel.get("tag", "").startswith("luma-kernel-"),
+                        "Blocked: an actual published Luma kernel tag is required")
+        self.assertEqual(kernel["release"], "7.2.15")
         self.assertEqual(kernel["dtb"], "qcom/sm7250-google-barbet.dtb")
-        self.assertTrue((ROOT / kernel["config"]).is_file())
+        self.assertEqual(kernel["config"], "luma/config/sm7250.fragment")
         self.assertNotIn("source_lock", kernel)
         self.assertNotIn("patches", kernel)
 

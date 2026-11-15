@@ -15,5 +15,15 @@ while ! pgrep -u 1000 -x wireplumber >/dev/null 2>&1; do
     sleep 1
 done
 
+# The card only appears after the ADSP boots, which can be much later than the
+# session. Re-announcing it before it exists would leave WirePlumber without a
+# sound device for the rest of the boot.
+i=0
+while [ ! -e /sys/class/sound/card0 ]; do
+    i=$((i + 1))
+    [ "$i" -lt 180 ] || exit 0
+    sleep 1
+done
+
 sleep 2
 udevadm trigger --subsystem-match=sound --action=change

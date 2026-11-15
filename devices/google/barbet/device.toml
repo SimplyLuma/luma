@@ -12,10 +12,11 @@ maintainers = ["@Gibbz"]
 fastboot_product = "barbet"
 
 [kernel]
-# Built from the SimplyLuma/linux sm7250 branch (v7.2.15 family base).
-tag = "luma-kernel-7.2.15-sm7250"
-release = "7.2.15-sm7250"
-config = "config/kernel/sm7250.fragment"
+# Integration blocked: SimplyLuma/linux has not published a luma-kernel tag
+# carrying this port. Add its actual tag and release after qualification;
+# deliberately omit tag rather than naming a nonexistent release.
+release = "7.2.15"
+config = "luma/config/sm7250.fragment"
 dtb = "qcom/sm7250-google-barbet.dtb"
 
 [boot]

@@ -3,6 +3,7 @@
 import importlib.util
 import shutil
 import tempfile
+import tomllib
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -23,7 +24,9 @@ class DeviceTree(unittest.TestCase):
                             ignore=shutil.ignore_patterns("__pycache__"))
         (self.root / ".github").mkdir()
         shutil.copy(ROOT / ".github" / "CODEOWNERS", self.root / ".github" / "CODEOWNERS")
-        for name in ("scripts/mobile/fp6-native-init-functions.sh", "config/mobile/fp6-ostree-source.json"):
+        for name in ("scripts/mobile/fp6-native-init-functions.sh",
+                     "config/mobile/fp6-ostree-source.json",
+                     "config/mobile/barbet-initramfs/init_functions.sh"):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / name, self.root / name)
         for name in ("config/kernel", "patches/linux-milos", "patches/linux-surface-pro12"):
@@ -49,6 +52,14 @@ class DeviceTree(unittest.TestCase):
 
     def test_real_tree_is_valid(self):
         self.assertEqual(self.errors(), [])
+
+    def test_fixture_includes_each_device_init_functions(self):
+        for manifest in (self.root / "devices").glob("*/*/device.toml"):
+            document = tomllib.loads(manifest.read_text())
+            script = document.get("initramfs", {}).get("init_functions")
+            if script:
+                with self.subTest(device=manifest.parent.name):
+                    self.assertTrue((self.root / script).is_file())
 
     def test_kernel_patches_must_be_repository_diffs(self):
         patch = "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch"

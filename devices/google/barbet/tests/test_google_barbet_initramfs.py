@@ -52,6 +52,17 @@ class BarbetInitramfs(unittest.TestCase):
         hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
         self.assertNotIn("luma-fp6-", hook)
 
+    def test_barbet_owns_an_explicit_read_only_rmtfs_command(self) -> None:
+        path = TREE / "luma-barbet/etc/systemd/system/rmtfs.service.d/99-barbet-read-only.conf"
+        self.assertTrue(path.is_file(), "barbet must not depend on an FP6 wrapper fallback")
+        text = path.read_text()
+        self.assertIn("ExecStart=\nExecStart=/usr/bin/rmtfs -r -P -s\n", text)
+        self.assertNotIn("-W", text)
+        self.assertNotIn(" -o ", text)
+        wifi = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-wifi.service").read_text()
+        self.assertIn("Requires=rmtfs.service", wifi)
+        self.assertIn("After=local-fs.target rmtfs.service", wifi)
+
     def test_wifi_starts_the_modem_after_ath10k_binds(self) -> None:
         script = (TREE / "luma-barbet/etc/luma/barbet-wifi-start.sh").read_text()
         bind = script.index("/sys/bus/platform/devices/18800000.wifi/driver")

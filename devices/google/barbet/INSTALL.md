@@ -1,9 +1,14 @@
 # Luma on the Google Pixel 5a (barbet)
 
 **Experimental.** This is a bring-up install for people helping with the port.
-It erases Android and all of `userdata`, including any Luma data already on the
-phone. Keep the exact Google factory image for the phone; it is the recovery
-path. Do not relock the bootloader.
+It erases all of `userdata`, including Android user data and any Luma data
+already on the phone. Android's `boot_a` and system partitions are preserved,
+but Android user data is not. Keep the exact Google factory image; it is the
+recovery path. Do not relock the bootloader.
+
+**Not release-ready:** kernel integration, a published Luma kernel tag, the
+standalone postmarketOS ramdisk and a fresh full-install test are still pending.
+The development phone's boot test is not qualification of an install set.
 
 ## What you need
 
@@ -34,7 +39,7 @@ fastboot --set-active=b
 fastboot reboot
 ```
 
-`fastboot flash userdata` erases Android and all existing Luma data. The
+`fastboot flash userdata` erases Android user data and all existing Luma data. The
 install never writes `boot_a` (Android), `modemst1`, `modemst2`, `fsg`, `fsc`, `persist`, `misc`,
 `dtbo_a`, `dtbo_b`, `vbmeta_a`, `vbmeta_b`, `bootloader_a`, `bootloader_b`,
 `super` or `frp`; do not add commands that do.
@@ -63,8 +68,11 @@ path you normally use) and restart the audio service.
 Wi-Fi uses the WCN3990 firmware above and the base image's `tqftpserv`.
 `luma-barbet-wifi.service` serves the firmware over QRTR, starts the modem and
 waits for the WLFW QRTR service before the audio service starts the ADSP.
-`rmtfs` runs read-only (`rmtfs -r -P -s`, or the read-only fallback of the
-shared image's wrapper), so `modemst1`, `modemst2` and `fsg` are never written.
+The barbet `rmtfs.service` drop-in explicitly runs `/usr/bin/rmtfs -r -P -s`
+and Wi-Fi requires that service before starting the modem. This selects the
+read-only partition backend without an FP6 file-store wrapper, so rmtfs does
+not write `modemst1`, `modemst2` or `fsg`. This replacement still needs a boot
+test; the development phone currently uses the wrapper's read-only fallback.
 
 ## After the first boot
 
@@ -84,6 +92,22 @@ firmware tree and `journalctl -u luma-barbet-audio.service`.
 
 To return to Android, flash the matching Google factory image with its own
 `flash-all` script. Never repartition, relock the bootloader, or restore a
-different factory build. The exact binaries and hashes used for this port are
-listed in `SUPPORT.md`; raw captures and private firmware are not in the
-repository.
+different factory build. Firmware names and hashes are recorded in
+`firmware.manifest`; raw captures and private firmware are not in the repository.
+
+## Verified development behavior and remaining limits
+
+The development kernel is based on Luma's 7.2.15 SM7250 branch. Display and
+touch work; Adreno 620 rendering and DRV2624 vibration have been confirmed
+on the phone. The source-DTS replacement still needs a separate boot test.
+
+Wi-Fi scanning works after WLFW registers; fresh-install association is not
+qualified. Speaker playback works. The 32 kHz capture front end retains the
+48 kHz primary TDM bus; microphone pitch needs revalidation on the 7.2 port.
+The battery percentage is a linear voltage estimate, not coulomb-counted.
+Earlier suspend tests exercised s2idle and USB recovery; drain and the final
+kernel's suspend behavior remain unqualified.
+
+SELinux enforcing, a clean full install and the stock `vbmeta_b` install
+path remain untested. Calls, mobile data, cameras, Bluetooth, NFC and
+fingerprint are not qualified. The device stays `experimental`.

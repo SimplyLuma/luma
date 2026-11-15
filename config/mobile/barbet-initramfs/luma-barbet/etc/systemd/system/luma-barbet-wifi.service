@@ -1,8 +1,9 @@
 [Unit]
 Description=Barbet WCN3990 modem and Wi-Fi bring-up
-After=local-fs.target
+Requires=rmtfs.service
+After=local-fs.target rmtfs.service
 Before=luma-barbet-audio.service
-ConditionPathExists=/var/lib/luma/device-firmware-barbet
+ConditionPathExists=/var/lib/luma/device-firmware
 
 [Service]
 Type=oneshot
