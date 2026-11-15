@@ -71,8 +71,8 @@ waits for the WLFW QRTR service before the audio service starts the ADSP.
 The barbet `rmtfs.service` drop-in explicitly runs `/usr/bin/rmtfs -r -P -s`
 and Wi-Fi requires that service before starting the modem. This selects the
 read-only partition backend without an FP6 file-store wrapper, so rmtfs does
-not write `modemst1`, `modemst2` or `fsg`. This replacement still needs a boot
-test; the development phone currently uses the wrapper's read-only fallback.
+not write `modemst1`, `modemst2` or `fsg`. The development phone runs this
+command; Wi-Fi association on a fresh install is still untested.
 
 ## After the first boot
 
@@ -99,7 +99,8 @@ different factory build. Firmware names and hashes are recorded in
 
 The development kernel is based on Luma's 7.2.15 SM7250 branch. Display and
 touch work; Adreno 620 rendering and DRV2624 vibration have been confirmed
-on the phone. The source-DTS replacement still needs a separate boot test.
+on the phone. The source-DTS image boots on the development phone and plays
+speaker audio through the desktop sink.
 
 Wi-Fi scanning works after WLFW registers; fresh-install association is not
 qualified. Speaker playback works. The 32 kHz capture front end retains the
