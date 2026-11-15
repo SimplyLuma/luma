@@ -98,16 +98,16 @@ different factory build. Firmware names and hashes are recorded in
 ## Verified development behavior and remaining limits
 
 The development kernel is based on Luma's 7.2.15 SM7250 branch. Display and
-touch work; Adreno 620 rendering and DRV2624 vibration have been confirmed
-on the phone. The source-DTS image boots on the development phone and plays
-speaker audio through the desktop sink.
+touch work, suspend/resume resumes, and Adreno 620 rendering and DRV2624
+vibration have been confirmed on the phone. The source-DTS image boots on
+the development phone and plays speaker audio through the desktop sink.
 
-Wi-Fi scanning works after WLFW registers; fresh-install association is not
-qualified. Speaker playback works. The 32 kHz capture front end retains the
-48 kHz primary TDM bus; microphone pitch needs revalidation on the 7.2 port.
-The battery percentage is a linear voltage estimate, not coulomb-counted.
-Earlier suspend tests exercised s2idle and USB recovery; drain and the final
-kernel's suspend behavior remain unqualified.
+Wi-Fi joins a network after WLFW registers. Speaker playback works and
+Firefox plays audio through it. The built-in microphone captures only at the
+32 kHz front end and is quiet and noisy on the current port; treat capture as
+partial and unqualified for calls or recording. The headset jack is untested.
+Suspend/resume works; idle power drain is not measured. The battery percentage
+is a linear voltage estimate, not coulomb-counted.
 
 SELinux enforcing, a clean full install and the stock `vbmeta_b` install
 path remain untested. Calls, mobile data, cameras, Bluetooth, NFC and
