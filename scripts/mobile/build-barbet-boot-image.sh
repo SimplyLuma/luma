@@ -7,7 +7,13 @@
 # 4096-byte pages, AVB hash footer NONE and the boot_b policy. Never flashes.
 #
 # usage: build-barbet-boot-image.sh --kernel FILE --dtb FILE --initramfs FILE
-#                                   [--hook FILE] --output FILE
+#                                   --ostree DIR [--hook FILE] --output FILE
+#
+# --ostree DIR holds the pinned ostree runtime that the initramfs needs before
+# the root filesystem is mounted: usr/lib/ostree/ostree-prepare-root, the
+# glibc loader and its libraries. Build it from the ostree package recorded in
+# device.toml (ostree_package/ostree_source); it is not taken from another
+# device's boot ramdisk.
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -17,22 +23,30 @@ shared="$repo_root/scripts/mobile/common/initramfs"
 fail() { printf 'build-barbet-boot-image: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-kernel="" dtb="" initramfs_base="" hook="" output=""
+kernel="" dtb="" initramfs_base="" ostree_dir="" hook="" output=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --kernel) kernel=$(realpath -e "${2:?}"); shift 2 ;;
     --dtb) dtb=$(realpath -e "${2:?}"); shift 2 ;;
     --initramfs) initramfs_base=$(realpath -e "${2:?}"); shift 2 ;;
+    --ostree) ostree_dir=$(realpath -e "${2:?}"); shift 2 ;;
     --hook) hook=$(realpath -e "${2:?}"); shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
     *) usage ;;
   esac
 done
-[ -n "$kernel" ] && [ -n "$dtb" ] && [ -n "$initramfs_base" ] && [ -n "$output" ] || usage
+[ -n "$kernel" ] && [ -n "$dtb" ] && [ -n "$initramfs_base" ] && \
+  [ -n "$ostree_dir" ] && [ -n "$output" ] || usage
 for f in "$shared/luma-ostree-boot.sh" "$shared/hooks-extra/50-luma-ostree-default.sh" \
-         "$initramfs/init_functions.sh" "$initramfs/init_2nd.sh" "$manifest"; do
+         "$initramfs/init_functions.sh" "$initramfs/init_2nd.sh" \
+         "$initramfs/deviceinfo" "$initramfs/etc/luma-ostree" "$manifest"; do
   [ -f "$f" ] || fail "missing $f"
 done
+[ -x "$ostree_dir/usr/lib/ostree/ostree-prepare-root" ] ||
+  fail "missing usr/lib/ostree/ostree-prepare-root in $ostree_dir"
+[ -f "$ostree_dir/usr/lib/ld-linux-aarch64.so.1" ] ||
+  fail "missing usr/lib/ld-linux-aarch64.so.1 in $ostree_dir"
+[ -d "$ostree_dir/usr/lib64" ] || fail "missing usr/lib64 in $ostree_dir"
 
 root_uuid=03797c05-cf87-4eda-adc4-6ce111baf2d3
 boot_uuid=032D-57AD
@@ -66,7 +80,26 @@ python3 -c "d=open('$work/kernel.lz4','rb').read(4); assert d==bytes.fromhex('04
 
 gzip -t "$initramfs_base" || fail "$initramfs_base is not a postmarketOS initramfs (gzip cpio)"
 
+# The input is the unmodified postmarketOS initramfs. It carries the
+# deviceinfo of whichever device it was built for, so replace that with
+# barbet's: the initramfs sources /usr/share/deviceinfo/device-* and must not
+# pick up another device's identity.
+mkdir -p "$work/base"
+(cd "$work/base" && gzip -dc "$initramfs_base" | cpio -idm --quiet)
+rm -rf "$work/base/usr/share/deviceinfo"
+(cd "$work/base" && find . -mindepth 1 | LC_ALL=C sort |
+  cpio --quiet --reproducible -o -H newc -R 0:0) | gzip -9n >"$work/base.cpio.gz"
+
 o="$work/overlay"
+install -D -m 0644 "$initramfs/deviceinfo" \
+  "$o/usr/share/deviceinfo/device-google-barbet"
+ln -sfn device-google-barbet "$o/usr/share/deviceinfo/deviceinfo"
+install -D -m 0644 "$initramfs/etc/luma-ostree" "$o/etc/luma-ostree"
+install -D -m 0755 "$ostree_dir/usr/lib/ostree/ostree-prepare-root" \
+  "$o/usr/lib/ostree/ostree-prepare-root"
+install -D -m 0755 "$ostree_dir/usr/lib/ld-linux-aarch64.so.1" \
+  "$o/usr/lib/ld-linux-aarch64.so.1"
+cp -a "$ostree_dir/usr/lib64/." "$o/usr/lib64/"
 install -D -m 0644 "$initramfs/init_functions.sh" "$o/init_functions.sh"
 install -D -m 0755 "$initramfs/init_2nd.sh" "$o/init_2nd.sh"
 install -D -m 0644 "$shared/luma-ostree-boot.sh" "$o/usr/lib/luma/ostree-boot.sh"
@@ -79,7 +112,7 @@ fi
 find "$o" -type d -exec chmod 00755 {} +
 find "$o" -exec touch -h -d @0 {} +
 (cd "$o" && find . -mindepth 1 | LC_ALL=C sort | cpio --quiet --reproducible -o -H newc -R 0:0) | gzip -9n >"$work/overlay.cpio.gz"
-cat "$initramfs_base" "$work/overlay.cpio.gz" >"$work/ramdisk"
+cat "$work/base.cpio.gz" "$work/overlay.cpio.gz" >"$work/ramdisk"
 
 "$mkbootimg" --header_version 2 --pagesize 4096 --base 0 \
   --kernel_offset 0x00008000 --ramdisk_offset 0x10000000 --second_offset 0 \

@@ -23,13 +23,15 @@ dtb = "qcom/sm7250-google-barbet.dtb"
 config = "boot.toml"
 
 [initramfs]
-# The boot ramdisk is the postmarketOS initramfs plus the barbet overlay
-# (init_functions.sh, init_2nd.sh, the platform hook and the shared OSTree
-# resolver); the maintainers wire the nightly after merge.
-ramdisk_sha256 = "944489269addf33f8cd5e8f305ccc368573396e26df03dc6ea63970242659a82"
+# The boot ramdisk is the unmodified postmarketOS initramfs plus the barbet
+# overlay (init_functions.sh, init_2nd.sh, deviceinfo, the platform hook and
+# the shared OSTree resolver). The base is the postmarketos-initramfs 3.12.0-r0
+# cpio archive (pmaports 41732e213ba0); the builder replaces the base's
+# deviceinfo with the barbet one.
+ramdisk_sha256 = "52ab1965a0032e323024ef474de78008436b8b89625470be308acf51ce19e05e"
 base = "postmarketos-initramfs 3.12.0-r0"
 init_functions = "config/mobile/barbet-initramfs/init_functions.sh"
-init_functions_sha256 = "695b5c44d71d8bf8c03efa75de70ba4e5ed530a599bc45378a6894569d26a3e0"
+init_functions_sha256 = "fb49ef0bf49f1f7bd86a12786709df6f42ae20d5d9bacc880d3527382531eb47"
 ostree_package = "ostree-2026.5-1.luma.2.fc44"
 ostree_source = "config/mobile/fp6-ostree-source.json"
 

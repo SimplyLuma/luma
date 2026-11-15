@@ -606,7 +606,8 @@ mount_boot_partition() {
 	# entries and greenboot its grubenv there, and the OSTree boot resolver
 	# (/usr/lib/luma/ostree-boot.sh) reads them there. The boot partition
 	# (LumaBoot) holds only the device kit; luma-device-layer mounts it itself.
-	if [ "$1" = /sysroot/boot ] && [ -e /etc/luma-fp6-ostree ]; then
+	if [ "$1" = /sysroot/boot ] &&
+	   { [ -e /etc/luma-ostree ] || [ -e /etc/luma-fp6-ostree ]; }; then
 		echo "Luma OSTree: /boot stays on the root filesystem; not mounting the boot partition"
 		return 0
 	fi
@@ -795,7 +796,7 @@ luma_verify_firmware_store() {
 }
 
 luma_prepare_ostree_root() {
-	[ -e /etc/luma-fp6-ostree ] || return 0
+	[ -e /etc/luma-ostree ] || [ -e /etc/luma-fp6-ostree ] || return 0
 	local cmdline suffix word count
 	cmdline="$(cat /proc/cmdline)" || return 1
 	count=0
