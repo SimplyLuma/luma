@@ -1,0 +1,51 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: a window placed again by the keyboard keeps it open
+
+On Mobile and Tablet the keyboard shrinks the work area as it opens, and
+Mutter places again every window that is not full screen: a dialog
+centred on its parent moves up above the keys. The focus tracker reports
+any move of the focused window as the person moving it, and the keyboard
+closed in the same frame it opened, on every tap in a dialog's fields
+(Settings' Access Point Names editor).
+
+Where the keyboard resizes windows, a move of the focused window no
+longer closes it; a grab still does. Desktop is unchanged.
+
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -1812,7 +1812,7 @@
+             'window-grabbed', this._onFocusWindowMoving.bind(this), this);
+ 
+         this._windowMovedId = this._focusTracker.connect('window-moved',
+-            this._onFocusWindowMoving.bind(this));
++            this._onFocusWindowMoved.bind(this));
+ 
+         this._showIdleId = 0;
+ 
+@@ -4330,7 +4330,7 @@
+         this._focusTracker.disconnect(this._windowMovedId);
+         window.move_frame(true, frameRect.x, frameRect.y);
+         this._windowMovedId = this._focusTracker.connect('window-moved',
+-            this._onFocusWindowMoving.bind(this));
++            this._onFocusWindowMoved.bind(this));
+     }
+ 
+     _animateWindow(window, show) {
+@@ -4363,6 +4363,17 @@
+         });
+     }
+ 
++    // Mobile and Tablet keep the keyboard clear of windows by shrinking the
++    // work area (_setWindowInset), and Mutter places again the windows that
++    // are not full screen, such as a dialog centred on its parent, as the
++    // keyboard opens. That move is the keyboard's own, not the window being
++    // moved: only a grab closes the keyboard there.
++    _onFocusWindowMoved() {
++        if (this._resizesWindows())
++            return;
++        this._onFocusWindowMoving();
++    }
++
+     _onFocusWindowMoving() {
+         if (this._focusTracker.currentWindow === this._focusWindow) {
+             // Don't use _setFocusWindow() here because that would move the

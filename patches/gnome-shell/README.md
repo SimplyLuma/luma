@@ -692,3 +692,12 @@ which is after that touch went down, so the first touch after startup or
 after a mouse or touchpad was used went unrecorded, and a field focused from
 the release (Notes' search) got no keyboard on that tap.
 Test: `keycap-policy.js` in %check. Shell .181.
+
+`0344-keyboard-dialog-keeps-keyboard.patch`: on Mobile and Tablet the
+keyboard shrinks the work area as it opens and Mutter places again the
+windows that are not full screen, so a dialog centred on its parent moves
+up. The keyboard took that move for the person moving the window and closed
+in the frame it opened, on every tap in a dialog's fields (Settings' Access
+Point Names editor). Where the keyboard resizes windows only a grab closes
+it; Desktop is unchanged.
+Test: `keycap-policy.js` in %check. Shell .182.

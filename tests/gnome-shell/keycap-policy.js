@@ -582,4 +582,18 @@ for (const body of handlers) {
     assert(/if \(this\._tapFocusId\)\s*GLib\.source_remove\(this\._tapFocusId\);/.test(keyboard),
         'a destroyed keyboard drops a pending tap focus');
 }
-console.log('PASS Keycap privacy, tap-focused fields, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');
+// On Mobile and Tablet the keyboard shrinks the work area and Mutter places
+// again the windows that are not full screen (a dialog over its parent): that
+// move is the keyboard's own and keeps it open; a grab still closes it.
+{
+    const moved = keyboard.slice(keyboard.indexOf('    _onFocusWindowMoved() {'),
+        keyboard.indexOf('\n    }\n', keyboard.indexOf('    _onFocusWindowMoved() {')));
+    assert((keyboard.match(/connect\('window-moved',\s*this\._onFocusWindowMoved\.bind\(this\)\)/g) ?? []).length === 2 &&
+        !/'window-moved',\s*this\._onFocusWindowMoving/.test(keyboard),
+        'every window-moved connection goes through _onFocusWindowMoved');
+    assert(/if \(this\._resizesWindows\(\)\)\s*return;\s*this\._onFocusWindowMoving\(\);/.test(moved),
+        'a window placed again while the keyboard resizes windows keeps the keyboard open');
+    assert(/'window-grabbed', this\._onFocusWindowMoving\.bind\(this\)/.test(keyboard),
+        'a grab of the focused window still closes the keyboard');
+}
+console.log('PASS Keycap privacy, tap-focused fields, dialogs placed again, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');
