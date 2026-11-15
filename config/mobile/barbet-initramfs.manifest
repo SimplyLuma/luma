@@ -3,8 +3,8 @@
 F	0755	472cd53b5ffcfb25bcbb4b5159f7e339a961c2aa13442fac6acc7c4938e8a5da	hooks-cleanup/60-barbet-platform.sh	branch
 F	0644	7fdccfdd2beae83115277c7edc9879312457146ed5096af1bed869757773d412	init_2nd.sh	branch
 F	0644	695b5c44d71d8bf8c03efa75de70ba4e5ed530a599bc45378a6894569d26a3e0	init_functions.sh	branch
-F	0644	a0c246532293ca3201015b44e4eeab9b427dd11ddadbd9b7a00d2612a6209c9a	luma-barbet/etc/alsa-card-profile/mixer/profile-sets/barbet.conf	branch
-F	0755	41653beb2035ccf6a4061e51b2c819a397f490183dccd8159c6ee9f48891293b	luma-barbet/etc/luma/barbet-audio-rescan.sh	branch
+F	0644	c2a6f2f0eacaf9910874082d869874f171f24c1d75dc3aa0448978c81cdcc4f1	luma-barbet/etc/alsa-card-profile/mixer/profile-sets/barbet.conf	branch
+F	0755	d8219e6e58c8fb342fae5d1afd649479142a8d5169c3dbc10fdd500d43043b3e	luma-barbet/etc/luma/barbet-audio-rescan.sh	branch
 F	0755	7796d3fd7f5e5ad01f97fc9949f963d67781034c0cf8c4461bdd8f79b1b16141	luma-barbet/etc/luma/barbet-audio-start.sh	branch
 F	0755	ae147902e987823dc5f0f7335fd5be060bfcebbf31e25656c762c804749a3566	luma-barbet/etc/luma/barbet-wifi-start.sh	branch
 F	0644	bad11bcf270480660da62fa12fc05555ebe3c659a3289871613e7383dceaf61b	luma-barbet/etc/systemd/system/luma-barbet-audio-rescan.service	branch
@@ -13,5 +13,5 @@ F	0644	37c0432f8d45a8f64f04533b68c5ba7f6e59efe673e6cad9246308654d700a31	luma-bar
 F	0644	59d7bf7553237fdf825b1c0d4af0f188f3cc5d45a2060dbcd5e366a6b2d1832c	luma-barbet/etc/systemd/system/rmtfs.service.d/99-barbet-read-only.conf	branch
 F	0755	e5207f41b8ff43f3cd1800396e2c52e4eff00506aec06a8c9d16681876d1a258	luma-barbet/etc/systemd/system-sleep/50-barbet-usb	branch
 F	0644	ce4b9d532688f876335e2a0589fdc9efee8b861ab748533bd978c142b0e28c4b	luma-barbet/etc/systemd/user/luma-barbet-audio-session.service	branch
-F	0644	7725ab8826ba38b97cef7a9126a8df5483680e108fd58af82fb01f91dcc6e164	luma-barbet/etc/udev/rules.d/89-barbet-audio.rules	branch
+F	0644	eaea318797941b08e0525e705e4973aabb678da245a42bc428d08f843f4244c2	luma-barbet/etc/udev/rules.d/89-barbet-audio.rules	branch
 F	0644	caeab5b8ea6599d6ef14564d59d196a5917417fdf1b7280922e670557960fe61	luma-barbet/etc/wireplumber/wireplumber.conf.d/51-barbet-s16.conf	branch
