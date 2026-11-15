@@ -109,6 +109,14 @@ partial and unqualified for calls or recording. The headset jack is untested.
 Suspend/resume works; idle power drain is not measured. The battery percentage
 is a linear voltage estimate, not coulomb-counted.
 
-SELinux enforcing, a clean full install and the stock `vbmeta_b` install
-path remain untested. Calls, mobile data, cameras, Bluetooth, NFC and
-fingerprint are not qualified. The device stays `experimental`.
+A full install with the stock `vbmeta_b` was run once: `userdata` and `boot_b`
+were written, slot b was selected, and the phone booted. `vbmeta_b` was not
+written. The experimental image set still carries FP6 platform services and
+its `tqftpserv` looks for firmware under `/readonly`, so Wi-Fi does not come
+up after a fresh install; that needs a barbet platform image. Speaker audio
+works after the WirePlumber rescan.
+
+SELinux enforcing, a clean full install with a barbet platform image and the
+stock `vbmeta_b` path remain untested. Calls, mobile data, cameras,
+Bluetooth, NFC and fingerprint are not qualified. The device stays
+`experimental`.
