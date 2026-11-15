@@ -6,9 +6,10 @@ already on the phone. Android's `boot_a` and system partitions are preserved,
 but Android user data is not. Keep the exact Google factory image; it is the
 recovery path. Do not relock the bootloader.
 
-**Not release-ready:** kernel integration, a published Luma kernel tag, the
-standalone postmarketOS ramdisk and a fresh full-install test are still pending.
-The development phone's boot test is not qualification of an install set.
+**Not release-ready:** a published Luma kernel tag and a device package are
+still pending. The install has been run once on the development phone with the
+generic ARM image and the stock `vbmeta_b`; that is a bring-up test, not
+qualification of an install set.
 
 ## What you need
 
@@ -99,24 +100,22 @@ different factory build. Firmware names and hashes are recorded in
 
 The development kernel is based on Luma's 7.2.15 SM7250 branch. Display and
 touch work, suspend/resume resumes, and Adreno 620 rendering and DRV2624
-vibration have been confirmed on the phone. The source-DTS image boots on
-the development phone and plays speaker audio through the desktop sink.
+vibration have been confirmed on the phone.
 
-Wi-Fi joins a network after WLFW registers. Speaker playback works and
-Firefox plays audio through it. The built-in microphone captures only at the
-32 kHz front end and is quiet and noisy on the current port; treat capture as
-partial and unqualified for calls or recording. The headset jack is untested.
-Suspend/resume works; idle power drain is not measured. The battery percentage
-is a linear voltage estimate, not coulomb-counted.
+A full install of the generic ARM image plus this boot image was run with the
+stock `vbmeta_b`: `userdata` and `boot_b` were written, slot b was selected,
+and the phone booted with `androidboot.slot_successful=yes` and zram active.
+The boot image carries `tqftpserv` and `qbootctl`, so Wi-Fi and slot
+confirmation work without a device package.
 
-A full install with the stock `vbmeta_b` was run once: `userdata` and `boot_b`
-were written, slot b was selected, and the phone booted. `vbmeta_b` was not
-written. The experimental image set still carries FP6 platform services and
-its `tqftpserv` looks for firmware under `/readonly`, so Wi-Fi does not come
-up after a fresh install; that needs a barbet platform image. Speaker audio
-works after the WirePlumber rescan.
+Wi-Fi joins a network and scans 2.4, 5 and 6 GHz networks. Speaker playback
+works through PipeWire and Firefox. The built-in microphone captures at the
+32 kHz front end and works in the phone's recorder. The headset jack is
+untested. Idle power drain is not measured; the battery percentage is a linear
+voltage estimate, not coulomb-counted.
 
-SELinux enforcing, a clean full install with a barbet platform image and the
-stock `vbmeta_b` path remain untested. Calls, mobile data, cameras,
-Bluetooth, NFC and fingerprint are not qualified. The device stays
-`experimental`.
+The image leaves `luma` out of the `audio` group and disables `sshd`; this port
+grants sound access from udev, and `sshd` has to be enabled by hand.
+
+SELinux enforcing, calls, mobile data, cameras, Bluetooth, NFC and fingerprint
+are not qualified. The device stays `experimental`.
