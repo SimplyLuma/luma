@@ -8,9 +8,21 @@ set -eu
 
 cp -a /luma-barbet/etc/. /sysroot/etc/
 
+# The QRTR TFTP server and the slot tool are staged in the boot image: the
+# generic ARM image ships neither, and a fresh install must bring up Wi-Fi and
+# mark its slot without any manual step. /usr is immutable, so they live in
+# /usr/local (writable through /var).
+if [ -d /opt/luma-barbet-tools ]; then
+    mkdir -p /sysroot/usr/local/bin
+    for tool in /opt/luma-barbet-tools/*; do
+        [ -f "$tool" ] && install -m 0755 "$tool" /sysroot/usr/local/bin/
+    done
+fi
+
 mkdir -p /sysroot/etc/systemd/system/multi-user.target.wants
 for unit in luma-barbet-audio.service luma-barbet-audio-rescan.service \
-            luma-barbet-wifi.service luma-barbet-boot-success.service; do
+            luma-barbet-wifi.service luma-barbet-boot-success.service \
+            tqftpserv.service; do
     ln -sf "../$unit" "/sysroot/etc/systemd/system/multi-user.target.wants/$unit"
 done
 
