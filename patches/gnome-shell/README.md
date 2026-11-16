@@ -701,3 +701,9 @@ in the frame it opened, on every tap in a dialog's fields (Settings' Access
 Point Names editor). Where the keyboard resizes windows only a grab closes
 it; Desktop is unchanged.
 Test: `keycap-policy.js` in %check. Shell .182.
+
+`0345-screenshot-pick-colors-once.patch`: handheld status and gesture ink
+samples its six application-edge points from one full-stage paint instead of
+six. The bounded native `pick_colors()` call preserves the existing backdrop
+blur capture and releases the image immediately. Test:
+`tests/gnome-shell/presentation/status-ink-capture.js`. Shell .183.

@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.182%{?dist}
++Release:        1.luma.183%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,393 @@
+@@ -32,6 +32,394 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -343,6 +343,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1322:      0342-keyboard-tap-focused-field-opens.patch
 +Patch1323:      0343-keyboard-first-touch-arms-tap.patch
 +Patch1324:      0344-keyboard-dialog-keeps-keyboard.patch
++Patch1325:      0345-screenshot-pick-colors-once.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -555,11 +556,14 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %{_userunitdir}/org.gnome.Shell-disable-extensions.service
  #{_userunitdir}/org.gnome.Shell.target
  %{_userunitdir}/org.gnome.Shell@.service
-@@ -271,6 +755,9 @@
+@@ -271,6 +756,12 @@
  %files common
  %{_datadir}/glib-2.0/schemas/*.xml
  
  %changelog
++* Mon Nov 16 2026 Project Luma <builds@project-luma.local> - 50.3-1.luma.183
++- Sample handheld status ink with one stage paint instead of six.
++
 +* Fri Nov 13 2026 Project Luma <builds@project-luma.local> - 50.3-1.luma.175
 +- The handheld power button works on the login screen; holding it toggles the display once.
 +
