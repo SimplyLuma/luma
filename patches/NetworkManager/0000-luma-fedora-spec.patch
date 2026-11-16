@@ -1,0 +1,31 @@
+--- a/NetworkManager.spec
++++ b/NetworkManager.spec
+@@ -6,7 +6,7 @@
+ 
+ Epoch:   1
+ Version: 1.56.1
+-Release: 2%{?dist}
++Release: 2.luma.1%{?dist}
+ 
+ ###############################################################################
+ 
+@@ -176,6 +176,8 @@
+ 
+ # Keep until next rebase, https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/commit/d86050f6d4c5f82772cff6967a31cb8779c06298
+ Patch2: 0001-libnm-use-correct-directory-permissions-in-nm_utils_.patch
++# Luma: keep a WoWLAN Wi-Fi connection that survived suspend (patches/NetworkManager)
++Patch1001: 0001-manager-keep-a-wowlan-wi-fi-connection-that-survived-suspend.patch
+ 
+ Requires(post): systemd
+ Requires(post): systemd-udev
+@@ -1073,6 +1075,10 @@
+ 
+ 
+ %changelog
++* Sun Nov 15 2026 Project Luma <noreply@projectluma.org> - 1:1.56.1-2.luma.1
++- manager: keep a WoWLAN Wi-Fi connection that survived suspend instead of
++  reconnecting after every resume
++
+ * Thu Jun 11 2026 Christian Krause <chkr@fedoraproject.org> - 1:1.56.1-2
+ - Apply upstream patch to fix strongSwan VPN connection problem (rhbz#2461399)
+ 

@@ -25,6 +25,12 @@
         "patches/iio-sensor-proxy/"
       ]
     },
+    "networkmanager": {
+      "recipe": "scripts/packages/build-networkmanager.sh",
+      "paths": [
+        "patches/NetworkManager/"
+      ]
+    },
     "plymouth": {
       "recipe": "scripts/packages/build-plymouth.sh",
       "paths": [

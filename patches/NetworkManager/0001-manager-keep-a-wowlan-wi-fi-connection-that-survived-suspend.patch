@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Joshndroid <fmxjoshiewah@gmail.com>
+Date: Sun, 15 Nov 2026 22:30:00 +1000
+Subject: [PATCH] manager: keep a WoWLAN Wi-Fi connection that survived suspend
+
+Devices with Wake-on-LAN or WoWLAN are skipped when the system goes to
+sleep and taken down after it wakes, so that their connectivity is
+checked again. For Wi-Fi with WoWLAN this throws away an association
+the firmware kept through the whole suspend: on every resume the device
+goes unavailable, disconnected, scans and reconnects. On a phone, which
+suspends many times an hour, each wake costs about 13 seconds without
+network and drops every open connection, and a suspend attempted during
+the reconnect can fail while the driver holds a wakeup source after the
+new connection.
+
+When a Wi-Fi device with WoWLAN is still activated and its link still
+has carrier after the wake, renew its dynamic IP configuration instead,
+the way software devices are handled. If the association was lost
+while asleep the link has no carrier, and the device is taken down as
+before.
+
+Tested on a Google Pixel 8 Pro (bcmdhd, s2idle) with NetworkManager
+1.56.1: before, every wake left Wi-Fi unavailable for about 13 seconds;
+with this change the device stayed activated through 8 suspends of 20 s
+to 5 minutes, including suspends 5 s after a wake, with no lost pings
+to the gateway and the DHCP lease renewed on each wake.
+---
+ src/core/nm-manager.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/core/nm-manager.c b/src/core/nm-manager.c
+index 87dde2c..78e50cd 100644
+--- a/src/core/nm-manager.c
++++ b/src/core/nm-manager.c
+@@ -7400,6 +7400,23 @@ do_sleep_wake(NMManager *self, gboolean sleeping_changed)
+                 if (nm_device_is_software(device))
+                     continue;
+ 
++                /* A Wi-Fi device whose WoWLAN kept it associated through suspend is
++                 * still up: renew its DHCP lease instead of tearing the connection
++                 * down. Phones suspend many times an hour and every teardown costs
++                 * a scan, a full reconnect and the loss of open connections.
++                 */
++                if (device_is_wake_on_lan(priv->platform, device)
++                    && nm_device_get_device_type(device) == NM_DEVICE_TYPE_WIFI
++                    && nm_device_get_state(device) == NM_DEVICE_STATE_ACTIVATED
++                    && nm_platform_link_is_connected(priv->platform,
++                                                     nm_device_get_ip_ifindex(device))) {
++                    _LOGD(LOGD_SUSPEND,
++                          "sleep: device %s still connected after wake, renewing",
++                          nm_device_get_ip_iface(device));
++                    nm_device_update_dynamic_ip_setup(device, "wake up");
++                    continue;
++                }
++
+                 /* Belatedly take down Wake-on-LAN devices; ideally we wouldn't have to do this
+                  * but for now it's the only way to make sure we re-check their connectivity.
+                  */

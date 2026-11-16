@@ -191,6 +191,7 @@ class NativeMatrix(unittest.TestCase):
                 ('GNOME_SHELL_LUMA_RELEASE', set()),
                 ('PRAIRIE_ICON_THEME_RELEASE', {'icon-theme', 'ari'}),
                 ('IIO_SENSOR_PROXY_LUMA_RELEASE', {'iio-sensor-proxy'}),
+                ('NETWORKMANAGER_LUMA_RELEASE', {'networkmanager'}),
                 ('LUMA_APPLICATION_INSTALLER_RELEASE', {'application-installer', 'ari'}),
                 ('LUMA_DEVELOPER_PLATFORM_RELEASE', {'application-installer', 'ari'})]:
             previous = {**values, key: 'prior'}

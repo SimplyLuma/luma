@@ -629,6 +629,16 @@
       "note": "Extensions library and main application have different terms."
     },
     {
+      "family": "NetworkManager",
+      "path": "patches/NetworkManager/",
+      "status": "documented",
+      "observed_patch_headers": {},
+      "documented_component_licenses": [
+        "GPL-2.0-or-later"
+      ],
+      "note": "The modified src/core/nm-manager.c carries an SPDX GPL-2.0-or-later identifier and the Novell and Red Hat copyrights (the Fedora package aggregate is GPL-2.0-or-later AND LGPL-2.1-or-later). Preserve that upstream notice."
+    },
+    {
       "family": "ostree",
       "path": "patches/ostree/",
       "status": "documented",
