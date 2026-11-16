@@ -16,7 +16,7 @@
       },
       "pending": {
         "reason": "Viola is rebuilt and published by its own Depot pipeline; #369 (native44) is not in the 2026-11-09 bundle",
-        "expires": "2026-11-16"
+        "expires": "2026-11-23"
       },
       "source_sha256": null
     },
@@ -35,7 +35,7 @@
       },
       "pending": {
         "reason": "Filer needs the native Filer build; shell-state schema and build-script changes since 2026-10-31 are not in its bundle",
-        "expires": "2026-11-16"
+        "expires": "2026-11-23"
       },
       "source_sha256": null
     },
