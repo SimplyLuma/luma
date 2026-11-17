@@ -69,6 +69,8 @@ def matrix(root, changed=None, previous_registry=None, previous_workflow=None,
             'GNOME_SHELL_': set(),
             'PRAIRIE_ICON_THEME_': {'icon-theme', 'ari'},
             'IIO_SENSOR_PROXY_': {'iio-sensor-proxy'},
+            'XDG_DESKTOP_PORTAL_': {'xdg-desktop-portal'},
+            'LUMA_DESKTOP_LAUNCHER_POLICY_': {'desktop-launcher-policy'},
             'NETWORKMANAGER_': {'networkmanager'},
             'LUMA_APPLICATION_INSTALLER_': {'application-installer', 'ari'},
             'LUMA_DEVELOPER_PLATFORM_': {group for group, row in registry['groups'].items()

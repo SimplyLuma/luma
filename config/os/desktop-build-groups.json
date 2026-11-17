@@ -25,6 +25,12 @@
         "patches/iio-sensor-proxy/"
       ]
     },
+    "xdg-desktop-portal": {
+      "recipe": "scripts/packages/build-xdg-desktop-portal.sh",
+      "paths": [
+        "patches/xdg-desktop-portal/"
+      ]
+    },
     "networkmanager": {
       "recipe": "scripts/packages/build-networkmanager.sh",
       "paths": [

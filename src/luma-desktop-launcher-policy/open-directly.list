@@ -1,0 +1,22 @@
+# Installed as /usr/share/luma/open-directly.list and read by Luma's
+# xdg-desktop-portal (patches/xdg-desktop-portal). A file of one of these
+# content types, opened through the OpenURI portal (Filer, a browser's
+# downloads, any sandboxed app), goes straight to the named system handler
+# while that handler is its default, without the "choose an application"
+# prompt. Valet reviews a package and asks before installing it.
+# Keep in step with gnome-mimeapps.list. Archives and folders are not
+# packages and keep the chooser.
+[Open Directly]
+application/x-rpm=io.luma.Valet.desktop
+application/vnd.debian.binary-package=io.luma.Valet.desktop
+application/vnd.appimage=io.luma.Valet.desktop
+application/vnd.flatpak=io.luma.Valet.desktop
+application/vnd.flatpak.ref=io.luma.Valet.desktop
+application/vnd.flatpak.repo=io.luma.Valet.desktop
+application/vnd.snap=io.luma.Valet.desktop
+application/vnd.android.package-archive=io.luma.Valet.desktop
+application/vnd.projectluma.android-package-set=io.luma.Valet.desktop
+application/x-ms-dos-executable=io.luma.Valet.desktop
+application/x-msdownload=io.luma.Valet.desktop
+application/x-msi=io.luma.Valet.desktop
+application/vnd.microsoft.portable-executable=io.luma.Valet.desktop

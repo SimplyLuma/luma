@@ -46,12 +46,12 @@ check 'APK MIME contract is installed' \
   grep -Fq application/vnd.android.package-archive \
     /usr/share/mime/packages/luma-android.xml
 check 'APK default handler is Luma Application Installer' bash -c \
-  'if command -v xdg-mime >/dev/null; then test "$(xdg-mime query default application/vnd.android.package-archive)" = org.projectluma.ApplicationInstaller.desktop; else gio mime application/vnd.android.package-archive | sed -n 1p | grep -Fq org.projectluma.ApplicationInstaller.desktop; fi'
+  'if command -v xdg-mime >/dev/null; then test "$(XDG_CURRENT_DESKTOP=GNOME xdg-mime query default application/vnd.android.package-archive)" = io.luma.Valet.desktop; else XDG_CURRENT_DESKTOP=GNOME gio mime application/vnd.android.package-archive | sed -n 1p | grep -Fq io.luma.Valet.desktop; fi'
 check 'split-package MIME contract is installed' \
   grep -Fq application/vnd.projectluma.android-package-set \
     /usr/share/mime/packages/luma-android.xml
 check 'split-package default handler is Luma Application Installer' bash -c \
-  'if command -v xdg-mime >/dev/null; then test "$(xdg-mime query default application/vnd.projectluma.android-package-set)" = org.projectluma.ApplicationInstaller.desktop; else gio mime application/vnd.projectluma.android-package-set | sed -n 1p | grep -Fq org.projectluma.ApplicationInstaller.desktop; fi'
+  'if command -v xdg-mime >/dev/null; then test "$(XDG_CURRENT_DESKTOP=GNOME xdg-mime query default application/vnd.projectluma.android-package-set)" = io.luma.Valet.desktop; else XDG_CURRENT_DESKTOP=GNOME gio mime application/vnd.projectluma.android-package-set | sed -n 1p | grep -Fq io.luma.Valet.desktop; fi'
 check 'split-package helper is installed with its policy' bash -c \
   'test -x /usr/libexec/luma-waydroid-package-session && test -f /usr/share/polkit-1/actions/org.projectluma.waydroid-package-session.policy'
 check 'FP6 kernel admission and GPU watchdog are installed' bash -c \
