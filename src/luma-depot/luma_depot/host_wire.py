@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Bounded public Depot DTOs, not object deserialization or host instructions."""
-from dataclasses import fields, is_dataclass
+from dataclasses import MISSING, fields, is_dataclass
 from datetime import datetime
 import json
 import math
@@ -102,9 +102,14 @@ def loads(text):
         if '$type' in item:
             cls = types.get(item['$type'])
             values = item.get('fields')
-            if set(item) != {'$type','fields'} or cls is None or type(values) is not dict or set(values) != {f.name for f in fields(cls)}:
+            if set(item) != {'$type','fields'} or cls is None or type(values) is not dict:
                 raise ValueError('Unrecognized Depot view model.')
-            return cls(**{k:decode(v,depth+1) for k,v in values.items()})
+            # The host (the OS image) and the Depot app update separately: a field one side does not
+            # know is dropped, and a field the other side does not send yet takes its default.
+            known = {f.name: f for f in fields(cls)}
+            if any(f.default is MISSING and f.default_factory is MISSING and n not in values for n, f in known.items()):
+                raise ValueError('Unrecognized Depot view model.')
+            return cls(**{k:decode(v,depth+1) for k,v in values.items() if k in known})
         if any(k.startswith('$') for k in item): raise ValueError('Unknown Depot field.')
         return {k:decode(v,depth+1) for k,v in item.items()}
     return decode(json.loads(text, parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Non-finite value.'))))
