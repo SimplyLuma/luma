@@ -46,6 +46,9 @@ easy to unit test.
 | [Design tools](#design-tools) | `NumericField`, `evaluate_number`, `AlignCluster`, `ColorSwatch` |
 | [Media and transactions](#media-and-transactions) | `AudioWaveform`, `TransactionCard` |
 | [LumaUI](#lumaui) | `LUMAUI_API_LEVEL`, `install_lumaui`, `reduced_motion`, `lumaui_icon`, `LayerHost`, `Toast`, `ToastHost`, `TOAST_KINDS`, `DestructiveDialog`, `StackedButton`, `StackedButtons`, `CountBadge`, `count_text`, `CategoryPill`, `CATEGORIES`, `TypeLabel`, `apply_type`, `type_class`, `TYPE_ROLES` |
+| [Controls, insets and fields](#controls-insets-and-fields) | `TextButton`, `Button`, `IconOnlyButton`, `Switch`, `Checkbox`, `TextField`, `HeroTitleField`, `ParagraphField`, `ChoiceList`, `Disclosure`, `Tooltip`, `Inset`, `TwoColumnInset` |
+| [Phone structure and tabs](#phone-structure-and-tabs) | `ListFirst`, `TitleIsland`, `TabBar`, `ModeSwitch`, `SwipeRow`, `SwipeAction`, `AZIndex` |
+| [The action bar's panels and items](#the-action-bars-panels-and-items) | `ActionCenter`, `BarAction`, `BarWidget`, `BarModes`, `panel_list`, `PanelRow`, `PanelSwitch`, `PanelChoices`, `PanelField`, `PanelConfirm`, `BarTiles`, `ToolPalette` |
 
 ---
 
@@ -891,8 +894,9 @@ behaviour: [LumaUI behaviour](behaviour.md).
 
 ### `LUMAUI_API_LEVEL`
 
-An integer, 2 today. It rises when a public name, keyword or toast kind is
-added; nothing public is removed within a level.
+An integer: 12 in the current Luma Platform runtime. It rises when a public
+name, keyword or toast kind is added; nothing public is removed within a
+level. Check it before using a newer part (`if LUMAUI_API_LEVEL >= 11:`).
 
 ### `install_lumaui(display=None)`
 
@@ -1071,6 +1075,110 @@ MenuDrawer.present(widget, registry)                # what every Menu does at ph
   people · Open in · Share · states · Info · actions · ···. `order=` names a
   different order for the groups it lists; the rest keep theirs after them.
 - `Command(count=)` puts a count badge on a menu row.
+
+### Controls, insets and fields
+
+API level 11 and later. Pictures of every state, in light, dark and high
+contrast: [the component library](https://simplyluma.com/developer/components).
+
+```python
+TextButton(label, *, icon=None, style="plain", small=False, danger=False, on_click=None,
+           sensitive=True, hero=False, size="regular", inline=False)
+Button(label, *, variant="fill", size="md", icon=None, menu=False, on_click=None,
+       sensitive=True, tooltip=None)
+IconOnlyButton(icon, label, *, size="regular", on_click=None, sensitive=True,
+               active=None, raised=False)
+Switch(*, active=False, big=False, on_toggle=None, label=None)
+Checkbox(*, checked=False, label=None, on_toggle=None, sensitive=True)
+TextField(label, *, value="", placeholder=None, hint=None, purpose="text",
+          on_changed=None, on_activate=None, size="regular")
+HeroTitleField(text="", *, editable=True, placeholder="Name", role="hero",
+               on_changed=None, on_commit=None)
+ParagraphField(text="", *, placeholder="", label=None)
+ChoiceList(choices, *, selected=None, on_choose=None, size="regular")
+Disclosure(label, *, content, icon=None, form="line", expanded=False, on_toggled=None)
+Tooltip.attach(widget, text, *, label=True)
+Inset(*, padding="list", spacing=None, orientation=Gtk.Orientation.VERTICAL)
+TwoColumnInset(*, columns=2)
+```
+
+- `TextButton` styles are `plain`, `fill`, `key` (the one primary action),
+  `danger` and `raised`; sizes `regular`, `small`, `hero`, `large`, `touch`,
+  `list`, `bar` and `big`. `Button` is the semantic form: variants
+  `Button.KEY`, `FILL`, `PLAIN`, `DANGER`; sizes `Button.SM`, `MD`, `LG`
+  (30, 36, 40 px). `set_label_text()`, `set_chosen()`.
+- `IconOnlyButton`'s label is its accessible name and tooltip. `active=` is an
+  on/off state that is on; `raised=` puts it on a chip.
+- `Inset` is a recessed well that does the dividing: rows inside it have no
+  lines between them. `padding="list"` (8 px, rows 4 apart), `"card"` (16 px)
+  or `"none"`. `TwoColumnInset.set_columns(1)` at phone width.
+- `ChoiceList` choices are `(key, title, detail)`; `set_selected(key, notify=False)`.
+- `Disclosure` forms are `line` and `card`; `set_expanded()`.
+
+### Phone structure and tabs
+
+```python
+ListFirst(list_page, detail_page, title="", *, on_back=None, push_on_activate=True,
+          back_label=None, status_inset=True)
+TitleIsland(title="", subtitle="", *, lead="menu", lead_label=None, on_lead=None,
+            grow=None, grows=None, trailing=(), phone_only=True)
+TabBar(places, *, current=None, on_change=None, compact=False)
+ModeSwitch(modes, *, current=None, on_change=None, label="Mode", labels_only=False,
+           fill=False, compact=False, size="regular")
+SwipeRow(child, *, start=None, end=None, phone_only=True)
+SwipeAction(icon, color, activate, label="")
+AZIndex(list_view, *, key, scroller=None, phone_only=True)
+```
+
+- `ListFirst` shows the list and the page side by side on a computer; at phone
+  width the list comes first, the page pushes in and Back appears top left.
+  `show_detail()`, `show_list()`, signal `showing`.
+- `TitleIsland` is the phone's title: ☰ (`lead="menu"`) at a top level, Back
+  (`lead="back"`) inside something. Hidden on a desktop.
+- `TabBar` places are `(key, label, icon)`; signal `changed`. Usually pass
+  `modes=` to `ActionCenter.show_bar()` and let the bar become a tab bar on a
+  phone when there are three or more places with icons.
+- `ModeSwitch` modes are `(key, label, icon[, count])`; `set_current()` is
+  silent. In the bar it is `BarModes(...)`.
+- `SwipeAction` colours: `green`, `orange`, `blue`, `red`, `gray`, `yellow`.
+
+### The action bar's panels and items
+
+```python
+ActionCenter().attach(region, *, over="island", inset="island", safe_area=True)
+center.show_bar(items, *, context=None, modes=None, more=(), entry=None, fill=False, tabs=None)
+center.show_split(first, second); center.hide_bar()
+center.grow(key, widget, *, entry=None, anchor=None, on_fold=None)   # same key folds
+center.set_editor(ActionEditor(...)); center.grow(); center.fold(); center.discard()
+center.search(on_changed=None, *, placeholder="Search")
+center.sheet(widget, title=None, *, on_cancel=None)
+DestructiveDialog.in_bar(center, *, title, body, action="Delete", on_confirm=None, on_cancel=None)
+
+BarAction(icon, label=None, on_activate=None, tooltip=None, primary=False, danger=False,
+          active=False, badge=None, panel=None, key=None, menu=None, keep_label=False,
+          dropdown=False, fill=False)
+BarWidget(widget)                     # your own control in the bar
+BarModes(modes, *, current=None, on_change=None, label="Mode")
+
+panel_list(rows, *, label="Actions")  # rows: PanelRow, BarAction, a heading string, None for a hairline
+PanelRow(label, *, icon=None, note=None, danger=False, selected=False, closes=True,
+         on_activate=None, lead=None, subtitle=None, count=None)
+PanelSwitch(icon, label, *, active=False, on_toggle=None, subtitle=None)
+PanelChoices(choices, *, selected=None, on_choose=None, closes=False)
+PanelField(icon, placeholder, *, text="", on_change=None, on_submit=None)
+PanelConfirm(*, title, body, action="Delete", on_confirm, on_cancel)
+BarTiles([BarTile(icon, label, on_activate, *, on=False, danger=False)], *, columns=None)
+ToolPalette(items=())                 # an editor's tools above the bar
+```
+
+- An icon-only `BarAction` needs a `tooltip`; it is the accessible name.
+  `primary=True` on one action per bar.
+- With a selection, call `show_bar()` again starting with
+  `BarChip(label, on_dismiss=deselect)`; on a phone, items that don't fit move
+  into ⋯ by themselves.
+- To know whether the window is phone width, use the window's `tier_watch`
+  (`"tier-changed"`), `WidthWatch(widget, on_tier=...)` or
+  `center.layout()[0]`, not the bar's CSS classes.
 
 ### Other LumaUI parts
 
