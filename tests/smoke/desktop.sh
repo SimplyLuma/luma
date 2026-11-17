@@ -180,8 +180,8 @@ fi
 # The unified Luma application installer receives Windows, Android and Linux
 # packages and hands Windows programs to Relay.
 check 'the Luma application installer owns Windows executable files' \
-  grep -Fq 'application/x-ms-dos-executable=org.projectluma.ApplicationInstaller.desktop' \
-    /etc/xdg/mimeapps.list
+  grep -Fq 'application/x-ms-dos-executable=io.luma.Valet.desktop;' \
+    /etc/xdg/gnome-mimeapps.list
 check 'Relay has no always-on service' \
   bash -c '! systemctl list-unit-files --no-legend | grep -q luma-relay'
 check 'legacy Dash to Dock is absent from desktop composition' \
@@ -513,7 +513,7 @@ done
 check 'Prairie Messages owns SMS links on desktop' \
   bash -c "test \"$(xdg-mime query default x-scheme-handler/sms)\" = org.projectluma.Messages.desktop"
 check 'the Luma application installer owns Windows application packages on desktop' \
-  bash -c "test \"$(xdg-mime query default application/vnd.microsoft.portable-executable)\" = org.projectluma.ApplicationInstaller.desktop"
+  bash -c "test \"$(XDG_CURRENT_DESKTOP=GNOME xdg-mime query default application/vnd.microsoft.portable-executable)\" = io.luma.Valet.desktop"
 check 'Prairie Phone owns telephone links on desktop' \
   bash -c "test \"$(xdg-mime query default x-scheme-handler/tel)\" = org.projectluma.Phone.desktop"
 
