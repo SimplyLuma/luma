@@ -101,7 +101,7 @@
         "x86_64": "44513fefd516e88bdfea4acc9f177e1b47d1fdfbb8619ee20e89a38264f44c95"
       },
       "pending": {
-        "reason": "Depot 0.1.4 (host/app model skew fix) is rebuilt and published from this source",
+        "reason": "Depot 0.1.5 is rebuilt and published from this source; the baseline is resealed with it",
         "expires": "2026-11-23"
       },
       "source_sha256": "bf42043cb94a1de530e04e566e18aacb0bc3d86c68a3ace784ba6f6e3c816bcb",

@@ -264,9 +264,10 @@ class LiveStore(Store):
     def _listed(self, listings, curated: tuple[str, ...] = ()) -> None:
         self.listings, self.curated = listings, curated
         apps, looks, tweaks, _story = listings
-        urls = [a.icon_url for a in apps] + [s for a in apps for s in a.shot_keys] + [a.mark for a in apps]
-        urls += [x.art for x in looks] + [listings[3].get("art", "")]
-        self.media.prefetch(urls)
+        # Icons first, on their own: each batch redraws once it is in, so the rows' icons show in
+        # seconds instead of after every screenshot in the catalogue has downloaded.
+        self.media.prefetch([a.icon_url for a in apps] + [a.mark for a in apps] + [listings[3].get("art", "")])
+        self.media.prefetch([s for a in apps for s in a.shot_keys] + [x.art for x in looks])
         self.rebuild()
 
     def rebuild(self) -> None:

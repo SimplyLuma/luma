@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.94%{?dist}
+Release:        1.luma.95%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -312,6 +312,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.95
+- Depot 0.1.5 from main: catalogue icons redraw before screenshots finish,
+  monogram for icon names the theme lacks, no title-bar sidebar button.
+
 * Mon Nov 16 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.94
 - Depot host: carry the Depot model from main (App.tv_input); the host and
   the Depot app accept each other's view models when one adds a field.
