@@ -1,7 +1,7 @@
 ---
 type: fix
 component: Depot
-packages: [luma-application-installer, org.projectluma.Depot]
+packages: [luma-application-installer]
 highlight: false
 ---
 Summary: Depot can install apps again
