@@ -33,6 +33,20 @@ class Wire(unittest.TestCase):
     def test_object_tags_and_fields_are_strict(self):
         for value in ({'$type':'Path','fields':{}},{'$type':'App','fields':{}},{'$tuple':[],'extra':1},{'$arbitrary':'x'}):
             with self.subTest(value=value),self.assertRaises(ValueError):wire.loads(json.dumps(value))
+    def test_host_and_app_may_differ_by_defaulted_fields(self):
+        # The OS host and the Depot app update apart: an older host omits a newer field, a newer one adds one.
+        tree=json.loads(wire.dumps(App(ID,'Notes','Write notes',tv_input='remote')))
+        tree['fields'].pop('tv_input');tree['fields']['from_a_newer_host']='ignored'
+        app=wire.loads(json.dumps(tree))
+        self.assertEqual((app.app_id,app.tv_input),(ID,''))
+        tree['fields'].pop('name')
+        with self.assertRaises(ValueError):wire.loads(json.dumps(tree))
+    def test_live_store_answers_pages_by_app_id(self):
+        from luma_depot.model.live import LiveStore
+        record=InstalledApp(ID,'1',24,app=App(ID,'Notes',''),commit=OLD,permission_changes=(GROW,))
+        store=NS(installed={ID:record},_record_asks_for_more=LiveStore._record_asks_for_more)
+        self.assertTrue(LiveStore.asks_for_more(store,ID))
+        self.assertFalse(LiveStore.asks_for_more(store,'catalog:other'))
     def test_total_budget_refuses_many_individually_valid_strings_before_final_dump(self):
         called=[]
         original=wire.json.dumps
