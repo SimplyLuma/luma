@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 17 Nov 2026 17:00:00 -0600
+Subject: [PATCH] backends/native: Probe input again when a session starts
+ inactive
+
+The launcher reads the session's Active property when it is created, before
+the backend connects to its changes, so a compositor started on a session
+that is not active yet never pauses. Its seat opens the input devices at
+startup and logind revokes them, as it does for every input device taken by
+an inactive session; at the first activation the resume finds the seat never
+released ("Spurious call to meta_seat_native_reclaim_devices()") and leaves
+it without a keyboard or pointer until the session is restarted.
+
+GDM normally switches to a session's VT before starting it. Luma's GDM
+(0001-luma-setup-handover-vt) keeps the first-boot setup on screen until the
+person's first session has drawn, so that session's Shell always starts
+inactive.
+
+When the session is inactive once the seat has started, release its devices
+at once, so that the activation reclaims them and libinput probes them again.
+Sessions that start active are unchanged.
+---
+diff --git a/src/backends/native/meta-backend-native.c b/src/backends/native/meta-backend-native.c
+index 38c0b74..9082a49 100644
+--- a/src/backends/native/meta-backend-native.c
++++ b/src/backends/native/meta-backend-native.c
+@@ -764,11 +764,28 @@ static void
+ on_started (MetaContext *context,
+             MetaBackend *backend)
+ {
++  MetaBackendNative *native = META_BACKEND_NATIVE (backend);
++  MetaBackendNativePrivate *priv =
++    meta_backend_native_get_instance_private (native);
+   ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
++  MetaLauncher *launcher = meta_backend_get_launcher (backend);
+   ClutterSeat *seat;
+ 
+   seat = clutter_backend_get_default_seat (clutter_backend);
+   meta_seat_native_start (META_SEAT_NATIVE (seat));
++
++  /* Started on a session that is not active yet (a display manager may
++   * switch to it only after it has drawn): logind revoked the input devices
++   * the seat opened, and no pause came before the first activation. Hold the
++   * devices released so that activation probes them again. */
++  if (priv->mode == META_BACKEND_NATIVE_MODE_DEFAULT &&
++      launcher && !meta_launcher_is_session_active (launcher))
++    {
++      meta_topic (META_DEBUG_BACKEND,
++                  "Session inactive at startup, input devices wait for "
++                  "its activation");
++      meta_seat_native_release_devices (META_SEAT_NATIVE (seat));
++    }
+ }
+ 
+ static gboolean
