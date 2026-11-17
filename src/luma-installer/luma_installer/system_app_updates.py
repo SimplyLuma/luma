@@ -55,8 +55,6 @@ PULL_SECONDS = 3 * 3600
 #: The boot unit's own TimeoutStartSec is longer; this one leaves time to record what happened.
 DEPLOY_SECONDS = 100
 DEPOT_UNIT = 'luma-depot-app-updates.service'
-#: One ref's download and deploy in the session.
-REFRESH_SECONDS = 3600
 #: How long the session waits for a first-boot baseline import still running.
 BASELINE_WAIT_SECONDS = 20 * 60
 POLL_SECONDS = 15
@@ -445,11 +443,48 @@ def deferred(environments) -> str:
                                  low_battery=battery_low(depot_autoupdate.LOW_BATTERY_PERCENT)).skipped_reason
 
 
+def flatpak_update(ref: str, expected: str, before: str, installation: Path = INSTALLATION) -> str:
+    """Update one system ref through libflatpak, as the signed-in person; '' or why it did not run.
+
+    flatpak's system helper refuses a pinned commit from anyone but root, so this updates to the
+    newest commit and, like Depot, refuses in the ready check unless that is the commit compared,
+    the installed one is still ``before`` and every operation comes from the verified luma remote.
+    No interaction: polkit is never asked to prompt."""
+    import gi
+    gi.require_version('Flatpak', '1.0')
+    from gi.repository import Flatpak, GLib
+    from .depot_flatpak import validate_remote
+    system = Flatpak.Installation.new_system(None)
+    tx = Flatpak.Transaction.new_for_installation(system, None)
+    tx.set_no_interaction(True)
+    tx.connect('add-new-remote', lambda *_args: False)
+
+    def ready(prepared):
+        operations = prepared.get_operations()
+        own = [op for op in operations if op.get_ref() == ref]
+        if len(own) != 1 or own[0].get_commit() != expected or installed_commit(ref, installation) != before:
+            return False
+        if any(op.get_remote() != REMOTE for op in operations):
+            return False
+        try:
+            validate_remote(system.get_remote_by_name(REMOTE, None), REMOTE)
+        except Exception:  # noqa: BLE001 - any doubt about the remote: nothing runs
+            return False
+        return True
+    tx.connect('ready', ready)
+    try:
+        tx.add_update(ref, None, None)
+        tx.run(None)
+    except GLib.Error as error:
+        return error.message
+    return ''
+
+
 def refresh(*, runner=subprocess.run, installation: Path = INSTALLATION, environments=None,
-            settled=baseline_settled, waits=deferred) -> dict:
+            settled=baseline_settled, waits=deferred, update=flatpak_update) -> dict:
     """Update the system installation's luma apps and runtimes now, without a restart.
 
-    Only refs already installed move, each to the exact commit that was compared. The offline
+    Only refs already installed move, each only to the commit that was compared. The offline
     baseline never updates an existing deployment and the OS update's boot deploy skips a ref
     that moved since it was downloaded, so neither undoes what lands here.
     """
@@ -471,8 +506,10 @@ def refresh(*, runner=subprocess.run, installation: Path = INSTALLATION, environ
     log(f'updating {len(wanted)} app(s) and runtime(s) from {REMOTE}')
     updated, failed = [], []
     for entry in wanted:
-        _out, error = _run(runner, ('flatpak', 'update', '--system', '--noninteractive', '--assumeyes',
-                                    f'--commit={entry["to"]}', entry['ref']), timeout=REFRESH_SECONDS)
+        try:
+            error = update(entry['ref'], entry['to'], entry['from'], installation)
+        except Exception as problem:  # noqa: BLE001 - one ref's failure never stops the others
+            error = f'{type(problem).__name__}: {problem}'
         if installed_commit(entry['ref'], installation) == entry['to']:
             updated.append(entry['ref'])
         else:

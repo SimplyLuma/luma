@@ -56,6 +56,7 @@ class Flatpak:
         self.calls = []
         self.fail_pull = set()
         self.fail_deploy = False
+        self.updates = []
 
     def install(self, ref, commit, metadata):
         kind, name, arch, branch = ref.split('/')
@@ -81,6 +82,19 @@ class Flatpak:
         self.deployments = [{'staged': True, 'booted': False, 'checksum': identity},
                             *[d for d in self.deployments if not d.get('staged')]]
 
+    def update(self, ref, expected, before, installation):
+        """refresh's libflatpak update: the newest commit, refused unless it is the one compared."""
+        self.updates.append((ref, expected, before))
+        commit = self.remote[ref][0]
+        if ref in self.fail_pull:
+            return 'error: failed'
+        if commit != expected or sau.installed_commit(ref, installation) != before:
+            return 'Transaction refused'
+        self.objects[commit] = self.remote[ref][1]
+        self._local(ref, commit)
+        self.install(ref, commit, self.objects[commit].replace('{', '{{').replace('}', '}}'))
+        return ''
+
     def boot(self, identity):
         self.deployments = [{'booted': d['checksum'] == identity, 'checksum': d['checksum']}
                             for d in self.deployments]
@@ -105,14 +119,6 @@ class Flatpak:
                     self.objects[commit] = metadata
                     self._local(ref, commit)
             return failed if self.fail_pull & set(argv[6:]) else ok()
-        if argv[:2] == ['flatpak', 'update'] and argv[5].startswith('--commit='):
-            ref, commit = argv[6], argv[5].removeprefix('--commit=')
-            if ref in self.fail_pull or self.remote[ref][0] != commit:
-                return failed
-            self.objects[commit] = self.remote[ref][1]
-            self._local(ref, commit)
-            self.install(ref, commit, self.objects[commit].replace('{', '{{').replace('}', '}}'))
-            return ok()
         if argv[:2] == ['flatpak', 'update'] and '--no-pull' in argv:
             if self.fail_deploy:
                 return failed
@@ -322,12 +328,13 @@ class Refreshing(Case):
         super().setUp()
         self.flatpak.install(DEPOT, c(4), BASE)
 
-    def refresh(self, *, settled=True, reason=''):
+    def refresh(self, *, settled=True, reason='', update=None):
         return sau.refresh(runner=self.flatpak.run, installation=self.flatpak.root,
-                           environments=self.environments, settled=lambda: settled, waits=lambda _e: reason)
+                           environments=self.environments, settled=lambda: settled, waits=lambda _e: reason,
+                           update=update or self.flatpak.update)
 
     def updates(self):
-        return [a for a in self.flatpak.calls if a[:2] == ['flatpak', 'update']]
+        return self.flatpak.updates
 
     def test_system_apps_and_runtimes_update_in_place(self):
         self.flatpak.publish(DEPOT, c(14))
@@ -337,14 +344,19 @@ class Refreshing(Case):
         self.assertEqual(outcome['result'], 'updated')
         self.assertEqual(outcome['updated'], [PLATFORM, VIOLA, DEPOT])  # the runtime first
         self.assertEqual((self.deployed(DEPOT), self.deployed(VIOLA), self.deployed(PLATFORM)), (c(14), c(12), c(13)))
-        for argv in self.updates():
-            self.assertIn('--system', argv)
-            self.assertIn('--noninteractive', argv)
-            self.assertNotIn('--no-deploy', argv)
-            self.assertNotIn('--no-pull', argv)
-        # each deploys the commit that was compared, never whatever is newest by then
-        self.assertEqual([a[5] for a in self.updates()], [f'--commit={c(13)}', f'--commit={c(12)}', f'--commit={c(14)}'])
+        # each only to the commit that was compared, from the one installed
+        self.assertEqual(self.updates(), [(PLATFORM, c(13), c(3)), (VIOLA, c(12), c(2)), (DEPOT, c(14), c(4))])
         self.assertEqual(self.refresh()['result'], 'up-to-date')
+
+    def test_a_remote_that_moved_on_is_not_taken_blind(self):
+        self.flatpak.publish(DEPOT, c(14))
+
+        def moved(ref, expected, before, installation):
+            self.flatpak.publish(DEPOT, c(15), WIDER)  # between the comparison and the transaction
+            return self.flatpak.update(ref, expected, before, installation)
+        outcome = self.refresh(update=moved)
+        self.assertEqual(outcome['failed'], [DEPOT])
+        self.assertEqual(self.deployed(DEPOT), c(4))
 
     def test_held_like_depot_holds(self):
         self.flatpak.publish(DEPOT, c(14), WIDER)
@@ -394,6 +406,9 @@ class Refreshing(Case):
         outcome = self.refresh()
         self.assertEqual((outcome['updated'], outcome['failed']), ([VIOLA], [DEPOT]))
         self.assertEqual(self.deployed(DEPOT), c(4))
+        def crash(*_args):
+            raise RuntimeError('no bus')
+        self.assertEqual(self.refresh(update=crash)['failed'], [DEPOT])  # Viola is current by now
         with patch.object(sau, 'refresh', side_effect=RuntimeError('boom')):
             self.assertEqual(sau.main(['refresh']), 0)
 
