@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Update Luma's own apps and runtimes in place
+Documentation=https://simplyluma.com/apps
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+# Pulled in by luma-depot-app-updates.service, which runs after it: every six
+# hours, and at sign-in when an update is waiting. Updates the luma apps and
+# runtimes of the system installation through Flatpak's own atomic deploy;
+# running apps keep their version until they are opened again. Never fails.
+ExecStart=/usr/libexec/luma-system-app-updates refresh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h

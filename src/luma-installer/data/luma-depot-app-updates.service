@@ -1,7 +1,9 @@
 [Unit]
 Description=Update apps in the background, holding updates that ask for more
 Documentation=https://simplyluma.com/apps
-After=graphical-session.target
+# Luma's own system apps update first, whether or not the catalogue lists them.
+Wants=luma-system-app-refresh.service
+After=graphical-session.target luma-system-app-refresh.service
 PartOf=graphical-session.target
 
 [Service]

@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.95%{?dist}
+Release:        1.luma.96%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -147,6 +147,7 @@ ln -s ../luma-retired-system-apps.service %{buildroot}%{_unitdir}/multi-user.tar
 install -D -m 0644 data/luma-depot-provision.service %{buildroot}%{_userunitdir}/luma-depot-provision.service
 install -D -m 0644 data/luma-depot-app-updates.service %{buildroot}%{_userunitdir}/luma-depot-app-updates.service
 install -D -m 0644 data/luma-depot-app-updates.timer %{buildroot}%{_userunitdir}/luma-depot-app-updates.timer
+install -D -m 0644 data/luma-system-app-refresh.service %{buildroot}%{_userunitdir}/luma-system-app-refresh.service
 install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
 ln -s ../luma-depot-provision.service \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-depot-provision.service
@@ -267,6 +268,7 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_userunitdir}/luma-depot-provision.service
 %{_userunitdir}/luma-depot-app-updates.service
 %{_userunitdir}/luma-depot-app-updates.timer
+%{_userunitdir}/luma-system-app-refresh.service
 %{_userunitdir}/graphical-session.target.wants/luma-depot-provision.service
 %{_userunitdir}/graphical-session.target.wants/luma-depot-app-updates.timer
 %{_userunitdir}/luma-depot-app-updates-login.service
@@ -312,6 +314,16 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.96
+- luma-system-app-refresh.service: luma-system-app-updates refresh updates
+  the system installation's luma apps and runtimes in the session before
+  each background app update, catalogued or not; waits for the offline
+  baseline import, defers like Depot (off, metered, power saver, low
+  battery), holds updates that ask for more, were taken back or need a newer
+  host, and deploys the compared commit.
+- luma-depot-app-updates-login.service also starts the run when a system
+  luma ref has an update waiting, and waits up to ten minutes for the network.
+
 * Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.95
 - Depot 0.1.5 from main: catalogue icons redraw before screenshots finish,
   monogram for icon names the theme lacks, no title-bar sidebar button.

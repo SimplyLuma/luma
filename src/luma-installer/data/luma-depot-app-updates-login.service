@@ -7,9 +7,11 @@ PartOf=graphical-session.target
 
 [Service]
 Type=oneshot
-# Starts luma-depot-app-updates.service at once when an app Depot updates has
-# an update waiting; otherwise the timer's six-hour cadence stands.
+# Starts luma-depot-app-updates.service at once when an app Depot updates, or
+# a luma app or runtime of the system installation, has an update waiting;
+# otherwise the timer's six-hour cadence stands. Waits up to ten minutes for
+# the network (a first sign-in sets up Wi-Fi).
 ExecStart=/usr/libexec/luma-system-app-updates pending
 Nice=10
 IOSchedulingClass=idle
-TimeoutStartSec=5min
+TimeoutStartSec=12min

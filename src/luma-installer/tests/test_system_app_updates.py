@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""App updates downloaded with a staged Luma update, deployed on its first boot."""
+"""App updates downloaded with a staged Luma update, deployed on its first boot,
+and Luma's own system apps kept current in the session."""
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from luma_installer import system_app_updates as sau
 OLD_OS, NEW_OS, OTHER_OS = 'a' * 64, 'b' * 64, 'c' * 64
 MONITOR = 'app/io.luma.Monitor/x86_64/beta'
 VIOLA = 'app/com.rhyme.viola/x86_64/beta'
+DEPOT = 'app/org.projectluma.Depot/x86_64/beta'
 PLATFORM = 'runtime/org.projectluma.Platform/x86_64/44'
 BASE = """[Application]
 name={name}
@@ -54,6 +56,7 @@ class Flatpak:
         self.calls = []
         self.fail_pull = set()
         self.fail_deploy = False
+        self.updates = []
 
     def install(self, ref, commit, metadata):
         kind, name, arch, branch = ref.split('/')
@@ -78,6 +81,19 @@ class Flatpak:
     def stage(self, identity=NEW_OS):
         self.deployments = [{'staged': True, 'booted': False, 'checksum': identity},
                             *[d for d in self.deployments if not d.get('staged')]]
+
+    def update(self, ref, expected, before, installation):
+        """refresh's libflatpak update: the newest commit, refused unless it is the one compared."""
+        self.updates.append((ref, expected, before))
+        commit = self.remote[ref][0]
+        if ref in self.fail_pull:
+            return 'error: failed'
+        if commit != expected or sau.installed_commit(ref, installation) != before:
+            return 'Transaction refused'
+        self.objects[commit] = self.remote[ref][1]
+        self._local(ref, commit)
+        self.install(ref, commit, self.objects[commit].replace('{', '{{').replace('}', '}}'))
+        return ''
 
     def boot(self, identity):
         self.deployments = [{'booted': d['checksum'] == identity, 'checksum': d['checksum']}
@@ -305,8 +321,149 @@ class Deploying(Case):
         self.assertEqual(self.deploy()['result'], 'none')
 
 
+class Refreshing(Case):
+    """Every six hours and soon after sign-in, without a restart, catalogued or not."""
+
+    def setUp(self):
+        super().setUp()
+        self.flatpak.install(DEPOT, c(4), BASE)
+
+    def refresh(self, *, settled=True, reason='', update=None):
+        return sau.refresh(runner=self.flatpak.run, installation=self.flatpak.root,
+                           environments=self.environments, settled=lambda: settled, waits=lambda _e: reason,
+                           update=update or self.flatpak.update)
+
+    def updates(self):
+        return self.flatpak.updates
+
+    def test_system_apps_and_runtimes_update_in_place(self):
+        self.flatpak.publish(DEPOT, c(14))
+        self.flatpak.publish(VIOLA, c(12))
+        self.flatpak.publish(PLATFORM, c(13))
+        outcome = self.refresh()
+        self.assertEqual(outcome['result'], 'updated')
+        self.assertEqual(outcome['updated'], [PLATFORM, VIOLA, DEPOT])  # the runtime first
+        self.assertEqual((self.deployed(DEPOT), self.deployed(VIOLA), self.deployed(PLATFORM)), (c(14), c(12), c(13)))
+        # each only to the commit that was compared, from the one installed
+        self.assertEqual(self.updates(), [(PLATFORM, c(13), c(3)), (VIOLA, c(12), c(2)), (DEPOT, c(14), c(4))])
+        self.assertEqual(self.refresh()['result'], 'up-to-date')
+
+    def test_a_remote_that_moved_on_is_not_taken_blind(self):
+        self.flatpak.publish(DEPOT, c(14))
+
+        def moved(ref, expected, before, installation):
+            self.flatpak.publish(DEPOT, c(15), WIDER)  # between the comparison and the transaction
+            return self.flatpak.update(ref, expected, before, installation)
+        outcome = self.refresh(update=moved)
+        self.assertEqual(outcome['failed'], [DEPOT])
+        self.assertEqual(self.deployed(DEPOT), c(4))
+
+    def test_held_like_depot_holds(self):
+        self.flatpak.publish(DEPOT, c(14), WIDER)
+        self.flatpak.publish(VIOLA, c(12))
+        with patch('luma_installer.system_app_updates.needs_newer_host', side_effect=lambda m: True):
+            outcome = self.refresh()
+        self.assertEqual(outcome['held'], [{'ref': VIOLA, 'reason': 'needs-newer-host'},
+                                           {'ref': DEPOT, 'reason': 'asks-for-more'}])
+        self.assertEqual(self.updates(), [])
+        self.assertEqual((self.deployed(DEPOT), self.deployed(VIOLA)), (c(4), c(2)))
+
+    def test_an_app_taken_back_stays(self):
+        history = self.home / '.local/state/luma/depot/app-history.json'
+        history.parent.mkdir(parents=True)
+        history.write_text(json.dumps({'entries': [], 'paused': [{
+            'app_id': 'catalog:viola', 'name': 'Viola', 'reverted_from_version': '2',
+            'reverted_from_commit': c(9), 'at': int(time.time())}]}))
+        self.flatpak.publish(VIOLA, c(12))
+        catalogue = SimpleNamespace(applications=[SimpleNamespace(id='viola', source_id='com.rhyme.viola',
+                                                                  backend='flatpak')])
+        with patch('luma_installer.depot_catalog.local_catalog', return_value=catalogue):
+            outcome = self.refresh()
+        self.assertEqual(outcome['held'], [{'ref': VIOLA, 'reason': 'taken-back'}])
+        self.assertEqual(self.deployed(VIOLA), c(2))
+
+    def test_waits_for_the_offline_baseline(self):
+        self.flatpak.publish(DEPOT, c(14))
+        self.assertEqual(self.refresh(settled=False), {'result': 'baseline-installing'})
+        self.assertEqual(self.flatpak.calls, [])
+
+    def test_defers_when_depot_would(self):
+        self.flatpak.publish(DEPOT, c(14))
+        outcome = self.refresh(reason='This connection is metered.')
+        self.assertEqual(outcome, {'result': 'deferred', 'reason': 'This connection is metered.'})
+        self.assertEqual(self.updates(), [])
+
+    def test_only_a_signed_luma_remote(self):
+        (self.flatpak.root / 'repo/config').write_text(CONFIG.replace('gpg-verify=true', 'gpg-verify=false'))
+        self.flatpak.publish(DEPOT, c(14))
+        self.assertEqual(self.refresh()['result'], 'remote-not-trusted')
+        self.assertEqual(self.updates(), [])
+
+    def test_a_failed_update_is_reported_and_the_rest_go_on(self):
+        self.flatpak.publish(DEPOT, c(14))
+        self.flatpak.publish(VIOLA, c(12))
+        self.flatpak.fail_pull = {DEPOT}
+        outcome = self.refresh()
+        self.assertEqual((outcome['updated'], outcome['failed']), ([VIOLA], [DEPOT]))
+        self.assertEqual(self.deployed(DEPOT), c(4))
+        def crash(*_args):
+            raise RuntimeError('no bus')
+        self.assertEqual(self.refresh(update=crash)['failed'], [DEPOT])  # Viola is current by now
+        with patch.object(sau, 'refresh', side_effect=RuntimeError('boom')):
+            self.assertEqual(sau.main(['refresh']), 0)
+
+    def test_the_boot_deploy_of_a_staged_update_leaves_a_refreshed_app_alone(self):
+        self.flatpak.publish(DEPOT, c(20))
+        self.flatpak.stage()
+        self.prefetch()
+        self.flatpak.publish(DEPOT, c(21))  # newer still, taken in the session
+        self.refresh()
+        self.flatpak.boot(NEW_OS)
+        outcome = self.deploy()
+        self.assertEqual(outcome['skipped'], [{'ref': DEPOT, 'reason': 'changed'}])
+        self.assertEqual(self.deployed(DEPOT), c(21))
+
+
+class Baseline(unittest.TestCase):
+    def test_waits_for_the_import_then_goes_on(self):
+        states = iter(['installing', 'installing', 'done'])
+        slept = []
+        self.assertTrue(sau.baseline_settled(read=lambda: {'state': next(states)}, sleep=slept.append,
+                                             clock=lambda: 0))
+        self.assertEqual(len(slept), 2)
+
+    def test_no_baseline_on_this_device(self):
+        self.assertTrue(sau.baseline_settled(read=lambda: None, sleep=self.fail))
+
+    def test_gives_up_after_the_wait(self):
+        clock = iter(range(0, 10000, 600))
+        self.assertFalse(sau.baseline_settled(read=lambda: {'state': 'installing'}, sleep=lambda _s: None,
+                                              clock=lambda: next(clock), wait=1200))
+
+
+class Deferring(unittest.TestCase):
+    """Depot's own rule decides, so the two never disagree."""
+
+    def reason(self, *, metered=False, power_saver=False, low=False, off=False):
+        from gi.repository import Gio
+        monitor = SimpleNamespace(get_network_metered=lambda: metered)
+        profile = SimpleNamespace(get_power_saver_enabled=lambda: power_saver)
+        with patch.object(Gio.NetworkMonitor, 'get_default', return_value=monitor), \
+                patch.object(Gio.PowerProfileMonitor, 'dup_default', return_value=profile), \
+                patch('luma_depot.system_updates.battery_low', return_value=low), \
+                patch('luma_installer.system_app_updates.updates_off', return_value=off):
+            return sau.deferred([])
+
+    def test_conditions(self):
+        self.assertEqual(self.reason(), '')
+        self.assertEqual(self.reason(off=True), 'Automatic app updates are off.')
+        self.assertEqual(self.reason(metered=True), 'This connection is metered.')
+        self.assertEqual(self.reason(power_saver=True), 'Power saving is on.')
+        self.assertEqual(self.reason(low=True), 'The battery is low.')
+
+
 class SignIn(unittest.TestCase):
-    def runner(self, system='', user=None, offline=0):
+    def runner(self, system='', user=None, offline=0, refs=''):
         calls, state = [], {'offline': offline}
 
         def run(argv, **_kwargs):
@@ -319,6 +476,8 @@ class SignIn(unittest.TestCase):
                     if argv[2] == '--user' or user is None:
                         state['offline'] -= 1
                     return subprocess.CompletedProcess(argv, 1, '', 'error: Unable to load summary')
+                if '--columns=ref' in argv:
+                    return subprocess.CompletedProcess(argv, 0, refs, '')
                 return subprocess.CompletedProcess(argv, 0, system if argv[2] == '--system' else user or '', '')
             return subprocess.CompletedProcess(argv, 0, '', '')
         return run, calls
@@ -334,6 +493,12 @@ class SignIn(unittest.TestCase):
         run, calls = self.runner(system='io.luma.Monitor\norg.projectluma.Depot\n')
         outcome = sau.pending(runner=run, sleep=lambda _s: None)
         self.assertEqual(outcome, {'result': 'started', 'apps': ['io.luma.Monitor']})
+        self.assertIn(['systemctl', '--user', 'start', '--no-block', sau.DEPOT_UNIT], calls)
+
+    def test_a_system_app_outside_the_catalogue_starts_it_too(self):
+        run, calls = self.runner(system='org.projectluma.Depot\n', refs=DEPOT + '\n' + PLATFORM + '\n')
+        outcome = sau.pending(runner=run, sleep=lambda _s: None)
+        self.assertEqual(outcome, {'result': 'started', 'apps': ['org.projectluma.Depot', 'org.projectluma.Platform']})
         self.assertIn(['systemctl', '--user', 'start', '--no-block', sau.DEPOT_UNIT], calls)
 
     def test_nothing_waiting_keeps_the_timer(self):
