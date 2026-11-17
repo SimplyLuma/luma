@@ -101,7 +101,11 @@
         "x86_64": "0914252d92f275c6464ef4dc88512d708b97d5b7e100a56a88f4e826739df2ad"
       },
       "source_sha256": "49422bda503b9dd99a3746a6b5158e457728ad8c3e09e97da36403a50185a90e",
-      "version": "0.1.5"
+      "version": "0.1.5",
+      "pending": {
+        "reason": "only host-side luma_installer.system_app_updates changed (luma-application-installer 1.luma.96); the app does not run it, the next Depot rebuild carries it",
+        "expires": "2026-11-23"
+      }
     },
     "org.projectluma.Imager": {
       "commits": {
