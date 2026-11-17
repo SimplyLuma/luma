@@ -313,14 +313,18 @@ class LiveStore(Store):
     # on the app's page, under the changes it lists. Bulk, retry and background updates never approve
     # (the old window's rule, kept exactly).
     @staticmethod
-    def asks_for_more(record: InstalledApp | None) -> bool:
+    def _record_asks_for_more(record: InstalledApp | None) -> bool:
         return record is not None and any(change.change in ("added", "widened") and change.key != "files.portal"
                                           for change in record.permission_changes)
+
+    def asks_for_more(self, app_id: str) -> bool:
+        """The Store contract: pages ask by app id."""
+        return self._record_asks_for_more(self.installed.get(app_id))
 
     def held(self, app_id: str) -> bool:
         from luma_installer import depot_autoupdate
         record = self.installed.get(app_id)
-        if not self.asks_for_more(record):
+        if not self._record_asks_for_more(record):
             return False
         pending = depot_autoupdate.Pending(app_id, record.app.name if record.app else app_id, record.update_version,
                                            True, record.update_commit, record.commit)
@@ -334,7 +338,7 @@ class LiveStore(Store):
             done(self.world, f"{item.name} changed. Check again before updating")
             return
         extra = {}
-        if self.asks_for_more(record):
+        if self._record_asks_for_more(record):
             pending = depot_autoupdate.Pending(item.id, item.name, record.update_version, True,
                                                record.update_commit, record.commit)
             if approve and getattr(self.installer, "requires_permission_approval", False):
