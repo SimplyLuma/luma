@@ -2,10 +2,10 @@
   "schema": "org.projectluma.os-app-baseline-lock/v1",
   "baselines": {
     "aarch64": {
-      "manifest_sha256": "d8a57d1b39a776d56d3f4613dfe73fed31159417564f44f2102a0c80da463732"
+      "manifest_sha256": "f1de05d003695f1ec24b05d17b5b1e7df04c7fd9dfcd48ffa275ad7ae8bbeb5c"
     },
     "x86_64": {
-      "manifest_sha256": "fa8cfa474b68a47bab5511045c7ea5ec85f4cb3bc9066f329998194983e351b2"
+      "manifest_sha256": "3683a1ec9fc3ec9a53f9e1441e586e620595ddfd70c0a31c9dcd12ed20d34173"
     }
   },
   "applications": {
@@ -97,15 +97,11 @@
     },
     "org.projectluma.Depot": {
       "commits": {
-        "aarch64": "0e040e9a9e2d17d159f9f9dbdccb5b67d3218b5ee17005af4a93b865df9ce955",
-        "x86_64": "44513fefd516e88bdfea4acc9f177e1b47d1fdfbb8619ee20e89a38264f44c95"
+        "aarch64": "ba22a809f46ed131eb19b43b425d9c749a7f6ace15d9dd963f203348cc53d561",
+        "x86_64": "0914252d92f275c6464ef4dc88512d708b97d5b7e100a56a88f4e826739df2ad"
       },
-      "pending": {
-        "reason": "Depot 0.1.5 is rebuilt and published from this source; the baseline is resealed with it",
-        "expires": "2026-11-23"
-      },
-      "source_sha256": "bf42043cb94a1de530e04e566e18aacb0bc3d86c68a3ace784ba6f6e3c816bcb",
-      "version": "0.1.3"
+      "source_sha256": "49422bda503b9dd99a3746a6b5158e457728ad8c3e09e97da36403a50185a90e",
+      "version": "0.1.5"
     },
     "org.projectluma.Imager": {
       "commits": {
