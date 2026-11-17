@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.93%{?dist}
+Release:        1.luma.94%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -312,6 +312,11 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Mon Nov 16 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.94
+- Depot host: carry the Depot model from main (App.tv_input); the host and
+  the Depot app accept each other's view models when one adds a field.
+- Depot pages read whether an update asks for more by app id.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.93
 - luma-app-baseline.service is Type=notify: ready when the handoff finishes
   or after 90 seconds, then the import continues in the background and
