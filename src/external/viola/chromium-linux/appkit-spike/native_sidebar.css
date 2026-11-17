@@ -12,7 +12,7 @@
 .viola-tab.sleeping label { color: @luma_muted; }
 .viola-tab-close { background: transparent; border: 0; box-shadow: none; padding: 0; margin: 8px 0; min-width: 18px; min-height: 18px; opacity: 0; }
 .viola-tab-close image { -gtk-icon-size: 10px; }
-.viola-tab:hover .viola-tab-close, .viola-tab.active .viola-tab-close { opacity: .5; }
+.viola-tab:hover .viola-tab-close, .viola-tab:focus-within .viola-tab-close, .viola-tab.active .viola-tab-close { opacity: .5; }
 .viola-tab-close:hover { opacity: 1; }
 .viola-favorite { min-height: 42px; }
 .viola-favorite .viola-tab-activate { min-height: 42px; min-width: 0; padding: 0 12px; border-radius: 10px; }

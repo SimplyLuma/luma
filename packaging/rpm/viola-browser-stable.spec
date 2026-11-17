@@ -9,7 +9,7 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 45
+%global native_release 46
 # The native host is shared. Both CPUs use source-built engines from the same
 # tree (engine patches 0001-0006); each has its own release number.
 %ifarch aarch64
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261113.2%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261116.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -284,6 +284,9 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Mon Nov 16 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native46.creator20261116.1
+- Tab titles use the whole sidebar row: the close button takes room only on the hovered, focused or current tab.
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native45.creator20261113.2
 - Ask in the bar before installing an extension, and when an update asks for new permissions: engine patch 0006 hands Chromium's extension prompts to the host.
 - Engines native37 (x86) and native38 (ARM): native35 and native36 with 0006; only chrome differs.

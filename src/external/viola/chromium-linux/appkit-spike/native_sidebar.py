@@ -202,7 +202,7 @@ class NativeSidebar(Gtk.Box):
         key = tab['id']
         widget = pool.get(key)
         if widget is None:
-            widget = Card(padded=False) if favorite else Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            widget = Card(padded=False) if favorite else Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
             widget.add_css_class('viola-favorite' if favorite else 'viola-tab')
             widget.tab_id = key
             widget.activate = Gtk.Button(hexpand=True)
@@ -241,6 +241,18 @@ class NativeSidebar(Gtk.Box):
                 widget.close.add_css_class('viola-tab-close')
                 widget.close.connect('clicked', lambda *_: self.host.send('tab:close', {'tabId': key}))
                 widget.append(widget.close)
+                # The close button takes room only while it can be used (pointer
+                # or keyboard focus on the row, or the current tab), so other
+                # titles use the full row.
+                widget.hovered = widget.focused = False
+                motion = Gtk.EventControllerMotion()
+                motion.connect('enter', lambda *_: self.set_tab_reach(widget, hovered=True))
+                motion.connect('leave', lambda *_: self.set_tab_reach(widget, hovered=False))
+                widget.add_controller(motion)
+                focus = Gtk.EventControllerFocus()
+                focus.connect('enter', lambda *_: self.set_tab_reach(widget, focused=True))
+                focus.connect('leave', lambda *_: self.set_tab_reach(widget, focused=False))
+                widget.add_controller(focus)
             self.context(widget, 'tab:menu', lambda: {
                 'tabId': key, 'section': widget.section, 'selectedTabIds': [key]})
             self.reorder.tab(widget)
@@ -275,7 +287,17 @@ class NativeSidebar(Gtk.Box):
                               ('sleeping', tab.get('discarded', False)),
                               ('viewed-elsewhere', elsewhere)):
             (widget.add_css_class if enabled else widget.remove_css_class)(name)
+        if not favorite:
+            self.set_tab_reach(widget)
         return widget
+
+    @staticmethod
+    def set_tab_reach(widget, hovered=None, focused=None):
+        if hovered is not None:
+            widget.hovered = hovered
+        if focused is not None:
+            widget.focused = focused
+        widget.close.set_visible(widget.hovered or widget.focused or widget.has_css_class('active'))
 
     def render_favorite_drop_zone(self):
         empty = not self.state.get('favorites')
