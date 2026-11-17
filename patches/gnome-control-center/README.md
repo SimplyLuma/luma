@@ -310,3 +310,15 @@ for from outside was pushed over the list only when the page changed, so
 `gnome-control-center wwan` after Back from Mobile Network left the list
 showing. The command line and the launch-panel action now show the requested
 page once the shell has opened it.
+
+`0105-global-shortcuts-without-a-dialog.patch`: an application that asks for
+a global shortcut through the GlobalShortcuts portal (Electron apps do at
+launch) got GNOME's modal "Add Keyboard Shortcuts" window from
+`gnome-control-center-global-shortcuts-provider`; closing it stored nothing,
+so it returned on every launch. The provider now stores new shortcuts at once
+and never shows the window. A new shortcut keeps the application's preferred
+trigger only when it holds Super, or Ctrl and Alt together; anything else is
+stored without a key. One notification from the application (FDO
+`desktop-entry` hint) lists what was bound, the first time only. Shortcuts the
+person already set are untouched, and the compositor still refuses a trigger
+another shortcut owns.
