@@ -189,9 +189,26 @@ export const mergeDriveFacts = (previous, { devices = {}, disks = [], existingSy
     return facts;
 };
 
-/** §7 whole-list states, or null when there is something to choose. */
-export const driveListProblem = ({ rows, requiredSize }) => {
+const FIRMWARE_HIDDEN_STEPS = {
+    "rst-raid": "set Storage or SATA Operation to AHCI instead of RAID",
+    vmd: "turn off Intel VMD, or set Storage to AHCI instead of RAID",
+};
+
+/**
+ * §7 whole-list states, or null when there is something to choose.
+ * hiddenStorage is atlas-probe's firmwareHiddenStorage: the internal drive
+ * exists but the firmware's storage mode keeps it from Linux.
+ */
+export const driveListProblem = ({ hiddenStorage = null, rows, requiredSize }) => {
     const targets = rows.filter(row => !row.isInstaller);
+    if (targets.length === 0 && FIRMWARE_HIDDEN_STEPS[hiddenStorage]) {
+        return {
+            detail: "If Windows is on that drive and you want to keep it, switch Windows to AHCI before you change the setting.",
+            kind: "firmware-hidden",
+            text: "This computer's drive is hidden by a firmware setting. Restart, open the firmware setup (often F2 or Del), " +
+                `${FIRMWARE_HIDDEN_STEPS[hiddenStorage]}, then start the installer again.`,
+        };
+    }
     if (targets.length === 0) {
         return rows.some(row => row.isInstaller)
             ? { kind: "only-installer", text: "The only drive here is the installer itself. Add another drive to install Luma on." }

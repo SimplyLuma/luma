@@ -157,7 +157,7 @@ export const DestinationStep = ({ answers, back, continueRef, dispatch, index, i
     const selectable = rows.filter(row => !row.isInstaller && !row.disabledReason);
     const selectedDisk = diskSelection.selectedDisks.find(disk => selectable.some(row => row.disk === disk));
     const selectedRow = rows.find(row => row.disk === selectedDisk);
-    const listProblem = driveListProblem({ requiredSize, rows });
+    const listProblem = driveListProblem({ hiddenStorage: probe?.firmwareHiddenStorage, requiredSize, rows });
 
     // One drive. Preselected only when there is nothing to lose by it: it is
     // the only drive to choose from, or the only one that is empty.
@@ -293,7 +293,11 @@ export const DestinationStep = ({ answers, back, continueRef, dispatch, index, i
                         />
                     ))}
                 </Options>
-                {listProblem && <Warn plain={listProblem.text} />}
+                {listProblem && (
+                    <Warn plain={listProblem.text}>
+                        {listProblem.detail && <><br />{listProblem.detail}</>}
+                    </Warn>
+                )}
                 {(listProblem || rows.length === 0) && (
                     <MoreButton onClick={rescan}>{rescanning ? "Looking for drives" : "Look for drives again"}</MoreButton>
                 )}

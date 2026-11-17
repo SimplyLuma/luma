@@ -67,6 +67,7 @@ cockpit.file = (path, options = {}) => {
 const probeSystem = () => ({
     battery: params.get("battery") ? { acOnline: false, capacity: Number(params.get("battery")), charging: false, present: true } : null,
     bootOptions: { contrast: false, lang: null, surface: null },
+    firmwareHiddenStorage: params.get("hiddenStorage") || null,
     installerDisks: ["sdb"],
     media: { channel: params.get("channel") || "stable", enrolled: params.get("enrolled") === "1", ref: `luma/1/x86_64/${params.get("channel") || "stable"}`, source: params.get("source") || "medium" },
     network: { connectivity: params.get("net") || "full" },
