@@ -1,7 +1,7 @@
 ---
 type: fix
 component: Depot
-packages: []
+packages: [luma-application-installer]
 highlight: false
 ---
 Summary: Depot shows app icons sooner
