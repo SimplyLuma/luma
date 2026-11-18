@@ -32,12 +32,12 @@
     "--talk-name=org.projectluma.Terminal",
     "--talk-name=org.gnome.NautilusPreviewer",
     "--own-name=org.freedesktop.FileManager1",
-    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Audio",
-    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Documents",
-    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:FileSystem",
-    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Pictures",
-    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Music",
-    "--add-policy=LocalSearch3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Video",
+    "--add-policy=Tracker3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Audio",
+    "--add-policy=Tracker3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Documents",
+    "--add-policy=Tracker3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:FileSystem",
+    "--add-policy=Tracker3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Pictures",
+    "--add-policy=Tracker3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Music",
+    "--add-policy=Tracker3.dbus:org.freedesktop.Tracker3.Miner.Files=tracker:Video",
     "--talk-name=org.projectluma.ApplicationDirectory1"
   ],
   "modules": [

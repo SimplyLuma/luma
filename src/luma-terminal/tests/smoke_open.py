@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Actual cold D-Bus directory opening, cwd, argument safety and rejection.
+"""Actual cold D-Bus directory and program opening, cwd, argument safety and rejection.
 
 Run only in an owned disposable display/session with the service file below
 registered in its private XDG_DATA_HOME. --service runs the production app.
@@ -97,6 +97,22 @@ class DirectoryOpening(unittest.TestCase):
             self.assertEqual(directories(), original)
             self.assertFalse((root / 'SHOULD_NOT_EXIST').exists())
             self.assertFalse(Path('/source/SHOULD_NOT_EXIST').exists())
+            # An executable file (Filer's Run) runs in a session in its folder;
+            # a file without the executable bit still does nothing.
+            programs = root / 'programs $(touch SHOULD_NOT_EXIST)'
+            programs.mkdir()
+            program = programs / "run me 'now'"
+            program.write_text('#!/bin/sh\ntouch "$PWD/RAN"\n')
+            plain = programs / 'plain'
+            plain.write_text('#!/bin/sh\ntouch "$PWD/PLAIN_RAN"\n')
+            program.chmod(0o755)
+            plain.chmod(0o644)
+            open_uri(plain.as_uri())
+            open_uri(program.as_uri())
+            wait_for(lambda: (programs / 'RAN').exists())
+            self.assertIn(str(programs), directories())
+            self.assertFalse((programs / 'PLAIN_RAN').exists())
+            self.assertFalse((programs / 'SHOULD_NOT_EXIST').exists())
             # Exact owned service PID; fixture/container cleanup reaps all work.
             os.kill(pid, signal.SIGTERM)
 

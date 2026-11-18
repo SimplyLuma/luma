@@ -77,6 +77,8 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/$package.spec" \
     # The Luma patch is in the source package and the binaries were built.
     rpm -qpl "SRPMS/'"$nevr"'.src.rpm" |
       grep -qxF 0001-open-uri-open-package-files-in-the-system-installer.patch
+    rpm -qpl "SRPMS/'"$nevr"'.src.rpm" |
+      grep -qxF 0002-request-run-disconnect-off-the-main-loop.patch
     test -f "RPMS/$architecture/'"$nevr"'.${architecture}.rpm"
     # The portal reads its impl files as the user: no build-workspace modes.
     while IFS= read -r rpm_path; do

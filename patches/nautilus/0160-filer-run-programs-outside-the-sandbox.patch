@@ -1,0 +1,170 @@
+From: Project Luma <engineering@projectluma.org>
+Subject: [PATCH] Filer: never run programs inside the sandbox
+
+Run and double-click on an executable started it inside Filer's Flatpak
+sandbox, which has no FUSE: AppImages failed with "fuse: device not
+found" and other programs ran without the host's tools. In the sandbox,
+an AppImage now opens through OpenURI like any other file, which hands it
+to Valet without the chooser, and Valet runs it. Other programs go to the
+host Terminal service, as Open in Terminal does; Terminal runs them in a
+session in their folder. No command is spawned inside the sandbox at all;
+scripts and dropping files onto a program have no host route and do
+nothing there. The native (unsandboxed) build is unchanged.
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+--- a/src/nautilus-files-view.c
++++ b/src/nautilus-files-view.c
+@@ -6690,6 +6690,13 @@ action_run_in_terminal (GSimpleAction *action,
+     }
+ 
+     GtkWindow *parent_window = nautilus_files_view_get_containing_window (view);
++
++    if (nautilus_application_is_sandboxed ())
++    {
++        nautilus_mime_run_on_host (NAUTILUS_FILE (selection->data), parent_window);
++        return;
++    }
++
+     GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (parent_window));
+ 
+     g_autofree char *uri = nautilus_file_get_activation_uri (NAUTILUS_FILE (selection->data));
+--- a/src/nautilus-mime-actions.c
++++ b/src/nautilus-mime-actions.c
+@@ -28,6 +28,7 @@
+ #include <string.h>
+ 
+ #include "nautilus-application.h"
++#include "nautilus-dbus-launcher.h"
+ #include "nautilus-enums.h"
+ #include "nautilus-file.h"
+ #include "nautilus-file-utilities.h"
+@@ -719,6 +720,50 @@ get_default_executable_text_file_action (void)
+     return ACTIVATION_ACTION_OPEN_IN_APPLICATION;
+ }
+ 
++/* Luma: AppImage types per shared-mime-info (type 2 and the ISO type 1). */
++static gboolean
++file_is_appimage (NautilusFile *file)
++{
++    g_autofree char *mime_type = nautilus_file_get_mime_type (file);
++    g_autofree char *name = nautilus_file_get_name (file);
++    g_autofree char *lower_name = name != NULL ? g_ascii_strdown (name, -1) : NULL;
++
++    return (mime_type != NULL &&
++            (g_content_type_is_a (mime_type, "application/vnd.appimage") ||
++             g_content_type_is_a (mime_type, "application/x-iso9660-appimage"))) ||
++           (lower_name != NULL && g_str_has_suffix (lower_name, ".appimage"));
++}
++
++/**
++ * nautilus_mime_run_on_host:
++ *
++ * Luma: a sandboxed Filer runs a program the user opens through the host
++ * Terminal service, the route Open in Terminal already uses. Terminal starts
++ * a session in the program's folder and runs it there.
++ */
++void
++nautilus_mime_run_on_host (NautilusFile *file,
++                           GtkWindow    *parent_window)
++{
++    g_autofree char *uri = nautilus_file_get_activation_uri (file);
++    g_autofree char *path = uri != NULL ? g_filename_from_uri (uri, NULL, NULL) : NULL;
++    g_autoptr (GFile) location = NULL;
++    g_autofree char *location_uri = NULL;
++
++    if (path == NULL)
++    {
++        return;
++    }
++
++    location = g_file_new_for_path (path);
++    location_uri = g_file_get_uri (location);
++    nautilus_dbus_launcher_call (nautilus_dbus_launcher_get (),
++                                 NAUTILUS_DBUS_LAUNCHER_CONSOLE,
++                                 "Open",
++                                 g_variant_new_parsed ("([%s], @a{sv} {})", location_uri),
++                                 parent_window);
++}
++
+ static ActivationAction
+ get_activation_action (NautilusFile *file)
+ {
+@@ -763,6 +808,11 @@ get_activation_action (NautilusFile *file)
+         {
+             action = get_default_executable_text_file_action ();
+         }
++        else if (nautilus_application_is_sandboxed () && file_is_appimage (file))
++        {
++            /* Luma: Valet runs AppImages (OpenURI opens them there directly). */
++            action = ACTIVATION_ACTION_OPEN_IN_APPLICATION;
++        }
+         g_free (executable_path);
+     }
+ 
+@@ -1668,6 +1718,12 @@ activate_files_internal (ActivateParameters *parameters)
+ 
+         g_debug ("Launching file path %s", quoted_path);
+ 
++        if (nautilus_application_is_sandboxed ())
++        {
++            nautilus_mime_run_on_host (file, parameters->parent_window);
++            continue;
++        }
++
+         nautilus_launch_application_from_command (display, quoted_path, FALSE, NULL);
+     }
+ 
+@@ -1685,6 +1741,12 @@ activate_files_internal (ActivateParameters *parameters)
+ 
+         g_debug ("Launching in terminal file quoted path %s", quoted_path);
+ 
++        if (nautilus_application_is_sandboxed ())
++        {
++            nautilus_mime_run_on_host (file, parameters->parent_window);
++            continue;
++        }
++
+         nautilus_launch_application_from_command (display, quoted_path, TRUE, NULL);
+     }
+ 
+--- a/src/nautilus-mime-actions.h
++++ b/src/nautilus-mime-actions.h
+@@ -37,6 +37,8 @@ gboolean               nautilus_mime_is_video                             (const
+ gboolean               nautilus_mime_file_extracts                        (NautilusFile            *file);
+ gboolean               nautilus_mime_file_opens_in_external_app           (NautilusFile            *file);
+ gboolean               nautilus_mime_file_launches                        (NautilusFile            *file);
++void                   nautilus_mime_run_on_host                          (NautilusFile            *file,
++                                                                           GtkWindow               *parent_window);
+ void                   nautilus_mime_activate_files                       (GtkWindow               *parent_window,
+ 									   NautilusWindowSlot *slot,
+ 									   GList              *files,
+--- a/src/nautilus-program-choosing.c
++++ b/src/nautilus-program-choosing.c
+@@ -23,6 +23,8 @@
+ #include <config.h>
+ #include "nautilus-program-choosing.h"
+ 
++#include "nautilus-application.h"
++
+ #include "nautilus-file.h"
+ #include "nautilus-global-preferences.h"
+ #include "nautilus-icon-info.h"
+@@ -246,6 +248,17 @@ launch_application_from_command_internal (const gchar *full_command,
+     g_autoptr (GError) error = NULL;
+     g_autoptr (GAppInfo) app = NULL;
+ 
++    /* Luma: the sandboxed Filer never executes a user's file or command in
++     * its own sandbox, where it lacks the host's tools (FUSE for AppImages,
++     * for one). Activation hands AppImages to Valet and other programs to
++     * the host Terminal (nautilus_mime_run_on_host); scripts and dropping
++     * files onto a program have no host route and do nothing. */
++    if (nautilus_application_is_sandboxed ())
++    {
++        g_message ("Not starting a program inside the sandbox: %s", full_command);
++        return;
++    }
++
+     flags = G_APP_INFO_CREATE_NONE;
+     if (use_terminal)
+     {
