@@ -118,7 +118,7 @@ trap 'rm -rf "$work_dir"' EXIT INT TERM
 # modes to everything rpmbuild creates, and the RPM would ship files other
 # users cannot read.
 if command -v setfacl >/dev/null 2>&1; then setfacl -b -k "$work_dir"; fi
-chmod 0755 "$work_dir"
+chmod u=rwx,go=rx,g-s "$work_dir"
 rpmbuild_dir="$work_dir/rpmbuild"
 source_dir="$work_dir/$package"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS,platform} "$source_dir/src"
