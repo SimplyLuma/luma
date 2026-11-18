@@ -189,7 +189,8 @@ function gtkModel(G) {
     // (An inset rule along one side is the widget's own: no ancestor draws it for the child.)
     const insetRule = o => o.k === 'shadow' && o.inset && o.spread < 0.5 && (Math.abs(o.dx) >= 0.5) !== (Math.abs(o.dy) >= 0.5);
     if (ancestors) own = own.filter(o => o.k !== 'border' && !(o.k === 'shadow' && o.inset && !insetRule(o)));
-    const p = {}; for (const o of own) { if (o.k === 'fill' && !o.inset) p.fill = p.fill || o; if (o.k === 'gradient') p.gradient = o; if (o.k === 'border' && o.widths.some(v => v > 0) && o.colors.some(c => c && c[3] > 0.01)) p.border = o;
+    // Several fills at one box (the window's ground, then a page painted over it): the last drawn is what shows.
+    const p = {}; for (const o of own) { if (o.k === 'fill' && !o.inset) p.fill = o; if (o.k === 'gradient') p.gradient = o; if (o.k === 'border' && o.widths.some(v => v > 0) && o.colors.some(c => c && c[3] > 0.01)) p.border = o;
       if (o.k === 'shadow' && !o.inset && o.color[3] > 0.02 && (o.blur > 0.5 || o.spread > 0.5)) (p.shadows = p.shadows || []).push(o);
       // An inset ring (spread, no blur, no offset: v70's `inset 0 0 0 1px var(--hair)`) is the surface's edge, as a border is.
       if (o.k === 'shadow' && o.inset && o.color[3] > 0.02 && o.spread >= 0.5 && o.blur <= 0.5 && Math.abs(o.dx) < 0.5 && Math.abs(o.dy) < 0.5) p.ring = p.ring || o;
@@ -470,6 +471,8 @@ function compareState(st, S, G, samples) {
   const shortcutPairs = calculatorShortcutPairs(scenario.app, st, S.texts, G.texts);
   const deviationUses = new Map();
   for (const it of issues) for (const d of it.accepted ? [] : deviations) {
+    // An approval for one form factor (`phone`: true or false) leaves the other's captures alone.
+    if (d.phone != null && d.phone !== !!meta.phone) continue;
     const used = deviationUses.get(d.id) || 0;
     if (!matchesDeviation(d, it, st, scenario.app, used, shortcutPairs)) continue;
     it.accepted = d.id; it.sevWas = it.sev; it.sev = 'accepted';

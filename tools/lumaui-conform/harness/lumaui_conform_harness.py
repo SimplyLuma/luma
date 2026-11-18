@@ -1028,11 +1028,17 @@ class Capture:
                 # A label too short to hold the run is never its holder (a sheet's two-line summary drawn
                 # over a page row whose one-line title is behind it: Settings' hidden-network form).
                 text = w.get("text") or ""
-                return (0 if glyphs is not None and len(text) == glyphs else 1,
+                same_size = abs(((w.get("font") or {}).get("size") or 0) - ((op.get("font") or {}).get("size") or 0)) < 0.6
+                return (# a holder set in another size never takes the run from one set in its size (a
+                        # bubble's wrapped "slide 2" under a 15 px panel row "Details" of as many letters)
+                        0 if same_size or not any(abs(((h.get("font") or {}).get("size") or 0)
+                                                      - ((op.get("font") or {}).get("size") or 0)) < 0.6
+                                                  for h in inside) else 1,
+                        0 if glyphs is not None and len(text) == glyphs else 1,
                         1 if glyphs is not None and text and len(text) < glyphs * 0.9 else 0,
                         # the holder set in the run's size (a row's figure under a search placeholder
                         # of the same length)
-                        0 if abs(((w.get("font") or {}).get("size") or 0) - ((op.get("font") or {}).get("size") or 0)) < 0.6 else 1,
+                        0 if same_size else 1,
                         # the one drawn last (later in the walk: a child, or a sheet over the page), then
                         # the smaller box
                         0 if text else 1, -order[w["id"]], w["box"][2] * w["box"][3])

@@ -68,6 +68,9 @@ def expected_states(scenario, theme, phone):
 
 def prepare(design, scenario_path, capture, loader, image_id, theme, phone):
     scenario = json.loads(Path(scenario_path).read_text())
+    # podman image inspect prints the bare 64-hex digest; pin it as sha256:<hex>.
+    if re.fullmatch("[0-9a-f]{64}", image_id or ""):
+        image_id = "sha256:" + image_id
     # The native half of a scenario may change without altering a Studio capture.
     reference_scenario = {key: value for key, value in scenario.items() if key != "gtk"}
     states = expected_states(scenario, theme, phone)
