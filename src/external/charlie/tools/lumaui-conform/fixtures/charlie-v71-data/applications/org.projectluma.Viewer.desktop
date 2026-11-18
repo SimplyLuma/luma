@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Viewer
+Icon=org.projectluma.Viewer
+Exec=true %f
+MimeType=application/pdf;
+NoDisplay=true

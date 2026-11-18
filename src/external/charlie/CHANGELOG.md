@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-18 — v71 phone layout (lumaui-conform phone, light and dark)
+
+- The phone list runs to the top under its title island (ListFirst status_inset=False); rows,
+  the Updates bundle (senders' marks), counts, flags and unread times take v71's sizes and inks.
+- The thread reads as v71's phone thread: 30 px faces, received messages in 84% of the row,
+  sent ones 74 in, paragraphs' own lines, the signature, quoted text and a lone photo at 16:10;
+  files fill the column with their apps' icons (Open in Stage, Open in Viewer).
+- The phone bar's foot is the reply well (BarPrompt): tapping it grows the editor, which keeps
+  its 36 px keys and shows who it goes to; the newest message stays above the editor.
+- The list's island grows into the mailboxes with account headings and Add account at the end;
+  the thread's island grows into Information (people, then Messages, Account, Attachments).
+- The newsletter bar names its sender; the reply switcher reads like Calendar's view switcher.
+
 ## 2026-10-02 — shared v71 package completeness and approved mail artwork
 
 - Install the shared v71 window and its optional test mailbox module through

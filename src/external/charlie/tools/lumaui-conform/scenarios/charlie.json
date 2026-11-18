@@ -3,6 +3,17 @@
   "title": "Charlie",
   "spec": {
     "url": "mockups/luma-next-71.html?app=charlie",
+    "phone_url": "mockups/luma-next-71.html?phone=1",
+    "phone_before": [
+      {
+        "eval": "lumaPhone.open('charlie')",
+        "wait": 1500
+      }
+    ],
+    "phone_viewport": {
+      "width": 390,
+      "height": 844
+    },
     "window": "#w-charlie",
     "exclude": [
       ".grip",
@@ -21,22 +32,29 @@
       "."
     ],
     "fixtures": [
-      "data"
+      "data",
+      "tools/lumaui-conform/fixtures/charlie-v71-data"
     ],
     "env": {
       "LUMA_CHARLIE_FIXTURE": "v71",
       "CHARLIE_RESOURCE_DIR": "{run}/fixtures/data",
       "GSETTINGS_BACKEND": "memory",
-      "LUMA_CHARLIE_FIXTURE_ASSETS": "/design/social-luma/photos"
+      "LUMA_CHARLIE_FIXTURE_ASSETS": "/design/social-luma/photos",
+      "XDG_DATA_HOME": "{run}/fixtures/charlie-v71-data"
     }
   },
-  "states_note": "One state name works in both tiers. A computer opens on 'Launch walkthrough deck' beside the list; a phone opens on the list (v71 list-first) and a state clicks a row to push the thread. Clicks that differ by tier are an eval that takes the phone's control when it is there. GTK: LUMA_CHARLIE_OPEN=<thread> opens (and on a phone pushes) a thread; the widget names are the same in both tiers.",
+  "states_note": "One state name works in both tiers. A computer opens on 'Launch walkthrough deck' beside the list; a phone opens on the list (v71 list-first) and a state clicks a row to push the thread. Clicks that differ by tier are an eval that takes the phone's control when it is there. GTK: LUMA_CHARLIE_OPEN=<thread> opens (and on a phone pushes) a thread; the widget names are the same in both tiers. The composer rises over 0.32 s and v71 then pads the thread to it (crPadFit): reply and new wait for it to settle.",
   "states": [
     {
       "name": "list",
       "about": "As it opens: the deck thread beside the list (computer), the inbox list (phone) (the computer clicks the deck so v71 draws its window-size head)",
       "spec": [],
-      "gtk": []
+      "gtk": [],
+      "spec_phone": [
+        {
+          "eval": "for (const s of ['#w-charlie #cr-main', '#w-charlie #cr-side .crtabs']) { const e = document.querySelector(s); if (e) e.style.visibility = 'hidden'; }"
+        }
+      ]
     },
     {
       "name": "thread",
@@ -129,7 +147,8 @@
           "click": "[data-crt=\"deck\"]"
         },
         {
-          "click": "#cr-bar [data-crexpand]"
+          "click": "#cr-bar [data-crexpand]",
+          "wait": 1200
         }
       ],
       "gtk": [
@@ -148,7 +167,8 @@
       "about": "New email: To, Subject, the text, Send",
       "spec": [
         {
-          "eval": "(document.querySelector('#cr-side .crlbar [data-crnew]') || document.querySelector('#cr-side .crsh [data-crnew]')).click()"
+          "eval": "(document.querySelector('#cr-side .crlbar [data-crnew]') || document.querySelector('#cr-side .crsh [data-crnew]')).click()",
+          "wait": 1200
         }
       ],
       "gtk": [
@@ -168,6 +188,14 @@
       "gtk": [
         {
           "activate": "cr-unread"
+        }
+      ],
+      "spec_phone": [
+        {
+          "eval": "(document.querySelector('#cr-side .crlbar [data-crunv=\"1\"]') || document.querySelector('#cr-side .crtabs [data-crunv=\"1\"]')).click()"
+        },
+        {
+          "eval": "for (const s of ['#w-charlie #cr-main', '#w-charlie #cr-side .crtabs']) { const e = document.querySelector(s); if (e) e.style.visibility = 'hidden'; }"
         }
       ]
     },
@@ -255,7 +283,15 @@
       ],
       "gtk": [
         {
-          "activate": "cr-places"
+          "activate": "css:button.lumaui-title-island-lead"
+        }
+      ],
+      "spec_phone": [
+        {
+          "click": ".phboxbtn"
+        },
+        {
+          "eval": "for (const s of ['#w-charlie #cr-main', '#w-charlie #cr-side .crtabs']) { const e = document.querySelector(s); if (e) e.style.visibility = 'hidden'; }"
         }
       ]
     },
@@ -376,5 +412,5 @@
     "Sep 17, 1:10 PM": "Thu 1:10 PM"
   },
   "text_aliases_note": "v71 writes every older day as a weekday; Charlie writes a date past a week. The fixture pins the clock to Thu 1 Oct 2026.",
-  "phone_states_note": "updates is desktop only: in v71's phone shell the bundle row is a .crrow, so tapping it pushes the open thread (a shell artefact); Charlie keeps the list."
+  "phone_states_note": "updates is desktop only: in v71's phone shell the bundle row is a .crrow, so tapping it pushes the open thread (a shell artefact); Charlie keeps the list. The phone's list (list, unread, mailboxes) covers the open thread (v71 .phstack: the list is absolute over the thread at z 46); the list's bar covers the All · Unread tabs (.crtabs, a computer's); spec_phone hides what is covered so the capture, which has no occlusion, does not count it."
 }
