@@ -1,0 +1,79 @@
+--- a/qbootctl.c
++++ b/qbootctl.c
+@@ -171,18 +171,30 @@
+ 	case 'c':
+ 		printf("Current slot: %s\n", impl->getSuffix(slot));
+ 		return 0;
+-	case 'a':
+-		slot = impl->getActiveBootSlot();
+-		printf("Active slot: %s\n", impl->getSuffix(slot));
+-		return 0;
++	case 'a': {
++        unsigned active = impl->getActiveBootSlot();
++        if (active == (unsigned)-1) {
++            fprintf(stderr, "Failed to query active boot slot\n");
++            return 1;
++        }
++        printf("Active slot: %s\n", impl->getSuffix(active));
++        return 0;
++    }
+ 	case 'b':
+-		printf("SLOT %s: is %smarked bootable\n", impl->getSuffix(slot),
+-		       impl->isSlotBootable(slot) == 1 ? "" : "not ");
++		rc = impl->isSlotBootable(slot);
++		if (rc != 0 && rc != 1) {
++			fprintf(stderr, "SLOT %s: Failed to read bootable state\n", impl->getSuffix(slot));
++			return 1;
++		}
++		printf("SLOT %s: is %smarked bootable\n", impl->getSuffix(slot), rc == 1 ? "" : "not ");
+ 		return 0;
+ 	case 'n':
+-		printf("SLOT %s: is %smarked successful\n",
+-		       impl->getSuffix(slot),
+-		       impl->isSlotMarkedSuccessful(slot) == 1 ? "" : "not ");
++		rc = impl->isSlotMarkedSuccessful(slot);
++		if (rc != 0 && rc != 1) {
++			fprintf(stderr, "SLOT %s: Failed to read successful state\n", impl->getSuffix(slot));
++			return 1;
++		}
++		printf("SLOT %s: is %smarked successful\n", impl->getSuffix(slot), rc == 1 ? "" : "not ");
+ 		return 0;
+ 	case 'x':
+ 		printf("%s\n", impl->getSuffix(slot));
+--- a/bootctrl_impl.c
++++ b/bootctrl_impl.c
+@@ -336,13 +336,23 @@
+ 	struct gpt_disk disk = { 0 };
+ 	uint32_t num_slots = get_number_slots();
+ 
+-	if (num_slots <= 1) {
++	if (num_slots == 0) {
++        fprintf(stderr, "%s: No boot slots available\n", __func__);
++        return (unsigned)-1;
++    }
++    if (num_slots == 1) {
+ 		// Slot 0 is the only slot around.
+ 		return 0;
+ 	}
+ 
+ 	for (uint32_t i = 0; i < num_slots; i++) {
+-		if (get_boot_attr(&disk, i, ATTR_SLOT_ACTIVE)) {
++		int active = get_boot_attr(&disk, i, ATTR_SLOT_ACTIVE);
++        if (active != 0 && active != 1) {
++            fprintf(stderr, "%s: Failed to read active boot attribute\n", __func__);
++            gpt_disk_free(&disk);
++            return (unsigned)-1;
++        }
++        if (active == 1) {
+ 			gpt_disk_free(&disk);
+ 			return i;
+ 		}
+@@ -350,7 +360,7 @@
+ 
+ 	fprintf(stderr, "%s: Failed to find the active boot slot\n", __func__);
+ 	gpt_disk_free(&disk);
+-	return 0;
++	return (unsigned)-1;
+ }
+ 
+ /*

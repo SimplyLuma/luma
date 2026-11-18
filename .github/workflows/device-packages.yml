@@ -1,7 +1,8 @@
 name: Device packages
 
-# Packages only hardware-target images carry (config/os/desktop-targets.json
-# hardware_targets), plus luma-update, which selects their update streams.
+# Packages only hardware-target images (config/os/desktop-targets.json
+# hardware_targets) and device repositories carry, plus luma-update, which
+# selects their update streams.
 # The nightly preflight fetches pinned RPMs from these artifacts.
 on:
   pull_request:
@@ -19,6 +20,9 @@ on:
       - 'scripts/packages/build-gstreamer1-plugins-bad-free.sh'
       - 'packaging/rpm/gstreamer1-plugins-bad-free.spec'
       - 'patches/gstreamer1-plugins-bad/**'
+      - 'scripts/packages/build-luma-qcom-userspace.sh'
+      - 'packaging/rpm/luma-qcom-userspace.spec'
+      - 'patches/qbootctl/**'
       - 'scripts/packages/build-kernel-luma-rpi.sh'
       - 'packaging/rpm/kernel-luma-rpi.spec'
       - 'config/kernel/**'
@@ -83,6 +87,26 @@ jobs:
         with:
           name: device-gstreamer-aarch64
           path: build/packages/gstreamer1-plugins-bad-free/
+          if-no-files-found: error
+          retention-days: 30
+
+  qcom-userspace-aarch64:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
+    env:
+      LUMA_TARGET_ARCHITECTURE: aarch64
+    steps:
+      - name: Prepare Fedora build tools
+        run: dnf5 -y install git cpio curl rpm-build dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build luma-qcom-userspace (qbootctl, tqftpserv)
+        run: bash scripts/packages/build-luma-qcom-userspace.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: device-qcom-userspace-aarch64
+          path: build/packages/luma-qcom-userspace/
           if-no-files-found: error
           retention-days: 30
 
