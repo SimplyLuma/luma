@@ -114,6 +114,11 @@ output_dir="$repo_root/build/packages/$package"
 mkdir -p "$(dirname "$output_dir")"
 work_dir=$(mktemp -d "$output_dir.work.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT INT TERM
+# A checkout under a directory with default ACLs or setgid would pass those
+# modes to everything rpmbuild creates, and the RPM would ship files other
+# users cannot read.
+if command -v setfacl >/dev/null 2>&1; then setfacl -b -k "$work_dir"; fi
+chmod 0755 "$work_dir"
 rpmbuild_dir="$work_dir/rpmbuild"
 source_dir="$work_dir/$package"
 mkdir -p "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS,platform} "$source_dir/src"
@@ -128,7 +133,7 @@ install -m 0755 scripts/packages/counted-unittest.py "$source_dir/counted-unitte
 find "$source_dir" -type d -name __pycache__ -prune -exec rm -rf {} +
 source_date_epoch=${SOURCE_DATE_EPOCH:-$(git -C "$repo_root" log -1 --format=%ct HEAD)}
 tar -C "$work_dir" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 \
-  --numeric-owner -cf - "$package" | gzip -n >"$rpmbuild_dir/SOURCES/$package.tar.gz"
+  --numeric-owner --mode=u+rwX,go+rX,go-w -cf - "$package" | gzip -n >"$rpmbuild_dir/SOURCES/$package.tar.gz"
 install -m 0644 "$spec" "$rpmbuild_dir/SPECS/"
 
 # rpmbuild only checks BuildRequires; everything the spec declares is

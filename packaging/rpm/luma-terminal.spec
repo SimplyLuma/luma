@@ -7,7 +7,7 @@
 # (org.projectluma.Terminal) and desktop file, and no Obsoletes or Conflicts.
 Name:           luma-terminal
 Version:        0.1.0
-Release:        1.luma.10%{?dist}
+Release:        1.luma.11%{?dist}
 Summary:        Terminal for Luma
 License:        MPL-2.0
 URL:            https://projectluma.org/
@@ -109,6 +109,9 @@ SHELL=/bin/bash XDG_DATA_HOME="$open_data" PYTHONPATH=$PWD GSK_RENDERER=cairo xv
 %{_datadir}/icons/hicolor/scalable/apps/org.projectluma.Terminal-tv.svg
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.11
+- Package files are world-readable when the checkout has restrictive default ACLs.
+
 * Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.10
 - Opening an executable file runs it in a new session in its folder.
 
