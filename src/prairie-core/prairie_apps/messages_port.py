@@ -319,7 +319,8 @@ class MessagesSurface:
         phone.add_setter(self.history, "margin-start", 16)
         phone.add_setter(self.history, "margin-end", 16)
         phone.add_setter(self.header, "visible", False)
-        phone.add_setter(self.history, "margin-top", 58 + self.owner.status_inset)
+        # v71 phone: the thread starts 108 under the body's own 108 (#m-body .mthread), its intro 26 below that.
+        phone.add_setter(self.history, "margin-top", 172 + self.owner.status_inset)
         # v71's phone header is the title island: ‹ | who | Call, Video. Pin and
         # Details move into the island's grown options (tap the name).
         phone.add_setter(self.corner.controls["states.0"], "visible", False)
@@ -544,6 +545,13 @@ class MessagesSurface:
         if key:
             self._navigated = True
             self.open(key)
+
+    def _column_cap(self) -> int:
+        """A message column's widest: v71 .mcol, min(72%, 520) of the thread, 82% on a phone."""
+        if not self._phone_mode:
+            return 520
+        width = self.owner.get_width() or self.owner.get_default_size()[0] or 390
+        return max(200, int(0.82 * (width - 32)))
 
     def _phone_open_current(self) -> None:
         if self._phone_mode and self.current is not None:
@@ -950,6 +958,7 @@ class MessagesSurface:
         else:
             intro.append(self._conversation_face(entry, 88))
         title = _label(entry["name"], "intro", halign=Gtk.Align.CENTER)
+        title.add_css_class("messages-intro-title")
         title.set_margin_top(10)
         intro.append(title)
         person = self._person(entry["person"])
@@ -960,6 +969,7 @@ class MessagesSurface:
             intro.append(_label(subtitle, "body", halign=Gtk.Align.CENTER))
         security = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, halign=Gtk.Align.CENTER,
                            spacing=6, margin_top=10)
+        security.add_css_class("messages-security")
         security.append(icons.image("message-square" if entry["sms"] else "lock"))
         if entry["sms"]:
             security.append(_label("Text messages aren’t encrypted.", "small"))
@@ -971,7 +981,7 @@ class MessagesSurface:
             encryption_note = ("End-to-end encrypted. Only the people here can read this."
                                if self.fixture or is_luma(entry["service"]) else
                                "Encryption is managed by this service.")
-            security.append(_label(encryption_note, "small", wrap=True))
+            security.append(_label(encryption_note, "small", wrap=True, max_width_chars=72))
         intro.append(security)
         self.history.append(intro)
         messages = self._messages()
@@ -1077,7 +1087,7 @@ class MessagesSurface:
                 column.append(overlay)
             else:
                 column.append(bubble)
-            max_width = 300 if self._phone_mode else 520
+            max_width = self._column_cap()
             clamp = Adw.Clamp(maximum_size=max_width, tightening_threshold=max_width,
                               child=column, halign=Gtk.Align.END if mine else Gtk.Align.START)
             self._columns.append(clamp)
@@ -1086,6 +1096,7 @@ class MessagesSurface:
             if mine and item.get("status") and not same_below:
                 receipt = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, halign=Gtk.Align.END)
                 receipt.set_name("msg-receipt-" + str(item["id"]))
+                receipt.add_css_class("messages-receipt")
                 if item["status"] in {"read", "delivered", "sent"}:
                     mark = icons.image("check-check" if item["status"] in {"read", "delivered"} else "check")
                     lumaui.hue_tint(mark, entry.get("hue"))
@@ -1315,7 +1326,7 @@ class MessagesSurface:
         GLib.idle_add(lambda: (self._sync_island(), False)[1])
         self.history.set_margin_start(16 if phone else 26)
         self.history.set_margin_end(16 if phone else 26)
-        max_width = 300 if phone else 520
+        max_width = self._column_cap()
         for clamp in self._columns:
             clamp.set_maximum_size(max_width)
             clamp.set_tightening_threshold(max_width)
@@ -1420,10 +1431,12 @@ class MessagesSurface:
                                    "documents": ("Write document", "Write"),
                                    "spreadsheets": ("Grid spreadsheet", "Grid")}.get(
                                        item.get("app"), ("File", "Files"))
+            # Where no app opens the deck, the fixture shows Stage's icon in its place.
+            stand_in = app_name == "Stage" and Gio.AppInfo.get_default_for_type(
+                Gio.content_type_guess(name, None)[0], False) is None
             file_card = FileCard(str(self._asset("messages-v70/" + name)), name=name,
                                  kind=file_kind,
-                                 thumbnail=(str(self._asset("messages-v70/stage.svg"))
-                                            if app_name == "Stage" else None),
+                                 thumbnail=str(self._asset("messages-v70/stage.svg")) if stand_in else None,
                                  on_open=lambda: self._notice("Opening in " + app_name))
             if item.get("size"):
                 file_card.second_line.set_label(f"{item['size']} · {file_kind}")

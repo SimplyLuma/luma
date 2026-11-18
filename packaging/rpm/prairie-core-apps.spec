@@ -2,7 +2,7 @@
 
 Name:           prairie-core-apps
 Version:        0.1.0
-Release:        1.luma.136%{?dist}
+Release:        1.luma.137%{?dist}
 Summary:        Project Luma responsive core applications
 License:        Apache-2.0 AND CC-BY-SA-4.0
 URL:            https://project-luma.local/apps
@@ -707,6 +707,17 @@ gtk-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1 
 %dir %{_sysconfdir}/skel/Photos
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.137
+- Memos on a phone: New grows the list bar into the microphone and Start
+  recording, which records at once; a memo's bar is Share, Favorite, Trim and
+  More; the transcript keeps v71's 1.55 line pitch with every word on its
+  fractional advance; the list's rows, headings and empty note, the recording
+  bar's well, Pause and Done, and the grown panels follow v71.
+- Messages on a phone: message columns are 82% of the thread; a short thread
+  starts under the title island where v71 starts it, with the intro's name
+  and lock line in v71's type; receipts are 11 px in the faint ink; the list,
+  its search and the title island's title and glyphs follow v71.
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.136
 - Messages agent: a mailbox request verifies its sandboxed caller once before
   it is queued, not twice.

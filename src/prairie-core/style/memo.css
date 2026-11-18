@@ -56,5 +56,34 @@ box.me-transcript.live .me-live-caret { background: @luma_record; }
 .me-page.me-islanded box.me-deck-host.recording { margin-top: 0; }
 .me-page.phone box.me-recording-deck { padding: 18px 14px 16px; border-radius: 24px; }
 .me-page.phone box.me-transcript { margin-top: 22px; }
+/* v71 .mewin .metx on a phone: 17 px words at 1.55, the speaker's 13 px name on the same 1.55 (whole lines
+   are placed at these fractional pitches, so a long transcript does not drift). */
+.me-page.phone box.me-transcript label.me-word { line-height: 26.35px; }
+.me-page.phone box.me-transcript label.me-speaker { line-height: 20.15px; }
 /* v71 on a phone: words not yet heard are dimmed, the live ones too until they are played back. */
 .me-page.phone box.me-transcript.live label.me-live-word { color: @luma_muted; }
+
+/* The phone's list (v71 #w-memos.phone .melist): rows 8 from the edge, 1 apart; a group's heading 10 above it
+   and 18 in, 5 over its first row (.megh 10/4 plus the list's 1 px gap). */
+window.lumaui-phone #me-sidebar list.luma-navigation-list { margin-left: -2px; margin-right: -2px; }
+window.lumaui-phone #me-sidebar list.luma-navigation-list > row.luma-navigation-section { margin-top: 10px; margin-bottom: 5px; }
+window.lumaui-phone #me-sidebar row.me-row { margin: 0 0 1px; }
+/* v71 .merow b / small and .menone on the phone's list */
+window.lumaui-phone #me-sidebar row.me-row .me-row-title { font-size: 13.5px; }
+window.lumaui-phone #me-sidebar row.me-row .me-row-meta { font-size: 12px; letter-spacing: 0.12px; font-feature-settings: "tnum"; }
+window.lumaui-phone #me-sidebar row.me-none-row { padding: 0; margin: 0; min-height: 0; background: none; }
+window.lumaui-phone #me-sidebar label.me-none { font-size: 12.5px; font-weight: 400; }
+/* v71 .mephbar: the memo's bar keeps 6 between its keys; Done beside the recording well is its
+   words with 24 each side (.mephbar:has(.merec2) .medone2). */
+window.lumaui-phone #me-action box.lumaui-ac-row { border-spacing: 6px; }
+window.lumaui-phone #me-action button.lumaui-bar-button.me-done { padding: 0 24px; }
+/* v71 .metime.big small: the tenths 2 after the time */
+.me-page.phone box.me-recording-deck .me-live-clock label.lumaui-t-unit { margin-left: 2px; }
+/* v71 .menew2: Start recording (.merecgo) is 14.5/650 with a 12 px dot, 8 before its words; the noise switch
+   sits 12 under the microphones */
+#me-list-action button.lumaui-panel-key.record label { font-size: 14.5px; }
+#me-list-action button.lumaui-panel-key.record > box { border-spacing: 8px; }
+#me-list-action button.lumaui-panel-key.record box.lumaui-record-dot { min-width: 12px; min-height: 12px; border-radius: 6px; }
+#me-list-action button.lumaui-panel-row.switch { margin-top: 4px; }
+/* v71 .melbar / .mephbar wrap the grown panel onto its own line, 12 above the keys */
+#me-action scrolledwindow.lumaui-ac-panel, #me-list-action scrolledwindow.lumaui-ac-panel { margin-bottom: 10px; }
