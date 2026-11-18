@@ -126,3 +126,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Depot review checks, permission words and media rules
         run: /usr/bin/python3 -B -m unittest discover -s tools/depot-review/tests -p 'test_*.py'
+
+  touch-lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Touch Lab recorder, decoders, features and report
+        run: |
+          /usr/bin/python3 -B -c "import ast,glob; [ast.parse(open(f).read(), f) for f in glob.glob('tools/touch-lab/touchlab/*.py')]"
+          /usr/bin/python3 -B -m unittest discover -s tools/touch-lab/tests -p 'test_*.py'
