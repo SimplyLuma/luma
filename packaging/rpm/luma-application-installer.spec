@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.96%{?dist}
+Release:        1.luma.97%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -314,6 +314,13 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.97
+- Valet runs an AppImage when it is opened (double-click in Filer, a
+  browser's downloads), executable bit or not: no Install step. The file is
+  unpacked into Valet's private copy and started in the AppImage sandbox, and
+  stays in Applications; the same file opened again starts that copy. Valet's
+  window closes once the application's window takes focus.
+
 * Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.96
 - luma-system-app-refresh.service: luma-system-app-updates refresh updates
   the system installation's luma apps and runtimes in the session before

@@ -88,6 +88,15 @@ def install(report, permission_changes=None):
     return record
 
 
+def added_appimage(sha256):
+    """The application already added from this exact AppImage, while its private copy is intact."""
+    for record in reversed(iter_records()):
+        if (record.get("format") == "appimage" and record.get("sha256") == sha256
+                and (Path(str(record.get("root") or "")) / "AppRun").exists()):
+            return record
+    return None
+
+
 def resolve_record(application_id):
     """Resolve a Filer desktop identity through its actual owning registry."""
     if application_id.startswith("org.projectluma.Installed.") and application_id.endswith(".desktop"):
