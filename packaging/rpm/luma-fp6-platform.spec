@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 Name:           luma-fp6-platform
 Version:        0.1.0
-Release:        1.luma.21%{?dist}
+Release:        1.luma.22%{?dist}
 Summary:        Fairphone 6 platform services for Luma
 License:        Apache-2.0
 URL:            https://github.com/SimplyLuma/luma
@@ -117,6 +117,12 @@ dconf update || :
 %{_datadir}/dbus-1/system.d/org.projectluma.AudioRoute1.conf
 
 %changelog
+* Thu Nov 19 2026 Malak Sedarous <18029995+malaksedarous@users.noreply.github.com> - 0.1.0-1.luma.22
+- luma-clock-save also records the offset between the wall clock and the
+  PMIC RTC, which keeps counting while the phone is off but can't be set,
+  and luma-clock-restore sets RTC + offset when that is later than the saved
+  time, so time spent powered off is no longer lost.
+
 * Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.21
 - luma-fp6-boot-success.service skips while luma-device-boot has a boot image
   on trial (/var/lib/luma-device-boot/pending.json): luma-device-boot-confirm
