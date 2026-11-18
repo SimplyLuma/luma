@@ -40,6 +40,9 @@ STATE_DIR = Path(os.environ.get("LUMA_SETUP_STATE_DIR", "/var/lib/luma-setup"))
 DONE = "first-boot.json"
 WELCOME = "welcome"
 KEYRING = "/usr/libexec/luma-keyring"
+# The system locale when the answers name none, or name one localed refuses:
+# never C.UTF-8, which has no region, so money and dates lose their format.
+DEFAULT_LOCALE = "en_US.UTF-8"
 FIRST_UID, LAST_UID = 1000, 60000
 
 
@@ -120,11 +123,10 @@ def _create_account(bus, answers: dict) -> str:
         raise
     user = ("org.freedesktop.Accounts", path, "org.freedesktop.Accounts.User")
     # The account and its password are what matter; its language and picture can be put right later.
-    if answers.get("locale"):
-        try:
-            bus.call(*user, "SetLanguage", "(s)", (answers["locale"],))
-        except Exception as error:  # noqa: BLE001
-            print(f"luma-setup-apply: account language: {_reason(error)}", file=sys.stderr)
+    try:
+        bus.call(*user, "SetLanguage", "(s)", (answers.get("locale") or DEFAULT_LOCALE,))
+    except Exception as error:  # noqa: BLE001
+        print(f"luma-setup-apply: account language: {_reason(error)}", file=sys.stderr)
     face = answers.get("face")
     if face and os.path.isfile(face):
         try:
@@ -135,8 +137,22 @@ def _create_account(bus, answers: dict) -> str:
 
 
 def _language(bus, answers: dict) -> None:
+    """The system locale (language and region: /etc/locale.conf) and keyboard.
+
+    The person's choice, else English (US). A locale localed refuses (not
+    installed) still leaves the system on English (US) rather than on no
+    region at all, and the step is reported as failed. Every LC_* is cleared,
+    so the region follows the chosen locale.
+    """
     localed = ("org.freedesktop.locale1", "/org/freedesktop/locale1", "org.freedesktop.locale1")
-    bus.call(*localed, "SetLocale", "(asb)", ([f"LANG={answers['locale']}"], False))
+    chosen = answers.get("locale") or DEFAULT_LOCALE
+    try:
+        bus.call(*localed, "SetLocale", "(asb)", ([f"LANG={chosen}"], False))
+    except Exception:
+        if chosen == DEFAULT_LOCALE:
+            raise
+        bus.call(*localed, "SetLocale", "(asb)", ([f"LANG={DEFAULT_LOCALE}"], False))
+        raise
     layout, variant = _split_layout(answers.get("layout") or "us")
     # convert: the console keyboard follows, so the disk passphrase and a text console match.
     bus.call(*localed, "SetX11Keyboard", "(ssssbb)", (layout, "", variant, "", True, False))
