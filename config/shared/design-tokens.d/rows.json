@@ -8,11 +8,12 @@
       "medium_padding_y": 8, "medium_padding_x": 8, "medium_gap": 11, "medium_radius": 13, "line_gap": 3, "list_top": 8, "drawer_padding_y": 8, "drawer_padding_x": 9
     },
     "nav_destinations": {
-      "_doc": "v70 Tasks .tki and Photos #p-rail .si: 36 px single-line rows, a 16 px glyph or a list's dot, 13/500, a count at the end.",
+      "_doc": "v70 Tasks .tki and Photos #p-rail .si: 36 px single-line rows, a 16 px glyph or a list's dot, 13/500, a count at the end. Grown into a title island (v71 .crnav .crnh, padding 12 4 0 20) a heading spans the panel: its words on the rows' glyphs (row_padding_x), its action action_heading_padding_end from the end, which puts the action's glyph on the rows' counts.",
       "width": 224, "row_height": 36, "row_padding_x": 10, "row_gap": 10, "row_radius": 11, "icon": 16,
       "title_size": 13, "title_weight": 500, "heading_top": 16, "heading_bottom": 6, "heading_inset": 10,
       "padding_top": 4, "padding_bottom": 12, "row_spacing": 1,
-      "action_heading_top": 12, "action_heading_bottom": 4, "action_heading_padding_top": 12, "action_heading_padding_start": 20
+      "action_heading_top": 12, "action_heading_bottom": 4, "action_heading_padding_top": 12, "action_heading_padding_start": 20,
+      "action_heading_padding_end": 4
     },
     "nav_places": {
       "_doc": "v73 Depot .dpside (220 wide, padding 4 10 10) with .si rows: 34 tall, 1 apart, a 17 px glyph in ink-3 (the accent ink when chosen), 11 from 13 px words in ink-2 at the frame's title weight (500 dark, 600 light). Headings .sh 11.5/600 in ink-3 (margin 18 10 6); a ruled one is .sh.dpsh, under a hairline the sidebar's full width (margin 12 -10 6, padding 12 20 0).",

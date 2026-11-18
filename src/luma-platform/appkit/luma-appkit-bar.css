@@ -690,11 +690,17 @@ button.lumaui-bar-button.dropdown.chip-picker image { -gtk-icon-size: 16px; colo
 box.lumaui-ac-foot { padding-top: 6px; margin-top: 4px; box-shadow: inset 0 1px 0 @luma_line; }
 /* v71 .tpmini (Tide): the app's head row, 8 under it and the hairline (inset -1px), above the bar's row. */
 box.lumaui-ac-head { padding-bottom: 8px; margin-bottom: 6px; box-shadow: inset 0 -1px 0 @luma_line; }
+/* On a phone a field is the kept well (v71 label.srch.keep: 48 at 20, 14 in, 16 text, an 18 glyph): under the hairline,
+ * in a row of its own, or a quick field sharing the bar's row with a key. A compose field keeps its own metrics (Messages'
+ * compact composer row); a command field keeps the terminal's mono line. */
 .lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry,
-.lumaui-action-center.phone box.lumaui-ac-row.entry entry.lumaui-bar-entry {
+.lumaui-action-center.phone box.lumaui-ac-row.entry entry.lumaui-bar-entry,
+.lumaui-action-center.phone box.lumaui-ac-row entry.lumaui-bar-entry.quick {
   min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius); padding: 0 14px;
 }
-.lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry text { font-size: 16px; }
+.lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry text,
+.lumaui-action-center.phone box.lumaui-ac-row entry.lumaui-bar-entry.quick text { font-size: 16px; }
+.lumaui-action-center.phone box.lumaui-ac-row entry.lumaui-bar-entry.quick button.lumaui-bar-entry-lead image { -gtk-icon-size: 18px; }
 /* Search (rule 12): a kept field takes the spare width; on a phone 48 at 20 with 16 text; no focus ring. */
 .lumaui-action-center.phone entry.lumaui-bar-search.keep,
 .lumaui-action-center.phone entry.lumaui-bar-search.folded {

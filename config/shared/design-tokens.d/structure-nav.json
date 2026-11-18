@@ -7,7 +7,7 @@
       "regular_above": 900
     },
     "title_island": {
-      "_doc": "v71 5323-5433 and .fisl/.nisl/.misl: 48 tall, 16 round, the bar's material; a 48 lead with a 20 glyph, a full-height hairline, the title 15/650 over a 12/500 subtitle (line-height 1.2), padding 0 18 0 14; trailing buttons 44 x 48. At left 12, top 52 (6 under the 46 title row). Grown: menu min(320, w - 24) and 128 above the foot; details w - 24 on a phone, min(360, w - 24) in a window; the open shadow 0 32 80 -10 and 0 12 28, the page dimmed .24; once scrolled the header casts 0 8 16 -6. In light the island reads as the frame does (v71 .tbar: frame inks, the title 600).",
+      "_doc": "v71 5323-5433 and .fisl/.nisl/.misl: 48 tall, 16 round, the bar's material; a 48 lead with a 20 glyph, a full-height hairline, the title 15/650 over a 12/500 subtitle (line-height 1.2, as CSS means it: 18 and 14.4 line boxes, no gap; in whole px, since GTK multiplies the font's own line and rounds a fraction up), padding 0 18 0 14; trailing buttons 44 x 48. At left 12, top 52 (6 under the 46 title row). Grown: menu min(320, w - 24) and 128 above the foot; details w - 24 on a phone, min(360, w - 24) in a window; the open shadow 0 32 80 -10 and 0 12 28, the page dimmed .24; once scrolled the header casts 0 8 16 -6. In light the island reads as the frame does (v71 .tbar: frame inks, the title 600).",
       "height": 48,
       "radius": 16,
       "lead": 48,
@@ -18,6 +18,8 @@
       "title_weight": 650,
       "subtitle_size": 12,
       "subtitle_weight": 400,
+      "title_line_height_px": 18,
+      "subtitle_line_height_px": 14,
       "faces_gap": 10,
       "button_width": 44,
       "left": 12,
