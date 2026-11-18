@@ -195,6 +195,30 @@ else:
         self.assertEqual([r['commit'] for r in json.loads(canonical.read_text())['releases']],
             [self.release['commit'],release['commit']])
 
+    def test_refresh_keeps_the_publication_root_graph_current(self):
+        for arch in ('x86_64','aarch64'):
+            with self.subTest(arch=arch):
+                if hasattr(self,'bucket'):self.tearDown();self.setUp()
+                self.publication(arch);self.prepare_state()
+                staged=self.bucket.directories(self.pipeline/'publish/graph')
+                for directory in staged:
+                    directory.mkdir(parents=True,exist_ok=True)
+                    path=directory/'nightly.json';path.write_bytes(encoded(self.graph));signature(path,self.bucket)
+                self.refresh_state()
+                served=self.origin/self.bucket.public_prefix()/'nightly.json'
+                for directory in staged:
+                    for suffix in ('','.minisig'):
+                        self.assertEqual((directory/('nightly.json'+suffix)).read_bytes(),Path(str(served)+suffix).read_bytes())
+
+    def test_refresh_leaves_a_staged_policy_change_in_the_publication_root(self):
+        self.publication();self.prepare_state()
+        directory=self.bucket.directory(self.pipeline/'publish/graph');directory.mkdir(parents=True)
+        staged=directory/'nightly.json';changed=copy.deepcopy(self.graph);changed['releases'][0]['paused']=True
+        staged.write_bytes(encoded(changed));signature(staged,self.bucket)
+        self.refresh_state()
+        self.assertTrue(self.uploads)
+        self.assertEqual(staged.read_bytes(),encoded(changed))
+
     def test_current_public_unapproved_policy_is_refused(self):
         self.publication();self.prepare_state()
         public=self.origin/self.bucket.public_prefix()/'nightly.json'

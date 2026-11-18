@@ -70,6 +70,10 @@ canonical graph still has exactly the approved release policy. It refuses a
 changed policy, a replay older than its previous successful refresh, missing
 backend commits, changed manifests, failed gates or incomplete delivery proof.
 It uploads only that channel's graph and signature, verifies the public bytes
-and signature, and writes a receipt. A failed check leaves the served feed
+and signature, installs the same bytes in the pipeline's `publish/graph` tree,
+and writes a receipt. A later publication that syncs the whole graph tree then
+serves the refreshed graph rather than an older one, which would otherwise
+fail the next refresh as a replay. A staged graph with a different policy or a
+newer date is left in place. A failed check leaves the served feed
 unchanged; investigate the failed service rather than admitting an unsigned
 release or silently restoring an older policy.

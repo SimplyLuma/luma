@@ -227,6 +227,27 @@ def main():
                 for path in files:
                     if path.read_bytes()!=(data_dir/path.name).read_bytes():
                         raise ValueError('Public refresh readback differs')
+            # Publication syncs serve the pipeline's whole graph tree. Keep its
+            # copy of this channel no older than the graph just served, unless a
+            # newer graph or a different policy is already staged there.
+            locks=paths.architecture_path(pipeline/'locks',architecture)
+            locks.mkdir(mode=0o755,parents=True,exist_ok=True);protected(locks)
+            with (locks/('sign-graph-'+channel+'.lock')).open('a') as signer:
+                fcntl.flock(signer,fcntl.LOCK_EX)
+                for directory in bucket.directories(pipeline/'publish/graph'):
+                    staged=directory/(channel+'.json')
+                    if staged.exists():
+                        protected(staged)
+                        value=json.loads(staged.read_text())
+                        bucket.validate_graph(value,channel)
+                        if value['generated_at']>=actual['generated_at'] or checks.policy(value)!=checks.policy(approved):
+                            continue
+                    elif not directory.is_dir():
+                        directory.mkdir(parents=True);directory.chmod(0o755)
+                    protected(directory)
+                    for path in files:
+                        temp=directory/('.'+path.name+'.refresh')
+                        temp.write_bytes(path.read_bytes());temp.chmod(0o644);os.replace(temp,directory/path.name)
             receipt={'schema':'org.projectluma.approved-graph-refresh-receipt/v1','channel':channel,'architecture':architecture,'hardware_target':hardware_target,'profile':profile,
                      'generated_at':actual['generated_at'],'control_sha256':control_sha,'state_sha256':state_sha,
                      'files':{p.name:digest(p) for p in files},'public_signature_and_readback':'PASS'}
