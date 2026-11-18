@@ -59,6 +59,15 @@ window. The host answers `permission:respond` with `allow` to accept, or
 disables the extension) asks to accept them and re-enable it. Prompts queue
 one at a time after sign-ins.
 
+`0007-pulse-stream-app-name.patch` applies after `0006` (it touches only
+`media/audio/pulse/pulse_util.cc`). The audio service runs in its own process,
+which never receives the browser's application name, so its PulseAudio
+contexts fell back to "Chromium". Unbranded builds now fall back to "Viola",
+and playback and recording streams carry `application.id` and
+`application.icon_name` `com.rhyme.viola`. Mixers show Viola, and the
+session's saved per-application stream volume is Viola's own instead of one
+shared with every other Chromium build.
+
 Do not replace a released engine merely because these inputs build successfully;
 its native rendering, input, resize and window lifecycle checks must also pass.
 
