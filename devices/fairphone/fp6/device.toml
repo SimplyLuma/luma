@@ -51,7 +51,7 @@ qualified_gpu_inputs = "3a677fbc9d995fdfea158333f9e79836a441b88f42d324f012409bdd
 qualified_notes_sha256 = "bd0064a79692982e68a272389017eb4018cd58b7bd3b82787af5b7574859c617"
 # Stamped by `fp6-android-gpu-admission.py stamp`; CI fails when the [kernel]
 # inputs change without restamping.
-kernel_inputs = "6317899b5398d7d5076924aeafe0d9cb2d4a5b4a2680ded28da9c6dceec25930"
+kernel_inputs = "cad021489996c4b613b04af08386b9ad1ce44e0a1b6b3bf1f811f4fe957f3519"
 admitted = true
 
 [boot]

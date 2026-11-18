@@ -25,7 +25,7 @@
 
 Name:           kernel-modules-luma-fp6
 Version:        7.1.2
-Release:        1.luma.ims1.gmu2.selinux1.6%{?dist}
+Release:        1.luma.ims1.gmu2.selinux1.7%{?dist}
 Summary:        Kernel modules for the Fairphone 6 kernel
 License:        GPL-2.0-only
 URL:            https://github.com/SimplyLuma/linux/tree/luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1
@@ -85,6 +85,12 @@ for k in i2c/busses/i2c-gpio spi/spi-gpio iio/imu/inv_icm42600/inv-icm42600-spi 
     iio/light/stk3310 iio/magnetometer/qmc6308 iio/pressure/dps310; do
   test -f $m/kernel/drivers/$k.ko.zst
 done
+# firewalld's nftables fib match and conntrack helpers (config/kernel/fp6.fragment).
+for k in nft_fib_inet nf_conntrack_amanda nf_conntrack_ftp nf_conntrack_h323 \
+    nf_conntrack_irc nf_conntrack_netbios_ns nf_conntrack_pptp nf_conntrack_sane \
+    nf_conntrack_sip nf_conntrack_snmp nf_conntrack_tftp; do
+  test -f $m/kernel/net/netfilter/$k.ko.zst
+done
 
 %files
 %dir /usr/lib/modules/%{kver}
@@ -97,6 +103,10 @@ done
 %{_prefix}/lib/luma/device-boot/fairphone-fp6/
 
 %changelog
+* Wed Nov 18 2026 Malak Sedarous <18029995+malaksedarous@users.noreply.github.com> - 7.1.2-1.luma.ims1.gmu2.selinux1.7
+- Rebuilt with NFT_FIB_INET and the ten conntrack helpers firewalld ships
+  (config/kernel/fp6.fragment), so firewalld loads its ruleset.
+
 * Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.6
 - Carry the boot image of this kernel build and its luma-device-boot
   declaration in /usr/lib/luma/device-boot/fairphone-fp6/, so installed phones

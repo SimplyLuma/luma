@@ -16,3 +16,20 @@ CONFIG_INV_ICM42600_SPI=m
 CONFIG_STK3310=m
 CONFIG_QMC6308=m
 CONFIG_DPS310=m
+
+# firewalld: its rules match `fib` in an inet table (NFT_FIB_INET), and the
+# default FedoraWorkstation zone allows samba-client, whose netbios-ns
+# conntrack helper must exist, or firewalld loads no ruleset at all and the
+# phone runs without a firewall. All helpers firewalld ships
+# (/usr/lib/firewalld/helpers), as modules, as Fedora builds them.
+CONFIG_NFT_FIB_INET=m
+CONFIG_NF_CONNTRACK_AMANDA=m
+CONFIG_NF_CONNTRACK_FTP=m
+CONFIG_NF_CONNTRACK_H323=m
+CONFIG_NF_CONNTRACK_IRC=m
+CONFIG_NF_CONNTRACK_NETBIOS_NS=m
+CONFIG_NF_CONNTRACK_PPTP=m
+CONFIG_NF_CONNTRACK_SANE=m
+CONFIG_NF_CONNTRACK_SIP=m
+CONFIG_NF_CONNTRACK_SNMP=m
+CONFIG_NF_CONNTRACK_TFTP=m
