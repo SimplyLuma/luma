@@ -1,0 +1,197 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Tue, 17 Nov 2026 12:00:00 -0600
+Subject: [PATCH] global-shortcuts-provider: add shortcuts without a dialog
+
+An application that registers a global shortcut through the GlobalShortcuts
+portal got a modal "Add Keyboard Shortcuts" window. Closing it stored
+nothing, so the window came back on every launch.
+
+New shortcuts are now stored at once and the provider never shows its
+window. A new shortcut keeps the application's preferred trigger only when
+it holds Super, or Ctrl and Alt together, so it cannot take an ordinary
+typing or editing combination from other applications; otherwise it is
+stored without a key. A notification from the application lists what was
+bound. A trigger another shortcut already owns is still refused by the
+compositor.
+---
+ global-shortcuts-provider/cc-global-shortcut-dialog.c | 120 ++++++++++++++++++++++++++++++++++++++++------------
+ 1 file changed, 94 insertions(+), 26 deletions(-)
+
+diff --git a/global-shortcuts-provider/cc-global-shortcut-dialog.c b/global-shortcuts-provider/cc-global-shortcut-dialog.c
+--- a/global-shortcuts-provider/cc-global-shortcut-dialog.c
++++ b/global-shortcuts-provider/cc-global-shortcut-dialog.c
+@@ -82,6 +82,8 @@
+   GxdpExternalWindow *external_window;
+ 
+   gboolean has_new_shortcuts;
++  /* Luma: "Ctrl+Alt+Space  Quick Entry" for each new shortcut bound now */
++  GPtrArray *luma_added;
+ };
+ 
+ G_DEFINE_TYPE (CcGlobalShortcutDialog,
+@@ -162,6 +164,7 @@
+   g_clear_pointer (&self->app_id, g_free);
+   g_clear_pointer (&self->parent_window_handle, g_free);
+   g_clear_pointer (&self->app_shortcuts, g_variant_unref);
++  g_clear_pointer (&self->luma_added, g_ptr_array_unref);
+ 
+   G_OBJECT_CLASS (cc_global_shortcut_dialog_parent_class)->finalize (object);
+ }
+@@ -213,10 +216,33 @@
+   return NULL;
+ }
+ 
++/* Luma: a new shortcut keeps the trigger the application asked for only when
++ * it cannot take an ordinary typing or editing combination away from other
++ * applications: it needs Super, or Ctrl and Alt together. Anything else is
++ * added without a key, and the person can set one in Settings. A trigger
++ * another shortcut already owns is refused by the compositor and stays with
++ * its owner. Returns the label ("Ctrl+Alt+Space") of a kept trigger. */
++static char *
++luma_safe_trigger_label (const char *trigger)
++{
++  guint key = 0;
++  GdkModifierType mods = 0;
++
++  if (!gtk_accelerator_parse (trigger, &key, &mods) || key == 0)
++    return NULL;
++
++  if (!(mods & GDK_SUPER_MASK) &&
++      !((mods & GDK_CONTROL_MASK) && (mods & GDK_ALT_MASK)))
++    return NULL;
++
++  return gtk_accelerator_get_label (key, mods);
++}
++
+ static GVariant *
+-app_shortcuts_to_settings_variant (GVariant *app_shortcuts,
+-                                   GVariant *old_settings,
+-                                   gboolean *has_new_shortcuts)
++app_shortcuts_to_settings_variant (GVariant  *app_shortcuts,
++                                   GVariant  *old_settings,
++                                   gboolean  *has_new_shortcuts,
++                                   GPtrArray *added)
+ {
+   g_auto(GVariantBuilder) builder =
+     G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("a(sa{sv})"));
+@@ -259,6 +285,18 @@
+           preferred_trigger =
+             g_variant_dict_lookup_value (&prefs_dict, "preferred_trigger",
+                                          G_VARIANT_TYPE_STRING);
++          if (preferred_trigger)
++            {
++              g_autofree char *label =
++                luma_safe_trigger_label (g_variant_get_string (preferred_trigger, NULL));
++
++              if (label)
++                g_ptr_array_add (added,
++                                 g_strdup_printf ("%s  %s", label,
++                                                  g_variant_get_string (description, NULL)));
++              else
++                g_clear_pointer (&preferred_trigger, g_variant_unref);
++            }
+           shortcuts = g_variant_new_array (G_VARIANT_TYPE_STRING,
+                                            preferred_trigger ? &preferred_trigger : NULL,
+                                            preferred_trigger ? 1 : 0);
+@@ -283,9 +321,11 @@
+   saved_shortcuts = cc_keyboard_manager_get_global_shortcuts (self->manager,
+                                                               self->app_id);
+ 
++  self->luma_added = g_ptr_array_new_with_free_func (g_free);
+   shortcuts = app_shortcuts_to_settings_variant (self->app_shortcuts,
+                                                  saved_shortcuts,
+-                                                 &self->has_new_shortcuts);
++                                                 &self->has_new_shortcuts,
++                                                 self->luma_added);
+ 
+   populate_shortcuts_model (self, self->app_id,
+                             cc_util_app_id_to_display_name (self->app_id));
+@@ -391,34 +431,62 @@
+                        NULL);
+ }
+ 
+-void
+-cc_global_shortcut_dialog_present (CcGlobalShortcutDialog *self)
++/* Luma: say what was added with an ordinary notification from the
++ * application, instead of a dialog. Nothing is said when no key was bound. */
++static void
++luma_notify_added (CcGlobalShortcutDialog *self)
+ {
+-  if (!self->has_new_shortcuts)
+-    {
+-      emit_done (self, TRUE);
+-      return;
+-    }
++  g_autoptr(GDBusConnection) bus = NULL;
++  g_autoptr(GString) body = NULL;
++  g_autofree char *name = NULL;
++  GVariantBuilder hints;
++  guint i;
++
++  if (self->luma_added == NULL || self->luma_added->len == 0)
++    return;
++
++  bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, NULL);
++  if (bus == NULL)
++    return;
+ 
+-  if (!gtk_widget_get_visible (GTK_WIDGET (self)))
++  body = g_string_new (NULL);
++  for (i = 0; i < self->luma_added->len; i++)
+     {
+-      self->external_window =
+-        gxdp_external_window_new_from_handle (self->parent_window_handle);
++      g_autofree char *line =
++        g_markup_escape_text (g_ptr_array_index (self->luma_added, i), -1);
+ 
+-      if (self->external_window)
+-        {
+-          GtkNative *native;
+-          GdkSurface *surface;
++      g_string_append_printf (body, "%s%s", i ? "\n" : "", line);
++    }
+ 
+-          gtk_widget_realize (GTK_WIDGET (self));
++  name = cc_util_app_id_to_display_name (self->app_id);
++  g_variant_builder_init (&hints, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&hints, "{sv}", "desktop-entry",
++                         g_variant_new_string (self->app_id));
+ 
+-          native = gtk_widget_get_native (GTK_WIDGET (self));
+-          surface = gtk_native_get_surface (native);
++  g_dbus_connection_call (bus,
++                          "org.freedesktop.Notifications",
++                          "/org/freedesktop/Notifications",
++                          "org.freedesktop.Notifications",
++                          "Notify",
++                          g_variant_new ("(susssasa{sv}i)",
++                                         name, 0, self->app_id,
++                                         self->luma_added->len == 1 ?
++                                           "Keyboard shortcut added" :
++                                           "Keyboard shortcuts added",
++                                         body->str, NULL, &hints, -1),
++                          NULL, G_DBUS_CALL_FLAGS_NONE, -1,
++                          NULL, NULL, NULL);
++}
+ 
+-          gxdp_external_window_set_parent_of (self->external_window,
+-                                              surface);
+-        }
++/* Luma: applications add their global shortcuts the way they do on macOS and
++ * Windows, without a dialog: new shortcuts are stored at once (with the
++ * application's trigger only when luma_safe_trigger_label() allows it) and a
++ * notification says what was added. Settings can change or clear them. */
++void
++cc_global_shortcut_dialog_present (CcGlobalShortcutDialog *self)
++{
++  if (self->has_new_shortcuts)
++    luma_notify_added (self);
+ 
+-      gtk_window_present (GTK_WINDOW (self));
+-    }
++  emit_done (self, TRUE);
+ }
+-- 
+2.47.0
+
