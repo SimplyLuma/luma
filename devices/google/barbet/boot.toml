@@ -4,8 +4,12 @@
 schema = 1
 partition = "boot_b"
 partition_size = 100663296
-os_version = "99.87.36"
-os_patch_level = "2099-12-31"
+# The barbet factory image this install replaces (ap2a.240805.005.s4) carries
+# these in its own boot image header: Android 14.0.0, patch level 2024-08 (the
+# 2024-08-05 build). Keeping the factory values means a rollback to stock does
+# not see a newer OS version or patch level from Luma.
+os_version = "14.0.0"
+os_patch_level = "2024-08-05"
 
 [cmdline]
 args = [

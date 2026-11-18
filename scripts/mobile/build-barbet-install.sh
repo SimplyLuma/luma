@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Assemble the full barbet test set from the shared ARM userdata image and a
-# boot image built from the Luma sm7250 tag, with SHA256SUMS and the exact
-# install commands. Never flashes and never overwrites an existing set.
+# Assemble the full barbet test set from the shared ARM userdata image, a
+# boot image built from the Luma sm7250 tag and the device firmware manifest,
+# with SHA256SUMS and the exact install commands. Never flashes and never
+# overwrites an existing set.
 #
 # usage: build-barbet-install.sh --userdata FILE --userdata-sha256 SHA256
 #          --boot-image FILE --output DIR
@@ -42,13 +43,16 @@ umask 022
 mkdir -p "$output"
 cp "$boot_image" "$output/boot.img"
 cp --reflink=auto "$userdata" "$output/userdata.img"
-(cd "$output" && sha256sum boot.img userdata.img > SHA256SUMS)
+cp "$repo_root/devices/google/barbet/firmware.manifest" "$output/firmware.manifest"
+(cd "$output" && sha256sum boot.img userdata.img firmware.manifest > SHA256SUMS)
 
 cat >"$output/INSTALL.txt" <<'EOF'
 Pixel 5a (barbet) full install. This erases Android and userdata.
 Preserved: boot_a (Android), modemst1, modemst2, fsg, fsc, persist, dtbo, vbmeta,
 bootloader, super, the partition table and slot metadata beyond selecting slot b.
 
+  fastboot devices
+  fastboot getvar product          # must print barbet
   fastboot flash userdata userdata.img
   fastboot flash boot_b boot.img
   fastboot --set-active=b
@@ -59,8 +63,11 @@ store /var/lib/luma/device-firmware: the GPU zap/gmu/sqe files, modem.mdt and
 its segments, wlanmdsp.mbn, bdwlan.bin and
 ath10k/WCN3990/hw1.0/{board-2.bin,firmware-5.bin}. Put the ADSP and the
 RT5514P DSP blobs in /var/lib/luma/device-firmware-barbet (the RT5514P files
-are also accepted from the shared store). Never write boot_a, dtbo, vbmeta,
-modemst*, fsg, fsc, persist, super, the bootloader or the partition table.
+are also accepted from the shared store). Copy firmware.manifest from this set
+to /var/lib/luma/device-firmware/luma-firmware.manifest, root-owned and mode
+0644; the initramfs verifies the store against it before boot. Never write
+boot_a, dtbo, vbmeta, modemst*, fsg, fsc, persist, super, the bootloader or
+the partition table.
 EOF
 printf 'SET=%s\nBOOT_SHA256=%s\nUSERDATA_SHA256=%s\n' "$output" \
   "$(sha256sum "$output/boot.img" | cut -d' ' -f1)" "$userdata_sha"

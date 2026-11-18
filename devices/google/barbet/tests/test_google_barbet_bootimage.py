@@ -35,6 +35,13 @@ class BarbetBootImage(unittest.TestCase):
         self.assertIn("50-luma-ostree-default.sh", text)
         self.assertIn("barbet-initramfs", text)
 
+    def test_firmware_anchor_not_vendored_tools(self) -> None:
+        text = BUILD.read_text()
+        self.assertIn("firmware-store-anchor.py", text)
+        self.assertIn("luma-firmware-manifest.sha256", text)
+        self.assertNotIn("--tools", text)
+        self.assertNotIn("luma-barbet-tools", text)
+
     def test_wrong_input_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

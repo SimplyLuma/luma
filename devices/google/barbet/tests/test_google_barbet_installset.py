@@ -35,6 +35,7 @@ class BarbetInstallSet(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((out / "boot.img").is_file())
             self.assertTrue((out / "userdata.img").is_file())
+            self.assertTrue((out / "firmware.manifest").is_file())
             check = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=out,
                                    capture_output=True, text=True)
             self.assertEqual(check.returncode, 0, check.stderr)
@@ -49,10 +50,12 @@ class BarbetInstallSet(unittest.TestCase):
             out = tmp_path / "set"
             self.assertEqual(run(userdata, sha(userdata), boot, out).returncode, 0)
             text = (out / "INSTALL.txt").read_text()
-            for command in ("fastboot flash userdata userdata.img",
+            for command in ("fastboot getvar product",
+                            "fastboot flash userdata userdata.img",
                             "fastboot flash boot_b boot.img",
                             "fastboot --set-active=b", "fastboot reboot"):
                 self.assertIn(command, text)
+            self.assertIn("luma-firmware.manifest", text)
             for forbidden in ("flash boot_a", "flash dtbo", "flash vbmeta",
                               "flash modemst", "flash fsg", "flash fsc",
                               "flash persist", "flash super"):

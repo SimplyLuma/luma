@@ -6,17 +6,17 @@ already on the phone. Android's `boot_a` and system partitions are preserved,
 but Android user data is not. Keep the exact Google factory image; it is the
 recovery path. Do not relock the bootloader.
 
-**Not release-ready:** a published Luma kernel tag and a device package are
-still pending. The install has been run once on the development phone with the
-generic ARM image and the stock `vbmeta_b`; that is a bring-up test, not
-qualification of an install set.
+**Not release-ready:** a published Luma kernel tag and a published device
+repository are still pending. The install has been run once on the development
+phone with the generic ARM image and the stock `vbmeta_b`; that is a bring-up
+test, not qualification of an install set.
 
 ## What you need
 
 - a Pixel 5a (`barbet`) with an unlocked bootloader;
 - a computer with `fastboot` and a USB-C data cable;
 - a full test set from `scripts/mobile/build-barbet-install.sh`: `boot.img`,
-  `userdata.img`, `SHA256SUMS` and `INSTALL.txt`;
+  `userdata.img`, `firmware.manifest`, `SHA256SUMS` and `INSTALL.txt`;
 - Google's factory image for the phone, to restore Android and to extract the
   firmware Luma needs.
 
@@ -49,7 +49,10 @@ install never writes `boot_a` (Android), `modemst1`, `modemst2`, `fsg`, `fsc`, `
 
 The first boot needs the operator-extracted firmware in the shared store
 `/var/lib/luma/device-firmware`. The manifest lists the files and hashes;
-extract them from the matching factory image, never from another build:
+extract them from the matching factory image, never from another build. Place
+`firmware.manifest` from the install set in the store as
+`luma-firmware.manifest`, root-owned and mode `0644`: the initramfs checks the
+store's contents and hashes against it before boot and halts on a mismatch.
 
 - `qcom/a650_sqe.fw`, `qcom/a650_gmu.bin`, `qcom/a620_zap.*` — GPU;
 - `qcom/sm7250/google/barbet/modem.*` — modem, which also boots the WCN3990;
@@ -66,14 +69,17 @@ service starts the modem before the audio service stages the barbet store.
 After the first boot, copy the tree to the phone (USB-NCM/SSH or the installer
 path you normally use) and restart the audio service.
 
-Wi-Fi uses the WCN3990 firmware above and the base image's `tqftpserv`.
-`luma-barbet-wifi.service` serves the firmware over QRTR, starts the modem and
+Wi-Fi uses the WCN3990 firmware above and `tqftpserv` from the barbet device
+repository (`luma-qcom-userspace`). `luma-barbet-wifi.service` serves the
+firmware over QRTR, starts the modem and
 waits for the WLFW QRTR service before the audio service starts the ADSP.
 The barbet `rmtfs.service` drop-in explicitly runs `/usr/bin/rmtfs -r -P -s`
 and Wi-Fi requires that service before starting the modem. This selects the
 read-only partition backend without an FP6 file-store wrapper, so rmtfs does
 not write `modemst1`, `modemst2` or `fsg`. The development phone runs this
-command; Wi-Fi association on a fresh install is still untested.
+command and joins a 2.4, 5 and 6 GHz network; the fresh-install test used a
+boot image that still carried `tqftpserv`, so the repository package has to be
+present for the same path to run now.
 
 ## After the first boot
 
@@ -105,8 +111,10 @@ vibration have been confirmed on the phone.
 A full install of the generic ARM image plus this boot image was run with the
 stock `vbmeta_b`: `userdata` and `boot_b` were written, slot b was selected,
 and the phone booted with `androidboot.slot_successful=yes` and zram active.
-The boot image carries `tqftpserv` and `qbootctl`, so Wi-Fi and slot
-confirmation work without a device package.
+`qbootctl` and `tqftpserv` come from `luma-qcom-userspace` in the barbet
+device repository; the boot image does not carry its own copies. That package
+pins qbootctl 0.2.2 and tqftpserv 1.2 with their upstream source archives in
+`packaging/rpm/luma-qcom-userspace.spec`.
 
 Wi-Fi joins a network and scans 2.4, 5 and 6 GHz networks. Speaker playback
 works through PipeWire and Firefox. The built-in microphone captures at the

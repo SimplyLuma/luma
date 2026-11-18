@@ -50,6 +50,9 @@ class GoogleBarbet(unittest.TestCase):
         boot = toml("boot.toml")
         self.assertEqual(boot["partition"], "boot_b")
         self.assertEqual(boot["partition_size"], 100663296)
+        # The factory image this install replaces (ap2a.240805.005.s4).
+        self.assertEqual(boot["os_version"], "14.0.0")
+        self.assertEqual(boot["os_patch_level"], "2024-08-05")
         self.assertEqual(boot["avb"]["footer"], "hash")
         self.assertEqual(boot["avb"]["algorithm"], "NONE")
         self.assertEqual(boot["avb"]["rollback_index"], 1783209600)
@@ -98,12 +101,28 @@ class GoogleBarbet(unittest.TestCase):
             self.assertEqual(mode, oct(file.stat().st_mode & 0o777)[2:].zfill(4))
             self.assertEqual(digest, hashlib.sha256(file.read_bytes()).hexdigest())
 
-    def test_no_release_infrastructure(self) -> None:
+    def test_kit_but_no_release_list(self) -> None:
         device = toml("device.toml")
-        self.assertNotIn("kit", device)
-        self.assertNotIn("device_repo", device)
         self.assertNotIn("releases", device)
         self.assertEqual(device["updates"]["ostree_ref"], "luma/1/aarch64/nightly")
+        kit = device["kit"]
+        self.assertEqual(kit["compatible"], ["google,barbet"])
+        writes = [step.split()[1] for step in kit["flash"]
+                  if step.startswith("flash ")]
+        self.assertEqual(writes, ["userdata", "userdata", "boot_b"])
+
+    def test_qualcomm_userspace_comes_from_the_device_repository(self) -> None:
+        repo = toml("device.toml")["device_repo"]
+        self.assertEqual(repo["id"], "luma-google-barbet")
+        self.assertEqual(repo["install"], ["qbootctl", "tqftpserv"])
+        build = BUILD.read_text()
+        self.assertNotIn("--tools", build)
+        self.assertNotIn("luma-barbet-tools", build)
+        unit = (INITRAMFS / "luma-barbet/etc/systemd/system/"
+                "luma-barbet-boot-success.service").read_text()
+        self.assertIn("ExecStart=/usr/bin/qbootctl -m", unit)
+        self.assertFalse((INITRAMFS / "luma-barbet/etc/systemd/system/"
+                          "tqftpserv.service").exists())
 
     def test_soc_offsets(self) -> None:
         soc = tomllib.loads(SOC.read_text())

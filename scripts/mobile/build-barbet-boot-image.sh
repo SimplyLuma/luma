@@ -7,8 +7,7 @@
 # 4096-byte pages, AVB hash footer NONE and the boot_b policy. Never flashes.
 #
 # usage: build-barbet-boot-image.sh --kernel FILE --dtb FILE --initramfs FILE
-#                                   --ostree DIR [--tools DIR] [--hook FILE]
-#                                   --output FILE
+#                                   --ostree DIR [--hook FILE] --output FILE
 #
 # --ostree DIR holds the pinned ostree runtime that the initramfs needs before
 # the root filesystem is mounted: usr/lib/ostree/ostree-prepare-root, the
@@ -16,10 +15,11 @@
 # device.toml (ostree_package/ostree_source); it is not taken from another
 # device's boot ramdisk.
 #
-# --tools DIR holds tqftpserv and qbootctl, which the generic ARM image does
-# not ship. The initramfs installs them into /usr/local on the root filesystem
-# so Wi-Fi and slot confirmation work on a fresh install without a device
-# package. Build them from the pinned sources; do not commit the binaries.
+# The overlay carries /etc/luma-firmware-manifest.sha256, written from
+# device.toml by scripts/mobile/common/firmware-store-anchor.py, so the
+# initramfs verifies the shared firmware store before it boots. qbootctl and
+# tqftpserv come from the luma-qcom-userspace device repository, not the boot
+# image.
 set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -29,14 +29,13 @@ shared="$repo_root/scripts/mobile/common/initramfs"
 fail() { printf 'build-barbet-boot-image: %s\n' "$*" >&2; exit 1; }
 usage() { sed -n 's/^# usage: /usage: /p' "$0" >&2; exit 2; }
 
-kernel="" dtb="" initramfs_base="" ostree_dir="" tools_dir="" hook="" output=""
+kernel="" dtb="" initramfs_base="" ostree_dir="" hook="" output=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --kernel) kernel=$(realpath -e "${2:?}"); shift 2 ;;
     --dtb) dtb=$(realpath -e "${2:?}"); shift 2 ;;
     --initramfs) initramfs_base=$(realpath -e "${2:?}"); shift 2 ;;
     --ostree) ostree_dir=$(realpath -e "${2:?}"); shift 2 ;;
-    --tools) tools_dir=$(realpath -e "${2:?}"); shift 2 ;;
     --hook) hook=$(realpath -e "${2:?}"); shift 2 ;;
     --output) output=${2:?}; shift 2 ;;
     *) usage ;;
@@ -46,7 +45,8 @@ done
   [ -n "$ostree_dir" ] && [ -n "$output" ] || usage
 for f in "$shared/luma-ostree-boot.sh" "$shared/hooks-extra/50-luma-ostree-default.sh" \
          "$initramfs/init_functions.sh" "$initramfs/init_2nd.sh" \
-         "$initramfs/deviceinfo" "$initramfs/etc/luma-ostree" "$manifest"; do
+         "$initramfs/deviceinfo" "$initramfs/etc/luma-ostree" "$manifest" \
+         "$repo_root/scripts/mobile/common/firmware-store-anchor.py"; do
   [ -f "$f" ] || fail "missing $f"
 done
 [ -x "$ostree_dir/usr/lib/ostree/ostree-prepare-root" ] ||
@@ -102,16 +102,13 @@ install -D -m 0644 "$initramfs/deviceinfo" \
   "$o/usr/share/deviceinfo/device-google-barbet"
 ln -sfn device-google-barbet "$o/usr/share/deviceinfo/deviceinfo"
 install -D -m 0644 "$initramfs/etc/luma-ostree" "$o/etc/luma-ostree"
+python3 "$repo_root/scripts/mobile/common/firmware-store-anchor.py" \
+  "$repo_root/devices/google/barbet" "$o/etc/luma-firmware-manifest.sha256"
 install -D -m 0755 "$ostree_dir/usr/lib/ostree/ostree-prepare-root" \
   "$o/usr/lib/ostree/ostree-prepare-root"
 install -D -m 0755 "$ostree_dir/usr/lib/ld-linux-aarch64.so.1" \
   "$o/usr/lib/ld-linux-aarch64.so.1"
 cp -a "$ostree_dir/usr/lib64/." "$o/usr/lib64/"
-if [ -n "$tools_dir" ]; then
-  for tool in "$tools_dir"/*; do
-    install -D -m 0755 "$tool" "$o/opt/luma-barbet-tools/${tool##*/}"
-  done
-fi
 install -D -m 0644 "$initramfs/init_functions.sh" "$o/init_functions.sh"
 install -D -m 0755 "$initramfs/init_2nd.sh" "$o/init_2nd.sh"
 install -D -m 0644 "$shared/luma-ostree-boot.sh" "$o/usr/lib/luma/ostree-boot.sh"

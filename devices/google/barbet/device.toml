@@ -31,7 +31,7 @@ config = "boot.toml"
 ramdisk_sha256 = "52ab1965a0032e323024ef474de78008436b8b89625470be308acf51ce19e05e"
 base = "postmarketos-initramfs 3.12.0-r0"
 init_functions = "config/mobile/barbet-initramfs/init_functions.sh"
-init_functions_sha256 = "fb49ef0bf49f1f7bd86a12786709df6f42ae20d5d9bacc880d3527382531eb47"
+init_functions_sha256 = "dc0ea7972153ee6ab29228f0e04c84763f3dff4f7429a4e63477fb480d5576a3"
 ostree_package = "ostree-2026.5-1.luma.2.fc44"
 ostree_source = "config/mobile/fp6-ostree-source.json"
 
@@ -54,3 +54,26 @@ preserve = [
 
 [updates]
 ostree_ref = "luma/1/aarch64/nightly"
+
+[device_repo]
+# Signed rpm-md repository (Luma OS Release key) with the Qualcomm userspace
+# services barbet needs. qbootctl marks the A/B slot successful after boot;
+# tqftpserv serves the WLAN firmware to the modem over QRTR. Both come from
+# luma-qcom-userspace (packaging/rpm/luma-qcom-userspace.spec), built from
+# pinned upstream sources and shipped through device repositories.
+id = "luma-google-barbet"
+url = "https://dl.simplyluma.com/os/devices/aarch64/google-barbet/"
+install = ["qbootctl", "tqftpserv"]
+
+[kit]
+compatible = ["google,barbet"]
+# The bootloader rejects `fastboot boot` of a custom image on this phone, so
+# the kit selects slot b and reboots. Both userdata writes stay inside the
+# partition the install owns; boot_a and every other slot stay untouched.
+flash = [
+  "flash userdata {userdata}",
+  "flash userdata {kit}",
+  "flash boot_b {boot}",
+  "--set-active=b",
+  "reboot",
+]

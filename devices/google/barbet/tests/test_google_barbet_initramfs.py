@@ -82,6 +82,21 @@ class BarbetInitramfs(unittest.TestCase):
         unit = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-wifi.service").read_text()
         self.assertIn("Before=luma-barbet-audio.service", unit)
 
+    def test_firmware_store_uses_the_device_manifest(self) -> None:
+        functions = (TREE / "init_functions.sh").read_text()
+        self.assertIn('/etc/luma-firmware-manifest.sha256', functions)
+        self.assertIn('luma_verify_firmware_store || return 1', functions)
+        start = functions.index("luma_verify_firmware_store() {")
+        body = functions[start:functions.index("\n}\n", start)]
+        self.assertNotIn("267", body, "the file count belongs to firmware.manifest")
+
+    def test_qualcomm_tools_are_package_units(self) -> None:
+        hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
+        self.assertNotIn("luma-barbet-tools", hook)
+        self.assertNotIn("tqftpserv.service", hook)
+        self.assertFalse(
+            (TREE / "luma-barbet/etc/systemd/system/tqftpserv.service").exists())
+
     def test_audio_uses_the_firmware_store(self) -> None:
         service = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-audio.service").read_text()
         self.assertIn("/var/lib/luma/device-firmware-barbet/rt5514p_dsp_fw1.bin", service)
