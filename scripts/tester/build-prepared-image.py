@@ -131,6 +131,20 @@ WantedBy=multi-user.target
         home = var / 'home/luma/.config'
         home.mkdir(parents=True)
         (home / 'gnome-initial-setup-done').write_text('yes\n')
+        # GTK 4 enables the Inspector keybinding by default, so typing in a
+        # preview could open its prompt. Host apps read the user dconf
+        # database; sandboxed apps without dconf access read their keyfile.
+        debug = '[org/gtk/gtk4/settings/debug]\nenable-inspector-keybinding=false\n'
+        keyfiles = output / 'dconf-user.d'; shutil.rmtree(keyfiles, ignore_errors=True); keyfiles.mkdir()
+        (keyfiles / '60-try-luma').write_text(debug)
+        (home / 'dconf').mkdir()
+        run(['dconf', 'compile', home / 'dconf/user', keyfiles])
+        shutil.rmtree(keyfiles)
+        apps = var / 'lib/flatpak/app'
+        for app in sorted(apps.iterdir()) if apps.is_dir() else ():
+            settings = home.parent / '.var/app' / app.name / 'config/glib-2.0/settings'
+            settings.mkdir(parents=True)
+            (settings / 'keyfile').write_text(debug)
         account = next(line.split(':') for line in (deployment / 'etc/passwd').read_text().splitlines() if line.startswith('luma:'))
         # Export a complete user installation instead of leaving its first
         # creation to competing shell/app-discovery processes at login.
