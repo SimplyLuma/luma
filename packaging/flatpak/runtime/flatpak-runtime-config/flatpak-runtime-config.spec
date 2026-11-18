@@ -7,7 +7,7 @@
 
 Name:           flatpak-runtime-config
 Version:        44
-Release:        1.luma.2%{?dist}
+Release:        1.luma.3%{?dist}
 Summary:        Configuration files that live inside the flatpak runtime
 Source1:        50-flatpak.conf
 Source2:        sitecustomize.py
@@ -22,6 +22,7 @@ Source10:       05-flatpak-fontpath.conf
 Source11:       app.sh
 Source20:       org.projectluma.Platform.appdata.xml
 Source21:       org.projectluma.Sdk.appdata.xml
+Source22:       90-luma-gtk-debug.gschema.override
 
 License:        MIT
 
@@ -64,6 +65,9 @@ mkdir -p $RPM_BUILD_ROOT%{_prefix}/cache/fontconfig
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/fonts/conf.d
 install -t $RPM_BUILD_ROOT%{_sysconfdir}/fonts/conf.d -p -m 0644 %{SOURCE1}
 install -t $RPM_BUILD_ROOT%{_sysconfdir}/fonts/conf.d -p -m 0644 %{SOURCE10}
+
+install -D -p -m 0644 %{SOURCE22} \
+  $RPM_BUILD_ROOT%{_datadir}/glib-2.0/schemas/90-luma-gtk-debug.gschema.override
 
 # profile.d to set up command paths
 install -D -t $RPM_BUILD_ROOT%{_sysconfdir}/profile.d -p -m 0644 %{SOURCE11}
@@ -151,8 +155,12 @@ done
 %{_sysconfdir}/fonts/conf.d/*
 %{_sysconfdir}/ld.so.conf.d/app.conf
 %{_sysconfdir}/profile.d/app.sh
+%{_datadir}/glib-2.0/schemas/90-luma-gtk-debug.gschema.override
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 44-1.luma.3
+- GTK 4 inspector shortcuts off by default (schema override)
+
 * Fri Oct 23 2026 Project Luma <maintainers@projectluma.org> - 44-1.luma.2
 - Set consistent configuration file and directory permissions
 

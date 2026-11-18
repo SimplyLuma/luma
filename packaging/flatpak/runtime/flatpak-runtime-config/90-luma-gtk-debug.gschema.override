@@ -1,0 +1,4 @@
+# GTK 4 enables the inspector shortcuts by default; Luma apps do not offer
+# them to people typing. The host sets the same default (dconf luma.d).
+[org.gtk.gtk4.Settings.Debug]
+enable-inspector-keybinding=false
