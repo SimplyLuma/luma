@@ -210,6 +210,11 @@ mkdir -p "$work"
 work=$(realpath "$work")
 rm -rf "$work/lorax-out" "$work/tmp" "$work/luma-rpms" "$work/templates" "$work/keys" "$work/secret" "$work/lorax-templates"
 rm -f "$work/logs/container.log"
+# The local repository (--source file:///w/luma-rpms, the second source, so
+# lorax-repo-1) is rebuilt every run, but dnf keeps its metadata in the shared
+# cache and can reuse it: a previous run's package list (an older Atlas RPM)
+# then resolves against files that are gone. Keep only the release cache.
+rm -rf "$work"/runtime-rpm-cache/lorax-repo-1-*
 mkdir -p "$work/tmp" "$work/luma-rpms" "$work/templates" "$work/logs" "$work/keys" "$work/runtime-rpm-cache"
 
 # The preview credential: normalized to one line without a newline, root-only,
