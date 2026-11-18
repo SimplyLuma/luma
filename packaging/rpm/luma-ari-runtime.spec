@@ -8,7 +8,7 @@
 
 Name:           luma-ari-runtime
 Version:        %{llama_version}
-Release:        1.luma.1%{?dist}
+Release:        1.luma.2%{?dist}
 Summary:        Local model runtime for Ari, Luma's assistant (llama.cpp)
 License:        MIT
 URL:            https://github.com/ggml-org/llama.cpp
@@ -49,6 +49,8 @@ Nothing here downloads a model; Ari does that only after the person agrees.
   -DLLAMA_BUILD_TESTS=OFF \
   -DLLAMA_BUILD_EXAMPLES=OFF \
   -DLLAMA_BUILD_SERVER=ON \
+  -DLLAMA_BUILD_UI=OFF \
+  -DLLAMA_USE_PREBUILT_UI=OFF \
   -DCMAKE_INSTALL_RPATH=%{privlib} \
   -DCMAKE_SKIP_INSTALL_RPATH=OFF
 %cmake_build --target llama-server llama-bench
@@ -72,5 +74,8 @@ LD_LIBRARY_PATH=%{buildroot}%{privlib} %{buildroot}%{_libexecdir}/luma-ari/llama
 %{privlib}/
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.4.0-1.luma.2
+- Build llama-server without the embedded web UI; nothing is downloaded at build time.
+
 * Sun Sep 13 2026 Project Luma <maintainers@projectluma.org> - 0.4.0-1.luma.1
 - llama.cpp 0.4.0 llama-server with Vulkan and all CPU backend variants for Ari
