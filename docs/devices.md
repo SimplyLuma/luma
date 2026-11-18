@@ -112,11 +112,17 @@ drops to `experimental` until someone takes it over.
 4. List the firmware the device needs in `firmware.manifest`. Record names and
    hashes only; say in `INSTALL.md` where the person gets the firmware from
    (usually the vendor's own factory package).
-5. Add the directory to `.github/CODEOWNERS` with its maintainers.
-6. Write device tests for anything the shared checks cannot see: install
+5. Userspace the device needs goes in its device repository as packages
+   built from source in this tree, never as binaries in the boot image or
+   the kit. Qualcomm phones take `qbootctl` (A/B slots) and `tqftpserv` (files
+   for the modem and other remote processors) from
+   [`luma-qcom-userspace`](../packaging/rpm/luma-qcom-userspace.spec): list
+   them in `[device_repo] install`.
+6. Add the directory to `.github/CODEOWNERS` with its maintainers.
+7. Write device tests for anything the shared checks cannot see: install
    guide commands that must match the manifests, partitions that must never
    be written, and so on.
-7. Run the checks, then open a pull request with tier `experimental` or
+8. Run the checks, then open a pull request with tier `experimental` or
    `community`:
 
 ```sh

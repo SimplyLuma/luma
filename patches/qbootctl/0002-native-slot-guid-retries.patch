@@ -1,0 +1,31 @@
+--- a/bootctrl_impl.c
++++ b/bootctrl_impl.c
+@@ -549,13 +549,13 @@
+ 		}
+ 
+ 		// Mark A as active in primary table
+-		UPDATE_SLOT(pentryA, active_guid, a_state);
++		UPDATE_SLOT(pentryA, slot == 0 ? active_guid : inactive_guid, a_state);
+ 		// Mark A as active in backup table
+-		UPDATE_SLOT(pentryA_bak, active_guid, a_state);
++		UPDATE_SLOT(pentryA_bak, slot == 0 ? active_guid : inactive_guid, a_state);
+ 		// Mark B as inactive in primary table
+-		UPDATE_SLOT(pentryB, inactive_guid, b_state);
++		UPDATE_SLOT(pentryB, slot == 1 ? active_guid : inactive_guid, b_state);
+ 		// Mark B as inactive in backup table
+-		UPDATE_SLOT(pentryB_bak, inactive_guid, b_state);
++		UPDATE_SLOT(pentryB_bak, slot == 1 ? active_guid : inactive_guid, b_state);
+ 	}
+ 
+ 	// write updated content to disk
+--- a/gpt-utils.h
++++ b/gpt-utils.h
+@@ -67,7 +67,7 @@
+ #define AB_PARTITION_ATTR_SLOT_ACTIVE	  (0x1 << 2)
+ #define AB_PARTITION_ATTR_BOOT_SUCCESSFUL (0x1 << 6)
+ #define AB_PARTITION_ATTR_UNBOOTABLE	  (0x1 << 7)
+-#define AB_SLOT_ACTIVE_VAL		  0xF
++#define AB_SLOT_ACTIVE_VAL		  0x3F
+ #define AB_SLOT_INACTIVE_VAL		  0x0
+ #define AB_SLOT_ACTIVE			  1
+ #define AB_SLOT_INACTIVE		  0
