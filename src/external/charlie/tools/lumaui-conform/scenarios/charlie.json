@@ -3,6 +3,17 @@
   "title": "Charlie",
   "spec": {
     "url": "mockups/luma-next-71.html?app=charlie",
+    "phone_url": "mockups/luma-next-71.html?phone=1",
+    "phone_before": [
+      {
+        "eval": "lumaPhone.open('charlie')",
+        "wait": 1500
+      }
+    ],
+    "phone_viewport": {
+      "width": 390,
+      "height": 844
+    },
     "window": "#w-charlie",
     "exclude": [
       ".grip",
@@ -255,7 +266,7 @@
       ],
       "gtk": [
         {
-          "activate": "cr-places"
+          "activate": "css:button.lumaui-title-island-lead"
         }
       ]
     },
