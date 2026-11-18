@@ -226,7 +226,8 @@ class InstallerWindow(AppWindow):
             self.card.keep.set_tooltip_text('snapd retains an automatic snapshot according to system policy.')
         else: self.card.keep.set_tooltip_text(None)
         protected = self.removing and record is not None and not record.get('removable', True)
-        self.set_title(report.title if protected else ('Uninstall' if self.removing else 'Install') + ' · ' + report.title)
+        verb = 'Uninstall' if self.removing else 'Open' if report.kind == 'appimage' else 'Install'
+        self.set_title(report.title if protected else verb + ' · ' + report.title)
         self.populate_facts()
         if not self.eligible:
             return self.failed(architecture_mismatch_message(report))
