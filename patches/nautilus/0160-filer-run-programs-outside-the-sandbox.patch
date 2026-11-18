@@ -47,8 +47,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 +static gboolean
 +file_is_appimage (NautilusFile *file)
 +{
-+    g_autofree char *mime_type = nautilus_file_get_mime_type (file);
-+    g_autofree char *name = nautilus_file_get_name (file);
++    const char *mime_type = nautilus_file_get_mime_type (file);
++    const char *name = nautilus_file_get_name (file);
 +    g_autofree char *lower_name = name != NULL ? g_ascii_strdown (name, -1) : NULL;
 +
 +    return (mime_type != NULL &&
