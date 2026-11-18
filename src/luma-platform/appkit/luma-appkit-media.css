@@ -154,7 +154,8 @@ button.lumaui-media-record.on .dot { box-shadow: 0 0 10px @luma_media_recording;
 .lumaui-media-transport.waveform .lumaui-media-keys { border-spacing: var(--lumaui-media-transport-memo-keys-gap); }
 .lumaui-media-transport.waveform button.lumaui-media-play { min-width: var(--lumaui-media-transport-memo-play); min-height: var(--lumaui-media-transport-memo-play); }
 .lumaui-media-transport.waveform label.lumaui-media-time { font-size: var(--lumaui-media-transport-memo-time-size); font-weight: 600; color: @luma_ink; font-feature-settings: "tnum"; letter-spacing: 0; }
-.lumaui-media-transport.waveform label.lumaui-media-total { font-size: var(--lumaui-media-transport-memo-time-size); font-weight: 500; color: @luma_muted; margin-left: 6px; font-feature-settings: "tnum"; }
+/* the total is the time's <small> (v71 .metime small: 13.5 x 5/6 = 11.25) */
+.lumaui-media-transport.waveform label.lumaui-media-total { font-size: calc(var(--lumaui-media-transport-memo-time-size) * 0.8333333); font-weight: 500; color: @luma_muted; margin-left: 6px; font-feature-settings: "tnum"; }
 /* Under 560 (v71 .medeck / .medctl, @container win (max-width: 559px)): padding 18 14 16 and 24 corners; page placement belongs to its host;
    the controls 18 down, the transport on its own row (gap 28; back/forward 52, play 68); time and speed on the
    line under it, 14 down. */

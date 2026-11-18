@@ -3,6 +3,9 @@
   "title": "Messages",
   "spec": {
     "url": "mockups/luma-next-70.html?app=messages",
+    "phone_url": "mockups/luma-next-71.html?phone=1",
+    "phone_before": [{"eval": "lumaPhone.open('messages')", "wait": 1500}],
+    "phone_viewport": {"width": 390, "height": 844},
     "window": "#w-messages",
     "before": [
       {"eval": "(async () => { const b = document.querySelector('#m-body'); await Promise.all([...b.querySelectorAll('img')].map(img => img.decode().catch(() => {}))); await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); b.scrollTop = b.scrollHeight; })()"}
@@ -11,11 +14,13 @@
   },
   "gtk": {
     "module": "messages",
-    "fixtures": ["tests/fixtures/messages-v70.json", "tests/fixtures/messages-v70"],
-    "env": {"LUMA_MESSAGES_FIXTURE": "{run}/fixtures/messages-v70.json", "GSETTINGS_BACKEND": "memory"}
+    "fixtures": ["tests/fixtures/messages-v70.json", "tests/fixtures/messages-v70", "tests/fixtures/messages-v70-share"],
+    "env": {"LUMA_MESSAGES_FIXTURE": "{run}/fixtures/messages-v70.json", "GSETTINGS_BACKEND": "memory",
+            "XDG_DATA_HOME": "{run}/fixtures/messages-v70-share"}
   },
   "states": [
-    {"name": "thread", "about": "Launch crew, the v70 opening conversation", "spec": [], "gtk": []},
+    {"name": "thread", "about": "Launch crew, the v70 opening conversation", "spec": [], "gtk": [],
+     "spec_phone": [{"click": "[data-mcv=\"crew\"]"}], "gtk_phone": [{"activate": "msg-phone-open"}]},
     {"name": "event", "about": "Priya's event card and direct conversation",
      "spec": [{"click": "[data-mcv=\"priya\"]"}], "gtk": [{"activate": "msg-row-priya"}]},
     {"name": "song", "about": "Theo's song and voice cards",
@@ -25,17 +30,23 @@
     {"name": "sms", "about": "Mom's text-message conversation",
      "spec": [{"click": "[data-mcv=\"mom\"]"}], "gtk": [{"activate": "msg-row-mom"}]},
     {"name": "details", "about": "Conversation details open", "spec": [{"click": "[data-mdetails]"}],
-     "gtk": [{"activate": "msg-info"}]},
+     "gtk": [{"activate": "msg-info"}],
+     "spec_phone": [{"click": "[data-mcv=\"crew\"]"}, {"click": "[data-misl]"}], "gtk_phone": [{"activate": "msg-phone-open"}, {"activate": "msg-info"}]},
     {"name": "selected", "about": "A file message selected", "spec": [{"click": "[data-mid=\"7\"] .bub"}],
-     "gtk": [{"activate": "msg-select-7"}]},
+     "gtk": [{"activate": "msg-select-7"}],
+     "spec_phone": [{"click": "[data-mcv=\"crew\"]"}, {"click": "[data-mid=\"7\"] .bub"}], "gtk_phone": [{"activate": "msg-phone-open"}, {"activate": "msg-select-7"}]},
     {"name": "compose", "about": "The action center grown into the message editor",
-     "spec": [{"click": "[data-mgrow]"}], "gtk": [{"activate": "msg-expand"}]},
+     "spec": [{"click": "[data-mgrow]"}], "gtk": [{"activate": "msg-expand"}],
+     "spec_phone": [{"click": "[data-mcv=\"crew\"]"}, {"click": "[data-mgrow]"}], "gtk_phone": [{"activate": "msg-phone-open"}, {"activate": "msg-expand"}]},
     {"name": "new", "about": "New message picker above the sidebar foot",
-     "spec": [{"click": "[data-mnew]"}], "gtk": [{"activate": "msg-new"}]},
+     "spec": [{"click": "[data-mnew]"}], "gtk": [{"activate": "msg-new"}],
+     "spec_phone": [{"click": "[data-mpx=\"new\"]"}], "gtk_phone": [{"activate": "msg-show-list"}, {"activate": "msg-new"}]},
     {"name": "attach", "about": "Composer attachment choices",
-     "spec": [{"click": "[data-mattach]"}], "gtk": [{"activate": "msg-attach"}]},
+     "spec": [{"click": "[data-mattach]"}], "gtk": [{"activate": "msg-attach"}],
+     "spec_phone": [{"click": "[data-mcv=\"crew\"]"}, {"click": "[data-mattach]"}], "gtk_phone": [{"activate": "msg-phone-open"}, {"activate": "msg-attach"}]},
     {"name": "emoji", "about": "Composer emoji choices",
-     "spec": [{"click": "[data-memoji]"}], "gtk": [{"activate": "msg-emoji"}]},
+     "spec": [{"click": "[data-memoji]"}], "gtk": [{"activate": "msg-emoji"}],
+     "spec_phone": [{"click": "[data-mcv=\"crew\"]"}, {"click": "[data-memoji]"}], "gtk_phone": [{"activate": "msg-phone-open"}, {"activate": "msg-emoji"}]},
     {"name": "react", "about": "Reaction choices for a selected message",
      "spec": [{"click": "[data-mid=\"7\"] .bub"}, {"click": "[data-mreactpop]"}],
      "gtk": [{"activate": "msg-select-7"}, {"activate": "msg-react"}]},
@@ -44,9 +55,11 @@
      "gtk": [{"activate": "msg-select-7"}, {"activate": "msg-more"}]},
     {"name": "code", "about": "Your Luma code from the new-message picker",
      "spec": [{"click": "[data-mnew]"}, {"click": "[data-mmycode]"}],
-     "gtk": [{"activate": "msg-new"}, {"activate": "msg-own-code"}]}
+     "gtk": [{"activate": "msg-new"}, {"activate": "msg-own-code"}],
+     "spec_phone": [{"click": "[data-mpx=\"new\"]"}, {"click": "[data-mmycode]"}], "gtk_phone": [{"activate": "msg-show-list"}, {"activate": "msg-new"}, {"activate": "msg-own-code"}]},
+    {"name": "list", "about": "A phone opens on its conversations", "phone_only": true, "spec": [], "gtk": [{"activate": "msg-show-list"}]}
   ],
-  "phone_states": ["thread", "event", "song", "place", "sms", "details", "selected", "compose", "attach", "emoji", "react", "more"],
+  "phone_states": ["list", "thread", "event", "song", "place", "sms", "details", "selected", "compose", "attach", "emoji", "new", "code"],
   "groups": [
     {"name": "window controls", "spec": "#w-messages > .wctl", "info_only": true},
     {"name": "title row", "spec": "#m-top"},
@@ -65,6 +78,7 @@
     {"spec": "#m-main", "gtk": "msg-island", "name": "conversation island"},
     {"spec": "#m-light", "gtk": "msg-light", "name": "conversation light"},
     {"spec": "#m-bar", "gtk": "msg-bar", "name": "action center"},
-    {"spec": "#m-det", "gtk": "msg-details", "name": "details pane"}
+    {"spec": "#m-det", "gtk": "msg-details", "name": "details pane"},
+    {"spec": "#m-head .misl", "gtk": "msg-title-island", "name": "title island"}
   ]
 }
