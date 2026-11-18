@@ -346,11 +346,15 @@ class Session:
 
     @staticmethod
     def render_device(requested=None):
+        from . import host
         candidates = [Path(requested)] if requested else sorted(Path('/dev/dri').glob('renderD*'))
         for path in candidates:
             path = path.resolve()
             if re.fullmatch(r'/dev/dri/renderD[0-9]+', str(path)) and path.is_char_device() and os.access(path, os.R_OK | os.W_OK):
-                return str(path)
+                if host.mesa_render_node(path):
+                    return str(path)
+                if requested:
+                    raise TesterError('The selected GPU uses a driver Try Luma cannot render with. Choose Software graphics.')
         if requested:
             raise TesterError('The selected GPU render device is not accessible.')
         return None
