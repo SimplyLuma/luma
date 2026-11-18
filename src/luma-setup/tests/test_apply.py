@@ -69,6 +69,29 @@ class Apply(unittest.TestCase):
         welcome = json.loads((self.state / "welcome" / "nick").read_text())
         self.assertEqual(welcome["accessibility"], {"zoom": True})
 
+    def test_locale_defaults_to_english_us(self):
+        answers = dict(ANSWERS)
+        del answers["locale"]
+        bus = FakeBus()
+        out = io.StringIO()
+        apply.apply(answers, out=out, bus=bus, state_dir=self.state)
+        self.assertIn("step language ok", out.getvalue())
+        self.assertIn(("org.freedesktop.locale1", "SetLocale", (["LANG=en_US.UTF-8"], False)), bus.calls)
+        self.assertIn(("org.freedesktop.Accounts.User", "SetLanguage", ("en_US.UTF-8",)), bus.calls)
+
+    def test_refused_locale_falls_back_to_english_us(self):
+        class Refusing(FakeBus):
+            def call(self, name, path, interface, method, signature, args, reply=None):
+                if method == "SetLocale" and args[0] != ["LANG=en_US.UTF-8"]:
+                    self.calls.append((interface, method, args))
+                    raise RuntimeError("Locale xx_XX.UTF-8 not installed, refusing.")
+                return super().call(name, path, interface, method, signature, args, reply)
+        bus, out = Refusing(), io.StringIO()
+        apply.apply(dict(ANSWERS, locale="xx_XX.UTF-8"), out=out, bus=bus, state_dir=self.state)
+        self.assertIn("step language fail", out.getvalue())
+        locales = [a for _i, m, a in bus.calls if m == "SetLocale"]
+        self.assertEqual(locales, [(["LANG=xx_XX.UTF-8"], False), (["LANG=en_US.UTF-8"], False)])
+
     def test_once_only(self):
         apply.apply(dict(ANSWERS), out=io.StringIO(), bus=FakeBus(), state_dir=self.state)
         with self.assertRaises(apply.Refused):

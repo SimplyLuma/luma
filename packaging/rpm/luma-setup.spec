@@ -2,7 +2,7 @@
 
 Name:           luma-setup
 Version:        0.2.0
-Release:        1.luma.4%{?dist}
+Release:        1.luma.5%{?dist}
 Summary:        Set up this Luma: language, network, your account and the device's name
 License:        Apache-2.0
 URL:            https://projectluma.org/setup
@@ -106,6 +106,12 @@ cd tests && PYTHONPATH=$PWD/.. LUMA_SETUP_FIXTURE=1 %{python3} -m unittest disco
 %{_datadir}/applications/org.projectluma.Setup.desktop
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.5
+- The system locale (LANG, so language and region) is always set at Finish:
+  the person's choice, else English (US); a locale localed refuses falls back
+  to English (US) and the step reports a failure. The account's language
+  follows the same default.
+
 * Fri Nov 06 2026 Project Luma <maintainers@projectluma.org> - 0.2.0-1.luma.4
 - An account left half-made (useradd failing on the home folder, or no
   password set) is removed again, so Finish can be pressed again (it refused
