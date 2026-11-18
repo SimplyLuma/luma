@@ -395,10 +395,15 @@ def launch(state=None):
             self.pause_button = self.button('Pause', self.pause, icon='pause')
             self.shutdown_button = self.button('Shut Down', self.stop, icon='power')
             self.device_button = self.button('Device', self.show_device, icon='smartphone')
-            self.home_button = self.button('Home', self.home, icon='house')
-            self.home_button.set_visible(False)
+            # Handheld navigation: the same actions as the guest's gesture bar.
+            self.back_button = make_control(BarAction('chevron-left', tooltip='Back', on_activate=lambda:self.navigate('back')))
+            self.home_button = make_control(BarAction('house', tooltip='Home', on_activate=self.home))
+            self.switcher_button = make_control(BarAction('square-stack', tooltip='App switcher', on_activate=lambda:self.navigate('switcher')))
+            for button in (self.back_button, self.home_button, self.switcher_button):
+                button.set_visible(False)
             self.toolbar.show_bar([BarWidget(self.sidebar_toggle), SEPARATOR, BarWidget(self.arch_menu), BarWidget(self.build_menu),
-                SEPARATOR, BarWidget(self.device_button), BarWidget(self.home_button), BarWidget(self.run_button),
+                SEPARATOR, BarWidget(self.device_button), BarWidget(self.back_button), BarWidget(self.home_button),
+                BarWidget(self.switcher_button), BarWidget(self.run_button),
                 BarWidget(self.pause_button), BarWidget(self.shutdown_button)])
             self.toolbar.set_visible(False)
 
@@ -1069,8 +1074,13 @@ def launch(state=None):
                 capabilities.get('dynamic_display', True) and
                 (not running or (self.graphical_ready and self.session.status()=='running')))
             self.device_button.set_tooltip_text(None if capabilities.get('dynamic_display', True) else 'This image uses a fixed phone display.')
-            self.home_button.set_visible(running and not installer and self.target == 'mobile' and capabilities.get('home', True))
-            self.home_button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
+            shared = bool(self.session and self.session.manifest.get('guest_protocol') == 'luma-unified-v1')
+            handheld = running and not installer and self.target in ('mobile', 'tablet') and shared
+            self.home_button.set_visible(handheld or (running and not installer and self.target == 'mobile' and capabilities.get('home', True)))
+            self.back_button.set_visible(handheld)
+            self.switcher_button.set_visible(handheld)
+            for button in (self.home_button, self.back_button, self.switcher_button):
+                button.set_sensitive(running and self.graphical_ready and not self.shutting_down and not self.home_busy)
             self.pause_button.set_sensitive(running and not self.shutting_down)
             self.shutdown_button.set_sensitive(running and not self.shutting_down)
             self.words(self.pause_button, 'Resume' if running and self.session.status() == 'paused' else 'Pause')
@@ -1174,17 +1184,25 @@ def launch(state=None):
             threading.Thread(target=worker,daemon=True).start()
 
         def home(self):
+            self.navigate('home')
+
+        def navigate(self, action):
             if not self.running() or not self.graphical_ready or self.shutting_down or self.home_busy:
                 return
             session = self.session
             self.home_busy = True
-            self.home_button.set_sensitive(False)
+            for button in (self.home_button, self.back_button, self.switcher_button):
+                button.set_sensitive(False)
             def finished():
                 self.home_busy = False
+                self.refresh()
                 return False
             def worker():
                 try:
-                    session.home()
+                    if session.manifest.get('guest_protocol') == 'luma-unified-v1':
+                        session.navigate(action)
+                    else:
+                        session.home()
                 except Exception as exc:
                     GLib.idle_add(self.display_failed, self.viewer, str(exc))
                 finally:

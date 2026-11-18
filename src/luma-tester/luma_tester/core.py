@@ -839,9 +839,9 @@ if ready['target'] == 'mobile':
         try:
             result = host.run_ssh(self.ssh(['python3', '-c', MOBILE_SCALE]), stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE, text=True, timeout=30)
-        except subprocess.TimeoutExpired:
+        except (OSError, TesterError, subprocess.TimeoutExpired):
             return None
-        return result.stdout.strip() if result.returncode == 0 else None
+        return (getattr(result, 'stdout', None) or '').strip() if result.returncode == 0 else None
 
     def dev(self, source, command, once=False):
         """Sync/restart a user app; graphical environment comes from guest systemd."""
