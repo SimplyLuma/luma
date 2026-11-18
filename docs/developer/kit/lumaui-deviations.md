@@ -10,6 +10,9 @@ When changing an exception, update both the registry and this document. Keep
 matching narrow, retain explicit bounds where present, and remove a temporary
 exception when its underlying limitation is resolved.
 
+An exception with `"phone": true` (or `false`) applies only to the phone (or the
+computer) captures of its app.
+
 ## no-backdrop-blur
 
 GTK has no backdrop-filter; the kit paints a denser token surface, so the sampled surface colour differs a little.
