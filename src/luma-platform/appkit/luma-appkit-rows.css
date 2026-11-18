@@ -140,6 +140,10 @@ row.lumaui-row-section button.lumaui-section-action image { -gtk-icon-size: var(
   margin-right: calc(-1 * var(--lumaui-sidebar-selection-bleed));
 }
 
+/* A list-first sidebar on a phone is the screen: the window's flat ground under its title and rows (v71
+ * html[data-phone] .win.phone.phstack.navopen list: background var(--win)). Here, not in
+ * the base sheet: luma-appkit.css clears the sidebar surface after it. */
+window.lumaui-phone-device .luma-navigation-sidebar.lumaui-list-first-sidebar { background-color: @luma_window; }
 /* The chosen row is the raised chip with its drop (v70 --chip-edge: 0 3px 8px -3px). */
 .luma-navigation-sidebar.lumaui-sidebar-variant .luma-navigation-list > row.lumaui-row:selected {
   box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;

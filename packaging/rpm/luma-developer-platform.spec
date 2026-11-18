@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.129%{?dist}
+Release:        1.luma.130%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -376,6 +376,15 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.130
+- Title island: its title button reads "<title>. Details" or "<title>.
+  Places", as v71 names it.
+- A list-first sidebar on a phone paints the window's flat ground, and its
+  pinned header sits under the large title.
+- Action bar: a recording well takes the row's spare width beside Pause and
+  Done; its words are ink at 700 with a 10 px dot.
+- Memo transport: the total after the time is v71's small (11.25 px).
+
 * Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.129
 - Title island: the title and subtitle sit on v71's 1.2 line boxes (18 and
   14 px) instead of GTK's font-line factor; a sidebar grown into the island

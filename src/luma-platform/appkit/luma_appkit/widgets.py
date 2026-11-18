@@ -1115,7 +1115,10 @@ class NavigationSidebar(Gtk.Box):
 
         def tiered(tier: str) -> None:
             self._phone_tier = tier == "phone"
-            self.phone_title_label.set_visible(self._phone_title and self._phone_tier)
+            listed = self._phone_title and self._phone_tier
+            self.phone_title_label.set_visible(listed)
+            # The list is the phone's screen, in the window's own flat ground (v71 .phstack.navopen list).
+            (self.add_css_class if listed else self.remove_css_class)("lumaui-list-first-sidebar")
 
         self._phone_watch = watch = window_tier(anchor or root)
         watch.connect("tier-changed", lambda _w, tier: tiered(tier))
@@ -1127,7 +1130,9 @@ class NavigationSidebar(Gtk.Box):
         """Add pinned content above the scrolling destinations, in call order."""
         if not hasattr(self, "_header"):
             self._header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            self.prepend(self._header)
+            title = getattr(self, "phone_title_label", None)
+            # Under the phone's large title, as v71 lists its view heading under it (Memos' "Favorites").
+            self.insert_child_after(self._header, title) if title is not None else self.prepend(self._header)
         self._header.append(widget)
 
     def append_footer(self, widget: Gtk.Widget) -> None:
