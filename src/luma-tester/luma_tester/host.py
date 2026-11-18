@@ -140,6 +140,39 @@ def ssh_output(argv, **kwargs):
     return run_ssh(argv, stdout=subprocess.PIPE, check=True, **kwargs).stdout
 
 
+# Kernel GPU drivers whose OpenGL/Vulkan userspace is not Mesa. Try Luma
+# carries only Mesa, which has no driver for these devices.
+NON_MESA_GPU_DRIVERS = frozenset({'nvidia'})
+
+
+def render_node_driver(node, sysfs='/sys'):
+    """Return the kernel driver bound to a DRM render node, if known."""
+    driver = Path(sysfs) / 'class/drm' / Path(node).name / 'device/driver'
+    try:
+        return driver.resolve(strict=True).name
+    except OSError:
+        return None
+
+
+def mesa_render_node(node, sysfs='/sys'):
+    return render_node_driver(node, sysfs) not in NON_MESA_GPU_DRIVERS
+
+
+def software_ui_graphics(environ, sysfs='/sys'):
+    """Whether the window must be drawn without the bundled Mesa.
+
+    With the proprietary NVIDIA driver the X server's DRI3 hands Mesa a device
+    it cannot drive, and the buffers Mesa falls back to are rejected by the
+    server (BadDrawable from DRI3). GTK then aborts before the first window.
+    GTK's Cairo renderer uses core X requests and works on every X server.
+    The guest keeps its own graphics choice; auto already falls back to
+    software when EGL cannot use the render node.
+    """
+    x11 = environ.get('GDK_BACKEND', '').startswith('x11') or (
+        bool(environ.get('DISPLAY')) and not environ.get('WAYLAND_DISPLAY'))
+    return x11 and (Path(sysfs) / 'module/nvidia').is_dir()
+
+
 def windows():
     return platform.system() == 'Windows'
 

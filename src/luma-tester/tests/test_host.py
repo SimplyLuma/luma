@@ -11,6 +11,27 @@ from luma_tester.core import Session, TesterError
 
 
 class HostTests(unittest.TestCase):
+    def test_nvidia_render_nodes_are_not_mesa(self):
+        with tempfile.TemporaryDirectory() as root:
+            sysfs=Path(root)
+            for node,driver in (('renderD128','nvidia'),('renderD129','i915')):
+                target=sysfs/'bus/pci/drivers'/driver
+                target.mkdir(parents=True,exist_ok=True)
+                (sysfs/'class/drm'/node/'device').mkdir(parents=True)
+                (sysfs/'class/drm'/node/'device/driver').symlink_to(target)
+            self.assertFalse(host.mesa_render_node('/dev/dri/renderD128',sysfs))
+            self.assertTrue(host.mesa_render_node('/dev/dri/renderD129',sysfs))
+            self.assertTrue(host.mesa_render_node('/dev/dri/renderD130',sysfs))
+
+    def test_software_ui_only_for_x11_on_nvidia(self):
+        with tempfile.TemporaryDirectory() as root:
+            sysfs=Path(root)
+            self.assertFalse(host.software_ui_graphics({'DISPLAY':':0'},sysfs))
+            (sysfs/'module/nvidia').mkdir(parents=True)
+            self.assertTrue(host.software_ui_graphics({'DISPLAY':':0'},sysfs))
+            self.assertFalse(host.software_ui_graphics({'DISPLAY':':0','WAYLAND_DISPLAY':'wayland-0'},sysfs))
+            self.assertTrue(host.software_ui_graphics({'DISPLAY':':0','WAYLAND_DISPLAY':'wayland-0','GDK_BACKEND':'x11'},sysfs))
+
     def test_windows_byte_lease_does_not_grow_on_each_lock(self):
         calls=[]
         api=SimpleNamespace(LK_NBLCK=2,locking=lambda *args:calls.append(args))
