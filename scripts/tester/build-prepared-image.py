@@ -160,14 +160,30 @@ WantedBy=multi-user.target
         assert not var_bind.is_symlink(), 'Unexpected OSTree var layout'
         var_bind.mkdir(exist_ok=True)
         run(['mount', '--rbind', var, var_bind])
-        run(['setfiles', '-F', '-c', policy, '-r', deployment, contexts,
-             var_bind / 'home', var_bind / 'lib/dbus'])
+        run(['setfiles', '-F', '-c', policy, '-r', deployment, contexts, var_bind / 'lib/dbus'])
+        # Label home as /home/... from a copy of the contexts without the
+        # /home -> /var/home substitution: nightly 20261106 policy lists home
+        # contexts only under /home, so the substituted path resolves to var_t.
+        spec = output / 'home-contexts'; shutil.rmtree(spec, ignore_errors=True); spec.mkdir()
+        for item in contexts.parent.glob(contexts.name + '*'):
+            if item.is_file() and not item.name.endswith('.bin'):
+                lines = item.read_text().splitlines(True)
+                if item.name.endswith(('.subs', '.subs_dist')):
+                    lines = [l for l in lines if l.split()[:2] != ['/home', '/var/home']]
+                (spec / item.name).write_text(''.join(lines))
+        alias = output / 'home-root'; (alias / 'home').mkdir(parents=True, exist_ok=True)
+        run(['mount', '--bind', var / 'home', alias / 'home'])
+        try:
+            run(['setfiles', '-F', '-c', policy, '-r', alias, spec / contexts.name, alias / 'home'])
+        finally:
+            run(['umount', alias / 'home'])
         run(['umount', '-R', var_bind]);var_bind = None
         run(['sync', '-f', mount])
         run(['fstrim', '-v', mount])
     finally:
         if var_bind is not None:run(['umount', '-R', var_bind])
-        if home_mount is not None:run(['umount', home_mount])
+        # umount -R of the var rbind can take the home submount with it (shared propagation).
+        if home_mount is not None and os.path.ismount(home_mount):run(['umount', home_mount])
         if mounted:run(['umount', mount])
         run(['losetup', '-d', loop])
     image = output / ('try-luma-' + args.arch + '.qcow2')
