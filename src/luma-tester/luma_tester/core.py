@@ -441,7 +441,7 @@ class Session:
             position=argv.index('-nic')
             argv[position:position+2]=['-netdev',f'user,id=network0,hostfwd=tcp:127.0.0.1:{port}-:22','-device','virtio-net-pci,netdev=network0,romfile=']
         argv += ['-fw_cfg','name=opt/luma/experience,string='+experiences.FLAGS.get(experience,experience)]
-        if self.manifest['target'] == 'mobile' or (experience == 'mobile' and
+        if self.manifest['target'] == 'mobile' or (experience in ('mobile', 'tablet') and
                 self.manifest.get('guest_protocol') == 'luma-unified-v1'):
             argv += ['-device', 'virtio-multitouch-pci']
         if embedded:
@@ -627,9 +627,9 @@ class Session:
 
     def touch(self, phase, x, y, width, height):
         """Deliver a real evdev touch contact through QEMU's multitouch device."""
-        mobile=self.manifest['target']=='mobile' or (self.manifest.get('guest_protocol')=='luma-unified-v1' and self.experience=='mobile')
+        mobile=self.manifest['target']=='mobile' or (self.manifest.get('guest_protocol')=='luma-unified-v1' and self.experience in ('mobile','tablet'))
         if not mobile or phase not in ('begin', 'update', 'end', 'cancel'):
-            raise TesterError('Touch input requires a Mobile guest and a valid contact phase.')
+            raise TesterError('Touch input requires a Mobile or Tablet guest and a valid contact phase.')
         if not 1 < width <= 4096 or not 1 < height <= 4096:
             raise TesterError('Invalid touch viewport dimensions.')
         px = int(max(0, min(width - 1, x)) * 32767 / (width - 1))
@@ -647,6 +647,40 @@ class Session:
         else:
             events.append({'type': 'btn', 'data': {'button': 'touch', 'down': False}})
         self.qmp('input-send-event', {'events': events})
+
+    def navigate(self, action):
+        """Home, App switcher or Back in a shared image's Tablet or Mobile shell.
+
+        The shell exposes these only as its own touch gestures (the gesture bar
+        and the right-edge Back swipe), so they are performed with the same
+        multitouch device a finger uses. Tablet has no Back gesture; the shell's
+        own Back sends Alt+Left there, and so does this.
+        """
+        if self.manifest.get('guest_protocol') != 'luma-unified-v1' or self.experience not in ('mobile', 'tablet'):
+            raise TesterError('Navigation buttons require a shared image in Tablet or Mobile.')
+        if action not in ('home', 'switcher', 'back'):
+            raise TesterError('Unknown navigation action.')
+        if action == 'back' and self.experience == 'tablet':
+            self.qmp('send-key', {'keys': [{'type': 'qcode', 'data': 'alt'}, {'type': 'qcode', 'data': 'left'}], 'hold-time': 60})
+            return
+        width, height = (864, 1920) if self.experience == 'mobile' else (1280, 800)
+        if action == 'back':
+            path, hold = [(width - 4, height * .5), (width * .62, height * .5)], 0
+        else:
+            # Up from the gesture bar: a fling goes Home, a pause opens the switcher.
+            path = [(width / 2, height - 6), (width / 2, height * (.62 if action == 'home' else .8))]
+            hold = 0 if action == 'home' else .9
+        (x0, y0), (x1, y1) = path
+        steps = 12
+        self.touch('begin', x0, y0, width, height)
+        for step in range(1, steps + 1):
+            time.sleep(.022)
+            self.touch('update', x0 + (x1 - x0) * step / steps, y0 + (y1 - y0) * step / steps, width, height)
+        deadline = time.monotonic() + hold
+        while time.monotonic() < deadline:
+            time.sleep(.05)
+            self.touch('update', x1, y1, width, height)
+        self.touch('end', x1, y1, width, height)
 
     def display_available(self):
         return self.display_path.is_file() if host.windows() else self.display_path.is_socket()
