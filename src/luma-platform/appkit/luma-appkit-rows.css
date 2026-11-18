@@ -255,6 +255,24 @@ box.lumaui-sidebar-drawer.full .luma-navigation-sidebar.lumaui-sidebar-people .l
 /* Any other variant in the places drawer (v70 .nside at phone width: 264, 12/10/10): the card pads, not the sidebar. */
 box.lumaui-sidebar-drawer:not(.full) .luma-navigation-sidebar.lumaui-sidebar-variant { padding: 0; }
 
+/* A sidebar grown into the island (☰) is the panel's content, and the panel's menu padding its only inset (v71 .fisl and
+ * .crnav grown: padding 54 6 6): the sidebar drops its frame padding, and its rows, footer and headings their inset from
+ * the window edge. A heading's words sit on the rows' glyphs, its action on the rows' counts (v71 .crnav .crnh).
+ * Here, not in the base sheet: this sheet loads after it, so its rules win whatever their specificity. */
+box.lumaui-title-island.grown .luma-navigation-sidebar { padding: 0; }
+box.lumaui-title-island.grown .luma-navigation-sidebar.lumaui-sidebar-destinations .luma-navigation-list > row.lumaui-row,
+box.lumaui-title-island.grown .luma-navigation-sidebar.lumaui-sidebar-destinations > box.luma-navigation-footer,
+box.lumaui-title-island.grown .luma-navigation-sidebar.lumaui-sidebar-places .luma-navigation-list > row.lumaui-row,
+box.lumaui-title-island.grown .luma-navigation-sidebar.lumaui-sidebar-places > box.luma-navigation-footer { margin-left: 0; margin-right: 0; }
+box.lumaui-title-island.grown .luma-navigation-sidebar.lumaui-sidebar-destinations .luma-navigation-list > row.luma-navigation-section {
+  margin-left: 0; margin-right: 0;
+  padding-left: var(--lumaui-nav-destinations-row-padding-x); padding-right: var(--lumaui-nav-destinations-action-heading-padding-end);
+}
+box.lumaui-title-island.grown .luma-navigation-sidebar.lumaui-sidebar-places .luma-navigation-list > row.luma-navigation-section {
+  margin-left: 0; margin-right: 0;
+  padding-left: var(--lumaui-nav-places-row-padding-x); padding-right: var(--lumaui-nav-places-row-padding-x);
+}
+
 /* settings: v70 .cfside (236 wide, padding 0 10 10) with .si rows at 32: a 17 glyph in ink-3, 13/500 in ink-2, an
  * 11.5 ink-4 value at the end; the chosen row in ink with its glyph in the accent ink. The frame's
  * own gap is 0 beside it (NavigationSidebar sets it), since .cfside's right padding is the gap. */

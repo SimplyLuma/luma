@@ -2959,6 +2959,7 @@
   --lumaui-nav-destinations-action-heading-bottom: 4px;
   --lumaui-nav-destinations-action-heading-padding-top: 12px;
   --lumaui-nav-destinations-action-heading-padding-start: 20px;
+  --lumaui-nav-destinations-action-heading-padding-end: 4px;
   --lumaui-nav-places-width: 220px;
   --lumaui-nav-places-padding-top: 4px;
   --lumaui-nav-places-padding-bottom: 10px;
@@ -3350,6 +3351,8 @@
   --lumaui-title-island-title-weight: 650;
   --lumaui-title-island-subtitle-size: 12px;
   --lumaui-title-island-subtitle-weight: 400;
+  --lumaui-title-island-title-line-height: 18px;
+  --lumaui-title-island-subtitle-line-height: 14px;
   --lumaui-title-island-faces-gap: 10px;
   --lumaui-title-island-button-width: 44px;
   --lumaui-title-island-left: 12px;

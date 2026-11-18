@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.128%{?dist}
+Release:        1.luma.129%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -376,6 +376,14 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.129
+- Title island: the title and subtitle sit on v71's 1.2 line boxes (18 and
+  14 px) instead of GTK's font-line factor; a sidebar grown into the island
+  drops its frame padding and row, footer and heading insets, so the panel's
+  menu padding is the drawer's only inset.
+- Action bar: a quick field that shares a phone bar row with a key is the
+  48 px kept well with 16 px text, as in a row of its own.
+
 * Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.128
 - Prepared launch: a prepared app's window is shown on a new surface made at
   the launch, not the one realized while preparing (often at session start,
