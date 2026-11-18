@@ -96,3 +96,31 @@ class LibraryTests(unittest.TestCase):
             url='https://example.invalid/image.zst',sha256='a'*64,size_bytes=100)
         self.assertFalse(image_library.usable(item))
         with self.assertRaises(TesterError):image_library.fetch(item,Path('/unused'),'mobile')
+
+
+class LabelAndOfferTests(unittest.TestCase):
+    def prepared(self, sha, arch='aarch64'):
+        return dict(artifact_id='tester/preview/20261117/'+arch, kind='tester_image', arch=arch,
+            file='try-luma-'+arch+'.qcow2', url='https://example.invalid/try.qcow2', sha256=sha,
+            size_bytes=7_000_000_000, label='Luma nightly', version='20261117',
+            tester_profile=dict(schema=1, id='try-'+arch, target='desktop', arch=arch, boot='uefi',
+                cloud_init=True, media='disk', guest_protocol='luma-unified-v1', user='luma', build='Luma nightly 20261117'))
+
+    def test_menu_labels_use_channel_label_version_cpu_and_size(self):
+        item = self.prepared('a'*64)
+        self.assertEqual(image_library.title(item), 'Luma nightly 20261117')
+        self.assertEqual(image_library.describe(image_library.title(item), item['arch'], item['size_bytes']),
+                         'Luma nightly 20261117 · ARM64 · 7.0 GB')
+        self.assertEqual(image_library.title(dict(item, label=None)), item['file'])
+
+    def test_newer_prepared_image_is_offered_only_when_not_downloaded(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            selected = dict(self.prepared('b'*64)['tester_profile'], image=dict(url='file:///x', sha256='b'*64, bytes=1))
+            item = self.prepared('a'*64)
+            self.assertEqual(image_library.newer_workspace(selected, [item], root), item)
+            self.assertIsNone(image_library.newer_workspace(selected, [self.prepared('a'*64, 'x86_64')], root))
+            self.assertIsNone(image_library.newer_workspace(dict(selected, guest_protocol=None), [item], root))
+            (root/'images').mkdir();(root/'images'/('a'*64+'.qcow2')).touch()
+            self.assertIsNone(image_library.newer_workspace(selected, [item], root))
+
