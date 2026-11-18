@@ -115,6 +115,7 @@ def launch(state=None):
             self.library_error = None
             self.update_checking = False
             self.pending_update = None
+            self.pending_workspace = None
             self.update_preferences = data_root(state)/'update-preferences.json'
             self.selected_variants = {}
             try:
@@ -470,7 +471,7 @@ def launch(state=None):
                     manifest = read_manifest(path)
                     if experiences.compatible(self.target,manifest) and (architecture=='auto' or manifest['arch']==architecture):
                         self.image_paths.append(path)
-                        names.append((manifest.get('build') or manifest['id'])+' · '+('ARM64' if manifest['arch']=='aarch64' else 'x86-64'))
+                        names.append(image_library.describe(manifest.get('build') or manifest['id'],manifest['arch'],manifest['image']['bytes']))
                 except (OSError, TesterError, ValueError, TypeError):
                     continue
             selected = self.select_image()
@@ -494,7 +495,8 @@ def launch(state=None):
                 missing=(f'Choose a Luma {title} image in Images.' if architecture!='auto' else
                     'Add an ARM64 ISO or developer image.' if self.target in ('tv','smart-device') else f'Add a Luma {title} image.')
                 installer=bool(selected and read_manifest(selected).get('media')=='iso')
-                self.status_label.set_label('Ready to start.' if selected else 'Start to download Luma and open your workspace.')
+                self.status_label.set_label(('Ready to start. A newer Luma image is available in Images.' if self.newer_workspace() else 'Ready to start.')
+                    if selected else 'Start to download Luma and open your workspace.')
                 self.run_button.set_sensitive(self.target not in experiences.COMING_SOON)
 
             self.refresh_preset_rows()
@@ -515,7 +517,6 @@ def launch(state=None):
                     identity=(image['target'],image['arch'],image['image']['sha256'])
                     if identity in seen or not experiences.compatible(self.target,image):continue
                     seen.add(identity)
-                    architecture='ARM64' if image['arch']=='aarch64' else 'x86-64'
                     session=Session(path,state)
                     from . import provision
                     status=('Workspace ready' if provision.ready(session) else
@@ -523,12 +524,13 @@ def launch(state=None):
                         if image.get('media')=='iso' else
                         'Installed' if session.disk.exists() else 'Downloaded' if self.image_available(path) else 'Download')
                     command_id='image.local.'+str(len(local))
-                    label=image.get('build') or image['id']
+                    name=image.get('build') or image['id']
+                    label=image_library.describe(name,image['arch'],image['image']['bytes'])
                     storage=dict(image['image'],media=image.get('media','disk'))
                     if image_storage.cache_path(data_root(state),storage).is_file():
                         removals[command_id]=lambda i=storage,n=label:self.confirm_delete_image(i,n)
                     local.append(Command(command_id,label,
-                        lambda p=path:self.use_image(p), description=architecture+' · '+status,
+                        lambda p=path:self.use_image(p), description=status,
                         checked=lambda p=path:p==selected, enabled=lambda:not self.active()))
                 except (OSError,ValueError,TypeError,TesterError):continue
             if local:groups.append(CommandGroup('On this computer',tuple(local)))
@@ -540,11 +542,10 @@ def launch(state=None):
             for index,item in enumerate(published):
                 kind=item.get('kind');entries=commands[kind]
                 downloaded=(data_root(state)/'images'/(item['sha256']+('.qcow2' if kind=='tester_image' else '.iso'))).is_file()
-                detail=('ARM64 · ' if item['arch']=='aarch64' else 'x86-64 · ')
-                detail+=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else '')
-                detail+=('Downloaded' if downloaded else f"{item['size_bytes']/10**9:.1f} GB · Download")
+                detail=('Latest · ' if not entries else '')+('Ready to run · ' if kind=='tester_image' else '')
+                detail+=('Downloaded' if downloaded else 'Download')
                 command_id='image.remote.'+str(index)
-                label=item.get('display_name') or item['file']
+                label=image_library.describe(image_library.title(item),item['arch'],item['size_bytes'])
                 if downloaded:
                     storage=dict(sha256=item['sha256'],media='disk' if kind=='tester_image' else 'iso')
                     removals[command_id]=lambda i=storage,n=label:self.confirm_delete_image(i,n)
@@ -852,7 +853,7 @@ def launch(state=None):
                 self.words(self.return_button, 'Show Luma')
                 self.return_button.set_visible(True)
                 if self.stack.get_visible_child_name() != 'live':
-                    self.window.set_default_size(*( (1000, 920) if self.target == 'mobile' else (1280, 820) ))
+                    self.fit_window(live=True)
                 self.stack.set_visible_child_name('live')
             return False
 
@@ -864,7 +865,7 @@ def launch(state=None):
                 row.set_visible(intent == 'develop')
             if self.stack.get_visible_child_name() == 'welcome':
                 self.stack.set_visible_child_name('live' if self.graphical_ready else 'session')
-                self.window.set_default_size(1100, 760)
+                self.fit_window()
             self.remember()
             self.refresh()
 
@@ -878,10 +879,23 @@ def launch(state=None):
             self.session_title.set_label('Luma ' + experiences.LABELS[target])
             self.workspace_title.set_label('Luma ' + experiences.LABELS[target])
             self.sidebar.list.select_row(self.device_rows[target])
+            if self.stack.get_visible_child_name() != 'welcome':self.fit_window()
             self.update_images()
             self.remember()
 
-        def available_manifests(self):
+        def fit_window(self, live=False):
+            """Shape the window for the experience: portrait for a phone, the panel's shape otherwise."""
+            width, height = ((560, 960) if self.target == 'mobile' else (1280, 860) if self.target == 'tablet'
+                             else (1280, 820) if live else (1100, 760))
+            display = Gdk.Display.get_default()
+            surface = self.window.get_surface()
+            monitor = display.get_monitor_at_surface(surface) if surface else None
+            monitors = display.get_monitors()
+            if monitor is None and monitors.get_n_items():monitor = monitors.get_item(0)
+            if monitor is not None:
+                area = monitor.get_geometry()
+                width, height = min(width, max(480, area.width - 64)), min(height, max(480, area.height - 96))
+            self.window.set_default_size(width, height)
             return image_library.manifest_paths(data_root(state), self.imported,
                 os.environ.get('LUMA_TESTER_CATALOG'))
 
@@ -1089,6 +1103,10 @@ def launch(state=None):
                 artifact = self.pending_update
                 self.pending_update = None
                 self.show_app_update(artifact)
+            elif self.pending_workspace and not active and not self.closing and (modal is None or modal.closed):
+                artifact = self.pending_workspace
+                self.pending_workspace = None
+                self.show_workspace_update(artifact)
             if self.closing and not self.active():
                 self.window.close()
             return True
@@ -1590,7 +1608,9 @@ def launch(state=None):
             self.library_loading=True;self.library_error=None
             def done(items,error):
                 self.library_loading=False;self.library_error=error
-                if items is not None:self.library_items=items
+                if items is not None:
+                    self.library_items=items
+                    self.check_newer_workspace()
                 # Replace the popup only after it closes: never unparent a live menu.
                 if self.build_menu.get_active():
                     self.build_menu.connect('notify::active', self.library_menu_closed)
@@ -1631,8 +1651,7 @@ def launch(state=None):
                 return
             release,_,_=updates.package_identity(artifact)
             # Separate preferences do not rewrite workspace/snapshot selections.
-            try:vm.atomic_json(self.update_preferences,dict(offered_version=release))
-            except OSError:pass
+            self.save_update_preferences(offered_version=release)
             body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
             body.append(self.label(f'Try Luma {release} is available.'))
             body.append(self.label(f"{artifact['size_bytes']/10**6:.0f} MB · Download now and install when you’re ready.",muted=True))
@@ -1641,6 +1660,47 @@ def launch(state=None):
             buttons.append(self.button('Download',lambda:self.download_app_update(artifact),primary=True,icon='download'))
             body.append(buttons)
             self.sheet('Update Try Luma',body,width=400)
+
+        def load_update_preferences(self):
+            try:saved=json.loads(self.update_preferences.read_text())
+            except (OSError,ValueError):saved={}
+            return saved if isinstance(saved,dict) else {}
+
+        def save_update_preferences(self, **values):
+            try:vm.atomic_json(self.update_preferences,dict(self.load_update_preferences(),**values))
+            except OSError:pass
+
+        def newer_workspace(self):
+            selected=self.select_image()
+            if not selected:return None
+            try:return image_library.newer_workspace(read_manifest(selected),self.library_items,data_root(state))
+            except (OSError,ValueError,TypeError,KeyError,TesterError):return None
+
+        def check_newer_workspace(self):
+            """Offer a newly published prepared image once instead of silently keeping the saved one."""
+            artifact=self.newer_workspace()
+            if artifact is None:return
+            if not self.active():self.update_images()
+            if artifact['sha256'] in self.load_update_preferences().get('offered_workspaces',[]):return
+            self.pending_workspace=artifact
+            self.refresh()
+
+        def show_workspace_update(self, artifact):
+            if self.active():
+                self.pending_workspace=artifact
+                return
+            offered=self.load_update_preferences().get('offered_workspaces',[])
+            self.save_update_preferences(offered_workspaces=([artifact['sha256']]+[x for x in offered if isinstance(x,str)])[:8])
+            name=image_library.title(artifact)
+            body=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=16)
+            body.append(self.label(f'{name} is available.'))
+            body.append(self.label(f"{artifact['size_bytes']/10**9:.1f} GB download. It starts a fresh workspace. "
+                'Your current workspace and its snapshots stay on this computer, in Images.',muted=True))
+            buttons=Gtk.Box(spacing=12,homogeneous=True)
+            buttons.append(self.button('Later',self.close_sheet))
+            buttons.append(self.button('Download',lambda:self.download_image(artifact,adopt=True),primary=True,icon='download'))
+            body.append(buttons)
+            self.sheet('New Luma Image',body,width=420)
 
         def download_app_update(self, artifact):
             if self.active():return
@@ -1706,7 +1766,7 @@ def launch(state=None):
                 GLib.idle_add(done,items,error)
             threading.Thread(target=worker,daemon=True).start()
 
-        def download_image(self,artifact,autostart=False):
+        def download_image(self,artifact,autostart=False,adopt=False):
             if self.active():return
             if not image_library.listed(artifact,data_root(state)):
                 self.notify('This image is no longer in the approved catalog.')
@@ -1718,7 +1778,7 @@ def launch(state=None):
             self.progress.set_visible(True)
             self.spinner.set_visible(True)
             self.spinner.start()
-            self.status_label.set_label('Downloading '+(artifact.get('display_name') or artifact['file'])+'…')
+            self.status_label.set_label('Downloading '+image_library.title(artifact)+'…')
             self.stack.set_visible_child_name('session');self.refresh()
             def done(path,error):
                 self.busy=False
@@ -1728,6 +1788,7 @@ def launch(state=None):
                 self.spinner.set_visible(False)
                 if error:self.failed(error)
                 else:
+                    if adopt:self.adopt_workspace(path)
                     self.add_manifest(path)
                     if autostart and not self.closing:self.start()
                 return False
@@ -1739,6 +1800,17 @@ def launch(state=None):
                 except Exception as exc:path=None;error=str(exc)
                 GLib.idle_add(done,path,error)
             threading.Thread(target=worker,daemon=True).start()
+
+        def adopt_workspace(self, path):
+            """Point every experience that used an older prepared image of this CPU at the new one."""
+            new=read_manifest(path)
+            current=list(self.selected_images.items())+[(key.split(':')[0],value) for key,value in self.selected_variants.items()]
+            for target,previous in current:
+                try:old=read_manifest(previous)
+                except (OSError,ValueError,TypeError,TesterError):continue
+                if (old.get('guest_protocol')=='luma-unified-v1' and old['arch']==new['arch']
+                        and old['image']['sha256']!=new['image']['sha256'] and experiences.compatible(target,new)):
+                    self.remember_image(target,path)
 
         def choose_local_image(self):
             if self.active():

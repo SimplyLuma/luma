@@ -118,6 +118,30 @@ class HTTPSRedirects(HTTPRedirectHandler):
         return super().redirect_request(request, response, code, message, headers, new_url)
 
 
+MOBILE_SCALE = '''import os
+from pathlib import Path
+try:experience=Path('/run/luma/experience').read_text().strip()
+except OSError:experience=''
+if experience!='mobile':raise SystemExit(print('unchanged'))
+os.environ['DBUS_SESSION_BUS_ADDRESS']='unix:path=/run/user/%d/bus'%os.getuid()
+from gi.repository import Gio, GLib
+bus=Gio.bus_get_sync(Gio.BusType.SESSION,None)
+NAME='org.gnome.Mutter.DisplayConfig';OBJECT='/org/gnome/Mutter/DisplayConfig'
+def call(method,args=None):
+    return bus.call_sync(NAME,OBJECT,NAME,method,args,None,Gio.DBusCallFlags.NONE,15000,None).unpack()
+serial,monitors,logical,_=call('GetCurrentState')
+spec,modes,_=monitors[0]
+mode=next(m for m in modes if m[6].get('is-current'))
+current=next(l for l in logical if any(tuple(m)==tuple(spec) for m in l[5]))
+if mode[2]<=mode[1] or abs(current[2]-2)<.01 or not any(abs(v-2)<.01 for v in mode[5]):
+    raise SystemExit(print('unchanged'))
+# Method 1 is temporary: no confirmation prompt, nothing stored for other experiences.
+call('ApplyMonitorsConfig',GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})',
+    (serial,1,[(0,0,2.0,current[3],True,[(spec[0],mode[0],{})])],{})))
+print('scale 2')
+'''
+
+
 class Session:
     def __init__(self, manifest, state=None):
         self.manifest = read_manifest(manifest)
@@ -777,6 +801,7 @@ subprocess.run(['gdbus','call','--session','--dest','org.gnome.ScreenSaver',
                 try:
                     if host.run_ssh(self.ssh(['python3','-c',check]),stdout=subprocess.DEVNULL,
                                       stderr=subprocess.DEVNULL,timeout=15).returncode==0:
+                        self.mobile_scale()
                         return
                 except subprocess.TimeoutExpired:pass
                 time.sleep(2)
@@ -803,6 +828,20 @@ if ready['target'] == 'mobile':
             except subprocess.TimeoutExpired:pass
             time.sleep(1)
         raise TesterError('Luma graphical session was not ready; inspect the guest greetd journal.')
+
+    def mobile_scale(self):
+        """Show a shared image's 864x1920 Mobile display at UI scale 2 (a 432x960 phone).
+
+        The guest decides from its own boot experience, so the CLI and the app
+        agree. The configuration is temporary: every boot applies it again and
+        Desktop, Tablet and TV boots of the same workspace keep scale 1.
+        """
+        try:
+            result = host.run_ssh(self.ssh(['python3', '-c', MOBILE_SCALE]), stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            return None
+        return result.stdout.strip() if result.returncode == 0 else None
 
     def dev(self, source, command, once=False):
         """Sync/restart a user app; graphical environment comes from guest systemd."""
