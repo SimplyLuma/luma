@@ -2,10 +2,10 @@
   "schema": "org.projectluma.os-app-baseline-lock/v1",
   "baselines": {
     "aarch64": {
-      "manifest_sha256": "7b10eef51210e4150fbff19d59d22c00d72fba2568ce7abbd2aa07bb03673548"
+      "manifest_sha256": "8d9f1ac13a52053fad155bf26d0cd45840e49ed7a9be94f0ec04bfa243e4e9cb"
     },
     "x86_64": {
-      "manifest_sha256": "f210f0b40b11ceefde0216f938361db75c4a6e3b48b49ab0d69c9c5675ede576"
+      "manifest_sha256": "19fee5bf618ea988999f657ef9880762696e075020d73984df2e17a0230a4bb0"
     }
   },
   "applications": {
@@ -30,14 +30,11 @@
     },
     "org.gnome.Nautilus": {
       "commits": {
-        "aarch64": "2dd6a2f61e02fda48e68aae47c85296eea2e52f2218604f6cbf55fea02e4ba76",
-        "x86_64": "42150c846612aa9a98e16f74a6335d1bede3767a1cae3e31c48139463d06dfa4"
+        "aarch64": "cfed2df111406708e8bc557474a9674e9618850cdd6a6fe7a7494aee18801cff",
+        "x86_64": "2125b29db6c4e35e95c55201be761d7449ffe6efba542f90e8b872dffa0b57c2"
       },
-      "pending": {
-        "reason": "Filer needs the native Filer build; shell-state schema and build-script changes since 2026-10-31 are not in its bundle",
-        "expires": "2026-11-23"
-      },
-      "source_sha256": null
+      "source_sha256": "b7582dc339aec57293f889c83c57a83017f89419c659d7ac172f8f713b61db24",
+      "version": "50.2.2.75"
     },
     "org.projectluma.Ari": {
       "commits": {
