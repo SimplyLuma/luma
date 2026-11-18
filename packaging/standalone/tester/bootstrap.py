@@ -33,6 +33,9 @@ for name in ('__EGL_VENDOR_LIBRARY_DIRS', 'VK_ICD_FILENAMES', 'VK_ADD_DRIVER_FIL
              'VK_ADD_LAYER_PATH', 'VK_ADD_IMPLICIT_LAYER_PATH', 'VK_INSTANCE_LAYERS',
              'VK_LOADER_LAYERS_ENABLE', 'VK_LOADER_LAYERS_ALLOW', 'GTK_PATH', 'GTK_MODULES'):
     os.environ.pop(name, None)
+from luma_tester.host import software_ui_graphics
+if software_ui_graphics(os.environ):
+    os.environ.setdefault('GDK_DISABLE', 'gl,vulkan')
 if not os.environ.get('SSL_CERT_FILE'):
     for candidate in ('/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/cert.pem'):
         if Path(candidate).is_file():
