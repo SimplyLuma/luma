@@ -4,7 +4,8 @@ from pathlib import Path
 from .core import TesterError, digest
 
 CHOICES = ('desktop', 'mobile', 'tablet', 'tv', 'smart-device')
-ARM_FIRST = ('mobile', 'smart-device')
+# The shared OS image runs Mobile on either CPU; only Smart Home is ARM-first.
+ARM_FIRST = ('smart-device',)
 COMING_SOON = ('smart-device',)
 LABELS = {'desktop':'Desktop','mobile':'Mobile','tablet':'Tablet','tv':'TV','smart-device':'Smart Home'}
 FLAGS = {'smart-device':'home'}
