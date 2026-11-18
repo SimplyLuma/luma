@@ -87,8 +87,16 @@ def runs(root, commit):
     return found
 
 
+def file_stem(nevra):
+    """RPM file names leave out the epoch that pins carry (gdm-1:50.3-... is
+    gdm-50.3-....rpm). Fetched files keep the pinned name, epoch included, as
+    pool_merge.py and the pool manifest expect."""
+    return re.sub(r'-\d+:', '-', nevra, count=1)
+
+
 def fetch(run_id, nevra, out, wanted):
     arch = nevra.rsplit('.', 1)[1]
+    by_file = {file_stem(w): w for w in wanted}
     for artifact in gh(f'repos/{REPO}/actions/runs/{run_id}/artifacts')['artifacts']:
         name = artifact['name']
         if artifact['expired'] or (arch != 'noarch' and not name.endswith(arch)):
@@ -96,11 +104,12 @@ def fetch(run_id, nevra, out, wanted):
         with tempfile.TemporaryDirectory() as tmp:
             subprocess.run(['gh', 'run', 'download', str(run_id), '--repo', REPO, '-n', name, '-D', tmp],
                            check=True, capture_output=True)
-            hits = [p for p in Path(tmp).rglob(f'{nevra}.rpm')]
+            hits = [p for p in Path(tmp).rglob(f'{file_stem(nevra)}.rpm')]
             for rpm in Path(tmp).rglob('*.rpm'):
                 # Other missing pins from the same build come along at no extra cost.
-                if rpm.name[:-4] in wanted and not (out / rpm.name).exists():
-                    rpm.replace(out / rpm.name)
+                pinned = by_file.get(rpm.name[:-4])
+                if pinned and not (out / f'{pinned}.rpm').exists():
+                    rpm.replace(out / f'{pinned}.rpm')
             if hits:
                 return name
     return None
