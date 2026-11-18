@@ -18,7 +18,7 @@ class ExperienceTests(unittest.TestCase):
             values,explicit=experiences.architecture_preferences(legacy,host)
             self.assertEqual(values['desktop'],host)
             self.assertEqual(values['tablet'],host)
-            self.assertEqual(values['mobile'],'aarch64')
+            self.assertEqual(values['mobile'],host)
             self.assertEqual(explicit,set())
 
     def test_deliberate_architecture_choices_survive_restart(self):
@@ -46,6 +46,10 @@ class ExperienceTests(unittest.TestCase):
         self.assertEqual(experiences.select('tablet',[x,arm],'aarch64'),'arm')
         self.assertIsNone(experiences.select('mobile',[arm,x],'aarch64'))
         self.assertEqual(experiences.select('mobile',[phone,x],'x86_64'),'phone')
+        # The shared prepared image does Mobile on the host CPU.
+        shared=lambda arch:('shared-'+arch,dict(target='desktop',arch=arch,guest_protocol='luma-unified-v1'))
+        self.assertEqual(experiences.select('mobile',[shared('aarch64'),shared('x86_64')],'x86_64'),'shared-x86_64')
+        self.assertEqual(experiences.select('mobile',[shared('x86_64'),shared('aarch64')],'aarch64'),'shared-aarch64')
 
     def test_explicit_architecture_overrides_policy_without_target_fallback(self):
         images=[('desktop-x86',dict(target='desktop',arch='x86_64')),

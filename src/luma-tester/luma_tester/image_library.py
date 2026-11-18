@@ -47,6 +47,44 @@ def supports(artifact, experience):
     return compatible(experience, developer_profile(artifact))
 
 
+ARCHITECTURES = {'aarch64': 'ARM64', 'x86_64': 'x86-64'}
+
+
+def title(artifact):
+    """Human name from the channel's label and version, never a file name."""
+    name = artifact.get('display_name')
+    label, version = artifact.get('label'), artifact.get('version')
+    if not name and isinstance(label, str) and isinstance(version, str) and label and version:
+        name = label + ' ' + version
+    return name or artifact['file']
+
+
+def describe(name, arch, size):
+    """Menu label: 'Luma nightly 20261117 · ARM64 · 7.0 GB'."""
+    return f'{name} · {ARCHITECTURES.get(arch, arch)} · {size/10**9:.1f} GB'
+
+
+def newer_workspace(selected, items, root):
+    """A published prepared image newer than the selected one, if it is not on this computer.
+
+    Only a prepared shared image is replaced; ISOs and imported disks are the
+    user's own choice. The current workspace is kept until the user switches.
+    """
+    if not selected or selected.get('guest_protocol') != 'luma-unified-v1' or selected.get('media', 'disk') != 'disk':
+        return None
+    for item in items:
+        if (item.get('kind') == 'tester_image' and item.get('arch') == selected['arch']
+                and item.get('sha256') != selected['image']['sha256']
+                and not (Path(root) / 'images' / (item['sha256'] + '.qcow2')).is_file()):
+            try:
+                profile = developer_profile(item)
+            except (TesterError, TypeError, KeyError):
+                continue
+            if profile.get('guest_protocol') == 'luma-unified-v1':
+                return item
+    return None
+
+
 def cached(root):
     try:
         items=json.loads((Path(root)/'download-catalog.json').read_text())
@@ -106,7 +144,7 @@ def _fetch(artifact,root,experience,report,progress):
     validate_iso(destination)
     manifest=dict(schema=1,id='hub-iso-'+artifact['sha256'][:24],target='desktop',
         arch=artifact['arch'],boot='uefi',cloud_init=False,media='iso',user='luma',
-        build=artifact.get('display_name') or artifact['file'],
+        build=title(artifact),
         image=dict(url=destination.as_uri(),bytes=artifact['size_bytes'],sha256=artifact['sha256']))
     path=root/'imported-images'/(manifest['id']+'.json');atomic_json(path,manifest)
     return path
