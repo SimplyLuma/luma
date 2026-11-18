@@ -62,8 +62,15 @@ phone on the same chip inherits all of it, so its `device.toml` and
 **Firmware** never enters git. `firmware.manifest` is the same file the OS
 keeps next to the firmware on the phone (`/var/lib/luma/device-firmware`): a
 header with the file count, then one tab-separated row per directory (`D`),
-file (`F`, with SHA-256) or relative alias (`L`). The OS checks the store
-against it before boot, and `device.toml` records the manifest's own SHA-256.
+file (`F`, with SHA-256) or relative alias (`L`). `device.toml` records the
+manifest's own SHA-256. A device whose store is in `/var` checks it before boot
+with `luma_verify_firmware_store`
+([`scripts/mobile/fp6-native-init-functions.sh`](../scripts/mobile/fp6-native-init-functions.sh)):
+the boot image carries that SHA-256 in `/etc/luma-firmware-manifest.sha256`,
+written by
+[`scripts/mobile/common/firmware-store-anchor.py`](../scripts/mobile/common/firmware-store-anchor.py),
+and the store must hold that manifest as `luma-firmware.manifest` and exactly
+the rows it lists, root-owned, with the header's file count.
 
 ## Support tiers
 
