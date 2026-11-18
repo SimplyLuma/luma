@@ -1090,6 +1090,9 @@ def launch(state=None):
             self.preset_selector.set_sensitive(not active and bool(self.saved_presets))
             self.build_menu.set_sensitive(not active)
             self.arch_menu.set_sensitive(not active)
+            # A running workspace's bar holds its actions only.
+            self.build_menu.set_visible(not running)
+            self.arch_menu.set_visible(not running)
             self.preset_heading.action_button.set_sensitive(not active and bool(self.image_paths))
             for row in self.preset_rows:
                 row.set_sensitive(not active and hasattr(row, 'preset_index'))
