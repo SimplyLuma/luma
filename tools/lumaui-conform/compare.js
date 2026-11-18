@@ -145,6 +145,15 @@ function gtkModel(G) {
       { x, y: top, w: width, h: height }, displayTracking);
     texts.push({ w, text: alias(norm(t)), box: textBox, baseline, font, color, lines, offscreen: !!w.offscreen, placeholder });
   }
+  // Covered: words wholly under an opaque fill painted after them (a phone's grown bar panel over the page,
+  // the GTK side of the spec's covered rule) are not on screen. Paint order is the render nodes' order.
+  { const opIndex = new Map(G.ops.map((o, i) => [o, i]));
+    const covers = G.ops.map((o, i) => [o, i]).filter(([o]) => !o.inset && !o.hidden && (o.op ?? 1) >= 0.98 && ((o.k === 'fill' && o.color && (o.color[3] ?? 1) >= 0.98)
+      || (o.k === 'gradient' && Array.isArray(o.stops) && o.stops.length && o.stops.every(x => (x[1][3] ?? 1) >= 0.98))));
+    const coveredOp = o => { const i = opIndex.get(o), b = B(o.box); return covers.some(([c, j]) => { if (j <= i) return false; const k = 0.3 * (Array.isArray(c.radius) ? Math.max(...c.radius.map(r => Array.isArray(r) ? Math.max(...r) : +r || 0)) : +c.radius || 0), cb = B(c.box);
+      return b.x >= cb.x + k - 0.5 && b.y >= cb.y + k - 0.5 && b.x + b.w <= cb.x + cb.w - k + 0.5 && b.y + b.h <= cb.y + cb.h - k + 0.5; }); };
+    for (let n = texts.length - 1; n >= 0; n--) { const ops = (textOps.get(texts[n].w.id) || []).filter(o => (o.op ?? 1) > 0.02);
+      if (ops.length && ops.every(coveredOp)) texts.splice(n, 1); } }
   // Placeholders of entries: GtkText draws them through a child label (already above).
   const glyphs = G.ops.filter(o => (o.k === 'glyph' || o.k === 'texture') && !o.hidden);
   // A texture is an icon's ink only when it fits the icon (a full-window picture behind, a softened
@@ -190,7 +199,7 @@ function gtkModel(G) {
     const insetRule = o => o.k === 'shadow' && o.inset && o.spread < 0.5 && (Math.abs(o.dx) >= 0.5) !== (Math.abs(o.dy) >= 0.5);
     if (ancestors) own = own.filter(o => o.k !== 'border' && !(o.k === 'shadow' && o.inset && !insetRule(o)));
     // Several fills at one box (the window's ground, then a page painted over it): the last drawn is what shows.
-    const p = {}; for (const o of own) { if (o.k === 'fill' && !o.inset) p.fill = o; if (o.k === 'gradient') p.gradient = o; if (o.k === 'border' && o.widths.some(v => v > 0) && o.colors.some(c => c && c[3] > 0.01)) p.border = o;
+    const p = {}; for (const o of own) { if (o.k === 'fill' && !o.inset) p.fill = o; if (o.k === 'gradient') p.gradient = o; if (o.k === 'border' && o.widths.some((v, i) => v > 0 && o.colors[i] && o.colors[i][3] > 0.01)) { if (o.widths.filter(v => v > 0).length === 1) p.rule = p.rule || o; else p.border = o; }   // one side is a rule (v71's inset 0 -1px 0 hairline), not an edge
       if (o.k === 'shadow' && !o.inset && o.color[3] > 0.02 && (o.blur > 0.5 || o.spread > 0.5)) (p.shadows = p.shadows || []).push(o);
       // An inset ring (spread, no blur, no offset: v70's `inset 0 0 0 1px var(--hair)`) is the surface's edge, as a border is.
       if (o.k === 'shadow' && o.inset && o.color[3] > 0.02 && o.spread >= 0.5 && o.blur <= 0.5 && Math.abs(o.dx) < 0.5 && Math.abs(o.dy) < 0.5) p.ring = p.ring || o;
@@ -276,7 +285,11 @@ function compareState(st, S, G, samples) {
     const ex = { s: samples.specEdge(s.box), g: samples.gtkEdge(g.box) };
     const byEdge = !byPaint && px.s && px.g && dE00(px.s, px.g) > TOL.dE && ex.s && ex.g && dE00(ex.s, ex.g) <= TOL.dE;
     const cs = byPaint ? sFill : byEdge ? ex.s : px.s, cg = byPaint ? gFill : byEdge ? ex.g : px.g;
-    const equivalentFlat = equivalentFlatGradient(sp.backgroundImage, gp.gradient, cs, cg, dE00, TOL.dE);
+    // A GTK ramp whose every stop is within the colour tolerance of the spec's flat fill reads as that fill
+    // (the kit's light bar material, #fff → #f7f8fa, against v71's flat #fbfbfc).
+    const nearFlat = !sGrad && sp.background && gp.gradient && Array.isArray(gp.gradient.stops) && gp.gradient.stops.length >= 2
+      && gp.gradient.stops.every(x => { const c = parseColor(x[1]); return c && (c.a ?? 1) >= 0.99 && dE00(c, parseColor(sp.background)) <= TOL.dE; });
+    const equivalentFlat = nearFlat || equivalentFlatGradient(sp.backgroundImage, gp.gradient, cs, cg, dE00, TOL.dE);
     if (sGrad !== !!gp.gradient && !equivalentFlat && (sp.background || sGrad || gp.fill || gp.gradient)) add('major', s.box, name, 'gradient', sGrad ? 'gradient' : 'flat', gp.gradient ? 'gradient' : 'flat',
       gp.gradient ? `${name}: GTK paints a gradient (${gp.gradient.stops.map(x => hex(parseColor(x[1]))).join(' → ')}); the spec is flat${sFlat ? ' ' + hex(parseColor(sp.background)) : ''}` : `${name}: the spec paints a gradient; GTK is flat`);
     if ((sp.background || sGrad) && !(gp.fill || gp.gradient)) add('major', s.box, name, 'background', hex(parseColor(sp.background)), 'none', `${name}: the spec fills it (${sp.background ? hex(parseColor(sp.background)) : 'gradient'}); GTK draws no background`);
@@ -286,14 +299,16 @@ function compareState(st, S, G, samples) {
       add(Math.abs(sr - gr) > 3 ? 'major' : 'minor', s.box, name, 'radius', f1(sr), f1(gr), `${name}: corner radius ${f1(Math.min(sr, sb.h / 2))} px in spec, ${f1(Math.min(gr, gb.h / 2))} px in GTK`);
     // An edge is a border or an inset ring, either way round (GTK can draw v70's ring as either).
     const sRing = parseShadows(sp.boxShadow).find(x => x.inset && x.color && x.color.a > 0.02 && x.spread >= 0.5 && x.blur <= 0.5 && Math.abs(x.dx) < 0.5 && Math.abs(x.dy) < 0.5);
-    const sEdge = sp.border ? { w: Math.max(...sp.border.widths), c: parseColor(sp.border.colors[0]) } : sRing ? { w: sRing.spread, c: sRing.color } : null;
-    const gEdge = gp.border ? { w: Math.max(...gp.border.widths), c: parseColor(gp.border.colors[0]) } : gp.ring ? { w: gp.ring.spread, c: parseColor(gp.ring.color) } : null;
+    // A border on one side only is a rule, as GTK's is (see paintOf): not an edge on either side.
+    const spBorder = sp.border && sp.border.widths.filter(v => v > 0).length > 1 ? sp.border : null;
+    const sEdge = spBorder ? { w: Math.max(...spBorder.widths), c: parseColor(spBorder.colors[spBorder.widths.findIndex(v => v > 0)]) } : sRing ? { w: sRing.spread, c: sRing.color } : null;
+    const gEdge = gp.border ? { w: Math.max(...gp.border.widths), c: parseColor(gp.border.colors[gp.border.widths.findIndex(v => v > 0)]) } : gp.ring ? { w: gp.ring.spread, c: parseColor(gp.ring.color) } : null;
     // A translucent hairline's colour is mostly what it sits on; only an opaque edge's colour is compared.
     if (sEdge && gEdge && Math.abs(sEdge.w - gEdge.w) <= 0.5 && sEdge.c && gEdge.c && (sEdge.c.a ?? 1) > 0.5 && (gEdge.c.a ?? 1) > 0.5) {
       const d = dE00(sEdge.c, gEdge.c); if (d > TOL.dE) add('minor', s.box, name, 'edge colour', hex(sEdge.c), hex(gEdge.c), `${name}: edge ${hex(sEdge.c)} in spec, ${hex(gEdge.c)} in GTK (ΔE ${f1(d)})`, { mag: d });
     }
     // Only a border is required to match; a ring stands in for a border on the other side (never demanded).
-    const sbw = sp.border ? sEdge.w : gp.border && sRing ? sEdge.w : 0, gbw = gp.border ? gEdge.w : sp.border && gp.ring ? gEdge.w : 0;
+    const sbw = spBorder ? sEdge.w : gp.border && sRing ? sEdge.w : 0, gbw = gp.border ? gEdge.w : spBorder && gp.ring ? gEdge.w : 0;
     if (Math.abs(sbw - gbw) > 0.5) add('minor', s.box, name, 'border', sbw ? `${sbw}px ${hex(sEdge.c)}` : 'none', gbw ? `${gbw}px ${hex(gEdge.c)}` : 'none', `${name}: edge ${sbw ? sbw + ' px ' + hex(sEdge.c) : 'none'} in spec, ${gbw ? gbw + ' px ' + hex(gEdge.c) : 'none'} in GTK`);
     const sSh = (sp.boxShadow || '').split(/,(?![^()]*\))/).map(x => x.trim()).filter(x => x && !/inset/.test(x)).map(x => { const n = x.replace(/rgba?\([^)]*\)/, '').trim().split(/\s+/).map(parseFloat); const c = parseColor(x); return { blur: n[2] || 0, spread: n[3] || 0, a: c ? c.a : 0 }; }).filter(x => x.a > 0.02 && (x.blur > 0.5 || x.spread > 0.5));
     const gSh = gp.shadows || [], sMax = Math.max(0, ...sSh.map(x => x.blur)), gMax = Math.max(0, ...gSh.map(x => x.blur));

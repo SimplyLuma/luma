@@ -137,6 +137,10 @@ v70 leaves some inputs on Chromium's placeholder grey #757575, 3.8:1 on the dark
 
 A TV page's scroll edge fades are longer and eased (about 48 at the top, 128 at the bottom, only where the page continues), Nick's ruling of 1 November 2026 over the mockup's 12/40 linear mask. A glyph in the bottom strip (from y 952 at 1080) stands on a differently faded ground, so its sampled colour differs by up to ΔE 8. Glyph colour only, in that strip; never positions, sizes or other parts.
 
+## figtree-axis-floor-250
+
+v71 draws Memos' recording clock (`.metime.big`) at weight 250. Figtree's `wght` axis runs from 300, so Chromium and GTK both draw the 300 instance; the spec's computed style still reports 250. Memos only, a time of the form m:ss, font weight 250 against 300; never size, width or position.
+
 ## First-boot setup (first-boot-*)
 
 The first-boot sheet departs from the Design Center mockup where the one-session redesign was approved, and where the spec capture reads something the design does not draw:

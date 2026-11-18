@@ -535,6 +535,16 @@
       "subject": "^button \"Back\"$",
       "prop": "^surface colour$",
       "max_delta": 5
+    },
+    {
+      "id": "figtree-axis-floor-250",
+      "doc": "lumaui-deviations.md: figtree-axis-floor-250",
+      "reason": "v71 sets Memos' recording clock at weight 250; Figtree's wght axis starts at 300, so Chromium and GTK both draw 300 and only the spec's computed style says 250.",
+      "apps": ["memos"],
+      "subject": "^text \"[0-9]+:[0-9]{2}\"$",
+      "prop": "^font weight$",
+      "spec_value": "^250$",
+      "gtk_value": "^300$"
     }
   ]
 }
