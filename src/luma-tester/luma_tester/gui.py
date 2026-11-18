@@ -901,6 +901,8 @@ def launch(state=None):
                 area = monitor.get_geometry()
                 width, height = min(width, max(480, area.width - 64)), min(height, max(480, area.height - 96))
             self.window.set_default_size(width, height)
+
+        def available_manifests(self):
             return image_library.manifest_paths(data_root(state), self.imported,
                 os.environ.get('LUMA_TESTER_CATALOG'))
 
