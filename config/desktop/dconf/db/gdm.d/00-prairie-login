@@ -11,3 +11,11 @@ clock-format='12h'
 # gtk-4.0/settings.ini), so a wrong password's Backspace never asks for a
 # beep; this is the same defense-in-depth for any other bell request.
 audible-bell=false
+
+[org/gnome/mutter]
+# The greeter's Mutter reads this profile, not 00-luma-desktop, so it needs
+# its own copy of the frame thread clamp (Mutter 0026): without it the login
+# screen and its on-screen keyboard draw each frame at the governor's idle
+# frequency. The clamp acts only while those threads run, so a blanked
+# greeter costs nothing more.
+frame-utilization-min=uint32 512

@@ -705,6 +705,17 @@ else
     "false" "${gdm_audible_bell:-<empty>}"
   failures=$((failures + 1))
 fi
+gdm_frame_utilization=$(DCONF_PROFILE=gdm XDG_CONFIG_HOME="$empty_config" \
+  dconf read /org/gnome/mutter/frame-utilization-min)
+if [ "$gdm_frame_utilization" = "uint32 512" ]; then
+  printf 'PASS  GDM compositor frame threads keep their utilization clamp\n'
+else
+  printf 'FAIL  GDM compositor frame threads keep their utilization clamp (expected %s, got %s)\n' \
+    "uint32 512" "${gdm_frame_utilization:-<empty>}"
+  failures=$((failures + 1))
+fi
+check_value 'compositor frame threads keep their utilization clamp' \
+  /org/gnome/mutter/frame-utilization-min 'uint32 512'
 check_value 'weekday is shown by default' \
   /org/gnome/desktop/interface/clock-show-weekday true
 check_value 'date is shown by default' \
