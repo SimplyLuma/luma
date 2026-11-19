@@ -16,6 +16,8 @@ on:
       - 'scripts/packages/build-luma-setup.sh'
       - 'src/luma-setup/**'
       - 'packaging/rpm/luma-setup.spec'
+      - 'scripts/packages/build-intel-media-driver-free.sh'
+      - 'packaging/rpm/intel-media-driver-free.spec'
       - 'config/desktop/inputs.env'
   workflow_dispatch:
 
@@ -76,3 +78,26 @@ jobs:
             build/packages/luma-setup/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
+
+  # The iHD VA-API driver exists only for x86_64.
+  intel-media-driver-x86_64:
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    container:
+      image: registry.fedoraproject.org/fedora@sha256:69b1219730fe52d6cbb0874cbc1a36dd43b722354a603f6cdf73acbff8dd7c59
+    env:
+      LUMA_TARGET_ARCHITECTURE: x86_64
+      LUMA_RPM_BUILDER_DIRECT: '1'
+    steps:
+      - name: Prepare native Fedora build tools
+        run: dnf5 -y install git cpio curl rpm-build dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build and check intel-media-driver-free
+        run: bash scripts/packages/build-intel-media-driver-free.sh
+      - name: Retain checked packages and source RPMs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-intel-media-driver-x86_64
+          path: build/packages/intel-media-driver-free/
+          if-no-files-found: error
+          retention-days: 30
