@@ -719,3 +719,12 @@ took a tap: a tap on the rest of the auth prompt entry's box, about half of
 what a finger sees, did nothing, and now focuses the field and opens the
 keyboard. Test: `keycap-policy.js` in %check (now also given
 `js/gdm/authPrompt.js`). Shell .184.
+
+`0347-gdm-hidden-user-list-focus.patch`: the screen shield activates the
+greeter's login dialog on every idle blank, and activate() focused the user
+list, which the poster (0227) keeps hidden. Its items are never mapped, so
+the list retried moving the focus before every redraw and asked for that
+redraw each time: the blanked greeter drew a frame every refresh (about 180
+wakeups a second and 9 % of a core on a Pixel 8 Pro, memory bus at its top
+clock) and typed keys went to the hidden list. activate() now focuses the
+list only when it is shown. Test: `keycap-policy.js` in %check. Shell .185.

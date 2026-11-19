@@ -342,6 +342,13 @@ if (loginDialog) {
         'the login dialog allocates in the height the keyboard leaves');
     assert(/Main\.keyboard\.connectObject\('visibility-changed', \(\) => this\.queue_relayout\(\), this\)/.test(loginDialog),
         'the login dialog follows the keyboard');
+
+    // The poster keeps the user list hidden; a focused hidden list retries
+    // focusing an item before every redraw, forever.
+    const activateAt = loginDialog.indexOf('    activate() {');
+    const activate = loginDialog.slice(activateAt, loginDialog.indexOf('\n    }', activateAt));
+    assert(activateAt > 0 && /if \(this\._userSelectionBox\.visible\)\s+this\._userList\.grab_key_focus\(\);/.test(activate),
+        'activate() focuses the user list only when it is shown');
 }
 
 const words2 = new Keycap.WordSuggester(['the', 'then', 'they', 'there', 'tax'],
