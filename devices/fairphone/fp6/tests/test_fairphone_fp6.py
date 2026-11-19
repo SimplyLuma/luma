@@ -94,6 +94,17 @@ class FairphoneFp6(unittest.TestCase):
         build = (ROOT / "scripts" / "kernel" / "build-fp6.sh").read_text()
         self.assertIn("compose-fp6-dtb.sh", build)
 
+    def test_firewalld_netfilter_modules_are_built(self):
+        # firewalld loads no ruleset without the inet fib match and the
+        # conntrack helpers of the services its default zone allows.
+        fragments = self.device["kernel"]["config_fragments"]
+        text = "".join((ROOT / f).read_text() for f in fragments)
+        helpers = ("AMANDA", "FTP", "H323", "IRC", "NETBIOS_NS", "PPTP", "SANE", "SIP", "SNMP", "TFTP")
+        for option in ("NFT_FIB_INET", *(f"NF_CONNTRACK_{h}" for h in helpers)):
+            self.assertRegex(text, rf"(?m)^CONFIG_{option}=m$")
+        spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
+        self.assertIn("nf_conntrack_netbios_ns", spec)
+
     def test_uses_the_shared_milos_kernel(self):
         self.assertEqual(self.device["soc"], "qcom/milos")
         self.assertEqual(self.soc["kernel"]["branch"], "milos")
