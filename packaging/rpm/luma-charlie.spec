@@ -2,7 +2,7 @@
 
 Name:           luma-charlie
 Version:        0.2.14
-Release:        1.luma.6.creator20261007.1%{?dist}
+Release:        1.luma.7.creator20261118.1%{?dist}
 Summary:        Native adaptive mail client for Project Luma
 License:        Apache-2.0
 URL:            https://opencharlie.com/
@@ -110,6 +110,11 @@ xvfb-run -a --server-args="-screen 0 800x600x24" dbus-run-session -- \
 %{_datadir}/charlie/charlie.css
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.2.14-1.luma.7.creator20261118.1
+- Phone: the list runs to the top under its title island; v71 row, bundle and thread geometry
+- Phone: the reply well grows the editor; senders' marks, account headings and Information facts
+- Phone: files fill the message column with their apps' icons; quoted text and signatures as v71
+
 * Wed Oct 07 2026 Project Luma <maintainers@projectluma.org> - 0.2.14-1.luma.5.creator20261007.1
 - Keep keyring, OAuth and mail transport in the native signed-application broker
 - Share only the declared mailbox dataset with the independently updated UI

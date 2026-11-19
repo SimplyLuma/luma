@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.97%{?dist}
+Release:        1.luma.98%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -314,6 +314,14 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.98
+- Package capsules run in the host's time zone instead of the image's UTC:
+  podman run --tz=<host zone> with the host's zone database mounted
+  read-only, so /etc/localtime is a link by name for glibc and ICU. While
+  the capsule runs, the launcher follows changes to the host's
+  /etc/localtime (inotify) and replaces the capsule's link to match. TZ is
+  passed through only when the session sets it.
+
 * Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.97
 - Valet runs an AppImage when it is opened (double-click in Filer, a
   browser's downloads), executable bit or not: no Install step. The file is

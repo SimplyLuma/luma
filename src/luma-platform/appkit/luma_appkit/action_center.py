@@ -1848,8 +1848,10 @@ class ActionCenter(Gtk.Box):
                              and any(c.has_css_class("primary") for c in words_only)
                              and any(not c.has_css_class("primary") for c in words_only))
         keyed = any(c.has_css_class("keep-label") and not c.has_css_class("fill") for c in children)
+        # (v71 Memos: the recording well takes the spare width; Pause and Done keep theirs.)
         takes = keyed or any(getattr(c, "bar_wide", False) or getattr(c, "bar_phone_wide", False)
-                             or getattr(c, "bar_search", False) or c.has_css_class("lumaui-ac-prompt") for c in children)
+                             or getattr(c, "bar_search", False) or c.has_css_class("lumaui-ac-prompt")
+                             or (c.has_css_class("live") and c.has_css_class("well")) for c in children)
         for child in children:
             words = getattr(child, "bar_words", None)
             if words is not None:

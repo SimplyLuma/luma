@@ -2,10 +2,10 @@
   "schema": "org.projectluma.os-app-baseline-lock/v1",
   "baselines": {
     "aarch64": {
-      "manifest_sha256": "f1de05d003695f1ec24b05d17b5b1e7df04c7fd9dfcd48ffa275ad7ae8bbeb5c"
+      "manifest_sha256": "02aa61bd0d741e34f98001a76a5ffde538e9382634287372ac698d765b3ccdda"
     },
     "x86_64": {
-      "manifest_sha256": "3683a1ec9fc3ec9a53f9e1441e586e620595ddfd70c0a31c9dcd12ed20d34173"
+      "manifest_sha256": "eb1ba186ea695f1a5dddb8a1926dcc90d0ffd6702521452cd7c93259574c9e4d"
     }
   },
   "applications": {
@@ -30,14 +30,11 @@
     },
     "org.gnome.Nautilus": {
       "commits": {
-        "aarch64": "2dd6a2f61e02fda48e68aae47c85296eea2e52f2218604f6cbf55fea02e4ba76",
-        "x86_64": "42150c846612aa9a98e16f74a6335d1bede3767a1cae3e31c48139463d06dfa4"
+        "aarch64": "cfed2df111406708e8bc557474a9674e9618850cdd6a6fe7a7494aee18801cff",
+        "x86_64": "2125b29db6c4e35e95c55201be761d7449ffe6efba542f90e8b872dffa0b57c2"
       },
-      "pending": {
-        "reason": "Filer needs the native Filer build; shell-state schema and build-script changes since 2026-10-31 are not in its bundle",
-        "expires": "2026-11-23"
-      },
-      "source_sha256": null
+      "source_sha256": "b7582dc339aec57293f889c83c57a83017f89419c659d7ac172f8f713b61db24",
+      "version": "50.2.2.75"
     },
     "org.projectluma.Ari": {
       "commits": {
@@ -49,35 +46,35 @@
     },
     "org.projectluma.Calendar": {
       "commits": {
-        "aarch64": "5302ce7757211a0482003ef37030cf89d2ff6f97cb0e21c5865b386e6218a939",
-        "x86_64": "045ac645e76003d85eabbff6c845f23e8775be80b3cd59c86001541b393ec185"
+        "aarch64": "b5bc646269cf26958d6f6c994b485ea0fe43122862c69c7758884c862a21c8cf",
+        "x86_64": "9ab3c7a665354133859ae3f5f1438d6beb27fe4741807e3139eb365a258fdcf9"
       },
-      "source_sha256": "5ed87fbe0edd1ff4e8c0ba42a3514388acbc0ecbf2857d5c66c49724403473aa",
-      "version": "0.1.2"
+      "source_sha256": "36318ba40b932b9892d711d2019d9151c5579b78cf905378ea2f776cb0b2faa6",
+      "version": "0.1.3"
     },
     "org.projectluma.Camera": {
       "commits": {
-        "aarch64": "0718e39c147b95c2423ab5e2c59347e875a4ef6d5615044e0fe6b7a950b760b7",
-        "x86_64": "cfed7460fab63aaa92042ee764d23827965c3007fea22f8f4c6af84c09ff1112"
+        "aarch64": "1b84faa3e5e1f64b1fb35024a6f421715bf1602594beb6c331098ba723355210",
+        "x86_64": "5dab3e5f699a6039e521b6e8a94c88fa74e9ab6bf9bfee51e2570eefee2dc174"
       },
-      "source_sha256": "c62654c780e940d3d0dbd6bf70aad56ae945c1a65a087c5207016e4682177685",
-      "version": "0.1.2"
+      "source_sha256": "175c96effdfd1cf829b2c5d9fa25c70d76c6f9a82eb13d8324094f7e3db7842d",
+      "version": "0.1.3"
     },
     "org.projectluma.Charlie": {
       "commits": {
-        "aarch64": "ee9e173c7b3f6cc4ab0763bef19b1d94160937a0bd95f27a90b8bbfdf08f61d9",
-        "x86_64": "a8ccda24d500b17d78856b97b2afe04c3258d2893806840cb04bed8798cb2cf1"
+        "aarch64": "d39f692ea658b7ad144f992f2d6b4329c46540cab8fae2b080d93be2984b6dd9",
+        "x86_64": "8b90a152a1c9df3a5925f353f7c2cab769193b73b9877a2643581c171afebd59"
       },
-      "source_sha256": "ca18f3c0d5d517963faaf0705bfe92eef2ac11ae634075c3ad35145e4e122959",
-      "version": "0.2.14.7"
+      "source_sha256": "25dfbacbc9e101a93311d7ceff871c5b39c1797180bc2a8d489aa48e31194371",
+      "version": "0.2.14.8"
     },
     "org.projectluma.Clock": {
       "commits": {
-        "aarch64": "8d062e34c8b35a5fee2bb760862c528a66d7c34bcfe1680ef82354dd06dc4069",
-        "x86_64": "e0a37ed568cb9ee348ac0a79461189855f336813e6fbd9096e5da7442424409c"
+        "aarch64": "e9c8b87e6f8ec2539ebcf0cf6a4fb04644ca31a625f8187cd21c504a3a5b8ef7",
+        "x86_64": "35ccd73f7fc41a26c75c1db454f17655eff10a6fed72e96522e90b6a3afed784"
       },
-      "source_sha256": "c871661f330885bad199f3ff7f5c7cfcdd11965a8cdcd1dbd4291aff57db0800",
-      "version": "0.1.2"
+      "source_sha256": "fa8186a8fc6d8405bd53ae0338a379cf247924e5c5ab550dca5d01ebdd2e8b19",
+      "version": "0.1.3"
     },
     "org.projectluma.Connect": {
       "commits": {
@@ -89,11 +86,11 @@
     },
     "org.projectluma.Contacts": {
       "commits": {
-        "aarch64": "60523ef356193a5b68636f48011f8f50a4c680269007c44fc33a690b754d003e",
-        "x86_64": "18713b03a0e2da0f8d0fad6e4a1c4c76ac1a1fbaf59ec2e55bd87c5a3b35c01e"
+        "aarch64": "eca12041f412bb52dfdddee40ab52285ea60232fe2cbc3f952e7387f01bc473d",
+        "x86_64": "17efbf9d09abb6205d87d8676142ebe0c836c224433b3855261fdda885879bbc"
       },
-      "source_sha256": "06e5721b6b3595d32329434e4284afb399a4cdbefc15fbbe76aff7ac0948c46f",
-      "version": "0.1.2"
+      "source_sha256": "fc4d6446de0c0edfd8c7aabcf742c14e4ea463a201bd1f487dde1bf248905dea",
+      "version": "0.1.3"
     },
     "org.projectluma.Depot": {
       "commits": {
@@ -103,7 +100,7 @@
       "source_sha256": "49422bda503b9dd99a3746a6b5158e457728ad8c3e09e97da36403a50185a90e",
       "version": "0.1.5",
       "pending": {
-        "reason": "only host-side luma_installer.system_app_updates changed (luma-application-installer 1.luma.96); the app does not run it, the next Depot rebuild carries it; 1.luma.97 changes only Valet (installer, workflow.added_appimage)",
+        "reason": "only host-side luma_installer.system_app_updates changed (luma-application-installer 1.luma.96); the app does not run it, the next Depot rebuild carries it; 1.luma.97 changes only Valet (installer, workflow.added_appimage); 1.luma.98 changes only the capsule launcher (launcher)",
         "expires": "2026-11-23"
       }
     },
@@ -124,11 +121,11 @@
     },
     "org.projectluma.Messages": {
       "commits": {
-        "aarch64": "5416c3b6826547081cf5e1c737dd795b1bd07638180a1b6858d99adf5135603e",
-        "x86_64": "4a5021249b91be091295f20dfb1151a8b702fb9255bb34bfa291c5d59aac8528"
+        "aarch64": "c7a062c8a2a2dab5bdb6b63bdfce4dd73f67d8c36e6bcd9b8776f1a0c649f5b0",
+        "x86_64": "5ee548c1251d7e709db59d3ac53daca09d02c97e06e784e738dd244073077b0b"
       },
-      "source_sha256": "6acb6787aebfae2f1751ce0eabd69db1ec09076f166e67399a544f2499c2c83a",
-      "version": "0.1.4"
+      "source_sha256": "bdcbf0b2b6d9fc28df25255a3d9102740a8064603080df8d0dbb4ea4d6380331",
+      "version": "0.1.5"
     },
     "org.projectluma.Mods": {
       "commits": {
@@ -140,35 +137,35 @@
     },
     "org.projectluma.Notes": {
       "commits": {
-        "aarch64": "54df220445aad0ad01d32d647116043f6c9f5901aa9c18130663d7017e1214b1",
-        "x86_64": "a8ff0621e8fa9280171a637b7c5a50e585b47f8b318bd0aba3dc9dee4690e13d"
+        "aarch64": "9edf4ec46ae74cc8053cc8ad7a7c2cc9d6fb02283dd288388bab458cd35cd0f2",
+        "x86_64": "03fe0b230e5831ce3457df4f5917d65c4d4326c1cd43f97a3f05cfd759e55a6d"
       },
-      "source_sha256": "b3ae48363c184a0135a82fde7732b4dd598957e83514b1ff8410de41244cf3a2",
-      "version": "0.1.1"
+      "source_sha256": "4b71069b37309244588c55f48ba72666f62c4d3383e6d160f83d2c335b2826f6",
+      "version": "0.1.2"
     },
     "org.projectluma.Phone": {
       "commits": {
-        "aarch64": "4fe0d1bb7e45ce6f55130cde629a300c77947ae43ba1a4526e84ce9e0148d0cc",
-        "x86_64": "98ad7846623b981ae14e1ba08ce0a764b34f0c917bb2b573f8a487e631e8664d"
+        "aarch64": "04bab44d7405965d968144a6a55738ae70b6577f19f18e2a35a5ce44762cad3f",
+        "x86_64": "e298771c9ce4591f4a07a6595aa06f34ec2489db746b78238ddfe11086f4508a"
       },
-      "source_sha256": "757ad760ea16d2e07047f2e2e4bba6d48576b95713b9a73cfeb9da7534480b22",
-      "version": "0.1.3"
+      "source_sha256": "47971bb2198c30b99cd9a907ed903040b0005364a965b9e7800a73113fdd318e",
+      "version": "0.1.4"
     },
     "org.projectluma.Photos": {
       "commits": {
-        "aarch64": "d08e9ca1a8af82623b0e656322df33b2a249f94770af02105f767304d3506988",
-        "x86_64": "5d480e3e70643a806c49adba95d907c9e535a7b22b3819276eec759760a39bb3"
+        "aarch64": "db9d3474004de459fe302d395a5a76bc365d4b60f961bc431694f4b79fa6634d",
+        "x86_64": "220afe7874f70bac69e0b25e1e28a73c71f78dd1a6ad4ed39ac7b8db8e7c2b33"
       },
-      "source_sha256": "798d0e9a11d6d7185c4539c54e5de78e7a73a6749a472cec8cfc1ef2a6ba2ed2",
-      "version": "0.1.3"
+      "source_sha256": "bf49159e2f577da2c62768378eb67d8ab67bed67ae1f5fd56e7783fe10fce216",
+      "version": "0.1.4"
     },
     "org.projectluma.Tasks": {
       "commits": {
-        "aarch64": "6caf1d22c69b26938842c7415618a521f17283cca52a9ed7ea554745f704cdb2",
-        "x86_64": "26d9b92c9f71799614b7732b2579cf6f11fd9d41880fc9476b2e27f30621f86b"
+        "aarch64": "f0b94754c4e83ba5e84f56b26d85fa90836c82d83a5722c6907186683b5e45ee",
+        "x86_64": "595a4824994e9cb7cd9f2bda9aa4b35eb3b642be82d6c7ebc966beca5141e794"
       },
-      "source_sha256": "62ecb94cb25cb637af0b913c15f862372d102d9b6ae871d3bce155b1558bc19a",
-      "version": "0.1.3"
+      "source_sha256": "77a3cf02c02d950ddee30c487a0926241a18b2fbf58a086fe262d7082129b0c7",
+      "version": "0.1.4"
     },
     "org.projectluma.Tide": {
       "commits": {
@@ -188,19 +185,19 @@
     },
     "org.projectluma.VoiceMemos": {
       "commits": {
-        "aarch64": "dec63dbdee457bad63a47c2d60d3d2bb6ff96e1f2ed8848d70899f62931c1cdd",
-        "x86_64": "86e230bb5dae0bb9b8a62db096d267b0a6482596227eab56677ea11d7ee8af49"
+        "aarch64": "45fec09e6035681f5fa57970661a381aecd15ba909707178a1b7307090fd5c0f",
+        "x86_64": "3dc414660738e96a706f200e7e61c0e908623648482a9ce26a1cf5822d394359"
       },
-      "source_sha256": "684235484a65240f68c2b8454a2f6b5d337b78ed3460fb19bc317d18dc8bd377",
-      "version": "0.1.2"
+      "source_sha256": "9a8ce9d7f38196dcac104772058a137fff32659d5c5fdcb96f6d2ac83c65da97",
+      "version": "0.1.3"
     },
     "org.projectluma.Weather": {
       "commits": {
-        "aarch64": "15dece3bd11d4a35fd05d75255348835cef54d09184ff4ad88cfb956fc6c12d6",
-        "x86_64": "424d54995f00886401e6192dca86a72783f6bc0b0a0e99d09799a02ffcb92ec5"
+        "aarch64": "12e77eb7420ee54e30748bf8230f7d2dd52af4a97a99b76f4ccfbae1b28682b5",
+        "x86_64": "109ac5f87f18df4cae3b4a0be0db5c7d317913460e7065cdf09b17b16c77150b"
       },
-      "source_sha256": "bf41ea3dd57ff40946f90fbe14dec1d39400f24d9db2fef7f3600297d06f8e82",
-      "version": "0.1.2"
+      "source_sha256": "e3d7d102a75f0aef9c7e3445349182f9c6a7365b40622489dd44aed23597272b",
+      "version": "0.1.3"
     }
   }
 }

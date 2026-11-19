@@ -240,3 +240,12 @@ Frost and Glass while preserving the nested sidebar and content toolbar views
 as independently painted islands.
 
 `0157-filer-asynchronous-themed-application-icons.patch` resolves themed application artwork on the GTK thread and decodes non-symbolic artwork through the bounded asynchronous icon cache. This prevents cold SVG decoding from blocking the first Applications frame. Symbolic icons retain GTK palette handling. The regression snapshots a real cold themed SVG, checks the first snapshot latency and verifies the decoded pixels.
+
+`0160-filer-run-programs-outside-the-sandbox.patch` keeps the sandboxed Filer
+from executing anything inside its own sandbox. Run and double-click on an
+executable AppImage open it through OpenURI like any other file, which hands it
+to Valet without the chooser (`open-directly.list`); Valet runs it. Other
+programs go to the host Terminal service with the same `Open` call as Open in
+Terminal, and Terminal 1.luma.10 or later runs them in a session in their
+folder. Scripts and dropping files onto a program have no host route and do
+nothing in the sandbox. The native build is unchanged.

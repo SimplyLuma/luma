@@ -106,12 +106,23 @@ jobs:
 
   tester:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # The QEMU/OVMF set is ~47 MB and the runner mirror sometimes serves it at <100 kB/s.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/tester-apt
+          key: tester-apt-ubuntu-24.04-${{ hashFiles('.github/workflows/source-checks.yml') }}
+          restore-keys: tester-apt-ubuntu-24.04-
       - name: Install Tester contract dependencies
-        timeout-minutes: 5
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y python3-gi gir1.2-glib-2.0 gir1.2-gtk-4.0 gir1.2-gtk-vnc-2.0 xorriso qemu-utils qemu-system-x86 qemu-system-arm ovmf qemu-efi-aarch64 openssh-client rsync
+        timeout-minutes: 12
+        run: |
+          echo 'set man-db/auto-update false' | sudo debconf-communicate >/dev/null 2>&1 || true
+          sudo rm -f /var/lib/man-db/auto-update
+          mkdir -p ~/tester-apt/partial
+          sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 -o DPkg::Lock::Timeout=60 -o Dir::Cache::Archives="$HOME/tester-apt" -o APT::Keep-Downloaded-Packages=true install --no-install-recommends -y python3-gi gir1.2-glib-2.0 gir1.2-gtk-4.0 gir1.2-gtk-vnc-2.0 xorriso qemu-utils qemu-system-x86 qemu-system-arm ovmf qemu-efi-aarch64 openssh-client rsync
+          sudo chown -R "$USER" ~/tester-apt
       - name: Tester workspace, download and VM contracts
         run: PYTHONPATH=src/luma-tester /usr/bin/python3 -B -m unittest discover -s src/luma-tester/tests -p 'test_*.py'
 
@@ -122,3 +133,15 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Depot review checks, permission words and media rules
         run: /usr/bin/python3 -B -m unittest discover -s tools/depot-review/tests -p 'test_*.py'
+
+  touch-lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Lua 5.4 for the plugin parity tests
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends liblua5.4-0
+      - name: Touch Lab recorder, decoders, features, role model and plugin
+        run: |
+          /usr/bin/python3 -B -c "import ast,glob; [ast.parse(open(f).read(), f) for f in glob.glob('tools/touch-lab/touchlab/*.py')]"
+          /usr/bin/python3 -B -m unittest discover -s tools/touch-lab/tests -p 'test_*.py'

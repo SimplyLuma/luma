@@ -21,5 +21,13 @@ from the SRPM pinned in `config/desktop/inputs.env` (desktop-components group
   lists the package types Valet installs; Valet reviews a package and asks
   before installing it. The patch adds OpenURI integration tests for the
   direct, ask, always-ask and untrusted-location cases. Luma-specific.
-- `0000-luma-fedora-spec.patch`: adds the patch, the `luma.N` release and a
+- `0002-request-run-disconnect-off-the-main-loop.patch`: backport of
+  upstream a337e718 (flatpak/xdg-desktop-portal#2093). Every request took
+  its lock for every peer leaving the bus before checking the sender, and
+  OpenDirectory holds that lock while it calls FileManager1.ShowItems
+  synchronously. A client disconnecting during the call parked the main
+  loop; a file manager started by ShowItems that reads the Settings portal
+  during startup then could not answer, and Show in Files took the full
+  25 s D-Bus timeout. Drop when the SRPM is 1.23 or later.
+- `0000-luma-fedora-spec.patch`: adds the patches, the `luma.N` release and a
   `%check` running the upstream OpenURI integration tests.

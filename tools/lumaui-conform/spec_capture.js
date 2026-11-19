@@ -5,6 +5,8 @@
 // app window, relative to the window) and DIR/spec-<state>.png (the window at scale 1).
 const fs = require('fs'), path = require('path');
 const { chromium } = require('./lib/playwright');
+// Required by a test, only the in-page dump is wanted.
+if (require.main !== module) { module.exports = { dump }; return; }
 
 const args = process.argv.slice(2), opt = k => { const i = args.indexOf('--' + k); return i < 0 ? null : (args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : true); };
 const scenario = JSON.parse(fs.readFileSync(opt('scenario'), 'utf8'));
@@ -51,6 +53,39 @@ function dump({ winSel, groups, exclude, pairSels }) {
     // Content the page does not render (a closed <details> body: content-visibility hidden) is not on screen.
     if (el.checkVisibility && !el.checkVisibility()) return false;
     const cs = getComputedStyle(el); return cs.visibility !== 'hidden'; };
+  // Covered: an element wholly under a later, opaque sibling of itself or of one of its ancestors (a phone's
+  // full-screen list over the page it pushes) is not on screen. A cover is a shown box with an opaque background,
+  // its own opacity 1, no mask, clip-path or turn, its visible rect inset by 0.3 of its corner radius (as is the
+  // covered element's). It paints after the covered branch: a higher z-index than the highest on the way up, or
+  // the same and later in the DOM.
+  const alphaOf = c => { if (c === 'none' || c === 'transparent') return 0; const m = /^rgba?\(([^)]*)\)$/.exec(c || ''); if (!m) return 1;
+    const p = m[1].split(/[\s,/]+/).filter(Boolean); if (p.length < 4) return 1; return p[3].endsWith('%') ? parseFloat(p[3]) / 100 : parseFloat(p[3]); };
+  const radPx = (v, q) => /%$/.test(v.trim().split(/\s+/)[0]) ? Math.min(parseFloat(v) / 100 * Math.min(q.width, q.height), Math.min(q.width, q.height) / 2) : px(v);
+  const radiusInset = (cs, q) => 0.3 * Math.max(...[cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(r => radPx(r, q)));
+  const zOf = e => { const cs = getComputedStyle(e), pcs = e.parentElement && getComputedStyle(e.parentElement);
+    return cs.zIndex !== 'auto' && (cs.position !== 'static' || (pcs && /flex|grid/.test(pcs.display))) ? parseInt(cs.zIndex, 10) || 0 : 0; };
+  // Frosted glass counts too: a surface at 3/4 or more over a backdrop blur of 8 px or more (v71's light --bar
+  // at .88 under blur(24px)) leaves nothing legible under it; GTK paints that surface opaque (no backdrop-filter).
+  const frosted = cs => { const m = /blur\(([\d.]+)px\)/.exec(cs.backdropFilter || cs.webkitBackdropFilter || ''); return !!m && parseFloat(m[1]) >= 8; };
+  // An opaque gradient is a solid surface too (v71's light bar material, white to #f7f8fa).
+  const solidGradient = cs => { const g = /^(?:linear|radial)-gradient\((.*)\)$/.exec(cs.backgroundImage || ''); if (!g) return false;
+    const stops = col(g[1]).match(/rgba?\([^)]*\)/g) || []; return stops.length >= 2 && stops.every(c => alphaOf(c) >= 0.98); };
+  const coverOf = s => { const cs = getComputedStyle(s), a = Math.max(alphaOf(col(cs.backgroundColor)), solidGradient(cs) ? 1 : 0); if (!shown(s) || (a < 0.98 && !(a >= 0.75 && frosted(cs))) || parseFloat(cs.opacity) < 0.98 || cs.clipPath !== 'none' || (cs.maskImage && cs.maskImage !== 'none')) return null;
+    if (cs.transform !== 'none') { const m = new DOMMatrix(cs.transform); if (Math.abs(m.b) > 1e-3 || Math.abs(m.c) > 1e-3) return null; }
+    const q = s.getBoundingClientRect(), v = isect(q, clipOf(s)); if (!v) return null;
+    const k = radiusInset(cs, q); return { s, z: zOf(s), l: v.left + k, t: v.top + k, r: v.left + v.width - k, b: v.top + v.height - k }; };
+  const coverKids = new Map();
+  // A sibling's cover may be any opaque part inside it (the phone's title island inside its transparent header):
+  // it paints with that sibling, at the sibling's level.
+  const coversIn = p => { let l = coverKids.get(p); if (!l) { l = []; for (const s of p.children) for (const d of [s, ...s.querySelectorAll('*')]) {
+      const c = coverOf(d); if (c) { c.z = forms(s) ? zOf(s) : Math.max(zOf(s), zOf(d)); c.s = s; l.push(c); } } coverKids.set(p, l); } return l; };
+  // A branch that makes its own stacking context paints as one at its own z; otherwise a descendant's z-index reaches the next level up.
+  const forms = e => { const cs = getComputedStyle(e); return (cs.zIndex !== 'auto' && zOf(e) !== 0) || cs.zIndex !== 'auto' && cs.position !== 'static' || parseFloat(cs.opacity) < 1 || cs.transform !== 'none' || cs.filter !== 'none' || cs.isolation === 'isolate' || cs.position === 'fixed' || cs.position === 'sticky'; };
+  const covered = (el, v, k) => { let z = 0;
+    for (let a = el; a !== win && a.parentElement; a = a.parentElement) { z = forms(a) ? zOf(a) : Math.max(z, zOf(a));
+      for (const c of coversIn(a.parentElement)) if (c.s !== a && (c.z > z || (c.z === z && (a.compareDocumentPosition(c.s) & Node.DOCUMENT_POSITION_FOLLOWING)))
+        && v.left + k >= c.l - 0.5 && v.top + k >= c.t - 0.5 && v.left + v.width - k <= c.r + 0.5 && v.top + v.height - k <= c.b + 0.5) return true; }
+    return false; };
   const roleOf = el => { const r = el.getAttribute('role'); if (r) return r; const t = el.tagName.toLowerCase();
     if (t === 'button' || t === 'summary') return el.classList.contains('sw') ? 'switch' : 'button';
     if (t === 'a') return 'link'; if (/^h[1-6]$/.test(t)) return 'heading'; if (t === 'input' && el.type === 'range') return 'slider'; if (t === 'input' || t === 'textarea') return (el.type === 'checkbox' ? 'checkbox' : el.type === 'search' || el.closest('.srch') ? 'searchbox' : 'textbox');
@@ -82,6 +117,7 @@ function dump({ winSel, groups, exclude, pairSels }) {
     const q = el.getBoundingClientRect(); if (q.width < 0.5 || q.height < 0.5) continue;
     const clip = clipOf(el), vis = el === win ? q : isect(q, clip);
     const cs = getComputedStyle(el), op = opacityOf(el); if (op < 0.02) continue;
+    if (el !== win && vis && covered(el, vis, radiusInset(cs, q))) continue;
     if (!vis) { for (const n of el.childNodes) if (n.nodeType === 3 && n.textContent.trim()) { const r = document.createRange(); r.selectNodeContents(n); const u = r.getBoundingClientRect();
         if (u.width > 0.5) texts.push({ el: null, text: tt(n.textContent.replace(/\s+/g, ' ').trim(), cs), offscreen: true, box: rel(u), font: font(cs, n.parentElement), color: col(cs.color), opacity: op, lines: 1 }); }
       continue; }
@@ -107,6 +143,17 @@ function dump({ winSel, groups, exclude, pairSels }) {
         const tq = isect({ left: x, top: y, right: x + m.width, bottom: y + ascent + descent }, clip);
         if (tq) texts.push({ el: id, text: s, placeholder: !v, box: rel(tq), font: font(cs, el), color: col(v ? cs.color : (getComputedStyle(el, '::placeholder').color || cs.color)), opacity: op, lines: 1 }); } }
     elements.push(rec);
+    // Words a block ::before draws at the top of its element (a phone list's large title, v71 .meside::before):
+    // the pseudo element is not in the DOM, so its run is placed from its box model, at the start of the parent's content.
+    const pb = getComputedStyle(el, '::before'), pc = /^"(.*)"$/s.exec(pb.content || '');
+    if (pc && pc[1].trim() && pb.display === 'block' && pb.position === 'static') {
+      const tx = pc[1].replace(/\s+/g, ' ').trim(), x = q.left + px(cs.borderLeftWidth) + px(cs.paddingLeft) + px(pb.marginLeft) + px(pb.paddingLeft),
+        y = q.top + px(cs.borderTopWidth) + px(cs.paddingTop) + px(pb.marginTop) + px(pb.paddingTop);
+      cx.font = `${pb.fontStyle} ${pb.fontWeight} ${pb.fontSize} ${pb.fontFamily}`; cx.letterSpacing = pb.letterSpacing === 'normal' ? '0px' : pb.letterSpacing;
+      const w = cx.measureText(tx).width; cx.letterSpacing = '0px';
+      const lh = pb.lineHeight === 'normal' ? px(pb.fontSize) * 1.2 : px(pb.lineHeight), tq = isect({ left: x, top: y, right: x + w, bottom: y + lh }, clip);
+      if (tq) texts.push({ el: id, text: tt(tx, pb), pseudo: 'before', box: rel(tq), full: rel({ left: x, top: y, width: w, height: lh }), font: font(pb, el), color: col(pb.color), opacity: op, lines: 1, baseline: +(y - W.top + (lh - px(pb.fontSize) * 1.2) / 2 + asc(pb)).toFixed(2) });
+    }
     // Own text runs: each direct text node, as the browser laid it out.
     for (const n of el.childNodes) { if (n.nodeType !== 3 || !n.textContent.trim()) continue;
       const r = document.createRange(); r.selectNodeContents(n); const rects = [...r.getClientRects()].filter(x => x.width > 0.5);

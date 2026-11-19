@@ -10,6 +10,9 @@ When changing an exception, update both the registry and this document. Keep
 matching narrow, retain explicit bounds where present, and remove a temporary
 exception when its underlying limitation is resolved.
 
+An exception with `"phone": true` (or `false`) applies only to the phone (or the
+computer) captures of its app.
+
 ## no-backdrop-blur
 
 GTK has no backdrop-filter; the kit paints a denser token surface, so the sampled surface colour differs a little.
@@ -134,6 +137,10 @@ v70 leaves some inputs on Chromium's placeholder grey #757575, 3.8:1 on the dark
 
 A TV page's scroll edge fades are longer and eased (about 48 at the top, 128 at the bottom, only where the page continues), Nick's ruling of 1 November 2026 over the mockup's 12/40 linear mask. A glyph in the bottom strip (from y 952 at 1080) stands on a differently faded ground, so its sampled colour differs by up to ΔE 8. Glyph colour only, in that strip; never positions, sizes or other parts.
 
+## figtree-axis-floor-250
+
+v71 draws Memos' recording clock (`.metime.big`) at weight 250. Figtree's `wght` axis runs from 300, so Chromium and GTK both draw the 300 instance; the spec's computed style still reports 250. Memos only, a time of the form m:ss, font weight 250 against 300; never size, width or position.
+
 ## First-boot setup (first-boot-*)
 
 The first-boot sheet departs from the Design Center mockup where the one-session redesign was approved, and where the spec capture reads something the design does not draw:
@@ -157,3 +164,15 @@ Depot (`depot-redesign`) against the Design Center mockup:
 - `depot-story-photo-capture`: the capture's Design Center copy lacks `social-luma/photos`, so the spec's Today story is its gradient alone, while Depot and the Design Center draw the blurred photo on it. Surface colour of the story and its app strip only, on Today. `conform-serve.sh` copies the photos; remove this once the service is reinstalled.
 - `depot-specimen-panel`: FramedPicture draws a specimen's panel (round clip and drop shadow) in its own snapshot at the specimen's box, so the capture gives them to the Off and On panel itself; the mockup draws them on its parent at the same box. Radius and shadow of that panel only.
 - `depot-float-back-blur`: `no-backdrop-blur` for the item page's floating Back key over a picture, up to ΔE 5.
+
+## Charlie's phone (charlie-*, phone-no-key-hints)
+
+- charlie-island-one-control: v71 draws the list's title island (☰ | the mailbox) as one `<button>`, the island itself. LumaUI's TitleIsland draws the same island with ☰ a presentation square merged into the title button (one control for the keyboard and screen readers), so the measured control starts after ☰ and the island's surface (fill, 16 radius, shadow) is the island's. v71 draws ☰ and the grown island's ✕ in ways the capture does not read as glyphs. Nothing on screen differs. Phone captures of list, unread and mailboxes only.
+- charlie-older-date: v71 writes every older day as a weekday; Charlie writes the date once a message is more than a week old ("Sep 19" where v71 says "Sat"). The scenario's text_aliases pair the words; only their width and the end-aligned start differ.
+- phone-no-key-hints: ruled 1 October 2026, no keyboard hints on a phone. v71's phone composer still shows "⌘ Return"; LumaUI's composer keeps its 36 keys on a phone (ActionEditor keep_hint) and drops the hint. Phone captures only (deviation key `phone`).
+- charlie-placeholder-pseudo: v71 draws the composer's placeholder as the editor's ::before content; the capture reports it as the editable element's text, with that element's box and ink. LumaUI draws it where v71 shows it, 16 in and in ink-3.
+- charlie-account-heading-bleed: in the mailboxes grown from the title island, v71 runs an account's heading 10 px past the panel on each side and the panel clips it; LumaUI's heading and hairline span the panel itself, so the measured box is 8 px narrower.
+- charlie-new-email-title: v71's New email composer names itself with plain words in its header; LumaUI's ActionEditor draws its title as the mode chip (a button that takes no focus or taps with one mode), which the comparator pairs with v71's header.
+- charlie-info-rows: v71's Information lists its people as plain rows; LumaUI's DetailsRow is one control each (name and address), for the keyboard and screen readers.
+- charlie-photo-clip: v71 rounds a lone photo with its grid's 18 px clip (the photo inside is square); GTK clips the grid the same at the same box, and the comparator gives that clip to the photo.
+- charlie-open-key-wrap: v71's phone bar wraps its items (.crphbar flex-wrap) and, with a file picked, the Open key's glyph lands over its word: that bar is 8 px taller and its keys sit 4 px higher. LumaUI keeps the key on one line, as every other bar key.

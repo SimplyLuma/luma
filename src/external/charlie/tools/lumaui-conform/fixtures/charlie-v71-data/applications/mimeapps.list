@@ -1,0 +1,3 @@
+[Default Applications]
+application/x-luma-stage=io.luma.Stage.desktop
+application/pdf=org.projectluma.Viewer.desktop

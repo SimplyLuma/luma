@@ -7,10 +7,9 @@ from typing import Callable
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
+from gi.repository import Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from luma_appkit import AudioWaveform, MediaTransport, TypeLabel, apply_type, icons
-from luma_appkit.structure_adapt import WidthWatch
 from .memos_data import Memo, format_duration
 
 
@@ -179,105 +178,67 @@ class MemoDeck(Gtk.Box):
 
 
 class _TranscriptLayout(Gtk.LayoutManager):
-    def do_measure(self, widget, orientation, _for_size):
+    """Speaker paragraphs as one flow: words wrap on Pango's fractional advances and every line, speaker
+    and paragraph sits at its fractional offset, so a long transcript keeps the CSS line pitch (v71 .metx:
+    17 px at 1.55 on a phone) instead of gaining a rounded pixel per line. Advances are read at layout
+    time, after the type the words carry on this tier has been applied."""
+
+    def do_get_request_mode(self, _widget):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_measure(self, widget, orientation, for_size):
         if orientation == Gtk.Orientation.HORIZONTAL:
-            # Reflow follows the parent allocation. Old positions must not
-            # prevent that allocation from shrinking.
             return (0, 0, -1, -1)
-        height = max((word.measure(orientation, -1)[1] for word, _ in widget._words), default=0)
+        width = for_size if for_size > 0 else (widget.get_width() or 360)
+        height = widget._flow(width, None)
         return (height, height, -1, -1)
 
-    def do_allocate(self, widget, _width, height, baseline):
-        for word, x in widget._words:
-            width = word.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
-            transform = Gsk.Transform().translate(Graphene.Point().init(x, 0))
-            word.allocate(width, height, baseline, transform)
+    def do_allocate(self, widget, width, _height, _baseline):
+        widget._flow(width, lambda child, x, y, w, h: child.allocate(
+            w, h, -1, Gsk.Transform().translate(Graphene.Point().init(x, y))))
 
 
-class _TranscriptLine(Gtk.Box):
-    """Position words without retaining an obsolete minimum line width.
+def _line_height(label: Gtk.Label) -> float:
+    return label.get_layout().get_size()[1] / Pango.SCALE
 
-    Gtk.Box owns child disposal; the layout only owns measurement/placement.
-    """
 
-    def __init__(self) -> None:
+class _TranscriptFlow(Gtk.Box):
+    """The paragraphs of one memo: (speaker label or None, word labels), placed by _TranscriptLayout."""
+
+    def __init__(self, paragraph_gap: float, speaker_gap: float) -> None:
         super().__init__(hexpand=True)
-        self._words = []
+        self.set_name("me-words")
+        self.add_css_class("me-words")
+        self.paragraphs: list[tuple[Gtk.Label | None, list[Gtk.Label]]] = []
+        self.paragraph_gap, self.speaker_gap = paragraph_gap, speaker_gap
         self.set_layout_manager(_TranscriptLayout())
 
-    def put(self, label: Gtk.Label, x: float, _y: float) -> None:
-        self._words.append((label, x))
-        self.append(label)
-
-    def remove(self, label: Gtk.Label) -> None:
-        self._words = [(word, x) for word, x in self._words if word is not label]
-        super().remove(label)
-
-
-class _WordLines(Gtk.Box):
-    """Wrap clickable words using Pango's fractional advances."""
-
-    def __init__(self, labels: list[Gtk.Label]) -> None:
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.add_css_class("me-words")
-        self.set_name("me-words")
-        self._labels = labels
-        self._lines: list[_TranscriptLine] = []
-        self._width = 0
-        # One word per line keeps the initial minimum width below phone width.
-        for label in labels:
-            line = _TranscriptLine()
-            line.put(label, 0, 0)
-            line.set_size_request(-1, label.measure(Gtk.Orientation.VERTICAL, -1)[1])
-            self.append(line)
-            self._lines.append(line)
-        self._watch = WidthWatch(self, self._reflow)
-        # The window's width can settle after the watch reports (a resize from 1180 to a compact
-        # 720): a zero-height probe reports this box's own width, and the words rewrap after layout.
-        # (A Box's size_allocate vfunc is not called: its layout manager allocates it.)
-        self._pending = 0
-        self._probe = Gtk.DrawingArea(hexpand=True, height_request=0, can_target=False)
-        self._probe.connect("resize", self._probe_resized)
-        self.prepend(self._probe)
-
-    def _probe_resized(self, _probe: Gtk.DrawingArea, width: int, _height: int) -> None:
-        self._probed = width
-        if width > 0 and width != self._width and not self._pending:
-            self._pending = GLib.idle_add(self._settled)
-
-    def _settled(self) -> bool:
-        self._pending = 0
-        self._reflow(0)
-        return GLib.SOURCE_REMOVE
-
-    def _reflow(self, _window_width: int) -> None:
-        width = getattr(self, "_probed", 0) or self.get_width()
-        if width <= 0 or width == self._width or not self._labels:
-            return
-        self._width = width
-        advances = [label.get_layout().get_size()[0] / Pango.SCALE for label in self._labels]
-        space = Pango.Layout.new(self._labels[0].get_pango_context())
-        space.set_text(" ", -1)
-        gap = space.get_size()[0] / Pango.SCALE
-        for line in self._lines:
-            while child := line.get_first_child():
-                line.remove(child)
-        for old in self._lines:
-            self.remove(old)
-        self._lines.clear()
-        line = None
-        occupied = 0.0
-        for label, advance in zip(self._labels, advances):
-            needed = advance + (gap if occupied else 0)
-            if line is None or occupied + needed > width:
-                line = _TranscriptLine()
-                line.set_size_request(-1, label.measure(Gtk.Orientation.VERTICAL, -1)[1])
-                self.append(line)
-                self._lines.append(line)
-                occupied = 0.0
-                needed = advance
-            line.put(label, occupied + (gap if occupied else 0), 0)
-            occupied += needed
+    def _flow(self, width: float, place) -> int:
+        y = 0.0
+        for index, (speaker, words) in enumerate(self.paragraphs):
+            if index:
+                y += self.paragraph_gap
+            if speaker is not None:
+                if place:
+                    place(speaker, 0.0, y, max(1, int(width)), speaker.measure(Gtk.Orientation.VERTICAL, -1)[1])
+                y += _line_height(speaker) + self.speaker_gap
+            if not words:
+                continue
+            pitch = _line_height(words[0])
+            space = words[0].create_pango_layout(" ").get_size()[0] / Pango.SCALE
+            x = 0.0
+            for word in words:
+                advance = word.get_layout().get_size()[0] / Pango.SCALE
+                if x and x + space + advance > width:
+                    x, y = 0.0, y + pitch
+                elif x:
+                    x += space
+                if place:
+                    place(word, x, y, word.measure(Gtk.Orientation.HORIZONTAL, -1)[1],
+                          word.measure(Gtk.Orientation.VERTICAL, -1)[1])
+                x += advance
+            y += pitch
+        return int(-(-y // 1))
 
 
 class TimedTranscript(Gtk.Box):
@@ -289,11 +250,24 @@ class TimedTranscript(Gtk.Box):
         self.add_css_class("me-transcript")
         self.on_seek = on_seek
         self._words: list[tuple[Gtk.Label, float]] = []
+        self._paragraph_gap, self._speaker_gap = 17.0, 4.0
+        self._flow_box: _TranscriptFlow | None = None
+
+    def set_spacing(self, paragraph: float, speaker: float) -> None:
+        """The gap between paragraphs and under a speaker's name (v71: 16 and 2 on a phone)."""
+        self._paragraph_gap, self._speaker_gap = paragraph, speaker
+        if self._flow_box is not None:
+            self._flow_box.paragraph_gap, self._flow_box.speaker_gap = paragraph, speaker
+            self._flow_box.queue_resize()
+
+    def _clear_words(self) -> None:
+        _clear(self)
+        self._flow_box = None
+        self._words.clear()
 
     def show_memo(self, memo: Memo) -> None:
-        _clear(self)
+        self._clear_words()
         self.remove_css_class("live")
-        self._words.clear()
         if memo.music:
             notice_line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
             glyph = icons.image("music")
@@ -307,14 +281,14 @@ class TimedTranscript(Gtk.Box):
             notice_line.append(notice)
             self.append(notice_line)
             return
+        flow = self._flow_box = _TranscriptFlow(self._paragraph_gap, self._speaker_gap)
         previous_speaker = None
         for index, (speaker, _text) in enumerate(memo.transcript):
-            group = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            group.add_css_class("me-transcript-paragraph")
+            person = None
             if speaker != previous_speaker:
                 person = apply_type(Gtk.Label(label=speaker, xalign=0), "body")
                 person.add_css_class("me-speaker")
-                group.append(person)
+                flow.append(person)
             previous_speaker = speaker
             labels = []
             for word in (word for word in memo.words if word.paragraph == index):
@@ -323,14 +297,14 @@ class TimedTranscript(Gtk.Box):
                 click = Gtk.GestureClick()
                 click.connect("released", lambda _c, _n, _x, _y, at=word.at: self.on_seek(at))
                 label.add_controller(click)
+                flow.append(label)
                 labels.append(label)
                 self._words.append((label, word.at))
-            group.append(_WordLines(labels))
-            self.append(group)
+            flow.paragraphs.append((person, labels))
+        self.append(flow)
 
     def show_live(self, words: tuple[str, ...]) -> None:
-        _clear(self)
-        self._words.clear()
+        self._clear_words()
         self.add_css_class("live")
         # The words as one wrapping label, then the record-red caret (v71 .metx.live, .mecaret).
         line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)

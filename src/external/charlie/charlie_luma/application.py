@@ -178,19 +178,19 @@ class HtmlMessagePreview(Gtk.Box):
         self.viewport.set_child(self.view)
         self.frame.set_child(self.viewport)
 
-        foot = Gtk.CenterBox(orientation=Gtk.Orientation.HORIZONTAL)
+        # v71 .crpbar: under the paper, Show full email at its end.
+        foot = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         foot.add_css_class("charlie-html-preview-foot")
-        foot.set_halign(Gtk.Align.FILL)
-        foot.set_valign(Gtk.Align.END)
-        self.expand_button = Gtk.Button(label="Show full email")
-        self.expand_button.set_valign(Gtk.Align.END)
+        self.expand_button = Gtk.Button(label="Show full email", hexpand=True, halign=Gtk.Align.END)
+        self.expand_button.set_valign(Gtk.Align.START)
         self.expand_button.add_css_class("flat")
         self.expand_button.add_css_class("charlie-html-action")
         self.expand_button.add_css_class("charlie-html-expand")
         self.expand_button.connect("clicked", self._toggle_expanded)
-        foot.set_center_widget(self.expand_button)
-        self.frame.add_overlay(foot)
+        foot.append(self.expand_button)
         self.append(self.frame)
+        self.append(foot)
+        self.foot = foot
 
         self.collapse_button = Gtk.Button(label="Show less")
         self.collapse_button.set_hexpand(True)
@@ -228,6 +228,7 @@ class HtmlMessagePreview(Gtk.Box):
     def _toggle_expanded(self, *_args) -> None:
         self._expanded = not self._expanded
         self.expand_button.set_visible(not self._expanded)
+        self.foot.set_visible(not self._expanded)
         self.collapse_button.set_visible(self._expanded)
         set_preview_mode(self.view, not self._expanded)
         if self._expanded:

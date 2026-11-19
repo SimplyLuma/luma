@@ -39,6 +39,8 @@ class FixturePerson:
     #: A sender that sends designed mail (v71 CRB): its monogram and colour.
     brand: tuple[str, str] | None = None
     hue: float | None = None
+    #: In the address book (v71 PPL). Anyone else wears a plain monogram (v71 .crmono: 650).
+    contact: bool = True
 
 
 PEOPLE = {
@@ -47,9 +49,10 @@ PEOPLE = {
     "SK": FixturePerson("Sam Kaur", "samk@simplyluma.com", ("life-suite-bg-write", .47, .3, 5), hue=200),
     "TH": FixturePerson("Theo Marsh", "theo@simplyluma.com", ("take-back", .575, .12, 5.4), hue=350),
     "AR": FixturePerson("Alex Ruiz", "alexr@simplyluma.com", ("life-professionals-loft", .55, .36, 5.2), hue=262),
-    "MS": FixturePerson("Maya Singh", "maya@fieldhouse.co", hue=20),
-    "BO": FixturePerson("Ben Okoro", "ben@simplyluma.com", hue=140),
-    "EN": FixturePerson("Eli Novak", "eli@simplyluma.com", hue=285),
+    "MS": FixturePerson("Maya Singh", "maya@fieldhouse.co", hue=20, contact=False),
+    # v71 crWho reads PPL before CRP: Ben and Eli wear PPL's hues (30, 230).
+    "BO": FixturePerson("Ben Okoro", "ben@simplyluma.com", hue=30),
+    "EN": FixturePerson("Eli Novak", "eli@simplyluma.com", hue=230),
     "rail": FixturePerson("Coastline Rail", "tickets@coastlinerail.com", brand=("C", "#0f5d73")),
     "light": FixturePerson("Slow Light", "letters@slowlight.email", brand=("S", "#8a5a2b")),
     "parcel": FixturePerson("Parcel & Post", "orders@parcelandpost.com", brand=("P", "#3d4b8f")),

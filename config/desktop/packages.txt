@@ -24,7 +24,7 @@ gnome-shell-extension-tiling-shell-17.3-1.luma.28.fc44.noarch
 luma-calculator-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
 luma-disks-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
 luma-maps-0.1.0-1.luma.7.creator20261005.1.fc44.noarch
-luma-terminal-0.1.0-1.luma.9.fc44.noarch
+luma-terminal-0.1.0-1.luma.11.fc44.noarch
 mutter-50.4-1.luma.21.fc44.x86_64
 mutter-common-50.4-1.luma.21.fc44.noarch
 ibus-1.5.34-4.luma.2.fc44.x86_64
@@ -33,8 +33,8 @@ ibus-gtk4-1.5.34-4.luma.2.fc44.x86_64
 ibus-libs-1.5.34-4.luma.2.fc44.x86_64
 ibus-setup-1.5.34-4.luma.2.fc44.noarch
 python3-ibus-1.5.34-4.luma.2.fc44.x86_64
-nautilus-50.2.2-1.luma.76.nightly20261030.1.fc44.x86_64
-nautilus-extensions-50.2.2-1.luma.76.nightly20261030.1.fc44.x86_64
+nautilus-50.2.2-1.luma.78.fc44.x86_64
+nautilus-extensions-50.2.2-1.luma.78.fc44.x86_64
 
 # Toolkit design system (replace Fedora base packages)
 gtk3-3.24.52-2.luma.10.fc44.x86_64
@@ -48,7 +48,7 @@ fwupd-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
 iio-sensor-proxy-3.8-2.luma.1.fc44.x86_64
-xdg-desktop-portal-1.22.1-1.luma.1.fc44.x86_64
+xdg-desktop-portal-1.22.1-1.luma.2.fc44.x86_64
 NetworkManager-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-adsl-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-bluetooth-1:1.56.1-2.luma.1.fc44.x86_64
@@ -85,8 +85,8 @@ luma-cast-backend-common-0.1.0-1.luma.1.fc44.noarch
 luma-cast-dlna-0.1.0-1.luma.1.fc44.noarch
 luma-cast-googlecast-0.1.0-1.luma.2.fc44.x86_64
 luma-cast-miracast-0.1.0-1.luma.1.fc44.x86_64
-luma-developer-platform-0.1.0-1.luma.128.fc44.x86_64
-luma-developer-platform-sdk-0.1.0-1.luma.128.fc44.noarch
+luma-developer-platform-0.1.0-1.luma.130.fc44.x86_64
+luma-developer-platform-sdk-0.1.0-1.luma.130.fc44.noarch
 luma-mods-0.1.0-1.luma.24.creator20261007.1.fc44.noarch
 luma-monitor-0.1.0-1.luma.22.fc44.noarch
 luma-notification-policy-0.1.0-1.luma.1~preview.20260905.1.fc44.noarch
@@ -98,13 +98,13 @@ luma-home-widgets-0.1.0-1.luma.6.fc44.x86_64
 luma-shell-state-0.2.0-1.luma.41.fc44.noarch
 luma-os-remote-1.0.0-1.luma.36.fc44.noarch
 luma-update-1.0.0-1.luma.36.fc44.noarch
-prairie-core-apps-0.1.0-1.luma.136.fc44.noarch
+prairie-core-apps-0.1.0-1.luma.137.fc44.noarch
 luma-messages-bridges-0.1.0-0.11.experiment.fc44.x86_64
 prairie-icon-theme-0.1.0-1.luma.47.fc44.noarch
 
 # Luma Connect, messaging and accounts
 luma-calls-0.1.0-1.luma.3.fc44.noarch
-luma-charlie-0.2.14-1.luma.6.creator20261007.1.fc44.noarch
+luma-charlie-0.2.14-1.luma.7.creator20261118.1.fc44.noarch
 luma-continuity-0.1.0-0.68.experiment.fc44.noarch
 luma-media-bridge-0.1.0-1.luma.2.fc44.noarch
 luma-portal-0.1.0-1.luma.9.fc44.noarch
@@ -116,7 +116,7 @@ python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 luma-android-runtime-0.1.0-1.luma.115.fc44.noarch
 luma-android-images-20.0-1.luma.18.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
-luma-application-installer-0.1.0-1.luma.97.fc44.noarch
+luma-application-installer-0.1.0-1.luma.98.fc44.noarch
 luma-appimage-compat-0.1.0-1.luma.1.fc44.x86_64
 luma-homebrew-0.1.0-1.luma.1.fc44.noarch
 luma-relay-0.1.0-1.luma.12.fc44.noarch
