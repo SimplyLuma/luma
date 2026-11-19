@@ -29,6 +29,8 @@ class Sample:
     confident: bool | None
     scan: float       # device scan time, seconds, unwrapped
     button: bool
+    major: float | None = None   # contact size, mm (surfaces that report it)
+    minor: float | None = None
 
 
 @dataclass
@@ -46,6 +48,7 @@ class Track:
     label_how: str | None = None
     marks: list[str] = field(default_factory=list)   # natural-use marks whose window covered this contact
     scenario: str | None = None
+    role: str | None = None            # contact role (roles.py), from an active-session drill
 
     @property
     def key(self) -> str:
@@ -210,7 +213,20 @@ class TrackBuilder:
                     break
 
 
-def build(records: list[list], descriptor: bytes, decisions: list[Decision] | None = None) -> TrackBuilder:
+def build(records: list[list], descriptor: bytes, decisions: list[Decision] | None = None,
+          absinfo: dict | None = None):
+    """Tracks from a recording: from the HID reports when there are any, else from evdev frames."""
+    if not descriptor and absinfo:
+        eb = EvdevTrackBuilder(absinfo)
+        last = 0
+        for r in records:
+            if r[1] == "e":
+                eb.feed_evdev(r[0], r[3])
+            last = r[0]
+        eb.finish(last)
+        if decisions:
+            eb.attach_libinput(decisions)
+        return eb
     tb = TrackBuilder(descriptor)
     last = 0
     for r in records:
@@ -223,3 +239,93 @@ def build(records: list[list], descriptor: bytes, decisions: list[Decision] | No
     if decisions:
         tb.attach_libinput(decisions)
     return tb
+
+
+class EvdevTrackBuilder:
+    """Tracks straight from evdev MT frames, for surfaces with no HID stream (touchscreens, PS/2 and
+    RMI4 pads). Same interface as TrackBuilder.feed_hid: feed frames in order, read .tracks / .active."""
+
+    ABS_MT_TOUCH_MAJOR, ABS_MT_TOUCH_MINOR, BTN_LEFT = 0x30, 0x31, 0x110
+
+    def __init__(self, absinfo: dict) -> None:
+        def ax(code):
+            a = absinfo.get(str(code)) or absinfo.get(code)
+            return (a["minimum"], a["maximum"], a.get("resolution") or 0) if a else None
+        self.x, self.y = ax(ABS_MT_POSITION_X) or (0, 1, 0), ax(ABS_MT_POSITION_Y) or (0, 1, 0)
+        self.p, self.has_tool = ax(ABS_MT_PRESSURE), ax(ABS_MT_TOOL_TYPE) is not None
+        self.has_major, self.has_minor = ax(self.ABS_MT_TOUCH_MAJOR) is not None, ax(self.ABS_MT_TOUCH_MINOR) is not None
+        self.rx = self.x[2] or (self.x[1] - self.x[0]) / 100.0
+        self.ry = self.y[2] or (self.y[1] - self.y[0]) / 60.0
+        self.layout = None
+        self.pad_mm = ((self.x[1] - self.x[0]) / self.rx, (self.y[1] - self.y[0]) / self.ry)
+        self.active: dict[int, Track] = {}
+        self.tracks: list[Track] = []
+        self._slot = 0
+        self._raw: dict[int, dict] = {}
+        self._tool: dict[int, int] = {}
+        self.button = False
+        self._serial = 0
+        self.slot_history: list = []
+        self._slots: dict = {}
+
+    def feed_evdev(self, t: int, frame: list[list[int]]) -> list[tuple[str, Track]]:
+        events = []
+        for etype, code, value in frame:
+            if etype == 1 and code == self.BTN_LEFT:
+                self.button = bool(value)
+            if etype != 3:
+                continue
+            if code == ABS_MT_SLOT:
+                self._slot = value
+                continue
+            raw = self._raw.setdefault(self._slot, {})
+            if code == ABS_MT_TRACKING_ID:
+                if value >= 0:
+                    self._serial += 1
+                    tr = Track(self._serial, t, slot=self._slot, tracking_id=value)
+                    self.active[self._slot] = tr
+                    self.tracks.append(tr)
+                    events.append(("down", tr))
+                elif self._slot in self.active:
+                    tr = self.active.pop(self._slot)
+                    tr.t_up = t
+                    events.append(("up", tr))
+            elif code == ABS_MT_TOOL_TYPE:
+                self._tool[self._slot] = value
+                tr = self.active.get(self._slot)
+                if tr and value == MT_TOOL_PALM:
+                    tr.kernel_palm_at = tr.kernel_palm_at or t
+            else:
+                raw[code] = value
+        for slot, tr in self.active.items():
+            raw = self._raw.get(slot, {})
+            if ABS_MT_POSITION_X not in raw or ABS_MT_POSITION_Y not in raw:
+                continue
+            p = None
+            if self.p and ABS_MT_PRESSURE in raw:
+                p = (raw[ABS_MT_PRESSURE] - self.p[0]) / max(1, self.p[1] - self.p[0])
+            major = raw.get(self.ABS_MT_TOUCH_MAJOR) / self.rx if self.has_major and self.ABS_MT_TOUCH_MAJOR in raw else None
+            minor = raw.get(self.ABS_MT_TOUCH_MINOR) / self.rx if self.has_minor and self.ABS_MT_TOUCH_MINOR in raw else None
+            conf = (self._tool.get(slot, 0) != MT_TOOL_PALM) if self.has_tool else None
+            tr.samples.append(Sample(t, (raw[ABS_MT_POSITION_X] - self.x[0]) / self.rx,
+                                     (raw[ABS_MT_POSITION_Y] - self.y[0]) / self.ry, p if p is not None else 0.0,
+                                     conf, 0.0, self.button, major, minor))
+            events.append(("move", tr))
+        return events
+
+    def feed_hid(self, t, raw):
+        return []
+
+    def finish(self, t_end: int) -> None:
+        for tr in self.active.values():
+            tr.t_up = tr.t_up or (tr.samples[-1].t if tr.samples else t_end)
+
+    def attach_libinput(self, decisions) -> None:
+        by_slot = {}
+        for tr in self.tracks:
+            by_slot.setdefault(tr.slot, []).append(tr)
+        for d in decisions:
+            for tr in by_slot.get(d.touch, []):
+                if tr.t_down - 2_000_000 <= d.t <= (tr.t_up or d.t) + 60_000_000:
+                    tr.libinput.append(d)
+                    break

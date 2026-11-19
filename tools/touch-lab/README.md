@@ -1,14 +1,18 @@
 # Touch Lab
 
-Data collection for a learned touchpad contact classifier: which contacts are
-intended (pointing, scrolling, tapping, clicking, gestures) and which are
-accidental (a resting thumb, a palm while typing, a graze). It records the
-touchpad at the HID level, libinput's own decisions for the same contacts and
-key-press timing, collects labels from everyday use and from guided
-scenarios, and turns recordings into per-contact feature vectors.
+A learned contact-role classifier for every touch surface Luma runs on. Each
+contact gets a role: pointing finger, second finger, resting thumb, clicking
+thumb, palm or brush. What libinput does with it follows from the role: a
+resting thumb neither moves the pointer nor breaks a scroll, and a pressing
+thumb still clicks (left, not right).
 
-Phase 1 of four: collect (this tool), record, train, ship the model in
-libinput as a Lua plugin from a Luma package ([docs/deployment.md](docs/deployment.md)).
+The tool records the surface (HID reports where there are any, evdev
+frames otherwise), libinput's own decisions and key-press timing; labels
+contacts through a 10-minute active session; trains a small two-stage tree
+model; and exports it as a libinput 1.31 Lua plugin
+([docs/deployment.md](docs/deployment.md)). Surface classes and what the
+model gets from each: [docs/surfaces.md](docs/surfaces.md). The model and
+its (so far synthetic) accuracy: [docs/model.md](docs/model.md).
 
 Recordings stay on the machine they were made on, or on private storage for
 training. They never go into this repository.
@@ -19,7 +23,14 @@ training. They never go into this repository.
 |---|---|
 | `touchlab/recorder.py` | Root-started recorder: hidraw reports, touchpad evdev frames, `libinput debug-events --verbose`, key-press times. Writes compressed chunks as the user. |
 | `touchlab/cli.py` (`touchlab`) | User command: status, pause/resume/stop, `mark`, settings mirror, synthetic sessions, reports, features, `libinput record` export. |
-| `touchlab/app.py` (Touch Lab) | LumaUI app: live view of every contact, a guided pass and a "just use it" mode. |
+| `touchlab/app.py` (Touch Lab) | LumaUI app: the active session (drills, test round with live role dots and corrections, retrain, follow-up drill), a live view of every contact and a "just use it" mode. |
+| `touchlab/surfaces.py` (`touchlab probe`) | Surface classes, capability probe, feature mask; libinput test devices and quirks mined into `data/litest-surfaces.json`. |
+| `touchlab/drills.py` | The 12 drills, per-class text, the rules that give each contact its role, and the follow-up choice. |
+| `touchlab/rfeatures.py` | Role features at 25/50/100/200 ms with masks; mirrored line for line in the plugin. |
+| `touchlab/gbdt.py`, `touchlab/rolemodel.py` (`touchlab train`) | Multi-class boosted trees (pure Python), the two-stage model, votes, the libinput-style baseline, evaluation, personal retrain. |
+| `touchlab/synth_roles.py` | Synthetic active sessions on every surface class, with gold roles. |
+| `touchlab/plugin.py` (`touchlab export-plugin`) | Generates `50-luma-touch-roles.lua` and its quirks from a model. |
+| `plugins/luma-touch-roles.lua.in` | The plugin template: features, tree evaluator, slot handling. |
 | `touchlab/report.py` | Self-contained HTML report: heat maps, force curves, contact timelines against the keyboard, firmware/libinput/label agreement, session stats. |
 | `touchlab/features.py` | Per-contact feature vectors over the first N ms, and short sequences for a sequence model. |
 | `touchlab/synth.py` | Synthetic sessions with the real report descriptor, for tests and the report before any recording exists. |
@@ -79,11 +90,30 @@ A crash loses at most the last 5 seconds.
 Both run `touchlab mark wrong|almost`, which stamps CLOCK_MONOTONIC before
 anything else and shows a short notification.
 
-The app's guided pass runs every scenario twice in random order (34 trials,
-about five minutes) and names each contact by rule
-([touchlab/scenarios.py](touchlab/scenarios.py)); "Again" discards a trial.
-"Just use it" marks a stretch of normal use, where unmarked contacts count as
-intended.
+## The active session
+
+About ten minutes, in the app ("Start the session"):
+
+1. **Drills** (12, 30 to 60 s each): pointing slowly and on targets; thumb
+   resting while pointing and while tapping (the right thumb down, index or
+   middle finger pointing); thumb click; thumb holds the click while a
+   finger drags; two-finger scroll; scroll with the thumb down; typing a
+   prompted sentence (press timing only, never keys); heel of the hand;
+   knuckle brushes; reaching across and gripping. The drill defines the
+   roles, and a rule ([touchlab/drills.py](touchlab/drills.py)) tells apart
+   the few it allows, so every contact is labelled without the user doing
+   anything. "Again" discards a drill; contacts a rule can't place stay
+   unlabelled.
+2. **Learn**: a few personal trees on top of the shipped model (seconds,
+   pure Python), saved to `models/personal.json`.
+3. **Test round** (60 s): live dots coloured by predicted role with its
+   confidence. Keys 1 to 6 (or the bar) correct the last touch.
+4. **Learn** again with the corrections, then a 30 s **follow-up drill**
+   aimed at the most confused pair of roles or the least certain role.
+
+Drill text adapts per class: touchscreens get holding, reaching and edge
+drills instead of clicks and typing. "Just use it" marks a stretch of normal
+use, where unmarked contacts count as intended.
 
 ## Reports and features
 
@@ -93,7 +123,13 @@ touchlab report --root ~/.local/share/luma-touch-lab/synthetic
 touchlab report                        # every recorded session
 touchlab features --out DIR            # features-{25,50,100,200}ms.csv, sequences.jsonl, schema.json
 touchlab export-record SESSION --out s.yml   # for `libinput replay`
+touchlab probe                         # this machine's touch surfaces: class, signals, what's missing
+touchlab train --out DIR               # synthetic + replay (add --recorded for active sessions under --root)
+touchlab export-plugin --model DIR/roles-model.json --out DIR/plugin
 ```
+
+Recorded sessions stay on the machine or in the private store on the build
+host; `touchlab train --recorded --root <private copy>` runs there.
 
 Formats and every feature column: [docs/dataset.md](docs/dataset.md).
 The XPS 14 touchpad's reports: [docs/xps14-touchpad.md](docs/xps14-touchpad.md).
@@ -104,5 +140,7 @@ The XPS 14 touchpad's reports: [docs/xps14-touchpad.md](docs/xps14-touchpad.md).
 python3 -m unittest discover -s tools/touch-lab/tests
 ```
 
-`e2e/uhid_touchpad.py` needs root and a machine with no graphical session;
+The Lua tests (feature and model parity with the Python side, and the
+plugin's slot handling) run where liblua 5.4 is installed and skip
+elsewhere. `e2e/uhid_touchpad.py` needs root and a machine with no graphical session;
 it is run by hand when the recorder or the decoders change.

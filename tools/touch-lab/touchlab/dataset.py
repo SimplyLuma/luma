@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from . import contacts, libinput_log
 from .labels import CLASSES
+from .roles import MULTI_FINGER, ROLES, from_label
 from .session import Session
 
 
@@ -39,7 +40,8 @@ class Joined:
 def join(session: Session) -> Joined:
     recs = session.records()
     decisions = libinput_log.parse(recs, "l")
-    tb = contacts.build(recs, session.descriptor, decisions)
+    absinfo = session.meta.get("devices", {}).get("touchpad", {}).get("evdev_description", {}).get("absinfo")
+    tb = contacts.build(recs, session.descriptor, decisions, absinfo)
     internal = {k["index"] for k in session.keyboards() if k.get("internal")}
     keys = [r[0] for r in recs if r[1] == "k"]
     keys_internal = [r[0] for r in recs if r[1] == "k" and r[2] in internal]
@@ -71,6 +73,7 @@ def join(session: Session) -> Joined:
     by_cid: dict[int, list[contacts.Track]] = {}
     for tr in tracks:
         by_cid.setdefault(tr.cid, []).append(tr)
+    groups: dict[tuple, list] = {}
     for l in labels:
         if l.get("kind") != "contact":
             continue
@@ -83,6 +86,14 @@ def join(session: Session) -> Joined:
             tr = best[1]
             tr.label, tr.label_class = l.get("label"), l.get("class") or CLASSES.get(l.get("label"))
             tr.label_how, tr.scenario = l.get("how"), l.get("scenario")
+            # Phase 1 synthetic labels carry a body-part "role" (finger/thumb/palm); only roles.ROLES count.
+            tr.role = l.get("role") if l.get("role") in ROLES else from_label(l.get("label"))
+            groups.setdefault((l.get("run"), l.get("scenario"), l.get("trial")), []).append(tr)
+    # Phase 1 multi-finger labels: the first finger down in a trial points, the others join it.
+    for members in groups.values():
+        multi = sorted((t for t in members if t.label in MULTI_FINGER), key=lambda t: t.t_down)
+        if multi:
+            multi[0].role = "point"
     for s in scen:
         for tr in tracks:
             if tr.scenario is None and s["t0"] <= tr.t_down <= s["t1"]:
@@ -93,6 +104,9 @@ def join(session: Session) -> Joined:
             end = tr.t_up or tr.t_down
             if tr.t_down <= hi and end >= lo:
                 tr.marks.append(m.get("mark"))
-    w, h = (tb.layout.x_mm or 1.0, tb.layout.y_mm or 1.0) if tb.layout else (1.0, 1.0)
+    if isinstance(tb, contacts.EvdevTrackBuilder):
+        w, h = tb.pad_mm
+    else:
+        w, h = (tb.layout.x_mm or 1.0, tb.layout.y_mm or 1.0) if tb.layout else (1.0, 1.0)
     return Joined(session, tracks, decisions, keys, keys_internal, labels, marks, scen, runs,
                   [r for r in recs if r[1] == "s"], (w, h), tb)
