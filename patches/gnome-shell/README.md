@@ -707,3 +707,15 @@ samples its six application-edge points from one full-stage paint instead of
 six. The bounded native `pick_colors()` call preserves the existing backdrop
 blur capture and releases the image immediately. Test:
 `tests/gnome-shell/presentation/status-ink-capture.js`. Shell .183.
+
+`0346-keyboard-tap-on-field-shows.patch`: on a phone's greeter and lock
+screen a tap on the password field rarely opened the keyboard. A Shell
+entry's text asks to toggle the keyboard on every tap, so a tap on the
+focused field closed an open keyboard and the prompt moved back down from
+under the finger. On Mobile and Tablet, and on a handheld or tablet greeter,
+a tap on a field only shows the keyboard (as on Android and iOS); its hide
+key closes it, and Desktop and TV are unchanged. Only the entry's text line
+took a tap: a tap on the rest of the auth prompt entry's box, about half of
+what a finger sees, did nothing, and now focuses the field and opens the
+keyboard. Test: `keycap-policy.js` in %check (now also given
+`js/gdm/authPrompt.js`). Shell .184.

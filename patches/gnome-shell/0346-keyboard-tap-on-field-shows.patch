@@ -1,0 +1,85 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] keyboard: a tap on a phone's field shows the keyboard
+
+On a phone's greeter and lock screen the password field rarely opened the
+keyboard. Two things made a tap on it miss:
+
+A Shell entry's ClutterText asks to toggle the keyboard on every tap
+(InputPanelState.TOGGLE). A tap on the focused field with the keyboard
+open closed it, and the prompt, laid out above an open keyboard, moved
+back down from under the finger, so the next tap landed on empty ground.
+On Mobile and Tablet, and on a handheld or tablet greeter (which has no
+presentation), a tap on a field now only shows the keyboard, as on
+Android and iOS; the keyboard's hide key closes it. Desktop and TV are
+unchanged.
+
+Only the entry's text line takes a tap. On a phone the entry's box is
+about twice as tall as that line, and a tap on the rest of the box,
+where a finger aiming at "Password" often lands, did nothing. A tap that
+ends on the auth prompt's entry box itself now focuses the field and
+opens the keyboard, as a tap on its text does. The reveal icon keeps its
+own tap.
+
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -12,6 +12,7 @@
+ import * as AuthList from './authList.js';
+ import * as Batch from './batch.js';
+ import * as GdmUtil from './util.js';
++import * as Main from '../ui/main.js';
+ import * as Params from '../misc/params.js';
+ import * as ShellEntry from '../ui/shellEntry.js';
+ import * as UserWidget from '../ui/userWidget.js';
+@@ -363,6 +364,20 @@
+ 
+ 
+         [this._textEntry, this._passwordEntry].forEach(entry => {
++            // Only the entry's text line takes a tap (ClutterText focuses
++            // and asks for the keyboard). The rest of the entry's box, its
++            // padding around that line, is most of what a finger sees on a
++            // phone, and a tap there did nothing. A tap that ends on the box
++            // itself (not on the text or the reveal icon) does what a tap
++            // on the text does.
++            entry.connect('touch-event', (actor, event) => {
++                if (event.type() !== Clutter.EventType.TOUCH_END ||
++                    global.stage.get_event_actor(event) !== entry || !entry.reactive)
++                    return Clutter.EVENT_PROPAGATE;
++                entry.clutter_text.grab_key_focus();
++                Main.keyboard.open(Main.layoutManager.focusIndex);
++                return Clutter.EVENT_STOP;
++            });
+             entry.clutter_text.connect('text-changed', () => {
+                 if (!this._clearingEntry && !this._userVerifier.hasPendingMessages)
+                     this._fadeOutMessage();
+--- a/js/ui/keyboard.js
++++ b/js/ui/keyboard.js
+@@ -3837,7 +3837,7 @@
+         else if (state === Clutter.InputPanelState.ON)
+             enabled = true;
+         else if (state === Clutter.InputPanelState.TOGGLE)
+-            enabled = this._keyboardVisible === false;
++            enabled = this._keyboardVisible === false || this._tapAlwaysShows();
+         else
+             return;
+ 
+@@ -3847,6 +3847,20 @@
+             this.close(true);
+     }
+ 
++    // A Shell entry asks to toggle the keyboard on every tap on its text
++    // (ClutterText sends InputPanelState.TOGGLE). On a phone or tablet a tap
++    // on the focused field shows the keyboard and never hides it, as on
++    // Android and iOS: the keyboard's own hide key or a focus change does.
++    // Toggling there closed the keyboard on the tap meant to place the caret
++    // or to bring the keyboard back, and the field (which moves up above an
++    // open keyboard) then moved away from the finger. The greeter has no
++    // presentation; a handheld or tablet greeter is touch-first too.
++    _tapAlwaysShows() {
++        if (Main.presentation)
++            return ['mobile', 'tablet'].includes(Main.presentation.mode);
++        return ['handheld', 'tablet'].includes(GLib.getenv('LUMA_DEVICE_CLASS'));
++    }
++
+     _setActiveLevel(activeLevel) {
+         if (this._pointers?.size > 0) {
+             this._pendingLevel = {level: activeLevel, latched: this._pendingLevel?.latched ?? null};
