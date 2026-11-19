@@ -139,7 +139,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Touch Lab recorder, decoders, features and report
+      - name: Lua 5.4 for the plugin parity tests
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends liblua5.4-0
+      - name: Touch Lab recorder, decoders, features, role model and plugin
         run: |
           /usr/bin/python3 -B -c "import ast,glob; [ast.parse(open(f).read(), f) for f in glob.glob('tools/touch-lab/touchlab/*.py')]"
           /usr/bin/python3 -B -m unittest discover -s tools/touch-lab/tests -p 'test_*.py'

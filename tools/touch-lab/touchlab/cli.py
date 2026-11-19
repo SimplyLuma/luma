@@ -187,6 +187,44 @@ def cmd_export_record(args) -> int:
     return 0
 
 
+def cmd_probe(args) -> int:
+    from . import surfaces
+    found = surfaces.probe_all()
+    if args.json:
+        print(json.dumps([s.to_json() for s in found], indent=1))
+        return 0
+    if not found:
+        print("No touch surfaces found.")
+    for s in found:
+        w, h = s.pad_mm
+        size = f"{w:.0f} x {h:.0f} mm" if w and h else "size unknown"
+        print(f"{s.caps.source}: {s.caps.name}\n  class {s.cls} ({'; '.join(s.reasons)}), {size}\n"
+              f"  has: {', '.join(b for b, v in s.mask.items() if v)}\n"
+              f"  missing: {', '.join(s.missing()) or 'nothing'}")
+    return 0
+
+
+def cmd_mine_litest(args) -> int:
+    from . import surfaces
+    doc = surfaces.write_litest(args.source)
+    print(f"{len(doc['devices'])} touch devices from libinput {doc['libinput_commit']} -> {surfaces.LITEST_JSON}")
+    return 0
+
+
+def cmd_train(args) -> int:
+    from . import train
+    train.run(args.out, users=args.users, seconds=args.seconds, rounds=args.rounds, depth=args.depth, seed=args.seed,
+              root=args.root if args.recorded else None)
+    return 0
+
+
+def cmd_export_plugin(args) -> int:
+    from . import plugin, rolemodel
+    for p in plugin.write(rolemodel.load(args.model), args.out, ["/usr/share/libinput", "/etc/libinput"]):
+        print(p)
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="touchlab", description="Luma Touch Lab")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -205,6 +243,21 @@ def main(argv=None) -> int:
     s.add_argument("--free-minutes", type=float, default=1.0)
     s = sub.add_parser("export-record")
     s.add_argument("session")
+    s.add_argument("--out", required=True)
+    s = sub.add_parser("probe", help="class every touch surface on this machine")
+    s.add_argument("--json", action="store_true")
+    s = sub.add_parser("mine-litest", help="refresh data/litest-surfaces.json from a libinput source tree")
+    s.add_argument("source")
+    s = sub.add_parser("train", help="train the contact-role model and write the plugin")
+    s.add_argument("--out", required=True)
+    s.add_argument("--users", type=int, default=12)
+    s.add_argument("--seconds", type=float, default=20.0)
+    s.add_argument("--rounds", type=int, default=40)
+    s.add_argument("--depth", type=int, default=3)
+    s.add_argument("--seed", type=int, default=1)
+    s.add_argument("--recorded", action="store_true", help="also use recorded active sessions under --root")
+    s = sub.add_parser("export-plugin", help="write the Lua plugin and quirks for a trained model")
+    s.add_argument("--model", required=True)
     s.add_argument("--out", required=True)
     for s in sub.choices.values():
         s.add_argument("--root", help="data directory (default ~/.local/share/luma-touch-lab)")
@@ -240,7 +293,8 @@ def main(argv=None) -> int:
         print(json.dumps(data["touchpad"]))
         return 0
     return {"report": cmd_report, "features": cmd_features, "synth": cmd_synth,
-            "export-record": cmd_export_record}[args.cmd](args)
+            "export-record": cmd_export_record, "probe": cmd_probe, "mine-litest": cmd_mine_litest,
+            "train": cmd_train, "export-plugin": cmd_export_plugin}[args.cmd](args)
 
 
 if __name__ == "__main__":

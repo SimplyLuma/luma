@@ -1,0 +1,2288 @@
+{
+ "source": "libinput test/litest-device-*.c and quirks/*.quirks",
+ "libinput_commit": "255d4df",
+ "devices": [
+  {
+   "file": "litest-device-acer-hawaii-touchpad.c",
+   "name": "Chicony ACER Hawaii Keyboard Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 3,
+   "vendor": 1266,
+   "product": 5464,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1151,
+     12
+    ],
+    "ABS_Y": [
+     0,
+     738,
+     14
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     14,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1151,
+     12
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     738,
+     14
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-alps-3fg.c",
+   "name": "AlpsPS/2 ALPS GlidePoint",
+   "features": "LITEST_TOUCHPAD | LITEST_BUTTON",
+   "bus": 17,
+   "vendor": 2,
+   "product": 8,
+   "props": [
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_MIDDLE",
+    "BTN_RIGHT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     4095,
+     37
+    ],
+    "ABS_Y": [
+     0,
+     2047,
+     26
+    ],
+    "ABS_PRESSURE": [
+     0,
+     127,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     3,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     4095,
+     37
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     2047,
+     26
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-alps-dualpoint.c",
+   "name": "AlpsPS/2 ALPS DualPoint TouchPad",
+   "features": "LITEST_TOUCHPAD | LITEST_BUTTON | LITEST_SEMI_MT",
+   "bus": 17,
+   "vendor": 2,
+   "product": 8,
+   "props": [
+    "INPUT_PROP_POINTER",
+    "INPUT_PROP_SEMI_MT"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_MIDDLE",
+    "BTN_RIGHT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     2000,
+     25
+    ],
+    "ABS_Y": [
+     0,
+     1400,
+     32
+    ],
+    "ABS_PRESSURE": [
+     0,
+     127,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     2000,
+     25
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     1400,
+     32
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "[litest ALPS Touchpad]\nMatchName=litest AlpsPS/2 ALPS DualPoint TouchPad\nModelTouchpadVisibleMarker=1\n",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-alps-semi-mt.c",
+   "name": "AlpsPS/2 ALPS GlidePoint",
+   "features": "LITEST_TOUCHPAD | LITEST_BUTTON | LITEST_SEMI_MT",
+   "bus": 17,
+   "vendor": 2,
+   "product": 8,
+   "props": [
+    "INPUT_PROP_POINTER",
+    "INPUT_PROP_SEMI_MT"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_MIDDLE",
+    "BTN_RIGHT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     2000,
+     0
+    ],
+    "ABS_Y": [
+     0,
+     1400,
+     0
+    ],
+    "ABS_PRESSURE": [
+     0,
+     127,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     2000,
+     0
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     1400,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-apple-appletouch.c",
+   "name": "appletouch",
+   "features": "LITEST_TOUCHPAD | LITEST_BUTTON | LITEST_SINGLE_TOUCH",
+   "bus": 3,
+   "vendor": 1452,
+   "product": 538,
+   "props": [],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1215,
+     0
+    ],
+    "ABS_Y": [
+     0,
+     588,
+     0
+    ],
+    "ABS_PRESSURE": [
+     0,
+     300,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "[litest Apple Touchpad]\nMatchName=litest appletouch\nModelAppleTouchpadOneButton=1\n",
+   "quirk_props": [],
+   "quirk_sections": [
+    "Apple Touchpads USB"
+   ]
+  },
+  {
+   "file": "litest-device-atmel-hover.c",
+   "name": "Atmel maXTouch Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_BUTTON | LITEST_CLICKPAD |\n\t\t\tLITEST_HOVER",
+   "bus": 24,
+   "vendor": 0,
+   "product": 0,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     960,
+     10
+    ],
+    "ABS_Y": [
+     0,
+     540,
+     10
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_ORIENTATION": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     960,
+     10
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     540,
+     10
+    ],
+    "ABS_MT_TOOL_TYPE": [
+     0,
+     2,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_DISTANCE": [
+     0,
+     1,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-bcm5974.c",
+   "name": "bcm5974",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON |\n\t\t\tLITEST_APPLE_CLICKPAD",
+   "bus": 3,
+   "vendor": 1452,
+   "product": 585,
+   "props": [
+    "INPUT_PROP_BUTTONPAD"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     -4824,
+     4824,
+     0
+    ],
+    "ABS_Y": [
+     -172,
+     4290,
+     0
+    ],
+    "ABS_PRESSURE": [
+     0,
+     256,
+     0
+    ],
+    "ABS_TOOL_WIDTH": [
+     0,
+     16,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     -4824,
+     4824,
+     0
+    ],
+    "ABS_MT_POSITION_Y": [
+     -172,
+     4290,
+     0
+    ],
+    "ABS_MT_ORIENTATION": [
+     -16384,
+     16384,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     2048,
+     0
+    ],
+    "ABS_MT_TOUCH_MINOR": [
+     0,
+     2048,
+     0
+    ],
+    "ABS_MT_WIDTH_MAJOR": [
+     0,
+     2048,
+     0
+    ],
+    "ABS_MT_WIDTH_MINOR": [
+     0,
+     2048,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": [
+    "Apple Touchpads USB"
+   ]
+  },
+  {
+   "file": "litest-device-calibrated-touchscreen.c",
+   "name": "Calibrated Touchscreen",
+   "features": "LITEST_TOUCH | LITEST_PRECALIBRATED",
+   "bus": 17,
+   "vendor": 34,
+   "product": 51,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1500,
+     0
+    ],
+    "ABS_Y": [
+     0,
+     2500,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1500,
+     0
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     2500,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-dell-canvas-totem-touch.c",
+   "name": "Advanced Silicon S.A. CoolTouch\u00ae System",
+   "features": "LITEST_TOUCH",
+   "bus": 3,
+   "vendor": 9589,
+   "product": 516,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [
+    "MSC_TIMESTAMP"
+   ],
+   "ff": false,
+   "abs": {
+    "ABS_MT_SLOT": [
+     0,
+     4,
+     0
+    ],
+    "ABS_X": [
+     0,
+     32767,
+     55
+    ],
+    "ABS_Y": [
+     0,
+     32767,
+     98
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     32767,
+     55
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     32767,
+     98
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-elantech-touchpad.c",
+   "name": "ETPS/2 Elantech Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_BUTTON",
+   "bus": 17,
+   "vendor": 2,
+   "product": 14,
+   "props": [
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_RIGHT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1280,
+     0
+    ],
+    "ABS_Y": [
+     0,
+     704,
+     0
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_TOOL_WIDTH": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1280,
+     0
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     704,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": [
+    "Elantech Touchpads"
+   ]
+  },
+  {
+   "file": "litest-device-generic-pressurepad.c",
+   "name": "Some Generic Pressurepad Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 24,
+   "vendor": 291,
+   "product": 17767,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1224,
+     12
+    ],
+    "ABS_Y": [
+     0,
+     756,
+     12
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     40
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     4,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1224,
+     12
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     756,
+     12
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     40
+    ],
+    "ABS_MT_TOOL_TYPE": [
+     0,
+     2,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-generic-usb-touchpad.c",
+   "name": "Generic USB KeyTouch Combo Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 3,
+   "vendor": 4617,
+   "product": 1,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1151,
+     12
+    ],
+    "ABS_Y": [
+     0,
+     738,
+     14
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     14,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1151,
+     12
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     738,
+     14
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchpad",
+   "quirk": "[litest Generic USB KeyTouch Combo Touchpad]\nMatchName=litest Generic USB KeyTouch Combo Touchpad\nAttrTPKComboLayout=below\n",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-magic-trackpad.c",
+   "name": "Apple Wireless Trackpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON |\n\t\t\tLITEST_APPLE_CLICKPAD",
+   "bus": 5,
+   "vendor": 1452,
+   "product": 782,
+   "props": [
+    "INPUT_PROP_BUTTONPAD"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     -2909,
+     3167,
+     46
+    ],
+    "ABS_Y": [
+     -2456,
+     2565,
+     45
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     -2909,
+     3167,
+     46
+    ],
+    "ABS_MT_POSITION_Y": [
+     -2456,
+     2565,
+     45
+    ],
+    "ABS_MT_ORIENTATION": [
+     -31,
+     32,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     1020,
+     0
+    ],
+    "ABS_MT_TOUCH_MINOR": [
+     0,
+     1020,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": [
+    "Apple Touchpads Bluetooth",
+    "Apple Magic Trackpad v1 (2010, clickpad)"
+   ]
+  },
+  {
+   "file": "litest-device-nexus4-touch-screen.c",
+   "name": "Nexus 4 touch screen",
+   "features": "LITEST_TOUCH | LITEST_ELLIPSE",
+   "bus": 1,
+   "vendor": 1086,
+   "product": 38,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1500,
+     0
+    ],
+    "ABS_Y": [
+     0,
+     2500,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1500,
+     0
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     2500,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-panasonic-cf-sv1.c",
+   "name": "Panasonic Let's Note CF-SV1 circular trackpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CIRCULAR_TOUCHPAD",
+   "bus": 24,
+   "vendor": 1739,
+   "product": 52714,
+   "props": [
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_RIGHT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     528,
+     12
+    ],
+    "ABS_Y": [
+     0,
+     528,
+     12
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     4,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_TOUCH_MINOR": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_ORIENTATION": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     528,
+     12
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     528,
+     12
+    ],
+    "ABS_MT_TOOL_TYPE": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "",
+   "udev_type": "touchpad",
+   "quirk": "[litest Panasonic Let's Note CF-SV1 circular trackpad]\nMatchName=litest Panasonic Let's Note CF-SV1 circular trackpad\nModelCircularTouchpad=1\n",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-protocol-a-touch-screen.c",
+   "name": "Protocol A touch screen",
+   "features": "LITEST_PROTOCOL_A | LITEST_TOUCH",
+   "bus": 24,
+   "vendor": 3823,
+   "product": 32,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     32767,
+     0
+    ],
+    "ABS_Y": [
+     0,
+     32767,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     32767,
+     0
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     32767,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     1,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-hover.c",
+   "name": "SynPS/2 Synaptics TouchPad",
+   "features": "LITEST_TOUCHPAD | LITEST_SEMI_MT | LITEST_BUTTON",
+   "bus": 17,
+   "vendor": 2,
+   "product": 7,
+   "props": [
+    "INPUT_PROP_POINTER",
+    "INPUT_PROP_SEMI_MT"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_RIGHT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     1472,
+     5472,
+     60
+    ],
+    "ABS_Y": [
+     1408,
+     4498,
+     85
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_TOOL_WIDTH": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     1472,
+     5472,
+     60
+    ],
+    "ABS_MT_POSITION_Y": [
+     1408,
+     4498,
+     85
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-i2c.c",
+   "name": "DLL0704:01 06CB:76AD Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 24,
+   "vendor": 1739,
+   "product": 30381,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1216,
+     12
+    ],
+    "ABS_Y": [
+     0,
+     680,
+     12
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1216,
+     12
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     680,
+     12
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "[litest Synaptics i2c Touchpad]\nMatchName=litest DLL0704:01 06CB:76AD Touchpad\nModelTouchpadVisibleMarker=1\n",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-phantomclicks.c",
+   "name": "DELL097D:00 04F3:311C Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 24,
+   "vendor": 1267,
+   "product": 12572,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     4654,
+     31
+    ],
+    "ABS_Y": [
+     0,
+     2730,
+     31
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     4,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     4654,
+     31
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     2730,
+     31
+    ],
+    "ABS_MT_TOOL_TYPE": [
+     0,
+     2,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "[litest Dell XPS 15 9500 Touchpad]\nMatchName=litest DELL097D:00 04F3:311C Touchpad\nModelTouchpadVisibleMarker=0\nModelTouchpadPhantomClicks=1\n",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-pressurepad.c",
+   "name": "SYNA2B31:00 06CB:CE37 Touchpad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 24,
+   "vendor": 1739,
+   "product": 52791,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1224,
+     12
+    ],
+    "ABS_Y": [
+     0,
+     756,
+     12
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     4,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1224,
+     12
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     756,
+     12
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_TOOL_TYPE": [
+     0,
+     2,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [
+    "+INPUT_PROP_PRESSUREPAD"
+   ],
+   "quirk_sections": [
+    "Synaptics 06CB:CE37 Touchpad"
+   ]
+  },
+  {
+   "file": "litest-device-synaptics-rmi4.c",
+   "name": "Synaptics TM3053-004",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 29,
+   "vendor": 1739,
+   "product": 0,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1940,
+     20
+    ],
+    "ABS_Y": [
+     0,
+     1062,
+     20
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     4,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_TOUCH_MINOR": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_ORIENTATION": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1940,
+     20
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     1062,
+     20
+    ],
+    "ABS_MT_TOOL_TYPE": [
+     0,
+     2,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-st.c",
+   "name": "SynPS/2 Synaptics TouchPad",
+   "features": "LITEST_TOUCHPAD | LITEST_BUTTON | LITEST_SINGLE_TOUCH",
+   "bus": 17,
+   "vendor": 2,
+   "product": 7,
+   "props": [],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_RIGHT",
+    "BTN_TOOL_FINGER",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     1472,
+     5472,
+     75
+    ],
+    "ABS_Y": [
+     1408,
+     4448,
+     129
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_TOOL_WIDTH": [
+     0,
+     15,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-t440.c",
+   "name": "SynPS/2 Synaptics TouchPad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON |\n\t\t\tLITEST_TOPBUTTONPAD",
+   "bus": 17,
+   "vendor": 2,
+   "product": 7,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER",
+    "INPUT_PROP_TOPBUTTONPAD"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     1024,
+     5112,
+     42
+    ],
+    "ABS_Y": [
+     2024,
+     4832,
+     42
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_TOOL_WIDTH": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     1024,
+     5112,
+     42
+    ],
+    "ABS_MT_POSITION_Y": [
+     2024,
+     4832,
+     42
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-x1-carbon-3rd.c",
+   "name": "SynPS/2 Synaptics TouchPad X1C3rd",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 17,
+   "vendor": 2,
+   "product": 7,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     1266,
+     5676,
+     45
+    ],
+    "ABS_Y": [
+     1096,
+     4758,
+     68
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_TOOL_WIDTH": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     1266,
+     5676,
+     45
+    ],
+    "ABS_MT_POSITION_Y": [
+     1096,
+     4758,
+     68
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "[litest Synaptics X1 Carbon 3rd Touchpad]\nMatchName=litest SynPS/2 Synaptics TouchPad X1C3rd\nModelLenovoT450Touchpad=1\n",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-synaptics-x220.c",
+   "name": "SynPS/2 Synaptics TouchPad",
+   "features": "LITEST_TOUCHPAD | LITEST_CLICKPAD | LITEST_BUTTON",
+   "bus": 17,
+   "vendor": 2,
+   "product": 17,
+   "props": [
+    "INPUT_PROP_BUTTONPAD",
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_LEFT",
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     1472,
+     5472,
+     75
+    ],
+    "ABS_Y": [
+     1408,
+     4448,
+     129
+    ],
+    "ABS_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_TOOL_WIDTH": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     1472,
+     5472,
+     75
+    ],
+    "ABS_MT_POSITION_Y": [
+     1408,
+     4448,
+     129
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-touch-screen.c",
+   "name": "generic-mt",
+   "features": "LITEST_TOUCH | LITEST_ELLIPSE",
+   "bus": 1,
+   "vendor": 0,
+   "product": 37,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     50000,
+     100
+    ],
+    "ABS_Y": [
+     0,
+     33000,
+     100
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     50000,
+     100
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     33000,
+     100
+    ],
+    "ABS_MT_ORIENTATION": [
+     -256,
+     255,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_TOUCH_MINOR": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-touchscreen-fuzz.c",
+   "name": "touchscreen with fuzz",
+   "features": "LITEST_TOUCH",
+   "bus": 1,
+   "vendor": 0,
+   "product": 37,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     1500,
+     0
+    ],
+    "ABS_Y": [
+     0,
+     2500,
+     0
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     1500,
+     0
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     2500,
+     0
+    ],
+    "ABS_MT_PRESSURE": [
+     0,
+     255,
+     0
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-touchscreen-invalid-range.c",
+   "name": "touchscreen-invalid-range",
+   "features": "LITEST_TOUCH",
+   "bus": 1,
+   "vendor": 0,
+   "product": 37,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     1000,
+     2500,
+     10
+    ],
+    "ABS_Y": [
+     2000,
+     4500,
+     10
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     1000,
+     2500,
+     10
+    ],
+    "ABS_MT_POSITION_Y": [
+     2000,
+     4500,
+     10
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-touchscreen-mt-tool.c",
+   "name": "touchscreen-mt-tool-type",
+   "features": "LITEST_TOUCH",
+   "bus": 1,
+   "vendor": 0,
+   "product": 37,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     1000,
+     2500,
+     10
+    ],
+    "ABS_Y": [
+     2000,
+     4500,
+     10
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_TOOL_TYPE": [
+     0,
+     2,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     1000,
+     2500,
+     10
+    ],
+    "ABS_MT_POSITION_Y": [
+     2000,
+     4500,
+     10
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "internal",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-wacom-bamboo-2fg-finger.c",
+   "name": "Wacom Bamboo 2FG 4x5 Finger",
+   "features": "LITEST_TOUCHPAD",
+   "bus": 3,
+   "vendor": 1386,
+   "product": 209,
+   "props": [
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     15360,
+     128
+    ],
+    "ABS_Y": [
+     0,
+     10240,
+     128
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     15360,
+     128
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     10240,
+     128
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MISC": [
+     0,
+     0,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-wacom-cintiq-13hdt-finger.c",
+   "name": "Wacom Cintiq 13 HD touch Finger",
+   "features": "LITEST_TOUCH",
+   "bus": 3,
+   "vendor": 1386,
+   "product": 821,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     2937,
+     10
+    ],
+    "ABS_Y": [
+     0,
+     1652,
+     10
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     9,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     2937,
+     0
+    ],
+    "ABS_MT_WIDTH_MAJOR": [
+     0,
+     2937,
+     0
+    ],
+    "ABS_MT_WIDTH_MINOR": [
+     0,
+     1652,
+     0
+    ],
+    "ABS_MT_ORIENTATION": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     2937,
+     10
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     1652,
+     10
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MISC": [
+     0,
+     0,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-wacom-cintiq-pro-16-finger.c",
+   "name": "Wacom Cintiq Pro 16 Finger",
+   "features": "LITEST_TOUCH",
+   "bus": 3,
+   "vendor": 1386,
+   "product": 852,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     13824,
+     40
+    ],
+    "ABS_Y": [
+     0,
+     7776,
+     40
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     40,
+     0
+    ],
+    "ABS_MT_TOUCH_MINOR": [
+     0,
+     40,
+     0
+    ],
+    "ABS_MT_ORIENTATION": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     13824,
+     40
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     7776,
+     40
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ],
+    "ABS_MISC": [
+     0,
+     0,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-wacom-intuos5-finger.c",
+   "name": "Wacom Intuos5 touch M Finger",
+   "features": "LITEST_TOUCHPAD",
+   "bus": 3,
+   "vendor": 1386,
+   "product": 39,
+   "props": [
+    "INPUT_PROP_POINTER"
+   ],
+   "keys": [
+    "BTN_TOOL_DOUBLETAP",
+    "BTN_TOOL_FINGER",
+    "BTN_TOOL_QUADTAP",
+    "BTN_TOOL_QUINTTAP",
+    "BTN_TOOL_TRIPLETAP",
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     4096,
+     18
+    ],
+    "ABS_Y": [
+     0,
+     4096,
+     29
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     15,
+     0
+    ],
+    "ABS_MT_TOUCH_MAJOR": [
+     0,
+     4096,
+     0
+    ],
+    "ABS_MT_TOUCH_MINOR": [
+     0,
+     4096,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     4096,
+     18
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     4096,
+     29
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchpad",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  },
+  {
+   "file": "litest-device-wacom-isdv4-e6-finger.c",
+   "name": "Wacom ISDv4 E6 Finger",
+   "features": "LITEST_TOUCH",
+   "bus": 3,
+   "vendor": 1386,
+   "product": 230,
+   "props": [
+    "INPUT_PROP_DIRECT"
+   ],
+   "keys": [
+    "BTN_TOUCH"
+   ],
+   "msc": [],
+   "ff": false,
+   "abs": {
+    "ABS_X": [
+     0,
+     2776,
+     10
+    ],
+    "ABS_Y": [
+     0,
+     1569,
+     9
+    ],
+    "ABS_MT_SLOT": [
+     0,
+     1,
+     0
+    ],
+    "ABS_MT_POSITION_X": [
+     0,
+     2776,
+     10
+    ],
+    "ABS_MT_POSITION_Y": [
+     0,
+     1569,
+     9
+    ],
+    "ABS_MT_TRACKING_ID": [
+     0,
+     65535,
+     0
+    ]
+   },
+   "integration": "external",
+   "udev_type": "touchscreen",
+   "quirk": "",
+   "quirk_props": [],
+   "quirk_sections": []
+  }
+ ],
+ "quirk_stats": {
+  "AttrInputProp=+PRESSUREPAD": 27,
+  "AttrPalmPressureThreshold": 20,
+  "AttrPalmSizeThreshold": 14,
+  "AttrPressureRange": 39,
+  "AttrThumbPressureThreshold": 8,
+  "AttrThumbSizeThreshold": 5,
+  "AttrTouchSizeRange": 11
+ }
+}

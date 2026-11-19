@@ -24,11 +24,11 @@ if [ "${1:-}" = "--remove" ]; then
   exit 0
 fi
 
-mkdir -p "$root/app" "$root/sessions" "$root/labels" "$root/control" "$root/reports" "$apps"
+mkdir -p "$root/app" "$root/sessions" "$root/labels" "$root/control" "$root/reports" "$root/models" "$apps"
 chmod 700 "$root"
 rm -rf "$root/app.new"
 mkdir "$root/app.new"
-cp -R "$src/touchlab" "$src/bin" "$root/app.new/"
+cp -R "$src/touchlab" "$src/bin" "$src/plugins" "$root/app.new/"
 find "$root/app.new" -name __pycache__ -prune -exec rm -rf {} +
 if git -C "$src" rev-parse HEAD >/dev/null 2>&1; then git -C "$src" rev-parse HEAD > "$root/app.new/COMMIT"; fi
 rm -rf "$root/app.old"

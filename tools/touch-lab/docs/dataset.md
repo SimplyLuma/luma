@@ -41,9 +41,13 @@ One JSON object per line: `{"v": 1, "t": ns, "boot_id": ..., "kind": ...}`.
 | `mark` | `mark` (`wrong` or `almost`), `window_ns` (3 s), `source` (`shortcut` or `app`) |
 | `run` | `run`, `phase` (`begin`/`end`), `mode` (`guided` or `free`) |
 | `scenario` | `run`, `scenario`, `trial`, `phase` (`begin`/`end`/`discard`), `intent`, `outcome` |
-| `contact` | `run`, `scenario`, `trial`, `down` (touch-down ns), `contact_id` (HID contact ID), `label`, `class`, `how` (`rule:<rule>`) |
+| `contact` | `run`, `scenario`, `trial`, `down` (touch-down ns), `contact_id` (HID contact ID), `label`, `class`, `how` (`rule:<rule>`, `drill:<rule>` or `correction`), and from the active session `role` (and `predicted` for a correction) |
 
-A `discard` cancels every record of that trial written before it.
+A `discard` cancels every record of that trial written before it. In the
+active session (`run` with `mode: active`, `surface`, `mask`), `scenario`
+is the drill id (or `test-round`) and `intent` its category. Roles
+(`touchlab/roles.py`): `point`, `second`, `thumb-rest`, `thumb-click`,
+`palm`, `brush`; phase 1 labels map onto them (`roles.FROM_LABEL`).
 
 Contact labels (`touchlab/labels.py`): intended `pointer`, `precision`,
 `scroll`, `pinch`, `tap`, `tap-2`, `click`, `click-thumb`, `drag-thumb`,

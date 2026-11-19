@@ -1,15 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Touch Lab: guided touchpad sessions and a live view of every contact.
+"""Touch Lab: the 10-minute active session and a live view of every contact.
 
-Reads the recorder's live stream (a socket in $XDG_RUNTIME_DIR, owned by the
-user) and writes only labels. The typing box counts key presses for the
-prompt and keeps nothing else: no text, no key names.
+The session is a dozen short drills where the drill defines each contact's
+role, a test round where live dots show the predicted role and the user
+corrects misses, a retrain in seconds, and a follow-up drill aimed at the
+least certain role. Reads the recorder's live stream (a socket in
+$XDG_RUNTIME_DIR, owned by the user) and writes only labels and the
+personal model. The typing box counts key presses for the prompt and keeps
+nothing else: no text, no key names.
 """
 
 from __future__ import annotations
 
 import math
 import os
+import threading
 import random
 import socket
 import subprocess
@@ -32,10 +37,9 @@ from luma_appkit import (  # noqa: E402
 )
 from luma_appkit import media_style as style  # noqa: E402
 
-from . import contacts, libinput_log  # noqa: E402
+from . import contacts, drills, libinput_log, roles  # noqa: E402
 from .cli import read_status, sudo_command  # noqa: E402
-from .labels import CLASSES, LabelLog, MARKS, data_root, now_ns  # noqa: E402
-from .scenarios import SCENARIOS, assign  # noqa: E402
+from .labels import LabelLog, MARKS, data_root, now_ns  # noqa: E402
 
 APP_ID = "org.projectluma.TouchLab"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +61,8 @@ class LiveFeed:
         self.connected = False
         self._watch = 0
         self.demo: list[list] = []
+        self.header: dict = {}
+        self.descriptor = b""
         if os.environ.get("TOUCHLAB_DEMO"):
             self._start_demo()
             return
@@ -140,8 +146,13 @@ class LiveFeed:
     def feed(self, rec: list) -> None:
         tag = rec[1]
         if tag == "H":
-            desc = bytes.fromhex(rec[2].get("devices", {}).get("touchpad", {}).get("report_descriptor", ""))
-            self.builder = contacts.TrackBuilder(desc)
+            self.header = rec[2]
+            tp = rec[2].get("devices", {}).get("touchpad", {})
+            desc = bytes.fromhex(tp.get("report_descriptor", ""))
+            absinfo = tp.get("evdev_description", {}).get("absinfo")
+            self.builder = (contacts.TrackBuilder(desc) if desc or not absinfo else
+                            contacts.EvdevTrackBuilder(absinfo))
+            self.descriptor = desc
         elif tag == "h" and self.builder:
             for kind, tr in self.builder.feed_hid(rec[0], bytes.fromhex(rec[2])):
                 if kind == "down":
@@ -150,7 +161,14 @@ class LiveFeed:
             if len(self.builder.tracks) > 400:
                 del self.builder.tracks[:200]
         elif tag == "e" and self.builder:
-            self.builder.feed_evdev(rec[0], rec[3])
+            events = self.builder.feed_evdev(rec[0], rec[3])
+            if isinstance(self.builder, contacts.EvdevTrackBuilder):
+                for kind, tr in events or []:
+                    if kind == "down":
+                        for fn in self.listeners:
+                            fn(tr)
+                if len(self.builder.tracks) > 400:
+                    del self.builder.tracks[:200]
         elif tag == "k":
             self.keys.append(rec[0])
             self.keys = self.keys[-200:]
@@ -202,6 +220,9 @@ class PadView(Gtk.Widget):
         super().__init__()
         self.feed = feed
         self.labels: dict[str, str] = {}
+        self.live = None                 # LiveRoles during the test round
+        self.focus: str | None = None    # the contact a correction applies to
+        self.surface_class = ""
         self.set_hexpand(True)
         self.set_vexpand(True)
         self.add_css_class("touchlab-pad")
@@ -213,7 +234,10 @@ class PadView(Gtk.Widget):
 
     def _geometry(self):
         b = self.feed.builder
-        pw, ph = ((b.layout.x_mm or 149.6), (b.layout.y_mm or 73.8)) if b and b.layout and b.layout.ok else (149.6, 73.8)
+        if isinstance(b, contacts.EvdevTrackBuilder):
+            pw, ph = b.pad_mm
+        else:
+            pw, ph = ((b.layout.x_mm or 149.6), (b.layout.y_mm or 73.8)) if b and b.layout and b.layout.ok else (149.6, 73.8)
         w, h = self.get_width(), self.get_height()
         scale = min((w - 8) / pw, (h - 8) / ph)
         ox, oy = (w - pw * scale) / 2, (h - ph * scale) / 2
@@ -233,7 +257,10 @@ class PadView(Gtk.Widget):
             return
         now = now_ns()
         ink = style.colour(self, "luma_ink")
-        for tr in list(b.active.values()):
+        shown = list(b.active.values())
+        if self.focus and self.live:
+            shown += [t for t in b.tracks[-12:] if t.key == self.focus and t not in shown]
+        for tr in shown:
             if not tr.samples:
                 continue
             s = tr.samples[-1]
@@ -251,17 +278,27 @@ class PadView(Gtk.Widget):
                 role = "luma_amber"
             if verdict in ("palm", "thumb"):
                 role = "luma_violet"
+            predicted, prob = self.live.role(tr.key) if self.live else (None, 0.0)
+            if predicted:
+                role = roles.COLOURS[predicted]
+            faded = tr.t_up is not None
             x, y = ox + s.x * k, oy + s.y * k
             r = 7 * k                                   # a fingertip, about 14 mm across
             dot = style.rounded(style.rect(x - r, y - r, 2 * r, 2 * r), r)
             snap.push_rounded_clip(dot)
-            snap.append_color(style.colour(self, role, 0.30), style.rect(x - r, y - r, 2 * r, 2 * r))
+            snap.append_color(style.colour(self, role, 0.12 if faded else 0.30), style.rect(x - r, y - r, 2 * r, 2 * r))
             snap.pop()
             ring_r = r + 2 + s.force * 26 * k / 2
             ring = style.rounded(style.rect(x - ring_r, y - ring_r, 2 * ring_r, 2 * ring_r), ring_r)
             col = style.colour(self, role)
             snap.append_border(ring, [2, 2, 2, 2], [col, col, col, col])
             text = self.labels.get(tr.key) or {"palm": "palm", "thumb": "thumb", "thumb-suspect": "thumb?"}.get(verdict, "")
+            if text in roles.ROLES:
+                text = roles.name(text, self.surface_class)
+            if predicted:
+                text = f"{roles.name(predicted, self.surface_class)} {prob:.0%}"
+                if tr.key == self.focus:
+                    text = "Last: " + text
             if s.confident is False:
                 text = (text + " · " if text else "") + "firmware: palm"
             if s.button:
@@ -369,17 +406,22 @@ class ShotBin(Gtk.Widget):
 
 
 class TouchLabWindow(AppWindow):
-    REPEATS = 2
+    """Idle → ten-minute active session (drills → learn → test round → learn → follow-up drill) or
+    "just use it"."""
 
     def __init__(self, application) -> None:
         self.log = LabelLog()
-        self.mode: str | None = None           # None, "guided" or "free"
-        self.plan: list[tuple] = []
+        self.mode: str | None = None           # None, "session" or "free"
+        self.phase: str | None = None          # drill, summary, learning, test
         self.trial = None
         self.run_id = None
+        self.models = None
+        self.labelled: list[tuple[str, object, str]] = []   # (drill, track, role)
+        self.stats = drills.RoundStats()
+        self.test = None
         commands = CommandRegistry((
             CommandGroup(None, (
-                Command("lab.guided", "Guided pass", lambda: self.start_guided(), shortcut=("Ctrl", "G")),
+                Command("lab.session", "Start the session", lambda: self.start_session(), shortcut=("Ctrl", "G")),
                 Command("lab.free", "Just use it", lambda: self.start_free(), shortcut=("Ctrl", "U")),
                 Command("lab.stop", "Stop", lambda: self.stop(), enabled=lambda: self.mode is not None),
                 Command("lab.report", "Open report", lambda: self.open_report()),
@@ -392,19 +434,65 @@ class TouchLabWindow(AppWindow):
         self.feed = LiveFeed(self.refresh)
         self.feed.listeners.append(self.contact_down)
         self.build()
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._key)
+        self.add_controller(keys)
         GLib.timeout_add(33, self._tick)
         GLib.timeout_add(2000, self._status)
         self._status()
+        self._load_models()
+
+    # surface and model -------------------------------------------------
+    def surface(self) -> tuple[dict, str, tuple]:
+        from .train import surface_from_meta
+        if not self.feed.header:
+            return {"pressure": 1, "force": 1, "confidence": 1, "button": 1, "keyboard": 1}, "force-pad", (149.6, 73.8)
+        cached = getattr(self, "_surface", None)
+        if cached and cached[0] is self.feed.header:
+            mask, cls, pad = cached[1]
+        else:
+            mask, cls, pad = surface_from_meta(self.feed.header, self.feed.descriptor)
+            self._surface = (self.feed.header, (mask, cls, pad))
+        b = self.feed.builder
+        if isinstance(b, contacts.EvdevTrackBuilder):
+            pad = b.pad_mm
+        elif b and b.layout and b.layout.ok:
+            pad = (b.layout.x_mm or pad[0] or 100.0, b.layout.y_mm or pad[1] or 60.0)
+        return mask, cls, (pad[0] or 100.0, pad[1] or 60.0)
+
+    def models_dir(self) -> str:
+        return os.path.join(data_root(), "models")
+
+    def _load_models(self) -> None:
+        from . import rolemodel
+        for name in ("personal.json", "base.json"):
+            path = os.path.join(self.models_dir(), name)
+            if os.path.exists(path):
+                try:
+                    self.models = rolemodel.load(path)
+                    return
+                except (OSError, ValueError, KeyError):
+                    continue
+
+        def starter():
+            # No model shipped yet: a small synthetic starter, replaced by the personal model.
+            from . import synth_roles
+            m = rolemodel.train(synth_roles.corpus(n_users=3, seconds=6, seed=2), {"rounds": 12})
+            os.makedirs(self.models_dir(), mode=0o700, exist_ok=True)
+            rolemodel.save(m, os.path.join(self.models_dir(), "base.json"), {"starter": "synthetic"})
+            GLib.idle_add(lambda: setattr(self, "models", m) or False)
+        threading.Thread(target=starter, daemon=True).start()
 
     def build(self) -> None:
         self.prompt = TypeLabel("Touch Lab", role="title-1", wrap=True)
-        self.detail = TypeLabel("Teach the touchpad what you meant. A guided pass takes about five minutes; "
-                                "or just use the laptop and mark mistakes as they happen.", role="body", wrap=True)
+        self.detail = TypeLabel("Teach the touchpad what each touch is: about ten minutes of short drills, then a "
+                                "test round where you correct what it gets wrong.", role="body", wrap=True)
         self.progress = TypeLabel("", role="caption")
+        self.sentence = TypeLabel("", role="title-3", wrap=True)
         head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=20, margin_end=20, margin_top=16)
-        head.append(self.prompt)
-        head.append(self.detail)
-        head.append(self.progress)
+        for w in (self.prompt, self.detail, self.sentence, self.progress):
+            head.append(w)
+        self.sentence.set_visible(False)
         self.pad = PadView(self.feed)
         self.target = Target()
         self.typing = TypingBox()
@@ -420,9 +508,9 @@ class TouchLabWindow(AppWindow):
         body.append(self.stage)
         body.append(self.typing)
         body.append(self.libinput_line)
-        key = TypeLabel("Ring: force. Amber: the firmware calls it a palm. Violet: libinput is ignoring it. "
-                        "Ticks along the top: key presses.", role="caption", wrap=True)
-        body.append(key)
+        self.key = TypeLabel("Ring: force. Amber: the firmware calls it a palm. Violet: libinput is ignoring it. "
+                             "Ticks along the top: key presses.", role="caption", wrap=True)
+        body.append(self.key)
         self.pages = Gtk.Stack(vexpand=True)
         self.pages.add_named(body, "live")
         self.pages.add_named(self.empty, "empty")
@@ -450,14 +538,21 @@ class TouchLabWindow(AppWindow):
                               more=[BarAction("bar-chart-3", "Open report", on_activate=self.open_report)])
         elif self.mode is None:
             self.bar.show_bar([
-                BarAction("play", "Guided pass", primary=True, sensitive=ready, on_activate=self.start_guided),
+                BarAction("play", "Start the session", primary=True, sensitive=ready, on_activate=self.start_session),
                 BarAction("hand", "Just use it", sensitive=ready, on_activate=self.start_free),
             ], more=[BarAction("bar-chart-3", "Open report", on_activate=self.open_report),
                      BarAction("copy", "Copy start command", on_activate=self.copy_command)])
-        elif self.mode == "guided":
+        elif self.mode == "session" and self.phase == "test":
+            _mask, cls, _pad = self.surface()
+            picks = [BarAction("", f"{i + 1} {roles.name(r, cls)}", on_activate=lambda r=r: self.correct(r))
+                     for i, r in enumerate(roles.ROLES)
+                     if cls != "touchscreen" or r != "thumb-click"]
+            self.bar.show_bar([BarAction("skip-forward", "Done", primary=True, on_activate=self.end_test)] + picks[:3],
+                              more=picks[3:] + [BarAction("square", "Stop", on_activate=self.stop)])
+        elif self.mode == "session":
             self.bar.show_bar([
-                BarAction("skip-forward", "Skip", primary=True, on_activate=self.skip),
-                BarAction("rotate-ccw", "Again", on_activate=self.redo),
+                BarAction("skip-forward", "Skip", primary=True, sensitive=self.phase == "drill", on_activate=self.skip),
+                BarAction("rotate-ccw", "Again", sensitive=self.phase == "drill", on_activate=self.redo),
                 BarAction("square", "Stop", on_activate=self.stop),
             ])
         else:
@@ -474,6 +569,14 @@ class TouchLabWindow(AppWindow):
         paused = st.get("paused") if st else None
         self.recording.set_text("Recording" + (f" · paused ({paused})" if paused else "") if running else "Not recording")
         self.pages.set_visible_child_name("live" if running else "empty")
+        if self.mode is None and self.feed.header and not getattr(self, "_described", False):
+            self._described = True
+            mask, cls, pad = self.surface()
+            self.pad.surface_class = cls
+            has = [n for n, b in (("force", "force"), ("contact size", "size"), ("firmware palm flag", "confidence"),
+                                  ("click", "button")) if mask.get(b)]
+            self.progress.set_text(f"{surfaces_name(cls)}, {pad[0]:.0f} × {pad[1]:.0f} mm"
+                                   + (f"; reports {', '.join(has)}" if has else ""))
         return True
 
     def refresh(self) -> None:
@@ -487,108 +590,256 @@ class TouchLabWindow(AppWindow):
         now = now_ns()
         recent = [text for t, text in self.feed.events if now - t < 1_500_000_000]
         self.libinput_line.set_text("libinput: " + (" → ".join(recent[-4:]) if recent else "–"))
-        if self.trial:
-            self._check_trial(now)
+        if self.phase == "drill" and self.trial:
+            self._check_drill(now)
+        elif self.phase == "test" and self.test and self.feed.builder:
+            self.pad.live.update(self.feed.builder.tracks[-24:], self.feed.keys, now)
+            done = [t for t in self.feed.builder.tracks[-12:] if t.t_up is not None and t.key in self.test["seen"]]
+            if done:
+                last = max(done, key=lambda t: t.t_up)
+                self.pad.focus = last.key
+            left = drills.TEST_ROUND_SECONDS - (now - self.test["t0"]) / 1e9
+            self.progress.set_text(f"Test round · {max(0, left):.0f} s left · {self.test['corrected']} corrected")
+            if left <= 0:
+                self.end_test()
         return True
 
-    # guided pass -------------------------------------------------------
-    def start_guided(self) -> None:
+    def _key(self, _c, keyval, _code, _state) -> bool:
+        if self.phase != "test":
+            return False
+        k = keyval - Gdk.KEY_1
+        if 0 <= k < len(roles.ROLES):
+            self.correct(roles.ROLES[k])
+            return True
+        return False
+
+    # the session -------------------------------------------------------
+    def start_session(self) -> None:
+        mask, cls, _pad = self.surface()
+        self.pad.surface_class = cls
         self.run_id = uuid.uuid4().hex[:12]
-        self.plan = [(s, n + 1) for s in SCENARIOS for n in range(self.REPEATS)]
-        self.retried = set()
-        random.shuffle(self.plan)
-        self.total = len(self.plan)
-        self.mode = "guided"
-        self.log.append("run", run=self.run_id, phase="begin", mode="guided", trials=self.total)
-        self.show_bar()
-        self.next_trial()
+        self.plan = drills.plan(cls, mask)
+        self.drill_i = -1
+        self.labelled, self.stats, self.test = [], drills.RoundStats(), None
+        self.mode = "session"
+        self.log.append("run", run=self.run_id, phase="begin", mode="active", surface=cls, drills=len(self.plan),
+                        mask=sorted(b for b, v in mask.items() if v))
+        self.next_drill()
 
-    def next_trial(self) -> None:
-        if not self.plan:
-            self.finish("Guided pass done. Thank you.")
+    def next_drill(self) -> None:
+        self.drill_i += 1
+        if self.drill_i >= len(self.plan):
+            self.learn("drills")
             return
-        scenario, n = self.plan.pop(0)
-        self.begin(scenario, n)
+        self.begin_drill(self.plan[self.drill_i])
 
-    def begin(self, scenario, n) -> None:
-        self.trial = {"s": scenario, "n": n, "t0": now_ns(), "tracks": [], "last_up": None, "done": False}
-        self.log.append("scenario", run=self.run_id, phase="begin", scenario=scenario.id, trial=n,
-                        intent=scenario.intent, t0=self.trial["t0"])
-        self.prompt.set_text(scenario.title)
-        self.detail.set_text(scenario.detail)
-        self.progress.set_text(f"{self.total - len(self.plan)} of {self.total}")
+    def begin_drill(self, d, follow: bool = False) -> None:
+        _mask, cls, _pad = self.surface()
+        v = d.variant(cls)
+        self.phase = "drill"
+        self.pad.live, self.pad.focus = None, None
+        seconds = drills.FOLLOW_UP_SECONDS if follow else d.seconds
+        n = self.drill_i + 1 if not follow else len(self.plan) + 1
+        self.trial = {"d": d, "v": v, "n": n, "t0": now_ns(), "tracks": [], "done": False, "seconds": seconds,
+                      "follow": follow}
+        self.log.append("scenario", run=self.run_id, phase="begin", scenario=d.id, trial=n, intent=d.category,
+                        roles=list(v.roles), t0=self.trial["t0"], follow_up=follow)
+        self.prompt.set_text(v.title)
+        self.detail.set_text(v.text)
+        self.sentence.set_visible(d.typing)
+        if d.typing:
+            self.sentence.set_text(drills.sentence())
         self.pad.labels = {}
-        self.typing.set_visible(scenario.typing)
+        self.typing.set_visible(d.typing)
         self.typing.reset()
-        if scenario.typing:
+        if d.typing:
             self.typing.grab_focus()
-        if scenario.id == "precision":
+        if d.targets:
             self.target.move()
             self.stage.set_visible_child_name("target")
         else:
             self.stage.set_visible_child_name("pad")
+        self.show_bar()
 
     def contact_down(self, tr) -> None:
-        if self.trial and not self.trial["done"]:
+        if self.phase == "drill" and self.trial and not self.trial["done"]:
             self.trial["tracks"].append(tr)
+        elif self.phase == "test" and self.test:
+            self.test["seen"].add(tr.key)
+            self.test["tracks"].append(tr)
 
-    def _check_trial(self, now: int) -> None:
+    def _check_drill(self, now: int) -> None:
         tr = self.trial
         if tr["done"]:
             return
-        s = tr["s"]
-        b = self.feed.builder
-        active = bool(b and b.active)
+        d = tr["d"]
         elapsed = (now - tr["t0"]) / 1e9
-        if active:
-            tr["last_up"] = None
-        elif tr["tracks"] and tr["last_up"] is None:
-            tr["last_up"] = now
-        quiet = tr["last_up"] is not None and (now - tr["last_up"]) / 1e9 > (1.2 if s.typing else 0.7)
-        if s.typing:
-            finished = quiet and self.typing.presses >= 4 or elapsed > s.seconds + 6
-        else:
-            finished = quiet or elapsed > s.seconds + (6 if not tr["tracks"] else 0)
-        if finished:
-            self.end_trial()
+        left = tr["seconds"] - elapsed
+        what = "Follow-up" if tr["follow"] else f"Drill {tr['n']} of {len(self.plan)} · {d.category}"
+        self.progress.set_text(f"{what} · {max(0, left):.0f} s left · {len(tr['tracks'])} touches")
+        if d.targets and now >= tr.get("next_dot", 0):
+            tr["next_dot"] = now + 2_500_000_000
+            self.target.move()
+        busy = bool(self.feed.builder and self.feed.builder.active)
+        if left <= 0 and (not busy or left < -3):
+            self.end_drill()
 
-    def end_trial(self, outcome: str | None = None) -> None:
+    def end_drill(self, outcome: str | None = None) -> None:
         tr = self.trial
         tr["done"] = True
-        s = tr["s"]
-        labels, why = assign(s.rule, tr["tracks"]) if outcome is None else ({}, outcome)
+        d, v = tr["d"], tr["v"]
+        mask, cls, pad = self.surface()
+        labels, why = drills.assign(v.rule, tr["tracks"], pad, cls) if outcome is None else ({}, outcome)
         for track in tr["tracks"]:
-            label = labels.get(track.key)
-            if label:
-                self.log.append("contact", run=self.run_id, scenario=s.id, trial=tr["n"], down=track.t_down,
-                                contact_id=track.cid, label=label, how=f"rule:{s.rule}",
-                                **{"class": CLASSES[label]})
+            role = labels.get(track.key)
+            if role:
+                track.role = role
+                self.labelled.append((d.id, track, role))
+                self.log.append("contact", run=self.run_id, scenario=d.id, trial=tr["n"], down=track.t_down,
+                                contact_id=track.cid, label=role, role=role, how=f"drill:{v.rule}",
+                                **{"class": roles.label_class(role)})
         self.pad.labels = labels
-        self.log.append("scenario", run=self.run_id, phase="end", scenario=s.id, trial=tr["n"], outcome=why,
+        self.log.append("scenario", run=self.run_id, phase="end", scenario=d.id, trial=tr["n"], outcome=why,
                         contacts=len(tr["tracks"]), labelled=len(labels), keys=self.typing.presses)
-        self.progress.set_text(f"{self.total - len(self.plan)} of {self.total} · "
-                                + ("got it" if why == "ok" else f"{why}; it'll come round again"))
-        if why not in ("ok", "skipped") and (s.id, tr["n"]) not in self.retried:
-            self.retried.add((s.id, tr["n"]))
-            self.plan.insert(min(len(self.plan), 3), (s, tr["n"]))
-        GLib.timeout_add(900, self._after_trial)
+        counts: dict[str, int] = {}
+        for r in labels.values():
+            counts[r] = counts.get(r, 0) + 1
+        got = ", ".join(f"{n} {roles.name(r, cls).lower()}" for r, n in sorted(counts.items(), key=lambda kv: -kv[1]))
+        self.phase = "summary"
+        self.progress.set_text((f"Got {got}." if got else "No touches.") + ("" if why == "ok" else f" ({why})"))
+        self.show_bar()
+        GLib.timeout_add(1400, self._after_drill)
 
-    def _after_trial(self) -> bool:
-        if self.mode == "guided":
-            self.next_trial()
+    def _after_drill(self) -> bool:
+        if self.mode != "session":
+            return False
+        if self.trial and self.trial["follow"]:
+            self.learn("final")
+        else:
+            self.next_drill()
         return False
 
     def skip(self) -> None:
-        if self.trial and not self.trial["done"]:
-            self.end_trial("skipped")
+        if self.phase == "drill" and self.trial and not self.trial["done"]:
+            self.end_drill("skipped")
 
     def redo(self) -> None:
-        if not self.trial:
+        if self.phase != "drill" or not self.trial:
             return
         tr = self.trial
-        self.log.append("scenario", run=self.run_id, phase="discard", scenario=tr["s"].id, trial=tr["n"])
+        self.log.append("scenario", run=self.run_id, phase="discard", scenario=tr["d"].id, trial=tr["n"])
         tr["done"] = True
-        self.begin(tr["s"], tr["n"])
+        self.begin_drill(tr["d"], tr["follow"])
+
+    # learning ----------------------------------------------------------
+    def _scenes(self):
+        from .rfeatures import Scene, from_track
+        mask, cls, pad = self.surface()
+        if not self.labelled:
+            return []
+        t0 = min(t.t_down for _d, t, _r in self.labelled)
+        keys = [(k - t0) / 1e6 for k in self.feed.keys]
+        by: dict[str, list] = {}
+        for d, t, r in self.labelled:
+            c = from_track(t, t0)
+            c.role = r
+            by.setdefault(d, []).append(c)
+        return [Scene(cs, keys, pad, mask, cls, f"personal:me:{d}") for d, cs in by.items()]
+
+    def learn(self, stage: str) -> None:
+        self.phase = "learning"
+        self.typing.set_visible(False)
+        self.sentence.set_visible(False)
+        self.stage.set_visible_child_name("pad")
+        self.prompt.set_text("Learning your hands")
+        self.detail.set_text(f"{len(self.labelled)} labelled touches so far. This takes a few seconds.")
+        self.progress.set_text("")
+        self.show_bar()
+        scenes = self._scenes()
+        base = self.models
+
+        def work():
+            from . import rolemodel
+            out, err = base, None
+            try:
+                if base is None:
+                    raise RuntimeError("the starter model isn't ready yet")
+                if scenes:
+                    out = rolemodel.personalise(base, scenes)
+                    os.makedirs(self.models_dir(), mode=0o700, exist_ok=True)
+                    rolemodel.save(out, os.path.join(self.models_dir(), "personal.json"),
+                                   {"personal": True, "touches": len(self.labelled)})
+            except Exception as exc:  # noqa: BLE001 - shown to the user, the session goes on
+                err = str(exc)
+            GLib.idle_add(self._learned, out, stage, err)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _learned(self, models, stage: str, err: str | None) -> bool:
+        if self.mode != "session":
+            return False
+        self.models = models
+        if err:
+            Toast.show(self.host, f"Couldn't retrain: {err}", kind="error")
+        if stage == "drills" and models is None:
+            self.finish("Drills saved. The starter model was still being prepared; start again for the test round.")
+        elif stage == "drills":
+            self.start_test()
+        elif stage == "test":
+            mask, cls, _pad = self.surface()
+            d = drills.follow_up(self.stats, cls, mask)
+            if d is None:
+                self.finish("Session done. Your touchpad model is saved.")
+            else:
+                self.begin_drill(d, follow=True)
+                self.progress.set_text(f"One more: aimed at {', '.join(roles.name(r, cls).lower() for r in d.variant(cls).roles)}")
+        else:
+            self.finish("Session done. Your touchpad model is saved; it's used in the next test round.")
+        return False
+
+    # test round --------------------------------------------------------
+    def start_test(self) -> None:
+        from .live_roles import LiveRoles
+        mask, cls, pad = self.surface()
+        self.phase = "test"
+        self.test = {"t0": now_ns(), "seen": set(), "tracks": [], "corrected": 0, "fixed": {}}
+        self.pad.live = LiveRoles(self.models, pad, mask)
+        self.pad.labels = {}
+        self.prompt.set_text("Test round")
+        self.detail.set_text("Use it any way you like. Each dot shows what Touch Lab thinks the touch is. When one "
+                             "is wrong, press the number of the right one (or pick it in the bar); it applies to the "
+                             "last touch.")
+        self.log.append("scenario", run=self.run_id, phase="begin", scenario="test-round", trial=1, intent="test",
+                        t0=self.test["t0"])
+        self.show_bar()
+
+    def correct(self, role: str) -> None:
+        if self.phase != "test" or not self.pad.focus:
+            return
+        tr = next((t for t in self.test["tracks"] if t.key == self.pad.focus), None)
+        if tr is None:
+            return
+        predicted, prob = self.pad.live.role(tr.key)
+        self.test["fixed"][tr.key] = role
+        self.test["corrected"] += 1
+        tr.role = role
+        self.labelled.append(("test-round", tr, role))
+        self.log.append("contact", run=self.run_id, scenario="test-round", trial=1, down=tr.t_down,
+                        contact_id=tr.cid, label=role, role=role, predicted=predicted, how="correction",
+                        **{"class": roles.label_class(role)})
+        _mask, cls, _pad = self.surface()
+        Toast.show(self.host, f"Noted: {roles.name(role, cls).lower()}")
+
+    def end_test(self) -> None:
+        if self.phase != "test":
+            return
+        for tr in self.test["tracks"]:
+            predicted, prob = self.pad.live.role(tr.key)
+            if predicted:
+                self.stats.add(predicted, prob, self.test["fixed"].get(tr.key))
+        self.log.append("scenario", run=self.run_id, phase="end", scenario="test-round", trial=1,
+                        contacts=len(self.test["tracks"]), corrected=self.test["corrected"], outcome="ok")
+        self.pad.live, self.pad.focus = None, None
+        self.learn("test")
 
     # just use it -------------------------------------------------------
     def start_free(self) -> None:
@@ -609,18 +860,20 @@ class TouchLabWindow(AppWindow):
 
     # common ------------------------------------------------------------
     def stop(self) -> None:
-        if self.mode == "guided" and self.trial and not self.trial["done"]:
-            self.log.append("scenario", run=self.run_id, phase="discard", scenario=self.trial["s"].id,
+        if self.mode == "session" and self.phase == "drill" and self.trial and not self.trial["done"]:
+            self.log.append("scenario", run=self.run_id, phase="discard", scenario=self.trial["d"].id,
                             trial=self.trial["n"])
         self.finish("Stopped. What you did so far is saved.")
 
     def finish(self, message: str) -> None:
         if self.mode:
-            self.log.append("run", run=self.run_id, phase="end", mode=self.mode)
-        self.mode, self.trial, self.plan = None, None, []
+            self.log.append("run", run=self.run_id, phase="end", mode="active" if self.mode == "session" else self.mode)
+        self.mode, self.phase, self.trial, self.test = None, None, None, None
+        self.pad.live, self.pad.focus = None, None
         self.prompt.set_text("Touch Lab")
         self.detail.set_text(message)
         self.progress.set_text("")
+        self.sentence.set_visible(False)
         self.typing.set_visible(False)
         self.stage.set_visible_child_name("pad")
         self.show_bar()
@@ -637,6 +890,11 @@ class TouchLabWindow(AppWindow):
             Gtk.FileLauncher.new(Gio.File.new_for_path(out)).launch(self, None, None, None)
         except (subprocess.SubprocessError, OSError) as exc:
             Toast.show(self.host, f"Couldn't build the report: {exc}", kind="error")
+
+
+def surfaces_name(cls: str) -> str:
+    return {"legacy-clickpad": "Clickpad (PS/2 or SMBus)", "ptp-clickpad": "Precision touchpad",
+            "force-pad": "Force touchpad", "touchscreen": "Touchscreen"}.get(cls, "Touch surface")
 
 
 class TouchLabApplication(Adw.Application):
