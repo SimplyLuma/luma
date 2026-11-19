@@ -23,7 +23,11 @@ Luma base.
 - **Base** (`luma-<major>.<minor>`): the current upstream stable series,
   nothing else on it except the shared Luma config fragment
   (`luma/config/luma.fragment`: SELinux, binder, DMA heaps and the rest every
-  device needs).
+  device needs). That includes the ALSA sequencer, `CONFIG_SND_SEQUENCER=m`:
+  arm64 `defconfig` builds sound as modules without it, and Fedora's
+  `alsa-lib` (`/usr/lib/modprobe.d/dist-alsa.conf`) loads `snd-seq` with every
+  `snd-pcm` load, so without the module every sound driver loaded at that
+  moment fails and the device gets no sound card.
 - **Family branches**, one per SoC family, named as the upstream kernel names
   the chip, lower case (`milos`, `sm7250`, `sdm845`, `sc7280`, `zuma`, `msm8953`, …).
   They carry only patches on top of the current base, plus the family's
