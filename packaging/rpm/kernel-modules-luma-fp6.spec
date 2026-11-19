@@ -56,8 +56,9 @@ install -D -m 0644 usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.d/
 
 install -d %{buildroot}%{_prefix}/lib/luma/device-boot
 cp -a usr/lib/luma/device-boot/fairphone-fp6 %{buildroot}%{_prefix}/lib/luma/device-boot/
-# cp -a and install -d keep the build host's setgid bits and ACL masks; ship 0755/0644.
-find %{buildroot} -type d -exec chmod 0755 {} +
+# cp -a and install -d keep the build host's setgid bits and ACL masks; ship 0755/0644
+# (00755: GNU chmod keeps a directory's setgid bit for 0755).
+find %{buildroot} -type d -exec chmod 00755 {} +
 find %{buildroot} -type f -exec chmod u+rw,go-w,go+rX {} +
 
 %check
