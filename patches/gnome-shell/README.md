@@ -728,3 +728,27 @@ redraw each time: the blanked greeter drew a frame every refresh (about 180
 wakeups a second and 9 % of a core on a Pixel 8 Pro, memory bus at its top
 clock) and typed keys went to the hidden list. activate() now focuses the
 list only when it is shown. Test: `keycap-policy.js` in %check. Shell .185.
+
+`0348-file-drag-out-of-shell.patch`: files shown by the Shell can be dragged
+into applications, as if from Filer. `lumaFileDrag.js` is the primitive any
+surface uses: `attach(actor, {files, kinds, preview, began, ended})` makes an
+actor a drag source, and the drag is Mutter's `MetaDataDrag` (mutter 0031),
+so Wayland, Xwayland and Flatpak clients all see an ordinary drag. It offers
+Filer's types in Filer's order: paths as text, the URI list and a document
+portal FileTransfer key (`shell_util_open_paths()` gives the O_PATH
+descriptors; writable, falling back to read-only; stopped 30 s after the
+drag). Shift moves, Control copies, a plain drop copies. Over the Shell it
+uses the targets a drag from Filer uses (`xdndHandler`): an application's
+dock tile opens the files, and a dock folder tile now takes files and
+folders in through Filer's `org.gnome.Nautilus.FileOperations2` (GIO
+copy or move without replacing as the fallback); dropped back into its own
+folder, nothing happens. A pointer press becomes a drag past 8 px, so a click
+stays a click; on touch a long press (450 ms) lifts the item and the first
+movement drags it, and moving first scrolls the list. The drag image is the
+files' faces, stacked with a count, and is hidden from pick. Dock folders
+(0180, 0285): Stack rows, Grid cells and the desktop panel's cards are drag
+sources; Control-click toggles and Shift-click extends a selection, and a
+drag of a selected item carries the selection. During the drag the surface
+is transparent and hidden from pick; a drop closes an attached surface,
+anything else brings it back. Without mutter 0031 nothing changes. Test:
+`file-drag-policy.js` in %check. Shell .186.
