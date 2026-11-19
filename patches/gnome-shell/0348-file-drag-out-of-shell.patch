@@ -307,10 +307,10 @@ index 6966dd1..670a628 100644
      // The four things a file manager's menu is for, in Filer's own words and
 diff --git a/js/ui/lumaFileDrag.js b/js/ui/lumaFileDrag.js
 new file mode 100644
-index 0000000..673f035
+index 0000000..b0a207a
 --- /dev/null
 +++ b/js/ui/lumaFileDrag.js
-@@ -0,0 +1,500 @@
+@@ -0,0 +1,503 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +//
 +// Files dragged out of the Shell.
@@ -348,7 +348,7 @@ index 0000000..673f035
 +
 +export const {Action, DRAG_THRESHOLD, LONG_PRESS_MS, TOUCH_SLOP, MAX_FILES} = Model;
 +const SENDER = 'shell';
-+const PREVIEW_SIZE = 72;
++const PREVIEW_SIZE = 96;
 +const PREVIEW_STACK = 3;
 +const PORTAL_BUS = 'org.freedesktop.portal.Documents';
 +const PORTAL_PATH = '/org/freedesktop/portal/documents';
@@ -592,15 +592,16 @@ index 0000000..673f035
 +        drag.connect('ended', (_drag, result) => this._ended(result));
 +        drag.connect('finished', () => this._finished());
 +
++        this._drag = drag;
 +        try {
 +            if (!drag.begin(event))
 +                throw new Error('the drag did not start');
 +        } catch (error) {
 +            console.warn(`Luma file drag: ${error.message}`);
++            this._drag = null;
 +            this._endShellDrag(false);
 +            return false;
 +        }
-+        this._drag = drag;
 +        _current = this;
 +
 +        const [x, y] = event.get_coords();
@@ -623,7 +624,7 @@ index 0000000..673f035
 +
 +    _motion(x, y) {
 +        this._preview?.moveTo(x, y);
-+        if (this._drag.over_client) {
++        if (this._drag?.over_client) {
 +            this._preview?.setRefused(false);
 +            return Action.NONE;
 +        }
@@ -651,8 +652,12 @@ index 0000000..673f035
 +        this._token = '';
 +    }
 +
++    // The pointer let go: a new drag may start, while a client that took
++    // this one may still be reading it until finished.
 +    _ended(result) {
 +        this.result = result;
++        if (_current === this)
++            _current = null;
 +        this._endShellDrag(result === Meta.DataDragResult.DROPPED_ON_COMPOSITOR);
 +        this._preview?.finish(result, this._origin);
 +        this._preview = null;
@@ -665,8 +670,6 @@ index 0000000..673f035
 +    _finished() {
 +        this._portal?.stopLater();
 +        this._portal = null;
-+        if (_current === this)
-+            _current = null;
 +        this._drag = null;
 +    }
 +
@@ -1058,10 +1061,21 @@ index efc2b86..171dfee 100644
      // are confirmed off the Shell's main thread first, exactly as the
      // regular-file path re-checks its own.
 diff --git a/src/shell-util.c b/src/shell-util.c
-index 2ccf624..6636d72 100644
+index 2ccf624..22e5690 100644
 --- a/src/shell-util.c
 +++ b/src/shell-util.c
-@@ -55,6 +55,46 @@ stop_pick (ClutterActor *actor)
+@@ -1,5 +1,10 @@
+ /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
+ 
++/* O_PATH */
++#ifndef _GNU_SOURCE
++#define _GNU_SOURCE
++#endif
++
+ #include "config.h"
+ 
+ #include <errno.h>
+@@ -55,6 +60,46 @@ stop_pick (ClutterActor *actor)
   * If @hidden is %TRUE, hide @actor from pick even with a mode of
   * %CLUTTER_PICK_ALL; if @hidden is %FALSE, unhide @actor.
   */
