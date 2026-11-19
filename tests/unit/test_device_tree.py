@@ -26,7 +26,7 @@ class DeviceTree(unittest.TestCase):
         for name in ("scripts/mobile/fp6-native-init-functions.sh", "config/mobile/fp6-ostree-source.json"):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / name, self.root / name)
-        for name in ("config/kernel", "patches/linux-milos", "patches/linux-surface-pro12"):
+        for name in ("config/kernel", "patches/linux-surface-pro12"):
             shutil.copytree(ROOT / name, self.root / name)
         self.fp6 = self.root / "devices" / "fairphone" / "fp6"
 
@@ -50,12 +50,14 @@ class DeviceTree(unittest.TestCase):
     def test_real_tree_is_valid(self):
         self.assertEqual(self.errors(), [])
 
-    def test_kernel_patches_must_be_repository_diffs(self):
-        patch = "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch"
-        (self.root / patch).write_text("no diff here\n")
-        self.assertRejected("has no diff --git section")
-        (self.root / patch).unlink()
-        self.assertRejected(f"kernel patch {patch} must name a repository file")
+    def test_kernel_fragments_of_a_luma_kernel_are_tree_files(self):
+        self.edit(self.fp6 / "device.toml", '"luma/config/milos.fragment"', '"config/kernel/fp6.fragment"')
+        self.assertRejected("must be a luma/config/*.fragment of the kernel tree")
+
+    def test_luma_kernel_takes_no_repository_patches(self):
+        self.edit(self.fp6 / "device.toml", 'dtb = "qcom/milos-fairphone-fp6.dtb"',
+                  'dtb = "qcom/milos-fairphone-fp6.dtb"\npatches = ["patches/linux-milos-nfc/x.patch"]')
+        self.assertRejected("source locks and kernel patches in this repository are refused")
 
     def test_userspace_requirements_reject_dnf_options(self):
         surface = self.root / 'devices/microsoft/sp12in/device.toml'
@@ -140,16 +142,15 @@ class DeviceTree(unittest.TestCase):
         self.assertRejected("must match the directory path")
 
     def test_kernel_tag_names_the_device_and_release(self):
-        self.edit(self.fp6 / "device.toml", 'tag = "luma-fp6-', 'tag = "luma-fp5-')
-        self.assertRejected("kernel.tag must start with 'luma-kernel-' or 'luma-fp6-'")
+        self.edit(self.fp6 / "device.toml", 'tag = "luma-kernel-', 'tag = "luma-fp6-')
+        self.assertRejected("kernel.tag must start with 'luma-kernel-'")
 
     def test_new_device_kernel_is_a_luma_tag(self):
         with mock.patch.object(check_devices, "TRANSITIONAL_KERNELS", set()):
             errors = self.errors()
         refused = "source locks and kernel patches in this repository are refused"
-        for device in ("fairphone/fp6", "microsoft/sp12in", "raspberrypi/rpi5"):
+        for device in ("microsoft/sp12in", "raspberrypi/rpi5"):
             self.assertTrue(any(e.startswith(f"devices/{device}/") and refused in e for e in errors), errors)
-        self.assertTrue(any("kernel.tag must start with 'luma-kernel-'" in e for e in errors), errors)
 
     def test_source_locked_kernel_stays_experimental(self):
         self.edit(self.root / "devices/raspberrypi/rpi5/device.toml", 'tier = "experimental"', 'tier = "community"')

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Kernel modules of the Fairphone 6 kernel (SimplyLuma/linux tag
-# luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1, configuration
-# luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1 with
-# config/kernel/fp6.fragment, built by scripts/kernel/build-fp6.sh), the build
-# whose Image the Fairphone 6 boot image carries. Source0 is that build's
+# luma-kernel-7.2.15-luma1: luma-7.2 with the milos family branch, the arm64
+# defconfig with luma/config/milos.fragment, built by
+# scripts/kernel/build-fp6.sh), the build whose Image the Fairphone 6 boot
+# image carries. Source0 is that build's
 # /usr/lib/modules/<release> without vmlinuz and the boot images
 # (scripts/packages/build-kernel-modules-luma-fp6.sh). The modules are signed
 # with that build's key and match its BTF, so the package and the boot image
@@ -18,17 +18,17 @@
 # luma-device-boot (luma-update) in /usr/lib/luma/device-boot/fairphone-fp6/:
 # a deployment that brings these modules writes the image to the inactive boot
 # slot and restarts into it once (device.toml [boot_update]).
-%global kver 7.1.2-luma-fp-ims1.gmu2.selinux1
+%global kver 7.2.15-luma1
 %global debug_package %{nil}
 %global __strip /bin/true
 %global _build_id_links none
 
 Name:           kernel-modules-luma-fp6
-Version:        7.1.2
-Release:        1.luma.ims1.gmu2.selinux1.7%{?dist}
+Version:        7.2.15
+Release:        1.luma1%{?dist}
 Summary:        Kernel modules for the Fairphone 6 kernel
 License:        GPL-2.0-only
-URL:            https://github.com/SimplyLuma/linux/tree/luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1
+URL:            https://github.com/SimplyLuma/linux/tree/luma-kernel-7.2.15-luma1
 Source0:        fp6-kernel-modules.tar
 ExclusiveArch:  aarch64
 AutoReqProv:    no
@@ -78,14 +78,14 @@ test "$(find $m/kernel -name '*.ko.zst' | wc -l)" -gt 300
 # One admission file; any entry in it is a bare sha256 (the runtime refuses a malformed file).
 a=%{buildroot}%{_datadir}/luma/android/hardware/fairphone-fp6-kernel-notes.d/%{kver}.sha256
 test -f $a && ! grep -Ev '^(#.*|[0-9a-f]{64}  %{kver})?$' $a
-# FUSE is built in (config/kernel/fp6.fragment).
+# FUSE is built in (luma/config/milos.fragment).
 test ! -e $m/kernel/fs/fuse/fuse.ko.zst && grep -qx kernel/fs/fuse/fuse.ko $m/modules.builtin
-# Motion and environment sensors (patches 0039/0040).
+# Motion and environment sensors (milos branch).
 for k in i2c/busses/i2c-gpio spi/spi-gpio iio/imu/inv_icm42600/inv-icm42600-spi \
     iio/light/stk3310 iio/magnetometer/qmc6308 iio/pressure/dps310; do
   test -f $m/kernel/drivers/$k.ko.zst
 done
-# firewalld's nftables fib match and conntrack helpers (config/kernel/fp6.fragment).
+# firewalld's nftables fib match and conntrack helpers (luma/config/milos.fragment).
 for k in nft_fib_inet nf_conntrack_amanda nf_conntrack_ftp nf_conntrack_h323 \
     nf_conntrack_irc nf_conntrack_netbios_ns nf_conntrack_pptp nf_conntrack_sane \
     nf_conntrack_sip nf_conntrack_snmp nf_conntrack_tftp; do
@@ -103,6 +103,11 @@ done
 %{_prefix}/lib/luma/device-boot/fairphone-fp6/
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 7.2.15-1.luma1
+- Kernel luma-kernel-7.2.15-luma1: Linux 7.2.15 (luma-7.2) with the milos
+  family branch, arm64 defconfig with luma/config/milos.fragment.
+- NFT_FIB_INET and the ten conntrack helpers firewalld ships, as modules.
+
 * Wed Nov 18 2026 Malak Sedarous <18029995+malaksedarous@users.noreply.github.com> - 7.1.2-1.luma.ims1.gmu2.selinux1.7
 - Rebuilt with NFT_FIB_INET and the ten conntrack helpers firewalld ships
   (config/kernel/fp6.fragment), so firewalld loads its ruleset.

@@ -32,11 +32,10 @@ family onto the base and builds one arm64 kernel for all ARM devices, tagged
 `luma-kernel-<kernel release>`. `device.toml` points at that tag; kernel
 patches never live in this repository. See [kernel.md](kernel.md).
 
-Devices from before the one kernel (Fairphone 6, Raspberry Pi 5, Surface Pro
-12-inch) keep their current kernels until they move. The Fairphone 6 tag,
-`luma-fp6-<release>-<kernel release>` on `milos`, names the published boot
-image and the SHA-256 of its kernel, DTB, `.config` and modules; its
-`.config`, overlays and build steps are in `luma/fp6/<release>/`.
+The Fairphone 6 is on the Luma kernel: `config` is the arm64 defconfig and
+`config_fragments` names `luma/config/milos.fragment`, both in the tag's tree.
+Devices from before the one kernel (Raspberry Pi 5, Surface Pro 12-inch) keep
+their current kernels until they move.
 
 **Distribution kernels.** A device that boots its distribution's stock
 kernel, unmodified, has no tag, source lock or `.config`. Its `[kernel]`

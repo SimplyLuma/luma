@@ -46,11 +46,11 @@ DIGITS = re.compile(r"(?<![0-9A-Za-z])[0-9]{15,20}(?![0-9A-Za-z])")
 REQUIRED_ENFORCING = "enforcing=1"
 # docs/kernel.md, "Transition": these devices keep the kernel they had until
 # they move to the Luma base. Every other device points at a SimplyLuma/linux tag.
-TRANSITIONAL_KERNELS = {"fairphone/fp6", "microsoft/sp12in", "raspberrypi/rpi5"}
+TRANSITIONAL_KERNELS = {"microsoft/sp12in", "raspberrypi/rpi5"}
 # Kernel patch directories from before docs/kernel.md. New kernel work is a
 # pull request to SimplyLuma/linux, not a patches/linux-* directory.
 LEGACY_KERNEL_PATCH_DIRS = {
-    "linux-android-container", "linux-milos", "linux-milos-fingerprint", "linux-milos-nfc",
+    "linux-android-container", "linux-milos-fingerprint", "linux-milos-nfc",
     "linux-mt6878", "linux-qcomtee-control-v18", "linux-qcomtee-control-v22",
     "linux-qcomtee-control-v23", "linux-qcomtee-control-v24", "linux-qcomtee-control-v25",
     "linux-qseecom", "linux-qseecom-dedicated-heaps", "linux-qseecom-qseelog",
@@ -234,10 +234,16 @@ class Checker:
         if files != firmware.get("files"):
             self.error(path, f"{files} files listed but device.toml says {firmware.get('files')}")
 
-    def check_kernel_fragments(self, device_dir: Path, kernel: dict) -> None:
-        """Config fragments are repository files of Kconfig assignments and comments."""
+    def check_kernel_fragments(self, device_dir: Path, key: str, kernel: dict) -> None:
+        """Config fragments are Kconfig files: in the tag's tree for a Luma kernel
+        (luma/config/, pinned by the tag), else repository files checked here."""
         where = device_dir / "device.toml"
         for fragment in kernel.get("config_fragments", []):
+            if kernel.get("tag") and key not in TRANSITIONAL_KERNELS:
+                if not re.fullmatch(r"luma/config/[a-z0-9_-]+\.fragment", fragment):
+                    self.error(where, f"kernel config fragment {fragment} must be a luma/config/*.fragment "
+                                      "of the kernel tree")
+                continue
             path = (self.root / fragment).resolve()
             if not path.is_relative_to(self.root.resolve()) or not path.is_file():
                 self.error(where, f"kernel config fragment {fragment} must name a repository file")
@@ -489,7 +495,7 @@ class Checker:
                 if tag and release and not tag.endswith("-" + release):
                     self.error(device_dir / "device.toml", "kernel.tag must end with the kernel release")
                 self.check_kernel_source(device_dir, device.get("kernel", {}))
-                self.check_kernel_fragments(device_dir, device.get("kernel", {}))
+                self.check_kernel_fragments(device_dir, f"{vendor.name}/{device_dir.name}", device.get("kernel", {}))
                 self.check_kernel_patches(device_dir, device.get("kernel", {}))
                 self.check_distribution_kernel(device_dir, device.get("kernel", {}), soc)
                 self.check_initramfs(device_dir, device.get("initramfs"))

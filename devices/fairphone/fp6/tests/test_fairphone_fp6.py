@@ -67,43 +67,42 @@ class FairphoneFp6(unittest.TestCase):
 
     def test_selinux_is_enforcing(self):
         self.assertIn("enforcing=1", self.boot["cmdline"]["args"])
-        self.assertTrue(self.device["kernel"]["release"].endswith(".selinux1"))
+
+    def test_kernel_is_the_luma_kernel(self):
+        # docs/kernel.md: the luma-7.2 base with the milos family branch, no
+        # kernel patches here; config and fragments are paths in the tag's tree.
+        kernel = self.device["kernel"]
+        self.assertEqual(kernel["tag"], "luma-kernel-" + kernel["release"])
+        self.assertEqual(kernel["config"], "arch/arm64/configs/defconfig")
+        self.assertEqual(kernel["config_fragments"], ["luma/config/milos.fragment"])
+        self.assertNotIn("patches", kernel)
+        self.assertNotIn("dtb_overlays", kernel)
+        self.assertFalse((ROOT / "patches" / "linux-milos").exists())
 
     def test_fuse_is_built_in(self):
         # rpm-ostree runs package scripts under rofiles-fuse, before
         # kernel-modules-luma-fp6 (which would carry fuse.ko) is layered.
-        fragments = self.device["kernel"]["config_fragments"]
-        text = "".join((ROOT / f).read_text() for f in fragments)
-        self.assertRegex(text, r"(?m)^CONFIG_FUSE_FS=y$")
+        # luma/config/milos.fragment sets CONFIG_FUSE_FS=y.
         spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
         self.assertIn("test ! -e $m/kernel/fs/fuse/fuse.ko.zst", spec)
 
     def test_sensor_stack_is_built(self):
         # Auto-rotate and automatic brightness read these through iio-sensor-proxy.
-        patches = self.device["kernel"]["patches"]
-        for name in ("0039-iio-fp6-add-motion-environment-sensor-stack.patch",
-                     "0040-iio-imu-inv-icm42600-add-icm42630.patch"):
-            self.assertIn(f"patches/linux-milos/{name}", patches)
-        self.assertEqual(patches, sorted(patches))
-        fragments = self.device["kernel"]["config_fragments"]
-        text = "".join((ROOT / f).read_text() for f in fragments)
-        for option in ("I2C_GPIO", "SPI_GPIO", "INV_ICM42600_SPI", "STK3310", "QMC6308", "DPS310"):
-            self.assertRegex(text, rf"(?m)^CONFIG_{option}=m$")
+        # The drivers are milos branch commits; the spec checks the modules.
         spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
-        self.assertIn("iio/light/stk3310", spec)
-        build = (ROOT / "scripts" / "kernel" / "build-fp6.sh").read_text()
-        self.assertIn("compose-fp6-dtb.sh", build)
+        for module in ("i2c/busses/i2c-gpio", "spi/spi-gpio", "iio/imu/inv_icm42600/inv-icm42600-spi",
+                       "iio/light/stk3310", "iio/magnetometer/qmc6308", "iio/pressure/dps310"):
+            self.assertIn(module, spec)
 
     def test_firewalld_netfilter_modules_are_built(self):
         # firewalld loads no ruleset without the inet fib match and the
         # conntrack helpers of the services its default zone allows.
-        fragments = self.device["kernel"]["config_fragments"]
-        text = "".join((ROOT / f).read_text() for f in fragments)
-        helpers = ("AMANDA", "FTP", "H323", "IRC", "NETBIOS_NS", "PPTP", "SANE", "SIP", "SNMP", "TFTP")
-        for option in ("NFT_FIB_INET", *(f"NF_CONNTRACK_{h}" for h in helpers)):
-            self.assertRegex(text, rf"(?m)^CONFIG_{option}=m$")
+        # luma/config/milos.fragment sets them; the spec checks the modules.
         spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
-        self.assertIn("nf_conntrack_netbios_ns", spec)
+        helpers = ("amanda", "ftp", "h323", "irc", "netbios_ns", "pptp", "sane", "sip", "snmp", "tftp")
+        for module in ("nft_fib_inet", *(f"nf_conntrack_{h}" for h in helpers)):
+            self.assertRegex(spec, rf"(?m)^(for k in|    ).*\b{module}\b")
+        self.assertIn("test -f $m/kernel/net/netfilter/$k.ko.zst", spec)
 
     def test_uses_the_shared_milos_kernel(self):
         self.assertEqual(self.device["soc"], "qcom/milos")

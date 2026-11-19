@@ -12,23 +12,14 @@ maintainers = ["@nmcmil"]
 fastboot_product = "FP6"
 
 [kernel]
-tag = "luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1"
-release = "7.1.2-luma-fp-ims1.gmu2.selinux1"
-config = "luma/fp6/alpha1/config-7.1.2-luma-fp-ims1.gmu2.selinux1"
+# SimplyLuma/linux luma-7.2 (v7.2.15) with the milos family branch on top
+# (docs/kernel.md). config and config_fragments are paths in that tree.
+tag = "luma-kernel-7.2.15-luma1"
+release = "7.2.15-luma1"
+config = "arch/arm64/configs/defconfig"
 # Merged over config in order (scripts/kernel/build-fp6.sh).
-config_fragments = ["config/kernel/fp6.fragment"]
-# Applied over the tag in order (scripts/kernel/build-fp6.sh).
-patches = [
-  "patches/linux-milos/0002-drm-msm-a810-gmu-timeout-diagnostics.patch",
-  "patches/linux-milos/0004-drm-msm-a810-use-gen8-3-gmu-boot-rate.patch",
-  "patches/linux-milos/0039-iio-fp6-add-motion-environment-sensor-stack.patch",
-  "patches/linux-milos/0040-iio-imu-inv-icm42600-add-icm42630.patch",
-  "patches/linux-milos/0041-scsi-ufs-qcom-power-down-ufs-during-system-suspend-on-milos.patch",
-  "patches/linux-milos/0042-Input-eswin_eph861x-reset-the-controller-before-unmasking.patch",
-]
+config_fragments = ["luma/config/milos.fragment"]
 dtb = "qcom/milos-fairphone-fp6.dtb"
-# The boot DTB is the built dtb with these overlays (scripts/kernel/compose-fp6-dtb.sh).
-dtb_overlays = "luma/fp6/alpha1/dtb"
 
 [kernel.android_gpu]
 # Android GPU admission (scripts/kernel/fp6-android-gpu-admission.py). The
@@ -37,22 +28,16 @@ dtb_overlays = "luma/fp6/alpha1/dtb"
 # any other FP6 kernel. The A810 GMU fails firmware initialization under
 # Android load (GMU start timeout, GPU_SET OOB timeouts, GPU and DPU
 # hangchecks): the IFPC-off kernel was revoked on 2026-08-15 after that
-# failure. Patch 0004 (Gen8.3 650 MHz GMU boot rate, after the 0002 timeout
-# diagnostics) passed one cold workload; 0003 (AHB fence range) broke the
-# native shell. See patches/linux-milos/README.md.
-required_patches = [
-  "patches/linux-milos/0002-drm-msm-a810-gmu-timeout-diagnostics.patch",
-  "patches/linux-milos/0004-drm-msm-a810-use-gen8-3-gmu-boot-rate.patch",
-]
-rejected_patches = ["patches/linux-milos/0003-drm-msm-a810-use-gen8-3-ahb-fence-range.patch"]
-# Set by `fp6-android-gpu-admission.py qualify` after the on-phone
-# qualification passes; "" = no kernel has passed.
+# failure. The milos branch carries the GMU timeout diagnostics and the Gen8.3
+# 650 MHz GMU boot rate as commits; the AHB fence-range change, which broke the
+# native shell, stays out. A new tag is admitted only after the on-phone
+# qualification passes on it.
 qualified_gpu_inputs = "3a677fbc9d995fdfea158333f9e79836a441b88f42d324f012409bddd5b64265"
 qualified_notes_sha256 = "bd0064a79692982e68a272389017eb4018cd58b7bd3b82787af5b7574859c617"
 # Stamped by `fp6-android-gpu-admission.py stamp`; CI fails when the [kernel]
 # inputs change without restamping.
-kernel_inputs = "cad021489996c4b613b04af08386b9ad1ce44e0a1b6b3bf1f811f4fe957f3519"
-admitted = true
+kernel_inputs = "e9e7219e06d781c1248ea91cee9e0d31db3ec9dd61469930a277c4fd1d2217d3"
+admitted = false
 
 [boot]
 config = "boot.toml"
