@@ -94,6 +94,16 @@ class FairphoneFp6(unittest.TestCase):
                        "iio/light/stk3310", "iio/magnetometer/qmc6308", "iio/pressure/dps310"):
             self.assertIn(module, spec)
 
+    def test_firewalld_netfilter_modules_are_built(self):
+        # firewalld loads no ruleset without the inet fib match and the
+        # conntrack helpers of the services its default zone allows.
+        # luma/config/milos.fragment sets them; the spec checks the modules.
+        spec = (ROOT / "packaging" / "rpm" / "kernel-modules-luma-fp6.spec").read_text()
+        helpers = ("amanda", "ftp", "h323", "irc", "netbios_ns", "pptp", "sane", "sip", "snmp", "tftp")
+        for module in ("nft_fib_inet", *(f"nf_conntrack_{h}" for h in helpers)):
+            self.assertRegex(spec, rf"(?m)^(for k in|    ).*\b{module}\b")
+        self.assertIn("test -f $m/kernel/net/netfilter/$k.ko.zst", spec)
+
     def test_uses_the_shared_milos_kernel(self):
         self.assertEqual(self.device["soc"], "qcom/milos")
         self.assertEqual(self.soc["kernel"]["branch"], "milos")

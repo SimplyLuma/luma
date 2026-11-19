@@ -85,6 +85,12 @@ for k in i2c/busses/i2c-gpio spi/spi-gpio iio/imu/inv_icm42600/inv-icm42600-spi 
     iio/light/stk3310 iio/magnetometer/qmc6308 iio/pressure/dps310; do
   test -f $m/kernel/drivers/$k.ko.zst
 done
+# firewalld's nftables fib match and conntrack helpers (luma/config/milos.fragment).
+for k in nft_fib_inet nf_conntrack_amanda nf_conntrack_ftp nf_conntrack_h323 \
+    nf_conntrack_irc nf_conntrack_netbios_ns nf_conntrack_pptp nf_conntrack_sane \
+    nf_conntrack_sip nf_conntrack_snmp nf_conntrack_tftp; do
+  test -f $m/kernel/net/netfilter/$k.ko.zst
+done
 
 %files
 %dir /usr/lib/modules/%{kver}
@@ -100,6 +106,7 @@ done
 * Sun Nov 15 2026 Project Luma <maintainers@projectluma.org> - 7.2.15-1.luma1
 - Kernel luma-kernel-7.2.15-luma1: Linux 7.2.15 (luma-7.2) with the milos
   family branch, arm64 defconfig with luma/config/milos.fragment.
+- NFT_FIB_INET and the ten conntrack helpers firewalld ships, as modules.
 
 * Sat Nov 14 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.6
 - Carry the boot image of this kernel build and its luma-device-boot

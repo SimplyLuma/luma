@@ -16,7 +16,7 @@ Luma base.
 | `zuma` | Google Tensor G3 (zuma) family patches. Empty. | `497791a0a96b` |
 | `msm8953` | Qualcomm MSM8953 (Snapdragon 625/450/632) family patches. Empty. | `497791a0a96b` |
 | `milos` | Qualcomm SM7635, on milos-mainline 7.1.2 (Alpha 1). | `c098393e36c0` |
-| `milos-7.2` | Qualcomm SM7635 on `luma-7.2`: the Fairphone 6 kernel. Replaces `milos`. | `f20e69edcd1c` |
+| `milos-7.2` | Qualcomm SM7635 on `luma-7.2`: the Fairphone 6 kernel. Replaces `milos`. | `18a181c0e236` |
 
 `497791a0a96b866d90add64041c47acdff49cae6` is the upstream `v7.2.15` commit.
 `main` is the repository's fork point and is not used for builds.
