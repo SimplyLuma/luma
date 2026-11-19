@@ -24,11 +24,12 @@ from typing import Iterable
 
 from .classify import is_hidden_output
 
-__all__ = ("Graph", "OutputNode", "ChunkDecoder")
+__all__ = ("Graph", "OutputNode", "StreamNode", "ChunkDecoder")
 
 NODE = "PipeWire:Interface:Node"
 DEVICE = "PipeWire:Interface:Device"
 METADATA = "PipeWire:Interface:Metadata"
+CLIENT = "PipeWire:Interface:Client"
 
 OUTPUT_CLASSES = ("Audio/Sink", "Audio/Duplex")
 
@@ -74,6 +75,20 @@ class OutputNode:
     props: dict           # node properties laid over its device's properties
     route: dict           # active route info plus port.type, or {}
     available: bool
+
+
+@dataclass(frozen=True)
+class StreamNode:
+    """A playback stream, as the mixer needs it."""
+
+    node_id: int
+    serial: int | None
+    props: dict
+    client: dict          # properties of the client that owns the stream
+    state: str            # "running", "idle", "suspended", ...
+    channel_volumes: tuple
+    mute: bool | None
+    target_serial: int | None   # explicit target.object in the default metadata
 
 
 def _info_dict(info) -> dict:
@@ -212,6 +227,65 @@ class Graph:
                     return _info_dict(route.get("info")), True
         # A profile without routes (Pro Audio) counts as available.
         return {}, found == 0
+
+    def _metadata_entries(self, name: str):
+        for obj in self.objects.values():
+            if obj.get("type") == METADATA and (obj.get("props") or {}).get("metadata.name") == name:
+                yield from (e for e in obj.get("metadata") or () if isinstance(e, dict))
+
+    def stream_nodes(self) -> list[StreamNode]:
+        """Every audio playback stream, with its client and explicit target."""
+        clients = {oid: (o.get("info") or {}).get("props") or {}
+                   for oid, o in self.objects.items() if o.get("type") == CLIENT}
+        targets: dict[int, int] = {}
+        for entry in self._metadata_entries("default"):
+            if entry.get("key") == "target.object":
+                subject, value = _as_int(entry.get("subject")), _as_int(entry.get("value"))
+                if subject is not None and value is not None and value >= 0:
+                    targets[subject] = value
+        streams = []
+        for oid, obj in self.objects.items():
+            if obj.get("type") != NODE:
+                continue
+            info = obj.get("info") or {}
+            props = info.get("props") or {}
+            if props.get("media.class") != "Stream/Output/Audio":
+                continue
+            volumes: tuple = ()
+            mute = None
+            for param in (info.get("params") or {}).get("Props") or ():
+                if isinstance(param, dict) and "channelVolumes" in param:
+                    volumes = tuple(v for v in param.get("channelVolumes") or () if isinstance(v, (int, float)))
+                    mute = param.get("mute")
+                    break
+            streams.append(StreamNode(
+                oid, _as_int(props.get("object.serial")), dict(props),
+                dict(clients.get(_as_int(props.get("client.id")), {})),
+                str(info.get("state") or ""), volumes,
+                mute if isinstance(mute, bool) else None, targets.get(oid)))
+        return sorted(streams, key=lambda s: s.node_id)
+
+    def node_name_for_serial(self, serial: int | None) -> str | None:
+        if serial is None:
+            return None
+        for obj in self.objects.values():
+            if obj.get("type") != NODE:
+                continue
+            props = (obj.get("info") or {}).get("props") or {}
+            if _as_int(props.get("object.serial")) == serial:
+                name = props.get("node.name")
+                return name if isinstance(name, str) else None
+        return None
+
+    def nodes_with(self, key: str, value: str) -> list[tuple[int, dict]]:
+        found = []
+        for oid, obj in self.objects.items():
+            if obj.get("type") != NODE:
+                continue
+            props = (obj.get("info") or {}).get("props") or {}
+            if str(props.get(key)) == value:
+                found.append((oid, props))
+        return found
 
     def hidden_output_names(self) -> list[str]:
         return sorted(node.name for node in self.output_nodes().values()

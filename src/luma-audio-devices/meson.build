@@ -8,11 +8,15 @@ datadir = prefix / get_option('datadir')
 python.install_sources(
   'luma_audio_devices/__init__.py',
   'luma_audio_devices/airplay.py',
+  'luma_audio_devices/apps.py',
   'luma_audio_devices/avahi.py',
+  'luma_audio_devices/captures.py',
   'luma_audio_devices/classify.py',
   'luma_audio_devices/cli.py',
   'luma_audio_devices/graph.py',
+  'luma_audio_devices/levels.py',
   'luma_audio_devices/migration.py',
+  'luma_audio_devices/mixer.py',
   'luma_audio_devices/pipewire.py',
   'luma_audio_devices/raop.py',
   'luma_audio_devices/routing.py',
@@ -31,8 +35,10 @@ install_data('data/pipewire/40-luma-network-audio-opt-in.conf',
 install_data('data/wireplumber/60-luma-audio-policy.conf',
              install_dir: datadir / 'wireplumber' / 'wireplumber.conf.d')
 install_data('data/wireplumber/scripts/lib/luma-output-policy.lua',
+             'data/wireplumber/scripts/lib/luma-app-audio.lua',
              install_dir: datadir / 'wireplumber' / 'scripts' / 'lib')
 install_data('data/wireplumber/scripts/luma/output-policy.lua',
+             'data/wireplumber/scripts/luma/app-audio.lua',
              install_dir: datadir / 'wireplumber' / 'scripts' / 'luma')
 
 # Session service
