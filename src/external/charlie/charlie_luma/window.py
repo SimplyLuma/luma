@@ -43,9 +43,9 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, GObject, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
-    ActionCenter, ActionEditor, AddRow, AppWindow, BarAction, BarChip, BarEntry, BarPrompt, BarSearch,
+    ActionCenter, ActionEditor, AddRow, AppWindow, BarAction, BarChip, BarPrompt, BarSearch,
     Command, CommandGroup, CommandRegistry, CornerPill, CountBadge, DetailsItem, DetailsPane, DetailsPhotos,
-    DetailsRow, EventCard, FileCard, GroupFace, Island, ListFirst, MessageBubble, ModeSwitch,
+    DetailsFacts, DetailsRow, EventCard, FileCard, GroupFace, Island, ListFirst, MessageBubble, ModeSwitch,
     NavigationSidebar, PanelRow, PersonAvatar, SEPARATOR, SPACER, SidebarFoot, SidebarRow, RowLead,
     StackedButton, StackedButtons, SwipeAction, SwipeRow, TitleIsland, Toast, ToastHost, WidthWatch,
     apply_type, icons, panel_list,
@@ -66,6 +66,9 @@ NAV_HIDES_WITH_DETAILS = 1320
 LIST_NARROWS_AT = 820
 LIST_HIDES_AT = 760
 PHONE_BELOW = 560            # the kit's phone tier
+
+#: An account's dot, v71 .crnh oklch(0.68 0.12 hue): its colour's hue.
+ACCOUNT_HUES = {"blue": 250, "green": 150, "orange": 60, "purple": 300, "red": 25, "teal": 195}
 
 #: Boxes a mailbox column lists, v71 CRBOX: key, name, glyph.
 BOXES = (("inbox", "Inbox", "inbox"), ("flagged", "Flagged", "star"), ("drafts", "Drafts", "file-text"),
@@ -236,11 +239,15 @@ class People:
         """A person's round face; a sender of designed mail gets its own mark."""
         face = self.face(address)
         if face.brand is not None:
-            # TODO(v71-kit brand mark): v71 .crbrand is a rounded square in the sender's colour with its
-            # monogram (kit request charlie-03); a face in the sender's name stands in.
-            return PersonAvatar(face.brand[0], size, hue=_hex_hue(face.brand[1]))
+            # v71 .crbrand: a rounded square in the sender's colour with its letter.
+            return PersonAvatar(face.brand[0], size, mark=True, colour=face.brand[1])
         holder = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
-        holder.append(PersonAvatar(face.name, size, picture=face.picture, hue=face.hue))
+        avatar = PersonAvatar(face.name, size, picture=face.picture, hue=face.hue)
+        fixture = self.window.fixture
+        person = fixture.person(address) if fixture is not None else None
+        if person is not None and not person.contact:
+            avatar.add_css_class("charlie-mono")   # v71 .crmono: someone not in the address book
+        holder.append(avatar)
         if face.picture is None and self.window.fixture is None and address:
             def loaded(picture: Gdk.Paintable, holder=holder) -> None:
                 child = holder.get_first_child()
@@ -281,22 +288,6 @@ class People:
             GLib.idle_add(show)
 
         self.window.app.avatar_loader.request(address, "", arrived)
-
-
-def _hex_hue(colour: str) -> float:
-    rgba = Gdk.RGBA()
-    rgba.parse(colour)
-    r, g, b = rgba.red, rgba.green, rgba.blue
-    high, low = max(r, g, b), min(r, g, b)
-    if high == low:
-        return 0
-    if high == r:
-        hue = (g - b) / (high - low) % 6
-    elif high == g:
-        hue = (b - r) / (high - low) + 2
-    else:
-        hue = (r - g) / (high - low) + 4
-    return hue * 60
 
 
 # ── a conversation, read for the screen ────────────────────────────────────
@@ -410,13 +401,16 @@ class MailRow(Gtk.ListBoxRow):
             self.add_css_class("sub")
         people = window.people
         unread = thread.unread
+        if unread:
+            self.add_css_class("unread")
         line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         line.add_css_class("charlie-row-line")
         brand = thread.brand
         if brand is not None:
             face = people.avatar(brand, 38)
         elif len(thread.others) > 1:
-            face = GroupFace([people.entry(a) for a in thread.others[:2]], size=38, decorative=True)
+            face = GroupFace([people.entry(a) for a in thread.others[:2]], size=38, decorative=True,
+                             hues=[people.face(a).hue for a in thread.others[:2]])
         else:
             face = people.avatar(thread.others[0] if thread.others else thread.latest.sender_address, 38)
         face.set_valign(Gtk.Align.START)
@@ -428,7 +422,7 @@ class MailRow(Gtk.ListBoxRow):
         first.add_css_class("charlie-row-first")
         names = _label(thread.names(), "body", weight=700 if unread else 550)
         names.add_css_class("charlie-row-names")
-        _font(names, 13.5, 700 if unread else 550)
+        _font(names, 13 if sub else 13.5, 700 if unread else 550)   # .crrow.sub .l1 b: 13
         first.append(names)
         if len(thread.messages) > 1:
             first.append(CountBadge(len(thread.messages)))
@@ -442,16 +436,16 @@ class MailRow(Gtk.ListBoxRow):
         text.append(first)
         second = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         second.add_css_class("charlie-row-second")
-        subject = _label(thread.subject, "body", muted=not unread, weight=550 if unread else None)
+        subject = _label(thread.subject, "body", weight=550 if unread else None)
         subject.add_css_class("charlie-row-subject")
         _font(subject, 13, 550 if unread else 400)
         second.append(subject)
         if thread.attachments:
-            clip = icons.image("paperclip")
+            clip = icons.image("paperclip", pixel_size=12)
             clip.add_css_class("charlie-row-glyph")
             second.append(clip)
         if thread.flagged:
-            star = icons.image("star")
+            star = icons.image("star-filled", pixel_size=12)
             star.add_css_class("charlie-row-flag")
             second.append(star)
         second.append(Gtk.Box(hexpand=True))
@@ -485,23 +479,31 @@ class BundleRow(Gtk.ListBoxRow):
         senders = [t.brand or t.latest.sender_address for t in threads]
         line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         line.add_css_class("charlie-row-line")
-        face = GroupFace([people.entry(a) for a in senders[:2]], size=38, decorative=True)
+        # v71 .crstk.sq: the senders' marks, 26 on 38.
+        face = GroupFace([people.entry(a) for a in senders[:2]], size=38, decorative=True, mark=True,
+                         colours=[(people.brand(a) or (None, None))[1] for a in senders[:2]])
         face.set_valign(Gtk.Align.START)
         line.append(face)
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
         text.add_css_class("charlie-row-text")
         first = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         first.add_css_class("charlie-row-first")
-        first.append(_label("Updates", "body", weight=550))
+        updates = _font(_label("Updates", "body", weight=550), 13.5, 550)
+        updates.add_css_class("charlie-row-names")
+        first.append(updates)
         unread = sum(1 for t in threads if t.unread)
         if unread:
             first.append(CountBadge(unread, attention=True))
         first.append(Gtk.Box(hexpand=True))
-        chevron = icons.image("chevron-up" if open_ else "chevron-down")
+        chevron = icons.image("chevron-up" if open_ else "chevron-down", pixel_size=14)
+        chevron.set_valign(Gtk.Align.START)
         chevron.add_css_class("charlie-row-glyph")
         first.append(chevron)
         text.append(first)
-        text.append(_label(", ".join(people.name(a) for a in senders), "caption", muted=True))
+        senders_line = _label(", ".join(people.name(a) for a in senders), "caption", muted=True)
+        senders_line.add_css_class("charlie-row-snippet")
+        _font(senders_line, 12.5, 400)
+        text.append(senders_line)
         line.append(text)
         self.set_child(line)
         self.update_property([Gtk.AccessibleProperty.LABEL], [f"Updates, {unread} unread"])
@@ -511,40 +513,131 @@ class BundleRow(Gtk.ListBoxRow):
 # ── the thread ─────────────────────────────────────────────────────────────
 
 class Lane(Gtk.Widget):
-    """A message's column: at most `fraction` of the thread's width and `cap` pixels, to one side."""
+    """A message's row: the sender's face (received), then its column: at most `fraction` of the row's width
+    and `cap` pixels, to one side.
 
-    def __init__(self, child: Gtk.Widget, *, outgoing: bool, fraction: float, cap: int, fill: bool = False) -> None:
+    One widget lays out both, so the column is always measured at the width it gets: a row box would
+    measure minimum heights at its children's narrowest, which a scrolling view then allocates."""
+
+    def __init__(self, child: Gtk.Widget, *, outgoing: bool, fraction: float, cap: int, fill: bool = False,
+                 lead: int = 0, face: Gtk.Widget | None = None) -> None:
+        """`lead`: the face's column (a phone's 30 + 8): the fraction is of the whole row, as v71's .crcol
+        (max-width 84%) holds the face too. `face` sits at the row's start, level with the column's foot."""
         super().__init__(hexpand=True)
         self.child, self.outgoing, self.fraction, self.cap = child, outgoing, fraction, cap
         self.fill = fill
+        self.lead = lead
+        self.face = face
+        if face is not None:
+            face.set_parent(self)
         child.set_parent(self)
 
     def _width(self, available: int) -> int:
-        return max(0, min(available, self.cap, round(available * self.fraction)))
+        return max(0, min(available, self.cap, round((available + self.lead) * self.fraction) - self.lead))
+
+    def _face_size(self) -> tuple[int, int]:
+        if self.face is None:
+            return 0, 0
+        return (self.face.measure(Gtk.Orientation.HORIZONTAL, -1)[1],
+                self.face.measure(Gtk.Orientation.VERTICAL, -1)[1])
+
+    def _column_width(self, width: int) -> int:
+        face_width = self._face_size()[0]
+        floor = self.child.measure(Gtk.Orientation.HORIZONTAL, -1)[0]
+        return max(floor, self._width(max(0, width - face_width)))
+
+    def do_get_request_mode(self):
+        return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
+    def do_measure(self, orientation, for_size):
+        face_width, face_height = self._face_size()
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            floor, natural, _b, _n = self.child.measure(orientation, -1)
+            return face_width + min(floor, 120), face_width + natural, -1, -1
+        width = self._column_width(for_size) if for_size >= 0 else self.cap
+        minimum, natural, _b, _n = self.child.measure(orientation, width)
+        return max(minimum, face_height), max(natural, face_height), -1, -1
+
+    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
+        face_width, face_height = self._face_size()
+        if self.face is not None:
+            self.face.allocate(face_width, face_height, -1,
+                               Gsk.Transform.new().translate(Graphene.Point().init(0, height - face_height)))
+        lane = self._column_width(width)
+        natural = self.child.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
+        child_width = min(lane, max(natural, 0)) if self.outgoing and not self.fill else lane
+        x = width - child_width if self.outgoing else face_width
+        self.child.allocate(child_width, height, baseline,
+                            Gsk.Transform.new().translate(Graphene.Point().init(x, 0)))
+
+    def do_dispose(self) -> None:
+        for part in (self.face, self.child):
+            if part is not None:
+                part.unparent()
+        self.face = self.child = None
+        super().do_dispose()
+
+
+class _Ratio(Gtk.Widget):
+    """Its child at the width it is given and `ratio` times less tall (v71 .crimg aspect-ratio)."""
+
+    def __init__(self, child: Gtk.Widget, ratio: float) -> None:
+        super().__init__(hexpand=True)
+        self.child, self.ratio = child, ratio
+        child.set_parent(self)
 
     def do_get_request_mode(self):
         return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
 
     def do_measure(self, orientation, for_size):
         if orientation == Gtk.Orientation.HORIZONTAL:
-            minimum, natural, _b, _n = self.child.measure(orientation, -1)
-            return min(minimum, 120), natural, -1, -1
-        width = self._width(for_size) if for_size >= 0 else self.cap
-        return self.child.measure(orientation, width)
+            return 0, 0, -1, -1
+        height = round(for_size / self.ratio) if for_size >= 0 else 0
+        return height, height, -1, -1
 
     def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
-        lane = self._width(width)
-        natural = self.child.measure(Gtk.Orientation.HORIZONTAL, -1)[1]
-        child_width = min(lane, max(natural, 0)) if self.outgoing and not self.fill else lane
-        x = width - child_width if self.outgoing else 0
-        self.child.allocate(child_width, height, baseline,
-                            Gsk.Transform.new().translate(Graphene.Point().init(x, 0)))
+        self.child.allocate(width, height, baseline, None)
 
     def do_dispose(self) -> None:
         if self.child is not None:
             self.child.unparent()
             self.child = None
         super().do_dispose()
+
+
+class _ThreadIsland(TitleIsland):
+    """A phone thread's title island. Grown into Information it is v71 .crisl.open: min(360, the screen less
+    24) wide on a phone too (the kit's details island takes the whole width less 24 there), its title
+    filling the header."""
+
+    __gtype_name__ = "CharlieThreadIsland"
+
+    def _size(self) -> None:
+        super()._size()
+        width, height = self.get_size_request()
+        if self.grown and width > 0:
+            from luma_appkit.structure_island import DETAILS_WIDTH, LEFT
+            self.set_size_request(min(width, DETAILS_WIDTH + (LEFT if self.has_css_class("floating") else 0)),
+                                  height)
+
+
+class _ListIsland(TitleIsland):
+    """A phone list's title island. Grown into the mailboxes it stops 128 above the screen's foot (v71 .phboxes
+    .crnav: max-height calc(100% - 52px - 128px)), clear of the list's bar."""
+
+    __gtype_name__ = "CharlieListIsland"
+    FOOT = 128
+
+    def _size(self) -> None:
+        super()._size()
+        root = self.get_root()
+        height = root.get_height() if root is not None else 0
+        if self.grown and height:
+            # From where the island really sits (52 on a phone, under the status area), not the window's title row.
+            from luma_appkit.structure_island import HEIGHT
+            ok, point = self.compute_point(root, Graphene.Point().init(0, 0))
+            top = point.y if ok else 0
+            self.panel.set_max_content_height(max(120, round(height - top - HEIGHT - self.FOOT)))
 
 
 # ── the window ─────────────────────────────────────────────────────────────
@@ -610,7 +703,11 @@ class CharlieWindow(AppWindow):
 
     def my_name(self, address: str) -> str:
         account = next((a for a in self.store.accounts() if a.address.casefold() == address.casefold()), None)
-        return account.display_name if account is not None and self.fixture is None else "You"
+        if account is not None and self.fixture is None:
+            return account.display_name
+        # The fixture's accounts are named for their place ("Luma"): the owner's face takes the address's name.
+        local = address.split("@", 1)[0]
+        return local.capitalize() if local else "You"
 
     # ── commands ──────────────────────────────────────────────────────────
 
@@ -656,7 +753,8 @@ class CharlieWindow(AppWindow):
         self.nav = self._build_nav()
         list_page = self._build_list()
         detail_page = self._build_thread()
-        self.list_first = ListFirst(list_page, detail_page, on_back=self._back_to_list)
+        # v71 Charlie's list runs to the top on a phone: its title island floats at 52 over the rows.
+        self.list_first = ListFirst(list_page, detail_page, on_back=self._back_to_list, status_inset=False)
         self.list_first.split.set_spacing(WINDOW["gutter"])
         self.list_first.connect("showing", lambda _l, _s: self._sync_islands())
         self.list_first.attach_island(self.thread_island)
@@ -697,13 +795,9 @@ class CharlieWindow(AppWindow):
         row(None, "inbox", "All inboxes", "inbox", self._unread_threads(None, "inbox"), True)
         row(None, "flagged", "Flagged", "star", len(self._threads_in(None, "flagged")), False)
         for position, account in enumerate(self.store.accounts()):
-            # TODO(v71-kit account heading): v71 .crnh is the account's dot, name and address
-            # (kit request charlie-04); the kit's section heading carries the name.
-            heading = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            heading.add_css_class("charlie-account-heading")
-            heading.append(_label(account.display_name, "label", weight=650))
-            heading.append(_label(account.address, "caption", muted=True))
-            sidebar.list.append(Gtk.ListBoxRow(selectable=False, activatable=False, child=heading))
+            # v71 .crnh: the account's dot in its colour, its name and address, under a hairline.
+            sidebar.append_section(account.display_name, subtitle=account.address,
+                                   hue=ACCOUNT_HUES.get(account.colour, ACCOUNT_HUES["blue"]), ruled=True)
             row(account.id, "inbox", "Inbox", "inbox", self._unread_threads(account.id, "inbox"), True)
             row(account.id, "drafts", "Drafts", "file-text", self._draft_count(account.id), False)
             row(account.id, "sent", "Sent", "send-horizontal", None, False)
@@ -716,6 +810,10 @@ class CharlieWindow(AppWindow):
                 item = SidebarRow(name, lead=RowLead.dot(hue))
                 item.charlie_label = note
                 sidebar.append_row(item)
+        if self.phone:
+            # v71 .phboxes .crnav: on a phone Add account ends the mailboxes and scrolls with them.
+            add = AddRow("Add account", icon="plus", on_activate=self._accounts)
+            sidebar.list.append(Gtk.ListBoxRow(child=add, selectable=False, activatable=False))
 
     def _build_list(self) -> Gtk.Widget:
         island = Island()
@@ -759,8 +857,10 @@ class CharlieWindow(AppWindow):
         host.set_name(WIDGET_NAMES["list"])
         self.list_host = host
         # A phone's list: ☰ | the mailbox in the title island, the bar at the thumb (v71 phone.js label()).
-        self.list_island = TitleIsland("All inboxes", "", lead="menu", grow=self.nav, grows="menu")
+        self.list_island = _ListIsland("All inboxes", "", lead="menu", grow=self.nav, grows="menu")
         self.list_island.set_name(WIDGET_NAMES["list_island"])
+        self.list_island.add_css_class("charlie-island")
+        self.list_island.add_css_class("charlie-list-island")
         self.list_island.connect("grown", self._list_island_grown)
         self.list_bar = ActionCenter().attach(host)
         self.list_bar.set_name(WIDGET_NAMES["list_bar"])
@@ -784,6 +884,7 @@ class CharlieWindow(AppWindow):
         island.append(self.body_scroller)
         self.thread_island_widget = island
         host = ToastHost(island)
+        host.set_hexpand(True)   # a phone takes the island away: the page still fills the screen
         host.set_name(WIDGET_NAMES["main"])
         self.thread_host = host
         # The subject pill and the corner float over the top of the thread (a computer's, v71 .flo).
@@ -797,12 +898,16 @@ class CharlieWindow(AppWindow):
         host.add_overlay(self.corner_slot)
         host.set_measure_overlay(self.corner_slot, False)
         self.corner: CornerPill | None = None
-        self.bar = ActionCenter().attach(host)
+        # v71 .crphbar: grown into a panel, the thread's bar keeps the 16 gutter.
+        self.bar = ActionCenter(phone_grown_inset=16).attach(host)
         self.bar.set_name(WIDGET_NAMES["bar"])
         # A phone's thread: ‹ | faces, subject, who · count; it grows into Information.
-        self.thread_island = TitleIsland(lead="back", lead_label="Back", on_lead=self._back_to_list,
+        self.thread_island = _ThreadIsland(lead="back", lead_label="Back", on_lead=self._back_to_list,
                                          grow=self._info_panel, grows="details")
         self.thread_island.set_name(WIDGET_NAMES["thread_island"])
+        self.thread_island.add_css_class("charlie-island")
+        self.thread_island.add_css_class("charlie-thread-island")
+        self.thread_island.connect("grown", lambda island, grown: island.title_button.set_hexpand(grown))
         self.details = DetailsPane("Details", on_close=self._details_closed)
         self.details.set_name(WIDGET_NAMES["details"])
         self.details.add_css_class("charlie-details")
@@ -812,6 +917,7 @@ class CharlieWindow(AppWindow):
         page.add_css_class("charlie-page")
         page.append(host)
         page.append(self.details)
+        self.thread_page = page
         return page
 
     # ── tiers ─────────────────────────────────────────────────────────────
@@ -834,6 +940,7 @@ class CharlieWindow(AppWindow):
             elif phone:
                 self.list_first.show_list()
             self.refresh(keep_scroll=True)
+            self._render_thread()   # a phone's thread is drawn its own way (faces 30, Messages-style columns)
             self._show_thread_chrome()
 
     def _apply_widths(self) -> None:
@@ -846,8 +953,11 @@ class CharlieWindow(AppWindow):
         self.list_host.set_visible(list_shown or self.list_first.showing == "list")
         self.list_head.set_visible(not phone)
         self.list_foot.set_visible(not phone)
+        self.add_account.set_visible(not phone)   # a phone's ends the mailboxes list instead (_fill_nav)
+        self.nav_sidebar.set_footer_fade(not phone)   # so nothing fades into an empty foot there
         if phone and self.details_open:
             self.details.show(open=False)
+        self.details.set_visible(not phone)   # a phone's Information is the title island's
         self.subject_pill.set_visible(not phone and self.thread is not None and self.composing != "new")
         self.corner_slot.set_visible(not phone and self.thread is not None and self.composing != "new")
         lists = self.list_island_widget
@@ -858,6 +968,18 @@ class CharlieWindow(AppWindow):
 
     def _frame(self, phone: bool) -> None:
         """A phone's list and thread are the screen itself (v71 .phstack: no island around them)."""
+        # The list and the thread are named for what is their surface: the island's host on a computer, the
+        # page that paints the screen on a phone (the hosts are overlays and draw nothing of their own).
+        # The mailboxes are the column on a computer; on a phone, the list's title island they grow out of.
+        for name, desk, handheld in ((WIDGET_NAMES["list"], self.list_host, self.list_content),
+                                     (WIDGET_NAMES["main"], self.thread_host, self.thread_page),
+                                     (WIDGET_NAMES["nav"], self.nav, self.list_island)):
+            (handheld if phone else desk).set_name(name)
+            (desk if phone else handheld).set_name("")
+        if not phone:
+            self.list_island.set_name(WIDGET_NAMES["list_island"])
+        for page in (self.list_content, self.thread_page):
+            (page.add_css_class if phone else page.remove_css_class)("charlie-phone-surface")
         # Island draws the shared rim from its actual allocation. App spacing
         # belongs to its child, so the surface and rim keep the same bounds.
         self.list_content.set_margin_top(0 if phone else 12)
@@ -1024,10 +1146,10 @@ class CharlieWindow(AppWindow):
         self.list_bar.show_bar([
             self.list_search,
             BarAction("mail-check", tooltip="Show all mail" if self.unread_only else "Show only unread",
-                      active=self.unread_only, badge=unread or None,
+                      active=self.unread_only, badge=unread or None, badge_tone="accent",
                       on_activate=lambda: self._set_unread(not self.unread_only)),
             BarAction("square-pen", tooltip="New email", primary=True, on_activate=self._new_email),
-        ])
+        ], fill=True)   # v71 .crlbar: the 16 gutter, as the thread's bar
         _name_bar(self.list_bar, {1: "cr-unread", 2: "cr-new"})
 
     def _search_changed(self, text: str) -> None:
@@ -1229,21 +1351,24 @@ class CharlieWindow(AppWindow):
         people = self.people
         out = message.outgoing
         fixture_item = self.fixture.messages.get(message.id) if self.fixture is not None else None
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        row.add_css_class("charlie-message")
-        row.add_css_class("out" if out else "in")
-        row.set_name(f"cr-msg-{message.id.split(':')[-1]}")
-        face_size = 30 if self.phone else 34
+        # A phone's faces are 30 (v71 .crmav .av); a sender's mark keeps its own 26 there (.crbrand).
+        brand_face = self.phone and not out and people.brand(message.sender_address) is not None
+        face_size = 26 if brand_face else 30 if self.phone else 34
         column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         column.add_css_class("charlie-column")
         meta = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, halign=Gtk.Align.END if out else Gtk.Align.START)
         meta.add_css_class("charlie-meta")
+        # v71 .crmeta: the name 12.5/600 in ink, then "to …" and the time 11.5/400 in ink-3.
         if not out:
-            meta.append(_label(people.name(message.sender_address), "caption", weight=600, ellipsize=False))
+            meta.append(_font(_label(people.name(message.sender_address), "caption", weight=600, ellipsize=False),
+                              12.5, 600))
+            meta.get_last_child().add_css_class("charlie-meta-name")
         recipients = [a for a in message.recipients if a]
         if recipients and not message.body_html and (len(recipients) > 1 or out):
-            meta.append(_label("to " + ", ".join(people.first(a) for a in recipients), "caption", muted=True))
-        meta.append(_label(message_time(message.sent_at, self.now()), "caption", muted=True, ellipsize=False))
+            meta.append(_font(_label("to " + ", ".join(people.first(a) for a in recipients), "caption", muted=True),
+                              11.5, 400))
+        meta.append(_font(_label(message_time(message.sent_at, self.now()), "caption", muted=True, ellipsize=False),
+                          11.5, 400))
         column.append(meta)
         presentation = message_presentation(message)
         selected = self.selected_message == message.id
@@ -1255,7 +1380,7 @@ class CharlieWindow(AppWindow):
             bubble = MessageBubble(child=paper)
             bubble.add_css_class("paper")
         else:
-            bubble = MessageBubble(child=self._message_text(message, fixture_item), mine=out)
+            bubble = MessageBubble(child=self._message_text(message, fixture_item), mine=out, padded=True)
         bubble.set_selected(selected)
         # WebKit has no useful intrinsic width. Shrink-wrapping this paper,
         # as we do ordinary text, allocates its native view zero pixels wide.
@@ -1274,10 +1399,15 @@ class CharlieWindow(AppWindow):
             column.append(self._photos(message, photos, images))
         visible = [a for a in message.attachments if a.id not in {i.id for i in presentation.inline_images}]
         if visible:
-            files = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.END if out else Gtk.Align.START)
+            # A phone's files fill the message's column (v71 .crfiles max-width 100%).
+            files = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                            halign=Gtk.Align.FILL if self.phone else Gtk.Align.END if out else Gtk.Align.START)
             files.add_css_class("charlie-files")
             for index, attachment in enumerate(visible):
-                files.append(self._file_card(message, index, attachment))
+                card = self._file_card(message, index, attachment)
+                if self.phone:
+                    card.set_halign(Gtk.Align.FILL)
+                files.append(card)
             column.append(files)
         if fixture_item is not None and fixture_item.event is not None:
             title, start, when, where = fixture_item.event
@@ -1285,15 +1415,25 @@ class CharlieWindow(AppWindow):
                              on_add=lambda: self._toast(f"Added “{title}” to Calendar"))
             card.set_halign(Gtk.Align.START)
             column.append(card)
-        lane = Lane(column, outgoing=out, fraction=0.84 if self.phone else 0.84,
-                    cap=640 if message.body_html else 620,
-                    fill=bool(message.body_html and presentation.designed_html))
+        # A phone: received in 84% of the row (the face's column in it); sent across the row, the bubble kept 74 in.
+        if self.phone and not out and not (photos or images or visible or
+                                           (fixture_item is not None and fixture_item.event is not None)):
+            # v71's phone face spans the bubble's row and the files' row; with no files that row is empty but
+            # still takes its 4 px gap, so the face sits 4 below the bubble.
+            column.add_css_class("bare")
+        face = None
         if not out:
             face = people.avatar(message.sender_address, face_size)
-            face.set_valign(Gtk.Align.END)
             face.add_css_class("charlie-face")
-            row.append(face)
-        row.append(lane)
+            if brand_face:
+                face.add_css_class("mark")
+        row = Lane(column, outgoing=out, fraction=1.0 if self.phone and out else 0.84,
+                   cap=640 if message.body_html else 620,
+                   fill=bool(message.body_html and presentation.designed_html),
+                   lead=38 if self.phone and not out else 0, face=face)
+        row.add_css_class("charlie-message")
+        row.add_css_class("out" if out else "in")
+        row.set_name(f"cr-msg-{message.id.split(':')[-1]}")
         return row
 
     def _message_text(self, message: Message, fixture_item) -> Gtk.Widget:
@@ -1309,10 +1449,18 @@ class CharlieWindow(AppWindow):
             paragraphs = [p for p in body.split("\n\n") if p.strip()]
             quote = ""
         for paragraph in paragraphs or [""]:
-            label = Gtk.Label(label=paragraph.strip("\n"), xalign=0, wrap=True, selectable=False,
-                              wrap_mode=Pango.WrapMode.WORD_CHAR, max_width_chars=200)
-            label.add_css_class("lumaui-message-text")
-            box.append(label)
+            # A paragraph's own lines (v71 <br>) are lines of one block, no gap between them.
+            block = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            block.add_css_class("charlie-paragraph")
+            lines = paragraph.strip("\n").split("\n")
+            if len(lines) > 1:
+                block.add_css_class("lines")
+            for line in lines:
+                label = Gtk.Label(label=line, xalign=0, wrap=True, selectable=False,
+                                  wrap_mode=Pango.WrapMode.WORD_CHAR, max_width_chars=200)
+                label.add_css_class("lumaui-message-text")
+                block.append(label)
+            box.append(block)
         if quote:
             toggle = Gtk.Button(label="•••", halign=Gtk.Align.START, tooltip_text="Show quoted text")
             toggle.add_css_class("charlie-quote-toggle")
@@ -1327,9 +1475,10 @@ class CharlieWindow(AppWindow):
             box.append(toggle)
             box.append(quoted)
         if signature.strip():
-            sig = Gtk.Label(label=signature.strip(), xalign=0, wrap=True)
-            apply_type(sig, "caption", muted=True)
+            sig = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             sig.add_css_class("charlie-signature")
+            for line in signature.strip().split("\n"):
+                sig.append(_font(_label(line, "caption", muted=True, ellipsize=False), 12, 400))
             box.append(sig)
         return box
 
@@ -1360,6 +1509,12 @@ class CharlieWindow(AppWindow):
             button.connect("clicked", lambda _b, i=index, m=message.id: self._pick_attachment(m, -1 - i))
             columns = 1 if count == 1 else 2
             grid.attach(button, index % columns, index // columns, 1, 1)
+        if self.phone:
+            # The column's width (v71 .crimgs min(440, 100%)): a lone photo 16:10, else 4:3 tiles.
+            columns = 1 if count == 1 else 2
+            rows = (min(count, 4) + columns - 1) // columns
+            ratio = 1.6 if count == 1 else (columns * 4 / 3) / rows
+            return _Ratio(grid, ratio)
         grid.set_size_request(360 if count == 1 else 440, 225 if count == 1 else (165 if count == 2 else 330))
         return grid
 
@@ -1428,7 +1583,9 @@ class CharlieWindow(AppWindow):
         if len(thread.others) == 1:
             return self.people.avatar(thread.others[0], size)
         from luma_appkit import AvatarStack
-        return AvatarStack([self.people.entry(a) for a in thread.others[:3]], size="header" if size > 32 else "row")
+        # v71 .crstk: faces of `size` overlapping by a third (the subject's 36 by 12, a phone island's 30 by 10).
+        return AvatarStack([self.people.entry(a) for a in thread.others[:3]], size="header" if size > 32 else "row",
+                           face=size, hues=[self.people.face(a).hue for a in thread.others[:3]])
 
     def _show_thread_chrome(self) -> None:
         thread = self.thread
@@ -1452,6 +1609,8 @@ class CharlieWindow(AppWindow):
             self.thread_island.set_lead("back", f"Back to {parent}")
             self.thread_island.title_button.update_property([Gtk.AccessibleProperty.LABEL],
                                                            [f"{thread.subject}. Details"])
+            # One name in both tiers: a phone's Details is the title island's title.
+            self.thread_island.title_button.set_name("cr-details" if self.phone else "")
             self.subject_pill.title_button.update_property([Gtk.AccessibleProperty.LABEL],
                                                           ["Who's in this conversation"])
             self._build_corner(thread)
@@ -1498,17 +1657,13 @@ class CharlieWindow(AppWindow):
         if len(people) > 1:
             people.append(self._my_address(thread))
         for address in people:
-            box.append(DetailsRow(self.people.name(address), address, lead=self.people.avatar(address, 36)))
+            box.append(DetailsRow(self.people.name(address), address, lead=self.people.avatar(address, 36),
+                                  prominent=True))
         account = next((a for a in self.store.accounts() if a.id == thread.account_id), None)
         facts = [("Messages", str(len(thread.messages))), ("Account", account.display_name if account else "Mail")]
         if thread.attachments:
             facts.append(("Attachments", str(thread.attachments)))
-        rule = Gtk.Separator()
-        rule.add_css_class("charlie-info-rule")
-        box.append(rule)
-        for name, value in facts:
-            # TODO(v71-kit details facts): v71's dl rows (word left, value right, no glyph); kit request charlie-05.
-            box.append(PanelRow(name, detail=value, sensitive=True, closes=False))
+        box.append(DetailsFacts(facts, prominent=True))
         return box
 
     def _my_address(self, thread: Thread) -> str:
@@ -1598,6 +1753,7 @@ class CharlieWindow(AppWindow):
         bar, thread = self.bar, self.thread
         if self.composing is not None:
             return
+        bar.remove_css_class("charlie-sender-bar")
         if thread is None:
             bar.hide_bar()
             return
@@ -1609,10 +1765,16 @@ class CharlieWindow(AppWindow):
             return
         if thread.brand is not None:
             if self.phone:
-                # A newsletter's phone bar: the sender, then Archive, Flag, ⋯ (no reply row).
-                # TODO(v71-kit bar subject): v71 .crwho2 (the sender's mark, name and address); BarChip stands in.
-                bar.show_bar([BarChip(self.people.name(thread.brand), lead=self.people.avatar(thread.brand, 30)),
-                              SPACER, *self._thread_actions()])
+                # A newsletter's phone bar (v71 .crwho2): the sender's mark and name, then Archive, Flag, ⋯
+                # at the end of the full-width bar (no reply row).
+                bar.show_bar([BarChip(self.people.name(thread.brand), lead=self.people.avatar(thread.brand, 30),
+                                      presentation="identity"),
+                              SPACER, *self._thread_actions()], fill=True)
+                sender = getattr(bar, "bar_row", None)
+                sender = sender.get_first_child() if sender is not None else None
+                if sender is not None:
+                    sender.add_css_class("charlie-sender")
+                bar.add_css_class("charlie-sender-bar")
             else:
                 bar.show_bar([BarAction("archive", "Archive", primary=True, on_activate=self._archive),
                               BarAction("reply", "Reply", on_activate=lambda: self._compose("one")),
@@ -1631,14 +1793,16 @@ class CharlieWindow(AppWindow):
                                  on_dismiss=self._clear_reply_to)
         self.bar.set_editor(self._reply_editor(mode))
         if self.phone:
+            # v71 .crwho2 reads like Calendar's view switcher: its glyph, its words, a chevron.
             switch = BarAction("reply-all" if mode == "all" else "reply", "Reply all" if mode == "all" else "Reply",
-                               dropdown=True, panel=self._mode_panel, key="mode")
-            # TODO(v71-kit two-row prompt): v71's bottom row is the reply well (a reply glyph, "Reply to …",
-            # tapping it grows the editor) and Attach (kit request charlie-01); a compose field stands in.
-            entry = BarEntry("compose", placeholder=prompt, on_submit=self._quick_send,
-                             tools=[BarAction("paperclip", tooltip="Attach", on_activate=self._attach_then_grow)])
+                               dropdown=True, dropdown_size="view", panel=self._mode_panel, key="mode")
+            # v71's bottom row: the reply well (a reply glyph, "Reply to …"; tapping it grows the editor), then Attach.
+            entry = BarPrompt(prompt, on_activate=self._prompt_grown, icon="forward" if mode == "fwd" else "reply",
+                              tools=[BarAction("paperclip", tooltip="Attach", on_activate=self._attach_then_grow)])
             bar.show_bar([switch, SPACER, *self._thread_actions()], entry=entry, context=context)
             _name_bar(bar, {0: "cr-reply-mode", 4: "cr-more"})
+            if getattr(bar, "prompt_button", None) is not None:
+                bar.prompt_button.set_name("cr-quick-reply")
             _label_bar(bar, {0: "Reply, reply all or forward"})
         else:
             first = names[0] if len(names) == 1 else "All"
@@ -1653,8 +1817,9 @@ class CharlieWindow(AppWindow):
     def _thread_actions(self) -> list[object]:
         thread = self.thread
         return [BarAction("archive", tooltip="Archive", on_activate=self._archive),
+                # A flag is a toggle (the raised chip), not the favourite's yellow star.
                 BarAction("star", tooltip="Unflag" if thread.flagged else "Flag", active=thread.flagged,
-                          on_activate=lambda: self._flag()),
+                          favourite=False, on_activate=lambda: self._flag()),
                 self._more_action()]
 
     def _more_action(self) -> BarAction:
@@ -1672,7 +1837,9 @@ class CharlieWindow(AppWindow):
             rows.append(MenuItem("Unsubscribe", icon="bell-off", on_activate=self._unsubscribe))
         rows += [MenuItem("Print", icon="printer", on_activate=self._print),
                  MenuItem("Delete thread", icon="trash-2", danger=True, on_activate=self._trash)]
-        return panel_list(rows, label="Thread")
+        panel = panel_list(rows, label="Thread")
+        panel.add_css_class("charlie-panel")
+        return panel
 
     def _mode_panel(self) -> Gtk.Widget:
         thread = self.thread
@@ -1681,14 +1848,17 @@ class CharlieWindow(AppWindow):
         target = ""
         if thread is not None and base is not None:
             target = self.people.first(base.recipients[0] if base.outgoing and base.recipients else base.sender_address)
-        rows = [MenuItem(f"Reply to {target}" if self.phone else "Reply", icon="reply", selected=mode == "one",
+        # v71 crPop: the mode in use is the raised chip (no check).
+        rows = [PanelRow(f"Reply to {target}" if self.phone else "Reply", icon="reply", current=mode == "one",
                          on_activate=lambda: self._set_mode("one"))]
         if thread is not None and len(thread.others) > 1:
-            rows.append(MenuItem("Reply all", icon="reply-all", selected=mode == "all",
+            rows.append(PanelRow("Reply all", icon="reply-all", current=mode == "all",
                                  on_activate=lambda: self._set_mode("all")))
-        rows.append(MenuItem("Forward", icon="forward", selected=mode == "fwd",
+        rows.append(PanelRow("Forward", icon="forward", current=mode == "fwd",
                              on_activate=lambda: self._compose("fwd")))
-        return panel_list(rows, label="Reply")
+        panel = panel_list(rows, label="Reply")
+        panel.add_css_class("charlie-panel")
+        return panel
 
     def _set_mode(self, mode: str) -> None:
         self.reply_mode = mode
@@ -1770,13 +1940,16 @@ class CharlieWindow(AppWindow):
         title, icon = {"one": ("Reply", "reply"), "all": ("Reply all", "reply-all"),
                        "fwd": ("Forward", "forward")}[mode]
         editor = ActionEditor(
-            title, icon, summary=None if mode == "fwd" else "to {}", summary_emphasis=", ".join(names),
+            title, icon,
             modes=[("one", "Reply", "reply"), ("all", "Reply all", "reply-all"), ("fwd", "Forward", "forward")],
             mode=mode, on_mode=self._editor_mode,
             fields=[("To", "Name or email")] if mode == "fwd" else (),
             tools=self._tools(), placeholder="Add a note (optional)" if mode == "fwd" else "Write your reply",
             primary=BarAction("send-horizontal", "Send", on_activate=self._send_editor),
-            on_discard=self._discarded)
+            on_discard=self._discarded, keep_hint=True)   # v71 .cr2ft: the composer's 36 keys on a phone too
+        if mode != "fwd":
+            _summary(editor, "to ", ", ".join(names))
+        editor.add_css_class("charlie-composer")
         self._editor = editor
         return editor
 
@@ -1801,6 +1974,7 @@ class CharlieWindow(AppWindow):
         self.composing = mode
         self.bar.set_editor(self._reply_editor(mode))
         self.bar.grow()
+        self._reveal_latest()
 
     def _attach_then_grow(self) -> None:
         self._compose(self._mode())
@@ -1821,10 +1995,13 @@ class CharlieWindow(AppWindow):
         self._new_subject.set_name("cr-new-subject")
         account = self.store.accounts()[0] if self.store.accounts() else None
         editor = ActionEditor(
-            "New email", "square-pen", summary="from {}", summary_emphasis=account.address if account else "",
+            "New email", "square-pen",
             fields=[("To", self._new_to), ("Subject", self._new_subject)], tools=self._tools(),
             placeholder="Write your email", primary=BarAction("send-horizontal", "Send", on_activate=self._send_editor),
-            on_discard=self._discarded)
+            on_discard=self._discarded, keep_hint=True)
+        if account is not None:
+            _summary(editor, "from ", account.address)
+        editor.add_css_class("charlie-composer")
         if text and editor.text_view is not None:
             editor.text_view.get_buffer().set_text(text)
         self._editor = editor
@@ -1923,16 +2100,28 @@ class CharlieWindow(AppWindow):
                           references=[] if mode == "fwd" else list((*base.references, base.message_id)))
         self._deliver(draft, "Forwarded" if mode == "fwd" else "Sent")
 
-    def _quick_send(self, text: str) -> None:
-        thread = self.thread
-        if thread is None or not text.strip():
+    def _prompt_grown(self) -> None:
+        """The phone's reply well was tapped: the bar grows into the editor set for the current mode."""
+        self.composing = self._mode()
+        self.selected_message = self.selected_attachment = None
+        self._reveal_latest()
+
+    def _reveal_latest(self) -> None:
+        """While replying on a phone the newest message sits just above the editor (v71 crPadFit): once the
+        grown bar has taken its room at the foot of the thread, scroll to the end."""
+        if not self.phone:
             return
-        base = self.reply_to or thread.latest
-        draft = Draft(base.account_id, to=thread.reply_targets(self._mode(), self.reply_to),
-                      subject=base.subject if base.subject.casefold().startswith("re:") else f"Re: {thread.subject}",
-                      body=text.strip(), in_reply_to=base.message_id,
-                      references=list((*base.references, base.message_id)))
-        self._deliver(draft, "Sent")
+
+        adjustment = self.body_scroller.get_vadjustment()
+
+        def to_end(*_args) -> bool:
+            adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
+            return GLib.SOURCE_REMOVE
+        # The bar's room at the thread's foot lands over the next frames: follow it until it settles.
+        handler = adjustment.connect("changed", lambda *_a: GLib.idle_add(to_end))
+        GLib.timeout_add(1000, lambda: (adjustment.disconnect(handler), False)[1])
+        for delay in (60, 200, 400):
+            GLib.timeout_add(delay, to_end)
 
     def _deliver(self, draft: Draft, done: str) -> None:
         def finished(error: Exception | None) -> None:
@@ -2153,6 +2342,23 @@ class CharlieWindow(AppWindow):
 
     def refresh_open(self) -> None:
         self.refresh(keep_scroll=True)
+
+
+def _summary(editor: ActionEditor, words: str, who: str) -> None:
+    """The editor's summary as v71 .cr2to draws it: the words, then who in their own run (b: ink-2, 600)."""
+    kit = editor.summary
+    kit.set_visible(False)
+    line = Gtk.Box(hexpand=True)
+    line.add_css_class("charlie-summary")
+    head = Gtk.Label(label=words, xalign=0)
+    head.add_css_class("lumaui-ac-summary")
+    emphasis = Gtk.Label(label=who, xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END, width_chars=1)
+    emphasis.add_css_class("lumaui-ac-summary")
+    emphasis.add_css_class("charlie-summary-who")
+    line.append(head)
+    line.append(emphasis)
+    line.update_property([Gtk.AccessibleProperty.LABEL], [f"{words}{who}"])
+    kit.get_parent().insert_child_after(line, kit)
 
 
 def _label_bar(center: ActionCenter, labels: dict[int, str]) -> None:

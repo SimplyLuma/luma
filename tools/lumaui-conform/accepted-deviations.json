@@ -545,6 +545,98 @@
       "prop": "^font weight$",
       "spec_value": "^250$",
       "gtk_value": "^300$"
+    },
+    {
+      "id": "charlie-island-one-control",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "phone": true,
+      "reason": "v71 draws the list's title island (☰ | the mailbox) as one <button>, the island itself. LumaUI's TitleIsland draws the same island with ☰ a presentation square merged into the title button (one control for the keyboard and screen readers), so the control the comparator measures starts after ☰ and the island's surface (fill, 16 radius, shadow) is the island's. v71 draws ☰ and the grown island's ✕ in ways the capture does not read as glyphs. Nothing on screen differs.",
+      "states": ["list", "unread", "mailboxes"],
+      "subject": "^button \"[^\"]+\\. Mailboxes\"$|^card \"All inboxes\"$|^icon (menu|x)$",
+      "prop": "^(position|size|background|radius|shadow|not a surface|extra)$"
+    },
+    {
+      "id": "charlie-older-date",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "reason": "v71 writes every older day as a weekday; Charlie writes the date once a message is more than a week old (\"Sep 19\", where v71 says \"Sat\" for 1 October's fixture clock). The scenario's text_aliases pair the words; the date's width, and so where the end-aligned time starts, differ. Those two properties of those words only.",
+      "subject": "^text \"(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\"$",
+      "prop": "^(position|width)$",
+      "max_delta": 24
+    },
+    {
+      "id": "phone-no-key-hints",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "phone": true,
+      "reason": "Ruled 1 October 2026: no keyboard hints on a phone. v71's phone composer still shows \"⌘ Return\" by its Send key; LumaUI's composer keeps its footer's 36 keys on a phone (ActionEditor keep_hint) and drops the hint.",
+      "states": ["reply", "new"],
+      "subject": "^(text|card) \"⌘ Return\"$",
+      "prop": "^missing$"
+    },
+    {
+      "id": "charlie-placeholder-pseudo",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "reason": "v71 draws the composer's placeholder as the editor's ::before content (data-ph); the capture reports it as the editable element's own text, with that element's box (the composer's width, from its left edge) and ink. LumaUI draws the placeholder where v71 shows it, 16 in and in ink-3.",
+      "states": ["reply", "new"],
+      "subject": "^text \"Write your (reply|email)\"$",
+      "prop": "^(position|width|colour)$"
+    },
+    {
+      "id": "charlie-open-key-wrap",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "phone": true,
+      "reason": "v71's phone bar wraps its items (.crphbar flex-wrap), and with a file picked the Open key's glyph lands over its word, the bar 8 px taller and its other keys 4 px higher in it. LumaUI keeps that key on one line, as every other bar key; the key is the same width.",
+      "states": ["attachment"],
+      "group": "thread bar",
+      "subject": "^icon app-window$|^text \"Open\"$|^thread bar$|^button \"(Open|Save|Reply|Forward|Done)\"$",
+      "prop": "^(position|size)$",
+      "max_delta": 24
+    },
+    {
+      "id": "charlie-account-heading-bleed",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "phone": true,
+      "reason": "In the mailboxes grown from the title island, v71 runs an account's heading (.crnh) 10 px past the panel on each side (margin -10) and the panel clips it; its hairline shows across the panel. LumaUI's heading and hairline span the panel itself (GTK draws nothing outside its parent), so the measured box is 8 px narrower and 4 px further in.",
+      "states": ["mailboxes"],
+      "subject": "^card \"(Luma|Personal)\"$",
+      "prop": "^(position|size|not a surface)$",
+      "max_delta": 8
+    },
+    {
+      "id": "charlie-new-email-title",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "reason": "v71's New email composer names itself with plain words in its header (.cr2mode.st, a span); LumaUI's ActionEditor draws its title as the mode chip, a button that takes no focus or taps when there is one mode. The comparator pairs v71's header, named by those words, with that button, so it reports the chip's box and the header's hairline for the header.",
+      "states": ["new"],
+      "group": "composer",
+      "subject": "^card \"New email\"$",
+      "prop": "^(position|size|border|edge colour)$"
+    },
+    {
+      "id": "charlie-info-rows",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "phone": true,
+      "reason": "v71's Information (the thread's title island grown) lists its people as plain rows; LumaUI's DetailsRow is always one control (name and address), so a keyboard and a screen reader reach each person.",
+      "states": ["details"],
+      "subject": "^button \"[^\"]+, [^\"]+@[^\"]+\"$",
+      "prop": "^extra$"
+    },
+    {
+      "id": "charlie-photo-clip",
+      "doc": "lumaui-deviations.md: Charlie's phone (charlie-*, phone-no-key-hints)",
+      "apps": ["charlie"],
+      "phone": true,
+      "reason": "v71 rounds a lone photo with its grid's 18 px clip (.crimgs; the photo inside is square); GTK clips the grid the same at the same box, and the comparator gives that clip to the photo. The same pixels.",
+      "subject": "^button \"Photo\"$",
+      "prop": "^radius$",
+      "spec_value": "^0$",
+      "gtk_value": "^18$"
     }
   ]
 }

@@ -14,27 +14,93 @@
 .charlie-row-first > * + *,
 .charlie-row-second > * + * { margin-left: 6px; }
 .charlie-row-text > * + * { margin-top: 1px; }
+/* v71 .crtx: the subject in ink-2 (ink when unread), 12 px glyphs in ink-3, the flag's star filled, the count in ink-3,
+ * an unread time in the accent's light tint (oklch .78 .11). */
+label.charlie-row-subject { color: @luma_ink_secondary; }
+.charlie-row.unread label.charlie-row-subject { color: @luma_ink; }
+image.charlie-row-glyph { color: @luma_muted; }
+image.charlie-row-flag { color: @luma_favourite; }
+.charlie-row-first .lumaui-count:not(.attention), .charlie-row-first .lumaui-count:not(.attention) label { color: @luma_muted; }
+label.charlie-row-time.unread { color: oklch(from @luma_accent 0.78 0.11 h); }
+.charlie-mono, .charlie-mono label { font-weight: 650; }
 .charlie-row-dot { min-width: 8px; min-height: 8px; border-radius: 999px; background: @luma_accent; }
 .charlie-list-foot { padding: 8px 10px 10px 10px; margin: 8px -8px 0 -8px; border-top: 1px solid @luma_line; }
 .charlie-empty { margin: 24px 12px; }
+/* A phone's list and thread are the screen (v71 .phstack): the list on the window's ground, the thread on the
+ * content's, as their islands' surfaces are on a computer. */
+box.charlie-list-content.charlie-phone-surface { background-color: @luma_window; }
+box.charlie-page.charlie-phone-surface { background-color: @luma_content; }
 /* A phone: the list under its title island, rows on the 16 gutter (v71 .crside::before 46, padding 8 + 4) */
-.charlie-list-content.phone { padding: 108px 12px 0 12px; }
-.charlie-list-content.phone .charlie-rows { margin-top: 0; }
+.charlie-list-content.phone { padding: 110px 12px 0 12px; }
+box.lumaui-list-first-list box.charlie-list-content.phone list.charlie-rows { margin-top: 0; padding: 0 4px; }
+/* v71 .crrow on a phone: its own 10/10/11 line padding and three lines (19.75, 18.84, 2 + 18.13), nothing around it. */
+box.lumaui-list-first-list box.charlie-list-content.phone list.charlie-rows > row.charlie-row {
+  min-height: 0; margin: 0; padding: 0;
+}
+box.charlie-list-content.phone row.charlie-row > .lumaui-swipe-row { margin: 0; padding: 0; }
+box.charlie-list-content.phone .charlie-row-text > * + * { margin-top: 0; }
+.charlie-row-text label { letter-spacing: -0.078px; }   /* the body's -0.006em, as v71's rows inherit it */
+box.charlie-list-content.phone row.charlie-row.bundle .charlie-row-line { padding-top: 12px; padding-bottom: 12px; }
+box.lumaui-list-first-list box.charlie-list-content.phone list.charlie-rows > row.charlie-row.bundle { margin-bottom: 3px; }
+box.charlie-list-content.phone row.charlie-row.bundle label.charlie-row-snippet { margin-top: 0; min-height: 20px; }
+box.charlie-list-content.phone .charlie-row-first { min-height: 20px; }
+box.charlie-list-content.phone .charlie-row-second { min-height: 19px; }
+box.charlie-list-content.phone label.charlie-row-snippet { margin-top: 2px; min-height: 18px; }
 
-.charlie-account-heading { padding: 12px 4px 4px 20px; }
+
+/* The mailboxes grown from a phone's title island (v71 .phboxes .crnav .crni: 48 tall, 12 round, a 16 glyph). */
+box.lumaui-title-island.grown .luma-navigation-sidebar.charlie-nav .luma-navigation-list > row.lumaui-row {
+  min-height: 48px; border-radius: 12px;
+}
+box.lumaui-title-island.grown .luma-navigation-sidebar.charlie-nav row.lumaui-row image.lead-icon { -gtk-icon-size: 16px; min-width: 16px; }
+/* .crnav 56 6 6: the rows 6 in; an account's heading (.crnh) and its hairline span the whole panel, its dot 16 in. */
+box.lumaui-title-island.charlie-list-island scrolledwindow.lumaui-title-island-panel > viewport > * { margin: 8px 0 6px 0; }
+box.lumaui-title-island.grown .luma-navigation-sidebar.charlie-nav .luma-navigation-list > row.lumaui-row,
+box.lumaui-title-island.grown .luma-navigation-sidebar.charlie-nav > box.luma-navigation-footer { margin-left: 6px; margin-right: 6px; }
+box.lumaui-title-island.grown .luma-navigation-sidebar.charlie-nav .luma-navigation-list > row.luma-navigation-section { padding-left: 16px; padding-bottom: 1px; }
 
 /* The thread (v71 .crpad 84 28 112; .crmsg 12 apart; a face column 10 from the bubble) */
 .charlie-thread { padding: 84px 28px 112px 28px; }
-.charlie-thread.phone { padding: 108px 16px 24px 16px; }
+/* A phone's thread (v71 phone: .crpad 14 a side under the title island, day 130, messages 18 apart, the
+ * column's parts 4 apart, the meta 8 in, files 6 apart, a lone photo 16:10 in the column's width) */
+.charlie-thread.phone { padding: 104px 14px 6px 14px; }   /* with the bar's own room under it: the newest message 40 above an open editor (crPadFit) */
+.charlie-thread.phone .charlie-day { margin: 26px 0 9px 0; }
+.charlie-thread.phone .charlie-message { margin: 9px 0; }
+.charlie-thread.phone .charlie-message + .charlie-day { margin-top: 17px; }   /* v71's 26 collapses the message's 9 */
+.charlie-thread.phone .charlie-column > * + * { margin-top: 4px; }
+.charlie-thread.phone .charlie-column.bare { padding-bottom: 4px; }
+.charlie-thread.phone .charlie-meta { padding: 0 6px 0 8px; min-height: 18px; }
+.charlie-thread.phone .charlie-files > * + * { margin-top: 6px; }
+.charlie-thread.phone .charlie-photos.n1 > button.charlie-photo { border-radius: 0; margin: 0; }
+/* A picked file keeps the card's lift under its ring (v71 .crf.sel: the chip edge, then 2 px of the accent). */
+.charlie-thread box.lumaui-file-card.selected {
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop, 0 0 0 2px @luma_focus_ring;
+}
+.charlie-thread.phone .charlie-column > box.lumaui-message.theirs { margin-right: 20px; }   /* a long message: 246 of the 266 column */
+.charlie-thread.phone .charlie-column > box.lumaui-message.mine { margin-left: 74px; }   /* .crmsg.out: 30 + 8 + 36 in */
+/* Pango's hinted Figtree runs ~1-2% wider than Chromium's: 3 px of the right padding lets a line that just fits in v71's
+ * 220 fit here too, so lines break where v71 breaks them (the bubble keeps its 246). */
+.charlie-thread.phone .charlie-column > box.lumaui-message.padded { padding-right: 10px; }
+.charlie-thread.phone .charlie-column > box.lumaui-message.padded.theirs .charlie-signature { margin-right: 3px; }   /* the rule ends at v71's 220 */
+.charlie-meta label.charlie-meta-name { color: @luma_ink; }
 .charlie-day { margin: 26px 0 8px 0; }
 .charlie-message { margin: 12px 0; }
 .charlie-message .charlie-face { margin-right: 10px; }
 .charlie-thread.phone .charlie-message .charlie-face { margin-right: 8px; }
+.charlie-thread.phone .charlie-message .charlie-face.mark { margin-right: 12px; }   /* a 26 mark in the 30 face column */
 .charlie-column > * + * { margin-top: 6px; }
 .charlie-meta { padding: 0 6px; }
 .charlie-meta > * + * { margin-left: 8px; }
 .charlie-text > * + * { margin-top: 6px; }
-.charlie-signature { margin-top: 12px; padding-top: 9px; border-top: 1px solid @luma_line; }
+/* A paragraph's own lines (v71 <br>), one label each: whole-pixel 20 px lines, so the block is v71's height (4 × 20.3). */
+.charlie-paragraph.lines > label.lumaui-message-text { line-height: 20px; }
+.charlie-signature { margin-top: 12px; padding-top: 9px; box-shadow: inset 0 1px 0.5px @luma_line; }
+.charlie-signature > label { min-height: 18px; }   /* v71 .crsig: 12 px at 1.5 */
+/* v71 .crqt: the quoted text's ••• chip */
+button.charlie-quote-toggle {
+  min-height: 20px; min-width: 18px; margin-top: 8px; padding: 0 8px; border-radius: 8px;
+  background: @luma_fill; box-shadow: none; color: @luma_ink_secondary; font-size: 11px; font-weight: 650; letter-spacing: 0.66px;
+}
 .charlie-files > * + * { margin-top: 8px; }
 .charlie-photos { border-radius: 18px; }
 .charlie-photos > * { margin: 0 3px 3px 0; padding: 0; }
@@ -44,13 +110,91 @@
 .charlie-subject { margin: 16px 0 0 16px; }
 .charlie-corner { margin: 0; }
 
-/* Information, grown from a phone's title island (v71 .crislp 8 10 12) */
-.charlie-info { padding: 8px 10px 12px 10px; }
-.charlie-info-rule { margin: 6px 0; }
+/* A phone's title islands (v71 .phbt b, .crisli b): the title 15/650 in either mode. */
+box.lumaui-title-island.charlie-island label.lumaui-title-island-label { font-weight: 650; }
+/* The thread's island (.crisli): the title 12 in from the hairline, 16 before the end. */
+box.lumaui-title-island.charlie-thread-island button.lumaui-title-island-title { padding: 0 16px 0 12px; }
+/* The list's island reads as the frame's title (v71 .phbt small: 12/500 in the frame's muted ink). */
+box.lumaui-title-island.charlie-list-island label.lumaui-title-island-subtitle { font-weight: 500; color: @luma_frame_muted; }
+
+/* The list's phone bar (v71 .crlbar): 6 between its parts (the kept search well brings a zero-width sibling, so
+ * the row's spacing is 4 and its gaps come out 8, 4); the search well 44 tall, 16 round (.phstack .srch). */
+.lumaui-action-center.phone#cr-list-bar box.lumaui-ac-row { border-spacing: 4px; }
+.lumaui-action-center.phone#cr-list-bar box.lumaui-ac-row > .lumaui-bar-search.keep {
+  min-height: 44px; margin: 2px 0 2px 0; border-radius: 16px;
+}
+.lumaui-action-center.phone#cr-list-bar box.lumaui-ac-row > .lumaui-bar-search.keep > image { -gtk-icon-size: 16px; }
+/* .crunn: the unread count on its key, oklch(0.6 0.17) in the accent's hue, 10/700 white. */
+.lumaui-action-center.phone#cr-list-bar #cr-unread .lumaui-count { background: oklch(from @luma_accent 0.6 0.17 h); }
+
+/* The thread's phone bar (v71 .crphbar): its parts 4 apart (.crr2, a newsletter's row); the message and file
+ * actions that share the width 6 apart. */
+.lumaui-action-center.phone#cr-bar box.lumaui-ac-row,
+.lumaui-action-center.phone#cr-bar box.lumaui-ac-row.compact-pickers { border-spacing: 6px; }
+/* Its reply well (.crqf): a 17 glyph, the words 10 after it, Attach 6 beyond the well. */
+.lumaui-action-center.phone#cr-bar box.lumaui-ac-foot { border-spacing: 6px; }
+.lumaui-action-center.phone#cr-bar button.lumaui-ac-prompt image.lumaui-ac-prompt-icon { -gtk-icon-size: 17px; }
+.lumaui-action-center.phone#cr-bar button.lumaui-ac-prompt label { margin-left: 1px; }
+.lumaui-action-center.phone#cr-bar box.lumaui-ac-bar.two-row box.lumaui-ac-row,
+.lumaui-action-center.phone#cr-bar.charlie-sender-bar box.lumaui-ac-row { border-spacing: 4px; }
+
+/* v71 .crwho2[aria-expanded="true"]: the reply switcher, open, is filled (fill-1), not raised. */
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown.on#cr-reply-mode:not(.primary):not(.record) {
+  background: @luma_control_fill; box-shadow: none;
+}
+
+/* .crwho2: its words in ink, its glyph in ink-2, the chevron ink-3. */
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown#cr-reply-mode label { color: @luma_ink; }
+.lumaui-action-center.phone button.lumaui-bar-button.bar.dropdown#cr-reply-mode image:not(.lumaui-bar-dropdown-chevron) { color: @luma_bar_ink_secondary; }
+
+/* The thread's panels on a phone (v71 .crpop .crmi: a 16 glyph; the mode in use the raised chip at 600). */
+box.lumaui-panel-list.charlie-panel button.lumaui-panel-row image { -gtk-icon-size: 16px; }
+box.lumaui-panel-list.charlie-panel button.lumaui-panel-row.current {
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop;
+}
+box.lumaui-panel-list.charlie-panel button.lumaui-panel-row.current label.lumaui-panel-row-title { font-weight: 600; }
+box.lumaui-panel-list.charlie-panel button.lumaui-panel-row.danger image { color: oklch(0.7 0.16 25); }   /* .crmi.red svg */
+.lumaui-action-center.phone#cr-bar scrolledwindow.lumaui-ac-panel { margin-bottom: 10px; }   /* .fexp: 12 above the bar's row */
+
+/* The composer (v71 .cr2to b: who it goes to in ink-2 at 600; .cr2tools .ib in ink-2). */
+label.lumaui-ac-summary.charlie-summary-who { font-weight: 600; color: @luma_ink_secondary; }
+box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-tools button.lumaui-bar-button { color: @luma_ink_secondary; }
+/* .cr2h 48 and .cr2f 44 count their hairline in; GTK's min-height is inside the border. */
+box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-header { min-height: 47px; }
+box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-field { min-height: 43px; }
+/* .cr2ft: Discard a quiet 18 glyph, Send 13/600 with a 15 glyph (the kit keeps the 36 keys: keep_hint). */
+.lumaui-action-center.phone box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-footer button.lumaui-bar-button.icon:not(.primary) { color: @luma_muted; }
+.lumaui-action-center.phone box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-footer button.lumaui-bar-button.icon:not(.primary) image { -gtk-icon-size: 18px; }
+.lumaui-action-center.phone box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-footer button.lumaui-bar-button.primary { padding: 0 16px; }
+.lumaui-action-center.phone box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-footer button.lumaui-bar-button.primary label { font-size: 13px; font-weight: 600; }
+.lumaui-action-center.phone box.lumaui-ac-editor-content.charlie-composer box.lumaui-ac-footer button.lumaui-bar-button.primary image { -gtk-icon-size: 15px; }
+
+/* A newsletter's phone bar: the sender (v71 .crwho2 on a phone: 14 in, 10 between the mark and the name at 15/650). */
+box.lumaui-bar-identity.charlie-sender { padding-left: 14px; border-spacing: 10px; }
+box.lumaui-bar-identity.charlie-sender label.title { font-size: 15px; font-weight: 650; }
+
+/* Information, grown from a phone's title island (v71 .crislp: 8 10 12, its parts 4 apart; .crprow 6 4; the dl
+ * under a hairline 6 below, 8 in, its rows 8 apart and 6 in from the sides). Its own padding stands for the panel's. */
+box.lumaui-title-island.charlie-island scrolledwindow.lumaui-title-island-panel > viewport > box.charlie-info { margin: 0; }
+box.charlie-info { padding: 8px 10px 12px 10px; border-spacing: 4px; }
+box.charlie-info box.lumaui-details-row { min-height: 0; padding: 0; }
+box.charlie-info box.lumaui-details-row button.lumaui-details-who { min-height: 39px; padding: 6px 4px; }
+box.charlie-info label.lumaui-details-name, box.charlie-info label.lumaui-details-sub { letter-spacing: -0.078px; }
+box.charlie-info box.lumaui-details-facts.prominent {
+  margin-top: 6px; padding: 8px 6px 0 6px; border-spacing: 8px; box-shadow: inset 0 1px 0.5px @luma_line;   /* GSK keeps a blurred rule a shadow */
+}
+box.charlie-info box.lumaui-details-facts.prominent > box.lumaui-details-fact { min-height: 20px; padding: 0; border-top: none; }
+box.charlie-info box.lumaui-details-facts.prominent > box.lumaui-details-fact > label { margin-top: 0; }
 
 /* Designed mail on its paper (v71 .crpaper) */
 .charlie-html-preview { min-width: 0; }
-.charlie-html-preview-frame { min-width: 0; }
+.charlie-html-preview-frame { min-width: 0; border-radius: 14px; }
+box.lumaui-message.paper { padding: 6px; }
+.charlie-html-preview-foot { min-height: 30px; padding: 8px 4px 2px 0; }
+button.flat.charlie-html-expand {
+  min-height: 30px; padding: 0 9px; border-radius: 10px; background: @luma_control_fill;
+  font-size: 12px; font-weight: 600;
+}
 
 .charlie-account-list { background: transparent; padding: 6px; }
 .charlie-account-list row { margin-bottom: 3px; border-radius: 10px; background: @luma_fill; }
