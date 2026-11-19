@@ -343,6 +343,7 @@ export class LauncherFolders {
         return true;
     }
     itemActors() { return [...this._cards].sort((a, b) => a[0] - b[0]).map(([, card]) => card); }
+    orderedItems() { return this._items ?? []; }
     onKey(event) {
         if (!this.panelActive) return false;
         const key = event.get_key_symbol();
@@ -372,8 +373,10 @@ export class LauncherFolders {
             const card = makeFileCard(item, metadata, () => this.activate(item));
             card.set_position(index * 116 * scale, 0); card.set_size(116 * scale, 140 * scale);
             this._controller._hookItemMenu(card, item);
+            this._controller._hookItemDrag?.(card, item);
             s.body.add_child(card); this._cards.set(index, card);
         }
+        this._controller.syncSelection?.([...this._cards.values()]);
         const end = Math.max(0, a.upper - a.page_size);
         this._arrows[0].visible = s.visible && a.value > 2;
         this._arrows[1].visible = s.visible && a.value < end - 2;
@@ -396,6 +399,7 @@ export class LauncherFolders {
         this._arrows.forEach((arrow, index) => arrow.set_translation(index ? width - 31 * scale : 1 * scale, 105 * scale, 0));
     }
     activate(item) {
+        if (this._controller.selectClick?.(item)) return;
         if (!item.isDirectory) { this._controller._activate(item); return; }
         this._path.push(this._controller.openFolder);
         const model = new FolderModel(item.uri);

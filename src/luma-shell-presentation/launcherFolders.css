@@ -42,6 +42,11 @@
 .lumaui-file-card > StBoxLayout { spacing: 6px; }
 .lumaui-file-name { font-size: 12px; font-weight: 550; color: rgba(255,255,255,.84); }
 .lumaui-file-card:hover .lumaui-file-name { color: white; }
+.lumaui-file-card:selected { background-color: rgba(128,191,255,.16); box-shadow: inset 0 0 0 2px rgba(128,191,255,.70); }
+.lumaui-file-card:selected .lumaui-file-name { color: white; }
+.lumaui-file-card:lifted { background-color: rgba(255,255,255,.10); }
+.lumaui-folder-panel.luma-surface-light .lumaui-file-card:selected { background-color: rgba(42,110,190,.12); box-shadow: inset 0 0 0 2px rgba(42,110,190,.60); }
+.lumaui-folder-panel.luma-surface-light .lumaui-file-card:selected .lumaui-file-name { color: #191d22; }
 .lumaui-file-meta { font-size: 11px; color: rgba(255,255,255,.46); }
 .lumaui-file-face { background-color: transparent; }
 .lumaui-face-picture { background-color: rgba(255,255,255,.08); border-radius: 8px; }

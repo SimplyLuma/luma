@@ -127,6 +127,8 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/mutter.spec" \
         ./usr/lib64/libmutter-18.so.0.0.0
       grep -aFq "input devices wait for its activation" \
         ./usr/lib64/libmutter-18.so.0.0.0
+      grep -aFq "meta_data_drag_begin" \
+        ./usr/lib64/libmutter-18.so.0.0.0
       if grep -aFq "Dropped %u key event" ./usr/lib64/libmutter-18.so.0.0.0; then
         echo "error: this Mutter still drops keys typed during a focus handover" >&2
         exit 1

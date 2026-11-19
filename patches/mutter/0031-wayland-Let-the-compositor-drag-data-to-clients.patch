@@ -1,0 +1,1468 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Thu, 19 Nov 2026 14:00:00 -0600
+Subject: [PATCH] wayland: Let the compositor drag data to clients
+
+A drag that starts on a compositor actor never reached a client: only a
+client's wl_data_source could start a Wayland drag, so files shown by the
+Shell could not be dropped anywhere but the Shell.
+
+MetaDataDrag is a compositor-owned drag source. It offers MIME types with
+content given up front or later, and starts the regular Wayland drag grab
+from the press or motion of a pointer button or touch point. Wayland clients
+get a wl_data_offer; X11 clients get the drag through the XDND bridge, which
+reads the DND selection as for any Wayland drag. Over something that is not
+a client surface, "motion" returns the action a compositor drop would
+perform (shown by the cursor) and "drop" lets the compositor take it.
+"ended" reports how the grab ended and "finished" when the content is no
+longer offered. With no modifier held a target gets the preferred action;
+Shift and Control choose move and copy as before. A cancelled touch point
+cancels the drag.
+
+The drag grab now accepts a drag without an origin surface.
+---
+diff --git a/src/meson.build b/src/meson.build
+index 118cbe386..9ca496c80 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -527,6 +527,8 @@ mutter_sources += [
+   'wayland/meta-pointer-confinement-wayland.h',
+   'wayland/meta-pointer-lock-wayland.c',
+   'wayland/meta-pointer-lock-wayland.h',
++  'wayland/meta-data-drag.c',
++  'wayland/meta-data-drag-private.h',
+   'wayland/meta-selection-source-wayland.c',
+   'wayland/meta-selection-source-wayland-private.h',
+   'wayland/meta-wayland-activation.c',
+diff --git a/src/meta/meson.build b/src/meta/meson.build
+index 4898e00c1..f046063a2 100644
+--- a/src/meta/meson.build
++++ b/src/meta/meson.build
+@@ -16,6 +16,7 @@ mutter_public_headers = [
+   'meta-backlight.h',
+   'meta-close-dialog.h',
+   'meta-cursor-tracker.h',
++  'meta-data-drag.h',
+   'meta-context.h',
+   'meta-debug.h',
+   'meta-debug-control.h',
+diff --git a/src/meta/meta-data-drag.h b/src/meta/meta-data-drag.h
+new file mode 100644
+index 000000000..88a0a1743
+--- /dev/null
++++ b/src/meta/meta-data-drag.h
+@@ -0,0 +1,100 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include <glib-object.h>
++
++#include "clutter/clutter.h"
++#include "meta/common.h"
++#include "meta/meta-context.h"
++
++G_BEGIN_DECLS
++
++/**
++ * MetaDataDragAction:
++ * @META_DATA_DRAG_ACTION_NONE: no action
++ * @META_DATA_DRAG_ACTION_COPY: the target copies the data
++ * @META_DATA_DRAG_ACTION_MOVE: the target moves the data
++ * @META_DATA_DRAG_ACTION_ASK: the target asks what to do
++ *
++ * The actions a #MetaDataDrag offers, with the values of
++ * `wl_data_device_manager.dnd_action`.
++ */
++typedef enum
++{
++  META_DATA_DRAG_ACTION_NONE = 0,
++  META_DATA_DRAG_ACTION_COPY = 1 << 0,
++  META_DATA_DRAG_ACTION_MOVE = 1 << 1,
++  META_DATA_DRAG_ACTION_ASK = 1 << 2,
++} MetaDataDragAction;
++
++/**
++ * MetaDataDragResult:
++ * @META_DATA_DRAG_RESULT_CANCELLED: nothing took the drop, or it was
++ *   cancelled
++ * @META_DATA_DRAG_RESULT_DROPPED: a client took the drop
++ * @META_DATA_DRAG_RESULT_DROPPED_ON_COMPOSITOR: a #MetaDataDrag::drop
++ *   handler took the drop
++ */
++typedef enum
++{
++  META_DATA_DRAG_RESULT_CANCELLED,
++  META_DATA_DRAG_RESULT_DROPPED,
++  META_DATA_DRAG_RESULT_DROPPED_ON_COMPOSITOR,
++} MetaDataDragResult;
++
++#define META_TYPE_DATA_DRAG (meta_data_drag_get_type ())
++
++META_EXPORT
++G_DECLARE_FINAL_TYPE (MetaDataDrag,
++                      meta_data_drag,
++                      META, DATA_DRAG,
++                      GObject)
++
++META_EXPORT
++MetaDataDrag * meta_data_drag_new (MetaContext *context);
++
++META_EXPORT
++void meta_data_drag_set_content (MetaDataDrag *drag,
++                                 const char   *mime_type,
++                                 GBytes       *content);
++
++META_EXPORT
++void meta_data_drag_offer (MetaDataDrag *drag,
++                           const char   *mime_type);
++
++META_EXPORT
++void meta_data_drag_set_actions (MetaDataDrag       *drag,
++                                 MetaDataDragAction  actions,
++                                 MetaDataDragAction  preferred);
++
++META_EXPORT
++gboolean meta_data_drag_begin (MetaDataDrag        *drag,
++                               const ClutterEvent  *event,
++                               GError             **error);
++
++META_EXPORT
++void meta_data_drag_cancel (MetaDataDrag *drag);
++
++META_EXPORT
++MetaDataDragAction meta_data_drag_get_action (MetaDataDrag *drag);
++
++META_EXPORT
++gboolean meta_data_drag_is_over_client (MetaDataDrag *drag);
++
++G_END_DECLS
+diff --git a/src/wayland/meta-data-drag-private.h b/src/wayland/meta-data-drag-private.h
+new file mode 100644
+index 000000000..e37df0b31
+--- /dev/null
++++ b/src/wayland/meta-data-drag-private.h
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "meta/meta-data-drag.h"
++#include "wayland/meta-wayland-data-source.h"
++
++/* The data source of a MetaDataDrag: what Wayland and Xwayland clients see
++ * as the drag source when the compositor itself drags data. */
++#define META_TYPE_WAYLAND_DATA_SOURCE_COMPOSITOR (meta_wayland_data_source_compositor_get_type ())
++G_DECLARE_FINAL_TYPE (MetaWaylandDataSourceCompositor,
++                      meta_wayland_data_source_compositor,
++                      META, WAYLAND_DATA_SOURCE_COMPOSITOR,
++                      MetaWaylandDataSource)
++
++uint32_t meta_wayland_data_source_compositor_get_preferred_action (MetaWaylandDataSourceCompositor *source);
++
++void meta_wayland_data_source_compositor_motion (MetaWaylandDataSourceCompositor *source,
++                                                 float                            x,
++                                                 float                            y,
++                                                 gboolean                         over_client);
++
++gboolean meta_wayland_data_source_compositor_drop (MetaWaylandDataSourceCompositor *source,
++                                                   float                            x,
++                                                   float                            y);
++
++void meta_wayland_data_source_compositor_grab_ended (MetaWaylandDataSourceCompositor *source,
++                                                     MetaDataDragResult               result);
+diff --git a/src/wayland/meta-data-drag.c b/src/wayland/meta-data-drag.c
+new file mode 100644
+index 000000000..d1920efde
+--- /dev/null
++++ b/src/wayland/meta-data-drag.c
+@@ -0,0 +1,941 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++/**
++ * MetaDataDrag:
++ *
++ * A drag of data that the compositor itself offers, such as files dragged
++ * out of the shell.
++ *
++ * The drag is a regular Wayland drag-and-drop source: Wayland clients get a
++ * `wl_data_offer` with the offered MIME types, and Xwayland clients get the
++ * same drag through the XDND bridge. While the pointer or touch point is over
++ * something that is not a client surface, #MetaDataDrag::motion lets the
++ * compositor answer for itself, and #MetaDataDrag::drop lets it take the
++ * drop.
++ *
++ * Content is either given up front with meta_data_drag_set_content(), or
++ * offered with meta_data_drag_offer() and given later; a client that asks
++ * for it before then gets it as soon as it is set.
++ */
++
++#include "config.h"
++
++#include <gio/gunixoutputstream.h>
++#include <glib-unix.h>
++#include <unistd.h>
++
++#include "clutter/clutter-mutter.h"
++#include "meta/meta-backend.h"
++#include "meta/meta-debug.h"
++#include "meta/meta-enum-types.h"
++#include "wayland/meta-data-drag-private.h"
++#include "wayland/meta-wayland-data-device.h"
++#include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-seat.h"
++
++/* A client that took a drop and never says it is done must not keep the
++ * drag, its content and the DND selection forever. */
++#define TRANSFER_TIMEOUT_S 60
++
++typedef enum
++{
++  DRAG_STATE_IDLE,
++  DRAG_STATE_DRAGGING,
++  DRAG_STATE_TRANSFERRING,
++  DRAG_STATE_DONE,
++} DragState;
++
++typedef struct
++{
++  char *mime_type;
++  int fd;
++} PendingSend;
++
++struct _MetaDataDrag
++{
++  GObject parent;
++
++  MetaContext *context;
++
++  GPtrArray *mime_types;
++  GHashTable *content;
++  GList *pending;
++
++  MetaDataDragAction actions;
++  MetaDataDragAction preferred;
++  MetaDataDragAction action;
++
++  MetaWaylandDataSource *source;
++  DragState state;
++  gboolean cancelled;
++  gboolean over_client;
++  guint transfer_timeout_id;
++  guint cancel_id;
++};
++
++enum
++{
++  PROP_0,
++  PROP_ACTION,
++  PROP_OVER_CLIENT,
++  N_PROPS
++};
++
++static GParamSpec *props[N_PROPS] = { NULL, };
++
++enum
++{
++  MOTION,
++  DROP,
++  ENDED,
++  FINISHED,
++  N_SIGNALS
++};
++
++static guint signals[N_SIGNALS] = { 0, };
++
++G_DEFINE_FINAL_TYPE (MetaDataDrag, meta_data_drag, G_TYPE_OBJECT)
++
++struct _MetaWaylandDataSourceCompositor
++{
++  MetaWaylandDataSource parent;
++
++  MetaDataDrag *drag;
++};
++
++G_DEFINE_FINAL_TYPE (MetaWaylandDataSourceCompositor,
++                     meta_wayland_data_source_compositor,
++                     META_TYPE_WAYLAND_DATA_SOURCE)
++
++static void meta_data_drag_finish (MetaDataDrag *drag,
++                                   gboolean      success);
++
++static void
++pending_send_free (PendingSend *pending)
++{
++  if (pending->fd >= 0)
++    close (pending->fd);
++  g_free (pending->mime_type);
++  g_free (pending);
++}
++
++static void
++write_done (GObject      *object,
++            GAsyncResult *result,
++            gpointer      user_data)
++{
++  GOutputStream *stream = G_OUTPUT_STREAM (object);
++  g_autoptr (GBytes) bytes = user_data;
++  g_autoptr (GError) error = NULL;
++
++  if (!g_output_stream_write_all_finish (stream, result, NULL, &error))
++    meta_topic (META_DEBUG_WAYLAND, "Data drag content not delivered: %s",
++                error->message);
++
++  g_output_stream_close (stream, NULL, NULL);
++  g_object_unref (stream);
++}
++
++static void
++write_content (GBytes *bytes,
++               int     fd)
++{
++  GOutputStream *stream;
++  const uint8_t *data;
++  size_t size;
++
++  if (!g_unix_set_fd_nonblocking (fd, TRUE, NULL))
++    {
++      close (fd);
++      return;
++    }
++
++  stream = g_unix_output_stream_new (fd, TRUE);
++  data = g_bytes_get_data (bytes, &size);
++  g_output_stream_write_all_async (stream, data, size,
++                                   G_PRIORITY_DEFAULT, NULL,
++                                   write_done, g_bytes_ref (bytes));
++}
++
++static void
++meta_data_drag_send (MetaDataDrag *drag,
++                     const char   *mime_type,
++                     int           fd)
++{
++  GBytes *bytes;
++  PendingSend *pending;
++
++  if (!g_hash_table_lookup_extended (drag->content, mime_type,
++                                     NULL, (gpointer *) &bytes))
++    {
++      close (fd);
++      return;
++    }
++
++  if (bytes)
++    {
++      write_content (bytes, fd);
++      return;
++    }
++
++  pending = g_new0 (PendingSend, 1);
++  pending->mime_type = g_strdup (mime_type);
++  pending->fd = fd;
++  drag->pending = g_list_append (drag->pending, pending);
++}
++
++static MetaWaylandDataDevice *
++data_device_from_drag (MetaDataDrag *drag)
++{
++  MetaWaylandCompositor *compositor =
++    meta_context_get_wayland_compositor (drag->context);
++
++  if (!compositor || !compositor->seat)
++    return NULL;
++
++  return &compositor->seat->data_device;
++}
++
++static void
++meta_data_drag_set_action (MetaDataDrag       *drag,
++                           MetaDataDragAction  action)
++{
++  if (drag->action == action)
++    return;
++
++  drag->action = action;
++  g_object_notify_by_pspec (G_OBJECT (drag), props[PROP_ACTION]);
++}
++
++/* The one way out of a drag, however it ends: the source stops being the
++ * drag source and the DND selection, content requests still waiting are
++ * closed, and the reference the drag held on itself while it ran goes. */
++static gboolean
++release_source (gpointer user_data)
++{
++  g_object_unref (user_data);
++
++  return G_SOURCE_REMOVE;
++}
++
++static void
++meta_data_drag_finish (MetaDataDrag *drag,
++                       gboolean      success)
++{
++  MetaWaylandDataDevice *data_device;
++  MetaWaylandDataSource *source;
++
++  if (drag->state == DRAG_STATE_DONE || drag->state == DRAG_STATE_IDLE)
++    return;
++
++  drag->state = DRAG_STATE_DONE;
++  g_clear_handle_id (&drag->transfer_timeout_id, g_source_remove);
++
++  source = g_steal_pointer (&drag->source);
++  data_device = data_device_from_drag (drag);
++  if (source && data_device && data_device->dnd_data_source == source)
++    {
++      meta_wayland_data_source_set_current_offer (source, NULL);
++      meta_wayland_data_device_set_dnd_source (data_device, NULL);
++      meta_wayland_data_device_unset_dnd_selection (data_device);
++    }
++
++  /* The source goes once whatever is ending is done with it: this may run
++   * inside the drag grab's own teardown, which holds a weak reference. */
++  if (source)
++    {
++      META_WAYLAND_DATA_SOURCE_COMPOSITOR (source)->drag = NULL;
++      g_idle_add (release_source, source);
++    }
++
++  g_list_free_full (g_steal_pointer (&drag->pending),
++                    (GDestroyNotify) pending_send_free);
++
++  g_signal_emit (drag, signals[FINISHED], 0, success);
++  g_object_unref (drag);
++}
++
++static gboolean
++on_transfer_timeout (gpointer user_data)
++{
++  MetaDataDrag *drag = user_data;
++
++  drag->transfer_timeout_id = 0;
++  meta_topic (META_DEBUG_WAYLAND,
++              "Data drag target did not finish in %d s", TRANSFER_TIMEOUT_S);
++  meta_data_drag_finish (drag, FALSE);
++
++  return G_SOURCE_REMOVE;
++}
++
++static void
++meta_wayland_data_source_compositor_send (MetaWaylandDataSource *source,
++                                          const char            *mime_type,
++                                          int                    fd)
++{
++  MetaWaylandDataSourceCompositor *self =
++    META_WAYLAND_DATA_SOURCE_COMPOSITOR (source);
++
++  if (!self->drag)
++    {
++      close (fd);
++      return;
++    }
++
++  meta_data_drag_send (self->drag, mime_type, fd);
++}
++
++static void
++meta_wayland_data_source_compositor_target (MetaWaylandDataSource *source,
++                                            const char            *mime_type)
++{
++}
++
++static void
++meta_wayland_data_source_compositor_cancel (MetaWaylandDataSource *source)
++{
++  MetaWaylandDataSourceCompositor *self =
++    META_WAYLAND_DATA_SOURCE_COMPOSITOR (source);
++  MetaDataDrag *drag = self->drag;
++
++  if (!drag)
++    return;
++
++  /* Mid-drag, the grab reports the end; after a drop, this is the target
++   * giving up on it. */
++  if (drag->state == DRAG_STATE_DRAGGING)
++    drag->cancelled = TRUE;
++  else if (drag->state == DRAG_STATE_TRANSFERRING)
++    meta_data_drag_finish (drag, FALSE);
++}
++
++static void
++meta_wayland_data_source_compositor_action (MetaWaylandDataSource *source,
++                                            uint32_t               action)
++{
++  MetaWaylandDataSourceCompositor *self =
++    META_WAYLAND_DATA_SOURCE_COMPOSITOR (source);
++
++  if (self->drag)
++    meta_data_drag_set_action (self->drag, (MetaDataDragAction) action);
++}
++
++static void
++meta_wayland_data_source_compositor_drop_performed (MetaWaylandDataSource *source)
++{
++  meta_wayland_data_source_mark_drop_performed (source);
++}
++
++static void
++meta_wayland_data_source_compositor_drag_finished (MetaWaylandDataSource *source)
++{
++  MetaWaylandDataSourceCompositor *self =
++    META_WAYLAND_DATA_SOURCE_COMPOSITOR (source);
++
++  if (self->drag)
++    meta_data_drag_finish (self->drag, TRUE);
++}
++
++static void
++meta_wayland_data_source_compositor_init (MetaWaylandDataSourceCompositor *self)
++{
++}
++
++static void
++meta_wayland_data_source_compositor_class_init (MetaWaylandDataSourceCompositorClass *klass)
++{
++  MetaWaylandDataSourceClass *source_class = META_WAYLAND_DATA_SOURCE_CLASS (klass);
++
++  source_class->send = meta_wayland_data_source_compositor_send;
++  source_class->target = meta_wayland_data_source_compositor_target;
++  source_class->cancel = meta_wayland_data_source_compositor_cancel;
++  source_class->action = meta_wayland_data_source_compositor_action;
++  source_class->drop_performed = meta_wayland_data_source_compositor_drop_performed;
++  source_class->drag_finished = meta_wayland_data_source_compositor_drag_finished;
++}
++
++uint32_t
++meta_wayland_data_source_compositor_get_preferred_action (MetaWaylandDataSourceCompositor *source)
++{
++  if (!source->drag)
++    return 0;
++
++  return source->drag->preferred;
++}
++
++void
++meta_wayland_data_source_compositor_motion (MetaWaylandDataSourceCompositor *source,
++                                            float                            x,
++                                            float                            y,
++                                            gboolean                         over_client)
++{
++  MetaDataDrag *drag = source->drag;
++  MetaWaylandDataSource *data_source = META_WAYLAND_DATA_SOURCE (source);
++  MetaDataDragAction action = META_DATA_DRAG_ACTION_NONE;
++
++  if (!drag || drag->state != DRAG_STATE_DRAGGING)
++    return;
++
++  if (drag->over_client != over_client)
++    {
++      drag->over_client = over_client;
++      g_object_notify_by_pspec (G_OBJECT (drag), props[PROP_OVER_CLIENT]);
++    }
++
++  g_object_ref (drag);
++  g_signal_emit (drag, signals[MOTION], 0, x, y, &action);
++
++  /* Over a client the client chooses; elsewhere the compositor answers, and
++   * the cursor shows its answer. */
++  if (!over_client && drag->state == DRAG_STATE_DRAGGING)
++    {
++      action &= drag->actions;
++      meta_wayland_data_source_set_has_target (data_source, action != 0);
++      meta_wayland_data_source_set_current_action (data_source, action);
++    }
++  g_object_unref (drag);
++}
++
++gboolean
++meta_wayland_data_source_compositor_drop (MetaWaylandDataSourceCompositor *source,
++                                          float                            x,
++                                          float                            y)
++{
++  MetaDataDrag *drag = source->drag;
++  gboolean handled = FALSE;
++
++  if (!drag || drag->state != DRAG_STATE_DRAGGING)
++    return FALSE;
++
++  g_object_ref (drag);
++  g_signal_emit (drag, signals[DROP], 0, x, y, &handled);
++  g_object_unref (drag);
++
++  return handled;
++}
++
++void
++meta_wayland_data_source_compositor_grab_ended (MetaWaylandDataSourceCompositor *source,
++                                                MetaDataDragResult               result)
++{
++  MetaDataDrag *drag = source->drag;
++
++  if (!drag || drag->state != DRAG_STATE_DRAGGING)
++    return;
++
++  if (result == META_DATA_DRAG_RESULT_DROPPED && drag->cancelled)
++    result = META_DATA_DRAG_RESULT_CANCELLED;
++
++  g_object_ref (drag);
++
++  if (result == META_DATA_DRAG_RESULT_DROPPED)
++    {
++      drag->state = DRAG_STATE_TRANSFERRING;
++      drag->transfer_timeout_id =
++        g_timeout_add_seconds (TRANSFER_TIMEOUT_S, on_transfer_timeout, drag);
++    }
++
++  g_signal_emit (drag, signals[ENDED], 0, result);
++
++  if (result != META_DATA_DRAG_RESULT_DROPPED)
++    meta_data_drag_finish (drag,
++                           result == META_DATA_DRAG_RESULT_DROPPED_ON_COMPOSITOR);
++
++  g_object_unref (drag);
++}
++
++static void
++meta_data_drag_dispose (GObject *object)
++{
++  MetaDataDrag *drag = META_DATA_DRAG (object);
++
++  g_clear_handle_id (&drag->transfer_timeout_id, g_source_remove);
++  if (drag->source)
++    META_WAYLAND_DATA_SOURCE_COMPOSITOR (drag->source)->drag = NULL;
++  g_clear_object (&drag->source);
++  g_list_free_full (g_steal_pointer (&drag->pending),
++                    (GDestroyNotify) pending_send_free);
++
++  G_OBJECT_CLASS (meta_data_drag_parent_class)->dispose (object);
++}
++
++static void
++meta_data_drag_finalize (GObject *object)
++{
++  MetaDataDrag *drag = META_DATA_DRAG (object);
++
++  g_ptr_array_unref (drag->mime_types);
++  g_hash_table_unref (drag->content);
++
++  G_OBJECT_CLASS (meta_data_drag_parent_class)->finalize (object);
++}
++
++static void
++meta_data_drag_get_property (GObject    *object,
++                             guint       prop_id,
++                             GValue     *value,
++                             GParamSpec *pspec)
++{
++  MetaDataDrag *drag = META_DATA_DRAG (object);
++
++  switch (prop_id)
++    {
++    case PROP_ACTION:
++      g_value_set_flags (value, drag->action);
++      break;
++    case PROP_OVER_CLIENT:
++      g_value_set_boolean (value, drag->over_client);
++      break;
++    default:
++      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
++    }
++}
++
++static void
++meta_data_drag_init (MetaDataDrag *drag)
++{
++  drag->mime_types = g_ptr_array_new_with_free_func (g_free);
++  drag->content = g_hash_table_new_full (g_str_hash, g_str_equal, g_free,
++                                         (GDestroyNotify) g_bytes_unref);
++  drag->actions = META_DATA_DRAG_ACTION_COPY;
++  drag->preferred = META_DATA_DRAG_ACTION_COPY;
++}
++
++static void
++meta_data_drag_class_init (MetaDataDragClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++
++  object_class->dispose = meta_data_drag_dispose;
++  object_class->finalize = meta_data_drag_finalize;
++  object_class->get_property = meta_data_drag_get_property;
++
++  /**
++   * MetaDataDrag:action:
++   *
++   * The action the drop would perform where the drag is now: the one the
++   * client under it chose, or the one #MetaDataDrag::motion returned.
++   */
++  props[PROP_ACTION] =
++    g_param_spec_flags ("action", NULL, NULL,
++                        META_TYPE_DATA_DRAG_ACTION,
++                        META_DATA_DRAG_ACTION_NONE,
++                        G_PARAM_READABLE |
++                        G_PARAM_EXPLICIT_NOTIFY |
++                        G_PARAM_STATIC_STRINGS);
++
++  /**
++   * MetaDataDrag:over-client:
++   *
++   * Whether the drag is over a client surface.
++   */
++  props[PROP_OVER_CLIENT] =
++    g_param_spec_boolean ("over-client", NULL, NULL,
++                          FALSE,
++                          G_PARAM_READABLE |
++                          G_PARAM_EXPLICIT_NOTIFY |
++                          G_PARAM_STATIC_STRINGS);
++
++  g_object_class_install_properties (object_class, N_PROPS, props);
++
++  /**
++   * MetaDataDrag::motion:
++   * @drag: the drag
++   * @x: stage x
++   * @y: stage y
++   *
++   * The drag moved. Over something that is not a client surface the return
++   * value is the action a drop there would perform, %META_DATA_DRAG_ACTION_NONE
++   * for none; over a client it is ignored.
++   *
++   * Returns: the action a drop here would perform
++   */
++  signals[MOTION] =
++    g_signal_new ("motion",
++                  G_TYPE_FROM_CLASS (object_class),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  g_signal_accumulator_first_wins, NULL, NULL,
++                  META_TYPE_DATA_DRAG_ACTION, 2,
++                  G_TYPE_FLOAT, G_TYPE_FLOAT);
++
++  /**
++   * MetaDataDrag::drop:
++   * @drag: the drag
++   * @x: stage x
++   * @y: stage y
++   *
++   * The drag was released over something that is not a client surface.
++   *
++   * Returns: %TRUE if the drop was taken
++   */
++  signals[DROP] =
++    g_signal_new ("drop",
++                  G_TYPE_FROM_CLASS (object_class),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  g_signal_accumulator_true_handled, NULL, NULL,
++                  G_TYPE_BOOLEAN, 2,
++                  G_TYPE_FLOAT, G_TYPE_FLOAT);
++
++  /**
++   * MetaDataDrag::ended:
++   * @drag: the drag
++   * @result: how it ended
++   *
++   * The pointer or touch point let go of the drag, or it was cancelled.
++   * After %META_DATA_DRAG_RESULT_DROPPED the client may still be reading
++   * the content; #MetaDataDrag::finished follows.
++   */
++  signals[ENDED] =
++    g_signal_new ("ended",
++                  G_TYPE_FROM_CLASS (object_class),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  NULL, NULL, NULL,
++                  G_TYPE_NONE, 1,
++                  META_TYPE_DATA_DRAG_RESULT);
++
++  /**
++   * MetaDataDrag::finished:
++   * @drag: the drag
++   * @success: whether the drop completed
++   *
++   * The drag is over and its content is no longer offered.
++   */
++  signals[FINISHED] =
++    g_signal_new ("finished",
++                  G_TYPE_FROM_CLASS (object_class),
++                  G_SIGNAL_RUN_LAST,
++                  0,
++                  NULL, NULL, NULL,
++                  G_TYPE_NONE, 1,
++                  G_TYPE_BOOLEAN);
++}
++
++/**
++ * meta_data_drag_new:
++ * @context: the context
++ *
++ * Returns: (transfer full): a new drag with nothing offered yet
++ */
++MetaDataDrag *
++meta_data_drag_new (MetaContext *context)
++{
++  MetaDataDrag *drag;
++
++  g_return_val_if_fail (META_IS_CONTEXT (context), NULL);
++
++  drag = g_object_new (META_TYPE_DATA_DRAG, NULL);
++  drag->context = context;
++
++  return drag;
++}
++
++static gboolean
++meta_data_drag_add_mime_type (MetaDataDrag *drag,
++                              const char   *mime_type)
++{
++  if (g_hash_table_contains (drag->content, mime_type))
++    return FALSE;
++
++  g_ptr_array_add (drag->mime_types, g_strdup (mime_type));
++  g_hash_table_insert (drag->content, g_strdup (mime_type), NULL);
++
++  return TRUE;
++}
++
++/**
++ * meta_data_drag_offer:
++ * @drag: the drag
++ * @mime_type: a MIME type
++ *
++ * Offers @mime_type before its content is known; set it later with
++ * meta_data_drag_set_content(). Offers are made before
++ * meta_data_drag_begin(), in order of preference.
++ */
++void
++meta_data_drag_offer (MetaDataDrag *drag,
++                      const char   *mime_type)
++{
++  g_return_if_fail (META_IS_DATA_DRAG (drag));
++  g_return_if_fail (mime_type != NULL);
++  g_return_if_fail (drag->state == DRAG_STATE_IDLE);
++
++  meta_data_drag_add_mime_type (drag, mime_type);
++}
++
++/**
++ * meta_data_drag_set_content:
++ * @drag: the drag
++ * @mime_type: a MIME type
++ * @content: (nullable): the content for @mime_type
++ *
++ * Sets the content offered as @mime_type, offering it if it is not offered
++ * yet (only before meta_data_drag_begin()). Requests that arrived before
++ * the content are answered now. %NULL content answers waiting requests
++ * with nothing.
++ */
++void
++meta_data_drag_set_content (MetaDataDrag *drag,
++                            const char   *mime_type,
++                            GBytes       *content)
++{
++  GList *l;
++
++  g_return_if_fail (META_IS_DATA_DRAG (drag));
++  g_return_if_fail (mime_type != NULL);
++
++  if (!g_hash_table_contains (drag->content, mime_type))
++    {
++      g_return_if_fail (drag->state == DRAG_STATE_IDLE);
++      meta_data_drag_add_mime_type (drag, mime_type);
++    }
++
++  g_hash_table_insert (drag->content, g_strdup (mime_type),
++                       content ? g_bytes_ref (content) : NULL);
++
++  l = drag->pending;
++  while (l)
++    {
++      PendingSend *pending = l->data;
++      GList *next = l->next;
++
++      if (g_strcmp0 (pending->mime_type, mime_type) == 0)
++        {
++          if (content)
++            {
++              write_content (content, pending->fd);
++              pending->fd = -1;
++            }
++          drag->pending = g_list_delete_link (drag->pending, l);
++          pending_send_free (pending);
++        }
++      l = next;
++    }
++}
++
++/**
++ * meta_data_drag_set_actions:
++ * @drag: the drag
++ * @actions: the actions a target may choose
++ * @preferred: the action of a drop with no modifier held
++ *
++ * Shift asks for a move and Control for a copy, as for every drag; with
++ * neither, a target that supports @preferred gets it. The default is
++ * copy only.
++ */
++void
++meta_data_drag_set_actions (MetaDataDrag       *drag,
++                            MetaDataDragAction  actions,
++                            MetaDataDragAction  preferred)
++{
++  g_return_if_fail (META_IS_DATA_DRAG (drag));
++  g_return_if_fail (drag->state == DRAG_STATE_IDLE);
++  g_return_if_fail ((preferred & ~actions) == 0);
++
++  drag->actions = actions;
++  drag->preferred = preferred;
++}
++
++/**
++ * meta_data_drag_begin:
++ * @drag: the drag
++ * @event: the press or motion of the pointer button or touch point that
++ *   carries the drag
++ * @error: return location for an error
++ *
++ * Starts the drag. It follows the pointer or touch point of @event until
++ * that lets go, Escape is pressed or meta_data_drag_cancel() is called.
++ * The drag keeps itself alive until #MetaDataDrag::finished.
++ *
++ * Returns: %TRUE if the drag started
++ */
++gboolean
++meta_data_drag_begin (MetaDataDrag        *drag,
++                      const ClutterEvent  *event,
++                      GError             **error)
++{
++  MetaWaylandCompositor *compositor;
++  MetaWaylandDataDevice *data_device;
++  MetaWaylandDataSourceCompositor *source;
++  MetaBackend *backend;
++  ClutterBackend *clutter_backend;
++  ClutterStage *stage;
++  ClutterSprite *sprite;
++  graphene_point_t point;
++  ClutterEventType type;
++  unsigned int i;
++
++  g_return_val_if_fail (META_IS_DATA_DRAG (drag), FALSE);
++  g_return_val_if_fail (event != NULL, FALSE);
++
++  if (drag->state != DRAG_STATE_IDLE)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "This drag has already begun");
++      return FALSE;
++    }
++
++  if (drag->mime_types->len == 0 || drag->actions == 0)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "A drag needs content and an action");
++      return FALSE;
++    }
++
++  type = clutter_event_type (event);
++  if (type != CLUTTER_BUTTON_PRESS && type != CLUTTER_MOTION &&
++      type != CLUTTER_TOUCH_BEGIN && type != CLUTTER_TOUCH_UPDATE)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "A drag begins from a press or a motion");
++      return FALSE;
++    }
++
++  if (type == CLUTTER_MOTION &&
++      !(clutter_event_get_state (event) &
++        (CLUTTER_BUTTON1_MASK | CLUTTER_BUTTON2_MASK | CLUTTER_BUTTON3_MASK)))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "No button is held");
++      return FALSE;
++    }
++
++  compositor = meta_context_get_wayland_compositor (drag->context);
++  data_device = data_device_from_drag (drag);
++  if (!compositor || !data_device)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                           "No Wayland compositor");
++      return FALSE;
++    }
++
++  if (meta_wayland_data_device_get_current_grab (data_device))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_BUSY,
++                           "Another drag is in progress");
++      return FALSE;
++    }
++
++  backend = meta_context_get_backend (drag->context);
++  clutter_backend = meta_backend_get_clutter_backend (backend);
++  stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
++  sprite = clutter_backend_get_sprite (clutter_backend, stage, event);
++  if (!sprite)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "The event has no pointer or touch point");
++      return FALSE;
++    }
++
++  source = g_object_new (META_TYPE_WAYLAND_DATA_SOURCE_COMPOSITOR,
++                         "compositor", compositor,
++                         NULL);
++  source->drag = drag;
++  for (i = 0; i < drag->mime_types->len; i++)
++    meta_wayland_data_source_add_mime_type (META_WAYLAND_DATA_SOURCE (source),
++                                            g_ptr_array_index (drag->mime_types, i));
++  meta_wayland_data_source_set_actions (META_WAYLAND_DATA_SOURCE (source),
++                                        drag->actions);
++
++  drag->source = META_WAYLAND_DATA_SOURCE (source);
++  drag->state = DRAG_STATE_DRAGGING;
++  /* Held until finished, so a caller may let go of the drag right away. */
++  g_object_ref (drag);
++
++  clutter_event_get_position (event, &point);
++  meta_wayland_data_device_start_compositor_drag (data_device,
++                                                  drag->source,
++                                                  sprite, point);
++
++  return TRUE;
++}
++
++/**
++ * meta_data_drag_cancel:
++ * @drag: the drag
++ *
++ * Cancels the drag, or withdraws a dropped drag's content.
++ */
++static gboolean
++cancel_in_idle (gpointer user_data)
++{
++  MetaDataDrag *drag = user_data;
++  MetaWaylandDataDevice *data_device;
++
++  drag->cancel_id = 0;
++
++  if (drag->state == DRAG_STATE_DRAGGING)
++    {
++      data_device = data_device_from_drag (drag);
++      if (data_device)
++        meta_wayland_data_device_cancel_compositor_drag (data_device,
++                                                         drag->source);
++    }
++  else if (drag->state == DRAG_STATE_TRANSFERRING)
++    {
++      meta_data_drag_finish (drag, FALSE);
++    }
++
++  return G_SOURCE_REMOVE;
++}
++
++void
++meta_data_drag_cancel (MetaDataDrag *drag)
++{
++  g_return_if_fail (META_IS_DATA_DRAG (drag));
++
++  if (drag->cancel_id ||
++      (drag->state != DRAG_STATE_DRAGGING &&
++       drag->state != DRAG_STATE_TRANSFERRING))
++    return;
++
++  /* Never from inside the grab's own event handling, which may be what
++   * called us through a signal. */
++  drag->cancel_id = g_idle_add_full (G_PRIORITY_HIGH, cancel_in_idle,
++                                     g_object_ref (drag), g_object_unref);
++}
++
++/**
++ * meta_data_drag_get_action:
++ * @drag: the drag
++ *
++ * Returns: the action a drop would perform where the drag is now
++ */
++MetaDataDragAction
++meta_data_drag_get_action (MetaDataDrag *drag)
++{
++  g_return_val_if_fail (META_IS_DATA_DRAG (drag), META_DATA_DRAG_ACTION_NONE);
++
++  return drag->action;
++}
++
++/**
++ * meta_data_drag_is_over_client:
++ * @drag: the drag
++ *
++ * Returns: whether the drag is over a client surface
++ */
++gboolean
++meta_data_drag_is_over_client (MetaDataDrag *drag)
++{
++  g_return_val_if_fail (META_IS_DATA_DRAG (drag), FALSE);
++
++  return drag->over_client;
++}
+diff --git a/src/wayland/meta-wayland-data-device.c b/src/wayland/meta-wayland-data-device.c
+index df971ca91..bcaecce27 100644
+--- a/src/wayland/meta-wayland-data-device.c
++++ b/src/wayland/meta-wayland-data-device.c
+@@ -42,6 +42,7 @@
+ #include "meta/meta-debug.h"
+ #include "meta/meta-selection-source-memory.h"
+ #include "meta/meta-wayland-surface.h"
++#include "wayland/meta-data-drag-private.h"
+ #include "wayland/meta-selection-source-wayland-private.h"
+ #include "wayland/meta-wayland-data-source.h"
+ #include "wayland/meta-wayland-dnd-surface.h"
+@@ -168,6 +169,8 @@ struct _MetaWaylandDragGrab {
+   int                     drag_start_x, drag_start_y;
+   ClutterModifierType     buttons;
+ 
++  MetaDataDragResult      compositor_result;
++
+   guint                   need_initial_focus : 1;
+ };
+ 
+@@ -434,6 +437,9 @@ data_source_update_user_dnd_action (MetaWaylandDataSource *source,
+     user_dnd_action = WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY;
+   else if (modifiers & (CLUTTER_MOD1_MASK | CLUTTER_BUTTON2_MASK))
+     user_dnd_action = WL_DATA_DEVICE_MANAGER_DND_ACTION_ASK;
++  else if (META_IS_WAYLAND_DATA_SOURCE_COMPOSITOR (source))
++    user_dnd_action = meta_wayland_data_source_compositor_get_preferred_action (
++      META_WAYLAND_DATA_SOURCE_COMPOSITOR (source));
+ 
+   meta_wayland_data_source_set_user_action (source, user_dnd_action);
+ }
+@@ -447,6 +453,13 @@ data_device_end_drag_grab (MetaWaylandDragGrab *drag_grab)
+ 
+   meta_wayland_drag_grab_set_cursor (drag_grab, CLUTTER_CURSOR_DEFAULT);
+ 
++  if (META_IS_WAYLAND_DATA_SOURCE_COMPOSITOR (drag_grab->drag_data_source))
++    {
++      meta_wayland_data_source_compositor_grab_ended (
++        META_WAYLAND_DATA_SOURCE_COMPOSITOR (drag_grab->drag_data_source),
++        drag_grab->compositor_result);
++    }
++
+   meta_wayland_drag_grab_set_source (drag_grab, NULL);
+   meta_wayland_drag_grab_set_focus (drag_grab, NULL);
+ 
+@@ -573,6 +586,13 @@ drag_grab_motion (MetaWaylandEventHandler *handler,
+ 
+   data_device_update_position (drag_grab, &point);
+ 
++  if (META_IS_WAYLAND_DATA_SOURCE_COMPOSITOR (drag_grab->drag_data_source))
++    {
++      meta_wayland_data_source_compositor_motion (
++        META_WAYLAND_DATA_SOURCE_COMPOSITOR (drag_grab->drag_data_source),
++        point.x, point.y, drag_grab->drag_focus != NULL);
++    }
++
+   meta_dnd_wayland_on_motion_event (meta_backend_get_dnd (backend), event);
+ 
+   return !is_dragging_window (drag_grab->seat);
+@@ -594,6 +614,7 @@ drag_grab_release (MetaWaylandEventHandler *handler,
+   ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
+   ClutterSprite *clutter_sprite;
+   MetaWaylandToplevelDrag *toplevel_drag;
++  graphene_point_t point;
+   gboolean success;
+ 
+   clutter_sprite = clutter_backend_get_sprite (clutter_backend, stage, event);
+@@ -601,6 +622,8 @@ drag_grab_release (MetaWaylandEventHandler *handler,
+   if (drag_grab->sprite != clutter_sprite)
+     return CLUTTER_EVENT_STOP;
+ 
++  clutter_event_get_position (event, &point);
++
+   if (__builtin_popcount (clutter_event_get_state (event) &
+                           (CLUTTER_BUTTON1_MASK |
+                            CLUTTER_BUTTON2_MASK |
+@@ -627,6 +650,19 @@ drag_grab_release (MetaWaylandEventHandler *handler,
+         meta_wayland_data_source_notify_drop_performed (source);
+ 
+       meta_wayland_data_source_update_in_ask (source);
++      drag_grab->compositor_result = META_DATA_DRAG_RESULT_DROPPED;
++      success = TRUE;
++    }
++  else if (!drag_grab->drag_focus &&
++           META_IS_WAYLAND_DATA_SOURCE_COMPOSITOR (source) &&
++           meta_wayland_data_source_compositor_drop (
++             META_WAYLAND_DATA_SOURCE_COMPOSITOR (source), point.x, point.y))
++    {
++      /* The compositor took the drop itself: no client reads anything. */
++      drag_grab->compositor_result = META_DATA_DRAG_RESULT_DROPPED_ON_COMPOSITOR;
++      meta_wayland_data_source_set_current_offer (source, NULL);
++      meta_wayland_data_device_set_dnd_source (&seat->data_device, NULL);
++      unset_selection_source (&seat->data_device, META_SELECTION_DND);
+       success = TRUE;
+     }
+   else if (!drag_grab->drag_focus && source &&
+@@ -661,6 +697,22 @@ drag_grab_release (MetaWaylandEventHandler *handler,
+   return CLUTTER_EVENT_STOP;
+ }
+ 
++static void
++drag_grab_cancel (MetaWaylandDragGrab *drag_grab)
++{
++  meta_wayland_data_device_set_dnd_source (&drag_grab->seat->data_device,
++                                           NULL);
++  unset_selection_source (&drag_grab->seat->data_device, META_SELECTION_DND);
++  if (drag_grab->drag_data_source)
++    meta_wayland_data_source_set_current_offer (drag_grab->drag_data_source,
++                                                NULL);
++  if (drag_grab->feedback_actor)
++    meta_dnd_actor_drag_finish (META_DND_ACTOR (drag_grab->feedback_actor),
++                                FALSE);
++  drag_grab->feedback_actor = NULL;
++  data_device_end_drag_grab (drag_grab);
++}
++
+ static gboolean
+ drag_grab_key (MetaWaylandEventHandler *handler,
+                const ClutterEvent      *event,
+@@ -683,15 +735,7 @@ drag_grab_key (MetaWaylandEventHandler *handler,
+           meta_wayland_toplevel_drag_end (toplevel_drag);
+         }
+ 
+-      meta_wayland_data_device_set_dnd_source (&drag_grab->seat->data_device,
+-                                               NULL);
+-      unset_selection_source (&drag_grab->seat->data_device, META_SELECTION_DND);
+-      meta_wayland_data_source_set_current_offer (drag_grab->drag_data_source,
+-                                                  NULL);
+-      meta_dnd_actor_drag_finish (META_DND_ACTOR (drag_grab->feedback_actor),
+-                                  FALSE);
+-      drag_grab->feedback_actor = NULL;
+-      data_device_end_drag_grab (drag_grab);
++      drag_grab_cancel (drag_grab);
+     }
+   else if (event_type == CLUTTER_KEY_STATE &&
+            drag_grab->drag_data_source)
+@@ -724,6 +768,39 @@ static const MetaWaylandEventInterface dnd_event_interface = {
+   drag_grab_discard_event, /* other */
+ };
+ 
++/* A compositor drag also ends when its touch point is cancelled: nothing
++ * else would ever release it. */
++static gboolean
++compositor_drag_grab_other (MetaWaylandEventHandler *handler,
++                            const ClutterEvent      *event,
++                            gpointer                 user_data)
++{
++  MetaWaylandDragGrab *drag_grab = user_data;
++  MetaWaylandCompositor *compositor =
++    meta_wayland_seat_get_compositor (drag_grab->seat);
++  MetaContext *context = meta_wayland_compositor_get_context (compositor);
++  MetaBackend *backend = meta_context_get_backend (context);
++  ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
++  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
++
++  if (clutter_event_type (event) == CLUTTER_TOUCH_CANCEL &&
++      clutter_backend_get_sprite (clutter_backend, stage, event) ==
++      drag_grab->sprite)
++    drag_grab_cancel (drag_grab);
++
++  return CLUTTER_EVENT_STOP;
++}
++
++static const MetaWaylandEventInterface compositor_dnd_event_interface = {
++  drag_grab_get_focus_surface,
++  drag_grab_focus,
++  drag_grab_motion,
++  drag_grab_discard_event, /* press */
++  drag_grab_release,
++  drag_grab_key,
++  compositor_drag_grab_other,
++};
++
+ static void
+ destroy_data_device_origin (struct wl_listener *listener,
+                             void               *data)
+@@ -788,19 +865,31 @@ meta_wayland_data_device_start_drag (MetaWaylandDataDevice           *data_devic
+ 
+   drag_grab->sprite = sprite;
+ 
+-  drag_grab->drag_origin = surface;
+-  drag_grab->drag_origin_listener.notify = destroy_data_device_origin;
+-  wl_resource_add_destroy_listener (surface->resource,
+-                                    &drag_grab->drag_origin_listener);
+-
+-  surface_actor = meta_wayland_surface_get_actor (surface);
++  drag_grab->compositor_result = META_DATA_DRAG_RESULT_CANCELLED;
+ 
+-  clutter_actor_transform_stage_point (CLUTTER_ACTOR (surface_actor),
+-                                       drag_start.x,
+-                                       drag_start.y,
+-                                       &surface_pos.x, &surface_pos.y);
+-  drag_grab->drag_start_x = (int) surface_pos.x;
+-  drag_grab->drag_start_y = (int) surface_pos.y;
++  /* A drag the compositor started has no origin surface. */
++  drag_grab->drag_origin = surface;
++  if (surface)
++    {
++      drag_grab->drag_origin_listener.notify = destroy_data_device_origin;
++      wl_resource_add_destroy_listener (surface->resource,
++                                        &drag_grab->drag_origin_listener);
++
++      surface_actor = meta_wayland_surface_get_actor (surface);
++
++      clutter_actor_transform_stage_point (CLUTTER_ACTOR (surface_actor),
++                                           drag_start.x,
++                                           drag_start.y,
++                                           &surface_pos.x, &surface_pos.y);
++      drag_grab->drag_start_x = (int) surface_pos.x;
++      drag_grab->drag_start_y = (int) surface_pos.y;
++    }
++  else
++    {
++      surface_actor = NULL;
++      drag_grab->drag_start_x = (int) drag_start.x;
++      drag_grab->drag_start_y = (int) drag_start.y;
++    }
+ 
+   drag_grab->need_initial_focus = TRUE;
+ 
+@@ -815,7 +904,7 @@ meta_wayland_data_device_start_drag (MetaWaylandDataDevice           *data_devic
+                                            drag_grab->drag_data_source);
+   data_source_update_user_dnd_action (source, modifiers);
+ 
+-  if (icon_surface)
++  if (icon_surface && surface_actor)
+     {
+       ClutterActor *drag_surface_actor;
+       MetaWaylandActorSurface *icon_actor_surface;
+@@ -862,6 +951,37 @@ meta_wayland_data_device_end_drag (MetaWaylandDataDevice *data_device)
+     data_device_end_drag_grab (data_device->current_grab);
+ }
+ 
++void
++meta_wayland_data_device_start_compositor_drag (MetaWaylandDataDevice *data_device,
++                                                MetaWaylandDataSource *source,
++                                                ClutterSprite         *sprite,
++                                                graphene_point_t       drag_start)
++{
++  g_autoptr (MetaSelectionSource) selection_source = NULL;
++
++  g_return_if_fail (META_IS_WAYLAND_DATA_SOURCE_COMPOSITOR (source));
++  g_return_if_fail (data_device->current_grab == NULL);
++
++  /* The DND selection is what the Xwayland bridge offers X11 clients. */
++  selection_source = meta_selection_source_wayland_new (source);
++  set_selection_source (data_device, META_SELECTION_DND, selection_source);
++
++  meta_wayland_data_device_start_drag (data_device, NULL,
++                                       &compositor_dnd_event_interface,
++                                       NULL, source, NULL,
++                                       sprite, drag_start);
++}
++
++void
++meta_wayland_data_device_cancel_compositor_drag (MetaWaylandDataDevice *data_device,
++                                                 MetaWaylandDataSource *source)
++{
++  MetaWaylandDragGrab *drag_grab = data_device->current_grab;
++
++  if (drag_grab && drag_grab->drag_data_source == source)
++    drag_grab_cancel (drag_grab);
++}
++
+ static void
+ data_device_start_drag (struct wl_client  *client,
+                         struct wl_resource *resource,
+diff --git a/src/wayland/meta-wayland-data-device.h b/src/wayland/meta-wayland-data-device.h
+index 7a1c5dac3..ed3a3f3d1 100644
+--- a/src/wayland/meta-wayland-data-device.h
++++ b/src/wayland/meta-wayland-data-device.h
+@@ -85,6 +85,14 @@ void meta_wayland_data_device_start_drag (MetaWaylandDataDevice           *data_
+ 
+ void     meta_wayland_data_device_end_drag       (MetaWaylandDataDevice                 *data_device);
+ 
++void meta_wayland_data_device_start_compositor_drag (MetaWaylandDataDevice *data_device,
++                                                     MetaWaylandDataSource *source,
++                                                     ClutterSprite         *sprite,
++                                                     graphene_point_t       drag_start);
++
++void meta_wayland_data_device_cancel_compositor_drag (MetaWaylandDataDevice *data_device,
++                                                      MetaWaylandDataSource *source);
++
+ MetaWaylandToplevelDrag *
+ meta_wayland_data_device_get_toplevel_drag (MetaWaylandDataDevice *data_device);
+ 
+diff --git a/src/wayland/meta-wayland-data-source.c b/src/wayland/meta-wayland-data-source.c
+index f5361184c..4c5fb4b76 100644
+--- a/src/wayland/meta-wayland-data-source.c
++++ b/src/wayland/meta-wayland-data-source.c
+@@ -579,6 +579,15 @@ meta_wayland_data_source_get_drop_performed (MetaWaylandDataSource *source)
+   return priv->drop_performed;
+ }
+ 
++void
++meta_wayland_data_source_mark_drop_performed (MetaWaylandDataSource *source)
++{
++  MetaWaylandDataSourcePrivate *priv =
++    meta_wayland_data_source_get_instance_private (source);
++
++  priv->drop_performed = TRUE;
++}
++
+ void
+ meta_wayland_data_source_notify_drop_performed (MetaWaylandDataSource *source)
+ {
+diff --git a/src/wayland/meta-wayland-data-source.h b/src/wayland/meta-wayland-data-source.h
+index 965efbc68..a77ec60c7 100644
+--- a/src/wayland/meta-wayland-data-source.h
++++ b/src/wayland/meta-wayland-data-source.h
+@@ -109,6 +109,7 @@ void meta_wayland_data_source_set_current_offer (MetaWaylandDataSource *source,
+ gboolean meta_wayland_data_source_get_drop_performed (MetaWaylandDataSource *source);
+ 
+ void meta_wayland_data_source_notify_drop_performed (MetaWaylandDataSource *source);
++void meta_wayland_data_source_mark_drop_performed (MetaWaylandDataSource *source);
+ void meta_wayland_data_source_notify_finish (MetaWaylandDataSource *source);
+ 
+ void meta_wayland_data_source_fake_read (MetaWaylandDataSource *source,
