@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import os
+import re
 import shlex
+import struct
 import subprocess
 import sys
+import threading
 import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from . import capsule_runtime as runtime_policy
@@ -33,7 +38,8 @@ def _runtime_authority(runtime: Path) -> Path | None:
     return None
 
 
-def _start_bus_proxy(runtime: Path, identity: str) -> tuple[subprocess.Popen[bytes] | None, Path | None]:
+def _start_bus_proxy(runtime: Path, identity: str,
+                     own: list[str] | None = None) -> tuple[subprocess.Popen[bytes] | None, Path | None]:
     address = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
     if not address:
         return None, None
@@ -49,6 +55,7 @@ def _start_bus_proxy(runtime: Path, identity: str) -> tuple[subprocess.Popen[byt
             "--talk=org.a11y.Bus",
             runtime_policy.SECRET_SERVICE,
             "--own=org.mpris.MediaPlayer2.*",
+            *(own or []),
         ], close_fds=True)
     except OSError as error:
         raise InstallerError(f"The application portal boundary could not start: {error}") from error
@@ -71,6 +78,101 @@ def _stop_bus_proxy(process: subprocess.Popen[bytes] | None, socket: Path | None
             process.kill()
     if socket is not None:
         socket.unlink(missing_ok=True)
+
+
+HOST_ETC = Path("/etc")
+ZONEINFO = Path("/usr/share/zoneinfo")
+_ZONE_NAME = re.compile(r"[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)*")
+# inotify(7): a link replaced by rename, or written, created, removed.
+_ZONE_EVENTS = 0x00000008 | 0x00000080 | 0x00000100 | 0x00000200
+
+
+def host_time_zone(etc: Path | None = None, zoneinfo: Path | None = None) -> str:
+    """The host's zone name ("America/Chicago"), or "" when it has none.
+
+    timedatectl keeps /etc/localtime as a link into the zone database; the
+    link's target is the only place the name is written down.
+    """
+    try:
+        target = os.readlink((etc or HOST_ETC) / "localtime")
+    except OSError:
+        return ""
+    _head, marker, name = target.rpartition("zoneinfo/")
+    if not marker or not _ZONE_NAME.fullmatch(name) or not ((zoneinfo or ZONEINFO) / name).is_file():
+        return ""
+    return name
+
+
+def _time_zone_arguments(zone: str) -> list[str]:
+    """The capsule's /etc/localtime: a link to the host's zone, by name.
+
+    The image's own link names Etc/UTC, so every capsule ran on UTC. glibc
+    reads the zone from the file; ICU (Chromium, Electron, V8's Intl) reads
+    the name from the link's target, so a copied zone file would give the
+    right offset under the wrong name. Podman writes the link when the image
+    carries the zone; the host's database is mounted over the image's so the
+    rules are the host's, not those of the day the capsule was built. Without
+    a name Podman copies the host's file, which still gives the right offset.
+    """
+    arguments = [f"--tz={zone or 'local'}"]
+    if ZONEINFO.is_dir():
+        arguments.extend(("--volume", f"{ZONEINFO}:{ZONEINFO}:ro"))
+    return arguments
+
+
+def _host_zone_changes(etc: Path = HOST_ETC) -> Iterator[None]:
+    """Yield each time the host's /etc/localtime changes; blocks in between."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        descriptor = libc.inotify_init1(os.O_CLOEXEC)
+    except (OSError, AttributeError):
+        return
+    if descriptor < 0:
+        return
+    try:
+        if libc.inotify_add_watch(descriptor, os.fsencode(etc), _ZONE_EVENTS) < 0:
+            return
+        while True:
+            data = os.read(descriptor, 4096)
+            offset, changed = 0, False
+            while offset + 16 <= len(data):
+                length = struct.unpack_from("iIII", data, offset)[3]
+                changed |= data[offset + 16:offset + 16 + length].rstrip(b"\0") == b"localtime"
+                offset += 16 + length
+            if changed:
+                yield
+    finally:
+        os.close(descriptor)
+
+
+def _set_capsule_zone(instance: str, zone: str) -> bool:
+    result = subprocess.run(["podman", "exec", "--user", "0", instance,
+                             "ln", "-sfn", f"../usr/share/zoneinfo/{zone}", "/etc/localtime"],
+                            capture_output=True, check=False, timeout=30)
+    return result.returncode == 0
+
+
+def _keep_zone(instance: str, zone: str, etc: Path | None = None,
+               changes: Callable[[Path], Iterator[None]] = _host_zone_changes,
+               apply: Callable[[str, str], bool] = _set_capsule_zone) -> None:
+    etc = etc or HOST_ETC
+    for _change in changes(etc):
+        now = host_time_zone(etc)
+        if now and now != zone and apply(instance, now):
+            zone = now
+
+
+def _follow_time_zone(instance: str, zone: str) -> None:
+    """Move the running capsule to the host's zone whenever the host moves.
+
+    A laptop that changes zone replaces the host's /etc/localtime link; the
+    capsule's link is replaced to match, and the application follows as host
+    applications do: glibc rereads /etc/localtime, Chromium watches it and
+    tells its renderers. TZ stays unset in the capsule for the same reason:
+    with TZ set, neither looks at the file again.
+    """
+    threading.Thread(target=_keep_zone, args=(instance, zone), daemon=True,
+                     name="luma-capsule-zone").start()
 
 
 def _desktop_id(record: dict[str, object]) -> str:
@@ -126,8 +228,10 @@ def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> in
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
     capsule_runtime = Path(f"/run/user/{uid}")
     data = _private_home(record)
-    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]))
+    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]), runtime_policy.own_bus_arguments(record))
+    zone = host_time_zone()
     arguments = ["podman", "run", "--rm", "--name", instance, "--network=host", "--userns=keep-id", *runtime_policy.launch_arguments(record),
+                 *_time_zone_arguments(zone),
                  "--security-opt", "label=type:luma_application.process",
                  "--security-opt", f"label=level:{_capsule_level(str(record['sha256']))}",
                  # A fresh proc can only be mounted where proc isn't partly hidden;
@@ -183,7 +287,8 @@ def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> in
     # The desktop's identity tells toolkits which keyring, theme and portal
     # conventions apply; Chromium without it stores sign-ins in plain text and
     # forgets them, and GTK and Qt pick fallback themes.
-    for name in ("DISPLAY", "LANG", "DESKTOP_STARTUP_ID", "XDG_ACTIVATION_TOKEN", *runtime_policy.DESKTOP_IDENTITY):
+    # TZ only when the person set one; the host's applications use it too.
+    for name in ("DISPLAY", "LANG", "TZ", "DESKTOP_STARTUP_ID", "XDG_ACTIVATION_TOKEN", *runtime_policy.DESKTOP_IDENTITY):
         if os.environ.get(name):
             arguments.extend(("--env", f"{name}={os.environ[name]}"))
     import pwd
@@ -199,6 +304,8 @@ def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> in
     arguments.extend(shlex.split(str(record["command"])))
     arguments.extend(runtime_policy.payload_arguments(record, bool(wayland)))
     arguments.extend(extra or [])
+    if zone and not os.environ.get("TZ"):
+        _follow_time_zone(instance, zone)
     try:
         return _guarded(record, arguments)
     finally:
@@ -294,7 +401,7 @@ def _launch_appimage(record: dict[str, object], extra: list[str] | None = None) 
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
     capsule_runtime = Path(f"/run/user/{uid}")
     data = _private_home(record)
-    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]))
+    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]), runtime_policy.own_bus_arguments(record))
     arguments = [
         "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--share-net",
         "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc", "--ro-bind", "/sys", "/sys",

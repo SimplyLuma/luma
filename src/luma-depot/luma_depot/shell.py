@@ -105,7 +105,9 @@ class DepotShell(AppWindow):
         body.append(self.sidebar)
         body.append(self._build_main())
         self.set_body(body)
+        # The sidebar always shows beside the page; on a phone the places button opens it as a drawer.
         self.sidebar_toggle = SidebarToggle(self.sidebar)
+        self.sidebar_toggle.set_control_visible(False)
         self.title_bar.pack_start(self.sidebar_toggle)
 
         # Phone and compact (16.1): the sidebar becomes the places sheet behind a menu button,

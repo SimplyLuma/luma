@@ -214,8 +214,12 @@ def cmd_build(args):
     covered = {p for f in fragments for p in f["packages"]}
     # A subpackage built from a named package's spec in the same build (luma-os-remote
     # from luma-update) is covered by that package's fragment.
+    # A package rebuilt from an imported SRPM (NetworkManager, gnome-shell) has no
+    # packaging/rpm spec here: its other binary packages share the name prefix and the
+    # exact epoch, version and release in the same build.
     for parent in sorted(covered):
-        for sub in spec_subpackages(repo, args.to_rev, parent):
+        subs = spec_subpackages(repo, args.to_rev, parent) or {n for n in current if n.startswith(parent + "-")}
+        for sub in subs:
             if current.get(sub) is not None and current.get(sub) == current.get(parent):
                 covered.add(sub)
     uncovered = []

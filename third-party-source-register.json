@@ -13392,6 +13392,9 @@
     "scripts/packages/build-iio-sensor-proxy.sh": [
       "Apache-2.0"
     ],
+    "scripts/packages/build-networkmanager.sh": [
+      "Apache-2.0"
+    ],
     "scripts/packages/build-luma-logos.sh": [
       "Apache-2.0"
     ],

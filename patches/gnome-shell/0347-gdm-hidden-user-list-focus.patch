@@ -1,0 +1,32 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] gdm: keep the focus off the poster's hidden user list
+
+The screen shield calls LoginDialog.activate() each time the greeter's
+shield comes up, including on every idle blank, and activate() focuses
+the user list. The poster (0227) keeps that list hidden, so its items are
+never mapped and UserList._moveFocusToItems() can never move the focus to
+one. It then retries before the next redraw, and each retry asks for that
+redraw: the greeter drew a frame every refresh with the screen off. On a
+Pixel 8 Pro the Shell woke about 180 times a second, used about 9 % of a
+core and kept the memory bus at its top clock, as long as the greeter sat
+blanked. Typed keys also went to the hidden list.
+
+activate() now focuses the user list only when it is shown. The focus
+stays with the visible prompt.
+
+--- a/js/gdm/loginDialog.js
++++ b/js/gdm/loginDialog.js
+@@ -1567,7 +1567,12 @@
+     }
+ 
+     activate() {
+-        this._userList.grab_key_focus();
++        // The poster keeps the user list hidden. Its items are never mapped,
++        // so a focused UserList would retry focusing one before every redraw
++        // and keep the Shell drawing frames with the screen off, and typed
++        // keys would go nowhere. Leave the focus with the visible prompt.
++        if (this._userSelectionBox.visible)
++            this._userList.grab_key_focus();
+         this.show();
+     }
+ 

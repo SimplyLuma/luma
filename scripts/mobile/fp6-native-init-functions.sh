@@ -723,6 +723,11 @@ has_unallocated_space() {
 # Preparation is upstream-owned; a bad deployment must not boot mutable ext4.
 # Manifest hash is supplied by the recipient-built immutable initramfs.
 # The store is shared OSTree /var, never part of the public deployment /usr.
+# The expected set is the device's firmware.manifest (devices/<vendor>/<codename>):
+# its SHA-256 is the anchor, and its header row declares the file count.
+# /etc/luma-firmware-manifest.sha256 is written from device.toml by
+# scripts/mobile/common/firmware-store-anchor.py; Alpha 1 FP6 ramdisks carry
+# /etc/luma-fp6-firmware-manifest.sha256 instead.
 luma_firmware_directory_safe() {
 	local facts owner mode
 	[ -d "$1" ] && [ ! -L "$1" ] || return 1
@@ -736,8 +741,14 @@ luma_firmware_directory_safe() {
 }
 
 luma_verify_firmware_store() {
-	local dir store manifest expected actual tab kind mode digest relative target rows files header root anchor
-	root="${1:-/sysroot}"; anchor="${2:-/etc/luma-fp6-firmware-manifest.sha256}"
+	local dir store manifest expected actual tab kind mode digest relative target rows files header declared root anchor
+	root="${1:-/sysroot}"; anchor="$2"
+	if [ -z "$anchor" ]; then
+		anchor=/etc/luma-fp6-firmware-manifest.sha256
+		if [ -e /etc/luma-firmware-manifest.sha256 ] || [ -L /etc/luma-firmware-manifest.sha256 ]; then
+			anchor=/etc/luma-firmware-manifest.sha256
+		fi
+	fi
 	case "$root" in /|/sysroot) ;; *) return 1 ;; esac
 	[ "$root" != / ] || root=""
 	for dir in "${root:-/}" "$root/var" "$root/var/lib" "$root/var/lib/luma" "$root/var/lib/luma/device-firmware"; do
@@ -761,10 +772,13 @@ luma_verify_firmware_store() {
 	actual="$(sha256sum "$manifest")" || return 1
 	[ "${actual%% *}" = "$expected" ] || return 1
 	tab="$(printf '\t')"
-	rows=0; files=0; header=0
+	rows=0; files=0; header=0; declared=""
 	while IFS="$tab" read -r kind mode digest relative target; do
 		if [ "$header" -eq 0 ]; then
-			[ "$kind:$mode:$digest:$relative:$target" = 'H:267:-:-:-' ] || return 1
+			[ "$kind:$digest:$relative:$target" = 'H:-:-:-' ] || return 1
+			case "$mode" in ''|0*|*[!0-9]*) return 1 ;; esac
+			[ "${#mode}" -le 6 ] || return 1
+			declared="$mode"
 			header=1
 			continue
 		fi
@@ -787,7 +801,7 @@ luma_verify_firmware_store() {
 		esac
 		rows=$((rows + 1))
 	done < "$manifest"
-	[ "$header:$files" = '1:267' ] || return 1
+	[ "$header:$files" = "1:$declared" ] || return 1
 	actual="$(find "$store" -mindepth 1 -print | wc -l)" || return 1
 	[ "$actual" -eq "$((rows + 1))" ] || return 1
 }

@@ -569,6 +569,8 @@ evaluate() {
     gate_release_check "$domain" "$stage" default-browser || failures=$((failures + 1))
     # Viewer opens PDFs and images; Document Viewer is not part of Luma.
     gate_release_check "$domain" "$stage" default-pdf-viewer || failures=$((failures + 1))
+    # Package files open in Valet without the application chooser.
+    gate_release_check "$domain" "$stage" package-files-open-in-valet || failures=$((failures + 1))
     gate_release_check "$domain" "$stage" luma-identity || failures=$((failures + 1))
     gate_release_check "$domain" "$stage" fedora-cannot-replace-luma || failures=$((failures + 1))
     # Depot opens, every time, the way a person opens it: a real Shell activates

@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.93%{?dist}
+Release:        1.luma.99%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -147,6 +147,7 @@ ln -s ../luma-retired-system-apps.service %{buildroot}%{_unitdir}/multi-user.tar
 install -D -m 0644 data/luma-depot-provision.service %{buildroot}%{_userunitdir}/luma-depot-provision.service
 install -D -m 0644 data/luma-depot-app-updates.service %{buildroot}%{_userunitdir}/luma-depot-app-updates.service
 install -D -m 0644 data/luma-depot-app-updates.timer %{buildroot}%{_userunitdir}/luma-depot-app-updates.timer
+install -D -m 0644 data/luma-system-app-refresh.service %{buildroot}%{_userunitdir}/luma-system-app-refresh.service
 install -d %{buildroot}%{_userunitdir}/graphical-session.target.wants
 ln -s ../luma-depot-provision.service \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-depot-provision.service
@@ -267,6 +268,7 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_userunitdir}/luma-depot-provision.service
 %{_userunitdir}/luma-depot-app-updates.service
 %{_userunitdir}/luma-depot-app-updates.timer
+%{_userunitdir}/luma-system-app-refresh.service
 %{_userunitdir}/graphical-session.target.wants/luma-depot-provision.service
 %{_userunitdir}/graphical-session.target.wants/luma-depot-app-updates.timer
 %{_userunitdir}/luma-depot-app-updates-login.service
@@ -312,6 +314,54 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.99
+- An AppImage opened from Filer or a browser runs at once, with no Valet
+  window: luma-install FILE starts it before any interface is loaded
+  (appimage_run). It is unpacked into the private copy and started in the
+  AppImage sandbox without being added to Applications; its launcher is
+  hidden (NoDisplay, no file types) so the window keeps its name and icon.
+  Once it is running, one notification offers Keep in Apps. The same file
+  opened again starts the copy already there.
+- Package capsules may own their own session bus name: the launcher's
+  desktop ID, AppStream ID and window class, and the names under them, as
+  Flatpak grants. The filtered bus denied RequestName (ServiceUnknown), so
+  GApplication failed to register and the application exited before its
+  first window. Session service names are never granted.
+
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.98
+- Package capsules run in the host's time zone instead of the image's UTC:
+  podman run --tz=<host zone> with the host's zone database mounted
+  read-only, so /etc/localtime is a link by name for glibc and ICU. While
+  the capsule runs, the launcher follows changes to the host's
+  /etc/localtime (inotify) and replaces the capsule's link to match. TZ is
+  passed through only when the session sets it.
+
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.97
+- Valet runs an AppImage when it is opened (double-click in Filer, a
+  browser's downloads), executable bit or not: no Install step. The file is
+  unpacked into Valet's private copy and started in the AppImage sandbox, and
+  stays in Applications; the same file opened again starts that copy. Valet's
+  window closes once the application's window takes focus.
+
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.96
+- luma-system-app-refresh.service: luma-system-app-updates refresh updates
+  the system installation's luma apps and runtimes in the session before
+  each background app update, catalogued or not; waits for the offline
+  baseline import, defers like Depot (off, metered, power saver, low
+  battery), holds updates that ask for more, were taken back or need a newer
+  host, and deploys the compared commit.
+- luma-depot-app-updates-login.service also starts the run when a system
+  luma ref has an update waiting, and waits up to ten minutes for the network.
+
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.95
+- Depot 0.1.5 from main: catalogue icons redraw before screenshots finish,
+  monogram for icon names the theme lacks, no title-bar sidebar button.
+
+* Mon Nov 16 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.94
+- Depot host: carry the Depot model from main (App.tv_input); the host and
+  the Depot app accept each other's view models when one adds a field.
+- Depot pages read whether an update asks for more by app id.
+
 * Sun Nov 08 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.93
 - luma-app-baseline.service is Type=notify: ready when the handoff finishes
   or after 90 seconds, then the import continues in the background and

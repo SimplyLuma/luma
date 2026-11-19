@@ -690,11 +690,17 @@ button.lumaui-bar-button.dropdown.chip-picker image { -gtk-icon-size: 16px; colo
 box.lumaui-ac-foot { padding-top: 6px; margin-top: 4px; box-shadow: inset 0 1px 0 @luma_line; }
 /* v71 .tpmini (Tide): the app's head row, 8 under it and the hairline (inset -1px), above the bar's row. */
 box.lumaui-ac-head { padding-bottom: 8px; margin-bottom: 6px; box-shadow: inset 0 -1px 0 @luma_line; }
+/* On a phone a field is the kept well (v71 label.srch.keep: 48 at 20, 14 in, 16 text, an 18 glyph): under the hairline,
+ * in a row of its own, or a quick field sharing the bar's row with a key. A compose field keeps its own metrics (Messages'
+ * compact composer row); a command field keeps the terminal's mono line. */
 .lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry,
-.lumaui-action-center.phone box.lumaui-ac-row.entry entry.lumaui-bar-entry {
+.lumaui-action-center.phone box.lumaui-ac-row.entry entry.lumaui-bar-entry,
+.lumaui-action-center.phone box.lumaui-ac-row entry.lumaui-bar-entry.quick {
   min-height: var(--lumaui-ac-phone-control); border-radius: var(--lumaui-ac-phone-control-radius); padding: 0 14px;
 }
-.lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry text { font-size: 16px; }
+.lumaui-action-center.phone box.lumaui-ac-foot entry.lumaui-bar-entry text,
+.lumaui-action-center.phone box.lumaui-ac-row entry.lumaui-bar-entry.quick text { font-size: 16px; }
+.lumaui-action-center.phone box.lumaui-ac-row entry.lumaui-bar-entry.quick button.lumaui-bar-entry-lead image { -gtk-icon-size: 18px; }
 /* Search (rule 12): a kept field takes the spare width; on a phone 48 at 20 with 16 text; no focus ring. */
 .lumaui-action-center.phone entry.lumaui-bar-search.keep,
 .lumaui-action-center.phone entry.lumaui-bar-search.folded {
@@ -744,7 +750,9 @@ box.lumaui-bar-chip.live.well {
   min-height: var(--lumaui-ac-phone-control); padding: 0 16px; border-radius: var(--lumaui-ac-phone-control-radius);
   background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade; font-size: 15px;
 }
-box.lumaui-bar-chip.live.well label.lumaui-live-time { color: @luma_bar_ink_secondary; font-feature-settings: "tnum"; }
+box.lumaui-bar-chip.live.well { border-spacing: 10px; color: @luma_ink; font-weight: 700; }   /* v71 .merec2: the words in ink, the dot says it */
+box.lumaui-bar-chip.live.well box.lumaui-live-dot { min-width: 10px; min-height: 10px; }
+box.lumaui-bar-chip.live.well label.lumaui-live-time { color: @luma_bar_ink_secondary; font-weight: 400; font-feature-settings: "tnum"; }
 /* A bar that is only a panel (Messages' held message): no row, no hairline. */
 box.lumaui-ac-bar.panel-only box.lumaui-ac-foot { padding: 2px; margin-top: 0; box-shadow: none; }
 box.lumaui-ac-bar.panel-only grid.lumaui-bar-tiles { margin: 0; }

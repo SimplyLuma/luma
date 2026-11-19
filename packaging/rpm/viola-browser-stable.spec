@@ -9,17 +9,17 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 44
+%global native_release 46
 # The native host is shared. Both CPUs use source-built engines from the same
-# tree (engine patches 0001-0005); each has its own release number.
+# tree (engine patches 0001-0007); each has its own release number.
 %ifarch aarch64
-%global engine_release 36
-%global approved_release 20261108-native36-arm-desktop
-%global engine_sha256 285400fa482d40e8cee961e3726268bdb779f72c287ebf7a1a38cfec8dc30d31
+%global engine_release 40
+%global approved_release 20261117-native40-arm-desktop
+%global engine_sha256 404ed0a4906979decbd762f854b8a17f6b76e4d25263060c81cad48aefeae2c5
 %else
-%global engine_release 35
-%global approved_release 20261108-native35-x86-desktop
-%global engine_sha256 354dc6bc19aef237a50fab0ac5695af21e89debf4561e370654543989f57a433
+%global engine_release 39
+%global approved_release 20261117-native39-x86-desktop
+%global engine_sha256 aab6eae3b4a9e04bffa7c501a7e64b9150011f6c9628778a01275147e97a0d80
 %endif
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261113.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261117.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -284,6 +284,17 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native46.creator20261117.1
+- Audio streams are named Viola (application.id com.rhyme.viola) from the out-of-process audio service: engine patch 0007.
+- Engines native39 (x86) and native40 (ARM): native37 and native38 with 0007; only chrome differs.
+
+* Mon Nov 16 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native46.creator20261116.1
+- Tab titles use the whole sidebar row: the close button takes room only on the hovered, focused or current tab.
+
+* Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native45.creator20261113.2
+- Ask in the bar before installing an extension, and when an update asks for new permissions: engine patch 0006 hands Chromium's extension prompts to the host.
+- Engines native37 (x86) and native38 (ARM): native35 and native36 with 0006; only chrome differs.
+
 * Fri Nov 13 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native44.creator20261113.1
 - Host native44: the engine leaves Wayland color management off on its private display, so shared-memory frames stay sRGB and pages appear on GPU-backed ARM systems.
 

@@ -1666,11 +1666,11 @@ box.lumaui-title-island {
   transition: box-shadow var(--lumaui-duration-grow) var(--lumaui-ease);
 }
 box.lumaui-title-island.flat:not(.grown) { background: none; box-shadow: none; }
-/* An island that floats on a computer (v71 Charlie .flo.crsubj): 44 tall, 13.5/650 over 11.5/400. */
+/* An island that floats on a computer (v71 Charlie .flo.crsubj): 44 tall, 13.5/650 over 11.5/400, at the body's 1.45. */
 box.lumaui-title-island.desk box.lumaui-title-island-row, box.lumaui-title-island.desk button { min-height: 44px; }
 box.lumaui-title-island.desk button.lumaui-title-island-title { padding: 0 16px 0 4px; }
-box.lumaui-title-island.desk label.lumaui-title-island-label { font-size: 13.5px; font-weight: 650; }
-box.lumaui-title-island.desk label.lumaui-title-island-subtitle { font-size: 11.5px; font-weight: 400; letter-spacing: 0.115px; color: @luma_bar_muted; }
+box.lumaui-title-island.desk label.lumaui-title-island-label { font-size: 13.5px; font-weight: 650; line-height: var(--lumaui-text-line-height); }
+box.lumaui-title-island.desk label.lumaui-title-island-subtitle { font-size: 11.5px; font-weight: 400; letter-spacing: 0.115px; color: @luma_bar_muted; line-height: var(--lumaui-text-line-height); }
 box.lumaui-title-island.floating { margin: var(--lumaui-title-island-top) 0 0 var(--lumaui-title-island-left); }
 box.lumaui-title-island-row { min-height: var(--lumaui-title-island-height); }
 box.lumaui-title-island button {
@@ -1687,9 +1687,13 @@ box.lumaui-title-island button.lumaui-title-island-title { padding: 0 var(--luma
 box.lumaui-title-island.no-lead button.lumaui-title-island-title { box-shadow: none; }
 box.lumaui-title-island-inner { border-spacing: var(--lumaui-title-island-faces-gap); }
 image.lumaui-title-island-disclosure { -gtk-icon-size: 14px; color: @luma_frame_muted; }
-/* The island reads as the title row does: frame inks (crisp near-black in light), the title 600 in light, 650 in dark (luma-appkit-dark.css). */
-label.lumaui-title-island-label { line-height: 1.2; font-size: var(--lumaui-title-island-title-size); font-weight: var(--lumaui-title-island-light-title-weight); color: @luma_frame_ink; }
-label.lumaui-title-island-subtitle { line-height: 1.2; font-size: var(--lumaui-title-island-subtitle-size); font-weight: var(--lumaui-title-island-subtitle-weight); color: @luma_muted; }   /* v71 islands' small: --ink-3 (light #6c6f73) */
+/* The island reads as the title row does: frame inks (crisp near-black in light), the title 600 in light, 650 in dark (luma-appkit-dark.css).
+ * The two lines sit on v71's line-height 1.2 as CSS means it (18 and 14 px boxes, no gap); a GTK factor would multiply
+ * the font's own line, and the window's label line height would win over a bare label selector. */
+label.lumaui-title-island-label { font-size: var(--lumaui-title-island-title-size); font-weight: var(--lumaui-title-island-light-title-weight); color: @luma_frame_ink; }
+label.lumaui-title-island-subtitle { font-size: var(--lumaui-title-island-subtitle-size); font-weight: var(--lumaui-title-island-subtitle-weight); color: @luma_muted; }   /* v71 islands' small: --ink-3 (light #6c6f73) */
+box.lumaui-title-island label.lumaui-title-island-label { line-height: var(--lumaui-title-island-title-line-height); }
+box.lumaui-title-island label.lumaui-title-island-subtitle { line-height: var(--lumaui-title-island-subtitle-line-height); }
 box.lumaui-title-island box.lumaui-title-island-trailing > button.lumaui-title-island-button { min-width: var(--lumaui-title-island-button-width); color: @luma_frame_ink_secondary; }
 box.lumaui-title-island box.lumaui-title-island-trailing > button.lumaui-title-island-button:first-child { box-shadow: inset 1px 0 0 @luma_line; }
 /* Grown: one glass. The row is the header, solid, with a hairline under it; the panel continues below. */
@@ -1701,7 +1705,7 @@ box.lumaui-title-island.grown > box.lumaui-title-island-row { background: @luma_
 box.lumaui-title-island.grown.scrolled > box.lumaui-title-island-row { box-shadow: inset 0 -1px 0 @luma_line, 0 8px 16px -6px @luma_island_scrolled_shadow; }
 scrolledwindow.lumaui-title-island-panel > viewport > * { margin: var(--lumaui-title-island-panel-padding); }
 box.lumaui-title-island.menu scrolledwindow.lumaui-title-island-panel > viewport > * { margin: var(--lumaui-title-island-menu-panel-padding); }
-box.lumaui-title-island.grown .luma-navigation-sidebar { min-width: 0; background: none; }
+box.lumaui-title-island.grown .luma-navigation-sidebar { min-width: 0; background: none; }   /* its insets: luma-appkit-rows.css */
 .lumaui-title-island-scrim { background: @luma_island_scrim; opacity: 0; transition: opacity var(--lumaui-duration-scrim) var(--lumaui-ease); }
 .lumaui-title-island-scrim.shown { opacity: 1; }
 
@@ -2218,7 +2222,7 @@ box.lumaui-title-island.creative box.lumaui-title-island-row,
 box.lumaui-title-island.creative button { min-height: var(--lumaui-title-island-creative-height); }
 box.lumaui-title-island.creative button.lumaui-title-island-lead { min-width: var(--lumaui-title-island-creative-lead); }
 box.lumaui-title-island.creative button.lumaui-title-island-title { padding: 0 var(--lumaui-title-island-creative-text-end) 0 var(--lumaui-title-island-creative-text-start); box-shadow: none; }
-box.lumaui-title-island.creative label.lumaui-title-island-label { font-size: var(--lumaui-title-island-creative-title-size); font-weight: var(--lumaui-title-island-creative-title-weight); }
+box.lumaui-title-island.creative label.lumaui-title-island-label { font-size: var(--lumaui-title-island-creative-title-size); font-weight: var(--lumaui-title-island-creative-title-weight); line-height: var(--lumaui-text-line-height); }  /* .rlback2: the body's 1.45 */
 box.lumaui-title-island.creative.floating { margin-left: var(--lumaui-title-island-creative-left); }
 window.lumaui-phone-device box.lumaui-title-island.creative.floating { margin-top: var(--lumaui-title-island-creative-top); }
 

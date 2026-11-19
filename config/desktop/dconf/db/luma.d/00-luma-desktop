@@ -152,3 +152,10 @@ load-unicode-at-startup=true
 
 [org/gnome/desktop/search-providers]
 enabled=['org.gnome.Nautilus.desktop', 'org.projectluma.Depot.desktop']
+
+[org/gtk/gtk4/settings/debug]
+# GTK 4's schema enables the inspector shortcuts (Ctrl+Shift+I / Ctrl+Shift+D)
+# by default, so a stray chord while typing asks "Do you want to use GTK
+# Inspector?". Off for everyone; a developer turns it back on per account
+# (the value lives in the person's own dconf and wins over this default).
+enable-inspector-keybinding=false

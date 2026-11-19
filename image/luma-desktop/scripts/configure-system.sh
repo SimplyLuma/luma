@@ -42,6 +42,11 @@ if capability_enabled android_apps; then
     /etc/systemd/system/waydroid-container.service.d/10-luma-ordering.conf
 fi
 dconf update
+# A system locale from the start. A disk image (ARM phones and boards) never
+# passes through an installer, so until first-boot setup applies the person's
+# choice (localed rewrites this file) it ran on C.UTF-8: no region, money as
+# "20.00$". English (US) until then; an installer or setup replaces it.
+[ -s /etc/locale.conf ] || printf 'LANG=en_US.UTF-8\n' >/etc/locale.conf
 
 # Device-neutral modem policy: dbus-broker may receive ModemManager's eSIM
 # profile transport (luma-esim-broker). It is compiled into the image policy

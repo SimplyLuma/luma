@@ -241,8 +241,7 @@ class VoiceMemosWindow(AppWindow):
         self.list_action = ActionCenter().attach(self.list_host)
         self.list_action.set_name("me-list-action")
         self.list_action.hide_bar()
-        self.list_search = BarSearch("Search what was said", label="Search memos", span="narrow", keep=True,
-                                     on_change=self._search)
+        self.list_search = BarSearch("Search what was said", span="narrow", keep=True, on_change=self._search)
 
         self.split = IslandSplitView(collapsed=False, show_content=True)
         self.split.set_sidebar_width_unit(Adw.LengthUnit.PX)
@@ -363,6 +362,7 @@ class VoiceMemosWindow(AppWindow):
             GLib.idle_add(lambda: self._list_first() and GLib.SOURCE_REMOVE)
         self._fold_panel()
         self.page.add_css_class("phone") if phone else self.page.remove_css_class("phone")
+        self.transcript.set_spacing(*((16, 2) if phone else (17, 4)))  # v71 .metx p, .mesp
         # The 760 breakpoint already holds 31/20/20/110; the phone gutter is 16, and the page
         # starts 20 under the title island (52 without it, v71 .mepad). On a phone the kit's one
         # safe area gives the scroller its room above the bar, so the page keeps no guessed bottom.
@@ -432,7 +432,7 @@ class VoiceMemosWindow(AppWindow):
                                     selected=self.mic, on_choose=self._choose_mic))
             box.append(PanelSwitch("sparkles", "Reduce background noise", active=self.enhance,
                                    on_toggle=self._set_enhance))
-        box.append(PanelKey("New recording", on_activate=self._start_from_panel))
+        box.append(PanelKey("Start recording", record=True, on_activate=self._start_from_panel))
         return box
 
     def _choose_view(self, view: str) -> None:
@@ -447,8 +447,14 @@ class VoiceMemosWindow(AppWindow):
         self.enhance = active
 
     def _start_from_panel(self) -> None:
+        """v71 Start recording: the recording starts at once and its page opens."""
         self._fold_panel()
-        self._new_recording()
+        if self.recording or self._busy:
+            return
+        self._continuing = None
+        self._draft = False
+        self.current_id = None
+        self._record()
 
     def _new_recording(self) -> None:
         if self.recording or self._busy:
@@ -500,9 +506,10 @@ class VoiceMemosWindow(AppWindow):
         if self.fixture:  # Favorites and Recently deleted are fixture views (real memos have neither yet)
             items.append(BarAction("list-filter", tooltip="Show", active=self.view != "all", key="show",
                                    panel=lambda: self._phone_panel("show")))
-        items.append(BarAction("plus", "New recording", self._new_recording, primary=True, keep_label=True, key="new",
-                               sensitive=not self.recording and not self._busy,
-                               ))
+        # v71 meListBar: New grows the bar into the microphone and Start recording; ✕ folds it.
+        items.append(BarAction("mic", "New", tooltip="New memo", primary=True, keep_label=True, key="new",
+                               panel=lambda: self._phone_panel("new"), panel_close=True,
+                               sensitive=not self.recording and not self._busy))
         self.list_action.show_bar(items, fill=True)
 
     def _render_phone_bar(self, memo: Memo | None) -> None:
@@ -528,11 +535,11 @@ class VoiceMemosWindow(AppWindow):
             items = [BarAction("share-2", tooltip="Share", key="share", panel=self._share_panel)]
             if self.fixture:  # favourites and trim are fixture-only writes
                 items += [BarAction("star", tooltip="Remove from Favorites" if memo.favourite else "Favorite",
-                                    active=memo.favourite, on_activate=lambda: self._favourite(not memo.favourite)),
+                                    active=memo.favourite, favourite=False,
+                                    on_activate=lambda: self._favourite(not memo.favourite)),
                           BarAction("scissors", tooltip="Trim", on_activate=self._trim)]
             if not self.fixture:
                 items.append(BarAction("mic", tooltip="Continue recording", on_activate=self._continue_recording))
-            items.append(BarAction("plus", tooltip="New recording", on_activate=self._new_recording, primary=True))
             items.append(BarAction("ellipsis", tooltip="More", key="more", panel=lambda: self._phone_panel("more")))
             self.action.show_bar(items, fill=True)
         else:
@@ -598,9 +605,12 @@ class VoiceMemosWindow(AppWindow):
             message = ("Deleted memos stay here for 30 days." if self.view == "deleted" else
                        "No matching recordings." if self.query else "Your recordings will appear here.")
             label = apply_type(Gtk.Label(label=message, xalign=0, wrap=True), "caption")
+            label.add_css_class("me-none")
             label.set_margin_start(12)
             label.set_margin_top(12)
-            self.sidebar.list.append(Gtk.ListBoxRow(selectable=False, activatable=False, child=label))
+            note = Gtk.ListBoxRow(selectable=False, activatable=False, child=label)
+            note.add_css_class("me-none-row")
+            self.sidebar.list.append(note)
         self._suppress_row = False
 
     def _row_selected(self, _list, row) -> None:
@@ -769,6 +779,8 @@ class VoiceMemosWindow(AppWindow):
             key = getattr(getattr(child, "bar_item", None), "key", None)
             if key in ("share", "more"):
                 child.set_name(f"me-{key}")
+            if self.recording and getattr(getattr(child, "bar_item", None), "label", None) == "Done":
+                child.add_css_class("me-done")
             child = child.get_next_sibling()
 
     def _focus_search(self) -> None:

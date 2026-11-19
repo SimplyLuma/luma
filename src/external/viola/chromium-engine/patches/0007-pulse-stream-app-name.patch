@@ -1,0 +1,39 @@
+diff --git a/media/audio/pulse/pulse_util.cc b/media/audio/pulse/pulse_util.cc
+--- a/media/audio/pulse/pulse_util.cc
++++ b/media/audio/pulse/pulse_util.cc
+@@ -39,8 +39,13 @@
+ constexpr char kBrowserDisplayName[] = "google-chrome";
+ #define PRODUCT_STRING "Google Chrome"
+ #else
+-constexpr char kBrowserDisplayName[] = "chromium-browser";
+-#define PRODUCT_STRING "Chromium"
++// Viola: the audio service runs out of process and never receives the
++// browser's app name, so its streams fall back to these. Name them after
++// Viola so mixers and the session's per-app stream state keep them apart
++// from other Chromium builds.
++constexpr char kBrowserDisplayName[] = "com.rhyme.viola";
++constexpr char kBrowserAppId[] = "com.rhyme.viola";
++#define PRODUCT_STRING "Viola"
+ #endif
+ 
+ #if defined(DLOPEN_PULSEAUDIO)
+@@ -480,6 +485,9 @@
+   ScopedPropertyList property_list;
+   pa_proplist_sets(property_list.get(), PA_PROP_APPLICATION_ICON_NAME,
+                    kBrowserDisplayName);
++#if !BUILDFLAG(GOOGLE_CHROME_BRANDING)
++  pa_proplist_sets(property_list.get(), PA_PROP_APPLICATION_ID, kBrowserAppId);
++#endif
+   *stream = pa_stream_new_with_proplist(context, "RecordStream",
+                                         &sample_specifications, map,
+                                         property_list.get());
+@@ -590,6 +598,9 @@
+   ScopedPropertyList property_list;
+   pa_proplist_sets(property_list.get(), PA_PROP_APPLICATION_ICON_NAME,
+                    kBrowserDisplayName);
++#if !BUILDFLAG(GOOGLE_CHROME_BRANDING)
++  pa_proplist_sets(property_list.get(), PA_PROP_APPLICATION_ID, kBrowserAppId);
++#endif
+   *stream = pa_stream_new_with_proplist(
+       *context, "Playback", &sample_specifications, map, property_list.get());
+   RETURN_ON_FAILURE(*stream, "failed to create PA playback stream");

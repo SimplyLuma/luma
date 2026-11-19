@@ -89,6 +89,10 @@ class ReferenceCacheTest(unittest.TestCase):
         self.assertNotEqual(self.identity(theme="light")["key"], original["key"])
         self.assertNotEqual(self.identity(phone=True)["key"], original["key"])
         self.assertNotEqual(self.identity(image="sha256:" + "b" * 64)["key"], original["key"])
+        # podman image inspect prints the bare digest: the same pinned image, the same key.
+        self.assertEqual(self.identity(image="a" * 64)["key"], self.identity()["key"])
+        with self.assertRaises(ValueError):
+            self.identity(image="lumaui-conform-thinkpad")
 
     def test_linked_asset_target_changes_key(self):
         (self.design / "index-link.html").symlink_to("index.html")

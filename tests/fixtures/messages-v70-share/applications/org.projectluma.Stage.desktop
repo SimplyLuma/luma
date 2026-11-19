@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Stage
+Comment=Fixture: the app that opens the thread's .stage deck
+Exec=true %f
+Icon=org.projectluma.Stage
+MimeType=application/x-luma-stage;
+NoDisplay=false

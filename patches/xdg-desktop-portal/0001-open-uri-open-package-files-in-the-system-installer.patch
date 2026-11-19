@@ -1,0 +1,263 @@
+From: Project Luma <noreply@projectluma.org>
+Subject: [PATCH] open-uri: open package files in the system installer directly
+
+OpenURI and OpenFile show the application chooser for every file type
+except web and mail links and folders, unless one application handles
+the type, or until the same application has been chosen three times from
+the same caller. Package files downloaded in a browser or double-clicked
+in a sandboxed file manager therefore always asked which application
+should open them, although the system ships exactly one installer for
+them and makes it the default.
+
+/usr/share/luma/open-directly.list ([Open Directly], content type =
+desktop id) now names content types that open in a system handler
+without the chooser. While the named handler is the default for the
+type, and its desktop entry's real path is in /usr/share/applications
+(part of the read-only OS image), the file opens in it directly. An
+entry anywhere else, including one in ~/.local/share/applications
+shadowing a system file, never skips the chooser. An application's
+request to ask and the per-type always-ask setting still win.
+
+---
+--- a/src/open-uri.c
++++ b/src/open-uri.c
+@@ -501,6 +501,75 @@
+     }
+ 
+   return FALSE;
++}
++
++/* Luma: the operating system lists, in LUMA_OPEN_DIRECTLY_POLICY, content
++ * types that open in a named system handler without the application chooser
++ * (package files in Valet, the installer). While that handler is the default
++ * for the type, a file of that type opens in it directly. The installer only
++ * reviews the package and asks before installing anything; the file itself
++ * is never run.
++ *
++ * The policy file and the handler's desktop entry must both be part of the
++ * read-only OS image: the entry's real path must be in the system
++ * applications directory. An entry found anywhere else, including one in
++ * ~/.local/share/applications that shadows a system file of the same name,
++ * never skips the chooser, and an application's request to ask, or
++ * always-ask for the type, still wins.
++ */
++#define LUMA_OPEN_DIRECTLY_POLICY "/usr/share/luma/open-directly.list"
++#define LUMA_OPEN_DIRECTLY_GROUP "Open Directly"
++#define LUMA_SYSTEM_APPLICATIONS_DIR "/usr/share/applications/"
++
++static gboolean
++luma_opens_directly (const char *app_id,
++                     const char *content_type)
++{
++  g_autoptr(GKeyFile) policy = NULL;
++  g_autoptr(GDesktopAppInfo) info = NULL;
++  g_autofree char *handler = NULL;
++  g_autofree char *desktop_id = NULL;
++  g_autofree char *real_path = NULL;
++  const char *filename;
++  const char *name;
++
++  if (app_id == NULL || content_type == NULL)
++    return FALSE;
++
++  policy = g_key_file_new ();
++  if (!g_key_file_load_from_file (policy, LUMA_OPEN_DIRECTLY_POLICY,
++                                  G_KEY_FILE_NONE, NULL))
++    return FALSE;
++
++  handler = g_key_file_get_string (policy, LUMA_OPEN_DIRECTLY_GROUP,
++                                   content_type, NULL);
++  if (handler == NULL)
++    return FALSE;
++  g_strstrip (handler);
++
++  desktop_id = g_strconcat (app_id, ".desktop", NULL);
++  if (g_strcmp0 (handler, desktop_id) != 0)
++    return FALSE;
++
++  info = g_desktop_app_info_new (desktop_id);
++  if (info == NULL)
++    return FALSE;
++
++  filename = g_desktop_app_info_get_filename (info);
++  if (filename == NULL)
++    return FALSE;
++
++  real_path = realpath (filename, NULL);
++  if (real_path == NULL ||
++      !g_str_has_prefix (real_path, LUMA_SYSTEM_APPLICATIONS_DIR))
++    return FALSE;
++
++  name = real_path + strlen (LUMA_SYSTEM_APPLICATIONS_DIR);
++  if (*name == '\0' || strchr (name, '/') != NULL)
++    return FALSE;
++
++  g_debug ("%s opens %s directly", app_id, content_type);
++  return TRUE;
+ }
+ 
+ static void
+@@ -816,6 +885,15 @@
+       skip_app_chooser = TRUE;
+     }
+ 
++  /* Luma: package files open in the system installer that claims them */
++  if (!skip_app_chooser && default_app != NULL &&
++      luma_opens_directly (default_app, content_type))
++    {
++      reason = "Allowing to skip app chooser: system installer";
++      skip_app_chooser = TRUE;
++      use_default_app = TRUE;
++    }
++
+   if (n_choices == 1)
+     {
+       if (!skip_app_chooser)
+--- a/tests/test_openuri.py
++++ b/tests/test_openuri.py
+@@ -6,6 +6,7 @@
+ import tests.xdp_doc_utils as xdp_doc
+ 
+ import dbus
++import fcntl
+ import pytest
+ import os
+ from pathlib import Path
+@@ -60,14 +61,86 @@
+ """
+ 
+ 
++# Luma: /usr/share/luma/open-directly.list names, per content type, a system
++# handler that opens it without the chooser while it is the default.
++luma_policy = Path("/usr/share/luma/open-directly.list")
++
++luma_installer_desktop = b"""[Desktop Entry]
++Type=Application
++Name=Test Installer
++Exec=true %f
++MimeType=application/x-rpm;application/vnd.debian.binary-package;
++"""
++
++luma_archiver_desktop = b"""[Desktop Entry]
++Type=Application
++Name=Test Archiver
++Exec=true %f
++MimeType=application/x-rpm;application/vnd.debian.binary-package;
++"""
++
++luma_defaults_list = b"""[Default Applications]
++application/vnd.debian.binary-package=luma-user-installer.desktop;
++"""
++
++# Two other handlers, so that without the policy the chooser would be shown.
++luma_mimeinfo_cache = b"""application/x-rpm=luma-test-archiver.desktop;luma-user-installer.desktop;
++application/vnd.debian.binary-package=luma-user-installer.desktop;luma-test-archiver.desktop;
++"""
++
++# The first bytes of an RPM and of a Debian package.
++luma_package_data = {
++    "package.rpm": b"\xed\xab\xee\xdb\x03\x00\x00\x00" + bytes(88),
++    "package.deb": b"!<arch>\ndebian-binary   " + bytes(64),
++}
++
++
+ @pytest.fixture
+ def xdg_data_home_files():
+     return {
+-        "applications/defaults.list": defaults_list,
++        "applications/defaults.list": defaults_list + luma_defaults_list.split(b"\n", 1)[1],
+         "applications/furrfix.desktop": furrfix_desktop,
+         "applications/furrfix2.desktop": furrfix_desktop,
+-        "applications/mimeinfo.cache": mimeinfo_cache,
++        "applications/luma-test-archiver.desktop": luma_archiver_desktop,
++        "applications/luma-user-installer.desktop": luma_installer_desktop,
++        "applications/mimeinfo.cache": mimeinfo_cache + luma_mimeinfo_cache,
+     }
++
++
++@pytest.fixture
++def luma_open_directly():
++    """The policy file and a trusted installer, at their real system paths.
++
++    Those paths are the trust boundary, so this needs a disposable root
++    environment (the package build container); elsewhere the test is skipped.
++    Tests run in parallel and share the one policy file, so each holds a lock
++    while it uses it. The installer entry is the test's own and is the default
++    for RPMs in the test's own configuration directory. Debian packages name
++    luma-user-installer, which is in the test's data home and so untrusted.
++    """
++    system = Path("/usr/share/applications")
++    if not os.access(system, os.W_OK) or not os.access(luma_policy.parent.parent, os.W_OK):
++        pytest.skip("needs writable system data directories")
++    luma_policy.parent.mkdir(exist_ok=True)
++    name = f"luma-test-installer-{os.getpid()}-{os.urandom(4).hex()}.desktop"
++    path = system / name
++    with open(luma_policy.parent / ".open-directly-test.lock", "w") as lock:
++        fcntl.flock(lock, fcntl.LOCK_EX)
++        if luma_policy.exists():
++            pytest.skip(f"{luma_policy} already exists")
++        path.write_bytes(luma_installer_desktop)
++        luma_policy.write_text(
++            "[Open Directly]\n"
++            f"application/x-rpm={name}\n"
++            "application/vnd.debian.binary-package=luma-user-installer.desktop\n"
++        )
++        config = Path(os.environ["XDG_CONFIG_HOME"]) / "mimeapps.list"
++        config.write_text(f"[Default Applications]\napplication/x-rpm={name};\n")
++        try:
++            yield path
++        finally:
++            path.unlink(missing_ok=True)
++            luma_policy.unlink(missing_ok=True)
+ 
+ 
+ @pytest.fixture
+@@ -444,3 +517,48 @@
+         path = args[4]["uri"]
+         assert path == "file://" + file_host_path.absolute().as_posix()
+         assert file_doc_path != file_host_path.absolute().as_posix()
++
++    def open_luma_package(self, dbus_con, name, ask=False):
++        openuri_intf = xdp.get_portal_iface(dbus_con, "OpenURI")
++        file_path = Path.home() / name
++        file_path.write_bytes(luma_package_data[name])
++        fd = os.open(file_path.absolute().as_posix(), os.O_RDONLY)
++        try:
++            request = xdp.Request(dbus_con, openuri_intf)
++            response = request.call(
++                "OpenFile",
++                parent_window="",
++                fd=fd,
++                options={"writable": False, "ask": ask},
++            )
++        finally:
++            os.close(fd)
++        assert response
++        assert response.response == 0
++        return xdp.get_mock_iface(dbus_con).GetMethodCalls("ChooseApplication")
++
++    def test_luma_system_installer_opens_directly(
++        self, luma_open_directly, portals, dbus_con
++    ):
++        assert self.open_luma_package(dbus_con, "package.rpm") == []
++
++    def test_luma_system_installer_respects_ask(
++        self, luma_open_directly, portals, dbus_con
++    ):
++        method_calls = self.open_luma_package(dbus_con, "package.rpm", ask=True)
++        assert len(method_calls) == 1
++        _, args = method_calls[-1]
++        assert args[4]["content_type"] == "application/x-rpm"
++
++    def test_luma_system_installer_respects_always_ask(
++        self, luma_open_directly, portals, dbus_con
++    ):
++        self.enable_paranoid_mode(dbus_con, "application/x-rpm")
++        assert len(self.open_luma_package(dbus_con, "package.rpm")) == 1
++
++    def test_luma_user_installer_still_asks(self, luma_open_directly, portals, dbus_con):
++        # The same claim from outside the system directory is ignored.
++        method_calls = self.open_luma_package(dbus_con, "package.deb")
++        assert len(method_calls) == 1
++        _, args = method_calls[-1]
++        assert args[4]["content_type"] == "application/vnd.debian.binary-package"

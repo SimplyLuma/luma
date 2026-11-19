@@ -692,3 +692,39 @@ which is after that touch went down, so the first touch after startup or
 after a mouse or touchpad was used went unrecorded, and a field focused from
 the release (Notes' search) got no keyboard on that tap.
 Test: `keycap-policy.js` in %check. Shell .181.
+
+`0344-keyboard-dialog-keeps-keyboard.patch`: on Mobile and Tablet the
+keyboard shrinks the work area as it opens and Mutter places again the
+windows that are not full screen, so a dialog centred on its parent moves
+up. The keyboard took that move for the person moving the window and closed
+in the frame it opened, on every tap in a dialog's fields (Settings' Access
+Point Names editor). Where the keyboard resizes windows only a grab closes
+it; Desktop is unchanged.
+Test: `keycap-policy.js` in %check. Shell .182.
+
+`0345-screenshot-pick-colors-once.patch`: handheld status and gesture ink
+samples its six application-edge points from one full-stage paint instead of
+six. The bounded native `pick_colors()` call preserves the existing backdrop
+blur capture and releases the image immediately. Test:
+`tests/gnome-shell/presentation/status-ink-capture.js`. Shell .183.
+
+`0346-keyboard-tap-on-field-shows.patch`: on a phone's greeter and lock
+screen a tap on the password field rarely opened the keyboard. A Shell
+entry's text asks to toggle the keyboard on every tap, so a tap on the
+focused field closed an open keyboard and the prompt moved back down from
+under the finger. On Mobile and Tablet, and on a handheld or tablet greeter,
+a tap on a field only shows the keyboard (as on Android and iOS); its hide
+key closes it, and Desktop and TV are unchanged. Only the entry's text line
+took a tap: a tap on the rest of the auth prompt entry's box, about half of
+what a finger sees, did nothing, and now focuses the field and opens the
+keyboard. Test: `keycap-policy.js` in %check (now also given
+`js/gdm/authPrompt.js`). Shell .184.
+
+`0347-gdm-hidden-user-list-focus.patch`: the screen shield activates the
+greeter's login dialog on every idle blank, and activate() focused the user
+list, which the poster (0227) keeps hidden. Its items are never mapped, so
+the list retried moving the focus before every redraw and asked for that
+redraw each time: the blanked greeter drew a frame every refresh (about 180
+wakeups a second and 9 % of a core on a Pixel 8 Pro, memory bus at its top
+clock) and typed keys went to the hidden list. activate() now focuses the
+list only when it is shown. Test: `keycap-policy.js` in %check. Shell .185.

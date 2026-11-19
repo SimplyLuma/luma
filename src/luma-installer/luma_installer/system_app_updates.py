@@ -14,14 +14,22 @@ the ``luma`` remote. One update brings both:
               manager. On the first boot of that deployment, deploys what was
               downloaded from the local repository only (``--no-pull``).
               Booting any other deployment deploys nothing.
+``refresh``   luma-system-app-refresh.service, in the session before
+              each of Depot's background app updates (every six hours).
+              Updates the ``luma`` apps and runtimes of the system
+              installation in place, whether or not the catalogue lists
+              them. Waits for the offline app baseline to finish first, and
+              defers on the conditions Depot's background update defers on.
 ``pending``   luma-depot-app-updates-login.service, at sign-in. Starts
-              Depot's background app update at once when an app Depot
-              updates has an update waiting.
+              Depot's background app update (and with it ``refresh``) at
+              once when an app Depot updates, or a ``luma`` app or runtime
+              of the system installation, has an update waiting.
 
 An update that asks for more (a permission added or widened, as Depot judges
 it), an app the person took back to its previous version, and an app whose
 signed metadata needs a newer host than the booted one are left for Depot,
-where the person reviews them. Nothing here changes a remote, a key or a
+where the person reviews them. Flatpak deploys each update atomically; a
+running app keeps its version until it is opened again. Nothing here changes a remote, a key or a
 deployment of the OS, and no failure stops a boot.
 """
 from __future__ import annotations
@@ -47,6 +55,9 @@ PULL_SECONDS = 3 * 3600
 #: The boot unit's own TimeoutStartSec is longer; this one leaves time to record what happened.
 DEPLOY_SECONDS = 100
 DEPOT_UNIT = 'luma-depot-app-updates.service'
+#: How long the session waits for a first-boot baseline import still running.
+BASELINE_WAIT_SECONDS = 20 * 60
+POLL_SECONDS = 15
 
 COMMIT = re.compile(r'[0-9a-f]{64}')
 REF = re.compile(r'(app|runtime)/[A-Za-z0-9_][A-Za-z0-9_.-]*/(x86_64|aarch64)/[A-Za-z0-9_][A-Za-z0-9_.-]*')
@@ -159,11 +170,12 @@ def commit_metadata(commit: str, installation: Path = INSTALLATION, runner=subpr
     return out or ''
 
 
-def pending_refs(runner=subprocess.run) -> list[str] | None:
+def pending_refs(runner=subprocess.run, *, quiet=False) -> list[str] | None:
     """The system installation's refs with a newer commit on the luma remote; None when it can't be read."""
     out, error = _run(runner, ('flatpak', 'remote-ls', '--system', '--updates', '--columns=ref', REMOTE), timeout=300)
     if out is None:
-        log(f'cannot list the updates on {REMOTE}: {error}')
+        if not quiet:
+            log(f'cannot list the updates on {REMOTE}: {error}')
         return None
     return sorted({line.strip() for line in out.splitlines() if REF.fullmatch(line.strip())})
 
@@ -233,6 +245,32 @@ def taken_back(environments) -> set[str]:
     return {sources.get(app_id, app_id) for app_id in paused}
 
 
+def sort_out(refs, *, runner, installation: Path, paused: set[str], check_host: bool):
+    """Split refs into updates to take (runtimes first) and ones left for Depot, with the reason."""
+    wanted, held = [], []
+    for ref in refs:
+        kind, name = ref.split('/')[:2]
+        before = installed_commit(ref, installation)
+        after = remote_info(ref, 'commit', runner)
+        if not before or not COMMIT.fullmatch(after) or before == after:
+            continue
+        if kind == 'app' and name in paused:
+            held.append({'ref': ref, 'reason': 'taken-back'})
+            continue
+        if kind == 'app':
+            metadata = remote_info(ref, 'metadata', runner)
+            if asks_for_more(installed_metadata(ref, installation), metadata, name):
+                held.append({'ref': ref, 'reason': 'asks-for-more'})
+                continue
+            if check_host and needs_newer_host(metadata):
+                held.append({'ref': ref, 'reason': 'needs-newer-host'})
+                continue
+        wanted.append({'ref': ref, 'from': before, 'to': after})
+    # Runtimes first, so an app's new runtime is in place before the app.
+    wanted.sort(key=lambda entry: (entry['ref'].startswith('app/'), entry['ref']))
+    return wanted, held
+
+
 # ── the record ─────────────────────────────────────────────────────────
 
 def manifest_path(state: Path = STATE) -> Path:
@@ -298,25 +336,10 @@ def prefetch(*, runner=subprocess.run, installation: Path = INSTALLATION, state:
     refs = pending_refs(runner)
     if refs is None:
         return {'result': 'unavailable'}
-    paused = taken_back(environments)
-    wanted, held = [], []
-    for ref in refs:
-        kind, name = ref.split('/')[:2]
-        before = installed_commit(ref, installation)
-        after = remote_info(ref, 'commit', runner)
-        if not before or not COMMIT.fullmatch(after) or before == after:
-            continue
-        if kind == 'app' and name in paused:
-            held.append({'ref': ref, 'reason': 'taken-back'})
-            continue
-        if kind == 'app' and asks_for_more(installed_metadata(ref, installation),
-                                           remote_info(ref, 'metadata', runner), name):
-            held.append({'ref': ref, 'reason': 'asks-for-more'})
-            continue
-        wanted.append({'ref': ref, 'from': before, 'to': after})
+    # The staged deployment is the host these apps will run on: its own boot checks that.
+    wanted, held = sort_out(refs, runner=runner, installation=installation,
+                            paused=taken_back(environments), check_host=False)
     # One ref at a time, recorded as each lands: a restart part-way still brings what arrived.
-    # Runtimes first, so an app's new runtime is in place before the app.
-    wanted.sort(key=lambda entry: (entry['ref'].startswith('app/'), entry['ref']))
     doc = {'schema': SCHEMA, 'deployment': deployment, 'prepared_unix': int(now()), 'refs': [], 'held': held}
     save(doc, state)
     if wanted:
@@ -385,6 +408,116 @@ def deploy(*, runner=subprocess.run, installation: Path = INSTALLATION, state: P
             'failed': [entry['ref'] for entry in ready if entry['ref'] not in deployed], 'skipped': skipped}
 
 
+# ── refresh (session) ──────────────────────────────────────────────────
+
+def baseline_settled(*, read=None, wait=BASELINE_WAIT_SECONDS, poll=POLL_SECONDS,
+                     sleep=time.sleep, clock=time.monotonic) -> bool:
+    """The first-boot baseline import is not running, waiting up to ``wait`` seconds for it to end."""
+    from .app_baseline_progress import INSTALLING, read as status
+    read = status if read is None else read
+    deadline = clock() + wait
+    while True:
+        doc = read()
+        if doc is None or doc.get('state') != INSTALLING:
+            return True
+        if clock() >= deadline:
+            return False
+        sleep(poll)
+
+
+def deferred(environments) -> str:
+    """Why Depot's background update would wait now: off, a metered connection, power saving, a low battery."""
+    from . import depot_autoupdate
+    from gi.repository import Gio, GLib
+    from luma_depot.system_updates import battery_low
+    try:
+        metered = Gio.NetworkMonitor.get_default().get_network_metered()
+    except (AttributeError, GLib.Error):
+        metered = False
+    try:
+        power_saver = Gio.PowerProfileMonitor.dup_default().get_power_saver_enabled()
+    except (AttributeError, GLib.Error):
+        power_saver = False
+    return depot_autoupdate.plan((), {'notified': []}, enabled=not updates_off(environments),
+                                 metered=metered, power_saver=power_saver,
+                                 low_battery=battery_low(depot_autoupdate.LOW_BATTERY_PERCENT)).skipped_reason
+
+
+def flatpak_update(ref: str, expected: str, before: str, installation: Path = INSTALLATION) -> str:
+    """Update one system ref through libflatpak, as the signed-in person; '' or why it did not run.
+
+    flatpak's system helper refuses a pinned commit from anyone but root, so this updates to the
+    newest commit and, like Depot, refuses in the ready check unless that is the commit compared,
+    the installed one is still ``before`` and every operation comes from the verified luma remote.
+    No interaction: polkit is never asked to prompt."""
+    import gi
+    gi.require_version('Flatpak', '1.0')
+    from gi.repository import Flatpak, GLib
+    from .depot_flatpak import validate_remote
+    system = Flatpak.Installation.new_system(None)
+    tx = Flatpak.Transaction.new_for_installation(system, None)
+    tx.set_no_interaction(True)
+    tx.connect('add-new-remote', lambda *_args: False)
+
+    def ready(prepared):
+        operations = prepared.get_operations()
+        own = [op for op in operations if op.get_ref() == ref]
+        if len(own) != 1 or own[0].get_commit() != expected or installed_commit(ref, installation) != before:
+            return False
+        if any(op.get_remote() != REMOTE for op in operations):
+            return False
+        try:
+            validate_remote(system.get_remote_by_name(REMOTE, None), REMOTE)
+        except Exception:  # noqa: BLE001 - any doubt about the remote: nothing runs
+            return False
+        return True
+    tx.connect('ready', ready)
+    try:
+        tx.add_update(ref, None, None)
+        tx.run(None)
+    except GLib.Error as error:
+        return error.message
+    return ''
+
+
+def refresh(*, runner=subprocess.run, installation: Path = INSTALLATION, environments=None,
+            settled=baseline_settled, waits=deferred, update=flatpak_update) -> dict:
+    """Update the system installation's luma apps and runtimes now, without a restart.
+
+    Only refs already installed move, each only to the commit that was compared. The offline
+    baseline never updates an existing deployment and the OS update's boot deploy skips a ref
+    that moved since it was downloaded, so neither undoes what lands here.
+    """
+    if not settled():
+        return {'result': 'baseline-installing'}
+    if not remote_trusted(installation):
+        return {'result': 'remote-not-trusted'}
+    environments = people() if environments is None else environments
+    reason = waits(environments)
+    if reason:
+        return {'result': 'deferred', 'reason': reason}
+    refs = pending_refs(runner)
+    if refs is None:
+        return {'result': 'unavailable'}
+    wanted, held = sort_out(refs, runner=runner, installation=installation,
+                            paused=taken_back(environments), check_host=True)
+    if not wanted:
+        return {'result': 'up-to-date', 'held': held}
+    log(f'updating {len(wanted)} app(s) and runtime(s) from {REMOTE}')
+    updated, failed = [], []
+    for entry in wanted:
+        try:
+            error = update(entry['ref'], entry['to'], entry['from'], installation)
+        except Exception as problem:  # noqa: BLE001 - one ref's failure never stops the others
+            error = f'{type(problem).__name__}: {problem}'
+        if installed_commit(entry['ref'], installation) == entry['to']:
+            updated.append(entry['ref'])
+        else:
+            failed.append(entry['ref'])
+            log(f'{entry["ref"]} was not updated: {error or "the installed commit did not change"}')
+    return {'result': 'updated', 'updated': updated, 'failed': failed, 'held': held}
+
+
 # ── at sign-in ─────────────────────────────────────────────────────────
 
 def _remote_configured(scope: str, runner) -> bool:
@@ -409,15 +542,18 @@ def waiting_for_depot(runner=subprocess.run) -> list[str] | None:
     return sorted(waiting) if readable else None
 
 
-def pending(*, runner=subprocess.run, attempts=8, wait=15, sleep=time.sleep) -> dict:
+def pending(*, runner=subprocess.run, attempts=40, wait=POLL_SECONDS, sleep=time.sleep) -> dict:
     for attempt in range(attempts):
         waiting = waiting_for_depot(runner)
         if waiting is not None:
             break
         if attempt + 1 < attempts:
-            sleep(wait)  # the network often comes up a little after sign-in
+            # The network often comes up after sign-in; on a first sign-in, once Wi-Fi is set up.
+            sleep(wait)
     else:
         return {'result': 'unavailable'}
+    system = pending_refs(runner, quiet=True) or []
+    waiting = sorted(set(waiting) | {ref.split('/')[1] for ref in system})
     if not waiting:
         return {'result': 'up-to-date'}
     _out, error = _run(runner, ('systemctl', '--user', 'start', '--no-block', DEPOT_UNIT))
@@ -427,13 +563,13 @@ def pending(*, runner=subprocess.run, attempts=8, wait=15, sleep=time.sleep) -> 
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     action = argv[0] if argv else ''
-    actions = {'prefetch': prefetch, 'deploy': deploy, 'pending': pending}
+    actions = {'prefetch': prefetch, 'deploy': deploy, 'refresh': refresh, 'pending': pending}
     if action not in actions:
-        print('usage: luma-system-app-updates prefetch|deploy|pending', file=sys.stderr)
+        print('usage: luma-system-app-updates prefetch|deploy|refresh|pending', file=sys.stderr)
         return 2
     try:
         outcome = actions[action]()
-    except Exception as error:  # noqa: BLE001 - never fail a boot or a sign-in over app updates
+    except Exception as error:  # noqa: BLE001 - never fail a boot, a sign-in or a session over app updates
         log(f'{action} did not finish: {type(error).__name__}: {error}')
         return 0
     print(json.dumps(outcome, sort_keys=True))

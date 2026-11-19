@@ -120,6 +120,15 @@ test("drive rows name what is on each drive and keep the installer out", () => {
     assert.equal(driveTitle(devices.sdb), "USB drive · 62 GB");
 
     assert.equal(driveListProblem({ requiredSize: 25e9, rows: rows.filter(row => row.isInstaller) }).kind, "only-installer");
+    const onlyInstaller = rows.filter(row => row.isInstaller);
+    const raid = driveListProblem({ hiddenStorage: "rst-raid", requiredSize: 25e9, rows: onlyInstaller });
+    assert.equal(raid.kind, "firmware-hidden");
+    assert.equal(raid.text, "This computer's drive is hidden by a firmware setting. Restart, open the firmware setup (often F2 or Del), " +
+        "set Storage or SATA Operation to AHCI instead of RAID, then start the installer again.");
+    assert.match(raid.detail, /^If Windows is on that drive/);
+    assert.match(driveListProblem({ hiddenStorage: "vmd", rows: [] }).text, /turn off Intel VMD/);
+    assert.equal(driveListProblem({ hiddenStorage: null, rows: [] }).kind, "none");
+    assert.equal(driveListProblem({ hiddenStorage: "rst-raid", requiredSize: 25e9, rows }), null, "a usable drive wins over the hint");
     const small = driveRows({ devices: { vda: device({ id: "vda", isDisk: true, size: 16e9, total: 16e9, free: 16e9, type: "disk" }) }, existingSystems: [], requiredSize: 25e9, usableDisks: ["vda"] });
     assert.equal(driveListProblem({ requiredSize: 25e9, rows: small }).text, "Luma needs about 25 GB; the largest drive here is 16 GB.");
 });

@@ -1,6 +1,6 @@
 Name:           luma-desktop-launcher-policy
 Version:        0.1.0
-Release:        29.creator20261024.1%{?dist}
+Release:        30%{?dist}
 Summary:        Luma desktop launcher visibility policy
 License:        Apache-2.0
 BuildArch:      noarch
@@ -37,6 +37,7 @@ install -d %{buildroot}%{_datadir}/luma/desktop-overrides/applications
 install -m 0644 applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/
 install -D -m 0644 60-luma-desktop-launcher-policy.conf %{buildroot}%{_prefix}/lib/environment.d/60-luma-desktop-launcher-policy.conf
 install -D -m 0644 gnome-mimeapps.list %{buildroot}%{_sysconfdir}/xdg/gnome-mimeapps.list
+install -D -m 0644 open-directly.list %{buildroot}%{_datadir}/luma/open-directly.list
 
 # The browser's own energy settings, as recommended defaults rather than
 # managed policy, so every one of them stays changeable in the browser's
@@ -102,6 +103,13 @@ for type in application/pdf application/x-bzpdf application/x-gzpdf application/
   grep -Fxq "$type=org.projectluma.Viewer.desktop;" %{buildroot}%{_sysconfdir}/xdg/gnome-mimeapps.list
 done
 test ! -e %{buildroot}%{_datadir}/luma/desktop-overrides/applications/org.gnome.Papers.desktop
+# Every package type goes to Valet, by its one desktop id.
+for type in application/x-rpm application/vnd.debian.binary-package application/vnd.appimage application/vnd.flatpak application/vnd.flatpak.ref \
+    application/vnd.flatpak.repo application/vnd.snap application/vnd.android.package-archive application/vnd.projectluma.android-package-set \
+    application/x-ms-dos-executable application/x-msdownload application/x-msi application/vnd.microsoft.portable-executable; do
+  grep -Fxq "$type=io.luma.Valet.desktop;" %{buildroot}%{_sysconfdir}/xdg/gnome-mimeapps.list
+  grep -Fxq "$type=io.luma.Valet.desktop" %{buildroot}%{_datadir}/luma/open-directly.list
+done
 grep -Fxq 'org.gnome.Papers luma-viewer' %{buildroot}%{_datadir}/luma/system-flatpak-replacements.txt
 bash -n %{buildroot}%{_libexecdir}/luma-flatpak-replacements
 # The migration, hermetically: Papers and a browser's claim become Viewer, a
@@ -136,6 +144,7 @@ rm -rf "$check"
 %{_datadir}/luma/desktop-overrides/
 %{_prefix}/lib/environment.d/60-luma-desktop-launcher-policy.conf
 %config(noreplace) %{_sysconfdir}/xdg/gnome-mimeapps.list
+%{_datadir}/luma/open-directly.list
 %{_sysconfdir}/chromium/policies/recommended/luma-energy.json
 %{_sysconfdir}/opt/chrome/policies/recommended/luma-energy.json
 %{_sysconfdir}/opt/edge/policies/recommended/luma-energy.json
@@ -158,6 +167,12 @@ rm -rf "$check"
 %{_userunitdir}/default.target.wants/luma-default-apps-migration.service
 
 %changelog
+* Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-30
+- Package files (RPM, DEB, AppImage, Flatpak, Snap, APK, Android package
+  sets, Windows programs) default to io.luma.Valet and open in it without
+  the application chooser (/usr/share/luma/open-directly.list, read by
+  Luma's xdg-desktop-portal).
+
 * Sat Sep 26 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-23
 - Rebuilt for the integrated Shell candidate: the default Shelf is one
   centred row of the dock, live tiles and status.

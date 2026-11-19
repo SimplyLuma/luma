@@ -46,6 +46,23 @@ class SessionTests(unittest.TestCase):
         self.m['image'].update(sha256=digest(self.source), bytes=self.source.stat().st_size)
         return self.save()
 
+    def test_shared_image_navigation_uses_the_shell_gestures(self):
+        self.m.update(target='desktop', guest_protocol='luma-unified-v1', boot='uefi')
+        session = self.save()
+        with self.assertRaises(TesterError):session.navigate('home')
+        for experience in ('mobile', 'tablet'):
+            session.experience = experience
+            with patch.object(session, 'qmp') as qmp, patch('luma_tester.core.time.sleep'):
+                session.navigate('home');session.navigate('switcher');session.navigate('back')
+            touches = [c.args for c in qmp.call_args_list if c.args[0] == 'input-send-event']
+            keys = [c.args for c in qmp.call_args_list if c.args[0] == 'send-key']
+            self.assertEqual(len(keys), 1 if experience == 'tablet' else 0)
+            self.assertTrue(touches)
+        with self.assertRaises(TesterError):session.navigate('menu')
+        with patch.object(session, 'firmware', return_value=None):
+            command = session.command(headless=True, graphics='software', experience='tablet')
+        self.assertIn('virtio-multitouch-pci', command)
+
     def test_completed_legacy_installer_workspace_receives_preview_defaults(self):
         self.m.update(media='iso', cloud_init=False)
         session = self.save()

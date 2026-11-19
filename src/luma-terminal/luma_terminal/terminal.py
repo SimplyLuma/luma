@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import signal
 import sys
 from datetime import datetime
@@ -156,6 +157,7 @@ class TerminalWindow(AppWindow):
         self._spawn_generation: dict[int, int] = {}
         self._child_pids: dict[int, int] = {}
         self._spawn_cancellables: dict[int, Gio.Cancellable] = {}
+        self._pending_input: dict[int, str] = {}
         self._closing = False
         self._search_entry: Gtk.Entry | None = None
         self._selected_block: int | None = None
@@ -634,6 +636,9 @@ class TerminalWindow(AppWindow):
                 Toast.show(self.host, "Session could not start", kind="error")
             else:
                 self._child_pids[pane.id] = pid
+                pending = self._pending_input.pop(pane.id, None)
+                if pending:
+                    _vte.feed_child(pending.encode())
 
         if self.profile and self.profile.container not in ("", "session"):
             Toast.show(self.host, "This Ptyxis container profile needs its own launcher", kind="warning")
@@ -965,6 +970,21 @@ class TerminalWindow(AppWindow):
             if terminal is not None:
                 terminal.unselect_all()
 
+    def run_program(self, path: str) -> None:
+        """Type `path` into the active session's shell, as if entered at its prompt.
+
+        The shell runs it and stays open afterwards, so its output and exit
+        status remain visible. Input waits for the session's shell to start.
+        """
+        command = shlex.quote(path) + "\n"
+        pane_id = self.model.active_pane_id
+        if pane_id in self._child_pids:
+            terminal = self.terminals.get(pane_id)
+            if terminal is not None:
+                terminal.feed_child(command.encode())
+        else:
+            self._pending_input[pane_id] = command
+
     def new_session(self, directory: str | None = None) -> None:
         self._reset_selection()
         self.model.new_session(directory if directory is not None else self.model.active.cwd)
@@ -1133,18 +1153,28 @@ class TerminalApplication(Adw.Application):
 
     def do_open(self, files, _count, _hint) -> None:
         for file in files:
-            directory = file.get_path() if file.is_native() else None
+            path = file.get_path() if file.is_native() else None
+            program = path if path and runnable_program(path) else None
+            directory = str(Path(program).parent) if program else path
             if not directory or not Path(directory).is_dir():
                 self.do_activate()
                 Toast.show(self.props.active_window.host,
-                           "Terminal can only open folders on this computer", kind="error")
+                           "Terminal can only open folders and programs on this computer", kind="error")
                 continue
             window = self.props.active_window
             if window is None:
                 window = TerminalWindow(self, fixture_from_environment(), initial_directory=directory)
             else:
                 window.new_session(directory)
+            if program and window.fixture is None:
+                window.run_program(program)
             window.present()
+
+
+def runnable_program(path: str) -> bool:
+    """A regular file on this computer the user may execute (Filer's Run)."""
+    candidate = Path(path)
+    return candidate.is_absolute() and candidate.is_file() and os.access(candidate, os.X_OK)
 
 
 def main(argv: list[str] | None = None) -> int:

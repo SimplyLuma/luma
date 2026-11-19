@@ -61,8 +61,15 @@ phone on the same chip inherits all of it, so its `device.toml` and
 **Firmware** never enters git. `firmware.manifest` is the same file the OS
 keeps next to the firmware on the phone (`/var/lib/luma/device-firmware`): a
 header with the file count, then one tab-separated row per directory (`D`),
-file (`F`, with SHA-256) or relative alias (`L`). The OS checks the store
-against it before boot, and `device.toml` records the manifest's own SHA-256.
+file (`F`, with SHA-256) or relative alias (`L`). `device.toml` records the
+manifest's own SHA-256. A device whose store is in `/var` checks it before boot
+with `luma_verify_firmware_store`
+([`scripts/mobile/fp6-native-init-functions.sh`](../scripts/mobile/fp6-native-init-functions.sh)):
+the boot image carries that SHA-256 in `/etc/luma-firmware-manifest.sha256`,
+written by
+[`scripts/mobile/common/firmware-store-anchor.py`](../scripts/mobile/common/firmware-store-anchor.py),
+and the store must hold that manifest as `luma-firmware.manifest` and exactly
+the rows it lists, root-owned, with the header's file count.
 
 ## Support tiers
 
@@ -104,11 +111,17 @@ drops to `experimental` until someone takes it over.
 4. List the firmware the device needs in `firmware.manifest`. Record names and
    hashes only; say in `INSTALL.md` where the person gets the firmware from
    (usually the vendor's own factory package).
-5. Add the directory to `.github/CODEOWNERS` with its maintainers.
-6. Write device tests for anything the shared checks cannot see: install
+5. Userspace the device needs goes in its device repository as packages
+   built from source in this tree, never as binaries in the boot image or
+   the kit. Qualcomm phones take `qbootctl` (A/B slots) and `tqftpserv` (files
+   for the modem and other remote processors) from
+   [`luma-qcom-userspace`](../packaging/rpm/luma-qcom-userspace.spec): list
+   them in `[device_repo] install`.
+6. Add the directory to `.github/CODEOWNERS` with its maintainers.
+7. Write device tests for anything the shared checks cannot see: install
    guide commands that must match the manifests, partitions that must never
    be written, and so on.
-7. Run the checks, then open a pull request with tier `experimental` or
+8. Run the checks, then open a pull request with tier `experimental` or
    `community`:
 
 ```sh

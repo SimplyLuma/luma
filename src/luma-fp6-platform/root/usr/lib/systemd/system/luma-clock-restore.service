@@ -3,15 +3,19 @@ Description=Restore the wall clock recorded before the last shutdown
 DefaultDependencies=no
 After=local-fs.target
 Before=sysinit.target display-manager.service systemd-user-sessions.service
-ConditionPathExists=/var/lib/luma/clock
+ConditionPathExists=|/var/lib/luma/clock
+ConditionPathExists=|/var/lib/luma/rtc-offset
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 # Only ever moves the clock forward. A boot in the past makes PAM read the
 # account password as changed in the future, which refuses the autologin and
-# drops the phone back to the greeter.
-ExecStart=/bin/sh -c 'saved=$(cat /var/lib/luma/clock); now=$(date -u +%%s); [ "$saved" -gt "$now" ] && date -u -s "@$saved" || true'
+# drops the phone back to the greeter. The PMIC RTC keeps counting while the
+# phone is off but can't be set (see luma-clock-save.service), so the later of
+# the saved time and RTC + saved offset wins; a reset RTC only loses its
+# candidate.
+ExecStart=/bin/sh -c 'best=$(cat /var/lib/luma/clock 2>/dev/null || echo 0); off=$(cat /var/lib/luma/rtc-offset 2>/dev/null); rtc=$(cat /sys/class/rtc/rtc0/since_epoch 2>/dev/null); if [ -n "$off" ] && [ -n "$rtc" ] && [ $((rtc + off)) -gt "$best" ]; then best=$((rtc + off)); fi; [ "$best" -gt "$(date -u +%%s)" ] && date -u -s "@$best" || true'
 
 [Install]
 WantedBy=sysinit.target

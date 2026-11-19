@@ -12,10 +12,10 @@ from pathlib import Path
 import tarfile
 
 ENGINE_INPUTS = {
-    'x86_64': ('viola-native-engine-0.2.10-native35.tar.zst',
-               'ab4b8994ff4634780102671070a6d3908161438c3c0baafb1db9c6f74a3e5b37', 35),
-    'aarch64': ('viola-native-engine-0.2.10-native36.tar.zst',
-                '072d4bb42a64cde7efee51c653e112adbe15a24d078a098c0d501520984bb3b0', 36),
+    'x86_64': ('viola-native-engine-0.2.10-native39.tar.zst',
+               '8a2efa725a32d529f7fd45edd9d96c0983436eeaa0b8f1904f79ed4a9b350b4e', 39),
+    'aarch64': ('viola-native-engine-0.2.10-native40.tar.zst',
+                '48c7b0d15486ab5f17e5f6751b2d3b73b4016b4ca9b0ef3e2723c9ed327f7706', 40),
 }
 
 

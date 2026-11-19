@@ -183,7 +183,8 @@ def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
             box.add_css_class("mark")
             box.add_css_class("lumaui-painted")
             lumaui.paint_class(box, app.mark_colour)
-        elif app.icon_name and "/" not in app.icon_name and not (world.assets and world.assets.exists()):
+        elif (app.icon_name and "/" not in app.icon_name and not (world.assets and world.assets.exists())
+              and _theme_has(app.icon_name)):
             image = Gtk.Image(icon_name=app.icon_name, pixel_size=pixels)
             picture = image
         else:
@@ -231,6 +232,13 @@ def face(world: World, item: Item, size: str = "row") -> Gtk.Widget:
     box.set_name(f"face-{item.kind}-{item.id}")
     del radius
     return box
+
+
+def _theme_has(name: str) -> bool:
+    """A name the icon theme lacks draws its missing-image glyph: such an app gets its monogram
+    until its catalogue icon has downloaded."""
+    display = Gdk.Display.get_default()
+    return display is not None and Gtk.IconTheme.get_for_display(display).has_icon(name)
 
 
 def path_exists(path: str | None) -> bool:

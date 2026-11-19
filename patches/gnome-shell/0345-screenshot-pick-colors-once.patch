@@ -1,0 +1,115 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] screenshot: pick several colours from one stage paint
+
+Handheld status ink samples six points around the application edges. Each
+ordinary pick_color call paints the full stage so backdrop blur is captured
+correctly, making one sample paint it six times. Expose one bounded batch
+operation that paints once, reads every requested point from that image and
+releases it immediately.
+
+diff --git a/src/shell-screenshot.c b/src/shell-screenshot.c
+index 801e2c1..595812a 100644
+--- a/src/shell-screenshot.c
++++ b/src/shell-screenshot.c
+@@ -1154,6 +1154,87 @@ shell_screenshot_pick_color_finish (ShellScreenshot  *screenshot,
+   return TRUE;
+ }
+ 
++/**
++ * shell_screenshot_pick_colors:
++ * @screenshot: the #ShellScreenshot
++ * @points: coordinates as an array of `(x, y)` integer tuples
++ *
++ * Paints the stage once and returns the colour at every requested point.
++ *
++ * Returns: (transfer full): an array of `(red, green, blue, alpha)` byte tuples
++ */
++GVariant *
++shell_screenshot_pick_colors (ShellScreenshot *screenshot,
++                              GVariant        *points)
++{
++  MetaDisplay *display;
++  ClutterStage *stage;
++  MtkRectangle rect;
++  GVariantBuilder colors;
++  gsize n_points;
++  uint8_t *data;
++  int width, height;
++  int image_width, image_height;
++  int stride;
++  float scale;
++  gsize i;
++
++  g_return_val_if_fail (SHELL_IS_SCREENSHOT (screenshot), NULL);
++  g_return_val_if_fail (points != NULL &&
++                        g_variant_is_of_type (points,
++                                              G_VARIANT_TYPE ("a(ii)")),
++                        NULL);
++
++  n_points = g_variant_n_children (points);
++  g_return_val_if_fail (n_points > 0 && n_points <= 64, NULL);
++
++  display = shell_global_get_display (screenshot->global);
++  meta_display_get_size (display, &width, &height);
++  rect = (MtkRectangle) { 0, 0, width, height };
++  stage = shell_global_get_stage (screenshot->global);
++  clutter_stage_get_capture_final_size (stage, &rect,
++                                        &image_width, &image_height,
++                                        &scale);
++
++  g_clear_pointer (&screenshot->image, cairo_surface_destroy);
++  do_grab_screenshot (screenshot, 0, 0, width, height,
++                      SHELL_SCREENSHOT_FLAG_NONE);
++  if (!screenshot->image)
++    return NULL;
++
++  g_assert (cairo_image_surface_get_format (screenshot->image) ==
++            CAIRO_FORMAT_ARGB32);
++  cairo_surface_flush (screenshot->image);
++  data = cairo_image_surface_get_data (screenshot->image);
++  stride = cairo_image_surface_get_stride (screenshot->image);
++  g_variant_builder_init (&colors, G_VARIANT_TYPE ("a(yyyy)"));
++
++  for (i = 0; i < n_points; i++)
++    {
++      const uint8_t *pixel;
++      int x, y;
++      int image_x, image_y;
++
++      g_variant_get_child (points, i, "(ii)", &x, &y);
++      if (x < 0 || x >= width || y < 0 || y >= height)
++        {
++          g_variant_builder_clear (&colors);
++          g_clear_pointer (&screenshot->image, cairo_surface_destroy);
++          return NULL;
++        }
++
++      image_x = CLAMP ((int) roundf (x * scale), 0, image_width - 1);
++      image_y = CLAMP ((int) roundf (y * scale), 0, image_height - 1);
++      pixel = data + image_y * stride + image_x * 4;
++      g_variant_builder_add (&colors, "(yyyy)",
++                             pixel[INDEX_R], pixel[INDEX_G],
++                             pixel[INDEX_B], pixel[INDEX_A]);
++    }
++
++  g_clear_pointer (&screenshot->image, cairo_surface_destroy);
++  return g_variant_ref_sink (g_variant_builder_end (&colors));
++}
++
+ #undef INDEX_A
+ #undef INDEX_R
+ #undef INDEX_G
+diff --git a/src/shell-screenshot.h b/src/shell-screenshot.h
+index c675879..8472b0f 100644
+--- a/src/shell-screenshot.h
++++ b/src/shell-screenshot.h
+@@ -73,6 +73,9 @@ gboolean shell_screenshot_pick_color_finish (ShellScreenshot      *screenshot,
+                                              CoglColor            *color,
+                                              GError              **error);
+ 
++GVariant *shell_screenshot_pick_colors (ShellScreenshot *screenshot,
++                                        GVariant        *points);
++
+ void shell_screenshot_composite_to_stream (CoglTexture         *texture,
+                                            int                  x,
+                                            int                  y,

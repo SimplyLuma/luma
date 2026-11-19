@@ -121,6 +121,8 @@ bash "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
     test -f usr/lib/systemd/user-preset/60-luma-depot.preset
     test -f usr/lib/systemd/user/luma-depot-app-updates.timer
     test -L usr/lib/systemd/user/graphical-session.target.wants/luma-depot-app-updates.timer
+    test -f usr/lib/systemd/user/luma-system-app-refresh.service
+    grep -Fq "Wants=luma-system-app-refresh.service" usr/lib/systemd/user/luma-depot-app-updates.service
     test -x usr/libexec/luma-system-app-updates
     test -f usr/lib/systemd/system/luma-system-app-updates-prefetch.service
     test -L usr/lib/systemd/system/graphical.target.wants/luma-system-app-updates.service

@@ -7,7 +7,8 @@ Every value here is read from this computer or from the payload repository;
 nothing is written anywhere. Output is one JSON object on stdout.
 
   atlas-probe system              installer medium, firmware language, battery,
-                                  whether stage 2 runs from memory, boot options
+                                  whether stage 2 runs from memory, boot options,
+                                  internal storage hidden by a firmware setting
   atlas-probe battery             battery only (polled while steps 1-6 are open)
   atlas-probe network             whether this computer reaches the internet
                                   (polled on the review step for online installs)
@@ -182,6 +183,79 @@ def battery():
     }
 
 
+PCI_DEVICES = "/sys/bus/pci/devices"
+SYS_BLOCK = "/sys/block"
+INTEL = "0x8086"
+# drivers/pci/controller/vmd.c (modinfo -F alias vmd, kernel 7.2).
+VMD_DEVICE_IDS = {"0x201d", "0x28c0", "0x467f", "0x4c3d", "0x7d0b", "0x9a0b", "0xa77f", "0xad0b",
+                  "0xb06f", "0xb07f", "0xb60b"}
+REMAPPED_NVME_LOG = re.compile(r"Found (\d+) remapped NVMe devices")
+
+
+def pci_devices(base=PCI_DEVICES):
+    devices = []
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return devices
+    for name in names:
+        path = os.path.join(base, name)
+        driver = os.path.join(path, "driver")
+        remapped = read(os.path.join(path, "remapped_nvme"))
+        devices.append({
+            "address": name,
+            "class": (read(os.path.join(path, "class")) or "").lower(),
+            "device": (read(os.path.join(path, "device")) or "").lower(),
+            "driver": os.path.basename(os.path.realpath(driver)) if os.path.islink(driver) else None,
+            "remappedNvme": int(remapped) if remapped and remapped.isdigit() else 0,
+            "vendor": (read(os.path.join(path, "vendor")) or "").lower(),
+        })
+    return devices
+
+
+def block_devices(base=SYS_BLOCK):
+    """{name: sysfs device path} for every block device."""
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return {}
+    return {name: os.path.realpath(os.path.join(base, name)) for name in names}
+
+
+def kernel_log():
+    return run(["dmesg"]) or run(["journalctl", "--dmesg", "--boot", "--output=cat", "--no-pager"]) or ""
+
+
+def firmware_hidden_storage(pci=None, block=None, log=None):
+    """"rst-raid", "vmd" or None: an internal drive the firmware's storage
+    mode keeps from Linux.
+
+    rst-raid: Intel RST "RAID On" remaps NVMe drives behind the SATA
+    controller. ahci finds them (sysfs remapped_nvme, or "Found N remapped NVMe
+    devices" in the kernel log) but cannot use them; with no count available,
+    an Intel RAID-class controller driven by ahci and no NVMe drive at all.
+    vmd: an Intel VMD controller with no drive behind it, either because the
+    vmd driver did not bind or because nothing enumerated under its domain.
+    """
+    pci = pci_devices() if pci is None else pci
+    block = block_devices() if block is None else block
+    if not any(name.startswith("nvme") for name in block):
+        if any(device["remappedNvme"] > 0 for device in pci):
+            return "rst-raid"
+        if any(device["vendor"] == INTEL and device["class"].startswith("0x0104") and device["driver"] == "ahci"
+               for device in pci):
+            return "rst-raid"
+        match = REMAPPED_NVME_LOG.search(kernel_log() if log is None else log)
+        if match and int(match.group(1)) > 0:
+            return "rst-raid"
+    for device in pci:
+        if device["vendor"] == INTEL and (device["device"] in VMD_DEVICE_IDS or device["driver"] == "vmd"):
+            behind = "/" + device["address"] + "/"
+            if not any(behind in path for path in block.values()):
+                return "vmd"
+    return None
+
+
 CHANNELS = ("stable", "beta", "nightly")
 SOURCES = ("medium", "online", "test")
 
@@ -274,6 +348,7 @@ def main(argv):
         output = {
             "battery": battery(),
             "bootOptions": boot_options(),
+            "firmwareHiddenStorage": firmware_hidden_storage(),
             "installerDisks": installer_disks(sources),
             "media": media(),
             "network": network(),

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Keycap policy and its wiring into the Shell keyboard.
-// Run: gjs -m keycap-policy.js js/ui/lumaPresentation/keycap.js js/ui/keyboard.js [js/gdm/loginDialog.js]
+// Run: gjs -m keycap-policy.js js/ui/lumaPresentation/keycap.js js/ui/keyboard.js [js/gdm/loginDialog.js [js/gdm/authPrompt.js]]
 // (node keycap-policy.js ... works too). The cases mirror Stevia's
 // test-keycap-history.c so both keyboards keep one behaviour.
 const gjs = typeof globalThis.ARGV !== 'undefined';
@@ -22,6 +22,7 @@ const Keycap = await import(`file://${absolute(args[0])}`);
 const SafeAreas = await import(`file://${absolute(args[0]).replace(/[^/]*$/, 'safeAreas.js')}`);
 const keyboard = read(args[1]);
 const loginDialog = args[2] ? read(args[2]) : null;
+const authPrompt = args[3] ? read(args[3]) : null;
 
 // Clutter's wire values (InputContentPurpose, InputContentHintFlags).
 const purpose = {NORMAL: 0, ALPHA: 1, DIGITS: 2, NUMBER: 3, PHONE: 4, URL: 5, EMAIL: 6,
@@ -341,6 +342,13 @@ if (loginDialog) {
         'the login dialog allocates in the height the keyboard leaves');
     assert(/Main\.keyboard\.connectObject\('visibility-changed', \(\) => this\.queue_relayout\(\), this\)/.test(loginDialog),
         'the login dialog follows the keyboard');
+
+    // The poster keeps the user list hidden; a focused hidden list retries
+    // focusing an item before every redraw, forever.
+    const activateAt = loginDialog.indexOf('    activate() {');
+    const activate = loginDialog.slice(activateAt, loginDialog.indexOf('\n    }', activateAt));
+    assert(activateAt > 0 && /if \(this\._userSelectionBox\.visible\)\s+this\._userList\.grab_key_focus\(\);/.test(activate),
+        'activate() focuses the user list only when it is shown');
 }
 
 const words2 = new Keycap.WordSuggester(['the', 'then', 'they', 'there', 'tax'],
@@ -582,4 +590,46 @@ for (const body of handlers) {
     assert(/if \(this\._tapFocusId\)\s*GLib\.source_remove\(this\._tapFocusId\);/.test(keyboard),
         'a destroyed keyboard drops a pending tap focus');
 }
-console.log('PASS Keycap privacy, tap-focused fields, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');
+// On Mobile and Tablet the keyboard shrinks the work area and Mutter places
+// again the windows that are not full screen (a dialog over its parent): that
+// move is the keyboard's own and keeps it open; a grab still closes it.
+{
+    const moved = keyboard.slice(keyboard.indexOf('    _onFocusWindowMoved() {'),
+        keyboard.indexOf('\n    }\n', keyboard.indexOf('    _onFocusWindowMoved() {')));
+    assert((keyboard.match(/connect\('window-moved',\s*this\._onFocusWindowMoved\.bind\(this\)\)/g) ?? []).length === 2 &&
+        !/'window-moved',\s*this\._onFocusWindowMoving/.test(keyboard),
+        'every window-moved connection goes through _onFocusWindowMoved');
+    assert(/if \(this\._resizesWindows\(\)\)\s*return;\s*this\._onFocusWindowMoving\(\);/.test(moved),
+        'a window placed again while the keyboard resizes windows keeps the keyboard open');
+    assert(/'window-grabbed', this\._onFocusWindowMoving\.bind\(this\)/.test(keyboard),
+        'a grab of the focused window still closes the keyboard');
+}
+// A Shell entry asks to toggle the keyboard on every tap on its text. On a
+// phone or tablet (and their greeter) a tap on a field only shows it; Desktop
+// keeps the toggle. Only the auth prompt entry's text line took a tap: one on
+// the rest of its box focuses the field and opens the keyboard.
+{
+    const start = keyboard.indexOf('    _onKeyboardStateChanged(controller, state) {');
+    const state = keyboard.slice(start, keyboard.indexOf('\n    }\n', start));
+    assert(/state === Clutter\.InputPanelState\.TOGGLE\)\s*enabled = this\._keyboardVisible === false \|\| this\._tapAlwaysShows\(\);/.test(state),
+        'a toggle request opens the keyboard where a tap always shows it');
+    const shows = keyboard.slice(keyboard.indexOf('    _tapAlwaysShows() {'),
+        keyboard.indexOf('\n    }\n', keyboard.indexOf('    _tapAlwaysShows() {')));
+    assert(/\['mobile', 'tablet'\]\.includes\(Main\.presentation\.mode\)/.test(shows) &&
+        /\['handheld', 'tablet'\]\.includes\(GLib\.getenv\('LUMA_DEVICE_CLASS'\)\)/.test(shows) &&
+        !/desktop|'tv'/.test(shows),
+        'a tap always shows the keyboard on Mobile, Tablet and a handheld or tablet greeter only');
+    if (authPrompt) {
+        assert(/^import \* as Main from '\.\.\/ui\/main\.js';$/m.test(authPrompt),
+            'the auth prompt imports Main');
+        const box = authPrompt.slice(authPrompt.indexOf("entry.connect('touch-event'"),
+            authPrompt.indexOf("entry.clutter_text.connect('text-changed'"));
+        assert(/Clutter\.EventType\.TOUCH_END/.test(box) &&
+            /global\.stage\.get_event_actor\(event\) !== entry/.test(box) &&
+            /!entry\.reactive/.test(box),
+            'only a touch that ends on the entry box itself, while the entry takes input, is handled');
+        assert(/entry\.clutter_text\.grab_key_focus\(\);\s*Main\.keyboard\.open\(Main\.layoutManager\.focusIndex\);\s*return Clutter\.EVENT_STOP;/.test(box),
+            'a tap on the entry box focuses the field and opens the keyboard');
+    }
+}
+console.log('PASS Keycap privacy, tap-focused fields, taps on phone fields, dialogs placed again, phone key arrangement, actorless captured events, re-sizing, case, double space, shift lock, delete/space gestures, suggestions, sizing, clipboard history, key timing, hit testing, touch correction, text mirror');

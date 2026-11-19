@@ -5,6 +5,9 @@ import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango
 
+# Prompts the bar grows instead of a notice card.
+BAR_PROMPTS = ('login', 'extension', 'extension-installed')
+
 
 class NativeFooter(Gtk.Box):
     compact_media = GObject.Property(type=bool, default=False)
@@ -198,9 +201,10 @@ class NativeFooter(Gtk.Box):
 
     def render(self, state):
         self.state = state
-        # A site's sign-in grows from the bar (native_signin.py), not a card.
+        # A site's sign-in and extension prompts grow from the bar
+        # (native_signin.py, native_extension_prompt.py), not a card.
         prompt = state.get('permissionPrompt')
-        items = ([prompt] if prompt and prompt.get('type') != 'login' else []) + state.get('notifications', [])
+        items = ([prompt] if prompt and prompt.get('type') not in BAR_PROMPTS else []) + state.get('notifications', [])
         self.count.set_label(str(len(items)))
         self.notices.set_visible(bool(items))
         desired = [self.card(item) for item in items]

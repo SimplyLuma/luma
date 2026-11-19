@@ -1,0 +1,4 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+here=$(dirname "$(readlink -f "$0")")
+PYTHONPATH="$here/..${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -B -m touchlab.cli "$@"

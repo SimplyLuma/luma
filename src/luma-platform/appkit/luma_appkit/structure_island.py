@@ -385,7 +385,7 @@ class TitleIsland(Gtk.Box):
     def _describe(self) -> None:
         title = self.title
         if self._grow is not None:
-            spoken = f"{title}. {'Show the places' if self._kind() == 'menu' else 'Show the details'}"
+            spoken = f"{title}. {'Places' if self._kind() == 'menu' else 'Details'}"   # v71: "Launch crew. Details"
         else:
             spoken = title
         self.title_button.update_property([Gtk.AccessibleProperty.LABEL], [spoken])

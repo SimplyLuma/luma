@@ -70,6 +70,8 @@ class InstallerWindow(AppWindow):
         self.done = False
         self.transaction = None
         self.open_process = None
+        # Opening an AppImage runs it: no Install step, and Valet steps aside once its window is up.
+        self.runs_on_open = False
         self._advanced_open = False
         self._inspect_generation = 0
         self.permission_changes: dict[str, bool] = {}
@@ -224,12 +226,38 @@ class InstallerWindow(AppWindow):
             self.card.keep.set_tooltip_text('snapd retains an automatic snapshot according to system policy.')
         else: self.card.keep.set_tooltip_text(None)
         protected = self.removing and record is not None and not record.get('removable', True)
-        self.set_title(report.title if protected else ('Uninstall' if self.removing else 'Install') + ' · ' + report.title)
+        verb = 'Uninstall' if self.removing else 'Open' if report.kind == 'appimage' else 'Install'
+        self.set_title(report.title if protected else verb + ' · ' + report.title)
         self.populate_facts()
         if not self.eligible:
             return self.failed(architecture_mismatch_message(report))
         self.ready()
+        if not self.removing and report.kind == 'appimage':
+            self.run_appimage()
         return False
+
+    def run_appimage(self):
+        """Double-clicking an AppImage runs it, executable bit or not.
+
+        The file is a program the person chose to open, so opening it is the
+        consent: the application is unpacked into Valet's private copy and
+        started in the same sandbox an installed AppImage gets, and it stays
+        in Applications. The same file opened again starts the copy already
+        there.
+        """
+        self.runs_on_open = True
+        record = workflow.added_appimage(self.report.sha256)
+        if record is None:
+            self.primary_clicked()
+            return
+        if record.get('kept') is False:
+            # Chosen in Valet itself, so it is added to Applications too.
+            from .backends import keep_appimage
+            record = keep_appimage(record)
+        self.record, self.done = record, True
+        self.card.set_phase('done', 'Open', '', 1)
+        self.update_foot()
+        self.open_record()
 
     def _network_changed(self, allowed):
         if allowed == self._declared_network:
@@ -254,10 +282,11 @@ class InstallerWindow(AppWindow):
             self.card.primary.set_sensitive(True)
         else:
             advice = '\n'.join(self.report.warnings) if self.report and self.report.kind == 'android' else ''
+            verb = 'Open' if self.report and self.report.kind == 'appimage' else 'Install'
             if advice:
-                self.card.set_phase('ready', 'Install', message or advice, warning=True)
+                self.card.set_phase('ready', verb, message or advice, warning=True)
             else:
-                self.card.set_phase('ready', 'Install', message)
+                self.card.set_phase('ready', verb, message)
             self.card.primary.set_sensitive(self.report is not None and self.eligible)
         self.update_foot()
 
@@ -398,7 +427,8 @@ class InstallerWindow(AppWindow):
         # One package is one job: the card names this application, never the
         # dependencies a backend happens to fetch on the way.
         self.transaction = Transaction(lambda event: GLib.idle_add(self.progress, event),
-                                       title=('Removing ' if self.removing else 'Installing ') + self.report.title)
+                                       title=('Removing ' if self.removing else 'Opening ' if self.runs_on_open
+                                              else 'Installing ') + self.report.title)
         self.progress(Progress('Prepare removal' if self.removing else 'Check the file', 0, True))
         # Only a visible, unchecked box means delete; anything else keeps data.
         keep = not (self.removing and self.card.keep.get_visible() and not self.card.keep.get_active())
@@ -421,7 +451,7 @@ class InstallerWindow(AppWindow):
     def progress(self, event):
         # Only measured work fills the line; a stage marker does not pretend to.
         self.card.set_progress_label(event.label)
-        self.card.set_phase('working', 'Removing…' if self.removing else 'Installing…', '',
+        self.card.set_phase('working', 'Removing…' if self.removing else 'Opening…' if self.runs_on_open else 'Installing…', '',
                             event.fraction if event.measured else None,
                             removing=self.removing, cancellable=event.cancellable)
         return False
@@ -454,6 +484,8 @@ class InstallerWindow(AppWindow):
         self.update_foot()
         if not self.removing:
             self.card.set_stamp('Installed today, ' + datetime.now().strftime('%H:%M'))
+        if self.runs_on_open and not self.removing and self.record:
+            self.open_record()
         return False
 
     #: How long a start may take before Valet says no window has appeared.
@@ -534,6 +566,8 @@ class InstallerWindow(AppWindow):
     def _open_focus_changed(self, *_args):
         if not self.is_active():
             self._open_settled('Ready in Applications')
+            if self.runs_on_open:
+                self.close()
 
     def _open_waited_too_long(self):
         # Say so, but keep watching: a slow window or a late failure still
@@ -569,6 +603,8 @@ class InstallerWindow(AppWindow):
         else:
             # A launcher that hands off to an already-running copy exits at once.
             self._open_settled('Ready in Applications')
+            if self.runs_on_open:
+                self.close()
         return False
 
     def secondary_clicked(self, *_args):

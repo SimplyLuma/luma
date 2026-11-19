@@ -121,8 +121,11 @@ def main() -> int:
                 x11.XSync(display, False)
                 pump(.3)
 
-                # The shared v71 BarEntry is a real multiline GtkTextView;
-                # earlier inline-reply implementations used GtkEditable.
+                # The phone's reply well grows the bar into the editor, a real
+                # multiline GtkTextView.
+                prompt = getattr(window.bar, "prompt_button", None)
+                assert prompt is not None and prompt.get_mapped(), "phone reply well is missing"
+                prompt.emit("clicked"); pump(.4)
                 entries = [w for w in descendants(window.bar)
                            if isinstance(w, (Gtk.Editable, Gtk.TextView)) and w.get_mapped()]
                 assert entries, "real phone quick-reply entry is missing"
