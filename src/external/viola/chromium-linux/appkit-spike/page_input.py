@@ -3,7 +3,8 @@
 
 Physical key names reuse Chromium's table. Target and tab identities must
 match the displayed frame and the existing active-tab state before dispatch.
-Clipboard, drag/drop and page accessibility are separate open gates.
+Clipboard and page accessibility are separate open gates; dropped files are
+page_drop.py.
 """
 import json
 import time
@@ -116,6 +117,8 @@ class PageInput:
         page.add_controller(focus)
         from page_touch import PageTouch
         self.touch = PageTouch(self)
+        from page_drop import PageDrop
+        self.drop = PageDrop(self)
 
     def frame_changed(self, metadata):
         if metadata['target_id'] != self.target and hasattr(self, 'touch'):

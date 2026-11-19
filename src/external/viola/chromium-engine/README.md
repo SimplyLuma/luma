@@ -68,6 +68,21 @@ and playback and recording streams carry `application.id` and
 session's saved per-application stream volume is Viola's own instead of one
 shared with every other Chromium build.
 
+`0008-native-extension-lifecycle.patch` applies after `0007`. Removing an
+extension (its Remove button, the Web Store's Remove, an extension's own
+`management.uninstall`, a menu's Remove) asks on the same channel as `0006`
+(`{type: 'extension', danger: true}`) instead of in a dialog on the
+undisplayed window, where it waited unanswered. The Web Store's package
+download is not listed in Viola's downloads or notices, as Chromium's own UI
+never lists it. The sidebar state's extension rows carry `pinned` and list
+pinned extensions first, and follow installs, removals and pins. An
+extension's context menu (pin, site access, options, remove) is described on
+the native menu channel so the host draws it. The host's own DevTools session
+on a popup no longer turns the popup into an inspected one, which opened a
+DevTools window beside it and kept it from closing. On the Web Store, the
+banner asking to switch to Chrome to install is hidden, as Viola installs from
+it; the browser still identifies as Chromium.
+
 Do not replace a released engine merely because these inputs build successfully;
 its native rendering, input, resize and window lifecycle checks must also pass.
 
@@ -166,6 +181,10 @@ git apply --check /path/to/chromium-engine/patches/0005-webrtc-readback-fallback
 git apply /path/to/chromium-engine/patches/0005-webrtc-readback-fallback-outside-context-lock.patch
 git apply --check /path/to/chromium-engine/patches/0006-native-extension-prompts.patch
 git apply /path/to/chromium-engine/patches/0006-native-extension-prompts.patch
+git apply --check /path/to/chromium-engine/patches/0007-pulse-stream-app-name.patch
+git apply /path/to/chromium-engine/patches/0007-pulse-stream-app-name.patch
+git apply --check /path/to/chromium-engine/patches/0008-native-extension-lifecycle.patch
+git apply /path/to/chromium-engine/patches/0008-native-extension-lifecycle.patch
 # Set the version environment above; choose an admitted output tree and job count.
 cat /path/to/chromium-engine/profiles/common.gn /path/to/chromium-engine/profiles/arm64.gn > "$ENGINE_OUT/args.gn"
 gn gen "$ENGINE_OUT" --root-target=//chrome:chrome --root-pattern=//chrome:chrome

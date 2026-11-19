@@ -1,0 +1,438 @@
+diff --git a/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc b/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc
+--- a/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc
++++ b/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc
+@@ -18,6 +18,16 @@
+ #include "ui/base/models/dialog_model.h"
+ #include "ui/gfx/image/image_skia_operations.h"
+ 
++#include "build/build_config.h"
++
++#if BUILDFLAG(IS_LINUX)
++#include "base/unguessable_token.h"
++#include "base/values.h"
++#include "chrome/browser/browser_process.h"
++#include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/browser/ui/views/viola/viola_product_shell_view.h"
++#endif
++
+ static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+ 
+ namespace {
+@@ -46,6 +56,18 @@
+   void Show() override;
+   void Close() override;
+ 
++#if BUILDFLAG(IS_LINUX)
++  // Viola draws its browser window off screen, so a dialog on it is never
++  // seen: the host asks in its bar instead (engine patch 0006's channel).
++  bool ShowInViola();
++  void OnViolaAnswer(bool accepted);
++  void ClearViolaPrompt();
++  // The base class forgets a profile that is going away; this one is only
++  // used while ProfileManager still knows it.
++  raw_ptr<Profile, DanglingUntriaged> profile_;
++  std::string viola_prompt_id_;
++#endif
++
+   // Pointer to the DialogModel for the dialog. This is cleared when the dialog
+   // is being closed and OnDialogClosed is reported. As such it prevents access
+   // to the dialog after it's been closed, as well as preventing multiple
+@@ -61,9 +83,18 @@
+     Profile* profile,
+     gfx::NativeWindow parent,
+     extensions::ExtensionUninstallDialog::Delegate* delegate)
+-    : extensions::ExtensionUninstallDialog(profile, parent, delegate) {}
++    : extensions::ExtensionUninstallDialog(profile, parent, delegate)
++#if BUILDFLAG(IS_LINUX)
++      ,
++      profile_(profile)
++#endif
++{
++}
+ 
+ ExtensionUninstallDialogImpl::~ExtensionUninstallDialogImpl() {
++#if BUILDFLAG(IS_LINUX)
++  ClearViolaPrompt();
++#endif
+   if (dialog_model_) {
+     dialog_model_->host()->Close();
+   }
+@@ -71,6 +102,11 @@
+ }
+ 
+ void ExtensionUninstallDialogImpl::Show() {
++#if BUILDFLAG(IS_LINUX)
++  if (ShowInViola()) {
++    return;
++  }
++#endif
+   ui::DialogModel::Builder dialog_builder;
+   dialog_builder.SetInternalName("ExtensionUninstallDialog")
+       .SetTitle(l10n_util::GetStringFUTF16(
+@@ -128,10 +164,83 @@
+ }
+ 
+ void ExtensionUninstallDialogImpl::Close() {
++#if BUILDFLAG(IS_LINUX)
++  if (!viola_prompt_id_.empty()) {
++    ClearViolaPrompt();
++    OnDialogClosed(CLOSE_ACTION_CANCELED);
++    return;
++  }
++#endif
+   DCHECK(dialog_model_);
+   dialog_model_->host()->Close();
+ }
+ 
++#if BUILDFLAG(IS_LINUX)
++bool ExtensionUninstallDialogImpl::ShowInViola() {
++  viola::ViolaProductShellView* shell =
++      viola::ViolaProductShellView::ForProfile(profile_);
++  if (!shell || !viola_prompt_id_.empty()) {
++    return false;
++  }
++  viola_prompt_id_ = base::UnguessableToken::Create().ToString();
++  const std::u16string name =
++      extensions::ui_util::GetFixupExtensionNameForUIDisplay(
++          extension()->name());
++  base::DictValue state;
++  state.Set("id", viola_prompt_id_);
++  state.Set("type", "extension");
++  state.Set("title", l10n_util::GetStringFUTF16(
++                         IDS_EXTENSION_PROMPT_UNINSTALL_TITLE, name));
++  state.Set("body",
++            triggering_extension()
++                ? l10n_util::GetStringFUTF16(
++                      IDS_EXTENSION_PROMPT_UNINSTALL_TRIGGERED_BY_EXTENSION,
++                      extensions::ui_util::GetFixupExtensionNameForUIDisplay(
++                          triggering_extension()->name()))
++                : std::u16string());
++  state.Set("details", base::ListValue());
++  state.Set("name", name);
++  state.Set("extensionId", extension()->id());
++  state.Set("accept",
++            l10n_util::GetStringUTF16(IDS_EXTENSION_PROMPT_UNINSTALL_BUTTON));
++  state.Set("cancel", u"Cancel");
++  state.Set("host", "Extensions");
++  state.Set("hue", 250);
++  state.Set("important", true);
++  state.Set("kept", true);
++  state.Set("danger", true);
++  shell->ShowExtensionPrompt(
++      std::move(state),
++      base::BindOnce(&ExtensionUninstallDialogImpl::OnViolaAnswer,
++                     weak_ptr_factory_.GetWeakPtr()));
++  return true;
++}
++
++void ExtensionUninstallDialogImpl::OnViolaAnswer(bool accepted) {
++  if (viola_prompt_id_.empty()) {
++    return;
++  }
++  viola_prompt_id_.clear();
++  // May destroy `this` through the delegate: nothing runs after it.
++  OnDialogClosed(accepted ? CLOSE_ACTION_UNINSTALL : CLOSE_ACTION_CANCELED);
++}
++
++void ExtensionUninstallDialogImpl::ClearViolaPrompt() {
++  if (viola_prompt_id_.empty()) {
++    return;
++  }
++  ProfileManager* profiles =
++      g_browser_process ? g_browser_process->profile_manager() : nullptr;
++  if (profiles && profiles->IsValidProfile(profile_.get())) {
++    if (viola::ViolaProductShellView* shell =
++            viola::ViolaProductShellView::ForProfile(profile_)) {
++      shell->ClearExtensionPrompt(viola_prompt_id_);
++    }
++  }
++  viola_prompt_id_.clear();
++}
++#endif
++
+ void ExtensionUninstallDialogImpl::DialogAccepted() {
+   DCHECK(dialog_model_);
+   const bool checkbox_is_checked =
+diff --git a/chrome/browser/ui/views/extensions/extension_popup.cc b/chrome/browser/ui/views/extensions/extension_popup.cc
+--- a/chrome/browser/ui/views/extensions/extension_popup.cc
++++ b/chrome/browser/ui/views/extensions/extension_popup.cc
+@@ -5,6 +5,8 @@
+ #include "chrome/browser/ui/views/extensions/extension_popup.h"
+ 
+ #include "base/check.h"
++#include "base/command_line.h"
++#include "build/build_config.h"
+ #include "base/functional/bind.h"
+ #include "base/memory/raw_ptr.h"
+ #include "chrome/browser/devtools/devtools_window.h"
+@@ -240,6 +242,14 @@
+ void ExtensionPopup::DevToolsAgentHostAttached(
+     content::DevToolsAgentHost* agent_host) {
+   DCHECK(host_);
++#if BUILDFLAG(IS_LINUX)
++  // Viola's host draws the popup through its own DevTools session; that
++  // attach is not a person inspecting the popup.
++  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
++          "viola-native-frame-probe")) {
++    return;
++  }
++#endif
+   if (host_->host_contents() == agent_host->GetWebContents()) {
+     show_action_ = PopupShowAction::kShowAndInspect;
+   }
+diff --git a/chrome/browser/ui/webui/viola/viola_message_handler.cc b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+--- a/chrome/browser/ui/webui/viola/viola_message_handler.cc
++++ b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+@@ -70,6 +70,7 @@
+ #include "chrome/browser/ui/tabs/tab_enums.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/toolbar/toolbar_action_view_model.h"
++#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/browser/ui/views/viola/viola_mini_window.h"
+ #include "chrome/browser/ui/views/viola/viola_product_shell_view.h"
+@@ -1410,10 +1411,33 @@
+               if (element.shadowRoot) clean(element.shadowRoot);
+             }
+           };
++          // Viola installs from the store, so the banner telling a
++          // Chromium-based browser to switch to Chrome is not true here.
++          const hideSwitchBanner = () => {
++            const walker = document.createTreeWalker(document.body || document,
++                                                     NodeFilter.SHOW_TEXT);
++            let node;
++            while ((node = walker.nextNode())) {
++              if (node.nodeValue?.trim() !==
++                  'Switch to Chrome to install extensions and themes') continue;
++              let box = node.parentElement;
++              for (let depth = 0; box && depth < 6; ++depth) {
++                const text = box.textContent || '';
++                if (text.includes('Install Chrome') && text.length < 160) {
++                  box.style.setProperty('display', 'none', 'important');
++                  break;
++                }
++                box = box.parentElement;
++              }
++            }
++          };
+           clean(document);
++          hideSwitchBanner();
+           if (!window.__violaStoreBrandObserver) {
+-            window.__violaStoreBrandObserver = new MutationObserver(() =>
+-              clean(document));
++            window.__violaStoreBrandObserver = new MutationObserver(() => {
++              clean(document);
++              hideSwitchBanner();
++            });
+             window.__violaStoreBrandObserver.observe(document, {
+               childList:true, subtree:true, characterData:true,
+             });
+@@ -1493,6 +1517,10 @@
+   }
+   if (surface == "sidebar.html") {
+     ObserveProfileTabStrips();
++    if (ToolbarActionsModel *toolbar_actions = ToolbarActionsModel::Get(profile);
++        toolbar_actions && !toolbar_actions_observation_.IsObserving()) {
++      toolbar_actions_observation_.Observe(toolbar_actions);
++    }
+     media_timer_.Start(
+         FROM_HERE, base::Seconds(1),
+         base::BindRepeating(&ViolaMessageHandler::RefreshMediaState,
+@@ -1512,10 +1540,30 @@
+   }
+ }
+ 
++void ViolaMessageHandler::OnToolbarActionAdded(const std::string &) {
++  ScheduleRenderState(false);
++}
++void ViolaMessageHandler::OnToolbarActionRemoved(const std::string &) {
++  ScheduleRenderState(false);
++}
++void ViolaMessageHandler::OnToolbarActionUpdated(const std::string &) {}
++void ViolaMessageHandler::OnToolbarModelInitialized() {
++  ScheduleRenderState(false);
++}
++void ViolaMessageHandler::OnToolbarPinnedActionsChanged() {
++  ScheduleRenderState(false);
++}
++void ViolaMessageHandler::OnToolbarActionsModelShutdown() {
++  toolbar_actions_observation_.Reset();
++}
++
+ void ViolaMessageHandler::OnJavascriptDisallowed() {
+ #if BUILDFLAG(IS_LINUX)
+   CloseNativeFind();
+ #endif
++  toolbar_actions_observation_.Reset();
++  extension_context_menu_.reset();
++  native_menu_probe_model_ = nullptr;
+   CloseNativeMenuProbe();
+   ClearSplitDrag();
+   render_state_timer_.Stop();
+@@ -4337,8 +4385,11 @@
+ #if BUILDFLAG(IS_LINUX)
+   CloseNativeMenuProbe();
+   if (base::CommandLine::ForCurrentProcess()->HasSwitch("viola-native-menu-probe") &&
+-      CurrentSurface() == "sidebar.html" && model && model == context_menu_model_.get()) {
++      CurrentSurface() == "sidebar.html" && model &&
++      (model == context_menu_model_.get() ||
++       model == extension_context_menu_.get())) {
+     native_menu_probe_nonce_ = base::UnguessableToken::Create().ToString();
++    native_menu_probe_model_ = model;
+     base::DictValue description;
+     description.Set("nonce", native_menu_probe_nonce_);
+     content::WebContents* active = GetProductTabStrip()
+@@ -4409,8 +4460,14 @@
+     if (close) std::move(close).Run();
+     return;
+   }
+-  if (!context_menu_model_) return;
+-  ui::MenuModel* model = context_menu_model_.get();
++  ui::MenuModel* model = nullptr;
++  if (native_menu_probe_model_ &&
++      native_menu_probe_model_ == extension_context_menu_.get()) {
++    model = extension_context_menu_.get();
++  } else if (native_menu_probe_model_ == context_menu_model_.get()) {
++    model = context_menu_model_.get();
++  }
++  if (!model) return;
+   for (size_t depth = 0; depth < path.size(); ++depth) {
+     if (!path[depth].is_int() || path[depth].GetInt() < 0) return;
+     const size_t index = static_cast<size_t>(path[depth].GetInt());
+@@ -5463,10 +5520,22 @@
+     return;
+   }
+   if (action == "menu") {
+-    ui::MenuModel *model = action_model->GetContextMenu(
+-        extensions::ExtensionContextMenuModel::ContextMenuSource::
+-            kToolbarAction);
+-    RunContextMenuModel(model);
++    const extensions::Extension *extension =
++        registry->GetInstalledExtension(extension_id);
++    if (!extension) {
++      return;
++    }
++    // The handler owns this menu so the native menu channel can activate
++    // its items; the toolbar's own copy belongs to the undisplayed window.
++    extension_context_menu_ =
++        std::make_unique<extensions::ExtensionContextMenuModel>(
++            extension, browser,
++            ToolbarActionsModel::Get(profile)->IsActionPinned(extension_id),
++            /*delegate=*/nullptr,
++            ToolbarActionsModel::CanShowActionsInToolbar(*browser),
++            extensions::ExtensionContextMenuModel::ContextMenuSource::
++                kToolbarAction);
++    RunContextMenuModel(extension_context_menu_.get());
+   }
+ }
+ 
+@@ -7168,6 +7237,14 @@
+   if (manager) {
+     manager->GetAllDownloads(&downloads);
+   }
++  // An extension install from the Web Store downloads its package through
++  // the download system; Chromium's own UI never lists it, and neither do
++  // Viola's downloads and notices.
++  std::erase_if(downloads, [](download::DownloadItem *item) {
++    return item && (item->IsTransient() ||
++                    item->GetDownloadSource() ==
++                        download::DownloadSource::EXTENSION_INSTALLER);
++  });
+   std::sort(downloads.begin(), downloads.end(),
+             [](download::DownloadItem *left, download::DownloadItem *right) {
+               if (!left || !right) {
+@@ -7596,15 +7673,45 @@
+           ? extensions::ExtensionRegistry::Get(browser->GetProfile())
+           : nullptr;
+   if (!incognito && extension_registry) {
++    ToolbarActionsModel *toolbar_actions =
++        ToolbarActionsModel::Get(browser->GetProfile());
++    std::vector<scoped_refptr<const extensions::Extension>> shown;
+     for (const scoped_refptr<const extensions::Extension> &extension :
+          extension_registry->enabled_extensions()) {
+-      if (!extension || !IsUserVisibleExtension(*extension) ||
+-          extension_controls.size() >= 6) {
+-        continue;
++      if (extension && IsUserVisibleExtension(*extension)) {
++        shown.push_back(extension);
+       }
++    }
++    // Pinned extensions first, in their toolbar order; then by name.
++    std::vector<std::string> pinned_ids;
++    if (toolbar_actions) {
++      for (const auto &id : toolbar_actions->pinned_action_ids()) {
++        pinned_ids.push_back(id);
++      }
++    }
++    auto pinned_rank = [&pinned_ids](const std::string &id) {
++      auto it = std::find(pinned_ids.begin(), pinned_ids.end(), id);
++      return it == pinned_ids.end() ? pinned_ids.size()
++                                    : static_cast<size_t>(it - pinned_ids.begin());
++    };
++    std::stable_sort(shown.begin(), shown.end(),
++                     [&pinned_rank](const auto &left, const auto &right) {
++                       const size_t l = pinned_rank(left->id());
++                       const size_t r = pinned_rank(right->id());
++                       if (l != r) {
++                         return l < r;
++                       }
++                       return left->name() < right->name();
++                     });
++    for (const scoped_refptr<const extensions::Extension> &extension :
++         shown) {
++      if (extension_controls.size() >= 24) {
++        break;
++      }
+       base::DictValue row;
+       row.Set("id", extension->id());
+       row.Set("name", extension->name());
++      row.Set("pinned", pinned_rank(extension->id()) < pinned_ids.size());
+       row.Set("icon", extensions::ExtensionIconSource::GetIconURL(
+                           extension.get(), 24,
+                           ExtensionIconSet::Match::kBigger,
+diff --git a/chrome/browser/ui/webui/viola/viola_message_handler.h b/chrome/browser/ui/webui/viola/viola_message_handler.h
+--- a/chrome/browser/ui/webui/viola/viola_message_handler.h
++++ b/chrome/browser/ui/webui/viola/viola_message_handler.h
+@@ -30,6 +30,7 @@
+ #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
+ #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
++#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
+ #include "chrome/browser/ui/webui/viola/viola_host_contract.generated.h"
+ #include "chrome/browser/ui/webui/viola/viola_organization_store.h"
+ #include "chrome/browser/ui/webui/viola/viola_update_service.h"
+@@ -72,6 +73,7 @@
+                             public download::AllDownloadItemNotifier::Observer,
+                             public viola::ViolaOrganizationStore::Observer,
+                             public viola::ViolaUpdateService::Observer,
++                            public ToolbarActionsModel::Observer,
+                             public ui::SimpleMenuModel::Delegate
+ #if BUILDFLAG(IS_LINUX)
+                             , public find_in_page::FindResultObserver
+@@ -300,6 +302,15 @@
+   std::vector<raw_ptr<TabStripModel>> peer_tab_strips_;
+   base::ScopedObservation<ProfileBrowserCollection, BrowserCollectionObserver>
+       browser_collection_observation_{this};
++  // The sidebar's extension rows follow installs, removals and pins.
++  base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
++      toolbar_actions_observation_{this};
++  void OnToolbarActionAdded(const std::string &id) override;
++  void OnToolbarActionRemoved(const std::string &id) override;
++  void OnToolbarActionUpdated(const std::string &id) override;
++  void OnToolbarModelInitialized() override;
++  void OnToolbarPinnedActionsChanged() override;
++  void OnToolbarActionsModelShutdown() override;
+   raw_ptr<viola::ViolaOrganizationStore> organization_store_ = nullptr;
+   bool observing_organization_store_ = false;
+   std::unique_ptr<download::AllDownloadItemNotifier> download_notifier_;
+@@ -353,6 +364,10 @@
+   base::CancelableTaskTracker palette_history_tasks_;
+   base::CancelableTaskTracker library_history_tasks_;
+   std::unique_ptr<ui::SimpleMenuModel> context_menu_model_;
++  // An extension's context menu shown through the native menu channel, and
++  // the model the open native menu describes.
++  std::unique_ptr<ui::MenuModel> extension_context_menu_;
++  raw_ptr<ui::MenuModel> native_menu_probe_model_ = nullptr;
+   std::vector<std::unique_ptr<ui::SimpleMenuModel>> context_submenu_models_;
+   std::unique_ptr<views::MenuModelAdapter> context_menu_adapter_;
+   std::unique_ptr<views::MenuRunner> context_menu_runner_;

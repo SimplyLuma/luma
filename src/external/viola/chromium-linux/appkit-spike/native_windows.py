@@ -106,6 +106,11 @@ class NativeWindows:
     def event(self, event):
         for client in tuple(self.clients):
             client.on_event(event)
+        if event.get('method') in ('Page.screencastFrame', 'Target.detachedFromTarget'):
+            for context in tuple(self.contexts.values()):
+                extensions = getattr(context['window'], 'extensions', None)
+                if not context['closed'] and extensions is not None:
+                    extensions.event(event)
         if event.get('method') in ('Page.frameResized', 'Page.frameNavigated'):
             for context in tuple(self.contexts.values()):
                 if not context['closed']:
