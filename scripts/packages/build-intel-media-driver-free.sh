@@ -42,7 +42,13 @@ install -m 0644 "$spec" "$rpmbuild_dir/SPECS/"
     set -euo pipefail
     dnf5 -q -y install --allowerasing rpm-build dnf5-plugins
     dnf5 -q -y builddep --allowerasing SPECS/intel-media-driver-free.spec
-    rpmbuild -ba --define \"_topdir \$PWD\" --define 'dist .fc44' SPECS/intel-media-driver-free.spec
+    # Each compile command carries hundreds of absolute -I paths and must stay
+    # under the kernel's 128 KiB single-argument limit (ninja runs it through
+    # sh -c): build in a directory no longer than Koji's /builddir/build/BUILD.
+    builddir=\$(mktemp -d /tmp/m.XXXXXX)
+    trap 'rm -rf \"\$builddir\"' EXIT
+    rpmbuild -ba --define \"_topdir \$PWD\" --define \"_builddir \$builddir\" \\
+      --define 'dist .fc44' SPECS/intel-media-driver-free.spec
     # The driver must carry the VDEnc H.264/H.265 encoder pipelines (their
     # RTTI names); Fedora's build has neither.
     rm -rf check && mkdir check
