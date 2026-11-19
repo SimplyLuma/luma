@@ -127,6 +127,52 @@ def login_environment(user: str) -> list[tuple[str, str]]:
 
 SECRET_SERVICE = "--talk=org.freedesktop.secrets"
 
+_BUS_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)+")
+# Names the session's own services answer to. An application whose launcher
+# happens to be named after one of them still never gets to own it.
+_RESERVED_BUS_PREFIXES = ("org.freedesktop.", "org.gtk.", "org.a11y.", "org.mpris.", "org.projectluma.",
+                          "io.luma.", "org.gnome.Shell", "org.gnome.Mutter", "org.gnome.SessionManager",
+                          "org.gnome.SettingsDaemon", "org.gnome.ScreenSaver", "org.gnome.keyring")
+
+
+def own_bus_names(record: dict[str, object]) -> list[str]:
+    """The session bus names the application may own: its own identity.
+
+    GApplication, Qt's single-instance helpers and most toolkits register the
+    application ID on the session bus before the first window. The capsule's
+    bus is filtered, and a name it may not own fails that registration
+    (xdg-dbus-proxy answers ServiceUnknown): a GTK application printed "Failed
+    to register" and exited before drawing anything. Flatpak grants an
+    application its own ID and the names under it; the capsule grants the same
+    from what the package itself declares: its launcher's file name (the
+    desktop ID, which the desktop entry specification makes the D-Bus name),
+    its AppStream ID and its window class.
+    """
+    candidates: list[str] = []
+    root = Path(str(record.get("root") or ""))
+    if record.get("format") in {"appimage", "portable"} and root.is_dir():
+        for folder, suffixes in ((root, (".desktop",)), (root / "usr/share/applications", (".desktop",)),
+                                 (root / "usr/share/metainfo", (".metainfo.xml", ".appdata.xml"))):
+            try:
+                entries = sorted(folder.iterdir())[:64]
+            except OSError:
+                continue
+            for entry in entries:
+                candidates.extend(entry.name[:-len(suffix)] for suffix in suffixes if entry.name.endswith(suffix))
+    if record.get("desktop_path"):
+        candidates.append(Path(str(record["desktop_path"])).name.removesuffix(".desktop"))
+    candidates.append(str(record.get("startup_wm_class") or ""))
+    names: list[str] = []
+    for name in candidates:
+        if (len(name) <= 200 and _BUS_NAME.fullmatch(name) and name not in names
+                and not any(name == prefix.rstrip(".") or name.startswith(prefix) for prefix in _RESERVED_BUS_PREFIXES)):
+            names.append(name)
+    return names[:8]
+
+
+def own_bus_arguments(record: dict[str, object]) -> list[str]:
+    return [argument for name in own_bus_names(record) for argument in (f"--own={name}", f"--own={name}.*")]
+
 HANDOFF_UNSAFE_COUNTS = frozenset((9, 10, 11, 12, 13, 32))
 HANDOFF_PADDING = "--luma-handoff"
 
