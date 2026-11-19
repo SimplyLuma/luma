@@ -30,6 +30,10 @@ class Launch(unittest.TestCase):
     def test_window_in_the_app_area_counts(self):
         self.assertGreater(vm.changed_fraction(frame(), frame([(0.2, 0.15, 0.8, 0.75)]), W, H), 0.2)
 
+    def test_blank_screen_is_detected(self):
+        self.assertTrue(vm.is_blank(frame()))
+        self.assertFalse(vm.is_blank(frame([(0.0, 0.0, 1.0, 0.5)])))
+
     def test_window_must_leave_when_the_app_stops(self):
         self.assertTrue(vm.window_verdict(0.35, 0.0))
         self.assertTrue(vm.window_verdict(0.35, 0.005))

@@ -310,6 +310,12 @@ APP_AREA = (0.06, 0.85)
 WINDOW_FRACTION = 0.02
 
 
+def is_blank(rgb: bytes) -> bool:
+    """A frame that is almost all one dark colour: the display is off."""
+    sample = rgb[::3 * 97]
+    return bool(sample) and sum(1 for v in sample if v > 40) < len(sample) * 0.01
+
+
 def window_verdict(shown: float, after_stop: float) -> bool:
     """Whether a change on screen was the app's window: it was there while the
     app ran, and it went away when the app was stopped. A change that stays (the
@@ -399,9 +405,18 @@ def run_app(base: Path, key: Path, package: Path | None, app_id: str, fmt: str, 
                   "luma-android-prewarm.service >/dev/null 2>&1; "
                   f"runuser -u {USER} -- env {session_env(uid)} waydroid session stop >/dev/null 2>&1; true",
                   timeout=60)
+        # A slow boot can outlast the idle delay: the screen blanks, and a blank
+        # screen waking up looks like a window. Keep it on and wake it.
+        guest.run(f"runuser -u {USER} -- env {session_env(uid)} sh -c 'gsettings set org.gnome.desktop.session "
+                  "idle-delay 0; gsettings set org.gnome.desktop.screensaver lock-enabled false' 2>/dev/null; "
+                  "loginctl unlock-sessions 2>/dev/null; true", timeout=30)
+        qmp.command("send-key", keys=[{"type": "qcode", "data": "shift"}])
         time.sleep(8)  # let the shell settle
         before = work / "before.ppm"
         qmp.command("screendump", filename=str(before))
+        if is_blank(read_ppm(before)[2]):
+            step("launch", False, "The test VM's screen was off, so the launch couldn't be watched.", internal=True)
+            return result
         if remote_ref:
             install = guest.run(f"flatpak install --system --noninteractive -y {remote_ref} 2>&1", timeout=1200)
         else:
@@ -461,7 +476,7 @@ def run_app(base: Path, key: Path, package: Path | None, app_id: str, fmt: str, 
             return result
         # Stop the app and look again: the change must leave with it.
         guest.run(f"runuser -u {USER} -- env {session_env(uid)} systemctl --user stop depot-review-app", timeout=30)
-        guest.run(f"flatpak kill {app_id}", timeout=20)
+        guest.run(f"runuser -u {USER} -- env {session_env(uid)} flatpak kill {app_id}", timeout=20)
         after_stop = 1.0
         for _ in range(4):
             time.sleep(3)
