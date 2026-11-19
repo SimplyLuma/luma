@@ -81,6 +81,8 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/$package.spec" \
       grep -qxF 0002-request-run-disconnect-off-the-main-loop.patch
     rpm -qpl "SRPMS/'"$nevr"'.src.rpm" |
       grep -qxF 0003-open-uri-open-files-in-their-chosen-default.patch
+    rpm -qpl "SRPMS/'"$nevr"'.src.rpm" |
+      grep -qxF 0004-audio-capture-portal.patch
     test -f "RPMS/$architecture/'"$nevr"'.${architecture}.rpm"
     # The portal reads its impl files as the user: no build-workspace modes.
     while IFS= read -r rpm_path; do
@@ -92,6 +94,8 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/$package.spec" \
     ( cd "$verify_dir" &&
       rpm2cpio "$OLDPWD/RPMS/$architecture/'"$nevr"'.${architecture}.rpm" | cpio -idm --quiet )
     grep -qaF /usr/share/luma/open-directly.list "$verify_dir/usr/libexec/xdg-desktop-portal"
+    grep -qaF org.freedesktop.impl.portal.AudioCapture "$verify_dir/usr/libexec/xdg-desktop-portal"
+    test -f "$verify_dir/usr/share/dbus-1/interfaces/org.freedesktop.portal.AudioCapture.xml"
     rm -rf "$verify_dir"
   '
 
