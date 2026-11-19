@@ -205,11 +205,17 @@ def refresh_icon_cache() -> None:
                        check=False, capture_output=True)
 
 
-def write_launcher(application_id: str, name: str, comment: str, icon: str = "application-x-executable", startup_wm_class: str = "", terminal: bool = False, mime_types: list[str] | None = None) -> Path:
+def write_launcher(application_id: str, name: str, comment: str, icon: str = "application-x-executable", startup_wm_class: str = "", terminal: bool = False, mime_types: list[str] | None = None, hidden: bool = False) -> Path:
+    """The application's launcher in Applications.
+
+    A hidden launcher is not shown in Applications and opens no files: it is
+    there so a window the application opens is still known by its name and
+    icon, before the person decides to keep it.
+    """
     root = applications_root()
     root.mkdir(mode=0o755, parents=True, exist_ok=True)
     destination = root / f"org.projectluma.Installed.{application_id}.desktop"
-    mime_types = list(dict.fromkeys(mime for mime in (mime_types or []) if MIME_TYPE.fullmatch(mime)))
+    mime_types = [] if hidden else list(dict.fromkeys(mime for mime in (mime_types or []) if MIME_TYPE.fullmatch(mime)))
     contents = "\n".join((
         "[Desktop Entry]",
         "Type=Application",
@@ -224,6 +230,7 @@ def write_launcher(application_id: str, name: str, comment: str, icon: str = "ap
         f"StartupNotify={'false' if terminal else 'true'}",
         *([f"StartupWMClass={startup_wm_class}"] if startup_wm_class and not any(c in startup_wm_class for c in "\n\r\x00") else []),
         "Categories=Utility;",
+        *(["NoDisplay=true"] if hidden else []),
         "X-Luma-Managed=true",
         "Actions=Uninstall;",
         "",

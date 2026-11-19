@@ -1,4 +1,12 @@
 #!/usr/bin/python3
-from luma_installer.installer import main
+import sys
 
-raise SystemExit(main())
+# An AppImage opened from Filer or a browser runs at once, before any of
+# Valet's interface is loaded.
+from luma_installer.appimage_run import main_for_open
+
+status = main_for_open(sys.argv[1:])
+if status is None:
+    from luma_installer.installer import main
+    status = main()
+raise SystemExit(status)
