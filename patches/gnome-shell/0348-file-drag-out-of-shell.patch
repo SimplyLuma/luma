@@ -307,10 +307,10 @@ index 6966dd1..670a628 100644
      // The four things a file manager's menu is for, in Filer's own words and
 diff --git a/js/ui/lumaFileDrag.js b/js/ui/lumaFileDrag.js
 new file mode 100644
-index 0000000..b0a207a
+index 0000000..ce7c11d
 --- /dev/null
 +++ b/js/ui/lumaFileDrag.js
-@@ -0,0 +1,503 @@
+@@ -0,0 +1,500 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +//
 +// Files dragged out of the Shell.
@@ -497,7 +497,7 @@ index 0000000..b0a207a
 +        });
 +        if (count > 1) {
 +            this._badge = new St.Label({style_class: 'luma-file-drag-count',
-+                text: `${count}`,
++                text: `${count}`, x_expand: true, y_expand: true,
 +                x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START});
 +            this.actor.add_child(this._badge);
 +        }
@@ -729,7 +729,7 @@ index 0000000..b0a207a
 +        try {
 +            const type = event.type();
 +            if (armed.touch) {
-+                if (event.get_event_sequence() !== armed.sequence)
++                if (event.get_event_sequence()?.get_slot() !== armed.slot)
 +                    return Clutter.EVENT_PROPAGATE;
 +                if (type === Clutter.EventType.TOUCH_UPDATE) {
 +                    const [x, y] = event.get_coords();
@@ -750,8 +750,6 @@ index 0000000..b0a207a
 +                return Clutter.EVENT_PROPAGATE;
 +            }
 +            if (type === Clutter.EventType.MOTION) {
-+                if (event.get_device() !== armed.device)
-+                    return Clutter.EVENT_PROPAGATE;
 +                const [x, y] = event.get_coords();
 +                if (!Model.travelled(x - armed.x, y - armed.y, DRAG_THRESHOLD * scale()))
 +                    return Clutter.EVENT_PROPAGATE;
@@ -776,8 +774,7 @@ index 0000000..b0a207a
 +        const [aw, ah] = actor.get_transformed_size();
 +        armed = {
 +            x, y, touch,
-+            device: event.get_device(),
-+            sequence: event.get_event_sequence(),
++            slot: event.get_event_sequence()?.get_slot(),
 +            hotspot: Model.hotspot(x, y, ax, ay, aw, ah),
 +            watch: global.stage.connect('captured-event', onCaptured),
 +        };
