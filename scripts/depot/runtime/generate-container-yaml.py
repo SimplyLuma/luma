@@ -18,7 +18,8 @@ Overlay keys (all optional except base and flatpak):
   rename               ordered mapping of id prefixes to rewrite everywhere
   drop-extensions      extension names (after renaming) to remove
   extension-overrides  per-extension keys to set (after renaming)
-  add-packages         packages appended to Fedora's list
+  add-packages         packages appended to Fedora's list (a name, or Fedora's
+                       {name, platforms: {only: [...]}} form for one CPU)
   remove-packages      packages removed from Fedora's list
   cleanup-replace      list of {from, to} exact text replacements in cleanup-commands
   cleanup-append       text appended to cleanup-commands
@@ -96,8 +97,9 @@ def render(overlay_path: Path) -> dict:
         raise SystemExit(f"remove-packages: not in base: {sorted(missing)}")
     packages = [p for p in packages if (p if isinstance(p, str) else p["name"]) not in remove]
     for package in overlay.get("add-packages", []):
-        if package in names:
-            raise SystemExit(f"add-packages: {package} is already in the base list")
+        name = package if isinstance(package, str) else package["name"]
+        if name in names:
+            raise SystemExit(f"add-packages: {name} is already in the base list")
         packages.append(package)
     flatpak["packages"] = packages
 
