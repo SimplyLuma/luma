@@ -61,7 +61,12 @@ These are system defaults only: a person's own `~/.config/mimeapps.list`
 choice always wins.
 
 Viewer (`luma-viewer`) is the default for PDFs (application/pdf and the
-x-bzpdf, x-gzpdf, x-xzpdf and x-ext-pdf variants) and images.
+x-bzpdf, x-gzpdf, x-xzpdf and x-ext-pdf variants), images, plain text,
+Markdown, CSV/TSV, JSON, XML, C and Python source and 3D models (OBJ, STL).
+Luma's xdg-desktop-portal opens a file in a default named in a configuration
+directory's mimeapps list without the application chooser
+(patches/xdg-desktop-portal, 0003), so a file double-clicked in Filer opens
+in Viewer at once, and a person's "Always Open" choice holds the same way.
 `gnome-mimeapps.list` outranks gnome-session's
 /usr/share/applications/gnome-mimeapps.list, which names Document Viewer.
 Document Viewer is not part of Luma: `org.gnome.Papers` and `org.gnome.Evince`

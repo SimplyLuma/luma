@@ -1,8 +1,11 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Release gate checks: Viewer (luma-viewer) opens PDFs and images, and GNOME's
-# Document Viewer (Papers, Evince) is not part of Luma. Run as root inside a
+# Release gate checks: Viewer (luma-viewer) opens PDFs and images, a file
+# opened through the OpenURI portal (a double-click in Filer, which is
+# sandboxed) goes to its default without the "choose an application" prompt,
+# a person's own "Always Open" choice holds, and GNOME's Document Viewer
+# (Papers, Evince) is not part of Luma. Run as root inside a
 # disposable VM installed from the candidate image or from a nightly medium.
 # Needs no display and no network. Prints one JSON line per check ({"check",
 # "result": "pass"|"fail"|"skip", "detail"}) and exits 1 if any check failed.
@@ -29,6 +32,8 @@ emit() {
   return 0
 }
 cleanup() {
+  loginctl disable-linger "$fresh" >/dev/null 2>&1 || true
+  loginctl terminate-user "$fresh" >/dev/null 2>&1 || true
   for u in "$fresh" "$migrated"; do pkill -KILL -u "$u" >/dev/null 2>&1 || true; done
   sleep 1
   for u in "$fresh" "$migrated"; do userdel -r "$u" >/dev/null 2>&1 || true; done
@@ -143,5 +148,105 @@ if [ -e "$home/.local/state/luma/default-apps-migration/viewer-1" ]; then
 else
   emit migration-runs-once fail 'no stamp after the migration ran'
 fi
+
+# 5. Files opened through the OpenURI portal, as Filer opens them, go to their
+#    default without the chooser: a screenshot (PNG), a PDF and a text file in
+#    Viewer, and a PNG in the application the person picked with "Always
+#    Open" (recorded as their default, the way the chooser records it). Each
+#    open runs a new portal, as a new login does. The image ships dbus-broker
+#    and no dbus-run-session, so the portal joins the fresh account's own
+#    session bus, which its lingering user manager starts. The portal's debug
+#    log says whether it skipped the chooser; nothing has a display here, so
+#    the launched application exits.
+uid=$(id -u "$fresh")
+home=$(getent passwd "$fresh" | cut -d: -f6)
+loginctl enable-linger "$fresh" >/dev/null 2>&1 || true
+for _ in $(seq 30); do [ -S "/run/user/$uid/bus" ] && break; sleep 1; done
+if [ ! -S "/run/user/$uid/bus" ]; then
+  emit portal-opens-in-default fail "no session bus for $fresh"
+  exit "$failed"
+fi
+python3 - "$home" <<'PY'
+import struct, sys, zlib
+home = sys.argv[1]
+chunk = lambda kind, body: (struct.pack(">I", len(body)) + kind + body
+                            + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF))
+row = b"\0" + b"".join(bytes((x * 16, 80, 160)) for x in range(16))
+open(f"{home}/Screenshot.png", "wb").write(
+    b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 16, 1, 8, 2, 0, 0, 0))
+    + chunk(b"IDAT", zlib.compress(row)) + chunk(b"IEND", b""))
+objects = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+           b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>"]
+pdf, offsets = b"%PDF-1.4\n", []
+for number, body in enumerate(objects, 1):
+    offsets.append(len(pdf))
+    pdf += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+xref = len(pdf)
+pdf += b"xref\n0 4\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offsets)
+pdf += b"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref
+open(f"{home}/Document.pdf", "wb").write(pdf)
+open(f"{home}/Notes.txt", "w").write("Luma gate\n")
+PY
+chown "$fresh:" "$home/Screenshot.png" "$home/Document.pdf" "$home/Notes.txt"
+cat >"$work/open.py" <<'PY'
+import os, sys, gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+fd = os.open(sys.argv[1], os.O_RDONLY | os.O_CLOEXEC)
+bus.call_with_unix_fd_list_sync(
+    "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+    "org.freedesktop.portal.OpenURI", "OpenFile",
+    GLib.Variant("(sha{sv})", ("", 0, {})), None, Gio.DBusCallFlags.NONE, 20000,
+    Gio.UnixFDList.new_from_array([fd]), None)
+PY
+cat >"$work/probe.sh" <<'SH'
+#!/bin/bash
+# probe.sh FILE LOG: OpenFile through a new portal on this session bus.
+/usr/libexec/xdg-desktop-portal --verbose --replace >"$2" 2>&1 &
+portal=$!
+for _ in $(seq 150); do
+  gdbus introspect --session --dest org.freedesktop.portal.Desktop \
+    --object-path /org/freedesktop/portal/desktop 2>/dev/null |
+    grep -q 'interface org.freedesktop.portal.OpenURI ' && break
+  sleep 0.2
+done
+python3 -B "$(dirname "$0")/open.py" "$1" >>"$2" 2>&1
+for _ in $(seq 50); do
+  grep -q 'Skipping app chooser\|Opening app chooser' "$2" && break
+  sleep 0.2
+done
+kill "$portal" 2>/dev/null
+wait "$portal" 2>/dev/null
+SH
+chmod 0755 "$work/probe.sh" "$work/open.py"
+chown -R "$fresh:" "$work"
+portal_open() {
+  # portal_open FILE NAME: the portal's log for one OpenFile, in $work/NAME.log.
+  session_env "$fresh"
+  (cd /tmp && runuser -u "$fresh" -- env -i "${env_lines[@]}" \
+    "XDG_RUNTIME_DIR=/run/user/$uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus" \
+    timeout 60 "$work/probe.sh" "$1" "$work/$2.log" >/dev/null 2>&1)
+}
+opens_directly() {
+  # opens_directly CHECK FILE DESKTOP_ID: OpenFile skips the chooser and launches DESKTOP_ID.
+  local log="$work/$1.log" app=${3%.desktop}
+  portal_open "$2" "$1"
+  if grep -q 'Skipping app chooser' "$log" && grep -q "Launching $app " "$log" &&
+     ! grep -q 'Opening app chooser' "$log"; then
+    emit "$1" pass "$(grep -o 'Allowing to skip app chooser: [a-z ]*' "$log" | head -n 1); launched $app"
+  else
+    emit "$1" fail "$(grep -i 'chooser\|default\|launching\|content type\|error' "$log" | tail -n 6)"
+  fi
+}
+opens_directly portal-opens-png-in-viewer "$home/Screenshot.png" "$viewer"
+opens_directly portal-opens-pdf-in-viewer "$home/Document.pdf" "$viewer"
+opens_directly portal-opens-text-in-viewer "$home/Notes.txt" "$viewer"
+install -d -o "$fresh" -g "$fresh" "$home/.local/share/applications"
+printf '[Desktop Entry]\nType=Application\nName=Gate Painter\nExec=true %%f\nCategories=Graphics;\nMimeType=image/png;\n' \
+  >"$home/.local/share/applications/luma-gate-painter.desktop"
+chown "$fresh:" "$home/.local/share/applications/luma-gate-painter.desktop"
+as_session "$fresh" gio mime image/png luma-gate-painter.desktop >/dev/null 2>&1
+opens_directly portal-keeps-always-open-choice "$home/Screenshot.png" luma-gate-painter.desktop
 
 exit "$failed"

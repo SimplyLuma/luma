@@ -1,6 +1,6 @@
 Name:           luma-desktop-launcher-policy
 Version:        0.1.0
-Release:        30%{?dist}
+Release:        31%{?dist}
 Summary:        Luma desktop launcher visibility policy
 License:        Apache-2.0
 BuildArch:      noarch
@@ -98,8 +98,13 @@ assert 'BackgroundModeEnabled' not in d, d; \
 assert d['MemorySaverModeSavings'] == 1, d" "$f"
 done
 test ! -e %{buildroot}%{_sysconfdir}/chromium/policies/managed/luma-energy.json
-# Every PDF type goes to Viewer, and the Document Viewer override is gone.
-for type in application/pdf application/x-bzpdf application/x-gzpdf application/x-xzpdf application/x-ext-pdf; do
+# Every PDF, image, text and model type Viewer shows goes to Viewer, and the
+# Document Viewer override is gone. The portal opens a file in a default named
+# here without the application chooser.
+for type in application/pdf application/x-bzpdf application/x-gzpdf application/x-xzpdf application/x-ext-pdf \
+    image/png image/jpeg image/gif image/bmp image/tiff image/webp image/avif image/heif image/svg+xml \
+    text/plain text/markdown text/csv text/tab-separated-values application/json application/xml \
+    text/x-python text/x-csrc text/x-chdr text/x-c++src model/obj model/stl model/x.stl-ascii model/x.stl-binary; do
   grep -Fxq "$type=org.projectluma.Viewer.desktop;" %{buildroot}%{_sysconfdir}/xdg/gnome-mimeapps.list
 done
 test ! -e %{buildroot}%{_datadir}/luma/desktop-overrides/applications/org.gnome.Papers.desktop
@@ -167,6 +172,11 @@ rm -rf "$check"
 %{_userunitdir}/default.target.wants/luma-default-apps-migration.service
 
 %changelog
+* Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-31
+- Text, data, source code and 3D model files default to
+  org.projectluma.Viewer. Luma's xdg-desktop-portal opens a file in the
+  default this list names without the application chooser.
+
 * Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-30
 - Package files (RPM, DEB, AppImage, Flatpak, Snap, APK, Android package
   sets, Windows programs) default to io.luma.Valet and open in it without
