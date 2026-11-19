@@ -29,5 +29,15 @@ from the SRPM pinned in `config/desktop/inputs.env` (desktop-components group
   loop; a file manager started by ShowItems that reads the Settings portal
   during startup then could not answer, and Show in Files took the full
   25 s D-Bus timeout. Drop when the SRPM is 1.23 or later.
+- `0003-open-uri-open-files-in-their-chosen-default.patch`: outside
+  open-directly.list, a file still opened the chooser even when its type has
+  a default, so a screenshot or PDF double-clicked in Filer asked on a fresh
+  install, and "Always Open" in luma-portal's chooser (which records the
+  choice with `g_app_info_set_as_default_for_type()`) never took effect.
+  While the type's default is named in `[Default Applications]` of a
+  mimeapps list in `$XDG_CONFIG_HOME` or a system configuration directory
+  (`/etc/xdg/gnome-mimeapps.list` from luma-desktop-launcher-policy), the
+  file opens in it directly. GIO's fallback default and lists in data
+  directories still ask; `ask` and always-ask still win. Luma-specific.
 - `0000-luma-fedora-spec.patch`: adds the patches, the `luma.N` release and a
   `%check` running the upstream OpenURI integration tests.

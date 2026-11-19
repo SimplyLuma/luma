@@ -74,6 +74,7 @@ class ValetOpensPackagesTest(unittest.TestCase):
         spec = (ROOT / 'patches/xdg-desktop-portal/0000-luma-fedora-spec.patch').read_text()
         self.assertIn('+Patch1001: 0001-open-uri-open-package-files-in-the-system-installer.patch', spec)
         self.assertIn('+Patch1002: 0002-request-run-disconnect-off-the-main-loop.patch', spec)
+        self.assertIn('+Patch1003: 0003-open-uri-open-files-in-their-chosen-default.patch', spec)
         inputs = dict(line.split('=', 1) for line in
                       (ROOT / 'config/desktop/inputs.env').read_text().splitlines()
                       if '=' in line and not line.startswith('#'))
