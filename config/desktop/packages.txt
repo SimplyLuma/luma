@@ -24,7 +24,7 @@ gnome-shell-extension-tiling-shell-17.3-1.luma.28.fc44.noarch
 luma-calculator-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
 luma-disks-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
 luma-maps-0.1.0-1.luma.7.creator20261005.1.fc44.noarch
-luma-terminal-0.1.0-1.luma.10.fc44.noarch
+luma-terminal-0.1.0-1.luma.11.fc44.noarch
 mutter-50.4-1.luma.21.fc44.x86_64
 mutter-common-50.4-1.luma.21.fc44.noarch
 ibus-1.5.34-4.luma.2.fc44.x86_64
@@ -33,8 +33,8 @@ ibus-gtk4-1.5.34-4.luma.2.fc44.x86_64
 ibus-libs-1.5.34-4.luma.2.fc44.x86_64
 ibus-setup-1.5.34-4.luma.2.fc44.noarch
 python3-ibus-1.5.34-4.luma.2.fc44.x86_64
-nautilus-50.2.2-1.luma.77.fc44.x86_64
-nautilus-extensions-50.2.2-1.luma.77.fc44.x86_64
+nautilus-50.2.2-1.luma.78.fc44.x86_64
+nautilus-extensions-50.2.2-1.luma.78.fc44.x86_64
 
 # Toolkit design system (replace Fedora base packages)
 gtk3-3.24.52-2.luma.10.fc44.x86_64
