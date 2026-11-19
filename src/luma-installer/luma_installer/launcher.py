@@ -38,7 +38,8 @@ def _runtime_authority(runtime: Path) -> Path | None:
     return None
 
 
-def _start_bus_proxy(runtime: Path, identity: str) -> tuple[subprocess.Popen[bytes] | None, Path | None]:
+def _start_bus_proxy(runtime: Path, identity: str,
+                     own: list[str] | None = None) -> tuple[subprocess.Popen[bytes] | None, Path | None]:
     address = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
     if not address:
         return None, None
@@ -54,6 +55,7 @@ def _start_bus_proxy(runtime: Path, identity: str) -> tuple[subprocess.Popen[byt
             "--talk=org.a11y.Bus",
             runtime_policy.SECRET_SERVICE,
             "--own=org.mpris.MediaPlayer2.*",
+            *(own or []),
         ], close_fds=True)
     except OSError as error:
         raise InstallerError(f"The application portal boundary could not start: {error}") from error
@@ -226,7 +228,7 @@ def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> in
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
     capsule_runtime = Path(f"/run/user/{uid}")
     data = _private_home(record)
-    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]))
+    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]), runtime_policy.own_bus_arguments(record))
     zone = host_time_zone()
     arguments = ["podman", "run", "--rm", "--name", instance, "--network=host", "--userns=keep-id", *runtime_policy.launch_arguments(record),
                  *_time_zone_arguments(zone),
@@ -399,7 +401,7 @@ def _launch_appimage(record: dict[str, object], extra: list[str] | None = None) 
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
     capsule_runtime = Path(f"/run/user/{uid}")
     data = _private_home(record)
-    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]))
+    proxy, bus_socket = _start_bus_proxy(runtime, str(record["sha256"]), runtime_policy.own_bus_arguments(record))
     arguments = [
         "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--share-net",
         "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc", "--ro-bind", "/sys", "/sys",

@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.98%{?dist}
+Release:        1.luma.99%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -314,6 +314,20 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.99
+- An AppImage opened from Filer or a browser runs at once, with no Valet
+  window: luma-install FILE starts it before any interface is loaded
+  (appimage_run). It is unpacked into the private copy and started in the
+  AppImage sandbox without being added to Applications; its launcher is
+  hidden (NoDisplay, no file types) so the window keeps its name and icon.
+  Once it is running, one notification offers Keep in Apps. The same file
+  opened again starts the copy already there.
+- Package capsules may own their own session bus name: the launcher's
+  desktop ID, AppStream ID and window class, and the names under them, as
+  Flatpak grants. The filtered bus denied RequestName (ServiceUnknown), so
+  GApplication failed to register and the application exited before its
+  first window. Session service names are never granted.
+
 * Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.98
 - Package capsules run in the host's time zone instead of the image's UTC:
   podman run --tz=<host zone> with the host's zone database mounted

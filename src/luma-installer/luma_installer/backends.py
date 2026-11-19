@@ -74,7 +74,7 @@ def _find_squashfs_offset(path: Path) -> int:
     return offset
 
 
-def _install_appimage(report: PackageReport) -> str:
+def _install_appimage(report: PackageReport, keep: bool = True) -> str:
     root = Path.home() / ".local/share/luma/appimages" / report.sha256
     payload = root / "AppDir"
     partial = root / ".AppDir.partial"
@@ -116,12 +116,40 @@ def _install_appimage(report: PackageReport) -> str:
     application_id = safe_id(f"appimage-{name}-{report.sha256[:12]}")
     exported_icon = _export_appimage_icon(payload, icon, application_id)
     write_record(application_id, {
-        "format": "appimage", "name": name, "sha256": report.sha256,
+        "format": "appimage", "name": name, "comment": comment, "sha256": report.sha256,
         "root": str(payload), "command": "/app/AppRun", "icon": exported_icon,
         "mime_types": mime_types, "launcher_metadata_version": LAUNCHER_METADATA_VERSION,
+        "kept": keep, "source": str(report.path),
     })
-    write_launcher(application_id, name, comment, exported_icon, mime_types=mime_types)
+    write_launcher(application_id, name, comment, exported_icon, mime_types=mime_types, hidden=not keep)
     return name
+
+
+def prepare_appimage(report: PackageReport) -> dict[str, object]:
+    """Unpack an AppImage to run it now, without adding it to Applications.
+
+    An AppImage already kept in Applications stays there.
+    """
+    from .desktop import iter_records
+    same = [r for r in iter_records() if r.get("format") == "appimage" and r.get("sha256") == report.sha256]
+    with transaction_lock(report.sha256):
+        if fingerprint(report.path)[1] != report.sha256:
+            raise InstallerError("The AppImage changed while it was opening. Open it again.")
+        _install_appimage(report, keep=any(r.get("kept", True) for r in same))
+    for record in reversed(iter_records()):
+        if record.get("format") == "appimage" and record.get("sha256") == report.sha256:
+            return record
+    raise InstallerError("The AppImage finished unpacking without an application record.")
+
+
+def keep_appimage(record: dict[str, object]) -> dict[str, object]:
+    """Add an AppImage that has run from its file to Applications."""
+    application_id = safe_id(str(record["application_id"]))
+    write_launcher(application_id, str(record.get("name") or application_id), str(record.get("comment") or ""),
+                   str(record.get("icon") or "application-x-executable"), mime_types=_stored_mime_types(record))
+    updated = {**record, "kept": True}
+    write_record(application_id, updated)
+    return updated
 
 
 def _elf_files(payload: Path, prefix: str) -> str:
@@ -823,7 +851,8 @@ def adopt_own_schemes(record: dict[str, object]) -> dict[str, object]:
         return record
     write_launcher(application_id, entry.get("Name", str(record.get("name", ""))), entry.get("Comment", ""),
                    entry.get("Icon", str(record.get("icon", ""))), entry.get("StartupWMClass", ""),
-                   entry.get("Terminal", "false").strip().lower() == "true", merged)
+                   entry.get("Terminal", "false").strip().lower() == "true", merged,
+                   hidden=record.get("kept") is False)
     updated = {**record, "mime_types": merged}
     write_record(application_id, updated)
     return updated
@@ -878,7 +907,8 @@ def refresh_folder_launcher(record: dict[str, object]) -> dict[str, object]:
         return record
     write_launcher(application_id, entry.get("Name", str(record.get("name", ""))), entry.get("Comment", ""),
                    entry.get("Icon", str(record.get("icon", ""))), entry.get("StartupWMClass", ""),
-                   entry.get("Terminal", "false").strip().lower() == "true", mime_types)
+                   entry.get("Terminal", "false").strip().lower() == "true", mime_types,
+                   hidden=record.get("kept") is False)
     updated = {**record, "mime_types": mime_types, "launcher_metadata_version": LAUNCHER_METADATA_VERSION}
     write_record(application_id, updated)
     return updated

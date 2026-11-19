@@ -250,6 +250,10 @@ class InstallerWindow(AppWindow):
         if record is None:
             self.primary_clicked()
             return
+        if record.get('kept') is False:
+            # Chosen in Valet itself, so it is added to Applications too.
+            from .backends import keep_appimage
+            record = keep_appimage(record)
         self.record, self.done = record, True
         self.card.set_phase('done', 'Open', '', 1)
         self.update_foot()
