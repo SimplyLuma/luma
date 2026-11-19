@@ -6,5 +6,7 @@ Documentation=man:hwclock(8)
 Type=oneshot
 # This device exposes no writable RTC (hwclock -w fails with ENODEV), so the
 # clock is lost on every power cycle and the system comes back weeks in the
-# past. Keep a timestamp on disk instead and restore it early next boot.
-ExecStart=/bin/sh -c 'date -u +%%s > /var/lib/luma/clock'
+# past. The PMIC RTC can still be read and keeps counting while the phone is
+# off, so keep a timestamp and the offset from the RTC on disk, as Android and
+# postmarketOS (swclock-offset) do, and restore them early next boot.
+ExecStart=/bin/sh -c 'now=$(date -u +%%s); echo "$now" > /var/lib/luma/clock; rtc=$(cat /sys/class/rtc/rtc0/since_epoch 2>/dev/null) && echo $((now - rtc)) > /var/lib/luma/rtc-offset || true'
