@@ -25,7 +25,7 @@
 
 Name:           kernel-modules-luma-fp6
 Version:        7.1.2
-Release:        1.luma.ims1.gmu2.selinux1.7%{?dist}
+Release:        1.luma.ims1.gmu2.selinux1.8%{?dist}
 Summary:        Kernel modules for the Fairphone 6 kernel
 License:        GPL-2.0-only
 URL:            https://github.com/SimplyLuma/linux/tree/luma-fp6-alpha1-7.1.2-luma-fp-ims1.gmu2.selinux1
@@ -56,8 +56,15 @@ install -D -m 0644 usr/share/luma/android/hardware/fairphone-fp6-kernel-notes.d/
 
 install -d %{buildroot}%{_prefix}/lib/luma/device-boot
 cp -a usr/lib/luma/device-boot/fairphone-fp6 %{buildroot}%{_prefix}/lib/luma/device-boot/
+# cp -a and install -d keep the build host's setgid bits and ACL masks; ship 0755/0644
+# (00755: GNU chmod keeps a directory's setgid bit for 0755).
+find %{buildroot} -type d -exec chmod 00755 {} +
+find %{buildroot} -type f -exec chmod u+rw,go-w,go+rX {} +
 
 %check
+# Users read the modules and the admission directory (luma-android runs unprivileged).
+test -z "$(find %{buildroot} -type d ! -perm 0755)"
+test -z "$(find %{buildroot} -type f ! -perm -0444)"
 # The boot image and its declaration agree, and it writes only boot_a/boot_b.
 d=%{buildroot}%{_prefix}/lib/luma/device-boot/fairphone-fp6
 python3 - $d <<'PY'
@@ -103,6 +110,11 @@ done
 %{_prefix}/lib/luma/device-boot/fairphone-fp6/
 
 %changelog
+* Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 7.1.2-1.luma.ims1.gmu2.selinux1.8
+- Ship directories 0755 and files world-readable. selinux1.7 kept the build
+  host's 2750/0770 modes, so luma-android could not read the GPU admission
+  directory and Android fell back to software rendering.
+
 * Wed Nov 18 2026 Malak Sedarous <18029995+malaksedarous@users.noreply.github.com> - 7.1.2-1.luma.ims1.gmu2.selinux1.7
 - Rebuilt with NFT_FIB_INET and the ten conntrack helpers firewalld ships
   (config/kernel/fp6.fragment), so firewalld loads its ruleset.
