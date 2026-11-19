@@ -203,10 +203,10 @@ index 000000000..e37df0b31
 +                                                     MetaDataDragResult               result);
 diff --git a/src/wayland/meta-data-drag.c b/src/wayland/meta-data-drag.c
 new file mode 100644
-index 000000000..6a3d75569
+index 000000000..d1920efde
 --- /dev/null
 +++ b/src/wayland/meta-data-drag.c
-@@ -0,0 +1,928 @@
+@@ -0,0 +1,941 @@
 +/*
 + * Copyright (C) 2026 Project Luma
 + *
@@ -434,12 +434,20 @@ index 000000000..6a3d75569
 +/* The one way out of a drag, however it ends: the source stops being the
 + * drag source and the DND selection, content requests still waiting are
 + * closed, and the reference the drag held on itself while it ran goes. */
++static gboolean
++release_source (gpointer user_data)
++{
++  g_object_unref (user_data);
++
++  return G_SOURCE_REMOVE;
++}
++
 +static void
 +meta_data_drag_finish (MetaDataDrag *drag,
 +                       gboolean      success)
 +{
 +  MetaWaylandDataDevice *data_device;
-+  g_autoptr (MetaWaylandDataSource) source = NULL;
++  MetaWaylandDataSource *source;
 +
 +  if (drag->state == DRAG_STATE_DONE || drag->state == DRAG_STATE_IDLE)
 +    return;
@@ -456,8 +464,13 @@ index 000000000..6a3d75569
 +      meta_wayland_data_device_unset_dnd_selection (data_device);
 +    }
 +
++  /* The source goes once whatever is ending is done with it: this may run
++   * inside the drag grab's own teardown, which holds a weak reference. */
 +  if (source)
-+    META_WAYLAND_DATA_SOURCE_COMPOSITOR (source)->drag = NULL;
++    {
++      META_WAYLAND_DATA_SOURCE_COMPOSITOR (source)->drag = NULL;
++      g_idle_add (release_source, source);
++    }
 +
 +  g_list_free_full (g_steal_pointer (&drag->pending),
 +                    (GDestroyNotify) pending_send_free);

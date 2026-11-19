@@ -28,7 +28,7 @@ transparent and lets the pointer through; a drop closes an attached
 surface, a cancel brings it back.
 ---
 diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
-index 11087f3..b2b64ce 100644
+index 11087f3..caf25ea 100644
 --- a/data/theme/luma-shelf.css
 +++ b/data/theme/luma-shelf.css
 @@ -2552,6 +2552,28 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
@@ -60,6 +60,17 @@ index 11087f3..b2b64ce 100644
  .luma-dockf-cell-name {
    font-family: Figtree, sans-serif;
    font-size: 13px;
+@@ -2620,6 +2642,10 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-dockf-rail:drop .luma-dockf-placeholder {
+   border-color: rgba(128, 168, 210, 0.85);
+   background-color: rgba(128, 168, 210, 0.16); }
++/* A folder tile taking dropped files in. */
++.luma-dockf-tile:drop {
++  border-radius: 12px;
++  background-color: rgba(128, 168, 210, 0.30); }
+ 
+ /* Studio Desktop, luma preset: forty pixel artwork in sixty-eight pixel islands. */
+ .luma-shelf-material, .luma-shelf-shadow, .luma-shelf-stroke { border-radius: 16px; }
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index a2441d4..197ba45 100644
 --- a/js/js-resources.gresource.xml
