@@ -153,7 +153,7 @@ index 0000000..948257d
 +
 +const CcLumaAdapter cc_luma_adapter_openh264 = { ADAPTER, pages, openh264_start, openh264_write, openh264_stop };
 diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
-index 9ea2686..8bc8b93 100644
+index 9ea2686..3f4a66d 100644
 --- a/shell/cc-luma-live.c
 +++ b/shell/cc-luma-live.c
 @@ -14,7 +14,8 @@ extern const CcLumaAdapter cc_luma_adapter_network, cc_luma_adapter_airplane,
@@ -175,12 +175,13 @@ index 9ea2686..8bc8b93 100644
    &cc_luma_adapter_tv, &cc_luma_adapter_tv_account,
    NULL
  };
-@@ -206,6 +209,9 @@ cc_luma_live_model_new (GError **error)
+@@ -206,6 +209,10 @@ cc_luma_live_model_new (GError **error)
    /* Which display the rows show is the page's own choice (VM run
     * 20260930T214237-dp3-writes: a tile click stays on this page). */
    cc_luma_fixture_verify_key (model, "dsel");
-+  /* OpenH264 off and on through pkexec luma-openh264 (VM run VMRUNID): the
-+   * file and the Flatpak extension follow, kept on reopening. */
++  /* OpenH264 off and on through pkexec luma-openh264 (VM 20 Nov, run
++   * 20261120T1537-openh264-settings, Settings in the session): Cisco's file
++   * removed and downloaded again, kept on reopening. */
 +  cc_luma_fixture_verify_key (model, "h264");
    /* Join and mirror with two displays: Mirror then Revert Settings goes back
     * (VM run 20260930T230328-dp13-heads2-mirror), Mirror kept and kept on
