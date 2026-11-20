@@ -2,23 +2,20 @@
   "schema": "org.projectluma.os-app-baseline-lock/v1",
   "baselines": {
     "aarch64": {
-      "manifest_sha256": "02aa61bd0d741e34f98001a76a5ffde538e9382634287372ac698d765b3ccdda"
+      "manifest_sha256": "ef90f81ed767b3c79c728bfc9d0e68a256e2a5b5f9b57f0f7e877ed24fa94a62"
     },
     "x86_64": {
-      "manifest_sha256": "eb1ba186ea695f1a5dddb8a1926dcc90d0ffd6702521452cd7c93259574c9e4d"
+      "manifest_sha256": "a7803a55c6727183164450ae8b903e247b51202acd9c42f019581da56a20e40e"
     }
   },
   "applications": {
     "com.rhyme.viola": {
       "commits": {
-        "aarch64": "150f1a6556f8073cdb4fe292e20a502bd0d495cacad8902630cb1141317b8862",
-        "x86_64": "1750a927ce9c394249e56f41d2a3426e60e00cc1e4e611936d0bc5b4aa17f4f8"
+        "aarch64": "0b8cec2accb3103ea89d4a37854b824ce6ab8f085b3d24a6d4ed59ac0a7f6c7c",
+        "x86_64": "7f770b8250fe728259dd2ed6041b9dc25145bcf643ca39f9cb4edc2b22c3a3da"
       },
-      "pending": {
-        "reason": "Viola is rebuilt and published by its own Depot pipeline; #369 (native44) is not in the 2026-11-09 bundle",
-        "expires": "2026-11-23"
-      },
-      "source_sha256": null
+      "source_sha256": "f8d6f0448ca3b4c3001c969b40a666de65f1360f92db465e414045eee68553ae",
+      "version": "0.2.10.36"
     },
     "io.luma.Monitor": {
       "commits": {
