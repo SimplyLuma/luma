@@ -472,7 +472,9 @@ class Dock(Gtk.Overlay):
         from .content_controls import TextButton
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        keys = Gtk.Box()
+        # The other tiles' keys wrap onto a second line rather than widen a narrow window.
+        keys = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=False, max_children_per_line=6,
+                           column_spacing=8, row_spacing=8)
         keys.add_css_class("lumaui-dock-keys")
         for key, tile in self.tiles.items():
             if key == self.main_key:

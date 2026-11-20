@@ -2452,7 +2452,8 @@ box.lumaui-dock-target {
   border-radius: var(--lumaui-inset-radius);
   background: alpha(@luma_accent, 0.12); box-shadow: inset 0 0 0 2px alpha(@luma_accent, 0.7);
 }
-box.lumaui-dock-keys { padding-bottom: var(--lumaui-dock-gap); border-spacing: var(--lumaui-dock-gap); }
+flowbox.lumaui-dock-keys { padding-bottom: var(--lumaui-dock-gap); }
+flowbox.lumaui-dock-keys > flowboxchild { padding: 0; }
 box.lumaui-dock-drawer box.lumaui-dock-tile { background: none; box-shadow: none; min-height: 320px; }
 box.luma-navigation-pane { min-height: var(--lumaui-dock-min-size); }
 /* The sidebar's seam shows itself at rest too: the pane is a part of the sidebar a person resizes. */
