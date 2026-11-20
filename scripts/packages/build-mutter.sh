@@ -12,6 +12,9 @@ srpm_name=mutter-50.4-1.fc44.src.rpm
 srpm_url=https://kojipkgs.fedoraproject.org/packages/mutter/50.4/1.fc44/src/mutter-50.4-1.fc44.src.rpm
 srpm_sha256=e11d5b0cb6d7736b10bbbdc6867037dc2a32783e0576f38a11563f1a47b9d3e2
 protocol_sha256=e463b7863c97d7be05489b52b15cd0b3a5d8290b51340f62023b47d03b4217e3
+# Luma's own protocol; the developer platform builds its client from the same
+# file (src/luma-platform/ui/meson.build).
+shape_protocol_sha256=a91d4786df709b563614c127ded9e1fe25fa3c515bf06e72836603c46c94eebe
 
 for tool in cpio curl git mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
@@ -49,6 +52,11 @@ printf '%s  %s\n' "$protocol_sha256" "$protocol" | sha256sum --check --status ||
   printf 'error: standardized background-effect protocol checksum mismatch\n' >&2
   exit 1
 }
+shape_protocol="$repo_root/src/luma-platform/protocols/luma-window-shape-v1.xml"
+printf '%s  %s\n' "$shape_protocol_sha256" "$shape_protocol" | sha256sum --check --status || {
+  printf 'error: luma-window-shape-v1 protocol checksum mismatch\n' >&2
+  exit 1
+}
 
 work_dir=$(mktemp -d "$output_dir/work.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT INT TERM
@@ -63,6 +71,7 @@ rpm2cpio "$srpm" >"$work_dir/mutter.srpm.cpio"
 mv "$extract_dir/mutter.spec" "$rpmbuild_dir/SPECS/"
 find "$extract_dir" -maxdepth 1 -type f -exec mv -t "$rpmbuild_dir/SOURCES" {} +
 install -m 0644 "$protocol" "$rpmbuild_dir/SOURCES/ext-background-effect-v1.xml"
+install -m 0644 "$shape_protocol" "$rpmbuild_dir/SOURCES/luma-window-shape-v1.xml"
 install -m 0644 "$repo_root/tests/mutter/default-monitor-scale.py" "$rpmbuild_dir/SOURCES/"
 for patch in "$repo_root"/patches/mutter/00[0-9][0-9]-*.patch; do
   install -m 0644 "$patch" "$rpmbuild_dir/SOURCES/"
@@ -128,6 +137,10 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/mutter.spec" \
       grep -aFq "input devices wait for its activation" \
         ./usr/lib64/libmutter-18.so.0.0.0
       grep -aFq "meta_data_drag_begin" \
+        ./usr/lib64/libmutter-18.so.0.0.0
+      grep -aFq "luma_window_shape_manager_v1" \
+        ./usr/lib64/libmutter-18.so.0.0.0
+      grep -aFq "keeps its content at %d:%d" \
         ./usr/lib64/libmutter-18.so.0.0.0
       if grep -aFq "Dropped %u key event" ./usr/lib64/libmutter-18.so.0.0.0; then
         echo "error: this Mutter still drops keys typed during a focus handover" >&2

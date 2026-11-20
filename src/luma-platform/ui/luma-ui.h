@@ -20,6 +20,7 @@
 #include "luma-color-well.h"
 #include "luma-context.h"
 #include "luma-surface-backdrop.h"
+#include "luma-window-shape.h"
 #include "luma-save-sheet.h"
 
 /* LumaUI parts (ADR-052): the C twins of luma_appkit's structure_*, action_*

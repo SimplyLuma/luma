@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.131%{?dist}
+Release:        1.luma.132%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -171,7 +171,7 @@ python3 - <<'PY_CHECK'
 import json
 from pathlib import Path
 rows = [json.loads(line) for line in Path("%{_vpath_builddir}/meson-logs/testlog.json").read_text().splitlines() if line.strip()]
-expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch", "first-frame-width", "tv-island")}
+expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "window-shape", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch", "first-frame-width", "tv-island")}
 names = {row["name"] for row in rows}
 # Platform checks, plus LumaUI-1's own part tests, token check and C/Python parity.
 lumaui = {name for name in names if name.startswith("luma-developer-platform:lumaui-")}
@@ -376,6 +376,12 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.132
+- luma_window_set_aspect_ratio(), luma_window_set_aspect_content() and
+  luma_window_get_aspect_ratio_enforced(): a window keeps its content at a
+  fixed ratio through Luma's luma_window_shape_v1 protocol, live while it is
+  resized; elsewhere a no-op that returns FALSE. C API level 10.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.131
 - Dock and DockTile: an island tiled with insets (concentric with the
   island), seams that resize, tiles dragged by their headers onto another

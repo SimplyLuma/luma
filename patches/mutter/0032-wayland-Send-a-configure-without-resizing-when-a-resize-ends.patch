@@ -1,0 +1,66 @@
+From 251d3517fd156867344774255d2321307eaa0093 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Thu, 19 Nov 2026 22:52:23 -0500
+Subject: [PATCH] wayland: Send a configure without resizing when a resize ends
+
+---
+ src/compositor/meta-window-drag.c    | 9 +++++++++
+ src/compositor/meta-window-drag.h    | 2 ++
+ src/wayland/meta-wayland-xdg-shell.c | 3 ++-
+ 3 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
+index 747148b..e145170 100644
+--- a/src/compositor/meta-window-drag.c
++++ b/src/compositor/meta-window-drag.c
+@@ -55,6 +55,7 @@ struct _MetaWindowDrag {
+   MetaWindow *effective_grab_window;
+   MetaGrabOp grab_op;
+   ClutterGrab *grab;
++  gboolean is_ending;
+ 
+   graphene_point_t pos_hint;
+ 
+@@ -391,6 +392,8 @@ meta_window_drag_end (MetaWindowDrag *window_drag)
+ 
+   g_assert (grab_window != NULL);
+ 
++  window_drag->is_ending = TRUE;
++
+   /* Clear out the edge cache */
+   meta_window_drag_update_edges (window_drag);
+ 
+@@ -2146,3 +2149,9 @@ meta_window_drag_destroy (MetaWindowDrag *window_drag)
+   g_object_run_dispose (G_OBJECT (window_drag));
+   g_object_unref (window_drag);
+ }
++
++gboolean
++meta_window_drag_is_ending (MetaWindowDrag *window_drag)
++{
++  return window_drag->is_ending;
++}
+diff --git a/src/compositor/meta-window-drag.h b/src/compositor/meta-window-drag.h
+index 254ec29..e0a39bb 100644
+--- a/src/compositor/meta-window-drag.h
++++ b/src/compositor/meta-window-drag.h
+@@ -73,3 +73,5 @@ void meta_window_drag_calculate_window_size (MetaWindowDrag *window_drag,
+                                              int            *out_height);
+ 
+ void meta_window_drag_destroy (MetaWindowDrag *window_drag);
++
++gboolean meta_window_drag_is_ending (MetaWindowDrag *window_drag);
+diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
+index d91b08a..026ae2a 100644
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -723,7 +723,8 @@ fill_states (MetaWaylandXdgToplevel         *xdg_toplevel,
+   if (meta_window_is_fullscreen (window))
+     add_state_value (states, XDG_TOPLEVEL_STATE_FULLSCREEN);
+   if (window_drag &&
+-      meta_grab_op_is_resizing (meta_window_drag_get_grab_op (window_drag)))
++      meta_grab_op_is_resizing (meta_window_drag_get_grab_op (window_drag)) &&
++      !meta_window_drag_is_ending (window_drag))
+     add_state_value (states, XDG_TOPLEVEL_STATE_RESIZING);
+   if (meta_window_appears_focused (window))
+     add_state_value (states, XDG_TOPLEVEL_STATE_ACTIVATED);

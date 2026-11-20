@@ -96,6 +96,17 @@ test(
   env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'],
 )
 
+window_shape_test = executable(
+  'test-luma-window-shape',
+  'test-window-shape.c',
+  dependencies: ui_dep,
+)
+test(
+  'window-shape',
+  window_shape_test,
+  env: ['G_DEBUG=fatal-criticals'],
+)
+
 # LumaUI parts (ADR-052): a part's C test joins once it exists, and the parity
 # test compares every C part's widget tree with its Python twin's.
 fs = import('fs')
