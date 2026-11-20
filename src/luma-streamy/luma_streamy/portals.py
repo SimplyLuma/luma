@@ -31,7 +31,7 @@ PERSIST_UNTIL_REVOKED = 2
 class Capture:
     """An open capture: the PipeWire fd, the node to target, and what the portal said."""
 
-    fd: int
+    fd: int  # unused once open: each stream asks remote() for its own connection
     node: str | None
     size: tuple[int, int] | None
     restore_token: str | None
@@ -64,7 +64,7 @@ def camera_nodes(fd: int) -> list[tuple[str, str, tuple[int, int] | None]]:
     if factory is None:
         return []
     provider = factory.get()
-    provider.set_property("fd", os.dup(fd))
+    provider.set_property("fd", fd)  # the provider owns and closes it
     if not provider.start():
         return []
     try:
@@ -194,7 +194,9 @@ class Portals:
             except GLib.Error as error:
                 failed(error.message)
                 return
-            capture = Capture(fd, node, size, results.get("restore_token"), session)
+            os.close(fd)  # each stream opens its own connection to the session's remote
+            capture = Capture(-1, node, size, results.get("restore_token"), session)
+            capture.remote = lambda: self._open_remote(SCREENCAST, [GLib.Variant("o", session)])
             self.captures[widget_id] = capture
             done(capture)
 
@@ -219,18 +221,19 @@ class Portals:
                 return
 
             # The remote shows only the cameras Streamy may use; its own registry names
-            # them. Asking it takes a moment, so it happens off the window's thread.
+            # them. Asking it takes a moment, so it happens off the window's thread. One
+            # PipeWire connection per remote: this one is for looking, each stream opens its own.
             def look() -> None:
                 nodes = camera_nodes(fd)
                 GLib.idle_add(found, nodes)
 
             def found(nodes) -> bool:
                 if not nodes:
-                    os.close(fd)
                     failed("no camera")
                     return False
                 serial, name, size = nodes[0]
-                capture = Capture(fd, serial, size, None)
+                capture = Capture(-1, serial, size, None)
+                capture.remote = lambda: self._open_remote(CAMERA, [])
                 capture.name = name
                 self.captures[widget_id] = capture
                 done(capture)
@@ -247,17 +250,16 @@ class Portals:
         capture = self.captures.pop(widget_id, None)
         if capture is None:
             return
-        try:
-            os.close(capture.fd)
-        except OSError:
-            pass
         if capture.session:
             self.bus.call(BUS, capture.session, "org.freedesktop.portal.Session", "Close", None, None,
                           Gio.DBusCallFlags.NONE, -1, None, None)
 
     def source_for(self, widget) -> tuple[int | None, str | None]:
-        """The engine's question: which fd and node feed this widget (dup'd: GStreamer owns its copy)."""
+        """The engine's question: a fresh PipeWire connection (pipewiresrc owns it) and the node to target."""
         capture = self.captures.get(widget.id)
         if capture is None:
             return None, None
-        return os.dup(capture.fd), capture.node
+        try:
+            return capture.remote(), capture.node
+        except GLib.Error:
+            return None, None

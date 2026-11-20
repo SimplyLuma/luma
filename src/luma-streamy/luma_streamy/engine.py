@@ -35,6 +35,9 @@ def _set_prop(element: Gst.Element, name: str, value) -> None:
     if name == "caps":
         element.set_property("caps", Gst.Caps.from_string(value))
         return
+    if name in ("stream-properties", "client-properties"):
+        element.set_property(name, Gst.Structure.new_from_string(value))
+        return
     if isinstance(value, str):
         spec = element.find_property(name)
         if spec is not None and spec.value_type.is_a(GObject.TYPE_ENUM) or (

@@ -16,14 +16,13 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
     SEPARATOR, ActionCenter, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView, AudioMeter,
-    BarAction, BarChip, Command, CommandGroup, CommandRegistry, CornerPill, CreativeWorkspace,
-    DestructiveDialog, FloatingPanel, IconOnlyButton, Inset, Layer, LayerTree, ListEmptyState, ModeSwitch,
-    NavigationSidebar, PanelRow, PropertyColor, PropertyNumber, PropertySection, RowLead, SidebarFoot, SidebarRow,
-    SidebarToggle, TextButton, Toast, ToastHost, TypeLabel, ValueSlider, add_style_sheet, panel_list,
+    BarAction, BarChip, Command, CommandGroup, CommandRegistry, Dock, DockTile,
+    DestructiveDialog, IconOnlyButton, Layer, LayerTree, ListEmptyState, ModeSwitch,
+    NavigationSidebar, PropertyColor, PropertyNumber, PropertySection, RowLead, SidebarFoot, SidebarRow,
+    SidebarToggle, TextButton, Toast, ToastHost, TypeLabel, ValueRange, ValueSlider, add_style_sheet,
 )
 from luma_appkit.action_bubble import MenuItem  # noqa: E402
 from luma_appkit.creative_parts import add_arrange_item  # noqa: E402
-from luma_appkit.creative_workspace import apply_layout, workspace_layout  # noqa: E402
 
 from . import graph  # noqa: E402
 from .engine import Engine, EngineError  # noqa: E402
@@ -54,6 +53,7 @@ class StreamyWindow(AppWindow):
         self.layouts = LayoutStore(data_dir() / "layouts.json")
         self.settings_path = data_dir() / "settings.json"
         self.project: Project = self.store.load()
+        self.settings = self._load_settings()
         self.fake = bool(int(os.environ.get("STREAMY_FAKE_SOURCES", "0")))
         self.portals = portals
         self.selected: str | None = None
@@ -151,8 +151,19 @@ class StreamyWindow(AppWindow):
     # ── Building ──
 
     def _build_sidebar(self) -> None:
-        self.sidebar = NavigationSidebar(variant="destinations")
+        """The sidebar: scenes on top, the chosen scene's widgets under them, a seam between."""
+        self.sidebar = NavigationSidebar(variant="files")
         self.sidebar.list.connect("row-activated", self._scene_activated)
+        self.widget_store = Gio.ListStore.new(type(Layer("x", "x", "layers")))
+        self.widget_tree = LayerTree(self.widget_store, on_select=self._tree_selected,
+                                     on_visibility=self._tree_visibility, on_rename=self._tree_renamed,
+                                     on_reorder=self._tree_reorder, on_context=self._tree_context)
+        self.widgets_empty = ListEmptyState("Add a display, a window or a camera with +")
+        widgets = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        widgets.append(self.widget_tree)
+        widgets.append(self.widgets_empty)
+        self.sidebar.append_pane("Widgets", widgets, share=self.settings.get("sidebar-share", 0.36),
+                                 on_share=lambda share: self._setting("sidebar-share", round(share, 3)))
         self.sidebar.append_footer(SidebarFoot(search="Search scenes", on_search=self._search_scenes,
                                                add=("New scene", "square-pen", self.new_scene)))
         self._scene_filter = ""
@@ -166,35 +177,26 @@ class StreamyWindow(AppWindow):
         self.arrange.update_property([Gtk.AccessibleProperty.LABEL], ["Scene"])
 
     def _build_insets(self) -> None:
-        self.widget_store = Gio.ListStore.new(type(Layer("x", "x", "layers")))
-        self.widget_tree = LayerTree(self.widget_store, on_select=self._tree_selected,
-                                     on_visibility=self._tree_visibility, on_rename=self._tree_renamed,
-                                     on_reorder=self._tree_reorder)
-        self.widgets_empty = ListEmptyState("Add a display, a window or a camera with +")
-        widgets_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        widgets_box.append(self.widget_tree)
-        widgets_box.append(self.widgets_empty)
-        self.widgets_panel = FloatingPanel("Widgets", "layers", child=widgets_box)
+        """The island is tiled: the preview, audio and the inspector, each an inset with seams between."""
         self.inspector_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.inspector_panel = FloatingPanel("Inspector", "sliders-horizontal", child=self.inspector_box,
-                                             editable=False, on_rename=self._inspector_renamed)
-        self.audio_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.audio_panel = FloatingPanel("Audio", "volume-2", child=self.audio_box)
-        self.workspace = CreativeWorkspace(
-            self.arrange, grid=False,
-            panels=[("widgets", self.widgets_panel, "left"), ("inspector", self.inspector_panel, "right"),
-                    ("audio", self.audio_panel, "bottom")],
-            layout=self.layouts.current, on_layout=self.layouts.remember, on_work_area=self._work_area)
-
-    def _work_area(self, x: int, y: int, width: int, height: int) -> None:
-        """Keep the whole canvas clear of open insets and the action bar."""
-        total_w, total_h = self.workspace.get_width(), self.workspace.get_height()
-        phone = self.tier == "phone"
-        gap = 12
-        bar = (34 + 48 + 12) if phone else (24 + 36 + 8)
-        self.arrange.set_fit_margins(x + gap, y + gap, max(0, total_w - x - width) + gap,
-                                     max(bar, total_h - y - height) + gap)
-        GLib.idle_add(self._size_preview)
+        self.inspector_box.add_css_class("streamy-inspector")
+        inspector_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        inspector_scroll.set_child(self.inspector_box)
+        self.audio_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, max_children_per_line=4,
+                                     min_children_per_line=1, valign=Gtk.Align.START, column_spacing=24)
+        self.audio_box.add_css_class("streamy-mixer")
+        audio_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        audio_scroll.set_child(self.audio_box)
+        self.audio_empty = ListEmptyState("Add a microphone or desktop audio with +")
+        audio = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        audio.append(self.audio_empty)
+        audio.append(audio_scroll)
+        self.preview_tile = DockTile("preview", "Preview", "monitor", self.arrange, main=True)
+        self.audio_tile = DockTile("audio", "Audio", "volume-2", audio)
+        self.inspector_tile = DockTile("inspector", "Inspector", "sliders-horizontal", inspector_scroll)
+        self.dock = Dock([self.preview_tile, self.audio_tile, self.inspector_tile], layout=self.layouts.current,
+                         under_bar=True, on_layout=self.layouts.remember)
+        self.preview_tile.connect("notify::width", lambda *_a: GLib.idle_add(self._size_preview))
 
     def _size_preview(self) -> bool:
         x0, _y0 = self.arrange.canvas_to_view(0, 0)
@@ -207,17 +209,12 @@ class StreamyWindow(AppWindow):
         from luma_appkit import Island
 
         self.island = Island()
-        self.island.append(self.workspace)
+        self.island.append(self.dock)
         self.host = ToastHost(self.island)
         self.center = ActionCenter().attach(self.host)
         self.formats = ModeSwitch([(key, label, "rectangle-horizontal" if key == "landscape" else "smartphone")
                                    for key, (label, _w, _h) in FORMATS.items()],
                                   current=self.project.format, on_change=self.set_format, label="Canvas")
-        self.corner = CornerPill(modes=self.formats, more=self.commands)
-        self.title_bar.pack_end(self.corner)
-        # A phone's title row has no room for the switch; the canvas choice stays in ⋯ (Canvas).
-        self.tier_watch.connect("tier-changed", lambda *_a: self.formats.set_visible(self.tier != "phone"))
-        self.formats.set_visible(self.tier != "phone")
         body = Gtk.Box(hexpand=True, vexpand=True)
         body.append(self.sidebar)
         body.append(self.host)
@@ -225,6 +222,25 @@ class StreamyWindow(AppWindow):
         self.sidebar_toggle = SidebarToggle(self.sidebar)
         self.set_leading(self.sidebar_toggle)
         return body
+
+    # ── Settings ──
+
+    def _load_settings(self) -> dict:
+        import json
+
+        try:
+            data = json.loads(self.settings_path.read_text())
+            return data if isinstance(data, dict) else {}
+        except (FileNotFoundError, ValueError):
+            return {}
+
+    def _setting(self, key: str, value) -> None:
+        import json
+
+        from .model import atomic_write
+
+        self.settings[key] = value
+        atomic_write(self.settings_path, json.dumps(self.settings, indent=1))
 
     # ── Engine and sources ──
 
@@ -424,13 +440,12 @@ class StreamyWindow(AppWindow):
         self.widget_store.remove_all()
         widgets = list(reversed(scene.widgets)) if scene else []
         for w in widgets:
-            detail = "Unavailable" if w.id in self.widget_errors else (
+            detail = "Unavailable" if w.id in self.widget_errors else "Locked" if w.locked else (
                 None if w.has_picture else ("Muted" if w.muted else None))
             self.widget_store.append(Layer(w.id, w.name, w.icon, visible=w.visible, detail=detail))
         self.widget_tree.set_visible(bool(widgets))
         self.widgets_empty.set_visible(not widgets)
         self.widget_tree.set_selected([self.selected] if self.selected else [])
-        self.widgets_panel.set_summary(f"{len(widgets)} widget" + ("" if len(widgets) == 1 else "s"))
 
     def _selected_widget(self) -> Widget | None:
         scene = self.project.active_scene
@@ -444,12 +459,10 @@ class StreamyWindow(AppWindow):
             box.remove(child)
         w = self._selected_widget()
         if w is None:
-            self.inspector_panel.set_title("Inspector")
-            self.inspector_panel.set_title_editable(False)
+            self.inspector_tile.set_title("Inspector")
             box.append(ListEmptyState("Select a widget to change it"))
             return
-        self.inspector_panel.set_title(w.name)
-        self.inspector_panel.set_title_editable(True)
+        self.inspector_tile.set_title(w.name)
         if w.has_picture:
             box.append(self._position_section(w))
             box.append(self._effects_sections(w))
@@ -604,44 +617,64 @@ class StreamyWindow(AppWindow):
         self._changed(structure=True)
 
     def _open_inspector(self) -> None:
-        self.inspector_panel.set_folded(False)
+        """Effects: the inspector, in its tile (or its drawer on a phone)."""
+        if self.dock.phone:
+            self.dock.open_drawer("inspector")
+        else:
+            self.inspector_tile.more_button.grab_focus()
 
     # ── Audio inset ──
 
     def _refresh_audio(self) -> None:
+        """A strip per sound: mute, name and level in dB, the meter, then the volume."""
         box = self.audio_box
-        while (child := box.get_first_child()) is not None:
-            box.remove(child)
+        box.remove_all()
         self._meters.clear()
         scene = self.project.active_scene
         sounds = [w for w in (scene.widgets if scene else []) if w.has_sound]
-        self.audio_panel.set_summary(f"{len(sounds)} source" + ("" if len(sounds) == 1 else "s") if sounds else None)
-        if not sounds:
-            box.append(ListEmptyState("Add a microphone or desktop audio with +"))
-            return
-        inset = Inset(padding="list")
+        self.audio_empty.set_visible(not sounds)
+        box.get_parent().get_parent().set_visible(bool(sounds))
         for w in sounds:
-            row = Gtk.Box(spacing=10)
-            row.add_css_class("streamy-mixer-row")
-            mute = IconOnlyButton("volume-x" if w.muted else w.icon, f"Unmute {w.name}" if w.muted
-                                  else f"Mute {w.name}")
+            strip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            strip.add_css_class("streamy-strip")
+            strip.update_property([Gtk.AccessibleProperty.LABEL], [w.name])
+            line = Gtk.Box()
+            line.add_css_class("streamy-strip-head")
+            mute = IconOnlyButton("volume-x" if w.muted else w.icon,
+                                  f"Unmute {w.name}" if w.muted else f"Mute {w.name}", size="small")
             mute.connect("clicked", lambda *_a, wid=w: self._toggle_mute(wid))
-            row.append(mute)
-            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, spacing=6)
-            slider = ValueSlider(w.name, w.volume_db, -60, 6, unit="dB", default=0, step=1, layout="editor",
-                                 on_change=lambda value, wid=w: self._set_volume(wid, value))
+            if w.muted:
+                mute.add_css_class("streamy-muted")
+            line.append(mute)
+            name = TypeLabel(w.name, role="row-title")
+            name.set_hexpand(True)
+            line.append(name)
+            level = TypeLabel(self._db_words(w), role="caption")
+            level.add_css_class("streamy-strip-db")
+            line.append(level)
+            strip.append(line)
             meter = AudioMeter(2, horizontal=True, label=f"{w.name} level")
             meter.set_hexpand(True)
-            column.append(slider)
-            column.append(meter)
-            row.append(column)
-            inset.append(row)
+            strip.append(meter)
+            volume = ValueRange(w.volume_db, -60, 6, 1, label=f"{w.name} volume")
+            volume.connect("value-changed", lambda _r, value, wid=w, words=level: self._volume_moved(wid, value, words))
+            strip.append(volume)
+            box.append(strip)
             self._meters[w.id] = meter
-        box.append(inset)
+
+    @staticmethod
+    def _db_words(w: Widget) -> str:
+        if w.muted:
+            return "Muted"
+        return "0 dB" if round(w.volume_db) == 0 else f"{round(w.volume_db):+d} dB".replace("-", "−")
+
+    def _volume_moved(self, w: Widget, value: float, words) -> None:
+        self._set_volume(w, value)
+        words.label.set_label(self._db_words(w))
 
     def _levels(self, _engine, widget_id: str, left: float, right: float) -> None:
         meter = self._meters.get(widget_id)
-        if meter is not None and self.audio_panel.get_mapped():
+        if meter is not None and meter.get_mapped():
             meter.set_levels_db(left, right)
 
     def _set_volume(self, w: Widget, value: float) -> None:
@@ -698,7 +731,11 @@ class StreamyWindow(AppWindow):
             items.append(BarAction("square", "End stream", danger=True, on_activate=self.ask_end_stream))
         else:
             items.append(BarAction("radio-tower", "Go live", primary=True, on_activate=self.go_live))
-        self.center.show_bar(items)
+        # The canvas's shape starts the bar while nothing is selected or sent.
+        modes = self.formats if not live and self.recording_since is None else None
+        if modes is not None and modes.get_parent() is not None:
+            modes.get_parent().remove(modes)
+        self.center.show_bar(items, modes=modes)
 
     def _arrange_menu(self) -> list:
         return [MenuItem("Bring to front", icon="arrow-up", note="Ctrl+]", on_activate=lambda: self.restack(1)),
@@ -736,6 +773,10 @@ class StreamyWindow(AppWindow):
         scene = self.project.active_scene
         if paintable is None or scene is None or not self.sidebar.get_mapped():
             return
+        if not any(w.has_picture and w.visible for w in scene.widgets):
+            if self._thumbs.pop(scene.id, None) is not None:
+                self._refresh_scenes()
+            return  # nothing to show: the row keeps its glyph, not a black square
         image = self._small(paintable.get_current_image())
         if image is None:
             return
@@ -910,6 +951,23 @@ class StreamyWindow(AppWindow):
         if w is not None:
             self._set_visible(w, layer.get_visible())
 
+    def _tree_context(self, layer, *_args) -> None:
+        from luma_appkit.action_bubble import FloatingMenu
+
+        scene = self.project.active_scene
+        w = scene.widget(layer.get_id()) if scene else None
+        if w is None:
+            return
+        self.select(w.id)
+        FloatingMenu([MenuItem("Rename", icon="pencil", on_activate=lambda: self.widget_tree.rename(layer.get_id())),
+                      MenuItem("Unlock" if w.locked else "Lock", icon="lock-open" if w.locked else "lock",
+                               on_activate=self.toggle_lock),
+                      MenuItem("Show" if not w.visible else "Hide", icon="eye" if not w.visible else "eye-off",
+                               on_activate=self.toggle_hidden),
+                      None,
+                      MenuItem("Delete", icon="trash-2", danger=True, on_activate=self.delete_selected)],
+                     label=w.name).popup(self.widget_tree)
+
     def _tree_renamed(self, layer) -> None:
         try:
             _scene, w = self.project.find_widget(layer.get_id())
@@ -1019,15 +1077,15 @@ class StreamyWindow(AppWindow):
 
     def use_layout(self, key: str) -> None:
         layout = self.layouts.get(key)
-        apply_layout(self.workspace, layout)
-        self.layouts.remember(workspace_layout(self.workspace))
+        self.dock.set_layout(layout)
+        self.layouts.remember(self.dock.layout())
 
     def save_layout(self) -> None:
         entry = Gtk.Entry(placeholder_text="Layout name", hexpand=True)
 
         def done() -> None:
             try:
-                self.layouts.save_as(entry.get_text(), workspace_layout(self.workspace))
+                self.layouts.save_as(entry.get_text(), self.dock.layout())
             except ValueError as error:
                 Toast.show(self.host, str(error), kind="warning")
                 return

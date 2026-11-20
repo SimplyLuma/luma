@@ -122,6 +122,9 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
         props["fd"] = fd
     if node is not None:
         props["target-object"] = node
+    if kind == "camera":
+        # WirePlumber links a camera-portal client's stream only when it says it is a camera.
+        props["stream-properties"] = "props,media.role=Camera"
     head = [Element("pipewiresrc", f"{prefix}-src", props)]
     if kind == "camera":
         # Cameras may send MJPEG; decodebin passes raw pictures through.

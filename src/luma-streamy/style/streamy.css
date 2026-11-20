@@ -1,3 +1,10 @@
-/* Streamy's own content: the program picture on the canvas and a mixer row. Tokens only. */
-picture.streamy-program { background: @luma_well; }
-box.streamy-mixer-row { padding: 8px 4px; }
+/* Streamy's own content inside LumaUI's tiles. Tokens only. */
+flowbox.streamy-mixer {
+  padding: 0 var(--lumaui-dock-header-padding-start) var(--lumaui-dock-gap);
+}
+flowbox.streamy-mixer > flowboxchild { padding: 0; background: none; }
+box.streamy-strip { border-spacing: 6px; padding: 8px 0 10px; min-width: 200px; }
+box.streamy-strip-head { border-spacing: 8px; }
+label.streamy-strip-db, .streamy-strip-db label { font-feature-settings: "tnum"; }
+button.streamy-muted { color: @luma_destructive; }
+box.streamy-inspector { padding: 0 6px 6px; }

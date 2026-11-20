@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Inset layouts: the built-in presets, the person's saved ones, and the last used.
 
-A layout is LumaUI's docked-panel arrangement: a list of
-``(key, "left" | "right" | "bottom", folded)``. Pure Python; the window
-applies them with ``luma_appkit.creative_workspace.apply_layout``.
+A layout is LumaUI's Dock arrangement: a tree of ``{"split": "h"|"v",
+"ratio", "start", "end"}`` with the tile keys (preview, audio, inspector) at
+its leaves. Pure Python; the window hands them to ``Dock.set_layout``.
 """
 from __future__ import annotations
 
@@ -12,35 +12,46 @@ from pathlib import Path
 
 from .model import atomic_write
 
-PANELS = ("widgets", "inspector", "audio")
-SIDES = ("left", "right", "bottom")
+TILES = ("preview", "audio", "inspector")
 
-Layout = list[tuple[str, str, bool]]
 
-PRESETS: dict[str, tuple[str, Layout]] = {
-    # The inspector opens from the bar's Effects, so the canvas keeps its room until it's needed.
-    "default": ("Default", [("widgets", "left", False), ("audio", "left", False), ("inspector", "right", True)]),
-    "compact": ("Compact", [("widgets", "left", True), ("audio", "left", True), ("inspector", "right", True)]),
-    "studio": ("Studio", [("widgets", "left", False), ("inspector", "right", False), ("audio", "bottom", False)]),
+def split(orientation: str, ratio: float, start, end) -> dict:
+    return {"split": orientation, "ratio": ratio, "start": start, "end": end}
+
+
+PRESETS: dict[str, tuple[str, object]] = {
+    "default": ("Default", split("h", 0.74, split("v", 0.72, "preview", "audio"), "inspector")),
+    "compact": ("Compact", split("h", 0.78, "preview", split("v", 0.6, "inspector", "audio"))),
+    "studio": ("Studio", split("v", 0.7, split("h", 0.72, "preview", "inspector"), "audio")),
 }
 
 
-def valid(layout) -> Layout:
-    """A layout with every panel exactly once; unknown entries dropped, missing panels added."""
+def valid(layout):
+    """A dock layout holding every tile once: unknown or repeated keys dropped, missing tiles added."""
     seen: set[str] = set()
-    out: Layout = []
-    for entry in layout or ():
-        try:
-            key, side, folded = entry
-        except (TypeError, ValueError):
-            continue
-        if key in PANELS and key not in seen and side in SIDES:
-            out.append((str(key), str(side), bool(folded)))
-            seen.add(key)
-    for key, side, folded in PRESETS["default"][1]:
+
+    def clean(node):
+        if isinstance(node, str):
+            if node in TILES and node not in seen:
+                seen.add(node)
+                return node
+            return None
+        if not isinstance(node, dict) or node.get("split") not in ("h", "v"):
+            return None
+        start, end = clean(node.get("start")), clean(node.get("end"))
+        if start is None or end is None:
+            return start if end is None else end
+        ratio = node.get("ratio")
+        ratio = min(0.95, max(0.05, float(ratio))) if isinstance(ratio, (int, float)) else 0.5
+        return split(node["split"], ratio, start, end)
+
+    tree = clean(layout)
+    if tree is None:
+        return PRESETS["default"][1]
+    for key in TILES:
         if key not in seen:
-            out.append((key, side, folded))
-    return out
+            tree = split("h", 0.75, tree, key)
+    return tree
 
 
 class LayoutStore:
@@ -48,8 +59,8 @@ class LayoutStore:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.current: Layout = list(PRESETS["default"][1])
-        self.saved: dict[str, Layout] = {}
+        self.current = valid(None)
+        self.saved: dict = {}
         self._load()
 
     def _load(self) -> None:
@@ -72,11 +83,13 @@ class LayoutStore:
         return [(key, label) for key, (label, _l) in PRESETS.items()] + \
             [(f"saved:{name}", name) for name in sorted(self.saved, key=str.casefold)]
 
-    def get(self, key: str) -> Layout:
+    def get(self, key: str):
+        import copy
+
         if key in PRESETS:
-            return list(PRESETS[key][1])
+            return copy.deepcopy(PRESETS[key][1])
         if key.startswith("saved:") and key[6:] in self.saved:
-            return list(self.saved[key[6:]])
+            return copy.deepcopy(self.saved[key[6:]])
         raise KeyError(key)
 
     def remember(self, layout) -> None:

@@ -19,6 +19,24 @@ class StreamyApplication(Adw.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         GLib.set_application_name("Streamy")
 
+    def do_startup(self) -> None:
+        Adw.Application.do_startup(self)
+        # Check runs on a real desktop: STREAMY_PICTURES=<folder> exports "save-picture", which
+        # renders the window into that folder (gdbus … org.freedesktop.Application.ActivateAction).
+        folder = os.environ.get("STREAMY_PICTURES")
+        if folder:
+            action = Gio.SimpleAction.new("save-picture", GLib.VariantType("s"))
+            action.connect("activate", lambda _a, name: self._save_picture(folder, name.get_string()))
+            self.add_action(action)
+
+    def _save_picture(self, folder: str, name: str) -> None:
+        from .shots import render
+
+        window = self.props.active_window
+        if window is not None:
+            os.makedirs(folder, exist_ok=True)
+            render(window, os.path.join(folder, os.path.basename(name) or "streamy.png"))
+
     def do_activate(self) -> None:
         window = self.props.active_window
         if window is None:
