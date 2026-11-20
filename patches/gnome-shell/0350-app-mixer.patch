@@ -23,6 +23,14 @@ names them (port and card from Gvc).
 On a compact (phone) drawer the detail page is no longer capped at
 420 px: the drawer scrolls the whole page.
 
+An app row's icon and name share the device rows' columns; muted keeps
+the volume on the track (quiet fill, no meter) and reads Muted. The
+output key is a picker on a key: where the app plays and a chevron that
+follows the open list. Rows say y_expand false, so the page's scroll view
+keeps its max-height. A detail page's settings link (Sound settings) is
+pinned under the scrolled list instead of being cut at the surface's edge,
+and the list fades where it continues.
+
 Without the service, or before version 2, the page is unchanged.
 
 diff --git a/js/ui/panel.js b/js/ui/panel.js
@@ -41,10 +49,22 @@ index a9cdb89..6f4052a 100644
                      if (value)
                          names.add(`${value}`.toLowerCase());
 diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
-index 17db40a..4392687 100644
+index 17db40a..1138f79 100644
 --- a/js/ui/quickSettings.js
 +++ b/js/ui/quickSettings.js
-@@ -1568,7 +1568,7 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+@@ -1412,6 +1412,11 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+         });
+         this._pageScroll.add_action(this._pagePan);
+         this._pageHost.add_child(this._pageScroll);
++        // A page's settings link stays under the scrolled list, never in it,
++        // so a long page never cuts it at the surface's edge.
++        this._pageFoot = new St.BoxLayout({style_class: 'luma-options-page-foot luma-options-detail',
++            orientation: Clutter.Orientation.VERTICAL, x_expand: true, visible: false});
++        this._pageHost.add_child(this._pageFoot);
+         this.box.add_child(this._pageHost);
+         global.stage.connectObject('notify::key-focus', () => {
+             const focus = global.stage.key_focus;
+@@ -1568,7 +1573,7 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
              micIcon.icon_name = muted ? 'luma-mic-off-symbolic' : 'luma-mic-symbolic';
              micTitle.text = muted ? _('Microphone muted') : _('Microphone in use');
              mute.label = muted ? _('Unmute') : _('Mute');
@@ -53,19 +73,61 @@ index 17db40a..4392687 100644
              micApp.text = apps.map(s => s.get_name()).filter(Boolean).join(', ');
              micApp.visible = !!micApp.text;
          };
-@@ -1627,7 +1627,9 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+@@ -1621,13 +1626,17 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+                 this.box.remove_style_class_name('lumaui-mode-detail');
+             this._mainPage?.hide(); this._pageHost.show();
+             this._pageScroll.vadjustment.value = 0;
++            this._pinPageLink(menu);
+             const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+             const monitor = Main.layoutManager.findMonitorForActor(this.sourceActor) ?? Main.layoutManager.primaryMonitor;
+             // The page grows to its content up to a bounded desktop list.
              // Use usable work area, not the full display behind the Shelf.
              const workArea = monitor ? Main.layoutManager.getWorkAreaForMonitor(monitor.index) : null;
-             const maxHeight = Math.max(96, Math.min(420, (workArea?.height ?? 600) / scale - 160));
+-            const maxHeight = Math.max(96, Math.min(420, (workArea?.height ?? 600) / scale - 160));
 -            this._pageScroll.set_style(`max-height: ${maxHeight}px;`);
++            const foot = this._pageFoot.visible ? this._pageFoot.get_preferred_height(-1)[1] / scale : 0;
++            const maxHeight = Math.max(96, Math.min(420, (workArea?.height ?? 600) / scale - 160) - foot);
 +            // A compact (phone) page is the whole drawer, which scrolls itself.
 +            this._pageScroll.set_style(this.box.has_style_class_name('lumaui-compact-options')
 +                ? null : `max-height: ${maxHeight}px;`);
              this._pageHeading.text = menu._studioTitle ?? item.title ?? menu._titleLabel.text;
              const radio = menu._studioRadio;
              this._pageSwitch.accessible_name = this._pageHeading.text;
+@@ -1642,6 +1651,7 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+             this._back.grab_key_focus();
+         } else if (this._activeMenu === menu) {
+             this._activeMenu = null;
++            this._pinPageLink(null);
+             this.box.remove_style_class_name('lumaui-mode-detail');
+             this._pageRadioBinding?.unbind(); this._pageRadioBinding = null;
+             this._pageHost.hide(); this._mainPage?.show();
+@@ -1655,6 +1665,24 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+         }
+     }
+ 
++    // The open page's settings link (addSettingsAction's luma-sheet-link)
++    // moves into the page's foot while it is open, then back to its menu.
++    _pinPageLink(menu) {
++        const pinned = this._pageFoot.get_first_child();
++        if (pinned) {
++            this._pageFoot.remove_child(pinned);
++            pinned._lumaPageMenu?.box.add_child(pinned);
++            delete pinned._lumaPageMenu;
++        }
++        const link = menu?.box.get_children().findLast(c => c.has_style_class_name?.('luma-sheet-link') && c.visible);
++        if (link) {
++            menu.box.remove_child(link);
++            link._lumaPageMenu = menu;
++            this._pageFoot.add_child(link);
++        }
++        this._pageFoot.visible = !!link;
++    }
++
+     _updateLumaHeader() {
+         const now = GLib.DateTime.new_now_local();
+         this._lumaTime.text = now.format(Shell.util_translate_time_string('%A'));
 diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
-index 638f2c1..5cf8538 100644
+index 638f2c1..3ffd019 100644
 --- a/js/ui/status/volume.js
 +++ b/js/ui/status/volume.js
 @@ -4,6 +4,7 @@ import GLib from 'gi://GLib';
@@ -129,7 +191,7 @@ index 638f2c1..5cf8538 100644
  // Outputs PipeWire's discovery modules create on their own. Nobody chose
  // them, so they are left out of the menu unless one is already in use.
  const DISCOVERED_NETWORK_OUTPUT_PREFIXES = ['raop_sink.', 'tunnel.', 'rtp_session.', 'snapcast'];
-@@ -412,6 +449,682 @@ const AirPlayMenuItem = GObject.registerClass({
+@@ -412,6 +449,705 @@ const AirPlayMenuItem = GObject.registerClass({
      }
  });
  
@@ -458,6 +520,10 @@ index 638f2c1..5cf8538 100644
 +            style_class: 'luma-app-mixer-app',
 +            orientation: Clutter.Orientation.VERTICAL,
 +            x_expand: true,
++            // Said, not inherited: the slider fills its track (y_expand) and
++            // would otherwise make the page's scroll view grow past its
++            // max-height, clipping the page instead of scrolling it.
++            y_expand: false,
 +        });
 +        this._mixer = mixer;
 +        this.id = app.id;
@@ -533,10 +599,18 @@ index 638f2c1..5cf8538 100644
 +        this._mute.connect('clicked',
 +            () => this._mixer.setMuted(this.id, !this._app.muted));
 +
-+        this._outputIcon = new St.Icon({style_class: 'luma-quick-disclosure-icon'});
++        // The output key is a picker: where it plays and a chevron, on a key.
++        this._outputIcon = new St.Icon({style_class: 'luma-app-mixer-output-icon'});
++        this._outputChevron = new St.Icon({
++            style_class: 'luma-app-mixer-output-chevron',
++            icon_name: 'lumaui-chevron-down-symbolic',
++        });
++        const picker = new St.BoxLayout({style_class: 'luma-app-mixer-output-face'});
++        picker.add_child(this._outputIcon);
++        picker.add_child(this._outputChevron);
 +        this._outputKey = new St.Button({
 +            style_class: 'luma-options-level-key luma-app-mixer-output',
-+            child: this._outputIcon,
++            child: picker,
 +            can_focus: true,
 +            y_align: Clutter.ActorAlign.CENTER,
 +        });
@@ -589,11 +663,17 @@ index 638f2c1..5cf8538 100644
 +        this.slider.accessible_name = app.name;
 +
 +        // Not while the slider is held or our own value is still on its way.
++        // Muted keeps the volume where it is; the fill and meter go quiet.
 +        if (!this.slider._grab && !this._mixer.isSettingVolume(this.id)) {
 +            this.slider.block_signal_handler(this._sliderChangedId);
-+            this.slider.value = app.muted ? 0 : Math.clamp(app.volume ?? 1, 0, MIXER_MAX_VOLUME);
++            this.slider.value = Math.clamp(app.volume ?? 1, 0, MIXER_MAX_VOLUME);
 +            this.slider.unblock_signal_handler(this._sliderChangedId);
 +        }
++        if (app.muted)
++            this.slider.add_style_class_name('lumaui-muted-level');
++        else
++            this.slider.remove_style_class_name('lumaui-muted-level');
++        this._syncValue();
 +        this._muteIcon.icon_name = app.muted
 +            ? 'lumaui-volume-x-symbolic' : 'lumaui-volume-2-symbolic';
 +        this._mute.checked = !!app.muted;
@@ -617,7 +697,7 @@ index 638f2c1..5cf8538 100644
 +    }
 +
 +    _syncValue() {
-+        this._value.text = new Intl.NumberFormat(undefined, {
++        this._value.text = this._app.muted ? _('Muted') : new Intl.NumberFormat(undefined, {
 +            style: 'percent', maximumFractionDigits: 0,
 +        }).format(this.slider.value);
 +    }
@@ -636,6 +716,8 @@ index 638f2c1..5cf8538 100644
 +        const current = own ?? outputs.find(o => o.default);
 +        this._outputIcon.icon_name = outputIconName(current);
 +        this._outputKey.checked = this._outputs.visible;
++        this._outputChevron.icon_name = this._outputs.visible
++            ? 'lumaui-chevron-up-symbolic' : 'lumaui-chevron-down-symbolic';
 +        this._outputKey.visible = outputs.length > 1 || !!own;
 +        this._outputKey.accessible_name = _('Output for %s').format(this._app.name);
 +        this._route.text = own ? `· ${this._mixer.describeOutput(own).title}` : '';
@@ -654,6 +736,8 @@ index 638f2c1..5cf8538 100644
 +        const hadFocus = !open && !!focused && this._outputs.contains(focused);
 +        this._outputs.visible = open;
 +        this._outputKey.checked = open;
++        this._outputChevron.icon_name = open
++            ? 'lumaui-chevron-up-symbolic' : 'lumaui-chevron-down-symbolic';
 +        if (open)
 +            this._fillOutputs();
 +        else
@@ -702,6 +786,7 @@ index 638f2c1..5cf8538 100644
 +            style_class: 'luma-app-mixer',
 +            orientation: Clutter.Orientation.VERTICAL,
 +            x_expand: true,
++            y_expand: false,
 +            visible: false,
 +        });
 +        this._mixer = mixer;
@@ -812,7 +897,7 @@ index 638f2c1..5cf8538 100644
  // Each Gvc.MixerControl is a connection to PulseAudio,
  // so it's better to make it a singleton
  let _mixerControl;
-@@ -710,6 +1423,21 @@ class OutputStreamSlider extends StreamSlider {
+@@ -710,6 +1446,21 @@ class OutputStreamSlider extends StreamSlider {
          this.menu.addMenuItem(this._airPlayItem, 1);
          this._airPlayItem.connect('availability-changed', () => this._sync());
  
@@ -834,7 +919,7 @@ index 638f2c1..5cf8538 100644
          this._audioDevices = getAudioDevices();
          this._audioDevices.connectObject('g-properties-changed',
              () => this._refilterDevices(), this);
-@@ -777,7 +1505,7 @@ class OutputStreamSlider extends StreamSlider {
+@@ -777,7 +1528,7 @@ class OutputStreamSlider extends StreamSlider {
  
      _sync() {
          super._sync();
@@ -843,7 +928,7 @@ index 638f2c1..5cf8538 100644
              this.menuEnabled = true;
      }
  
-@@ -876,17 +1604,11 @@ class InputStreamSlider extends StreamSlider {
+@@ -876,17 +1627,11 @@ class InputStreamSlider extends StreamSlider {
          // only show input widgets if any application is recording audio
          let showInput = false;
          if (this._stream) {
@@ -864,7 +949,7 @@ index 638f2c1..5cf8538 100644
          }
  
          this._showInput = showInput;
-@@ -896,6 +1618,11 @@ class InputStreamSlider extends StreamSlider {
+@@ -896,6 +1641,11 @@ class InputStreamSlider extends StreamSlider {
      _shouldBeVisible() {
          return super._shouldBeVisible() && this._showInput;
      }

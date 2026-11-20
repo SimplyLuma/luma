@@ -48,10 +48,12 @@ export const FillSlider = GObject.registerClass({
         const progress = Math.min(1, Math.max(0, this.value / Math.max(.001, this.maximum_value)));
         const filled = width * progress;
         const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
+        // Muted (lumaui-muted-level): the volume stays where it is, quietly.
+        const muted = this.has_style_class_name('lumaui-muted-level');
         cr.rectangle(rtl ? width-filled : 0, 0, filled, height);
-        cr.setSourceRGBA(...ink, .13);
+        cr.setSourceRGBA(...ink, muted ? .06 : .13);
         cr.fill();
-        if (this.meter > 0) {
+        if (this.meter > 0 && !muted) {
             // The rounded clip bends the bar's ends with the track.
             const thickness = Math.max(2, Math.round(height / 11));
             const level = width * this.meter;
