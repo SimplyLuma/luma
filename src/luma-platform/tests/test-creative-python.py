@@ -338,6 +338,21 @@ def dock_equal_split():
     settle()
     assert abs(a.get_width() - b.get_width()) <= 1, (a.get_width(), b.get_width())
     assert abs(d.layout()["ratio"] - 0.5) < 0.01, d.layout()
+    # A person's drag sets the share; a relayout or a resize afterwards keeps it.
+    paned = d._panes[0][0]
+    paned.held = True
+    paned.set_position(300)
+    settle()
+    paned.held = False
+    assert abs(a.get_width() - 300) <= 1, a.get_width()
+    ratio = d.layout()["ratio"]
+    d.queue_resize()
+    settle()
+    assert abs(a.get_width() - 300) <= 1 and d.layout()["ratio"] == ratio, (a.get_width(), d.layout())
+    window.set_default_size(1200, 600)
+    settle()
+    share = a.get_width() / (a.get_width() + b.get_width())
+    assert abs(share - ratio) < 0.01 and d.layout()["ratio"] == ratio, (share, ratio, d.layout())
     window.destroy()
 
 
