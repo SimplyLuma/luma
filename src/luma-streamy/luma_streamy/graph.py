@@ -19,6 +19,7 @@ Shape (one pipeline; branches come and go while it runs):
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 from .model import Effects, Widget
@@ -128,16 +129,31 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
         # WirePlumber links a camera-portal client's stream only when it says it is a camera.
         props["stream-properties"] = "props,media.role=Camera"
     head = [Element("pipewiresrc", f"{prefix}-src", props)]
+    if kind in ("display", "window") and os.environ.get("STREAMY_CAPTURE_MEMORY") == "system":
+        head.append(Element("capsfilter", f"{prefix}-sysmem", {"caps": "video/x-raw"}))
     if kind == "camera":
         # Cameras may send MJPEG; decodebin passes raw pictures through.
         head += [Element("decodebin", f"{prefix}-decode"), Element("videoconvert", f"{prefix}-convert")]
     return head
 
 
+def branch_prefix(widget: Widget, generation: int) -> str:
+    """Element names for one branch of a widget: "w-<id>-g<n>" (a widget may be re-added before
+    its old branch has finished stopping)."""
+    return f"w-{widget.id}-g{generation}"
+
+
+def widget_of(element_name: str) -> str | None:
+    """The widget id in a branch element's name, or None."""
+    if not element_name.startswith("w-") or "-g" not in element_name:
+        return None
+    return element_name[2:].rsplit("-g", 1)[0]
+
+
 def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | None = None,
-                  node: str | None = None) -> Chain:
+                  node: str | None = None, generation: int = 0) -> Chain:
     """A picture widget from its source to its glvideomixer pad."""
-    prefix = f"w-{widget.id}"
+    prefix = branch_prefix(widget, generation)
     elements = _capture_head(widget, prefix, fake, fd, node)
     elements += [
         Element("queue", f"{prefix}-queue", {"max-size-buffers": 2, "leaky": 2}),
@@ -151,8 +167,9 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
 
 # ── Sound ──
 
-def sound_chain(widget: Widget, *, fake: bool = False, fd: int | None = None, node: str | None = None) -> Chain:
-    prefix = f"w-{widget.id}"
+def sound_chain(widget: Widget, *, fake: bool = False, fd: int | None = None, node: str | None = None,
+                generation: int = 0) -> Chain:
+    prefix = branch_prefix(widget, generation)
     if fake:
         wave = 9 if widget.kind == "microphone" else 0  # pink noise, a sine
         head = [Element("audiotestsrc", f"{prefix}-src", {"is-live": True, "wave": wave, "volume": 0.25})]

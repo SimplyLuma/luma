@@ -316,6 +316,7 @@ class Engine(GObject.Object):
         self._taps: dict[str, list[Gst.Element]] = {}
         self._zorder = 0
         self.preview_size: tuple[int, int] | None = None
+        self._generation = 0
 
     # ── The program pipeline ──
 
@@ -458,10 +459,11 @@ class Engine(GObject.Object):
             fd, node = self.sources(widget)
             if fd is None:
                 return  # not chosen yet: the window asks the portal first
+        self._generation += 1
         if widget.has_picture:
-            chain = graph.picture_chain(widget, zorder, fake=self.fake, fd=fd, node=node)
+            chain = graph.picture_chain(widget, zorder, fake=self.fake, fd=fd, node=node, generation=self._generation)
         else:
-            chain = graph.sound_chain(widget, fake=self.fake, fd=fd, node=node)
+            chain = graph.sound_chain(widget, fake=self.fake, fd=fd, node=node, generation=self._generation)
             self._ensure_sound()
         elements = [make(e) for e in chain.elements]
         if widget.has_picture:
@@ -474,7 +476,11 @@ class Engine(GObject.Object):
         for name, value in chain.pad.items():
             pad.set_property(name, value)
         if elements[-1].get_static_pad("src").link(pad) != Gst.PadLinkReturn.OK:
-            raise EngineError(f"{widget.name} could not join the program")
+            target.release_request_pad(pad)
+            for element in elements:
+                self.pipeline.remove(element)
+            self.emit("widget-failed", widget.id, "stopped")
+            return
         branch = Branch(widget.id, elements, pad, widget.has_picture)
         self.branches[widget.id] = branch
         if widget.has_picture:
@@ -761,8 +767,8 @@ class Engine(GObject.Object):
             structure = message.get_structure()
             if structure is not None and structure.get_name() == "level":
                 name = message.src.get_name()
-                if name.startswith("w-") and name.endswith("-level"):
-                    widget_id = name[2:-6]
+                widget_id = graph.widget_of(name) if name.endswith("-level") else None
+                if widget_id is not None:
                     peaks = structure.get_value("peak")
                     left = peaks[0] if peaks else -60.0
                     right = peaks[1] if len(peaks) > 1 else left
@@ -770,7 +776,7 @@ class Engine(GObject.Object):
         elif message.type == Gst.MessageType.ERROR:
             error, debug = message.parse_error()
             source = message.src.get_name() if message.src else ""
-            widget_id = source[2:].rsplit("-", 1)[0] if source.startswith("w-") else None
+            widget_id = graph.widget_of(source)
             if widget_id is not None and widget_id in self.branches:
                 # One widget failed (a window closed, a camera unplugged or busy): take it out, keep going.
                 self._fail(widget_id, source_problem(error.message, debug or ""))
