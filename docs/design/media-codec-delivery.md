@@ -60,34 +60,21 @@ Fedora documents a separately negotiated build/sign/distribute arrangement
 with Cisco. Luma cannot infer an equivalent agreement merely from the source
 license or Fedora's packaging. See [Fedora distribution explanation](https://fedoraproject.org/wiki/Non-distributable-rpms).
 
-## Recommended implementation boundary
+## Decision
 
-Ship Luma's integration, trusted download manifest, notices and Settings controls.
-For the Cisco route, fetch the unmodified official binary directly on each end
-device during connected setup. Use cryptographic content verification, atomic
-installation, ABI checks and retained known-good updates. A vendor-provided MD5
-file is not a sufficient production trust mechanism. Preserve source and binary
-notices and use the required attribution at the control.
+OpenH264 is on by default. Each device downloads Cisco's unmodified binary
+from Cisco; Luma does not ship, build or redistribute the codec. This is the
+model Flathub (`org.freedesktop.Platform.openh264`) and Firefox use under
+Cisco's public binary license: separate download to the device, Cisco's
+attribution and an on/off control where the user manages it, and the license
+terms linked from there. The control is Settings' "OpenH264 video codec"
+switch, which shows the attribution, links the terms and runs
+`luma-openh264 enable|disable`.
 
-Deliver the decoder plugin and binary to the OS and the Luma runtime through
-owned, versioned interfaces. Do not broaden app filesystem permissions or assume
-a host library is visible to WebKit's nested sandbox. Keep enable/disable state
-consistent and explain when a new app session is needed. Test AAC/container
-support independently; H.264 is only the video codec.
-
-A codec download failure must remain retryable and must not block OS installation,
-rollback, unrelated app updates or unrelated package installation. Retain a
-working installed decoder during an outage. First-time offline setup must show
-an honest unavailable/waiting state. The nightly qualification observed an
-optional Cisco repository HTTP404 blocking an unrelated package installation;
-a later request succeeded. Upstream also records [extra-data availability problems](https://gitlab.com/freedesktop-sdk/freedesktop-sdk/-/issues/1834).
-
-Before enabling production delivery, qualify native and sandboxed WebKit,
-Baseline/Main/High, AAC audio, seeking, malformed input, architecture variants,
-hardware/software fallback, disabled codecs, offline setup and interrupted
-updates. Confirm the precise Cisco delivery/use arrangement, or obtain Luma's
-own rights for a fully bundled codec. No such independent commercial arrangement
-has been established here.
+A codec download failure stays retryable and never blocks OS installation,
+rollback or unrelated updates. A working installed decoder is kept during an
+outage. No separate commercial arrangement with Cisco exists; a codec bundled
+in the image would need one.
 
 ## Delivery
 
@@ -120,6 +107,9 @@ repository.
   `apply_extra` unpacks it into `lib64/openh264/extra`, which the Platform's
   extension point puts on the library path ahead of the runtime's noopenh264.
   `luma-openh264.service` installs it whenever the Platform is installed.
+- Default: on. The package enables `luma-openh264.timer` (its own
+  `timers.target.wants` link and `60-luma-openh264.preset`), so a fresh
+  install downloads the codec with no user action.
 - Control: `luma-openh264 status|enable|disable` shows Cisco's attribution
   and switches both sides; disable removes the file, uninstalls the extension
   and masks it. Applications already running keep what they loaded until they

@@ -39,6 +39,7 @@ REQUIRED = {
         '/usr/bin/luma-openh264', '/usr/share/luma-openh264/cisco-openh264.conf',
         '/usr/lib/systemd/system/luma-openh264.service',
         '/usr/lib/systemd/system/timers.target.wants/luma-openh264.timer',
+        '/usr/lib/systemd/system-preset/60-luma-openh264.preset',
         '/usr/lib/tmpfiles.d/luma-openh264.conf',
     },
     'luma-desktop-launcher-policy': {

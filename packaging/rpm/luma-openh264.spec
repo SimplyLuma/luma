@@ -46,9 +46,12 @@ install -D -m 0644 NOTICE %{buildroot}%{_datadir}/luma-openh264/NOTICE
 install -D -m 0644 luma-openh264.service %{buildroot}%{_unitdir}/luma-openh264.service
 install -D -m 0644 luma-openh264.timer %{buildroot}%{_unitdir}/luma-openh264.timer
 install -D -m 0644 luma-openh264.tmpfiles %{buildroot}%{_tmpfilesdir}/luma-openh264.conf
-# Enabled by the package itself: a preset only applies on first install.
+# On by default: the wants link covers images and upgrades, the preset covers
+# systemctl preset(-all). The setting itself is /etc/luma-openh264/disabled.
 install -d %{buildroot}%{_unitdir}/timers.target.wants
 ln -s ../luma-openh264.timer %{buildroot}%{_unitdir}/timers.target.wants/luma-openh264.timer
+install -d %{buildroot}%{_presetdir}
+printf 'enable luma-openh264.timer\n' > %{buildroot}%{_presetdir}/60-luma-openh264.preset
 
 %check
 bash tests/test-luma-openh264.sh %{buildroot}%{_bindir}/luma-openh264
@@ -60,6 +63,15 @@ for arch in X86_64 AARCH64; do
   case ${!url} in https://ciscobinary.openh264.org/libopenh264-${OPENH264_VERSION}-linux*.8.so.bz2) ;; *) exit 1 ;; esac
 done
 
+%post
+%systemd_post luma-openh264.timer
+
+%preun
+%systemd_preun luma-openh264.timer luma-openh264.service
+
+%postun
+%systemd_postun luma-openh264.timer
+
 %files
 %license LICENSE.md
 %doc NOTICE
@@ -68,6 +80,7 @@ done
 %{_unitdir}/luma-openh264.service
 %{_unitdir}/luma-openh264.timer
 %{_unitdir}/timers.target.wants/luma-openh264.timer
+%{_presetdir}/60-luma-openh264.preset
 %{_tmpfilesdir}/luma-openh264.conf
 
 %changelog
