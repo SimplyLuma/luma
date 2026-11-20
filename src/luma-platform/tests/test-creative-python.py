@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: Apache-2.0
 """The Python builders for docks, ArrangeView, AudioMeter and the live chip's updates."""
+import time
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -130,11 +131,55 @@ def dock():
         raise AssertionError("one pane")
 
 
+def settle(seconds=0.4):
+    end = time.monotonic() + seconds
+    context = GLib.MainContext.default()
+    while time.monotonic() < end:
+        while context.pending():
+            context.iteration(False)
+        time.sleep(0.005)
+
+
+def fitted_dock():
+    """A tile that fits its content stops the seam at its content; a phone keeps it in view."""
+    from luma_appkit import Dock, DockTile, RowAction, SidebarRow
+
+    content = Gtk.Box(height_request=150)
+    preview = DockTile("preview", "Preview", "monitor", Gtk.Box(), main=True, bare=True)
+    audio = DockTile("audio", "Audio", "volume-2", content, fit=True)
+    d = Dock([preview, audio], layout=Dock.split("v", 0.5, "preview", "audio"))
+    window = Gtk.Window(default_width=900, default_height=700)
+    window.set_child(d)
+    window.present()
+    settle()
+    natural = audio.measure(Gtk.Orientation.VERTICAL, audio.get_width())[1]
+    assert abs(audio.get_height() - natural) <= 1, (audio.get_height(), natural)
+    assert preview.get_height() > audio.get_height(), (preview.get_height(), audio.get_height())
+    content.set_size_request(-1, 220)
+    d.refit()
+    settle()
+    natural = audio.measure(Gtk.Orientation.VERTICAL, audio.get_width())[1]
+    assert abs(audio.get_height() - natural) <= 1, (audio.get_height(), natural)
+    window.set_default_size(400, 700)
+    settle()
+    assert d.phone and audio.get_mapped() and audio.has_css_class("inline"), "a fitted tile stays in view"
+    window.set_default_size(900, 700)
+    settle()
+    assert not d.phone and not audio.has_css_class("inline")
+    window.destroy()
+    # A quiet row action waits for its row.
+    row = SidebarRow("Camera", trail=RowAction("eye", "Hide Camera", lambda: None, quiet=True))
+    assert row.trail_widget.has_css_class("quiet")
+    row = SidebarRow("Display", trail=RowAction("eye-off", "Show Display", lambda: None))
+    assert not row.trail_widget.has_css_class("quiet")
+
+
 if __name__ == "__main__":
     docks()
     arrange()
     meter()
     live_chip()
     dock()
+    fitted_dock()
     GLib.MainContext.default().iteration(False)
     print("ok")

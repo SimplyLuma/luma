@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.133%{?dist}
+Release:        1.luma.134%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,14 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.134
+- DockTile(fit=True): a tile never larger than its content along its split;
+  on a phone it stays under the main tile; Dock.refit() after a change.
+- A grown action bar is never narrower than its resting row, so the subject
+  chip keeps its name while an editor is open (Python and C).
+- Dock tile headers: 28 px keys, glyphs inset 12 px at both ends.
+- RowAction(quiet=True) waits for hover, selection or focus.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.133
 - luma_appkit.audio_capture: request_audio_capture() and AudioCapture, the
   client for the Audio Capture portal (pipewiresrc on the granted remote,
