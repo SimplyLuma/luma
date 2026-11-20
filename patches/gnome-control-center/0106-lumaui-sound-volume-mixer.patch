@@ -9,8 +9,12 @@ level, mute and (apps) the output it plays on.
 
 Apps come from org.projectluma.AudioDevices1 version 2; the output uses
 the sound adapter's GVC controls (vol and a new mute key). Outputs are
-named by node name as the device rows name them (CFSINKS). A wide page
-draws a column per strip, the output first; a phone or a TV draws rows.
+named by node name as the device rows name them (CFSINKS). The volume and
+its level are LumaUI's LumaVolumeSlider with its LumaAudioMeter laid along
+the track. A wide page draws one well of 96 px channel strips on a grid
+that wraps at any width, the output first and raised; every strip's parts
+sit on the same lines (two-line names). A phone or a TV draws rows, the
+volume flat under the words with its track starting on their edge.
 Levels are watched only while the page is mapped in a window that is not
 suspended. The row replaces Volume by app in live mode while the service
 offers version 2.
@@ -213,10 +217,10 @@ index e1e58a1..f18d48c 100644
      JsonNode *n = cc_luma_fixture_get (model, numbers[i]);
 diff --git a/shell/cc-luma-view-mixer.c b/shell/cc-luma-view-mixer.c
 new file mode 100644
-index 0000000..af00128
+index 0000000..8d56a82
 --- /dev/null
 +++ b/shell/cc-luma-view-mixer.c
-@@ -0,0 +1,1063 @@
+@@ -0,0 +1,1061 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/* Sound › Volume mixer: the default output and every app with sound, each
 + * with its volume, a live level, mute and (apps) the output it plays on.
@@ -224,14 +228,17 @@ index 0000000..af00128
 + * the Shell's mixer; the output is the Sound page's own (the sound adapter's
 + * vol, mute and out keys).
 + *
-+ * A wide page draws one column per strip: the output first, then System
-+ * sounds and the apps. A phone or a TV draws the same strips as rows. Strips
-+ * change in place as the service reports; levels are watched only while the
-+ * page is on screen (mapped, in a window that is not suspended). */
++ * A wide page draws one channel strip per column on a grid that wraps: the
++ * output first (raised, it is the whole mix), then System sounds and the
++ * apps, each strip the same width and its parts on the same lines. A phone or
++ * a TV draws the same strips as rows, a drawer's list. The volume and its
++ * level are one LumaUI part (LumaVolumeSlider with its LumaAudioMeter), so
++ * the level runs along exactly the slider's track. Strips change in place as
++ * the service reports; levels are watched only while the page is on screen
++ * (mapped, in a window that is not suspended). */
 +#include "cc-luma-view-devices.h"
 +#include "cc-luma-sound.h"
 +#include <gio/gdesktopappinfo.h>
-+#include <dlfcn.h>
 +#include <math.h>
 +
 +#define DEVICES_NAME "org.projectluma.AudioDevices"
@@ -241,6 +248,8 @@ index 0000000..af00128
 +#define OUTPUT_TARGET "output:"
 +/* A level the person set wins over reports for this long (µs). */
 +#define TOUCH_HOLD (G_USEC_PER_SEC / 2)
++/* A column strip's width; the grid's pitch is this plus the gap. */
++#define STRIP_WIDTH 96
 +
 +typedef struct _Mixer Mixer;
 +
@@ -248,7 +257,9 @@ index 0000000..af00128
 +  Mixer *m;
 +  char *id;              /* the app id; NULL for the output */
 +  char *name;
-+  GtkWidget *root, *icon, *title, *sub, *scale, *meter, *readout, *mute, *route;
++  GtkWidget *root, *icon, *title, *sub, *readout, *mute, *route;
++  LumaVolumeSlider *scale;
++  LumaAudioMeter *meter;
 +  gulong moved;
 +  double volume;         /* percent */
 +  gboolean muted, playing;
@@ -280,23 +291,6 @@ index 0000000..af00128
 +
 +static void sync_watch (Mixer *m);
 +static void strip_sync_output (Strip *s);
-+
-+/* LumaUI's meter runs bottom to top; rows draw it left to right where the
-+ * kit offers that (luma_audio_meter_set_horizontal). */
-+typedef void (*MeterHorizontal) (LumaAudioMeter *meter, gboolean horizontal);
-+static MeterHorizontal
-+meter_horizontal (void)
-+{
-+  static gsize once;
-+  static MeterHorizontal set;
-+  if (g_once_init_enter (&once))
-+    {
-+      void *self = dlopen (NULL, RTLD_LAZY);
-+      set = self ? (MeterHorizontal) dlsym (self, "luma_audio_meter_set_horizontal") : NULL;
-+      g_once_init_leave (&once, 1);
-+    }
-+  return set;
-+}
 +
 +static gboolean
 +over_amplified (View *v)
@@ -387,27 +381,26 @@ index 0000000..af00128
 +  /* The service's positions run from −60 dB (0) to full scale (1). A mixer
 +   * shows how loud each strip is, so full scale is the top, not a clip. */
 +  double db = s->muted || level <= 0 ? -60.0 : MIN (-60.0 + 60.0 * CLAMP (level, 0.0, 1.0), -0.01);
-+  luma_audio_meter_set_levels_db (LUMA_AUDIO_METER (s->meter), db, db);
++  luma_audio_meter_set_levels_db (s->meter, db, db);
 +}
 +
 +static void
 +strip_show_volume (Strip *s)
 +{
-+  double shown = s->muted ? 0 : MIN (s->volume, maximum (s->m));
 +  g_autofree char *text = g_strdup_printf ("%d%%", (int) round (s->volume));
-+  GtkAdjustment *adjustment = gtk_range_get_adjustment (GTK_RANGE (s->scale));
-+  if (gtk_adjustment_get_upper (adjustment) != maximum (s->m))
++  double upper;
++  luma_volume_slider_get_range (s->scale, NULL, &upper);
++  if (upper != maximum (s->m))
 +    {
-+      /* A narrower range clamps the value; that is not the person moving it. */
-+      g_signal_handler_block (s->scale, s->moved);
-+      gtk_range_set_range (GTK_RANGE (s->scale), 0, maximum (s->m));
-+      g_signal_handler_unblock (s->scale, s->moved);
++      /* A range that clamps the value is not the person moving it (no ::moved). */
++      luma_volume_slider_set_range (s->scale, 0, maximum (s->m));
++      luma_volume_slider_set_unity (s->scale, maximum (s->m) > 100 ? 100 : NAN);
 +    }
++  /* Muted, the knob stays at the volume; the fill and the level go quiet. */
++  luma_volume_slider_set_muted (s->scale, s->muted);
 +  if (g_get_monotonic_time () - s->touched > TOUCH_HOLD && !s->in_flight && isnan (s->pending))
 +    {
-+      g_signal_handler_block (s->scale, s->moved);
-+      gtk_range_set_value (GTK_RANGE (s->scale), shown);
-+      g_signal_handler_unblock (s->scale, s->moved);
++      luma_volume_slider_set_value (s->scale, MIN (s->volume, maximum (s->m)));
 +      set_label (s->readout, s->muted ? "Muted" : text);
 +    }
 +  luma_icon_button_set_active (GTK_BUTTON (s->mute), s->muted);
@@ -415,7 +408,8 @@ index 0000000..af00128
 +  g_autofree char *mute = g_strdup_printf (s->muted ? "Unmute %s" : "Mute %s", s->name);
 +  gtk_widget_set_tooltip_text (s->mute, mute);
 +  gtk_accessible_update_property (GTK_ACCESSIBLE (s->mute), GTK_ACCESSIBLE_PROPERTY_LABEL, mute, -1);
-+  gtk_accessible_update_property (GTK_ACCESSIBLE (s->scale), GTK_ACCESSIBLE_PROPERTY_LABEL, s->name, -1);
++  g_autofree char *volume = g_strdup_printf ("%s volume", s->name);
++  gtk_accessible_update_property (GTK_ACCESSIBLE (s->scale), GTK_ACCESSIBLE_PROPERTY_LABEL, volume, -1);
 +  if (s->muted) strip_set_level (s, 0);
 +}
 +
@@ -511,9 +505,9 @@ index 0000000..af00128
 +}
 +
 +static void
-+strip_moved (GtkRange *range, Strip *s)
++strip_moved (LumaVolumeSlider *slider, double moved, Strip *s)
 +{
-+  double value = round (gtk_range_get_value (range));
++  double value = round (moved);
 +  g_autofree char *text = g_strdup_printf ("%d%%", (int) value);
 +  s->touched = g_get_monotonic_time ();
 +  set_label (s->readout, text);
@@ -594,9 +588,11 @@ index 0000000..af00128
 +  describe_output (m, node, own ? own : fallback, &title, NULL, &icon);
 +  /* The speaker, not the volume glyph beside it on the mute key. */
 +  key_glyph (s->route, g_str_equal (icon, "volume-2") ? "speaker" : icon);
-+  g_autofree char *where = own ? g_strdup (title) : g_strdup ("Default output");
++  /* A column has room for one short word under the name. */
++  g_autofree char *where = own ? g_strdup (title) : g_strdup (m->rows ? "Default output" : "Default");
 +  set_label (s->sub, where);
-+  gtk_widget_set_tooltip_text (s->route, where);
++  g_autofree char *tip = own ? g_strdup_printf ("Plays on %s", title) : g_strdup ("Plays on the default output");
++  gtk_widget_set_tooltip_text (s->route, tip);
 +  /* The Shell's rule: a choice only when there is one to make. */
 +  gtk_widget_set_visible (s->route, output_count (m) > 1 || own);
 +}
@@ -618,27 +614,34 @@ index 0000000..af00128
 +  gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
 +  gtk_label_set_xalign (GTK_LABEL (label), centred ? 0.5 : 0);
 +  gtk_label_set_single_line_mode (GTK_LABEL (label), TRUE);
++  /* A name never widens its strip or row; it ellipsizes in what it is given. */
++  gtk_label_set_max_width_chars (GTK_LABEL (label), 1);
++  gtk_widget_set_hexpand (label, TRUE);
 +  return label;
 +}
 +
-+/* The strip's face: an app's own icon, or a glyph on the rows' lead tile
-+ * (cf-ri). Sets *image to the GtkImage inside. */
++/* The strip's face: an app's own icon, or a Lucide glyph on a tile the
++ * icon's size (cf-ri). Sets *image to the GtkImage inside. */
 +static GtkWidget *
 +strip_face (const char *lucide, GIcon *gicon, gboolean rows, GtkWidget **image)
 +{
++  int size = rows ? 30 : 36;
 +  if (gicon)
 +    {
 +      *image = gtk_image_new_from_gicon (gicon);
-+      gtk_image_set_pixel_size (GTK_IMAGE (*image), rows ? 30 : 40);
++      gtk_image_set_pixel_size (GTK_IMAGE (*image), size);
 +      gtk_widget_add_css_class (*image, "cf-mix-app");
 +      gtk_widget_set_valign (*image, GTK_ALIGN_CENTER);
++      gtk_widget_set_halign (*image, GTK_ALIGN_CENTER);
 +      return *image;
 +    }
 +  GtkWidget *tile = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 +  *image = luma_ui_icon_new (lucide);
 +  gtk_widget_add_css_class (tile, "cf-ri");
 +  gtk_widget_add_css_class (tile, "cf-mix-tile");
++  gtk_widget_set_size_request (tile, size, size);
 +  gtk_widget_set_valign (tile, GTK_ALIGN_CENTER);
++  gtk_widget_set_halign (tile, GTK_ALIGN_CENTER);
 +  gtk_widget_set_hexpand (tile, FALSE);
 +  gtk_widget_set_halign (*image, GTK_ALIGN_CENTER);
 +  gtk_widget_set_hexpand (*image, TRUE);
@@ -646,26 +649,17 @@ index 0000000..af00128
 +  return tile;
 +}
 +
-+/* LumaUI's level meter (LumaAudioMeter, mono), filling from the bottom. A
-+ * row lays it along its slider where the kit offers that
-+ * (luma_audio_meter_set_horizontal); FALSE when it stays upright. */
-+static GtkWidget *
-+strip_meter (gboolean rows, gboolean *along)
-+{
-+  GtkWidget *meter = luma_audio_meter_new (1);
-+  gtk_widget_add_css_class (meter, "cf-mix-meter");
-+  MeterHorizontal horizontal = rows ? meter_horizontal () : NULL;
-+  if (horizontal) horizontal (LUMA_AUDIO_METER (meter), TRUE);
-+  /* A kit whose meter is a pair of GtkLevelBars runs them top down. */
-+  for (GtkWidget *c = gtk_widget_get_first_child (meter); c; c = gtk_widget_get_next_sibling (c))
-+    if (GTK_IS_LEVEL_BAR (c)) gtk_level_bar_set_inverted (GTK_LEVEL_BAR (c), TRUE);
-+  *along = horizontal != NULL;
-+  if (!*along) gtk_widget_add_css_class (meter, "upright");
-+  return meter;
-+}
-+
-+/* One strip: icon, name, where it plays, the volume with its level beside
-+ * (columns) or under it (rows), the readout, mute and the output key. */
++/* One strip: icon, name, where it plays, the volume with its level (one
++ * LumaVolumeSlider), the readout, mute and the output key.
++ *
++ * Column (wide):          Row (phone, TV):
++ *   [icon]                  [icon] name / where     [mute][out]
++ *   name                           ═══════○──────── 68%
++ *   where                          ▂▂▂▂▂▂ level
++ *   ║ ▌  volume + level
++ *   68%
++ *   [mute][out]
++ */
 +static Strip *
 +strip_new (Mixer *m, const char *id, const char *name, const char *lucide, GIcon *gicon)
 +{
@@ -676,27 +670,41 @@ index 0000000..af00128
 +  s->pending = NAN;
 +  s->output = g_strdup ("");
 +  GtkOrientation orientation = m->rows ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL;
-+  s->scale = gtk_scale_new_with_range (orientation, 0, maximum (m), 1);
-+  gtk_scale_set_draw_value (GTK_SCALE (s->scale), FALSE);
-+  gtk_range_set_inverted (GTK_RANGE (s->scale), !m->rows);
-+  gtk_widget_add_css_class (s->scale, "cf-mix-scale");
-+  s->moved = g_signal_connect (s->scale, "value-changed", G_CALLBACK (strip_moved), s);
-+  gboolean along = FALSE;
-+  s->meter = strip_meter (m->rows, &along);
-+  /* The Sound page's readout (cf-out). */
++  s->scale = LUMA_VOLUME_SLIDER (luma_volume_slider_new (orientation, 0, maximum (m)));
++  luma_volume_slider_set_steps (s->scale, 1, 10);
++  luma_volume_slider_set_unity (s->scale, maximum (m) > 100 ? 100 : NAN);
++  luma_volume_slider_set_meter_channels (s->scale, 1);
++  s->meter = luma_volume_slider_get_meter (s->scale);
++  gtk_widget_add_css_class (GTK_WIDGET (s->scale), "cf-mix-volume");
++  s->moved = g_signal_connect (s->scale, "moved", G_CALLBACK (strip_moved), s);
++  /* The Sound page's readout (cf-out), in tabular figures so 9% and 100% sit alike. */
 +  s->readout = cf_text ("", "cf-out");
 +  gtk_label_set_xalign (GTK_LABEL (s->readout), m->rows ? 1 : 0.5);
 +  gtk_widget_add_css_class (s->readout, "cf-mix-readout");
 +  s->title = strip_label (name, "row-title", FALSE, !m->rows);
++  if (!m->rows)
++    {
++      /* A column's name takes two lines, always, so every strip's parts stay level. */
++      gtk_label_set_wrap (GTK_LABEL (s->title), TRUE);
++      gtk_label_set_wrap_mode (GTK_LABEL (s->title), PANGO_WRAP_WORD_CHAR);
++      gtk_label_set_lines (GTK_LABEL (s->title), 2);
++      gtk_label_set_single_line_mode (GTK_LABEL (s->title), FALSE);
++      gtk_label_set_justify (GTK_LABEL (s->title), GTK_JUSTIFY_CENTER);
++      /* A one-line name sits on the lower line, against where it plays. */
++      gtk_label_set_yalign (GTK_LABEL (s->title), 1.0);
++      gtk_widget_add_css_class (s->title, "cf-mix-name");
++    }
 +  s->sub = strip_label ("", "row-subtitle", TRUE, !m->rows);
 +  s->mute = luma_icon_button_new ("volume-2", name);
 +  luma_icon_button_set_size (GTK_BUTTON (s->mute), "row");
++  gtk_widget_add_css_class (s->mute, "cf-mix-key");
 +  g_signal_connect (s->mute, "clicked", G_CALLBACK (mute_clicked), s);
 +  if (id)
 +    {
 +      g_autofree char *label = g_strdup_printf ("Output for %s", name);
-+      s->route = luma_icon_button_new ("volume-2", label);
++      s->route = luma_icon_button_new ("speaker", label);
 +      luma_icon_button_set_size (GTK_BUTTON (s->route), "row");
++      gtk_widget_add_css_class (s->route, "cf-mix-key");
 +      g_signal_connect (s->route, "clicked", G_CALLBACK (route_clicked), s);
 +    }
 +  GtkWidget *face = strip_face (lucide, gicon, m->rows, &s->icon);
@@ -707,8 +715,8 @@ index 0000000..af00128
 +
 +  if (m->rows)
 +    {
-+      /* v70 row anatomy: lead, words, control; the volume and its level under them. */
-+      s->root = gtk_box_new (GTK_ORIENTATION_VERTICAL, 8);
++      /* v70 row anatomy (lead, words, controls), then the volume under the words. */
++      s->root = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
 +      gtk_widget_add_css_class (s->root, "cf-row");
 +      gtk_widget_add_css_class (s->root, "cf-mix-row");
 +      GtkWidget *line = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
@@ -722,15 +730,11 @@ index 0000000..af00128
 +      gtk_box_append (GTK_BOX (line), face);
 +      gtk_box_append (GTK_BOX (line), words);
 +      gtk_box_append (GTK_BOX (line), keys);
-+      GtkWidget *level = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
-+      GtkWidget *fader = gtk_box_new (GTK_ORIENTATION_VERTICAL, 4);
++      GtkWidget *level = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
 +      gtk_widget_add_css_class (level, "cf-mix-level");
-+      gtk_widget_set_hexpand (s->scale, TRUE);
-+      gtk_widget_set_hexpand (fader, TRUE);
-+      gtk_box_append (GTK_BOX (fader), s->scale);
-+      gtk_box_append (GTK_BOX (level), fader);
-+      /* Along the slider's foot, as the Shell's mixer; upright at its end otherwise. */
-+      gtk_box_append (along ? GTK_BOX (fader) : GTK_BOX (level), s->meter);
++      gtk_widget_set_hexpand (GTK_WIDGET (s->scale), TRUE);
++      gtk_widget_set_valign (s->readout, GTK_ALIGN_START);
++      gtk_box_append (GTK_BOX (level), GTK_WIDGET (s->scale));
 +      gtk_box_append (GTK_BOX (level), s->readout);
 +      gtk_box_append (GTK_BOX (s->root), line);
 +      gtk_box_append (GTK_BOX (s->root), level);
@@ -739,20 +743,20 @@ index 0000000..af00128
 +    {
 +      s->root = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 +      gtk_widget_add_css_class (s->root, "cf-mix-strip");
-+      GtkWidget *fader = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 10);
-+      gtk_widget_add_css_class (fader, "cf-mix-fader");
-+      gtk_widget_set_halign (fader, GTK_ALIGN_CENTER);
-+      gtk_widget_set_vexpand (s->scale, TRUE);
-+      gtk_widget_set_vexpand (s->meter, TRUE);
-+      gtk_box_append (GTK_BOX (fader), s->scale);
-+      gtk_box_append (GTK_BOX (fader), s->meter);
-+      gtk_widget_set_halign (face, GTK_ALIGN_CENTER);
++      if (!id) gtk_widget_add_css_class (s->root, "output");
++      /* Every strip the same width, its parts on the same lines as its neighbours'. */
++      gtk_widget_set_size_request (s->root, STRIP_WIDTH, -1);
++      gtk_widget_set_halign (s->root, GTK_ALIGN_CENTER);
++      gtk_widget_set_hexpand (s->root, FALSE);
++      gtk_widget_set_halign (GTK_WIDGET (s->scale), GTK_ALIGN_CENTER);
++      gtk_widget_set_vexpand (GTK_WIDGET (s->scale), TRUE);
++      gtk_widget_add_css_class (GTK_WIDGET (s->scale), "cf-mix-fader");
 +      gtk_widget_set_halign (keys, GTK_ALIGN_CENTER);
 +      gtk_widget_add_css_class (face, "cf-mix-face");
 +      gtk_box_append (GTK_BOX (s->root), face);
 +      gtk_box_append (GTK_BOX (s->root), s->title);
 +      gtk_box_append (GTK_BOX (s->root), s->sub);
-+      gtk_box_append (GTK_BOX (s->root), fader);
++      gtk_box_append (GTK_BOX (s->root), GTK_WIDGET (s->scale));
 +      gtk_box_append (GTK_BOX (s->root), s->readout);
 +      gtk_box_append (GTK_BOX (s->root), keys);
 +    }
@@ -821,22 +825,28 @@ index 0000000..af00128
 +  if (m->meta) set_label (GTK_WIDGET (m->meta), meta);
 +}
 +
-+/* Columns wrap in a flow box; one that is out of the service's order is laid again. */
++/* Columns wrap on a grid (a homogeneous flow box, each strip centred in its
++ * cell): the output's strip first and kept, then the apps in the service's
++ * order. Strips out of that order are laid again. */
 +static void
 +place_columns (Mixer *m, GPtrArray *order)
 +{
-+  GtkWidget *child = gtk_widget_get_first_child (m->apps);
++  GtkWidget *first = gtk_widget_get_first_child (m->apps);
++  gboolean device = m->device && first && gtk_flow_box_child_get_child (GTK_FLOW_BOX_CHILD (first)) == m->device->root;
++  GtkWidget *child = device ? gtk_widget_get_next_sibling (first) : first;
 +  gboolean same = TRUE;
 +  for (guint i = 0; i < order->len && same; i++, child = child ? gtk_widget_get_next_sibling (child) : NULL)
 +    same = child && gtk_flow_box_child_get_child (GTK_FLOW_BOX_CHILD (child)) == ((Strip *) g_ptr_array_index (order, i))->root;
 +  if (same && !child) return;
-+  g_autoptr (GPtrArray) roots = g_ptr_array_new_with_free_func (g_object_unref);
-+  for (guint i = 0; i < order->len; i++)
-+    g_ptr_array_add (roots, g_object_ref (((Strip *) g_ptr_array_index (order, i))->root));
-+  gtk_flow_box_remove_all (GTK_FLOW_BOX (m->apps));
-+  for (guint i = 0; i < roots->len; i++)
++  for (child = device ? gtk_widget_get_next_sibling (first) : first; child;)
 +    {
-+      GtkWidget *root = g_ptr_array_index (roots, i);
++      GtkWidget *next = gtk_widget_get_next_sibling (child);
++      gtk_flow_box_remove (GTK_FLOW_BOX (m->apps), child);
++      child = next;
++    }
++  for (guint i = 0; i < order->len; i++)
++    {
++      GtkWidget *root = ((Strip *) g_ptr_array_index (order, i))->root;
 +      gtk_flow_box_append (GTK_FLOW_BOX (m->apps), root);
 +      /* The strip's own controls take focus, not the cell around them. */
 +      gtk_widget_set_focusable (gtk_widget_get_parent (root), FALSE);
@@ -1228,32 +1238,24 @@ index 0000000..af00128
 +    }
 +  else
 +    {
-+      /* Wide: the output's well, then the apps' well beside it. */
-+      GtkWidget *desk = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 16);
-+      gtk_widget_add_css_class (desk, "cf-mix-desk");
-+      if (m->device)
-+        {
-+          m->device_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-+          gtk_widget_add_css_class (m->device_box, "cf-mix-columns");
-+          gtk_box_append (GTK_BOX (m->device_box), m->device->root);
-+          GtkWidget *device = section ("Output", m->device_box);
-+          gtk_widget_set_hexpand (device, FALSE);
-+          gtk_widget_set_valign (device, GTK_ALIGN_START);
-+          gtk_box_append (GTK_BOX (desk), device);
-+        }
-+      /* As many columns to a line as fit; more apps wrap to the next line. */
++      /* Wide: one well, a grid of strips that wraps at any width. Every cell
++       * is the same width (the grid's pitch) and each strip sits centred in
++       * it, so a short last line keeps the columns of the lines above. */
 +      m->apps = gtk_flow_box_new ();
 +      gtk_flow_box_set_selection_mode (GTK_FLOW_BOX (m->apps), GTK_SELECTION_NONE);
 +      gtk_flow_box_set_homogeneous (GTK_FLOW_BOX (m->apps), TRUE);
-+      gtk_flow_box_set_max_children_per_line (GTK_FLOW_BOX (m->apps), 12);
-+      gtk_flow_box_set_row_spacing (GTK_FLOW_BOX (m->apps), 16);
++      gtk_flow_box_set_min_children_per_line (GTK_FLOW_BOX (m->apps), 1);
++      gtk_flow_box_set_max_children_per_line (GTK_FLOW_BOX (m->apps), 24);
++      gtk_flow_box_set_column_spacing (GTK_FLOW_BOX (m->apps), 4);
++      gtk_flow_box_set_row_spacing (GTK_FLOW_BOX (m->apps), 20);
 +      gtk_flow_box_set_activate_on_single_click (GTK_FLOW_BOX (m->apps), FALSE);
 +      gtk_widget_add_css_class (m->apps, "cf-mix-columns");
-+      GtkWidget *apps = section ("Apps", m->apps);
-+      gtk_widget_set_hexpand (apps, TRUE);
-+      gtk_widget_set_valign (apps, GTK_ALIGN_START);
-+      gtk_box_append (GTK_BOX (desk), apps);
-+      gtk_box_append (GTK_BOX (m->page), desk);
++      if (m->device)
++        {
++          gtk_flow_box_append (GTK_FLOW_BOX (m->apps), m->device->root);
++          gtk_widget_set_focusable (gtk_widget_get_parent (m->device->root), FALSE);
++        }
++      gtk_box_append (GTK_BOX (m->page), section ("Output and apps", m->apps));
 +    }
 +  gtk_box_append (v->body, m->page);
 +  if (m->device) sync_device (m);
@@ -1369,35 +1371,37 @@ index 8ca2b67..b40dc46 100644
  }
  /* OKLCH to sRGB, for the page wash's hue (v70 uses oklch for it). */
 diff --git a/shell/luma-settings-devices.css b/shell/luma-settings-devices.css
-index 301eef1..cb77397 100644
+index 301eef1..1cb46a0 100644
 --- a/shell/luma-settings-devices.css
 +++ b/shell/luma-settings-devices.css
-@@ -46,6 +46,29 @@ button.cf-mon.on { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @lu
+@@ -46,6 +46,31 @@ button.cf-mon.on { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @lu
  .cf-meter > box.on { background: @luma_good; }
  .cf-meter.in { min-width: 170px; margin: 0; }
  
-+/* Volume mixer (cc-luma-view-mixer.c): a column per strip on a wide page, rows on a phone or a TV. */
-+.cf-mix-desk > .cf-group { margin-top: 0; }
-+.cf-mix-columns { padding: 16px 8px 12px; }
-+.cf-mix-columns > flowboxchild, .cf-mix-columns > flowboxchild:hover, .cf-mix-columns > flowboxchild:selected { padding: 0; background: none; }
-+.cf-mix-strip { min-width: 100px; padding: 0 4px; }
-+.cf-mix-strip > .cf-mix-face { margin-bottom: 8px; }
-+.cf-mix-tile { min-width: 40px; min-height: 40px; border-radius: 12px; }
-+.cf-mix-tile image { -gtk-icon-size: 20px; }
-+.cf-row .cf-mix-tile { min-width: 30px; min-height: 30px; border-radius: 9px; }
++/* Volume mixer (cc-luma-view-mixer.c): one well of channel strips on a grid on a wide page, rows on a phone or a TV.
++ * A strip is 96 wide (STRIP_WIDTH); every part sits on the same line as its neighbours': a 36 icon, the name on two
++ * 18 px lines and where it plays on one, the LumaUI volume with its level (LumaVolumeSlider, 148 tall), the readout, the keys. */
++.cf-mix-columns { padding: 12px 8px; }
++.cf-mix-columns > flowboxchild, .cf-mix-columns > flowboxchild:hover, .cf-mix-columns > flowboxchild:selected { padding: 0; background: none; outline: none; }
++.cf-mix-strip { padding: 12px 6px 10px; border-radius: 14px; }
++/* The output is the whole mix: raised on the well like a chip. */
++.cf-mix-strip.output { background: @luma_chip; box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow, 0 3px 8px -3px @luma_chip_drop; }
++.cf-mix-strip > .cf-mix-face { min-width: 36px; min-height: 36px; margin-bottom: 8px; }
++.cf-mix-tile { border-radius: 11px; }
++.cf-mix-tile image { -gtk-icon-size: 18px; }
++.cf-row .cf-mix-tile { border-radius: 9px; }
 +.cf-row .cf-mix-tile image { -gtk-icon-size: 16px; }
 +.cf-mix-strip > label { min-height: 18px; }
-+.cf-mix-fader { min-height: 168px; margin: 12px 0 8px; }
-+/* LumaUI's slider stood upright: its 4 px track and 14 px handle turned (luma-appkit-base.css). */
-+.cf-mix-scale.vertical { min-width: 18px; min-height: 0; }
-+.cf-mix-scale.vertical > trough { min-width: 4px; min-height: 0; }
-+.cf-mix-scale.vertical > trough > highlight { min-width: 4px; min-height: 0; }
-+.cf-mix-meter levelbar > trough { min-width: 4px; min-height: 4px; }
-+.cf-mix-readout { min-height: 18px; margin-bottom: 4px; font-feature-settings: "tnum"; }
-+.cf-mixer .cf-card .cf-mix-row { padding-top: 12px; padding-bottom: 12px; background-position: 0 -12px; }
++.cf-mix-strip > label.cf-mix-name { min-height: 36px; }
++.cf-mix-strip > lumaui-volume-slider.cf-mix-fader { min-height: 148px; margin: 12px 0 8px; }
++.cf-mix-readout { min-width: 40px; min-height: 18px; font-feature-settings: "tnum"; }
++.cf-mix-strip > .cf-mix-readout { margin-bottom: 6px; }
++.cf-mix-keys { min-height: 28px; }
++/* Rows: the volume runs under the words, from the words' edge to the row's end. */
++.cf-mixer .cf-card .cf-mix-row { padding-top: 12px; padding-bottom: 10px; background-position: 0 -12px; }
 +.cf-mixer .cf-card > box > .cf-mix-row:first-child { background-image: none; }
-+.cf-mix-level { margin-left: 42px; }
-+.cf-mix-row .cf-mix-meter.upright { min-height: 28px; }
++.cf-mix-level { margin-left: 37px; } /* the track starts on the words' edge (the knob's half less the track's) */
++.cf-mix-level > .cf-mix-readout { margin-top: 3px; }
 +
  /* Power (v70 .cfbat, .cfcell, .cfbars) */
  .cf-cell { min-width: 124px; min-height: 46px; padding: 4px; border-radius: 13px; box-shadow: inset 0 0 0 2px @luma_faint; }
