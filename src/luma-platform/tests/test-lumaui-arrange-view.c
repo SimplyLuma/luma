@@ -9,6 +9,11 @@ static gboolean stop(gpointer data) {
   return G_SOURCE_REMOVE;
 }
 
+static void spin_frames(void) {
+  for (int i = 0; i < 20; i++)
+    g_main_context_iteration(NULL, FALSE);
+}
+
 static void settle(void) {
   gboolean done = FALSE;
   g_timeout_add(250, stop, &done);
@@ -287,6 +292,16 @@ static void test_modifiers(void) {
   g_assert_cmpstr(activated, ==, "text");
   luma_arrange_view_set_selected(arrange, "text"); /* another selection leaves crop mode */
   g_assert_null(luma_arrange_view_get_cropping(arrange));
+  /* The shown rectangle: set, read back, cleared; the live one is untouched. */
+  luma_arrange_view_set_item_shown_rect(arrange, "wide", 300, 430, 1200, 340);
+  double sx, sy, sw, sh;
+  g_assert_true(luma_arrange_view_get_item_shown_rect(arrange, "wide", &sx, &sy, &sw, &sh));
+  g_assert_cmpfloat(sx, ==, 300);
+  g_assert_cmpfloat(sh, ==, 340);
+  gtk_widget_queue_draw(view);
+  spin_frames();
+  luma_arrange_view_clear_item_shown_rect(arrange, "wide");
+  g_assert_false(luma_arrange_view_get_item_shown_rect(arrange, "wide", NULL, NULL, NULL, NULL));
   /* The app's crop is clamped to 0..0.49 a side. */
   luma_arrange_view_set_item_crop(arrange, "wide", 0.7, -1, 0.2, 0.3);
   assert_crop(arrange, 0.49, 0, 0.2, 0.3);
