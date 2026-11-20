@@ -192,6 +192,14 @@ class StreamyWindow(AppWindow):
         bar = (34 + 48 + 12) if phone else (24 + 36 + 8)
         self.arrange.set_fit_margins(x + gap, y + gap, max(0, total_w - x - width) + gap,
                                      max(bar, total_h - y - height) + gap)
+        GLib.idle_add(self._size_preview)
+
+    def _size_preview(self) -> bool:
+        x0, _y0 = self.arrange.canvas_to_view(0, 0)
+        x1, _y1 = self.arrange.canvas_to_view(*self.project.canvas)
+        if x1 - x0 > 8:
+            self.engine.set_preview_size((x1 - x0) * self.get_scale_factor(), 0)
+        return False
 
     def _body(self) -> Gtk.Widget:
         from luma_appkit import Island

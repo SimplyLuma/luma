@@ -290,6 +290,7 @@ class Engine(GObject.Object):
         self._sound = False
         self._taps: dict[str, list[Gst.Element]] = {}
         self._zorder = 0
+        self.preview_size: tuple[int, int] | None = None
 
     # ── The program pipeline ──
 
@@ -345,11 +346,30 @@ class Engine(GObject.Object):
         sink.set_property("sync", False)
         bin_ = Gst.ElementFactory.make("glsinkbin", "preview")
         bin_.set_property("sink", sink)
+        # The preview is scaled on the GPU to the size it is shown at: no full-size copy for the screen.
         queue = make(Element("queue", "preview-queue", {"max-size-buffers": 1, "leaky": 2}))
-        self.pipeline.add(queue)
-        self.pipeline.add(bin_)
-        queue.link(bin_)
+        scale = make(Element("glcolorscale", "preview-scale"))
+        size = make(Element("capsfilter", "preview-size", {"caps": self._preview_caps()}))
+        for element in (queue, scale, size, bin_):
+            self.pipeline.add(element)
+        link_all([queue, scale, size, bin_])
         self.pipeline.get_by_name("program").link(queue)
+
+    def _preview_caps(self) -> str:
+        width, height = self.preview_size or (self.canvas[0] // 2, self.canvas[1] // 2)
+        return f"video/x-raw(memory:GLMemory),width={width},height={height}"
+
+    def set_preview_size(self, width: int, height: int) -> None:
+        """Show the program at this many pixels (the picture's size on screen, in device pixels)."""
+        cw, ch = self.canvas
+        width = max(2, min(cw, int(width) // 2 * 2))
+        height = max(2, min(ch, int(round(width * ch / cw)) // 2 * 2))
+        if (width, height) == self.preview_size:
+            return
+        self.preview_size = (width, height)
+        size = self.pipeline.get_by_name("preview-size") if self.pipeline is not None else None
+        if size is not None:
+            size.set_property("caps", Gst.Caps.from_string(self._preview_caps()))
 
     # ── Scenes and widgets ──
 
