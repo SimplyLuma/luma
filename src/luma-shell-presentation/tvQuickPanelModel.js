@@ -11,7 +11,8 @@ const PASSIVE = new Set(['sep', 'label']);
 //   me        {name, focusable}: the account (its picture and name)
 //   toggles   [{key, visible, ...}]: Quick Options toggles; hidden ones drop out
 //   leave     true when TV was chosen (Quick Options' TV): the way back, right under the toggles
-//   level     {visible, outputs: [{id, name}], current}: the output volume
+//   level     {visible, outputs: [{id, name}], current, apps: [{id, name}]}: the output
+//             volume; apps are the per-app mixer's (System sounds first)
 //   notes     [notification records], newest first
 //   settings  true when Settings can be opened
 //   sleep     true when the TV can sleep (suspend or screen off)
@@ -40,6 +41,11 @@ export function panelRows(state) {
         if (state.open?.outputs && (state.level.outputs?.length ?? 0) > 1) {
             for (const output of state.level.outputs)
                 rows.push({kind: 'output', key: `output:${output.id}`, output, current: output.id === state.level.current});
+        }
+        // Each app's own volume, under the outputs (Left/Right steps it, OK mutes it).
+        if (state.open?.outputs) {
+            for (const app of state.level.apps ?? [])
+                rows.push({kind: 'app', key: `app:${app.id}`, app});
         }
     }
     const notes = state.notes ?? [];
@@ -122,6 +128,12 @@ export function chipState(toggle, words = {on: 'On', off: 'Off'}) {
     const subtitle = (toggle.subtitle ?? '').trim();
     if (toggle.stateOnly || !subtitle || subtitle === toggle.title) return words.on;
     return subtitle;
+}
+
+// OK on the volume row drops its list: the outputs when there are several,
+// and the apps when the per-app mixer has any.
+export function levelOpens(level) {
+    return (level?.outputs?.length ?? 0) > 1 || (level?.apps?.length ?? 0) > 0;
 }
 
 // Left/Right on the volume row: one step, inside the slider's range.

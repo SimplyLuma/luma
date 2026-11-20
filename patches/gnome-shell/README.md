@@ -771,3 +771,17 @@ face and pin key come from that app. A browser
 notification whose origin line is an installed web app's site goes to that
 web app. Rules: `js/ui/lumaWellModel.js` (no gi imports). Test:
 `well-overflow-policy.js` in %check. Shell .187.
+
+`0350-app-mixer.patch`: the Sound output page lists System sounds and every
+app with a sound stream under the outputs, from
+`org.projectluma.AudioDevices1` version 2. Each app is the shared filled
+level (`FillSlider`, which gains a `meter` drawn along its foot) with the
+app's icon and name, then a mute key and an output key that opens the
+outputs under the row. Meters are watched only while the page is on screen.
+The model (`AppMixer`, the output slider's `appMixer`) also feeds the TV
+quick panel, which lists each app's volume under the outputs. On a compact
+(phone) drawer the detail page is no longer capped at 420 px.
+The service's level probes (`org.projectluma.AudioDevices`) are skipped by
+the microphone indicator, strip and status well, as pavucontrol is. Without
+the service or before version 2 the page is unchanged. Test:
+`app-mixer-policy.js` in %check. Shell .188.

@@ -1,0 +1,878 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] status/volume: per-app mixer in the Sound output page
+
+The Sound output page lists, under the outputs, System sounds and every
+app with a sound stream, from org.projectluma.AudioDevices1 version 2
+(GetApplications, ApplicationsChanged). Each app is the volume level
+itself (the shared filled slider) with the app's icon and name on the
+track, a live meter along its foot, a mute key and an output key; the
+output key opens the outputs under the row (the default output, or one
+of the app's own). Names and icons come from the window tracker by pid
+(apps with a desktop entry), then the desktop entry, then the service.
+
+The model (AppMixer, getAppMixer(), the output slider's appMixer) is
+shared with the TV quick panel. Views hold() it while on screen. Meters
+are watched (WatchLevels) only while the Sound output page is mapped and
+unwatched when it leaves the screen, so a closed panel runs no monitor
+stream. The service's level probes record as
+org.projectluma.AudioDevices; like pavucontrol they are not an app
+using the microphone, so the input indicator, the microphone strip and
+the status well skip them. Output choices are named as the device list
+names them (port and card from Gvc).
+
+On a compact (phone) drawer the detail page is no longer capped at
+420 px: the drawer scrolls the whole page.
+
+Without the service, or before version 2, the page is unchanged.
+
+diff --git a/js/ui/panel.js b/js/ui/panel.js
+index a9cdb89..6f4052a 100644
+--- a/js/ui/panel.js
++++ b/js/ui/panel.js
+@@ -1585,7 +1585,9 @@ class QuickSettings extends PanelMenu.Button {
+         const control = this._volumeInput?._control;
+         const names = new Set();
+         try {
+-            for (const output of control?.get_source_outputs?.() ?? []) {
++            const outputs = this._volumeInput?._input?.getRecordingOutputs?.() ??
++                control?.get_source_outputs?.() ?? [];
++            for (const output of outputs) {
+                 for (const value of [output.get_application_id?.(), output.get_name?.()])
+                     if (value)
+                         names.add(`${value}`.toLowerCase());
+diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
+index 17db40a..4392687 100644
+--- a/js/ui/quickSettings.js
++++ b/js/ui/quickSettings.js
+@@ -1568,7 +1568,7 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+             micIcon.icon_name = muted ? 'luma-mic-off-symbolic' : 'luma-mic-symbolic';
+             micTitle.text = muted ? _('Microphone muted') : _('Microphone in use');
+             mute.label = muted ? _('Unmute') : _('Mute');
+-            const apps = input._control?.get_source_outputs?.() ?? [];
++            const apps = input.getRecordingOutputs?.() ?? [];
+             micApp.text = apps.map(s => s.get_name()).filter(Boolean).join(', ');
+             micApp.visible = !!micApp.text;
+         };
+@@ -1627,7 +1627,9 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+             // Use usable work area, not the full display behind the Shelf.
+             const workArea = monitor ? Main.layoutManager.getWorkAreaForMonitor(monitor.index) : null;
+             const maxHeight = Math.max(96, Math.min(420, (workArea?.height ?? 600) / scale - 160));
+-            this._pageScroll.set_style(`max-height: ${maxHeight}px;`);
++            // A compact (phone) page is the whole drawer, which scrolls itself.
++            this._pageScroll.set_style(this.box.has_style_class_name('lumaui-compact-options')
++                ? null : `max-height: ${maxHeight}px;`);
+             this._pageHeading.text = menu._studioTitle ?? item.title ?? menu._titleLabel.text;
+             const radio = menu._studioRadio;
+             this._pageSwitch.accessible_name = this._pageHeading.text;
+diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
+index 638f2c1..5cf8538 100644
+--- a/js/ui/status/volume.js
++++ b/js/ui/status/volume.js
+@@ -4,6 +4,7 @@ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
+ import Gvc from 'gi://Gvc';
+ import Pango from 'gi://Pango';
++import Shell from 'gi://Shell';
+ import St from 'gi://St';
+ 
+ import * as Dialog from '../dialog.js';
+@@ -13,6 +14,7 @@ import * as PopupMenu from '../popupMenu.js';
+ import * as ShellEntry from '../shellEntry.js';
+ 
+ import {QuickSheetRow, QuickSlider, SystemIndicator} from '../quickSettings.js';
++import {FillSlider} from '../lumaPresentation/fillSlider.js';
+ 
+ const ALLOW_AMPLIFIED_VOLUME_KEY = 'allow-volume-above-100-percent';
+ const UNMUTE_DEFAULT_VOLUME = 0.25;
+@@ -37,9 +39,44 @@ const AudioDevicesProxy = Gio.DBusProxy.makeProxyWrapper(`<node>
+       <arg name="password" type="s" direction="in"/>
+     </method>
+     <signal name="AirPlayReceiversChanged"/>
++    <property name="Version" type="u" access="read"/>
++    <method name="GetOutputs">
++      <arg name="outputs" type="aa{sv}" direction="out"/>
++    </method>
++    <signal name="OutputsChanged"/>
++    <method name="GetApplications">
++      <arg name="applications" type="aa{sv}" direction="out"/>
++    </method>
++    <signal name="ApplicationsChanged">
++      <arg name="applications" type="aa{sv}"/>
++    </signal>
++    <method name="SetApplicationVolume">
++      <arg name="id" type="s" direction="in"/>
++      <arg name="volume" type="d" direction="in"/>
++    </method>
++    <method name="SetApplicationMute">
++      <arg name="id" type="s" direction="in"/>
++      <arg name="muted" type="b" direction="in"/>
++    </method>
++    <method name="SetApplicationOutput">
++      <arg name="id" type="s" direction="in"/>
++      <arg name="output" type="s" direction="in"/>
++    </method>
++    <method name="WatchLevels">
++      <arg name="targets" type="as" direction="in"/>
++      <arg name="watch" type="u" direction="out"/>
++    </method>
++    <method name="UnwatchLevels">
++      <arg name="watch" type="u" direction="in"/>
++    </method>
++    <signal name="Levels">
++      <arg name="watch" type="u"/>
++      <arg name="levels" type="a{sd}"/>
++    </signal>
+   </interface>
+ </node>`);
+ 
++
+ // Outputs PipeWire's discovery modules create on their own. Nobody chose
+ // them, so they are left out of the menu unless one is already in use.
+ const DISCOVERED_NETWORK_OUTPUT_PREFIXES = ['raop_sink.', 'tunnel.', 'rtp_session.', 'snapcast'];
+@@ -412,6 +449,682 @@ const AirPlayMenuItem = GObject.registerClass({
+     }
+ });
+ 
++// The per-app mixer needs interface version 2.
++const MIXER_VERSION = 2;
++const SYSTEM_SOUNDS_ID = '@system';
++const SYSTEM_SOUNDS_ICON = 'lumaui-bell-symbolic';
++const MIXER_MAX_VOLUME = 1.5;
++
++// Recording streams that only measure levels. They are not an app using the
++// microphone: GNOME's and PulseAudio's mixers, and the meters of Luma's own
++// sound service, which the mixer below opens.
++const LEVEL_METER_APPLICATION_IDS = [
++    'org.gnome.VolumeControl',
++    'org.PulseAudio.pavucontrol',
++    AUDIO_DEVICES_BUS_NAME,
++];
++
++/**
++ * @param {Gvc.MixerStream} output - a recording stream (source output)
++ * @returns {boolean} whether it is an app recording, not a level meter
++ */
++export function isRecordingApplication(output) {
++    return !LEVEL_METER_APPLICATION_IDS.includes(output.get_application_id());
++}
++
++/**
++ * @param {object[]} entries - an aa{sv} as unpacked by the proxy
++ * @returns {object[]} plain objects
++ */
++function unpackEntries(entries) {
++    return entries.map(entry => {
++        const result = {};
++        for (const [key, value] of Object.entries(entry))
++            result[key] = value instanceof GLib.Variant ? value.deepUnpack() : value;
++        return result;
++    });
++}
++
++/**
++ * The Lucide glyph for an output: the service's icon names are freedesktop
++ * names, the sheet draws Lucide roles as the device list does.
++ *
++ * @param {object} output - an entry from GetOutputs
++ * @returns {string}
++ */
++export function outputIconName(output) {
++    const hint = `${output?.icon ?? ''} ${output?.name ?? ''}`.toLowerCase();
++    if (/headphone|headset|earbud/.test(hint))
++        return 'lumaui-headphones-symbolic';
++    if (/display|hdmi|video|monitor|\btv\b/.test(hint))
++        return 'lumaui-monitor-symbolic';
++    if (hint.includes(AIRPLAY_OUTPUT_PREFIX) || /network|raop|tunnel/.test(hint))
++        return NETWORK_SPEAKER_ICON;
++    return 'lumaui-speaker-symbolic';
++}
++
++/**
++ * The per-app mixer's model, shared by every view of it (the Sound output
++ * page, the TV quick panel): System sounds first, then every app with a
++ * sound stream, with the name and icon the Shell knows the app by.
++ *
++ * Views hold() it while they are on screen; nothing is fetched or tracked
++ * for a view that is not. Views that draw meters also watchLevels(), and
++ * levels are measured only while one does.
++ *
++ * Each application: {id, kind, name, gicon, volume, muted, output, playing}.
++ */
++export const AppMixer = GObject.registerClass({
++    Signals: {
++        'availability-changed': {},
++        'changed': {},
++        'levels-changed': {},
++    },
++}, class AppMixer extends GObject.Object {
++    constructor(proxy) {
++        super();
++        this._proxy = proxy;
++        this.applications = [];
++        this.outputs = [];
++        this.levels = {};
++        this._holds = 0;
++        this._meterHolds = 0;
++        this._appsDirty = this._outputsDirty = true;
++        this._watch = 0;
++        this._watchedTargets = '';
++        this._watchSerial = 0;
++        this._pendingVolume = new Map();
++        this._volumeInFlight = new Set();
++        this._windowTracker = Shell.WindowTracker.get_default();
++        this._appSystem = Shell.AppSystem.get_default();
++
++        this._proxy.connectObject(
++            'notify::g-name-owner', () => this._sync(),
++            'g-properties-changed', () => this._sync(),
++            this);
++        this._proxy.connectSignal('ApplicationsChanged', (p, sender, [apps]) => {
++            if (!this._holds) {
++                this._appsDirty = true;
++                return;
++            }
++            this._setApplications(apps);
++            this._syncLevelWatch();
++        });
++        this._proxy.connectSignal('OutputsChanged', () => {
++            this._outputsDirty = true;
++            if (this._holds)
++                this._refresh();
++        });
++        this._proxy.connectSignal('Levels', (p, sender, [watch, levels]) => {
++            if (watch !== this._watch || !watch)
++                return;
++            this.levels = levels;
++            this.emit('levels-changed');
++        });
++        this._available = this.available;
++    }
++
++    get available() {
++        return this._proxy.g_name_owner !== null &&
++            (this._proxy.Version ?? 0) >= MIXER_VERSION;
++    }
++
++    _sync() {
++        const available = this.available;
++        if (available === this._available)
++            return;
++        this._available = available;
++        this._appsDirty = this._outputsDirty = true;
++        this._watch = 0;
++        this._watchedTargets = '';
++        if (available && this._holds) {
++            this._refresh();
++        } else if (!available) {
++            this.applications = [];
++            this.outputs = [];
++            this.levels = {};
++            this.emit('changed');
++        }
++        this.emit('availability-changed');
++    }
++
++    hold() {
++        if (this._holds++ === 0) {
++            this._appsDirty = this._outputsDirty = true;
++            this._refresh();
++        }
++    }
++
++    release() {
++        this._holds = Math.max(0, this._holds - 1);
++    }
++
++    // Meters on screen: measured until the matching unwatchLevels().
++    watchLevels() {
++        this._meterHolds++;
++        this._syncLevelWatch();
++    }
++
++    unwatchLevels() {
++        this._meterHolds = Math.max(0, this._meterHolds - 1);
++        this._syncLevelWatch();
++    }
++
++    async _refresh() {
++        if (!this.available)
++            return;
++        try {
++            if (this._appsDirty) {
++                this._appsDirty = false;
++                const [apps] = await this._proxy.GetApplicationsAsync();
++                this._setApplications(apps, false);
++            }
++            if (this._outputsDirty) {
++                this._outputsDirty = false;
++                const [outputs] = await this._proxy.GetOutputsAsync();
++                this.outputs = unpackEntries(outputs);
++            }
++        } catch (error) {
++            console.warn(`Luma mixer: ${error.message}`);
++        }
++        this.emit('changed');
++        this._syncLevelWatch();
++    }
++
++    _setApplications(apps, emit = true) {
++        this.applications = unpackEntries(apps).map(app => this._resolve(app));
++        if (emit)
++            this.emit('changed');
++    }
++
++    // Name and icon from the Shell's own record of the app when it has one:
++    // the window that owns the stream's process, else the desktop entry,
++    // else what the service read.
++    _resolve(app) {
++        const entry = {...app, gicon: null};
++        if (app.kind === 'system' || app.id === SYSTEM_SOUNDS_ID) {
++            entry.name = _('System sounds');
++            entry.gicon = new Gio.ThemedIcon({name: SYSTEM_SOUNDS_ICON});
++            return entry;
++        }
++        let shellApp = null;
++        if (app.pid > 0)
++            shellApp = this._windowTracker.get_app_from_pid(app.pid);
++        // A window with no desktop entry knows less than the service does.
++        if (shellApp?.is_window_backed())
++            shellApp = null;
++        if (!shellApp && app.desktop_id)
++            shellApp = this._appSystem.lookup_app(app.desktop_id);
++        if (shellApp) {
++            entry.name = shellApp.get_name() || app.name;
++            entry.gicon = shellApp.get_icon();
++        }
++        if (!entry.gicon && app.icon) {
++            try {
++                entry.gicon = Gio.Icon.new_for_string(app.icon);
++            } catch {}
++        }
++        entry.gicon ??= new Gio.ThemedIcon({name: 'application-x-executable-symbolic'});
++        entry.name ||= app.id;
++        return entry;
++    }
++
++    // An output as the device list above it names it: the port ("Line Out")
++    // and where it lives ("Built-in Audio"); else the service's description.
++    describeOutput(output) {
++        const control = getMixerControl();
++        const stream = output
++            ? control.get_sinks().find(sink => sink.get_name() === output.name) : null;
++        const device = stream ? control.lookup_device_from_stream(stream) : null;
++        return {
++            title: device?.description || output?.description || output?.name || '',
++            origin: device?.origin ?? '',
++        };
++    }
++
++    isSettingVolume(id) {
++        return this._volumeInFlight.has(id) || this._pendingVolume.has(id);
++    }
++
++    // One call in flight per app; the newest value goes when it returns.
++    setVolume(id, volume) {
++        this._pendingVolume.set(id, volume);
++        this._sendVolume(id);
++    }
++
++    async _sendVolume(id) {
++        if (this._volumeInFlight.has(id) || !this._pendingVolume.has(id))
++            return;
++        const volume = this._pendingVolume.get(id);
++        this._pendingVolume.delete(id);
++        this._volumeInFlight.add(id);
++        try {
++            await this._proxy.SetApplicationVolumeAsync(id, volume);
++        } catch (error) {
++            console.warn(`Luma mixer volume: ${error.message}`);
++        } finally {
++            this._volumeInFlight.delete(id);
++        }
++        this._sendVolume(id);
++    }
++
++    setMuted(id, muted) {
++        this._proxy.SetApplicationMuteAsync(id, muted).catch(
++            error => console.warn(`Luma mixer mute: ${error.message}`));
++    }
++
++    setOutput(id, name) {
++        this._proxy.SetApplicationOutputAsync(id, name).catch(
++            error => console.warn(`Luma mixer output: ${error.message}`));
++    }
++
++    // The service's watch follows the rows: one list, renewed when it changes.
++    async _syncLevelWatch() {
++        const targets = this._meterHolds > 0 && this.available
++            ? this.applications.map(app => app.id) : [];
++        const key = targets.join('\n');
++        if (key === this._watchedTargets)
++            return;
++        const serial = ++this._watchSerial;
++        if (this._watch && this._proxy.g_name_owner !== null)
++            this._proxy.UnwatchLevelsAsync(this._watch).catch(() => {});
++        this._watch = 0;
++        this._watchedTargets = key;
++        this.levels = {};
++        this.emit('levels-changed');
++        if (!targets.length)
++            return;
++        try {
++            const [watch] = await this._proxy.WatchLevelsAsync(targets);
++            // Closed, or watching another list, while the call was out.
++            if (serial !== this._watchSerial) {
++                this._proxy.UnwatchLevelsAsync(watch).catch(() => {});
++                return;
++            }
++            this._watch = watch;
++        } catch (error) {
++            if (serial === this._watchSerial)
++                this._watchedTargets = '';
++            console.warn(`Luma mixer levels: ${error.message}`);
++        }
++    }
++});
++
++let _appMixer;
++
++/**
++ * @returns {AppMixer} - the per-app mixer model singleton
++ */
++export function getAppMixer() {
++    _appMixer ??= new AppMixer(getAudioDevices());
++    return _appMixer;
++}
++
++/**
++ * One app in the mixer: its level as the shared filled slider (the app's
++ * icon and name on the track, the level at its end, the live meter along its
++ * foot), a mute key and an output key. The output key opens the outputs
++ * under the row, in place.
++ */
++const AppMixerRow = GObject.registerClass({
++    Signals: {'outputs-toggled': {param_types: [GObject.TYPE_BOOLEAN]}},
++}, class AppMixerRow extends St.BoxLayout {
++    _init(mixer, app) {
++        super._init({
++            style_class: 'luma-app-mixer-app',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        this._mixer = mixer;
++        this.id = app.id;
++        this._app = {};
++
++        this.slider = new FillSlider(0);
++        this.slider.add_style_class_name('lumaui-filled-slider');
++        this.slider.y_expand = true;
++        this.slider.maximum_value = 1;
++        this._sliderChangedId = this.slider.connect('notify::value',
++            () => this._sliderChanged());
++
++        const sliderBin = new St.Bin({
++            style_class: 'slider-bin',
++            child: this.slider,
++            reactive: true,
++            can_focus: true,
++            x_expand: true,
++            y_expand: true,
++            y_align: Clutter.ActorAlign.FILL,
++        });
++        sliderBin.set_accessible(this.slider.get_accessible());
++        sliderBin.connect('event', (bin, event) => this.slider.event(event, false));
++
++        // The app's own icon, in colour; System sounds' bell is symbolic.
++        this._icon = new St.Icon({
++            style_class: 'luma-app-mixer-icon',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._name = new St.Label({
++            style_class: 'luma-app-mixer-name',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._route = new St.Label({
++            style_class: 'luma-app-mixer-route',
++            y_align: Clutter.ActorAlign.CENTER,
++            visible: false,
++        });
++        this._route.clutter_text.ellipsize = Pango.EllipsizeMode.END;
++        this._value = new St.Label({
++            style_class: 'luma-quick-level-value',
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        const foreground = new St.BoxLayout({
++            style_class: 'lumaui-level-foreground',
++            reactive: false,
++            x_expand: true,
++            y_expand: true,
++        });
++        foreground.add_child(this._icon);
++        foreground.add_child(this._name);
++        foreground.add_child(this._route);
++        foreground.add_child(new St.Widget({x_expand: true}));
++        foreground.add_child(this._value);
++
++        const track = new St.Widget({
++            style_class: 'lumaui-level-track',
++            layout_manager: new Clutter.BinLayout(),
++            x_expand: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        track.add_child(sliderBin);
++        track.add_child(foreground);
++
++        this._muteIcon = new St.Icon({style_class: 'luma-quick-disclosure-icon'});
++        this._mute = new St.Button({
++            style_class: 'luma-options-level-key luma-app-mixer-mute',
++            child: this._muteIcon,
++            can_focus: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._mute.connect('clicked',
++            () => this._mixer.setMuted(this.id, !this._app.muted));
++
++        this._outputIcon = new St.Icon({style_class: 'luma-quick-disclosure-icon'});
++        this._outputKey = new St.Button({
++            style_class: 'luma-options-level-key luma-app-mixer-output',
++            child: this._outputIcon,
++            can_focus: true,
++            y_align: Clutter.ActorAlign.CENTER,
++        });
++        this._outputKey.connect('clicked',
++            () => this.setOutputsOpen(!this._outputs.visible));
++
++        const line = new St.BoxLayout({x_expand: true});
++        line.add_child(track);
++        line.add_child(this._mute);
++        line.add_child(this._outputKey);
++        // The same classes as the volume level, so the row is that level.
++        this.add_child(new St.Bin({
++            style_class: 'luma-options-slider lumaui-filled-level luma-app-mixer-level',
++            child: line,
++            x_expand: true,
++        }));
++
++        this._outputs = new St.BoxLayout({
++            style_class: 'luma-app-mixer-outputs',
++            orientation: Clutter.Orientation.VERTICAL,
++            visible: false,
++        });
++        this.add_child(this._outputs);
++
++        this.slider.connect('notify::value', () => this._syncValue());
++        this.slider.connect('style-changed', () => this._syncInk());
++        this.update(app);
++    }
++
++    // Dark ink on the light surfaces, as Quick Options' own levels.
++    _syncInk() {
++        let surface = this.get_parent();
++        while (surface && !surface.has_style_class_name?.('luma-quick-options'))
++            surface = surface.get_parent();
++        const light = !!surface && (surface.has_style_class_name('luma-surface-light') ||
++            surface.has_style_class_name('luma-surface-glass'));
++        if (light === this.slider.has_style_class_name('lumaui-light-level'))
++            return;
++        if (light)
++            this.slider.add_style_class_name('lumaui-light-level');
++        else
++            this.slider.remove_style_class_name('lumaui-light-level');
++        this.slider.queue_repaint();
++    }
++
++    update(app) {
++        this._app = app;
++        this._icon.gicon = app.gicon;
++        this._name.text = app.name;
++        this.slider.accessible_name = app.name;
++
++        // Not while the slider is held or our own value is still on its way.
++        if (!this.slider._grab && !this._mixer.isSettingVolume(this.id)) {
++            this.slider.block_signal_handler(this._sliderChangedId);
++            this.slider.value = app.muted ? 0 : Math.clamp(app.volume ?? 1, 0, MIXER_MAX_VOLUME);
++            this.slider.unblock_signal_handler(this._sliderChangedId);
++        }
++        this._muteIcon.icon_name = app.muted
++            ? 'lumaui-volume-x-symbolic' : 'lumaui-volume-2-symbolic';
++        this._mute.checked = !!app.muted;
++        this._mute.accessible_name = (app.muted ? _('Unmute %s') : _('Mute %s')).format(app.name);
++        if (!app.playing)
++            this.add_style_class_name('luma-app-mixer-idle');
++        else
++            this.remove_style_class_name('luma-app-mixer-idle');
++        this.syncOutputs();
++    }
++
++    setMaximum(maximum) {
++        this.slider.block_signal_handler(this._sliderChangedId);
++        this.slider.maximum_value = maximum;
++        this.slider.unblock_signal_handler(this._sliderChangedId);
++        this._syncValue();
++    }
++
++    setMeter(level) {
++        this.slider.meter = this._app.muted ? 0 : level;
++    }
++
++    _syncValue() {
++        this._value.text = new Intl.NumberFormat(undefined, {
++            style: 'percent', maximumFractionDigits: 0,
++        }).format(this.slider.value);
++    }
++
++    _sliderChanged() {
++        const volume = this.slider.value;
++        this._mixer.setVolume(this.id, volume);
++        if (this._app.muted && volume > 0)
++            this._mixer.setMuted(this.id, false);
++    }
++
++    // Where the app plays: the default output, or one of its own.
++    syncOutputs() {
++        const outputs = this._mixer.outputs;
++        const own = outputs.find(o => o.name && o.name === this._app.output);
++        const current = own ?? outputs.find(o => o.default);
++        this._outputIcon.icon_name = outputIconName(current);
++        this._outputKey.checked = this._outputs.visible;
++        this._outputKey.visible = outputs.length > 1 || !!own;
++        this._outputKey.accessible_name = _('Output for %s').format(this._app.name);
++        this._route.text = own ? `· ${this._mixer.describeOutput(own).title}` : '';
++        this._route.visible = !!own;
++        if (!this._outputKey.visible)
++            this.setOutputsOpen(false);
++        else if (this._outputs.visible)
++            this._fillOutputs();
++    }
++
++    setOutputsOpen(open) {
++        if (this._outputs.visible === open)
++            return;
++        // Closing under the focus hands it back to the key that opened it.
++        const focused = global.stage.key_focus;
++        const hadFocus = !open && !!focused && this._outputs.contains(focused);
++        this._outputs.visible = open;
++        this._outputKey.checked = open;
++        if (open)
++            this._fillOutputs();
++        else
++            this._outputs.destroy_all_children();
++        if (hadFocus)
++            this._outputKey.grab_key_focus();
++        this.emit('outputs-toggled', open);
++    }
++
++    _fillOutputs() {
++        this._outputs.destroy_all_children();
++        const choose = name => {
++            this._mixer.setOutput(this.id, name);
++            this.setOutputsOpen(false);
++        };
++        const fallback = this._mixer.outputs.find(o => o.default);
++        const follow = new QuickSheetRow();
++        follow.setIcon(outputIconName(fallback));
++        follow.setTitle(_('Default output'));
++        follow.setState(fallback ? this._mixer.describeOutput(fallback).title : '');
++        follow.setCurrent(!this._mixer.outputs.some(o => o.name === this._app.output));
++        follow.connect('activate', () => choose(''));
++        this._outputs.add_child(follow);
++        for (const output of this._mixer.outputs) {
++            const row = new QuickSheetRow();
++            row.setIcon(outputIconName(output));
++            const {title, origin} = this._mixer.describeOutput(output);
++            row.setTitle(title);
++            row.setState(origin);
++            row.setCurrent(output.name === this._app.output);
++            row.connect('activate', () => choose(output.name));
++            this._outputs.add_child(row);
++        }
++    }
++});
++
++/**
++ * The mixer in the Sound output page: a row per application of the model,
++ * held and metered only while the page (`presence`) is on screen. It shows
++ * itself only while there are rows.
++ */
++const AppMixerSection = GObject.registerClass(
++class AppMixerSection extends St.BoxLayout {
++    _init(mixer, presence) {
++        super._init({
++            style_class: 'luma-app-mixer',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++            visible: false,
++        });
++        this._mixer = mixer;
++        this._presence = presence;
++        this._rows = new Map();
++        this._shown = false;
++
++        this.add_child(new St.Label({
++            style_class: 'luma-app-mixer-heading',
++            text: _('Apps'),
++        }));
++        this._list = new St.BoxLayout({
++            style_class: 'luma-app-mixer-list',
++            orientation: Clutter.Orientation.VERTICAL,
++            x_expand: true,
++        });
++        this.add_child(this._list);
++
++        this._soundSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.sound'});
++        this._soundSettings.connectObject(`changed::${ALLOW_AMPLIFIED_VOLUME_KEY}`,
++            () => this._syncMaximum(), this);
++        this._mixer.connectObject(
++            'changed', () => this._render(),
++            'levels-changed', () => this._showLevels(),
++            this);
++        this._presence.connectObject('notify::mapped', () => this._syncShown(), this);
++        this.connect('destroy', () => {
++            this._setShown(false);
++            this._presence.disconnectObject(this);
++            this._mixer.disconnectObject(this);
++            this._soundSettings.disconnectObject(this);
++        });
++    }
++
++    _syncShown() {
++        this._setShown(this._presence.mapped);
++    }
++
++    // On screen: the model is held and its meters run; off screen, neither.
++    _setShown(shown) {
++        if (shown === this._shown)
++            return;
++        this._shown = shown;
++        if (shown) {
++            this._mixer.hold();
++            this._mixer.watchLevels();
++            this._render();
++        } else {
++            this._mixer.unwatchLevels();
++            this._mixer.release();
++            for (const row of this._rows.values())
++                row.setOutputsOpen(false);
++        }
++    }
++
++    _render() {
++        const seen = new Set();
++        let index = 0;
++        for (const app of this._mixer.applications) {
++            seen.add(app.id);
++            let row = this._rows.get(app.id);
++            if (row) {
++                row.update(app);
++            } else {
++                row = new AppMixerRow(this._mixer, app);
++                row.setMaximum(this._maximum());
++                row.connect('outputs-toggled', (r, open) => {
++                    if (!open)
++                        return;
++                    for (const other of this._rows.values()) {
++                        if (other !== r)
++                            other.setOutputsOpen(false);
++                    }
++                });
++                this._rows.set(app.id, row);
++                this._list.add_child(row);
++            }
++            this._list.set_child_at_index(row, index++);
++        }
++        for (const [id, row] of this._rows) {
++            if (!seen.has(id)) {
++                this._rows.delete(id);
++                row.destroy();
++            }
++        }
++        this.visible = this._rows.size > 0;
++        this._showLevels();
++    }
++
++    _maximum() {
++        return this._soundSettings.get_boolean(ALLOW_AMPLIFIED_VOLUME_KEY)
++            ? MIXER_MAX_VOLUME : 1;
++    }
++
++    _syncMaximum() {
++        const maximum = this._maximum();
++        for (const row of this._rows.values())
++            row.setMaximum(maximum);
++    }
++
++    _showLevels() {
++        const {levels} = this._mixer;
++        for (const [id, row] of this._rows)
++            row.setMeter(levels[id] ?? 0);
++    }
++});
++
+ // Each Gvc.MixerControl is a connection to PulseAudio,
+ // so it's better to make it a singleton
+ let _mixerControl;
+@@ -710,6 +1423,21 @@ class OutputStreamSlider extends StreamSlider {
+         this.menu.addMenuItem(this._airPlayItem, 1);
+         this._airPlayItem.connect('availability-changed', () => this._sync());
+ 
++        // Every app with a sound stream, under the outputs.
++        this.appMixer = getAppMixer();
++        const mixerSection = new PopupMenu.PopupMenuSection();
++        mixerSection.actor.add_style_class_name('luma-app-mixer-section');
++        const mixer = new AppMixerSection(this.appMixer, this.menu.actor);
++        mixerSection.actor.add_child(mixer);
++        this.menu.addMenuItem(mixerSection, 2);
++        const syncMixer = () => {
++            mixerSection.actor.visible = this.appMixer.available && mixer.visible;
++            this._sync();
++        };
++        this.appMixer.connectObject('availability-changed', syncMixer, this);
++        mixer.connect('notify::visible', syncMixer);
++        syncMixer();
++
+         this._audioDevices = getAudioDevices();
+         this._audioDevices.connectObject('g-properties-changed',
+             () => this._refilterDevices(), this);
+@@ -777,7 +1505,7 @@ class OutputStreamSlider extends StreamSlider {
+ 
+     _sync() {
+         super._sync();
+-        if (this._airPlayItem?.available)
++        if (this._airPlayItem?.available || this.appMixer?.available)
+             this.menuEnabled = true;
+     }
+ 
+@@ -876,17 +1604,11 @@ class InputStreamSlider extends StreamSlider {
+         // only show input widgets if any application is recording audio
+         let showInput = false;
+         if (this._stream) {
+-            // skip gnome-volume-control and pavucontrol which appear
+-            // as recording because they show the input level
+-            const skippedApps = [
+-                'org.gnome.VolumeControl',
+-                'org.PulseAudio.pavucontrol',
+-            ];
+-
++            // Level meters record to show a level; they are not an app
++            // using the microphone.
+             showInput =
+                 this._control.get_sources().some(source => source.state === Gvc.MixerStreamState.RUNNING) &&
+-                this._control.get_source_outputs().some(output =>
+-                    !skippedApps.includes(output.get_application_id()));
++                this._control.get_source_outputs().some(isRecordingApplication);
+         }
+ 
+         this._showInput = showInput;
+@@ -896,6 +1618,11 @@ class InputStreamSlider extends StreamSlider {
+     _shouldBeVisible() {
+         return super._shouldBeVisible() && this._showInput;
+     }
++
++    // The apps recording now, without level meters.
++    getRecordingOutputs() {
++        return this._control.get_source_outputs().filter(isRecordingApplication);
++    }
+ });
+ 
+ const VolumeIndicator = GObject.registerClass(

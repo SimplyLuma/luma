@@ -5,8 +5,27 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 
-export const FillSlider = GObject.registerClass(
-class LumaFillSlider extends Slider {
+export const FillSlider = GObject.registerClass({
+    Properties: {
+        // A live level (0..1) drawn along the foot of the track, e.g. the
+        // sound an app is playing; 0 draws nothing.
+        'meter': GObject.ParamSpec.double('meter', null, null,
+            GObject.ParamFlags.READWRITE, 0, 1, 0),
+    },
+}, class LumaFillSlider extends Slider {
+    get meter() {
+        return this._meter ?? 0;
+    }
+
+    set meter(value) {
+        value = Math.clamp(value, 0, 1);
+        if (Math.abs(value - this.meter) < 0.004)
+            return;
+        this._meter = value;
+        this.notify('meter');
+        this.queue_repaint();
+    }
+
     vfunc_repaint() {
         if (!this.has_style_class_name('lumaui-filled-slider')) {
             super.vfunc_repaint();
@@ -32,6 +51,14 @@ class LumaFillSlider extends Slider {
         cr.rectangle(rtl ? width-filled : 0, 0, filled, height);
         cr.setSourceRGBA(...ink, .13);
         cr.fill();
+        if (this.meter > 0) {
+            // The rounded clip bends the bar's ends with the track.
+            const thickness = Math.max(2, Math.round(height / 11));
+            const level = width * this.meter;
+            cr.rectangle(rtl ? width-level : 0, height-thickness, level, thickness);
+            cr.setSourceRGBA(...ink, light ? .42 : .5);
+            cr.fill();
+        }
         cr.$dispose();
     }
 });
