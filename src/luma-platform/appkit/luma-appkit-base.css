@@ -917,6 +917,14 @@ button.lumaui-menu-item:focus-visible { outline: 2px solid @luma_focus_ring; out
 button.lumaui-menu-item image { -gtk-icon-size: 16px; color: @luma_bar_ink_secondary; }   /* on float material */
 button.lumaui-menu-item image.lumaui-app-icon { -gtk-icon-size: var(--lumaui-open-in-menu-icon); }
 label.lumaui-menu-note { font-size: 11px; letter-spacing: 0.11px; color: @luma_muted; }
+/* A leaf row's shortcut as keycaps, and the chevron of a row that opens a submenu (open while it shows). */
+box.lumaui-menu-shortcut { border-spacing: 2px; }
+label.lumaui-menu-keycap {
+  min-width: 18px; padding: 0 4px; border-radius: 5px; font-size: 11px; font-weight: 500; color: @luma_muted;
+  background: @luma_control_fill;
+}
+button.lumaui-menu-item image.lumaui-menu-chevron { -gtk-icon-size: 14px; color: @luma_muted; }
+button.lumaui-menu-item.submenu.open { background: @luma_hover; }
 box.lumaui-menu-separator { min-height: 1px; margin: 5px 8px; background: @luma_line; }
 
 /* LumaUI: Open in */

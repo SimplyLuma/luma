@@ -681,17 +681,15 @@ class Dock(Gtk.Overlay):
             return text[17:]
         return None
 
-    def _drop_motion(self, target: Gtk.DropTarget, x: float, y: float):
-        drop = target.get_current_drop()
-        key = None
-        if drop is not None:
-            drag = drop.get_drag()
-            content = drag.get_content() if drag is not None else None
-            if content is not None:
-                try:
-                    key = self._dragged(content.get_value(GObject.TYPE_STRING))
-                except GLib.Error:
-                    key = None
+    def _moving(self) -> str | None:
+        """The tile of this dock being dragged by its header (its drag-begin marks it `moving`).
+
+        The drag's content can't be read here: PyGObject's ContentProvider.get_value() takes no
+        type, so it never returns the string; the dock knows its own tiles instead."""
+        return next((key for key, tile in self.tiles.items() if tile.has_css_class("moving")), None)
+
+    def _drop_motion(self, _target: Gtk.DropTarget, x: float, y: float):
+        key = self._moving()
         zone = self._zone(x, y, key) if key else None
         self._show_target(zone[2] if zone else None)
         return Gdk.DragAction.MOVE if zone else 0

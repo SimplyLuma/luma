@@ -100,6 +100,44 @@ void luma_floating_menu_add_separator(LumaFloatingMenu *self);
  */
 void luma_floating_menu_set_picker(LumaFloatingMenu *self, gboolean picker);
 void luma_floating_menu_popup(LumaFloatingMenu *self, GtkWidget *anchor);
+/**
+ * luma_floating_menu_popup_at:
+ * @self: a menu
+ * @anchor: the widget it opens from (its actions are activated there)
+ * @x: the point in @anchor's coordinates: the pointer of a right click, the
+ *   touch point of a long press
+ * @y: its y
+ *
+ * A context menu: its top start corner on the point, flipped to the point's
+ * other side at the window's edges, shifted inside only when neither side
+ * fits. luma_floating_menu_popup() opens from the anchor itself (the Menu
+ * key, Shift+F10).
+ */
+void luma_floating_menu_popup_at(LumaFloatingMenu *self, GtkWidget *anchor, double x, double y);
+/**
+ * luma_floating_menu_add_shortcut_item:
+ * @self: a menu
+ * @label: the row's words
+ * @icon: (nullable): a Lucide glyph
+ * @shortcut: its keys, shown as keycaps ("Ctrl+D")
+ * @action_name: (nullable): the detailed #GAction name it activates
+ */
+void luma_floating_menu_add_shortcut_item(LumaFloatingMenu *self, const char *label, const char *icon,
+                                          const char *shortcut, const char *action_name);
+/**
+ * luma_floating_menu_add_submenu:
+ * @self: a menu
+ * @label: the row's words
+ * @icon: (nullable): a Lucide glyph
+ * @submenu: (transfer floating): the menu it opens
+ *
+ * A row that cascades: hovering it (or → on it, or a click) opens @submenu
+ * beside the menu, flipped at the window's edge; a pointer heading for it
+ * keeps it open for 250 ms across other rows; ← and Esc close one level; a
+ * leaf in it closes every level. On a phone it drills in place, with Back.
+ */
+void luma_floating_menu_add_submenu(LumaFloatingMenu *self, const char *label, const char *icon,
+                                    LumaFloatingMenu *submenu);
 void luma_floating_menu_close(LumaFloatingMenu *self);
 gboolean luma_floating_menu_get_is_open(LumaFloatingMenu *self);
 
