@@ -2434,6 +2434,12 @@ box.lumaui-dock-tile-header {
 }
 image.lumaui-dock-tile-icon { -gtk-icon-size: var(--lumaui-dock-icon); color: @luma_muted; }
 label.lumaui-dock-tile-title { font-size: var(--lumaui-dock-title-size); font-weight: 600; color: @luma_ink; }
+/* Header keys fit the header and centre their glyph as far from the end as the title's glyph is from the start. */
+box.lumaui-dock-tile-header button.lumaui-dock-tile-more, box.lumaui-dock-tile-actions > button {
+  min-width: var(--lumaui-dock-header-button); min-height: var(--lumaui-dock-header-button); padding: 0;
+  border-radius: calc(var(--lumaui-dock-header-button) / 4);
+}
+box.lumaui-dock-tile-header button.lumaui-dock-tile-more image, box.lumaui-dock-tile-actions > button image { -gtk-icon-size: var(--lumaui-dock-icon); }
 /* The seams are the gaps between tiles: clear at rest, a short mark while pointed at, held or focused. */
 paned.lumaui-dock-paned > separator, paned.luma-navigation-split > separator {
   min-width: var(--lumaui-dock-gap); min-height: var(--lumaui-dock-gap);
@@ -2457,4 +2463,5 @@ box.lumaui-dock-target {
 flowbox.lumaui-dock-keys { padding-bottom: var(--lumaui-dock-gap); }
 flowbox.lumaui-dock-keys > flowboxchild { padding: 0; }
 box.lumaui-dock-drawer box.lumaui-dock-tile { background: none; box-shadow: none; min-height: 320px; }
+box.lumaui-dock-tile.inline { margin-top: var(--lumaui-dock-gap); min-height: 0; }
 box.luma-navigation-pane { min-height: var(--lumaui-dock-min-size); }

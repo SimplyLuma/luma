@@ -34,6 +34,10 @@ row.lumaui-row button.lumaui-row-action {
 row.lumaui-row button.lumaui-row-action:hover { background: @luma_control_fill; color: @luma_ink; }
 row.lumaui-row button.lumaui-row-action:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
 row.lumaui-row button.lumaui-row-action image { -gtk-icon-size: var(--lumaui-section-action-icon); }
+/* A quiet action waits for the row: hover, selection or keyboard focus shows it (a layer's eye). */
+row.lumaui-row button.lumaui-row-action.quiet { opacity: 0; }
+row.lumaui-row:hover button.lumaui-row-action.quiet, row.lumaui-row:selected button.lumaui-row-action.quiet,
+row.lumaui-row:focus-within button.lumaui-row-action.quiet { opacity: 1; }
 
 /* Attention: unread is bold with its count in the accent; missed is red. */
 row.lumaui-row.attention label.lumaui-row-title { font-weight: var(--lumaui-nav-people-attention-weight); }

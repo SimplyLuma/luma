@@ -958,6 +958,9 @@ class ActionCenter(Gtk.Box):
         self.editor: ActionEditor | None = None
         # v71: the grown panel, the held row, the field that replaces the row, More, the safe area.
         self._panel_key: str | None = None
+        #: The bar's width when it grew from rest: a grown bar is never narrower, so its row (the
+        #: subject chip's name above all) keeps the room it had.
+        self._resting_width = 0
         self._panel_anchor: Gtk.Widget | None = None
         self._panel_on_fold: Callable[[], None] | None = None
         self._entry: Gtk.Widget | None = None
@@ -1587,6 +1590,10 @@ class ActionCenter(Gtk.Box):
         if self._panel_key == key:
             self._fold_panel()
             return
+        if self._panel_key is None and self._held is None:
+            # What the row needs now (it may have just been shown), and never less than it had.
+            self._resting_width = max(self.get_width() if self.get_mapped() else 0,
+                                      self.measure(Gtk.Orientation.HORIZONTAL, -1)[1])
         self._fold_panel(quiet=True)
         if entry is not None and self._search is not None:
             self.close_search()
@@ -2086,6 +2093,8 @@ class ActionCenter(Gtk.Box):
                 grow_side = self._phone_grown_inset
             wide_width = metrics["grow_width_wide"] if getattr(self, "_grow_wide", False) else metrics["grow_width"]
             grow = width - 2 * grow_side if phone else min(wide_width, width - 2 * metrics["grow_side"])
+            if not phone and self._resting_width:
+                grow = max(grow, min(self._resting_width, width - 2 * metrics["grow_side"]))
             return phone, max(base, grow), (metrics["frame_sheet_room"] if phone else top), bottom
         if width <= 0:
             wanted = -1

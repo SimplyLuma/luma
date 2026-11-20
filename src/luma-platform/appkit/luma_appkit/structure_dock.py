@@ -26,9 +26,14 @@ Rules the dock owns, so every app gets the same answers:
   person's moves and resizes.
 - **The action bar stays clear.** ``under_bar=True`` ends the tiles above
   the island's floating bar, so it never covers a tile's edge.
+- **A tile can fit its content.** ``DockTile(fit=True)`` (a mixer's strips)
+  never grows past what its content asks for along its split: the seam
+  stops there and the neighbour takes the rest, so no inset is padded with
+  empty well. Call ``refit()`` after changing such a tile's content.
 - **A phone shows the main tile.** Under 560 px the main tile fills the
   dock and the others wait as raised keys above it; each opens as a bottom
-  drawer (the kit's drawer, from the layer host).
+  drawer (the kit's drawer, from the layer host). A tile that fits its
+  content stays in view under the main tile instead, at its own height.
 """
 from __future__ import annotations
 
@@ -56,14 +61,15 @@ class DockTile(Gtk.Box):
     __gtype_name__ = "LumaUIDockTile"
 
     def __init__(self, key: str, title: str, icon: str, child: Gtk.Widget, *, main: bool = False,
-                 bare: bool = False, actions: Iterable[Gtk.Widget] = (),
+                 bare: bool = False, fit: bool = False, actions: Iterable[Gtk.Widget] = (),
                  more: Callable[[], list] | None = None) -> None:
         """``bare``: the content alone, without the well or the header (the stage an app's work is
-        shown on, such as a preview); it still takes its place in the layout and receives drops."""
+        shown on, such as a preview); it still takes its place in the layout and receives drops.
+        ``fit``: never larger than the content asks for along its split (see the module's docs)."""
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         if not key:
             raise ValueError("a dock tile has a key")
-        self.key, self.title, self.icon, self.main = key, title, icon, main
+        self.key, self.title, self.icon, self.main, self.fit = key, title, icon, main, fit
         self.more = more
         self.dock: Dock | None = None
         self.add_css_class("lumaui-dock-tile")
@@ -171,6 +177,8 @@ class Dock(Gtk.Overlay):
         self._save_id = 0
         self._drawer = None
         self.on_layout = on_layout
+        self._refit_id = 0
+        self._allocated = (0, 0)
         self.target = Gtk.Box(can_target=False, visible=False)
         self.target.add_css_class("lumaui-dock-target")
         self._target_rect: Gdk.Rectangle | None = None
@@ -236,6 +244,7 @@ class Dock(Gtk.Overlay):
 
     def _detach_tiles(self) -> None:
         for tile in self.tiles.values():
+            tile.remove_css_class("inline")
             parent = tile.get_parent()
             if isinstance(parent, Gtk.Paned):
                 if parent.get_start_child() is tile:
@@ -280,15 +289,61 @@ class Dock(Gtk.Overlay):
         return paned
 
     def _fit(self, paned: Gtk.Paned, node: dict) -> None:
-        """A size change keeps each split's share."""
+        """A size change keeps each split's share (as far as a tile that fits its content allows)."""
         total = paned.get_property("max-position")
         if total <= 0:
             return
         self._applying += 1
         try:
-            paned.set_position(round(node["ratio"] * total))
+            paned.set_position(self._clamp(paned, node, round(node["ratio"] * total), total))
         finally:
             self._applying -= 1
+
+    def _clamp(self, paned: Gtk.Paned, node: dict, position: int, total: int) -> int:
+        """``position`` moved so a tile that fits its content is no larger than its content asks."""
+        horizontal = node["split"] == "h"
+        orientation = Gtk.Orientation.HORIZONTAL if horizontal else Gtk.Orientation.VERTICAL
+        across = paned.get_height() if horizontal else paned.get_width()
+        # The end tile's size is what the paned has past the position and its seam (max-position
+        # already leaves out the end tile's minimum, so it is not the paned's length).
+        length = (paned.get_width() if horizontal else paned.get_height()) - int(_tokens()["gap"])
+        if length <= 0:
+            return position
+        for side in ("start", "end"):
+            key = node[side]
+            tile = self.tiles.get(key) if isinstance(key, str) else None
+            if tile is None or not tile.fit:
+                continue
+            natural = tile.measure(orientation, across if across > 0 else -1)[1]
+            if natural <= 0:
+                continue
+            if side == "start":
+                position = min(position, natural)
+            else:
+                position = max(position, length - natural)
+        return max(0, min(total, position))
+
+    def refit(self) -> None:
+        """Size the tiles that fit their content again (after that content changed)."""
+        if self._refit_id or not any(tile.fit for tile in self.tiles.values()):
+            return
+
+        def again() -> bool:
+            self._refit_id = 0
+            for paned, node in self._panes:
+                self._fit(paned, node)
+            return False
+
+        # After this frame's layout: the content is measured at the width it is shown at.
+        self._refit_id = GLib.idle_add(again)
+
+    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
+        Gtk.Overlay.do_size_allocate(self, width, height, baseline)
+        if (width, height) != self._allocated:
+            # Each size change: a content-fitting tile's height follows its width (a mixer's strips
+            # wrap), and a paned does not always say its room changed.
+            self._allocated = (width, height)
+            self.refit()
 
     def _moved(self, paned: Gtk.Paned, node: dict) -> None:
         if self._applying:
@@ -296,7 +351,16 @@ class Dock(Gtk.Overlay):
         total = paned.get_property("max-position")
         if total <= 0:
             return
-        node["ratio"] = min(0.95, max(0.05, paned.get_position() / total))
+        position = paned.get_position()
+        clamped = self._clamp(paned, node, position, total)
+        if clamped != position:
+            self._applying += 1
+            try:
+                paned.set_position(clamped)
+            finally:
+                self._applying -= 1
+            position = clamped
+        node["ratio"] = min(0.95, max(0.05, position / total))
         self._changed()
 
     def _changed(self) -> None:
@@ -483,15 +547,24 @@ class Dock(Gtk.Overlay):
         keys = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=False, max_children_per_line=6,
                            column_spacing=8, row_spacing=8)
         keys.add_css_class("lumaui-dock-keys")
+        inline = []
         for key, tile in self.tiles.items():
             if key == self.main_key:
                 continue
+            if tile.fit:
+                inline.append(tile)  # at its own height under the main tile: nothing to open
+                continue
             keys.append(TextButton(tile.title, icon=tile.icon, style="raised", size="small",
                                    on_click=lambda k=key: self.open_drawer(k)))
+        keys.set_visible(keys.get_first_child() is not None)
         box.append(keys)
         main = self.tiles[self.main_key]
         main.set_vexpand(True)
         box.append(main)
+        for tile in inline:
+            tile.set_vexpand(False)
+            tile.add_css_class("inline")
+            box.append(tile)
         return box
 
     def open_drawer(self, key: str) -> None:
