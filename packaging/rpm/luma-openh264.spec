@@ -38,6 +38,8 @@ OpenH264 Video Codec provided by Cisco Systems, Inc.
 %prep
 %autosetup -n luma-openh264
 cp %{SOURCE1} LICENSE.md
+# A checkout with default ACLs must not leak group-only modes into the package.
+chmod -R u=rwX,go=rX .
 
 %build
 
@@ -56,7 +58,6 @@ install -d %{buildroot}%{_unitdir}/timers.target.wants
 ln -s ../luma-openh264.timer %{buildroot}%{_unitdir}/timers.target.wants/luma-openh264.timer
 install -d %{buildroot}%{_presetdir}
 printf 'enable luma-openh264.timer\n' > %{buildroot}%{_presetdir}/60-luma-openh264.preset
-# A checkout with default ACLs must not leak group-only modes into the package.
 chmod -R u=rwX,go=rX %{buildroot}
 
 %check
