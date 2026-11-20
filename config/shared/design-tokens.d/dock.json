@@ -1,8 +1,9 @@
 {
-  "_doc": "LumaUI dock: an island tiled with insets (Dock, DockTile) and the sidebar's pane. Merged into lumaui by the generator: --lumaui-dock-*, LUMA_UI_DOCK_*.",
+  "_doc": "LumaUI dock: an island tiled with insets (Dock, DockTile) and the sidebar's pane. Merged into lumaui by the generator: --lumaui-dock-*, LUMA_UI_DOCK_*. tile_radius is the kit's card radius (radius.island, Settings' grouped cards); an island hosting a dock is tile_radius + gap round, so the radii stay concentric. fit_max_pct caps a content-fitted tile (or group) at that share of the dock along its split.",
   "lumaui": {
     "dock": {
       "gap": 8,
+      "tile_radius": 10,
       "header_height": 32,
       "header_padding_start": 12,
       "header_padding_end": 6,
@@ -11,6 +12,7 @@
       "icon": 16,
       "title_size": 13,
       "min_size": 96,
+      "fit_max_pct": 40,
       "seam_mark": 4,
       "seam_mark_length": 36,
       "bar_clearance": 76,

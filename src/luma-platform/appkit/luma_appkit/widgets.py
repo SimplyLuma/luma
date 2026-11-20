@@ -384,6 +384,8 @@ class Island(Gtk.Box):
         from gi.repository import Graphene, Gsk
 
         radius = float(lumaui_tokens.WINDOW["island_radius"])
+        if self.has_css_class("lumaui-docked"):  # holding a Dock: concentric with its tiles
+            radius = float(lumaui_tokens.DOCK["tile_radius"] + lumaui_tokens.DOCK["gap"])
         corner = Graphene.Size().init(radius, radius)
         outline = Gsk.RoundedRect()
         outline.init(Graphene.Rect().init(0, 0, width, height), corner, corner, corner, corner)

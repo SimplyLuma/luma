@@ -1150,6 +1150,8 @@ center.show_bar(items, *, context=None, modes=None, more=(), entry=None, fill=Fa
 center.show_split(first, second); center.hide_bar()
 center.grow(key, widget, *, entry=None, anchor=None, on_fold=None)   # same key folds
 # grown, the bar is never narrower than it was at rest: the row (the subject chip's name) keeps its room
+# light dismiss: a primary press or tap outside a grown bar (panel, ⋯, editor) anywhere in its window, or Esc,
+# folds it; that press is consumed (nothing under it selects or drags) and a field in the bar commits first
 center.set_editor(ActionEditor(...)); center.grow(); center.fold(); center.discard()
 center.search(on_changed=None, *, placeholder="Search")
 center.sheet(widget, title=None, *, on_cancel=None)
@@ -1192,7 +1194,7 @@ API.
 | Bar items, sharing and export | `BarEntry`, `BarSearch`, `BarThumbnail`, `BarReadout`, `BarChip(live=True, meta=, detail=)` with `update()` for a running recording or stream, `BarMenu`, `SplitAction`, `ZoomControl`, `DocumentHeader`, `ShareSheet`, `ExportSheet` | `luma_appkit/bar_*.py` |
 | Content | `Card`, `ContentLitCard`, `AccountCard`, `PersonAvatar`, `ContentLitHeader`, `FileCard`, `OpenButton`, `OpenInMenu`, `ContactCard`, `ContactActions`, `EventCard`, `SongCard`, `PlaceCard`, `PlaceSearch`, `TextField`, `HeroTitleField`, `ParagraphField`, `MessageBubble`, `StatusPill` | `luma_appkit/content_*.py` |
 | Rows and sidebars | `SidebarRow`, `SidebarSection`, `RowLead`, `RowAction` (`quiet=True`: shown on hover, selection or focus; a state worth reading at rest, such as a hidden layer's eye-off, stays shown), `ProgressLine`, `AvatarStack`, `FavouritesStrip`, `Mark`, `MarkButton`, `MarkPicker`, `MarkValue`, `RichMenuItem`, `MenuSection`, `AppIcon`, `NoteCard` | `luma_appkit/rows_*.py` |
-| Media and imaging | `MediaGrid`, `MediaTile`, `ImageViewport`, `MediaTransport`, `Timeline`, `AdjustmentPanel`, `CoverArt`, `VoiceClip`, `ValueSlider`, `AudioMeter`, `CreativeWorkspace` (docks and saved layouts), `Dock` and `DockTile` (an island tiled with insets; `DockTile(fit=True)` never grows past its content along its split, stays in view under the main tile on a phone, and `Dock.refit()` follows a content change), `FloatingPanel`, `ArrangeView`, `ArrangeItem` | `luma_appkit/media_*.py`, `luma_appkit/creative_workspace.py`, `luma_appkit/creative_parts.py` |
+| Media and imaging | `MediaGrid`, `MediaTile`, `ImageViewport`, `MediaTransport`, `Timeline`, `AdjustmentPanel`, `CoverArt`, `VoiceClip`, `ValueSlider`, `AudioMeter`, `CreativeWorkspace` (docks and saved layouts), `Dock` and `DockTile` (an island tiled with insets at `--lumaui-dock-tile-radius`, the island holding them that radius plus the gap round; `DockTile(fit=True)` is its content's size along its split, and a side whose tiles all fit, such as `split("h", 0.5, "widgets", "audio")` under the preview, is as tall as the taller; both stop at `Dock(fit_max=)`, default `--lumaui-dock-fit-max-pct` (40% of the dock), and scroll past it; on a phone a fitted tile stays under the main tile unless `DockTile(phone="drawer")` makes it a key and drawer; `Dock.refit()` follows a content change), `FloatingPanel`, `ArrangeView`, `ArrangeItem` | `luma_appkit/media_*.py`, `luma_appkit/creative_workspace.py`, `luma_appkit/creative_parts.py` |
 
 ```python
 sidebar = NavigationSidebar(variant="people")        # people, destinations, resources, files, tree

@@ -721,6 +721,90 @@ static void test_grow(void) {
   gtk_window_destroy(GTK_WINDOW(window));
 }
 
+/* Light dismiss: the window watches a primary press (capture phase) and Esc while the bar is rooted. */
+static GtkEventController *dismiss_controller(GtkWidget *window, GType type) {
+  GListModel *model = gtk_widget_observe_controllers(window);
+  GtkEventController *found = NULL;
+  for (guint i = 0; i < g_list_model_get_n_items(model) && found == NULL; i++) {
+    GtkEventController *controller = g_list_model_get_item(model, i);
+    if (G_TYPE_CHECK_INSTANCE_TYPE(controller, type) &&
+        g_strcmp0(gtk_event_controller_get_name(controller), "lumaui-light-dismiss") == 0)
+      found = controller;
+    g_object_unref(controller);
+  }
+  g_object_unref(model);
+  return found;
+}
+
+static int field_commits;
+static void field_left(GtkEventControllerFocus *focus G_GNUC_UNUSED, gpointer data G_GNUC_UNUSED) { field_commits++; }
+
+static void test_light_dismiss(void) {
+  GtkWidget *content, *center;
+  GtkWidget *window = center_window(1000, &content, &center);
+  LumaActionCenter *ac = LUMA_ACTION_CENTER(center);
+  GtkWidget *canvas = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_vexpand(canvas, TRUE);
+  gtk_box_append(GTK_BOX(content), canvas);
+  LumaBarItem *items[] = {action("info", NULL, "Details")};
+  luma_bar_item_set_panel(items[0], "details", details_panel, NULL, NULL);
+  luma_action_center_show_bar(ac, items, G_N_ELEMENTS(items), NULL);
+  spin();
+  GtkEventController *press = dismiss_controller(window, GTK_TYPE_GESTURE_CLICK);
+  GtkEventController *keys = dismiss_controller(window, GTK_TYPE_EVENT_CONTROLLER_KEY);
+  g_assert_nonnull(press);
+  g_assert_nonnull(keys);
+  g_assert_cmpint(gtk_event_controller_get_propagation_phase(press), ==, GTK_PHASE_CAPTURE);
+  g_assert_cmpuint(gtk_gesture_single_get_button(GTK_GESTURE_SINGLE(press)), ==, GDK_BUTTON_PRIMARY);
+  graphene_rect_t where;
+  g_assert_true(gtk_widget_compute_bounds(canvas, window, &where));
+  double x = where.origin.x + where.size.width / 2, y = where.origin.y + where.size.height / 2;
+
+  /* A panel with a field: a press inside keeps it, a press outside folds it and the field commits. */
+  GtkWidget *panel = luma_bar_panel_new("Style");
+  GtkWidget *field = gtk_entry_new();
+  GtkEventController *focus = gtk_event_controller_focus_new();
+  g_signal_connect(focus, "leave", G_CALLBACK(field_left), NULL);
+  gtk_widget_add_controller(field, focus);
+  gtk_box_append(GTK_BOX(panel), field);
+  luma_action_center_grow_panel(ac, "style", panel);
+  spin();
+  gtk_widget_grab_focus(field);
+  graphene_rect_t bar;
+  g_assert_true(gtk_widget_compute_bounds(find_class(center, "lumaui-ac-bar"), window, &bar));
+  g_signal_emit_by_name(press, "pressed", 1, (double)(bar.origin.x + bar.size.width / 2),
+                        (double)(bar.origin.y + bar.size.height / 2));
+  g_assert_cmpstr(luma_action_center_get_grown(ac), ==, "style");
+  int before = field_commits;
+  g_signal_emit_by_name(press, "pressed", 1, x, y);
+  g_assert_null(luma_action_center_get_grown(ac));
+  g_assert_cmpint(field_commits, >, before);
+
+  /* Esc anywhere folds a grown bar; at rest it is not taken. */
+  gboolean handled = FALSE;
+  luma_action_center_grow_panel(ac, "share", luma_bar_panel_new("Share"));
+  g_signal_emit_by_name(keys, "key-pressed", GDK_KEY_Escape, 0, 0, &handled);
+  g_assert_true(handled);
+  g_assert_null(luma_action_center_get_grown(ac));
+  handled = TRUE;
+  g_signal_emit_by_name(keys, "key-pressed", GDK_KEY_Escape, 0, 0, &handled);
+  g_assert_false(handled);
+
+  /* The editor folds the same way. */
+  GtkWidget *editor = luma_action_editor_new("Reply", "reply");
+  luma_action_center_set_editor(ac, LUMA_ACTION_EDITOR(editor));
+  luma_action_center_grow(ac);
+  g_assert_cmpstr(luma_action_center_get_state(ac), ==, "editor");
+  g_signal_emit_by_name(press, "pressed", 1, x, y);
+  g_assert_cmpstr(luma_action_center_get_state(ac), ==, "bar");
+
+  /* Unrooted, the window no longer carries the bar's controllers. */
+  gtk_overlay_remove_overlay(GTK_OVERLAY(gtk_widget_get_parent(center)), center);
+  g_assert_null(dismiss_controller(window, GTK_TYPE_GESTURE_CLICK));
+  g_assert_null(dismiss_controller(window, GTK_TYPE_EVENT_CONTROLLER_KEY));
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 static void test_phone(void) {
   GtkWidget *content, *center;
   GtkWidget *window = center_window(400, &content, &center);
@@ -1158,6 +1242,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/lumaui/action-center/retired-search", test_retired_search);
   g_test_add_func("/lumaui/action-center/form", test_form);
   g_test_add_func("/lumaui/action-center/grow", test_grow);
+  g_test_add_func("/lumaui/action-center/light-dismiss", test_light_dismiss);
   g_test_add_func("/lumaui/action-center/panel-close", test_panel_close);
   g_test_add_func("/lumaui/action-center/document-toolbar-panel-width", test_document_toolbar_panel_width);
   g_test_add_func("/lumaui/action-center/phone", test_phone);
