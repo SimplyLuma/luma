@@ -46,6 +46,12 @@ add-packages:
   - ibm-plex-mono-fonts
   # Media and documents used by first-party apps (Reel, Session, Canvas)
   - gst-editing-services
+  # Software H.264 encode and decode (openh264enc/openh264dec), linked to the
+  # runtime's noopenh264 placeholder as on the OS; it works once the Cisco
+  # binary reaches the device (docs/design/media-codec-delivery.md). Hardware
+  # H.264/H.265 encode on Intel is GStreamer's va plugin with the iHD driver
+  # in org.projectluma.Platform.GL.default.
+  - gstreamer1-plugin-openh264
   # Client ABI for Tasks/Calendar/Contacts/Phone to use the existing host EDS
   # endpoints. The runtime removes the package's native factory/activation
   # executables below; profiles, identities and service ownership stay native.

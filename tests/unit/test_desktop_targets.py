@@ -87,7 +87,11 @@ class DesktopTargets(unittest.TestCase):
                 self.assertFalse(output.exists())
                 return result.stdout.splitlines()
         x86, arm = requirements('x86_64'), requirements('aarch64')
-        self.assertEqual(arm, [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p for p in x86])
+        # The Intel VA-API driver exists only for x86_64 (GL.default extension).
+        x86_only = [p for p in x86 if p.startswith('libva-intel-media-driver-')]
+        self.assertEqual(len(x86_only), 1)
+        self.assertEqual(arm, [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p
+                               for p in x86 if p not in x86_only])
         desktop = set(target.packages(ROOT, 'aarch64'))
         for name in ('gtk4-', 'libadwaita-', 'luma-developer-platform-'):
             main = next(p for p in arm if p.startswith(name) and '-devel-' not in p)
