@@ -419,9 +419,19 @@ class Dock(Gtk.Overlay):
             return
         self._applying += 1
         try:
-            paned.set_position(self._clamp(paned, node, round(node["ratio"] * total), total, exact=True))
+            # The share is of the paned's own length (both tiles and the seam), not of max-position,
+            # which already leaves out the end tile's minimum: 0.5 is two equal tiles.
+            share = round(node["ratio"] * self._length(paned, node))
+            lowest = paned.get_property("min-position")
+            paned.set_position(self._clamp(paned, node, max(lowest, min(total, share)), total, exact=True))
         finally:
             self._applying -= 1
+
+    @staticmethod
+    def _length(paned: Gtk.Paned, node: dict) -> int:
+        """What the two sides of a split share: the paned's length less its seam."""
+        along = paned.get_width() if node["split"] == "h" else paned.get_height()
+        return along - int(_tokens()["gap"])
 
     def _fits(self, node) -> bool:
         """Every tile on this side of a split fits its content."""
@@ -513,7 +523,8 @@ class Dock(Gtk.Overlay):
             finally:
                 self._applying -= 1
             position = clamped
-        node["ratio"] = min(0.95, max(0.05, position / total))
+        length = self._length(paned, node)
+        node["ratio"] = min(0.95, max(0.05, position / length)) if length > 0 else node["ratio"]
         fits = {side: self._fits(node[side]) for side in ("start", "end")}
         if fits["start"] != fits["end"] and getattr(paned, "held", False):
             # A fitted side the person sized keeps that size (saved with the layout) until a
