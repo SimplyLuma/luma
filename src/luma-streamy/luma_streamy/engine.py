@@ -383,6 +383,9 @@ class Engine(GObject.Object):
         self.branches: dict[str, Branch] = {}
         #: Picture widgets without a live picture show a card (graph.placeholder_chain) in their place.
         self.placeholders: dict[str, Branch] = {}
+        #: The Look a widget has on the canvas shown (the window's project knows the canvas); by default
+        #: the widget's own.
+        self.effects_of: Callable[[Widget], object] = lambda widget: widget.effects
         self._placeholder_words: dict[str, str] = {}
         self.outputs: dict[str, Output] = {}
         self.stream_retry: dict | None = None
@@ -556,6 +559,17 @@ class Engine(GObject.Object):
         self._keep_playing()
         self._idle_check()
 
+    def _shown(self, widget: Widget) -> Widget:
+        """``widget`` as the shown canvas draws it (its Look there)."""
+        effects = self.effects_of(widget)
+        if effects is widget.effects:
+            return widget
+        import copy
+
+        view = copy.copy(widget)
+        view.effects = effects
+        return view
+
     def _keep_playing(self) -> None:
         """The program runs whenever it exists: anything that left it short of PLAYING is undone.
 
@@ -581,6 +595,7 @@ class Engine(GObject.Object):
     # ── Placeholders ──
 
     def _add_placeholder(self, widget: Widget, zorder: int, words: str) -> None:
+        widget = self._shown(widget)
         self._generation += 1
         chain = graph.placeholder_chain(widget, zorder, words, self._generation)
         try:
@@ -634,6 +649,7 @@ class Engine(GObject.Object):
 
     def update_widget(self, widget: Widget, zorder: int | None = None) -> None:
         """Move, resize or restyle a widget live (no renegotiation unless its size changed)."""
+        widget = self._shown(widget)
         self._update_placeholder(widget, zorder)
         branch = self.branches.get(widget.id)
         if branch is None:
@@ -675,6 +691,7 @@ class Engine(GObject.Object):
                 branch.pad.set_property("zorder", zorder)
 
     def _add_branch(self, widget: Widget, zorder: int) -> None:
+        widget = self._shown(widget)
         fd = node = None
         if not self.fake and self.sources is not None and widget.kind in ("display", "window", "camera", "app-audio"):
             fd, node = self.sources(widget)
@@ -831,7 +848,7 @@ class Engine(GObject.Object):
             if self.branches.get(branch.widget_id) is not branch:
                 return False
             branch.fade = min(FADE_MS, branch.fade + FADE_MS // steps)
-            target = widget.effects.clamped().opacity
+            target = self.effects_of(widget).clamped().opacity
             branch.elements[-1].set_property("opacity", target * branch.fade / FADE_MS)
             if branch.fade >= FADE_MS:
                 self._remove_placeholder(widget.id)  # the real picture is in: the card goes

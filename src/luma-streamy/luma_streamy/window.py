@@ -103,6 +103,7 @@ class StreamyWindow(AppWindow):
             self._fill_fake_sources()
 
         self.engine = engine or Engine(sources=self._source_for)
+        self.engine.effects_of = lambda widget: self.project.effects_on(widget)
         if self.portals is not None:
             self.portals.on_cameras = self._cameras_changed
             self.portals.on_ready = lambda _widget_id: self._show_scene()
@@ -1057,7 +1058,7 @@ class StreamyWindow(AppWindow):
     }
 
     def _look_of(self, w: Widget) -> str | None:
-        fx = w.effects
+        fx = self.project.effects_on(w)
         for key, (_label, _icon, values) in self.LOOKS.items():
             if all(abs(getattr(fx, k) - v) < 0.01 if isinstance(v, (int, float)) else getattr(fx, k) == v
                    for k, v in values.items()):
@@ -1067,7 +1068,7 @@ class StreamyWindow(AppWindow):
     def apply_look(self, w: Widget, key: str) -> None:
         self._checkpoint(f"Look {self.LOOKS[key][0]}")
         for name, value in self.LOOKS[key][2].items():
-            setattr(w.effects, name, value)
+            self.project.set_effect(w, name, value)
         self._effects_changed(w)
         self._regrow("look")
 
@@ -1077,14 +1078,13 @@ class StreamyWindow(AppWindow):
 
     def _set_shadow(self, w: Widget, strength: float) -> None:
         """One slider for the shadow: blur, drop and darkness grow together."""
-        fx = w.effects
-        fx.shadow_blur = strength * 0.6
-        fx.shadow_y = round(strength * 0.2)
-        fx.shadow_opacity = 0.0 if strength <= 0 else 0.2 + 0.25 * strength / 100
+        self.project.set_effect(w, "shadow_blur", strength * 0.6)
+        self.project.set_effect(w, "shadow_y", round(strength * 0.2))
+        self.project.set_effect(w, "shadow_opacity", 0.0 if strength <= 0 else 0.2 + 0.25 * strength / 100)
         self._effects_changed(w)
 
     def _look_panel(self, w: Widget) -> Gtk.Widget:
-        fx = w.effects
+        fx = self.project.effects_on(w)
         current = self._look_of(w)
         tiles = BarTiles([BarTile(icon, label, lambda k=key: self.apply_look(w, k), on=key == current)
                           for key, (label, icon, _v) in self.LOOKS.items()], columns=5, size="compact")
@@ -1094,7 +1094,7 @@ class StreamyWindow(AppWindow):
         def fx_setter(name: str, label: str, scale: float = 1.0):
             def apply(v: float) -> None:
                 self._checkpoint(f"Change {label.lower()}", key=(w.id, name))
-                setattr(w.effects, name, v / scale)
+                self.project.set_effect(w, name, v / scale)
                 self._effects_changed(w)
             return apply
 
@@ -1106,7 +1106,7 @@ class StreamyWindow(AppWindow):
 
         def draw(_area, cr, width, height) -> None:
             rgba = Gdk.RGBA()
-            rgba.parse("#" + w.effects.stroke_color)
+            rgba.parse("#" + self.project.effects_on(w).stroke_color)
             Gdk.cairo_set_source_rgba(cr, rgba)
             cr.arc(width / 2, height / 2, min(width, height) / 2, 0, 6.2832)
             cr.fill()
@@ -1126,10 +1126,30 @@ class StreamyWindow(AppWindow):
         more.append(PropertyChoice("Border", [("inside", "Inside"), ("center", "Centre"), ("outside", "Outside")],
                                    current=fx.stroke_position, segments=True,
                                    on_change=lambda pos: (self._checkpoint("Change border position"),
-                                                          setattr(w.effects, "stroke_position", pos),
+                                                          self.project.set_effect(w, "stroke_position", pos),
                                                           self._effects_changed(w))))
         rows.append(Disclosure("More", content=more))
-        return self._panel(tiles, rows)
+        return self._panel(tiles, rows, self._look_sync_row(w))
+
+    def _look_sync_row(self, w: Widget) -> Gtk.Widget:
+        """The Look's sync key: whether the other canvas follows this Look, and the way back to it."""
+        other = next(f for f in FORMATS if f != self.project.primary)
+        primary, secondary = (FORMATS[f][0].split()[0] for f in (self.project.primary, other))
+        own = self.project.own_look(w)
+        if self.project.format == self.project.primary:
+            words = f"{secondary} follows this look" if not own else \
+                f"{secondary} has its own look ({len(own)} change{'s' if len(own) != 1 else ''})"
+            return PanelRow(words, icon="link-2" if not own else "lock-open", sensitive=False)
+        if own:
+            return PanelRow(f"{secondary} has its own look", icon="lock-open",
+                            subtitle=f"Sync with {primary}", closes=False, on_activate=lambda: self.sync_look(w))
+        return PanelRow(f"In sync with {primary}", icon="lock", sensitive=False)
+
+    def sync_look(self, w: Widget) -> None:
+        self._checkpoint("Sync look")
+        self.project.sync_look(w)
+        self._effects_changed(w)
+        self._regrow("look")
 
     def _primary_words(self) -> str:
         return FORMATS[self.project.primary][0].split()[0]
@@ -1163,15 +1183,15 @@ class StreamyWindow(AppWindow):
 
     def _pick_border(self, w: Widget) -> None:
         rgba = Gdk.RGBA()
-        rgba.parse("#" + w.effects.stroke_color)
+        rgba.parse("#" + self.project.effects_on(w).stroke_color)
         state = {"started": False}
 
         def changed(color) -> None:
             if not state["started"]:
                 state["started"] = True
                 self._checkpoint("Change border colour")
-            w.effects.stroke_color = "%02X%02X%02X" % (round(color.red * 255), round(color.green * 255),
-                                                       round(color.blue * 255))
+            self.project.set_effect(w, "stroke_color", "%02X%02X%02X" % (
+                round(color.red * 255), round(color.green * 255), round(color.blue * 255)))
             self._effects_changed(w)
 
         picker = ColorPicker(rgba, with_alpha=False, on_change=changed,
@@ -1229,7 +1249,7 @@ class StreamyWindow(AppWindow):
 
         def opacity(v: float) -> None:
             self._checkpoint("Change opacity", key=(w.id, "opacity"))
-            w.effects.opacity = v / 100
+            self.project.set_effect(w, "opacity", v / 100)
             self._effects_changed(w)
 
         layer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
