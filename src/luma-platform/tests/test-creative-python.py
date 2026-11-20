@@ -508,6 +508,17 @@ def docking_drag():
     assert d.layout()["start"] == {"tabs": ["a", "b"], "current": "a"} or d.layout() == {"split": "h", "ratio": 0.75,
                                                                                         "start": {"tabs": ["a", "b"], "current": "a"},
                                                                                         "end": "c"}, d.layout()
+    # Tiles that fit their content stack as tabs too: the group fits like its current tile.
+    fit = Dock([DockTile("p", "P", "monitor", Gtk.Box(), main=True, bare=True),
+                DockTile("m", "M", "volume-2", Gtk.Box(height_request=120), fit=True),
+                DockTile("w", "W", "layers", Gtk.Box(height_request=80), fit=True)],
+               layout={"split": "v", "ratio": 0.6, "start": "p", "end": {"tabs": ["m", "w"], "current": "m"}})
+    other = Gtk.Window(default_width=900, default_height=600)
+    other.set_child(fit)
+    other.present()
+    settle()
+    assert fit._fits(fit.layout()["end"]) and fit.layout()["end"]["current"] == "m"
+    other.destroy()
     # A phone: no docking.
     window.set_default_size(400, 700)
     settle()
