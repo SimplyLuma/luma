@@ -13,6 +13,7 @@
 #include "luma-navigation-sidebar.h"
 #include "luma-media-fader.h"
 #include "luma-audio-meter.h"
+#include "luma-volume-slider.h"
 #include "luma-segmented-control.h"
 #include "luma-inspector-section.h"
 #include "luma-histogram.h"

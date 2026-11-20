@@ -2414,6 +2414,24 @@ box.lumaui-audio-meter > .lumaui-meter-mid { color: @luma_mark_yellow; }
 box.lumaui-audio-meter > .lumaui-meter-high { color: @luma_destructive; }
 box.lumaui-audio-meter > .lumaui-meter-peak { color: @luma_ink_secondary; }
 
+/* LumaVolumeSlider (luma-volume-slider.c): the kit's slider (a recessed 4 px
+ * track in the state fill, a raised 14 px knob with a state ring) drawn
+ * upright or flat, with a meter along it. Muted, the fill and meter go quiet. */
+lumaui-volume-slider { outline: none; }
+lumaui-volume-slider > .lumaui-volume-track { color: @luma_line; }
+/* The meter's track matches the slider's, so the pair reads on a well (a Settings card) too. */
+lumaui-volume-slider > box.lumaui-audio-meter > .lumaui-meter-track { color: @luma_line; }
+lumaui-volume-slider > .lumaui-volume-fill { color: @luma_state; }
+lumaui-volume-slider > .lumaui-volume-knob { color: @luma_knob; }
+lumaui-volume-slider > .lumaui-volume-ring { color: @luma_knob_ring; }
+lumaui-volume-slider > .lumaui-volume-shadow { color: @luma_island_shadow; }
+lumaui-volume-slider > .lumaui-volume-mark { color: alpha(@luma_ink_secondary, .55); }
+lumaui-volume-slider > .lumaui-volume-focus { color: alpha(@luma_focus_ring, .45); }
+lumaui-volume-slider.muted > .lumaui-volume-fill { color: alpha(@luma_muted, .45); }
+lumaui-volume-slider.muted > .lumaui-volume-ring { color: alpha(@luma_muted, .7); }
+lumaui-volume-slider.muted > box.lumaui-audio-meter { opacity: .35; }
+lumaui-volume-slider:disabled { opacity: .5; }
+
 /* ── LumaUI: Dock (an island tiled with insets) ── */
 overlay.lumaui-dock > box.lumaui-dock-frame { padding: var(--lumaui-dock-gap); }
 /* Under the island's floating action bar: the tiles end above it. */

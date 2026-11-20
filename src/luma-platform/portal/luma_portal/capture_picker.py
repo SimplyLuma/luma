@@ -8,9 +8,13 @@ list comes from luma-audio-devices (GetApplications), the levels too
 (WatchLevels, only while the picker is open). Nothing is recorded until
 Share.
 
-Built from the same parts and sheet as the application chooser (open-with.css):
-head with the subject and a close key, a scrolling body of rows, a foot with
-Cancel and the primary action. On a phone it is the same card, full width.
+It follows Luma Share, the screen sharing picker (the Shell's lumaShare.js,
+luma-share.css): the asking app's icon with the sharing badge, the question
+and what happens, the choices on one rounded block, and an equal Cancel and
+Share pair. The rows are LumaUI's: an app icon (AppIcon), the name, the
+level as LumaUI's meter (AudioMeter, the one meter part) and LumaUI's
+checkbox. The window is as tall as its content, up to most of the screen,
+then the list scrolls. On a phone it is the same card, full width.
 """
 
 from __future__ import annotations
@@ -29,10 +33,13 @@ AUDIO_NAME = "org.projectluma.AudioDevices"
 AUDIO_PATH = "/org/projectluma/AudioDevices"
 AUDIO_IFACE = "org.projectluma.AudioDevices1"
 
-DIALOG_WIDTH = 520
-DIALOG_HEIGHT = 520
-APP_TILE = 26
-SYSTEM_SOUND_ICON = "lumaui-speaker-symbolic"
+# Luma Share's card: 440 wide; the list grows to its rows, then scrolls.
+DIALOG_WIDTH = 440
+LIST_MAX_SCREEN = 0.5
+WHO_ICON = 56
+APP_ICON = 28
+ALL_SOUND_GLYPH = "speaker"
+BADGE_GLYPH = "volume-2"
 
 
 def _icon(icon_string: str) -> Gio.Icon | None:
@@ -44,66 +51,104 @@ def _icon(icon_string: str) -> Gio.Icon | None:
         return None
 
 
-class SourceRow(Gtk.ListBoxRow):
-    """[tile] name / level ....................... [check]"""
+def _kit():
+    """LumaUI's parts, imported when a picker is built (the portal starts without GTK)."""
+    import luma_appkit as kit
+    from luma_appkit import icons
+    return kit, icons
 
-    def __init__(self, key: str, name: str, icon, detail: str, group=None) -> None:
+
+def _app_icon(desktop_id: str, icon, name: str, size: int) -> Gtk.Widget:
+    """LumaUI's app icon: the desktop entry's, else the stream's own icon, else a monogram."""
+    kit, _icons = _kit()
+    if desktop_id:
+        app = kit.AppIcon(desktop_id.removesuffix(".desktop"), name=name, size=size)
+        if app.paintable is not None:
+            return app
+    picture = None
+    if isinstance(icon, Gio.Icon):
+        from gi.repository import Gdk
+        display = Gdk.Display.get_default()
+        if display is not None:
+            theme = Gtk.IconTheme.get_for_display(display)
+            picture = theme.lookup_by_gicon(icon, size, 1, Gtk.TextDirection.NONE, 0)
+    return kit.AppIcon(None, picture=picture, name=name, size=size)
+
+
+class SourceRow(Gtk.ListBoxRow):
+    """[icon] name / detail ............ [level] [check] — the row is the control."""
+
+    def __init__(self, key: str, name: str, lead: Gtk.Widget, detail: str, metered: bool) -> None:
         super().__init__()
+        _kit_, _icons = _kit()
         self.key = key
         self.name = name
-        self.add_css_class("ow-row")
         self.add_css_class("ac-row")
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=11)
+        self.update_property([Gtk.AccessibleProperty.LABEL], [name])
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        lead.set_valign(Gtk.Align.CENTER)
+        box.append(lead)
 
-        image = Gtk.Image(pixel_size=APP_TILE)
-        image.add_css_class("ow-app-tile")
-        if isinstance(icon, Gio.Icon):
-            image.set_from_gicon(icon)
-        else:
-            image.set_from_icon_name(icon or "application-x-executable")
-        box.append(image)
-
-        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True,
-                         valign=Gtk.Align.CENTER, spacing=4)
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, valign=Gtk.Align.CENTER)
         label = Gtk.Label(label=name, xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        label.add_css_class("ow-name")
+        label.add_css_class("ac-name")
         column.append(label)
         if detail:
-            text = Gtk.Label(label=detail, xalign=0, ellipsize=Pango.EllipsizeMode.END)
-            text.add_css_class("ow-detail")
-            column.append(text)
-        self.meter = Gtk.LevelBar(min_value=0.0, max_value=1.0, value=0.0,
-                                  mode=Gtk.LevelBarMode.CONTINUOUS)
-        self.meter.add_css_class("ac-meter")
-        # The level is decoration for the eye; the name is what is read out.
-        self.meter.set_accessible_role(Gtk.AccessibleRole.PRESENTATION)
-        # One colour: the shared progress fill, not the low/high/full scale.
-        for offset in ("low", "high", "full"):
-            self.meter.remove_offset_value(offset)
-        column.append(self.meter)
-        # All sound has no single level worth showing; only apps get a meter.
-        self.meter.set_visible(key != "@all")
+            line = Gtk.Label(label=detail, xalign=0, ellipsize=Pango.EllipsizeMode.END)
+            line.add_css_class("ac-line")
+            column.append(line)
         box.append(column)
 
-        self.check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
-        if group is not None:
-            self.check.set_group(group)
+        # The level is for the eye (which app is the loud one); the name is
+        # what is read out. All sound has no single level, so no meter.
+        self.meter = None
+        if metered:
+            self.meter = _kit_.AudioMeter(1, horizontal=True)
+            self.meter.set_valign(Gtk.Align.CENTER)
+            self.meter.add_css_class("ac-meter")
+            self.meter.set_accessible_role(Gtk.AccessibleRole.PRESENTATION)
+            box.append(self.meter)
+
+        self.check = _kit_.Checkbox(checked=False)
         self.check.add_css_class("ac-check")
-        self.check.update_property([Gtk.AccessibleProperty.LABEL], [name])
         box.append(self.check)
         self.set_child(box)
+        self._sync_state()
+
+    @property
+    def active(self) -> bool:
+        return self.check.checked
+
+    def set_active(self, active: bool) -> None:
+        self.check.set_checked(active)
+        self._sync_state()
+
+    def _sync_state(self) -> None:
+        on = self.check.checked
+        if on:
+            self.add_css_class("chosen")
+        else:
+            self.remove_css_class("chosen")
+        from gi.repository import GObject
+        self.update_state([Gtk.AccessibleState.CHECKED],
+                          [GObject.Value(GObject.TYPE_INT, int(Gtk.AccessibleTristate.TRUE if on
+                                                              else Gtk.AccessibleTristate.FALSE))])
 
     def set_level(self, value: float) -> None:
-        self.meter.set_value(max(0.0, min(1.0, value)))
+        if self.meter is None:
+            return
+        # The service's positions run from −60 dB (0) to full scale (1).
+        value = max(0.0, min(1.0, value))
+        db = -60.0 if value <= 0 else min(-60.0 + 60.0 * value, -0.01)
+        self.meter.set_levels_db(db, db)
 
 
 class CapturePicker(Adw.Window):
     def __init__(self, *, caller_id: str, caller_name: str, types: int, multiple: bool,
                  on_done) -> None:
-        super().__init__(modal=True, title="Share sound")
-        self.add_css_class("ow-dialog")
+        super().__init__(modal=True, title="Share sound", resizable=False)
         self.add_css_class("ac-dialog")
-        self.set_default_size(DIALOG_WIDTH, DIALOG_HEIGHT)
+        self.set_default_size(DIALOG_WIDTH, -1)
         self._caller_id = caller_id
         self._caller_name = caller_name
         self._types = types
@@ -116,11 +161,13 @@ class CapturePicker(Adw.Window):
         self._levels_signal = 0
         self._bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        root.append(self._build_head())
-        root.append(self._build_body())
-        root.append(self._build_foot())
-        self.set_content(root)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.add_css_class("ac-card")
+        card.append(self._build_who())
+        card.append(self._build_words())
+        card.append(self._build_body())
+        card.append(self._build_actions())
+        self.set_content(card)
 
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self._key)
@@ -131,72 +178,89 @@ class CapturePicker(Adw.Window):
 
     # -- Parts ------------------------------------------------------------
 
-    def _build_head(self) -> Gtk.Widget:
-        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        head.add_css_class("ow-head")
-        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, hexpand=True)
-        title = Gtk.Label(label=f"Share sound with {self._caller_name}", xalign=0,
-                          ellipsize=Pango.EllipsizeMode.END)
-        title.add_css_class("ow-file-name")
-        column.append(title)
-        hint = "Choose the apps it can hear" if self._multiple else "Choose the app it can hear"
-        detail = Gtk.Label(label=hint, xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        detail.add_css_class("ow-file-kind")
-        column.append(detail)
-        head.append(column)
-        close = Gtk.Button(icon_name="window-close-symbolic", valign=Gtk.Align.CENTER)
-        close.add_css_class("ow-close")
-        close.set_tooltip_text("Cancel")
-        close.connect("clicked", lambda *_a: self._deliver(None))
-        head.append(close)
-        return head
+    def _build_who(self) -> Gtk.Widget:
+        """The asking app's icon with the sharing badge on its corner."""
+        _kit_, icons = _kit()
+        who = Gtk.Overlay(halign=Gtk.Align.CENTER)
+        who.add_css_class("ac-who")
+        who.set_child(_app_icon(self._caller_id, None, self._caller_name, WHO_ICON))
+        badge = Gtk.Box(halign=Gtk.Align.END, valign=Gtk.Align.END)
+        badge.add_css_class("ac-badge")
+        glyph = icons.image(BADGE_GLYPH)
+        glyph.set_hexpand(True)
+        glyph.set_halign(Gtk.Align.CENTER)
+        badge.append(glyph)
+        badge.set_can_target(False)
+        who.add_overlay(badge)
+        return who
+
+    def _build_words(self) -> Gtk.Widget:
+        words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        title = Gtk.Label(label=f"{self._caller_name} wants to share your sound", wrap=True,
+                          justify=Gtk.Justification.CENTER, max_width_chars=1, hexpand=True)
+        title.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        title.add_css_class("ac-title")
+        words.append(title)
+        what = "the apps" if self._multiple else "the app"
+        body = Gtk.Label(label=f"Choose {what} {self._caller_name} can hear until you stop sharing.",
+                         wrap=True, justify=Gtk.Justification.CENTER, max_width_chars=1, hexpand=True)
+        body.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        body.add_css_class("ac-body")
+        words.append(body)
+        self.update_property([Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.DESCRIPTION],
+                             [title.get_label(), body.get_label()])
+        return words
 
     def _build_body(self) -> Gtk.Widget:
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        body.add_css_class("ow-body")
+        body.add_css_class("ac-sources")
         self._everything_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self._everything_list.add_css_class("ow-list")
+        self._everything_list.add_css_class("ac-list")
         body.append(self._everything_list)
-        caption = Gtk.Label(label="PLAYING NOW", xalign=0)
-        caption.add_css_class("ow-caption")
-        body.append(caption)
+        self._caption = Gtk.Label(label="Playing now", xalign=0)
+        self._caption.add_css_class("ac-caption")
+        body.append(self._caption)
         self._list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self._list.add_css_class("ow-list")
+        self._list.add_css_class("ac-list")
         body.append(self._list)
         self._empty = Gtk.Label(label="No app is playing sound. Start the app you want to share, "
-                                      "and it appears here.", wrap=True, xalign=0)
-        self._empty.add_css_class("ow-empty")
+                                      "and it appears here.", wrap=True, xalign=0, max_width_chars=1)
+        self._empty.add_css_class("ac-empty")
         self._empty.set_visible(False)
         body.append(self._empty)
         for listbox in (self._everything_list, self._list):
-            listbox.connect("row-activated", lambda _l, row: row.check.set_active(
-                not row.check.get_active() or not self._multiple))
-        return Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True, child=body)
+            listbox.connect("row-activated", lambda _l, row: self._choose(row))
+        self._scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,
+                                          propagate_natural_height=True, child=body)
+        self._scroll.add_css_class("ac-scroll")
+        return self._scroll
 
-    def _build_foot(self) -> Gtk.Widget:
-        foot = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        foot.add_css_class("ow-foot")
-        foot.append(Gtk.Box(hexpand=True))
+    def _build_actions(self) -> Gtk.Widget:
+        # Luma Share's pair: two equal buttons, Cancel then Share.
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10, homogeneous=True)
+        actions.add_css_class("ac-actions")
         cancel = Gtk.Button(label="Cancel")
-        cancel.add_css_class("ow-secondary")
+        cancel.add_css_class("ac-cancel")
         cancel.connect("clicked", lambda *_a: self._deliver(None))
-        foot.append(cancel)
+        actions.append(cancel)
         self._share = Gtk.Button(label="Share")
-        self._share.add_css_class("ow-primary")
+        self._share.add_css_class("ac-share")
         self._share.connect("clicked", lambda *_a: self._finish())
         self._share.set_sensitive(False)
-        foot.append(self._share)
+        actions.append(self._share)
         self.set_default_widget(self._share)
-        return foot
+        return actions
 
     def _fit(self) -> None:
+        """As wide as Luma Share (or the screen), the list as tall as its rows up to half the screen."""
         display = self.get_display()
         surface = self.get_surface()
         monitor = display.get_monitor_at_surface(surface) if surface is not None else None
         if monitor is None:
             return
         geometry = monitor.get_geometry()
-        self.set_default_size(min(DIALOG_WIDTH, geometry.width), min(DIALOG_HEIGHT, int(geometry.height * 0.82)))
+        self.set_default_size(min(DIALOG_WIDTH, geometry.width), -1)
+        self._scroll.set_max_content_height(max(160, int(geometry.height * LIST_MAX_SCREEN)))
 
     # -- Data -------------------------------------------------------------
 
@@ -220,15 +284,19 @@ class CapturePicker(Adw.Window):
         self._populate(rows)
 
     def _populate(self, rows) -> None:
-        group = None
+        _kit_, icons = _kit()
         if self._types & 2 and "@all" not in self._rows:
-            everything = SourceRow("@all", f"All sound except {self._caller_name}",
-                                   SYSTEM_SOUND_ICON, "Every app, now and later")
+            tile = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+            tile.add_css_class("ac-all-tile")
+            tile.set_hexpand(False)  # said, so its centred glyph does not widen the row's lead
+            glyph = icons.image(ALL_SOUND_GLYPH)
+            glyph.set_hexpand(True)
+            glyph.set_halign(Gtk.Align.CENTER)
+            tile.append(glyph)
+            everything = SourceRow("@all", f"All sound except {self._caller_name}", tile,
+                                   "Every app, now and later", metered=False)
             self._rows["@all"] = everything
             self._everything_list.append(everything)
-            everything.check.connect("toggled", self._toggled)
-        if not self._multiple:
-            group = self._rows["@all"].check if "@all" in self._rows else None
         present = set()
         if self._types & 1:
             for row in rows:
@@ -240,20 +308,22 @@ class CapturePicker(Adw.Window):
                 present.add(key)
                 if key in self._rows:
                     continue
-                source = SourceRow(key, row.get("name") or key, _icon(row.get("icon") or ""), "",
-                                   group if not self._multiple else None)
-                if not self._multiple and group is None:
-                    group = source.check
-                source.check.connect("toggled", self._toggled)
+                name = row.get("name") or key
+                lead = _app_icon(row.get("desktop_id") or "", _icon(row.get("icon") or ""), name, APP_ICON)
+                source = SourceRow(key, name, lead, "", metered=True)
                 self._rows[key] = source
                 self._list.append(source)
             for key in [k for k in self._rows if k != "@all" and k not in present]:
                 row = self._rows.pop(key)
-                if not row.check.get_active():
+                if not row.active:
                     self._list.remove(row)
                 else:
                     self._rows[key] = row  # keep a chosen app; it may play again
-        self._empty.set_visible(not any(k != "@all" for k in self._rows))
+        apps = any(k != "@all" for k in self._rows)
+        self._caption.set_visible(bool(self._types & 1))
+        self._list.set_visible(apps)
+        self._empty.set_visible(bool(self._types & 1) and not apps)
+        self._everything_list.set_visible("@all" in self._rows)
         self._watch_levels()
 
     def _watch_levels(self) -> None:
@@ -288,20 +358,21 @@ class CapturePicker(Adw.Window):
 
     # -- Answer -----------------------------------------------------------
 
-    def _toggled(self, check) -> None:
-        if self._multiple and check.get_active():
-            everything = self._rows.get("@all")
-            if everything is not None:
-                if check is everything.check:
-                    for key, row in self._rows.items():
-                        if key != "@all":
-                            row.check.set_active(False)
-                else:
-                    everything.check.set_active(False)
+    def _choose(self, row: SourceRow) -> None:
+        """A row is the control. One app (or All sound) replaces the choice;
+        with several, apps toggle and All sound stands alone."""
+        on = not row.active if self._multiple else True
+        if on:
+            for other in self._rows.values():
+                if other is row:
+                    continue
+                if not self._multiple or row.key == "@all" or other.key == "@all":
+                    other.set_active(False)
+        row.set_active(on)
         self._share.set_sensitive(bool(self.choice()))
 
     def choice(self) -> dict | None:
-        chosen = [row for row in self._rows.values() if row.check.get_active()]
+        chosen = [row for row in self._rows.values() if row.active]
         if not chosen:
             return None
         if any(row.key == "@all" for row in chosen):

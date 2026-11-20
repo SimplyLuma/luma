@@ -34,6 +34,8 @@ test('media-fader', media_fader_test, env: ['G_DEBUG=fatal-criticals'])
 
 audio_meter_test = executable('test-luma-audio-meter', 'test-audio-meter.c', dependencies: ui_dep)
 test('lumaui-audio-meter', audio_meter_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
+volume_slider_test = executable('test-luma-volume-slider', 'test-volume-slider.c', dependencies: ui_dep)
+test('lumaui-volume-slider', volume_slider_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
 
 media_transport_lcd_test = executable(
   'test-luma-media-transport-lcd',

@@ -355,6 +355,7 @@ __all__ = [
     "ArrangeView", "ArrangeItem",
     "Dock", "DockTile",
     "AudioMeter",
+    "VolumeSlider",
 ]
 
 
@@ -679,7 +680,7 @@ def __getattr__(name: str):
     if name in {"Dock", "DockTile"}:
         from . import structure_dock
         return getattr(structure_dock, name)
-    if name == "AudioMeter":
+    if name in {"AudioMeter", "VolumeSlider"}:
         from . import media_meter
         return getattr(media_meter, name)
     if name in {"ToolBar", "Tool", "Flyout", "TOOL_SEPARATOR", "Layer", "LayerTree", "PropertySection", "PropertyNumber", "PropertyColor", "PropertyChoice", "AlignmentActions", "ArrangeView", "ArrangeItem"}:
