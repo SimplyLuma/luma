@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.141%{?dist}
+Release:        1.luma.142%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,15 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.142
+- ActionEditor (Python and C): focuses its first field with the text
+  selected; a hidden body collapses (no band, one rule); the footer hint
+  says "Esc to cancel".
+- SyncKey and OverrideDot (luma_appkit): a section's link to another's look
+  at the foot of an editor section, and a per-field override mark.
+- RowLead.thumbnail(fit="contain", aspect=): a 16:9 or 9:16 picture whole in
+  the slot, small radius, hairline.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.141
 - Dock: tiles dock anywhere by their header or tab (a long press on touch):
   edge bands of another tile split it, its middle stacks the two as tabs,

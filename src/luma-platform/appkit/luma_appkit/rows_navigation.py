@@ -155,13 +155,32 @@ class RowLead:
         return widget
 
     @staticmethod
-    def thumbnail(picture: Gdk.Paintable | None = None, *, kind: str = "image") -> Gtk.Widget:
-        """A 42x34 thumbnail (Viewer): the picture, a page for a document, a glyph when the file is gone."""
+    def thumbnail(picture: Gdk.Paintable | None = None, *, kind: str = "image", fit: str = "cover",
+                  aspect: float | None = None) -> Gtk.Widget:
+        """A 42x34 thumbnail (Viewer): the picture, a page for a document, a glyph when the file is gone.
+
+        ``fit="contain"`` never crops: the picture (a 16:9 scene, a 9:16 one) sits whole in the slot, in a
+        frame of its ``aspect`` (width / height; default the picture's own) with the small radius and a
+        hairline, centred on a clear slot."""
         if kind not in THUMBNAIL_KINDS:
             raise ValueError(f"thumbnail kind must be one of {', '.join(THUMBNAIL_KINDS)}, not {kind!r}")
+        if fit not in ("cover", "contain"):
+            raise ValueError(f'a thumbnail is "cover" or "contain", not {fit!r}')
+        if aspect is not None and not aspect > 0:
+            raise ValueError(f"an aspect is width / height, more than 0, not {aspect!r}")
         frame = Gtk.CenterBox(valign=Gtk.Align.CENTER, overflow=Gtk.Overflow.HIDDEN,
                               accessible_role=Gtk.AccessibleRole.PRESENTATION)
-        if kind == "image" and picture is not None:
+        if kind == "image" and picture is not None and fit == "contain":
+            if aspect is None and picture.get_intrinsic_height() > 0:
+                aspect = picture.get_intrinsic_width() / picture.get_intrinsic_height()
+            shape = Gtk.AspectFrame(ratio=aspect or 16 / 9, obey_child=False, xalign=0.5, yalign=0.5,
+                                    hexpand=True, vexpand=True)
+            inner = Gtk.Picture(paintable=picture, content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True)
+            inner.set_overflow(Gtk.Overflow.HIDDEN)
+            inner.add_css_class("lumaui-row-thumb-picture")
+            shape.set_child(inner)
+            frame.set_center_widget(shape)
+        elif kind == "image" and picture is not None:
             frame.set_center_widget(Gtk.Picture(paintable=picture, content_fit=Gtk.ContentFit.COVER,
                                                 can_shrink=True, hexpand=True, vexpand=True))
         elif kind == "document":
@@ -178,6 +197,8 @@ class RowLead:
             frame.set_center_widget(icons.image("image"))
         widget = _lead(frame, "thumbnail")
         widget.add_css_class(kind)
+        if fit == "contain" and kind == "image" and picture is not None:
+            widget.add_css_class("contain")
         return widget
 
     @staticmethod

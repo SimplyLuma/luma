@@ -1224,12 +1224,41 @@ static void test_square_chip_preview(void) {
   }
 }
 
+/* The editor focuses its first field with the text selected; a hidden body takes no room; Esc to cancel. */
+static void test_editor_focus_and_empty_body(void) {
+  GtkWidget *window = gtk_window_new();
+  GtkWidget *editor = luma_action_editor_new("Rename", "pencil");
+  GtkWidget *entry = gtk_entry_new();
+  gtk_editable_set_text(GTK_EDITABLE(entry), "Camera");
+  luma_action_editor_add_field(LUMA_ACTION_EDITOR(editor), "Name", entry);
+  luma_action_editor_add_field(LUMA_ACTION_EDITOR(editor), "Note", NULL);
+  GtkWidget *body = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_visible(body, FALSE);
+  luma_action_editor_set_body(LUMA_ACTION_EDITOR(editor), body);
+  gtk_window_set_child(GTK_WINDOW(window), editor);
+  gtk_window_present(GTK_WINDOW(window));
+  spin();
+  g_assert_true(gtk_widget_has_css_class(editor, "bodyless"));
+  g_assert_false(gtk_widget_get_visible(gtk_widget_get_parent(gtk_widget_get_parent(body))) &&
+                 gtk_widget_get_visible(body));
+  luma_action_editor_focus_content(LUMA_ACTION_EDITOR(editor));
+  int start = -1, end = -1;
+  g_assert_true(gtk_widget_has_focus(entry) || gtk_widget_is_ancestor(gtk_root_get_focus(GTK_ROOT(window)), entry));
+  g_assert_true(gtk_editable_get_selection_bounds(GTK_EDITABLE(entry), &start, &end));
+  g_assert_cmpint(start, ==, 0);
+  g_assert_cmpint(end, ==, 6);
+  gtk_widget_set_visible(body, TRUE);
+  g_assert_false(gtk_widget_has_css_class(editor, "bodyless"));
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
   if (!gtk_init_check())
     return 77;
   luma_ui_install();
   g_test_add_func("/lumaui/action-center/items", test_items);
+  g_test_add_func("/lumaui/action-center/editor-focus-empty-body", test_editor_focus_and_empty_body);
   g_test_add_func("/lumaui/action-center/square-chip-preview", test_square_chip_preview);
   g_test_add_func("/lumaui/action-center/phone-grown-inset", test_phone_grown_inset);
   g_test_add_func("/lumaui/action-center/spacer-navigation", test_spacer_preserves_navigation_width);

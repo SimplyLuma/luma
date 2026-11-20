@@ -58,7 +58,7 @@ class CompactComposer(unittest.TestCase):
             self.assertEqual(center._editor_key(None, Gdk.KEY_Return, 0, Gdk.ModifierType(0)), enabled)
             self.assertFalse(center._editor_key(None, Gdk.KEY_Return, 0, Gdk.ModifierType.SHIFT_MASK))
             self.assertTrue(center._editor_key(None, Gdk.KEY_Return, 0, Gdk.ModifierType.CONTROL_MASK))
-            self.assertEqual(editor.hint.get_label(), 'Esc to fold · Return to send' if enabled else 'Esc to fold · Ctrl Return')
+            self.assertEqual(editor.hint.get_label(), 'Esc to cancel · Return to send' if enabled else 'Esc to cancel · Ctrl Return')
         self.assertEqual(len(calls), 3)
 
     def test_composer_geometry_and_default_reset(self):

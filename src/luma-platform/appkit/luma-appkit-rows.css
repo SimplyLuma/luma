@@ -70,6 +70,9 @@ row.lumaui-row:selected .lumaui-row-lead.lead-well {
 }
 .lumaui-row-lead.lead-thumbnail image { -gtk-icon-size: var(--lumaui-nav-files-thumb-icon); }
 .lumaui-row-lead.lead-thumbnail.document { background: none; box-shadow: none; }
+/* A contained picture: whole, in its own shape (16:9, 9:16) with the small radius and a hairline. */
+.lumaui-row-lead.lead-thumbnail.contain { background: none; box-shadow: none; }
+.lumaui-row-lead.lead-thumbnail.contain picture.lumaui-row-thumb-picture { border-radius: 3px; outline: 1px solid @luma_line; outline-offset: -1px; }
 .lumaui-row-lead.lead-thumbnail box.lumaui-row-page {
   min-width: calc(var(--lumaui-nav-files-page-width) - 2 * var(--lumaui-nav-files-page-padding-x));
   min-height: var(--lumaui-nav-files-thumb-height); padding: 0 var(--lumaui-nav-files-page-padding-x);
