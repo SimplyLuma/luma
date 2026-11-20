@@ -1,0 +1,489 @@
+// SPDX-License-Identifier: MPL-2.0
+//! lumaframe in real GL pipelines. Needs a GL context; headless with Mesa:
+//! GST_GL_PLATFORM=egl GST_GL_WINDOW=surfaceless (see README.md).
+
+use std::sync::{Once, OnceLock};
+
+use gst::glib;
+use gst::prelude::*;
+use gst_gl::prelude::*;
+use gstlumavideofx::geometry::{Layout, Settings};
+
+/// One GL display for every pipeline in the process. Each pipeline making
+/// its own would share the same EGLDisplay underneath, and one pipeline's
+/// eglTerminate on teardown breaks context creation in another running in
+/// parallel.
+fn gl_display_context() -> gst::Context {
+    static DISPLAY: OnceLock<gst_gl::GLDisplay> = OnceLock::new();
+    let display = DISPLAY.get_or_init(gst_gl::GLDisplay::new);
+    let mut context = gst::Context::new(gst_gl::GL_DISPLAY_CONTEXT_TYPE, true);
+    context.get_mut().unwrap().set_gl_display(display);
+    context
+}
+
+fn init() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        gst::init().unwrap();
+        gstlumavideofx::plugin_register_static().unwrap();
+    });
+}
+
+#[derive(Clone, Debug)]
+struct Frame {
+    w: usize,
+    h: usize,
+    data: Vec<u8>,
+}
+
+impl Frame {
+    fn new(w: usize, h: usize, f: impl Fn(usize, usize) -> [u8; 4]) -> Frame {
+        let mut data = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            for x in 0..w {
+                data.extend_from_slice(&f(x, y));
+            }
+        }
+        Frame { w, h, data }
+    }
+
+    fn px(&self, x: usize, y: usize) -> [u8; 4] {
+        let i = (y * self.w + x) * 4;
+        self.data[i..i + 4].try_into().unwrap()
+    }
+}
+
+struct Harness {
+    pipeline: gst::Pipeline,
+    src: gst_app::AppSrc,
+    sink: gst_app::AppSink,
+    frame: gst::Element,
+    pts: u64,
+}
+
+impl Harness {
+    /// appsrc (RGBA) ! glupload ! glcolorconvert ! lumaframe [! downstream] ! gldownload ! appsink
+    fn new(input_w: usize, input_h: usize, downstream: Option<&str>, props: &[(&str, glib::Value)]) -> Harness {
+        init();
+        let forced = downstream.map(|caps| format!("! {caps} ")).unwrap_or_default();
+        let desc = format!(
+            "appsrc name=src format=time ! glupload ! glcolorconvert ! lumaframe name=frame {forced}\
+             ! gldownload ! video/x-raw,format=RGBA ! appsink name=sink sync=false"
+        );
+        let pipeline = gst::parse::launch(&desc).unwrap().downcast::<gst::Pipeline>().unwrap();
+        let src = pipeline.by_name("src").unwrap().downcast::<gst_app::AppSrc>().unwrap();
+        let sink = pipeline
+            .by_name("sink")
+            .unwrap()
+            .downcast::<gst_app::AppSink>()
+            .unwrap();
+        let frame = pipeline.by_name("frame").unwrap();
+        src.set_caps(Some(
+            &gst::Caps::builder("video/x-raw")
+                .field("format", "RGBA")
+                .field("width", input_w as i32)
+                .field("height", input_h as i32)
+                .field("framerate", gst::Fraction::new(30, 1))
+                .field("pixel-aspect-ratio", gst::Fraction::new(1, 1))
+                .build(),
+        ));
+        for (name, value) in props {
+            frame.set_property_from_value(name, value);
+        }
+        pipeline.set_context(&gl_display_context());
+        pipeline.set_state(gst::State::Playing).unwrap();
+        Harness {
+            pipeline,
+            src,
+            sink,
+            frame,
+            pts: 0,
+        }
+    }
+
+    fn push(&mut self, input: &Frame) -> Frame {
+        self.send(input);
+        self.pull()
+    }
+
+    fn send(&mut self, input: &Frame) {
+        let mut buffer = gst::Buffer::from_slice(input.data.clone());
+        {
+            let b = buffer.get_mut().unwrap();
+            b.set_pts(gst::ClockTime::from_mseconds(self.pts * 33));
+            b.set_duration(gst::ClockTime::from_mseconds(33));
+        }
+        self.pts += 1;
+        self.src.push_buffer(buffer).unwrap();
+    }
+
+    fn pull(&self) -> Frame {
+        let Some(sample) = self.sink.try_pull_sample(gst::ClockTime::from_seconds(20)) else {
+            let bus = self.pipeline.bus().unwrap();
+            while let Some(msg) = bus.pop() {
+                if let gst::MessageView::Error(e) = msg.view() {
+                    panic!("pipeline error: {} ({:?})", e.error(), e.debug());
+                }
+            }
+            panic!("no output buffer");
+        };
+        let info = gst_video::VideoInfo::from_caps(sample.caps().unwrap()).unwrap();
+        let map = sample.buffer().unwrap().map_readable().unwrap();
+        let (w, h, stride) = (info.width() as usize, info.height() as usize, info.stride()[0] as usize);
+        let mut data = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            data.extend_from_slice(&map[y * stride..y * stride + w * 4]);
+        }
+        Frame { w, h, data }
+    }
+
+    fn set(&self, name: &str, value: impl Into<glib::Value>) {
+        self.frame.set_property_from_value(name, &value.into());
+    }
+}
+
+impl Drop for Harness {
+    fn drop(&mut self) {
+        let _ = self.pipeline.set_state(gst::State::Null);
+    }
+}
+
+fn run(input: &Frame, props: &[(&str, glib::Value)]) -> Frame {
+    Harness::new(input.w, input.h, None, props).push(input)
+}
+
+fn solid(w: usize, h: usize, rgba: [u8; 4]) -> Frame {
+    Frame::new(w, h, |_, _| rgba)
+}
+
+fn props(list: &[(&'static str, f64)]) -> Vec<(&'static str, glib::Value)> {
+    list.iter().map(|(k, v)| (*k, v.to_value())).collect()
+}
+
+fn settings(list: &[(&str, f64)], colours: &[(&str, u32)]) -> Settings {
+    let mut s = Settings::default();
+    for (k, v) in list {
+        let v = *v;
+        match *k {
+            "box-width" => s.box_width = v,
+            "box-height" => s.box_height = v,
+            "margin" => s.margin = v,
+            "crop-left" => s.crop_left = v,
+            "crop-top" => s.crop_top = v,
+            "crop-right" => s.crop_right = v,
+            "crop-bottom" => s.crop_bottom = v,
+            "corner-radius" => s.corner_radius = v,
+            "stroke-width" => s.stroke_width = v,
+            "shadow-blur" => s.shadow_blur = v,
+            "shadow-offset-x" => s.shadow_offset_x = v,
+            "shadow-offset-y" => s.shadow_offset_y = v,
+            "opacity" => s.opacity = v,
+            _ => panic!("{k}"),
+        }
+    }
+    for (k, v) in colours {
+        match *k {
+            "stroke-color" => s.stroke_color = *v,
+            "shadow-color" => s.shadow_color = *v,
+            _ => panic!("{k}"),
+        }
+    }
+    s
+}
+
+/// Compare every output pixel with the CPU model for a solid-colour source.
+fn assert_matches_model(out: &Frame, s: &Settings, input: (i32, i32), src: [u8; 4], tol: i32) {
+    let l = Layout::new(s, input, (out.w as i32, out.h as i32));
+    let srcf = src.map(|c| c as f64 / 255.0);
+    let mut worst = (0, 0, 0);
+    for y in 0..out.h {
+        for x in 0..out.w {
+            let p = (
+                (x as f64 + 0.5) * l.canvas.0 / out.w as f64,
+                (y as f64 + 0.5) * l.canvas.1 / out.h as f64,
+            );
+            let want = l.shade(p, srcf);
+            assert!(want[3] <= 1.0 + 1e-9, "model alpha {} at {x},{y}", want[3]);
+            let want = want.map(|c| (c * 255.0).round() as i32);
+            let got = out.px(x, y).map(|c| c as i32);
+            // Colour is meaningless where the pixel is (nearly) transparent.
+            let channels = if want[3] < 8 { 3..4 } else { 0..4 };
+            for i in channels {
+                let e = (want[i] - got[i]).abs();
+                if e > worst.0 {
+                    worst = (e, x, y);
+                }
+                assert!(e <= tol, "pixel {x},{y}: got {got:?}, model {want:?}");
+            }
+        }
+    }
+    let alphas: std::collections::BTreeSet<u8> = out.data.chunks(4).map(|p| p[3]).collect();
+    eprintln!(
+        "largest difference from the model: {} at {},{}; {} distinct alpha levels",
+        worst.0,
+        worst.1,
+        worst.2,
+        alphas.len()
+    );
+    // LUMAFRAME_DUMP=dir writes the frame as a PAM image for a look.
+    if let Ok(dir) = std::env::var("LUMAFRAME_DUMP") {
+        let name = format!("{dir}/{}x{}.pam", out.w, out.h);
+        let mut pam = format!(
+            "P7\nWIDTH {}\nHEIGHT {}\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n",
+            out.w, out.h
+        )
+        .into_bytes();
+        pam.extend_from_slice(&out.data);
+        std::fs::write(name, pam).unwrap();
+    }
+}
+
+fn close(a: [u8; 4], b: [u8; 4], tol: i32) -> bool {
+    a.iter()
+        .zip(b.iter())
+        .all(|(x, y)| (*x as i32 - *y as i32).abs() <= tol)
+}
+
+#[test]
+fn defaults_are_a_passthrough() {
+    // A gradient with every channel varying, some of it translucent.
+    let input = Frame::new(97, 61, |x, y| {
+        [
+            (x * 255 / 96) as u8,
+            (y * 255 / 60) as u8,
+            ((x * 7 + y * 13) % 256) as u8,
+            if y < 30 { 255 } else { 64 + (x as u8) },
+        ]
+    });
+    let out = run(&input, &[]);
+    assert_eq!((out.w, out.h), (input.w, input.h));
+    for y in 0..input.h {
+        for x in 0..input.w {
+            assert!(
+                close(out.px(x, y), input.px(x, y), 1),
+                "{x},{y}: {:?} vs {:?}",
+                out.px(x, y),
+                input.px(x, y)
+            );
+        }
+    }
+}
+
+#[test]
+fn explicit_zero_effects_are_a_passthrough() {
+    let input = Frame::new(64, 48, |x, y| [(x * 4) as u8, (y * 5) as u8, 200, 255]);
+    let p = props(&[
+        ("box-width", 64.0),
+        ("box-height", 48.0),
+        ("margin", 0.0),
+        ("corner-radius", 0.0),
+        ("stroke-width", 0.0),
+        ("shadow-blur", 0.0),
+        ("opacity", 1.0),
+    ]);
+    let out = run(&input, &p);
+    assert_eq!((out.w, out.h), (64, 48));
+    assert!(out
+        .data
+        .iter()
+        .zip(input.data.iter())
+        .all(|(a, b)| (*a as i32 - *b as i32).abs() <= 1));
+}
+
+#[test]
+fn rounded_corners_are_transparent() {
+    let out = run(&solid(100, 100, [0, 0, 255, 255]), &props(&[("corner-radius", 30.0)]));
+    for (x, y) in [(0, 0), (99, 0), (0, 99), (99, 99), (3, 3)] {
+        assert_eq!(out.px(x, y)[3], 0, "corner {x},{y}");
+    }
+    for (x, y) in [(50, 50), (0, 50), (50, 0), (99, 50), (30, 30)] {
+        assert_eq!(out.px(x, y), [0, 0, 255, 255], "{x},{y}");
+    }
+    // Anti-aliased: partial coverage exists on the arc.
+    let partial = (0..100).flat_map(|y| (0..100).map(move |x| (x, y))).filter(|&(x, y)| {
+        let a = out.px(x, y)[3];
+        a > 10 && a < 245
+    });
+    assert!(partial.count() > 40);
+}
+
+#[test]
+fn stroke_is_drawn_inside_the_edge() {
+    let out = run(
+        &solid(80, 60, [0, 0, 255, 255]),
+        &[
+            ("stroke-width", 4.0.to_value()),
+            ("stroke-color", 0xFF00FF00u32.to_value()),
+        ],
+    );
+    assert_eq!((out.w, out.h), (80, 60));
+    for (x, y) in [(0, 30), (3, 30), (79, 30), (40, 0), (40, 59), (76, 30)] {
+        assert_eq!(out.px(x, y), [0, 255, 0, 255], "stroke at {x},{y}");
+    }
+    for (x, y) in [(4, 30), (40, 30), (75, 30), (40, 4)] {
+        assert_eq!(out.px(x, y), [0, 0, 255, 255], "content at {x},{y}");
+    }
+}
+
+#[test]
+fn shadow_lies_outside_the_box_and_follows_the_offset() {
+    let mut p = props(&[("margin", 40.0), ("shadow-blur", 20.0), ("shadow-offset-y", 12.0)]);
+    p.push(("shadow-color", 0xC0000000u32.to_value()));
+    let out = run(&solid(100, 60, [255, 255, 255, 255]), &p);
+    assert_eq!((out.w, out.h), (180, 140));
+    let below = out.px(90, 40 + 60 + 10);
+    let above = out.px(90, 40 - 10);
+    let left = out.px(40 - 11, 70);
+    let right = out.px(40 + 100 + 10, 70);
+    assert!(below[3] > above[3] + 30, "below {below:?} above {above:?}");
+    assert!(above[3] > 0 && below[3] < 0xC0);
+    assert!(
+        (left[3] as i32 - right[3] as i32).abs() <= 1,
+        "left {left:?} right {right:?}"
+    );
+    assert_eq!(&below[..3], &[0, 0, 0], "shadow colour");
+    assert_eq!(out.px(0, 0)[3], 0);
+    assert_eq!(out.px(90, 70), [255, 255, 255, 255], "content");
+    // Edges of the box stay content-coloured.
+    assert_eq!(out.px(40, 40), [255, 255, 255, 255]);
+}
+
+#[test]
+fn crop_picks_the_right_region() {
+    // Quadrants: red, green / blue, white.
+    let input = Frame::new(64, 64, |x, y| match (x < 32, y < 32) {
+        (true, true) => [255, 0, 0, 255],
+        (false, true) => [0, 255, 0, 255],
+        (true, false) => [0, 0, 255, 255],
+        (false, false) => [255, 255, 255, 255],
+    });
+    let cases = [
+        (("crop-left", "crop-bottom"), [0, 255, 0, 255]),
+        (("crop-left", "crop-top"), [255, 255, 255, 255]),
+        (("crop-right", "crop-top"), [0, 0, 255, 255]),
+        (("crop-right", "crop-bottom"), [255, 0, 0, 255]),
+    ];
+    for ((a, b), want) in cases {
+        let out = run(
+            &input,
+            &props(&[(a, 0.49), (b, 0.49), ("box-width", 100.0), ("box-height", 50.0)]),
+        );
+        assert_eq!((out.w, out.h), (100, 50));
+        for (x, y) in [(50, 25), (10, 10), (90, 40), (10, 40), (90, 10)] {
+            assert_eq!(out.px(x, y), want, "{a}+{b} at {x},{y}");
+        }
+    }
+}
+
+#[test]
+fn opacity_scales_alpha() {
+    let out = run(&solid(32, 32, [10, 200, 30, 255]), &props(&[("opacity", 0.5)]));
+    let px = out.px(16, 16);
+    assert!(close(px, [10, 200, 30, 128], 1), "{px:?}");
+    let out = run(&solid(32, 32, [10, 200, 30, 128]), &props(&[("opacity", 0.5)]));
+    assert!(close(out.px(16, 16), [10, 200, 30, 64], 1));
+}
+
+#[test]
+fn everything_at_once_matches_the_model() {
+    let list = [
+        ("box-width", 120.0),
+        ("box-height", 80.0),
+        ("margin", 24.0),
+        ("corner-radius", 18.0),
+        ("stroke-width", 3.0),
+        ("shadow-blur", 16.0),
+        ("shadow-offset-x", 5.0),
+        ("shadow-offset-y", 7.0),
+        ("opacity", 0.8),
+    ];
+    let colours = [("stroke-color", 0xFFFF2000u32), ("shadow-color", 0x99102030u32)];
+    let mut p = props(&list);
+    p.extend(colours.iter().map(|(k, v)| (*k, v.to_value())));
+    let src = [40, 160, 220, 255];
+    let out = run(&solid(64, 48, src), &p);
+    assert_eq!((out.w, out.h), (168, 128));
+    assert_matches_model(&out, &settings(&list, &colours), (64, 48), src, 3);
+}
+
+#[test]
+fn size_change_while_playing_renegotiates() {
+    let input = solid(64, 48, [255, 0, 0, 255]);
+    let mut h = Harness::new(64, 48, None, &[]);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (64, 48));
+
+    h.set("box-width", 100.0);
+    h.set("box-height", 50.0);
+    h.set("margin", 10.0);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (120, 70));
+    assert_eq!(out.px(5, 5)[3], 0);
+    assert_eq!(out.px(60, 35), [255, 0, 0, 255]);
+
+    // Not a size change: same caps, new look.
+    h.set("corner-radius", 20.0);
+    h.set("opacity", 0.5);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (120, 70));
+    assert_eq!(out.px(11, 11)[3], 0);
+    assert!(close(out.px(60, 35), [255, 0, 0, 128], 1));
+
+    h.set("margin", 0.0);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (100, 50));
+}
+
+#[test]
+fn downstream_size_scales_the_layer() {
+    let list = [
+        ("box-width", 100.0),
+        ("box-height", 50.0),
+        ("margin", 10.0),
+        ("corner-radius", 10.0),
+        ("stroke-width", 2.0),
+    ];
+    let src = [0, 255, 0, 255];
+    let mut h = Harness::new(
+        40,
+        30,
+        Some("video/x-raw(memory:GLMemory),width=240,height=140"),
+        &props(&list),
+    );
+    let out = h.push(&solid(40, 30, src));
+    assert_eq!((out.w, out.h), (240, 140));
+    assert_matches_model(&out, &settings(&list, &[]), (40, 30), src, 3);
+}
+
+#[test]
+fn resizes_inside_glvideomixer_while_playing() {
+    let input = solid(64, 48, [255, 0, 0, 255]);
+    let mut h = Harness::new(
+        64,
+        48,
+        Some("glvideomixer name=mix background=transparent ! video/x-raw(memory:GLMemory),width=320,height=240"),
+        &props(&[("box-width", 100.0), ("box-height", 60.0), ("corner-radius", 8.0)]),
+    );
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (320, 240));
+    assert_eq!(out.px(50, 30), [255, 0, 0, 255]);
+    assert_eq!(out.px(150, 100)[3], 0);
+    assert_eq!(out.px(0, 0)[3], 0, "rounded corner composited as transparent");
+
+    // glvideomixer only recomputes a pad's geometry when a pad property
+    // changes, not when its input caps do, so a resize sets the pad size too.
+    // It also holds a buffer back across a caps change until the next one
+    // arrives when not live: send two, take one.
+    h.set("box-width", 200.0);
+    h.set("box-height", 150.0);
+    let pad = h.pipeline.by_name("mix").unwrap().static_pad("sink_0").unwrap();
+    pad.set_property("width", 200i32);
+    pad.set_property("height", 150i32);
+    h.send(&input);
+    h.send(&input);
+    let out = h.pull();
+    assert_eq!((out.w, out.h), (320, 240));
+    assert_eq!(out.px(150, 100), [255, 0, 0, 255]);
+    assert_eq!(out.px(250, 200)[3], 0);
+    assert_eq!(out.px(0, 0)[3], 0);
+}
