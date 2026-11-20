@@ -25,6 +25,12 @@ def schedule(window, path: str) -> None:
     window.set_default_size(width, height)
 
     def select() -> bool:
+        if os.environ.get("STREAMY_SHOT_EDITOR"):
+            window.edit_destination(then_go=True)
+            return False
+        if os.environ.get("STREAMY_SHOT_RECORDING"):
+            window.toggle_record()
+            return False
         if os.environ.get("STREAMY_SHOT_SELECT"):
             scene = window.project.active_scene
             pictures = [w for w in scene.widgets if w.has_picture] if scene else []

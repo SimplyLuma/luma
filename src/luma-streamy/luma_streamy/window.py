@@ -1037,7 +1037,7 @@ class StreamyWindow(AppWindow):
         if scene is None:
             return
         entry = Gtk.Entry(text=scene.name, hexpand=True)
-        editor = ActionEditor("Rename scene", "pencil", fields=[("Name", entry)], body=Gtk.Box(),
+        editor = ActionEditor("Rename scene", "pencil", fields=[("Name", entry)], body=Gtk.Box(visible=False),
                               primary=BarAction("check", "Rename", on_activate=lambda: done()))
 
         def done() -> None:
@@ -1104,7 +1104,7 @@ class StreamyWindow(AppWindow):
 
         entry.connect("activate", lambda *_a: done())
         self.center.set_editor(ActionEditor("Save layout", "layout-dashboard", fields=[("Name", entry)],
-                                            body=Gtk.Box(), primary=BarAction("check", "Save",
+                                            body=Gtk.Box(visible=False), primary=BarAction("check", "Save",
                                                                               on_activate=done)))
         self.center.grow()
         entry.grab_focus()
@@ -1147,7 +1147,10 @@ class StreamyWindow(AppWindow):
             settings = {}
         self.destination = settings.get("destination", self.destination)
         server = settings.get("server") or graph.DESTINATIONS[self.destination][1]
-        key = self._secret_store().lookup(self.destination, SECRET_KIND) or ""
+        try:
+            key = self._secret_store().lookup(self.destination, SECRET_KIND) or ""
+        except (GLib.Error, OSError):
+            key = ""  # no keyring reachable: ask for the key
         return server, key
 
     def go_live(self) -> None:
@@ -1175,12 +1178,10 @@ class StreamyWindow(AppWindow):
         import json
 
         server, key = self._destination()
-        server_entry = Gtk.Entry(text=server if self.destination == "custom" else "", hexpand=True,
-                                 placeholder_text="rtmps://…")
+        server_entry = Gtk.Entry(text=server, hexpand=True, placeholder_text="rtmps://…")
         key_entry = Gtk.PasswordEntry(show_peek_icon=True, hexpand=True)
         key_entry.set_text(key)
         key_entry.update_property([Gtk.AccessibleProperty.LABEL], ["Stream key"])
-        note = TypeLabel("Stream keys are kept in your keyring.", role="caption", wrap=True)
         modes = [(k, label, "radio-tower") for k, (label, *_rest) in graph.DESTINATIONS.items()]
 
         def save() -> None:
@@ -1191,8 +1192,11 @@ class StreamyWindow(AppWindow):
             except ValueError as error:
                 Toast.show(self.host, str(error), kind="warning")
                 return
-            self._secret_store().store(dest, SECRET_KIND, key_entry.get_text().strip(),
-                                       label=f"Streamy stream key ({graph.DESTINATIONS[dest][0]})")
+            try:
+                self._secret_store().store(dest, SECRET_KIND, key_entry.get_text().strip(),
+                                           label=f"Streamy stream key ({graph.DESTINATIONS[dest][0]})")
+            except (GLib.Error, OSError):
+                Toast.show(self.host, "The stream key couldn't be saved in the keyring", kind="warning")
             from .model import atomic_write
 
             atomic_write(self.settings_path, json.dumps({"destination": dest, "server": chosen_server
@@ -1206,11 +1210,15 @@ class StreamyWindow(AppWindow):
         def mode(key_: str) -> None:
             self.destination = key_
             server_entry.set_sensitive(key_ == "custom")
+            if key_ != "custom":
+                server_entry.set_text(graph.DESTINATIONS[key_][1])
 
         server_entry.set_sensitive(self.destination == "custom")
-        editor = ActionEditor("Go live" if then_go else "Destination", "radio-tower", modes=modes,
+        body = Gtk.Box(visible=False)  # fields only: no text to write
+        editor = ActionEditor(graph.DESTINATIONS[self.destination][0], "radio-tower", modes=modes,
                               mode=self.destination, on_mode=mode,
-                              fields=[("Server", server_entry), ("Stream key", key_entry)], body=note,
+                              summary="Stream keys are kept in your keyring",
+                              fields=[("Server", server_entry), ("Stream key", key_entry)], body=body,
                               primary=BarAction("radio-tower" if then_go else "check",
                                                 "Go live" if then_go else "Save", on_activate=save))
         self.center.set_editor(editor)
