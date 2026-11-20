@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+  <linearGradient id="sty-pl" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0" stop-color="#ff4d6d"/><stop offset="1" stop-color="#d6194a"/></linearGradient>
+  <radialGradient id="sty-plh" cx="0.26" cy="0.12" r="0.8"><stop offset="0" stop-color="#fff" stop-opacity="0.2"/><stop offset="0.55" stop-color="#fff" stop-opacity="0.05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <linearGradient id="sty-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.42"/><stop offset="0.1" stop-color="#fff" stop-opacity="0"/><stop offset="0.86" stop-color="#7a0726" stop-opacity="0"/><stop offset="1" stop-color="#7a0726" stop-opacity="0.35"/></linearGradient>
+  <clipPath id="sty-clip"><rect x="82" y="82" width="860" height="860" rx="202"/></clipPath>
+  <filter id="sty-amb" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="56"/></filter>
+  <filter id="sty-sh" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="22"/></filter>
+  <filter id="sty-shs" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="12"/></filter>
+  <filter id="sty-hsoft" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="2"/></filter>
+  <linearGradient id="sty-body" x1="0.1" y1="0.05" x2="0.9" y2="0.95"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e6e9f0"/></linearGradient>
+  <linearGradient id="sty-lens" x1="0.1" y1="0.05" x2="0.9" y2="0.95"><stop offset="0" stop-color="#f7f8fb"/><stop offset="1" stop-color="#d9dee8"/></linearGradient>
+  <radialGradient id="sty-dot" cx="0.35" cy="0.3" r="0.75"><stop offset="0" stop-color="#ff6b85"/><stop offset="1" stop-color="#d6194a"/></radialGradient>
+  <mask id="sty-hl" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M336 358H556A44 44 0 0 1 600 402V578A44 44 0 0 1 556 622H336A44 44 0 0 1 292 578V402A44 44 0 0 1 336 358Z" fill="#fff"/><path d="M618 460L706 404Q732 388 732 418V562Q732 592 706 576L618 520Z" fill="#fff"/><path d="M336 358H556A44 44 0 0 1 600 402V578A44 44 0 0 1 556 622H336A44 44 0 0 1 292 578V402A44 44 0 0 1 336 358Z" fill="#000" transform="translate(7 8.4)"/><path d="M618 460L706 404Q732 388 732 418V562Q732 592 706 576L618 520Z" fill="#000" transform="translate(7 8.4)"/></mask>
+  <mask id="sty-lo" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><path d="M336 358H556A44 44 0 0 1 600 402V578A44 44 0 0 1 556 622H336A44 44 0 0 1 292 578V402A44 44 0 0 1 336 358Z" fill="#fff"/><path d="M618 460L706 404Q732 388 732 418V562Q732 592 706 576L618 520Z" fill="#fff"/><path d="M336 358H556A44 44 0 0 1 600 402V578A44 44 0 0 1 556 622H336A44 44 0 0 1 292 578V402A44 44 0 0 1 336 358Z" fill="#000" transform="translate(-7 -8.4)"/><path d="M618 460L706 404Q732 388 732 418V562Q732 592 706 576L618 520Z" fill="#000" transform="translate(-7 -8.4)"/></mask>
+</defs>
+<g id="plate"><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#sty-pl)"/><rect x="82" y="82" width="860" height="860" rx="202" fill="url(#sty-plh)"/></g>
+<g id="ambient-shadow" clip-path="url(#sty-clip)"><ellipse cx="520" cy="690" rx="320" ry="170" fill="#7a0726" opacity="0.34" filter="url(#sty-amb)"/></g>
+<g id="object-shadow" opacity="0.32"><path d="M336 358H556A44 44 0 0 1 600 402V578A44 44 0 0 1 556 622H336A44 44 0 0 1 292 578V402A44 44 0 0 1 336 358Z" fill="#7a0726" transform="translate(12 26)" filter="url(#sty-sh)"/><path d="M618 460L706 404Q732 388 732 418V562Q732 592 706 576L618 520Z" fill="#7a0726" transform="translate(10 20)" filter="url(#sty-shs)"/></g>
+<g id="object-main">
+  <path d="M336 358H556A44 44 0 0 1 600 402V578A44 44 0 0 1 556 622H336A44 44 0 0 1 292 578V402A44 44 0 0 1 336 358Z" fill="url(#sty-body)"/>
+  <path d="M618 460L706 404Q732 388 732 418V562Q732 592 706 576L618 520Z" fill="url(#sty-lens)"/>
+  <g filter="url(#sty-hsoft)"><rect width="1024" height="1024" fill="#6b5a66" opacity="0.25" mask="url(#sty-lo)"/><rect width="1024" height="1024" fill="#fff" mask="url(#sty-hl)"/></g>
+  <circle cx="360" cy="424" r="26" fill="url(#sty-dot)"/>
+  <g id="detail" fill="none" stroke="#d6194a" stroke-width="22" stroke-linecap="round" opacity="0.35"><path d="M346 548H470"/></g>
+</g>
+<g id="plate-rim" clip-path="url(#sty-clip)"><rect x="82" y="82" width="860" height="860" rx="202" fill="none" stroke="url(#sty-rim)" stroke-width="8"/></g>
+</svg>

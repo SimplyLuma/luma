@@ -32,6 +32,9 @@ media_fader_test = executable(
 )
 test('media-fader', media_fader_test, env: ['G_DEBUG=fatal-criticals'])
 
+audio_meter_test = executable('test-luma-audio-meter', 'test-audio-meter.c', dependencies: ui_dep)
+test('lumaui-audio-meter', audio_meter_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
+
 media_transport_lcd_test = executable(
   'test-luma-media-transport-lcd',
   'test-media-transport-lcd.c',
@@ -93,6 +96,17 @@ test(
   env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'],
 )
 
+window_shape_test = executable(
+  'test-luma-window-shape',
+  'test-window-shape.c',
+  dependencies: ui_dep,
+)
+test(
+  'window-shape',
+  window_shape_test,
+  env: ['G_DEBUG=fatal-criticals'],
+)
+
 # LumaUI parts (ADR-052): a part's C test joins once it exists, and the parity
 # test compares every C part's widget tree with its Python twin's.
 fs = import('fs')
@@ -101,7 +115,7 @@ lumaui_part_tests = [
   'badges', 'toast', 'destructive-dialog', 'stacked-button', 'details-pane', 'table-header',
   'action-center', 'cards', 'file-card', 'selection-bubble', 'navigation-trail-bar',
   'menu-drawer', 'contact', 'text-field', 'place-search', 'message-bubble', 'type-label',
-  'creative-workspace', 'creative-tools', 'creative-layers', 'creative-properties', 'controls', 'progress-line', 'title-island', 'list-first', 'tab-bar',
+  'creative-workspace', 'creative-tools', 'creative-layers', 'creative-properties', 'arrange-view', 'controls', 'progress-line', 'title-island', 'list-first', 'tab-bar',
 ]
 foreach stem : lumaui_part_tests
   if fs.exists('test-lumaui-' + stem + '.c')
@@ -128,6 +142,12 @@ if python3.found()
     args: [meson.current_source_dir() / 'test-first-frame-width.py'],
     env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit',
           'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory', 'GTK_A11Y=none'])
+  test('lumaui-creative-python', python3,
+    args: [meson.current_source_dir() / 'test-creative-python.py'],
+    depends: [ui_lib, ui_gir[1]],
+    env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
+          'GI_TYPELIB_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance',
+          'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'])
   test('lumaui-tokens', python3, args: [meson.project_source_root() / 'ui/gen-lumaui-tokens.py', '--check'])
   test('lumaui-c-parity', python3,
     args: [meson.current_source_dir() / 'lumaui-c-parity.py'],

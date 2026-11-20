@@ -134,6 +134,7 @@ GType luma_panel_side_get_type(void) {
   static const GEnumValue values[] = {
     {LUMA_PANEL_SIDE_LEFT, "LUMA_PANEL_SIDE_LEFT", "left"},
     {LUMA_PANEL_SIDE_RIGHT, "LUMA_PANEL_SIDE_RIGHT", "right"},
+    {LUMA_PANEL_SIDE_BOTTOM, "LUMA_PANEL_SIDE_BOTTOM", "bottom"},
     {0, NULL, NULL},
   };
   if (g_once_init_enter(&type_id))
@@ -167,6 +168,10 @@ struct _LumaFloatingPanel {
   gboolean folded;
   gboolean drawer;
   gboolean selecting;
+  gboolean movable;
+  /* The workspace a docked panel belongs to (not a reference). */
+  gpointer dock;
+  GtkEventController *drag;
   GtkWidget *card;
   GtkWidget *handle;
   GtkWidget *header;
@@ -205,10 +210,22 @@ static void title_menu_clicked(GtkButton *button, gpointer user_data) {
     popup_model(GTK_WIDGET(button), self->title_menu, self->title);
 }
 
+static void dock_menu_append(LumaFloatingPanel *self, GMenu *menu);
+
 static void more_clicked(GtkButton *button, gpointer user_data) {
   LumaFloatingPanel *self = user_data;
+  if (!self->movable || self->drawer) {
+    if (self->more_menu != NULL)
+      popup_model(GTK_WIDGET(button), self->more_menu, "More");
+    return;
+  }
+  /* A docked panel's More ends with where it can go: the keyboard's way to
+   * move what a pointer drags by the header. */
+  g_autoptr(GMenu) menu = g_menu_new();
   if (self->more_menu != NULL)
-    popup_model(GTK_WIDGET(button), self->more_menu, "More");
+    g_menu_append_section(menu, NULL, self->more_menu);
+  dock_menu_append(self, menu);
+  popup_model(GTK_WIDGET(button), G_MENU_MODEL(menu), "More");
 }
 
 static void close_clicked(GtkButton *button G_GNUC_UNUSED, gpointer user_data) {
@@ -302,7 +319,7 @@ static void rebuild_header(LumaFloatingPanel *self) {
   gtk_box_append(GTK_BOX(self->header), self->title_widget);
   if (self->header_actions != NULL)
     gtk_box_append(GTK_BOX(self->header), self->header_actions);
-  if (self->more_menu != NULL) {
+  if (self->more_menu != NULL || (self->movable && !self->drawer)) {
     GtkWidget *more = luma_ui_icon_button("ellipsis", "More", "lumaui-creative-panel-button", FALSE, NULL);
     gtk_widget_add_css_class(more, "more");
     gtk_accessible_update_property(GTK_ACCESSIBLE(more), GTK_ACCESSIBLE_PROPERTY_HAS_POPUP, TRUE, -1);
@@ -310,7 +327,10 @@ static void rebuild_header(LumaFloatingPanel *self) {
     gtk_box_append(GTK_BOX(self->header), more);
   }
   if (self->closable || self->drawer) {
-    const char *glyph = self->drawer ? "x" : self->side == LUMA_PANEL_SIDE_LEFT ? "panel-left" : "panel-right";
+    const char *glyph = self->drawer                         ? "x"
+                        : self->side == LUMA_PANEL_SIDE_LEFT   ? "panel-left"
+                        : self->side == LUMA_PANEL_SIDE_BOTTOM ? "panel-bottom"
+                                                               : "panel-right";
     g_autofree char *hide = NULL;
     if (!self->drawer) {
       const char *what = self->holds;
@@ -372,8 +392,66 @@ static void panel_set_side(LumaFloatingPanel *self, LumaPanelSide side) {
   self->side = side;
   luma_ui_set_css_class(GTK_WIDGET(self), "left", side == LUMA_PANEL_SIDE_LEFT);
   luma_ui_set_css_class(GTK_WIDGET(self), "right", side == LUMA_PANEL_SIDE_RIGHT);
+  luma_ui_set_css_class(GTK_WIDGET(self), "bottom", side == LUMA_PANEL_SIDE_BOTTOM);
   /* v70 names the tab groups "Panel" and "Inspector". */
-  luma_ui_set_accessible_label(self->tabs, side == LUMA_PANEL_SIDE_LEFT ? "Panel" : "Inspector");
+  luma_ui_set_accessible_label(self->tabs, side == LUMA_PANEL_SIDE_RIGHT ? "Inspector" : "Panel");
+  rebuild_header(self);
+}
+
+static void panel_set_drawer(LumaFloatingPanel *self, gboolean drawer);
+
+/* Docked panels move: the header is a drag source carrying the panel, and
+ * More lists the docks it can move to. */
+static GdkContentProvider *header_drag_prepare(GtkDragSource *source G_GNUC_UNUSED, double x G_GNUC_UNUSED,
+                                               double y G_GNUC_UNUSED, gpointer user_data) {
+  LumaFloatingPanel *self = user_data;
+  if (!self->movable || self->drawer || self->dock == NULL)
+    return NULL;
+  return gdk_content_provider_new_typed(LUMA_TYPE_FLOATING_PANEL, self);
+}
+
+static void header_drag_begin(GtkDragSource *source, GdkDrag *drag G_GNUC_UNUSED, gpointer user_data) {
+  LumaFloatingPanel *self = user_data;
+  g_autoptr(GdkPaintable) face = gtk_widget_paintable_new(self->card);
+  gtk_drag_source_set_icon(source, face, 24, 18);
+  gtk_widget_add_css_class(GTK_WIDGET(self), "moving");
+}
+
+static void header_drag_end(GtkDragSource *source G_GNUC_UNUSED, GdkDrag *drag G_GNUC_UNUSED,
+                            gboolean deleted G_GNUC_UNUSED, gpointer user_data) {
+  gtk_widget_remove_css_class(GTK_WIDGET(user_data), "moving");
+}
+
+static void dock_activate(GSimpleAction *action, GVariant *parameter, gpointer user_data);
+
+static void panel_set_movable(LumaFloatingPanel *self, gpointer dock) {
+  gboolean movable = dock != NULL;
+  self->dock = dock;
+  if (self->movable == movable)
+    return;
+  self->movable = movable;
+  if (movable && self->drag == NULL) {
+    GtkDragSource *source = gtk_drag_source_new();
+    gtk_drag_source_set_actions(source, GDK_ACTION_MOVE);
+    g_signal_connect(source, "prepare", G_CALLBACK(header_drag_prepare), self);
+    g_signal_connect(source, "drag-begin", G_CALLBACK(header_drag_begin), self);
+    g_signal_connect(source, "drag-end", G_CALLBACK(header_drag_end), self);
+    self->drag = GTK_EVENT_CONTROLLER(source);
+    gtk_widget_add_controller(self->header, self->drag);
+    GSimpleActionGroup *group = g_simple_action_group_new();
+    GSimpleAction *move = g_simple_action_new("move", G_VARIANT_TYPE_STRING);
+    g_signal_connect_object(move, "activate", G_CALLBACK(dock_activate), self, 0);
+    g_action_map_add_action(G_ACTION_MAP(group), G_ACTION(move));
+    g_object_unref(move);
+    gtk_widget_insert_action_group(GTK_WIDGET(self), "creative-dock", G_ACTION_GROUP(group));
+    g_object_unref(group);
+  }
+  if (!movable)
+    gtk_widget_insert_action_group(GTK_WIDGET(self), "creative-dock", NULL);
+  if (!movable && self->drag != NULL) {
+    gtk_widget_remove_controller(self->header, self->drag);
+    self->drag = NULL;
+  }
   rebuild_header(self);
 }
 
@@ -711,6 +789,17 @@ gboolean luma_floating_panel_get_is_drawer(LumaFloatingPanel *self) {
 
 enum { WS_PROP_0, WS_PROP_FOCUSED, WS_N_PROPS };
 static GParamSpec *ws_props[WS_N_PROPS];
+enum { WS_LAYOUT_CHANGED, WS_WORK_AREA_CHANGED, WS_N_SIGNALS };
+static guint ws_signals[WS_N_SIGNALS];
+
+/* A docked panel: its stable key, where it is, and how it was before a
+ * phone folded it. The array's order is the order within each dock. */
+typedef struct {
+  char *key;
+  LumaFloatingPanel *panel;
+  LumaPanelSide side;
+  gboolean was_folded;
+} Docked;
 
 struct _LumaCreativeWorkspace {
   GtkWidget parent_instance;
@@ -718,13 +807,16 @@ struct _LumaCreativeWorkspace {
   GtkWidget *content;
   GtkWidget *zoom;
   GtkWidget *tools;
-  LumaFloatingPanel *left;
-  LumaFloatingPanel *right;
+  GtkWidget *target;
+  GPtrArray *docked;
   gboolean focused;
   gboolean phone;
   gboolean grid_visible;
-  gboolean left_was_folded;
-  gboolean right_was_folded;
+  gboolean applying;
+  GdkRectangle work;
+  guint work_idle;
+  LumaPanelSide drop_side;
+  int drop_index;
   double cam_zoom;
   double cam_x;
   double cam_y;
@@ -732,15 +824,56 @@ struct _LumaCreativeWorkspace {
 
 G_DEFINE_FINAL_TYPE(LumaCreativeWorkspace, luma_creative_workspace, GTK_TYPE_WIDGET)
 
+static void docked_free(gpointer data) {
+  Docked *docked = data;
+  g_free(docked->key);
+  g_free(docked);
+}
+
+static Docked *find_docked(LumaCreativeWorkspace *self, const char *key, guint *at) {
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *docked = g_ptr_array_index(self->docked, i);
+    if (g_strcmp0(docked->key, key) == 0) {
+      if (at != NULL)
+        *at = i;
+      return docked;
+    }
+  }
+  return NULL;
+}
+
+static Docked *docked_for_panel(LumaCreativeWorkspace *self, LumaFloatingPanel *panel) {
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *docked = g_ptr_array_index(self->docked, i);
+    if (docked->panel == panel)
+      return docked;
+  }
+  return NULL;
+}
+
+static LumaFloatingPanel *first_on(LumaCreativeWorkspace *self, LumaPanelSide side) {
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *docked = g_ptr_array_index(self->docked, i);
+    if (docked->side == side)
+      return docked->panel;
+  }
+  return NULL;
+}
+
 double luma_creative_grid_spacing(double zoom) {
   return MAX((double)LUMA_UI_CREATIVE_GRID_MIN_SPACING, LUMA_UI_CREATIVE_GRID_SPACING * zoom);
 }
 
-/* Children in painting order: the grid's node, the work, the panels, then the
- * corner controls on top. */
+/* Children in painting order: the grid's node, the work, the panels, the
+ * drop target, then the corner controls on top. */
 static void restack(LumaCreativeWorkspace *self) {
-  GtkWidget *order[] = {self->grid, self->content, self->left ? GTK_WIDGET(self->left) : NULL,
-                        self->right ? GTK_WIDGET(self->right) : NULL, self->zoom, self->tools};
+  if (self->grid != NULL)
+    gtk_widget_insert_before(self->grid, GTK_WIDGET(self), NULL);
+  if (self->content != NULL)
+    gtk_widget_insert_before(self->content, GTK_WIDGET(self), NULL);
+  for (guint i = 0; i < self->docked->len; i++)
+    gtk_widget_insert_before(GTK_WIDGET(((Docked *)g_ptr_array_index(self->docked, i))->panel), GTK_WIDGET(self), NULL);
+  GtkWidget *order[] = {self->target, self->zoom, self->tools};
   for (guint i = 0; i < G_N_ELEMENTS(order); i++)
     if (order[i] != NULL)
       gtk_widget_insert_before(order[i], GTK_WIDGET(self), NULL);
@@ -788,27 +921,35 @@ static void set_gone(GtkWidget *widget, gboolean gone) {
 }
 
 static void update_drawers(LumaCreativeWorkspace *self) {
-  if (self->left != NULL)
-    panel_set_drawer(self->left, self->phone && !luma_floating_panel_get_folded(self->left));
-  if (self->right != NULL)
-    panel_set_drawer(self->right, self->phone && !luma_floating_panel_get_folded(self->right));
+  for (guint i = 0; i < self->docked->len; i++) {
+    LumaFloatingPanel *panel = ((Docked *)g_ptr_array_index(self->docked, i))->panel;
+    panel_set_drawer(panel, self->phone && !luma_floating_panel_get_folded(panel));
+  }
   gtk_widget_queue_allocate(GTK_WIDGET(self));
+}
+
+static void layout_changed(LumaCreativeWorkspace *self) {
+  if (!self->applying && !self->phone)
+    g_signal_emit(self, ws_signals[WS_LAYOUT_CHANGED], 0);
 }
 
 static void panel_folded_changed(LumaFloatingPanel *panel, GParamSpec *pspec G_GNUC_UNUSED, gpointer user_data) {
   LumaCreativeWorkspace *self = user_data;
   /* A phone shows one drawer at a time. */
   if (self->phone && !luma_floating_panel_get_folded(panel)) {
-    LumaFloatingPanel *other = panel == self->left ? self->right : self->left;
-    if (other != NULL)
-      luma_floating_panel_set_folded(other, TRUE);
+    for (guint i = 0; i < self->docked->len; i++) {
+      LumaFloatingPanel *other = ((Docked *)g_ptr_array_index(self->docked, i))->panel;
+      if (other != panel)
+        luma_floating_panel_set_folded(other, TRUE);
+    }
   }
   update_drawers(self);
+  layout_changed(self);
 }
 
 static void update_visibility(LumaCreativeWorkspace *self) {
-  set_gone(self->left ? GTK_WIDGET(self->left) : NULL, self->focused);
-  set_gone(self->right ? GTK_WIDGET(self->right) : NULL, self->focused);
+  for (guint i = 0; i < self->docked->len; i++)
+    set_gone(GTK_WIDGET(((Docked *)g_ptr_array_index(self->docked, i))->panel), self->focused);
   set_gone(self->zoom, self->focused || self->phone);
 }
 
@@ -818,18 +959,14 @@ static void set_phone(LumaCreativeWorkspace *self, gboolean phone) {
   self->phone = phone;
   luma_ui_set_css_class(GTK_WIDGET(self), "phone", phone);
   /* On a phone the panels start as pills; leaving it restores how they were. */
-  if (phone) {
-    self->left_was_folded = self->left != NULL && luma_floating_panel_get_folded(self->left);
-    self->right_was_folded = self->right != NULL && luma_floating_panel_get_folded(self->right);
-    if (self->left != NULL)
-      luma_floating_panel_set_folded(self->left, TRUE);
-    if (self->right != NULL)
-      luma_floating_panel_set_folded(self->right, TRUE);
-  } else {
-    if (self->left != NULL)
-      luma_floating_panel_set_folded(self->left, self->left_was_folded);
-    if (self->right != NULL)
-      luma_floating_panel_set_folded(self->right, self->right_was_folded);
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *docked = g_ptr_array_index(self->docked, i);
+    if (phone) {
+      docked->was_folded = luma_floating_panel_get_folded(docked->panel);
+      luma_floating_panel_set_folded(docked->panel, TRUE);
+    } else {
+      luma_floating_panel_set_folded(docked->panel, docked->was_folded);
+    }
   }
   update_drawers(self);
   update_visibility(self);
@@ -868,29 +1005,201 @@ static void place(GtkWidget *child, int x, int y, int width, int height) {
   gtk_widget_size_allocate(child, &allocation, -1);
 }
 
-static void allocate_panel(LumaCreativeWorkspace *self, LumaFloatingPanel *panel, int width, int height,
-                           int bottom) {
-  if (panel == NULL || !gtk_widget_get_visible(GTK_WIDGET(panel)))
+/* A side dock: its panels top to bottom, each as wide as it asks. Folded
+ * panels take their pill's height; the open ones share what is left, each
+ * getting at most what it asks for (the rest goes to the others). The
+ * panels' own margins are the inset, so neighbours share one. */
+static int allocate_column(LumaCreativeWorkspace *self, LumaPanelSide side, int width, int bottom, int *open_width) {
+  int n = 0, open = 0, used = 0, widest = 0;
+  *open_width = 0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != side || !gtk_widget_get_visible(GTK_WIDGET(d->panel)))
+      continue;
+    n++;
+    if (luma_floating_panel_get_folded(d->panel)) {
+      int min_h, nat_h;
+      gtk_widget_measure(GTK_WIDGET(d->panel), GTK_ORIENTATION_VERTICAL, -1, &min_h, &nat_h, NULL, NULL);
+      used += nat_h;
+    } else {
+      open++;
+    }
+  }
+  if (n == 0)
+    return 0;
+  int overlap = LUMA_UI_CREATIVE_PANEL_INSET;
+  int room = MAX(0, bottom - used + (n - 1) * overlap);
+  int heights[64] = {0};
+  int wants[64] = {0};
+  int k = 0;
+  for (guint i = 0; i < self->docked->len && k < 64; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != side || !gtk_widget_get_visible(GTK_WIDGET(d->panel)))
+      continue;
+    int min_w, nat_w, min_h, nat_h;
+    gtk_widget_measure(GTK_WIDGET(d->panel), GTK_ORIENTATION_HORIZONTAL, -1, &min_w, &nat_w, NULL, NULL);
+    int w = MAX(min_w, MIN(nat_w, width));
+    gtk_widget_measure(GTK_WIDGET(d->panel), GTK_ORIENTATION_VERTICAL, w, &min_h, &nat_h, NULL, NULL);
+    wants[k] = luma_floating_panel_get_folded(d->panel) ? -nat_h : MAX(min_h, nat_h);
+    k++;
+  }
+  /* Water-fill the open panels. */
+  int left = open, share_room = room;
+  gboolean settled[64] = {FALSE};
+  while (left > 0) {
+    int share = share_room / left;
+    gboolean changed = FALSE;
+    for (int j = 0; j < k; j++) {
+      if (wants[j] < 0 || settled[j] || wants[j] > share)
+        continue;
+      heights[j] = wants[j];
+      settled[j] = TRUE;
+      share_room -= wants[j];
+      left--;
+      changed = TRUE;
+    }
+    if (!changed) {
+      for (int j = 0; j < k; j++)
+        if (wants[j] >= 0 && !settled[j]) {
+          heights[j] = share;
+          settled[j] = TRUE;
+        }
+      left = 0;
+    }
+  }
+  int y = 0;
+  k = 0;
+  for (guint i = 0; i < self->docked->len && k < 64; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != side || !gtk_widget_get_visible(GTK_WIDGET(d->panel)))
+      continue;
+    GtkWidget *child = GTK_WIDGET(d->panel);
+    int min_w, nat_w;
+    gtk_widget_measure(child, GTK_ORIENTATION_HORIZONTAL, -1, &min_w, &nat_w, NULL, NULL);
+    int w = MAX(min_w, MIN(nat_w, width));
+    int h = wants[k] < 0 ? -wants[k] : heights[k];
+    if (wants[k] >= 0) {
+      int min_h, nat_h;
+      gtk_widget_measure(child, GTK_ORIENTATION_VERTICAL, w, &min_h, &nat_h, NULL, NULL);
+      h = MAX(min_h, h);
+    }
+    if (!luma_floating_panel_get_is_drawer(d->panel))
+      place(child, side == LUMA_PANEL_SIDE_LEFT ? 0 : width - w, y, w, h);
+    widest = MAX(widest, w);
+    if (!luma_floating_panel_get_folded(d->panel))
+      *open_width = MAX(*open_width, w);
+    y += h - overlap;
+    k++;
+  }
+  return widest;
+}
+
+/* The bottom dock: a row above the tools between the side docks. Open
+ * panels share the width; folded ones are pills. */
+static int allocate_row(LumaCreativeWorkspace *self, int x0, int x1, int height, int bottom) {
+  int n = 0, open = 0, pills = 0, tallest = 0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != LUMA_PANEL_SIDE_BOTTOM || !gtk_widget_get_visible(GTK_WIDGET(d->panel)))
+      continue;
+    n++;
+    int min_w, nat_w;
+    gtk_widget_measure(GTK_WIDGET(d->panel), GTK_ORIENTATION_HORIZONTAL, -1, &min_w, &nat_w, NULL, NULL);
+    if (luma_floating_panel_get_folded(d->panel))
+      pills += nat_w;
+    else
+      open++;
+  }
+  if (n == 0)
+    return bottom;
+  int overlap = LUMA_UI_CREATIVE_PANEL_INSET;
+  int span = MAX(0, x1 - x0);
+  int each = open > 0 ? MAX(0, (span - pills + (n - 1) * overlap) / open) : 0;
+  int cap = height * LUMA_UI_CREATIVE_DOCK_BOTTOM_MAX_HEIGHT_PCT / 100;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != LUMA_PANEL_SIDE_BOTTOM || luma_floating_panel_get_folded(d->panel) ||
+        !gtk_widget_get_visible(GTK_WIDGET(d->panel)))
+      continue;
+    int min_h, nat_h;
+    gtk_widget_measure(GTK_WIDGET(d->panel), GTK_ORIENTATION_VERTICAL, each, &min_h, &nat_h, NULL, NULL);
+    tallest = MAX(tallest, MAX(min_h, MIN(nat_h, cap)));
+  }
+  int x = x0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != LUMA_PANEL_SIDE_BOTTOM || !gtk_widget_get_visible(GTK_WIDGET(d->panel)))
+      continue;
+    GtkWidget *child = GTK_WIDGET(d->panel);
+    int min_w, nat_w, min_h, nat_h;
+    gtk_widget_measure(child, GTK_ORIENTATION_HORIZONTAL, -1, &min_w, &nat_w, NULL, NULL);
+    gboolean folded = luma_floating_panel_get_folded(d->panel);
+    int w = folded ? nat_w : MAX(min_w, each);
+    gtk_widget_measure(child, GTK_ORIENTATION_VERTICAL, w, &min_h, &nat_h, NULL, NULL);
+    int h = folded ? nat_h : tallest;
+    if (!luma_floating_panel_get_is_drawer(d->panel))
+      place(child, x, bottom - h, w, h);
+    x += w - overlap;
+  }
+  return open > 0 ? bottom - tallest : bottom;
+}
+
+static gboolean work_area_emit(gpointer user_data) {
+  LumaCreativeWorkspace *self = user_data;
+  self->work_idle = 0;
+  g_signal_emit(self, ws_signals[WS_WORK_AREA_CHANGED], 0, self->work.x, self->work.y, self->work.width,
+                self->work.height);
+  return G_SOURCE_REMOVE;
+}
+
+/* What the docks leave of the work: between the open side docks, above an
+ * open bottom dock and the tools. Folded pills and drawers don't count. */
+static void update_work_area(LumaCreativeWorkspace *self, int x0, int x1, int y1) {
+  GdkRectangle work = {x0, 0, MAX(0, x1 - x0), MAX(0, y1)};
+  if (self->phone || self->focused)
+    work = (GdkRectangle){0, 0, gtk_widget_get_width(GTK_WIDGET(self)), y1};
+  if (gdk_rectangle_equal(&work, &self->work))
     return;
-  GtkWidget *child = GTK_WIDGET(panel);
-  int min_w, nat_w, min_h, nat_h;
-  if (luma_floating_panel_get_is_drawer(panel)) {
-    gtk_widget_measure(child, GTK_ORIENTATION_VERTICAL, width, &min_h, &nat_h, NULL, NULL);
+  self->work = work;
+  if (self->work_idle == 0)
+    self->work_idle = g_idle_add_full(G_PRIORITY_HIGH_IDLE, work_area_emit, self, NULL);
+}
+
+static void allocate_drawers(LumaCreativeWorkspace *self, int width, int height) {
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (!luma_floating_panel_get_is_drawer(d->panel) || !gtk_widget_get_visible(GTK_WIDGET(d->panel)))
+      continue;
+    int min_h, nat_h;
+    gtk_widget_measure(GTK_WIDGET(d->panel), GTK_ORIENTATION_VERTICAL, width, &min_h, &nat_h, NULL, NULL);
     int cap = height * LUMA_UI_CREATIVE_PANEL_PHONE_MAX_HEIGHT_PCT / 100;
     int h = MAX(min_h, MIN(nat_h, cap));
-    place(child, 0, height - h, width, h);
-    return;
+    place(GTK_WIDGET(d->panel), 0, height - h, width, h);
   }
-  gtk_widget_measure(child, GTK_ORIENTATION_HORIZONTAL, -1, &min_w, &nat_w, NULL, NULL);
-  int w = MAX(min_w, MIN(nat_w, width));
-  gtk_widget_measure(child, GTK_ORIENTATION_VERTICAL, w, &min_h, &nat_h, NULL, NULL);
-  /* An open panel stops above the tool bar (v70: 92 px of the height are
-   * the tools' and the insets'), and never runs into the tools themselves. */
-  int cap = MIN(height - LUMA_UI_CREATIVE_PANEL_RESERVE + 2 * LUMA_UI_CREATIVE_PANEL_INSET, bottom);
-  int h = MAX(min_h, MIN(nat_h, cap));
-  int x = luma_floating_panel_get_side(panel) == LUMA_PANEL_SIDE_LEFT ? 0 : width - w;
-  place(child, x, 0, w, h);
-  (void)self;
+}
+
+/* Where a drop lands as a strip on the dock's inner edge (the drop target). */
+static void allocate_target(LumaCreativeWorkspace *self, int width, int height, int bottom, int left_w, int right_w) {
+  if (self->target == NULL || !gtk_widget_get_visible(self->target))
+    return;
+  int thick = LUMA_UI_CREATIVE_DOCK_TARGET;
+  int inset = LUMA_UI_CREATIVE_PANEL_INSET;
+  switch (self->drop_side) {
+  case LUMA_PANEL_SIDE_LEFT:
+    place(self->target, inset, inset, MAX(thick, left_w - 2 * inset), MAX(thick, bottom - 2 * inset));
+    break;
+  case LUMA_PANEL_SIDE_RIGHT:
+    place(self->target, width - MAX(thick, right_w - inset), inset, MAX(thick, right_w - 2 * inset),
+          MAX(thick, bottom - 2 * inset));
+    break;
+  case LUMA_PANEL_SIDE_BOTTOM:
+  default: {
+    int x0 = left_w + inset, x1 = width - right_w - inset;
+    int h = MAX(thick, height * LUMA_UI_CREATIVE_DOCK_BOTTOM_MAX_HEIGHT_PCT / 200);
+    place(self->target, x0, bottom - h - inset, MAX(thick, x1 - x0), h);
+    break;
+  }
+  }
 }
 
 static void luma_creative_workspace_size_allocate(GtkWidget *widget, int width, int height,
@@ -935,8 +1244,20 @@ static void luma_creative_workspace_size_allocate(GtkWidget *widget, int width, 
     gtk_widget_measure(self->zoom, GTK_ORIENTATION_VERTICAL, nat_w, &min_h, &nat_h, NULL, NULL);
     place(self->zoom, width - nat_w, height - nat_h, nat_w, nat_h);
   }
-  allocate_panel(self, self->left, width, height, bottom);
-  allocate_panel(self, self->right, width, height, bottom);
+  /* An open side panel stops above the tool bar (v70: 92 px of the height
+   * are the tools' and the insets'), and never runs into the tools. */
+  int column_bottom = MIN(height - LUMA_UI_CREATIVE_PANEL_RESERVE + 2 * LUMA_UI_CREATIVE_PANEL_INSET, bottom);
+  int left_open, right_open;
+  int left_w = allocate_column(self, LUMA_PANEL_SIDE_LEFT, width, column_bottom, &left_open);
+  int right_w = allocate_column(self, LUMA_PANEL_SIDE_RIGHT, width, column_bottom, &right_open);
+  int row_bottom = self->tools != NULL && gtk_widget_get_visible(self->tools)
+                       ? bottom + LUMA_UI_CREATIVE_PANEL_INSET
+                       : height;
+  int row_top = allocate_row(self, left_w > 0 ? left_w - LUMA_UI_CREATIVE_PANEL_INSET : 0,
+                             right_w > 0 ? width - right_w + LUMA_UI_CREATIVE_PANEL_INSET : width, height, row_bottom);
+  update_work_area(self, left_open, width - right_open, MIN(row_top, bottom));
+  allocate_drawers(self, width, height);
+  allocate_target(self, width, height, column_bottom, left_w, right_w);
 }
 
 static void luma_creative_workspace_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
@@ -995,25 +1316,40 @@ static void drop_child(GtkWidget **slot) {
   *slot = NULL;
 }
 
+static void undock(LumaCreativeWorkspace *self, guint at) {
+  Docked *docked = g_ptr_array_index(self->docked, at);
+  g_signal_handlers_disconnect_by_data(docked->panel, self);
+  panel_set_drawer(docked->panel, FALSE);
+  panel_set_movable(docked->panel, NULL);
+  GtkWidget *child = GTK_WIDGET(docked->panel);
+  drop_child(&child);
+  g_ptr_array_remove_index(self->docked, at);
+}
+
 static void luma_creative_workspace_dispose(GObject *object) {
   LumaCreativeWorkspace *self = LUMA_CREATIVE_WORKSPACE(object);
-  if (self->left != NULL)
-    g_signal_handlers_disconnect_by_data(self->left, self);
-  if (self->right != NULL)
-    g_signal_handlers_disconnect_by_data(self->right, self);
+  g_clear_handle_id(&self->work_idle, g_source_remove);
+  while (self->docked != NULL && self->docked->len > 0)
+    undock(self, self->docked->len - 1);
   drop_child(&self->grid);
   drop_child(&self->content);
-  drop_child((GtkWidget **)&self->left);
-  drop_child((GtkWidget **)&self->right);
+  drop_child(&self->target);
   drop_child(&self->zoom);
   drop_child(&self->tools);
   G_OBJECT_CLASS(luma_creative_workspace_parent_class)->dispose(object);
+}
+
+static void luma_creative_workspace_finalize(GObject *object) {
+  LumaCreativeWorkspace *self = LUMA_CREATIVE_WORKSPACE(object);
+  g_clear_pointer(&self->docked, g_ptr_array_unref);
+  G_OBJECT_CLASS(luma_creative_workspace_parent_class)->finalize(object);
 }
 
 static void luma_creative_workspace_class_init(LumaCreativeWorkspaceClass *klass) {
   GObjectClass *object_class = G_OBJECT_CLASS(klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
   object_class->dispose = luma_creative_workspace_dispose;
+  object_class->finalize = luma_creative_workspace_finalize;
   object_class->get_property = luma_creative_workspace_get_property;
   object_class->set_property = luma_creative_workspace_set_property;
   widget_class->measure = luma_creative_workspace_measure;
@@ -1023,12 +1359,109 @@ static void luma_creative_workspace_class_init(LumaCreativeWorkspaceClass *klass
   ws_props[WS_PROP_FOCUSED] = g_param_spec_boolean("focused", NULL, NULL, FALSE,
                                                    G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
   g_object_class_install_properties(object_class, WS_N_PROPS, ws_props);
+  /**
+   * LumaCreativeWorkspace::layout-changed:
+   * @self: the workspace
+   *
+   * A person moved a docked panel or folded or opened one. Save
+   * luma_creative_workspace_get_layout() if the app keeps layouts. Not
+   * emitted for luma_creative_workspace_set_layout() or at phone width
+   * (a phone's pills are not a layout).
+   */
+  ws_signals[WS_LAYOUT_CHANGED] = g_signal_new("layout-changed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0,
+                                               NULL, NULL, NULL, G_TYPE_NONE, 0);
+  /**
+   * LumaCreativeWorkspace::work-area-changed:
+   * @self: the workspace
+   * @x: the free area's left, in the workspace
+   * @y: its top
+   * @width: its width
+   * @height: its height
+   *
+   * The part of the work no open docked panel or the tools cover changed
+   * (a panel opened, folded or moved, or the window resized). Content that
+   * must stay whole, such as a stream's canvas, fits itself into it; at
+   * phone width and in focus mode it is the whole work above the tools.
+   */
+  ws_signals[WS_WORK_AREA_CHANGED] = g_signal_new("work-area-changed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST,
+                                                  0, NULL, NULL, NULL, G_TYPE_NONE, 4, G_TYPE_INT, G_TYPE_INT,
+                                                  G_TYPE_INT, G_TYPE_INT);
+}
+
+/* ── Drag and drop between docks ── */
+
+static LumaPanelSide side_at(LumaCreativeWorkspace *self, double x, double y) {
+  int width = gtk_widget_get_width(GTK_WIDGET(self)), height = gtk_widget_get_height(GTK_WIDGET(self));
+  /* The outer third on each side is that side's dock; below them, the bottom. */
+  if (y > height * 2 / 3.0 && x > width / 4.0 && x < width * 3 / 4.0)
+    return LUMA_PANEL_SIDE_BOTTOM;
+  return x < width / 2.0 ? LUMA_PANEL_SIDE_LEFT : LUMA_PANEL_SIDE_RIGHT;
+}
+
+static int index_at(LumaCreativeWorkspace *self, LumaPanelSide side, double x, double y, LumaFloatingPanel *moving) {
+  int index = 0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != side || d->panel == moving)
+      continue;
+    graphene_rect_t bounds;
+    if (!gtk_widget_compute_bounds(GTK_WIDGET(d->panel), GTK_WIDGET(self), &bounds))
+      continue;
+    double middle = side == LUMA_PANEL_SIDE_BOTTOM ? bounds.origin.x + bounds.size.width / 2
+                                                   : bounds.origin.y + bounds.size.height / 2;
+    if ((side == LUMA_PANEL_SIDE_BOTTOM ? x : y) < middle)
+      break;
+    index++;
+  }
+  return index;
+}
+
+static void show_target(LumaCreativeWorkspace *self, gboolean shown) {
+  if (self->target != NULL)
+    gtk_widget_set_visible(self->target, shown);
+  gtk_widget_queue_allocate(GTK_WIDGET(self));
+}
+
+static GdkDragAction drop_motion(GtkDropTarget *target, double x, double y, gpointer user_data) {
+  LumaCreativeWorkspace *self = user_data;
+  const GValue *value = gtk_drop_target_get_value(target);
+  LumaFloatingPanel *panel = value != NULL ? g_value_get_object(value) : NULL;
+  if (panel == NULL || docked_for_panel(self, panel) == NULL || self->phone)
+    return 0;
+  LumaPanelSide side = side_at(self, x, y);
+  if (side != self->drop_side || !gtk_widget_get_visible(self->target)) {
+    self->drop_side = side;
+    luma_ui_set_css_class(self->target, "left", side == LUMA_PANEL_SIDE_LEFT);
+    luma_ui_set_css_class(self->target, "right", side == LUMA_PANEL_SIDE_RIGHT);
+    luma_ui_set_css_class(self->target, "bottom", side == LUMA_PANEL_SIDE_BOTTOM);
+    show_target(self, TRUE);
+  }
+  self->drop_index = index_at(self, side, x, y, panel);
+  return GDK_ACTION_MOVE;
+}
+
+static void drop_leave(GtkDropTarget *target G_GNUC_UNUSED, gpointer user_data) {
+  show_target(LUMA_CREATIVE_WORKSPACE(user_data), FALSE);
+}
+
+static gboolean drop_done(GtkDropTarget *target G_GNUC_UNUSED, const GValue *value, double x, double y,
+                          gpointer user_data) {
+  LumaCreativeWorkspace *self = user_data;
+  show_target(self, FALSE);
+  LumaFloatingPanel *panel = g_value_get_object(value);
+  Docked *docked = panel != NULL ? docked_for_panel(self, panel) : NULL;
+  if (docked == NULL || self->phone)
+    return FALSE;
+  LumaPanelSide side = side_at(self, x, y);
+  luma_creative_workspace_move_panel(self, docked->key, side, index_at(self, side, x, y, panel));
+  return TRUE;
 }
 
 static void luma_creative_workspace_init(LumaCreativeWorkspace *self) {
   luma_creative_install();
   self->grid_visible = TRUE;
   self->cam_zoom = 1.0;
+  self->docked = g_ptr_array_new_with_free_func(docked_free);
   gtk_widget_add_css_class(GTK_WIDGET(self), "lumaui-creative-workspace");
   gtk_widget_set_overflow(GTK_WIDGET(self), GTK_OVERFLOW_HIDDEN);
   gtk_widget_set_hexpand(GTK_WIDGET(self), TRUE);
@@ -1037,6 +1470,18 @@ static void luma_creative_workspace_init(LumaCreativeWorkspace *self) {
   gtk_widget_add_css_class(self->grid, "lumaui-creative-grid");
   gtk_widget_set_can_target(self->grid, FALSE);
   gtk_widget_set_parent(self->grid, GTK_WIDGET(self));
+  self->target = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_add_css_class(self->target, "lumaui-creative-dock-target");
+  gtk_widget_set_can_target(self->target, FALSE);
+  gtk_widget_set_visible(self->target, FALSE);
+  gtk_widget_set_parent(self->target, GTK_WIDGET(self));
+  GtkDropTarget *drop = gtk_drop_target_new(LUMA_TYPE_FLOATING_PANEL, GDK_ACTION_MOVE);
+  gtk_drop_target_set_preload(drop, TRUE);
+  g_signal_connect(drop, "motion", G_CALLBACK(drop_motion), self);
+  g_signal_connect(drop, "enter", G_CALLBACK(drop_motion), self);
+  g_signal_connect(drop, "leave", G_CALLBACK(drop_leave), self);
+  g_signal_connect(drop, "drop", G_CALLBACK(drop_done), self);
+  gtk_widget_add_controller(GTK_WIDGET(self), GTK_EVENT_CONTROLLER(drop));
   luma_ui_width_watch(GTK_WIDGET(self), width_changed, NULL, (LUMA_TIER_PHONE_BELOW - 1));
 }
 
@@ -1074,45 +1519,247 @@ GtkWidget *luma_creative_workspace_get_content(LumaCreativeWorkspace *self) {
   return self->content;
 }
 
-static void set_panel(LumaCreativeWorkspace *self, LumaFloatingPanel **slot, LumaFloatingPanel *panel,
-                      LumaPanelSide side) {
-  if (*slot == panel)
-    return;
-  if (*slot != NULL) {
-    g_signal_handlers_disconnect_by_data(*slot, self);
-    panel_set_drawer(*slot, FALSE);
+/* ── Docked panels ── */
+
+static int clamp_index(LumaCreativeWorkspace *self, LumaPanelSide side, int index, Docked *except) {
+  int count = 0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side == side && d != except)
+      count++;
   }
-  set_slot(self, (GtkWidget **)slot, GTK_WIDGET(panel), NULL);
-  if (panel == NULL)
+  return index < 0 || index > count ? count : index;
+}
+
+/* Put @docked into the array as the @index-th panel of its side. */
+static void insert_docked(LumaCreativeWorkspace *self, Docked *docked, int index) {
+  guint at = self->docked->len;
+  int seen = 0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != docked->side)
+      continue;
+    if (seen == index) {
+      at = i;
+      break;
+    }
+    seen++;
+    at = i + 1;
+  }
+  g_ptr_array_insert(self->docked, at, docked);
+}
+
+static void dock_add(LumaCreativeWorkspace *self, const char *key, LumaFloatingPanel *panel, LumaPanelSide side,
+                     gboolean movable);
+
+void luma_creative_workspace_add_panel(LumaCreativeWorkspace *self, const char *key, LumaFloatingPanel *panel,
+                                       LumaPanelSide side) {
+  g_return_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self));
+  dock_add(self, key, panel, side, TRUE);
+}
+
+static void dock_add(LumaCreativeWorkspace *self, const char *key, LumaFloatingPanel *panel, LumaPanelSide side,
+                     gboolean movable) {
+  g_return_if_fail(key != NULL && *key != '\0');
+  g_return_if_fail(LUMA_IS_FLOATING_PANEL(panel));
+  g_return_if_fail(gtk_widget_get_parent(GTK_WIDGET(panel)) == NULL);
+  if (find_docked(self, key, NULL) != NULL) {
+    g_critical("a workspace already has a panel %s", key);
     return;
+  }
+  Docked *docked = g_new0(Docked, 1);
+  docked->key = g_strdup(key);
+  docked->panel = panel;
+  docked->side = side;
+  insert_docked(self, docked, -1);
+  gtk_widget_set_parent(GTK_WIDGET(panel), GTK_WIDGET(self));
   panel_set_side(panel, side);
-  if (self->phone)
+  panel_set_movable(panel, movable ? self : NULL);
+  if (self->phone) {
+    docked->was_folded = luma_floating_panel_get_folded(panel);
     luma_floating_panel_set_folded(panel, TRUE);
+  }
   g_signal_connect(panel, "notify::folded", G_CALLBACK(panel_folded_changed), self);
+  restack(self);
   update_drawers(self);
   set_gone(GTK_WIDGET(panel), self->focused);
+  gtk_widget_queue_resize(GTK_WIDGET(self));
+}
+
+void luma_creative_workspace_remove_panel(LumaCreativeWorkspace *self, const char *key) {
+  g_return_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self));
+  guint at;
+  if (find_docked(self, key, &at) == NULL)
+    return;
+  undock(self, at);
+  gtk_widget_queue_resize(GTK_WIDGET(self));
+}
+
+LumaFloatingPanel *luma_creative_workspace_get_panel(LumaCreativeWorkspace *self, const char *key) {
+  g_return_val_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self), NULL);
+  Docked *docked = find_docked(self, key, NULL);
+  return docked != NULL ? docked->panel : NULL;
+}
+
+static void place_docked(LumaCreativeWorkspace *self, Docked *docked, LumaPanelSide side, int index) {
+  index = clamp_index(self, side, index, docked);
+  guint at = 0;
+  for (guint i = 0; i < self->docked->len; i++)
+    if (g_ptr_array_index(self->docked, i) == docked)
+      at = i;
+  g_ptr_array_steal_index(self->docked, at);
+  docked->side = side;
+  insert_docked(self, docked, index);
+  panel_set_side(docked->panel, side);
+}
+
+void luma_creative_workspace_move_panel(LumaCreativeWorkspace *self, const char *key, LumaPanelSide side,
+                                        int index) {
+  g_return_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self));
+  Docked *docked = find_docked(self, key, NULL);
+  g_return_if_fail(docked != NULL);
+  place_docked(self, docked, side, index);
+  restack(self);
+  gtk_widget_queue_resize(GTK_WIDGET(self));
+  layout_changed(self);
+}
+
+GVariant *luma_creative_workspace_get_layout(LumaCreativeWorkspace *self) {
+  g_return_val_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self), NULL);
+  GVariantBuilder builder;
+  g_variant_builder_init(&builder, G_VARIANT_TYPE("a(ssb)"));
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    /* At phone width, a panel's place on a computer is what was saved. */
+    gboolean folded = self->phone ? d->was_folded : luma_floating_panel_get_folded(d->panel);
+    const char *side = d->side == LUMA_PANEL_SIDE_LEFT ? "left" : d->side == LUMA_PANEL_SIDE_RIGHT ? "right" : "bottom";
+    g_variant_builder_add(&builder, "(ssb)", d->key, side, folded);
+  }
+  return g_variant_ref_sink(g_variant_builder_end(&builder));
+}
+
+gboolean luma_creative_workspace_set_layout(LumaCreativeWorkspace *self, GVariant *layout) {
+  g_return_val_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self), FALSE);
+  g_return_val_if_fail(layout != NULL, FALSE);
+  if (!g_variant_is_of_type(layout, G_VARIANT_TYPE("a(ssb)")))
+    return FALSE;
+  self->applying = TRUE;
+  GVariantIter iter;
+  const char *key, *side_name;
+  gboolean folded;
+  int index[3] = {0, 0, 0};
+  g_variant_iter_init(&iter, layout);
+  while (g_variant_iter_next(&iter, "(&s&sb)", &key, &side_name, &folded)) {
+    Docked *docked = find_docked(self, key, NULL);
+    if (docked == NULL)
+      continue; /* a panel this version doesn't have */
+    LumaPanelSide side = g_str_equal(side_name, "right")    ? LUMA_PANEL_SIDE_RIGHT
+                         : g_str_equal(side_name, "bottom") ? LUMA_PANEL_SIDE_BOTTOM
+                                                            : LUMA_PANEL_SIDE_LEFT;
+    place_docked(self, docked, side, index[side]++);
+    if (self->phone)
+      docked->was_folded = folded;
+    else
+      luma_floating_panel_set_folded(docked->panel, folded);
+  }
+  self->applying = FALSE;
+  restack(self);
+  update_drawers(self);
+  gtk_widget_queue_resize(GTK_WIDGET(self));
+  return TRUE;
+}
+
+/* The panel's dock menu: where else it can go, and up or down in its dock. */
+static void dock_activate(GSimpleAction *action G_GNUC_UNUSED, GVariant *parameter, gpointer user_data) {
+  LumaFloatingPanel *panel = user_data;
+  LumaCreativeWorkspace *self = panel->dock;
+  Docked *docked = self != NULL ? docked_for_panel(self, panel) : NULL;
+  if (docked == NULL)
+    return;
+  const char *where = g_variant_get_string(parameter, NULL);
+  int at = 0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d == docked)
+      break;
+    if (d->side == docked->side)
+      at++;
+  }
+  if (g_str_equal(where, "up"))
+    luma_creative_workspace_move_panel(self, docked->key, docked->side, MAX(0, at - 1));
+  else if (g_str_equal(where, "down"))
+    luma_creative_workspace_move_panel(self, docked->key, docked->side, at + 1);
+  else
+    luma_creative_workspace_move_panel(self, docked->key,
+                                       g_str_equal(where, "right")    ? LUMA_PANEL_SIDE_RIGHT
+                                       : g_str_equal(where, "bottom") ? LUMA_PANEL_SIDE_BOTTOM
+                                                                      : LUMA_PANEL_SIDE_LEFT,
+                                       -1);
+}
+
+static void dock_menu_append(LumaFloatingPanel *panel, GMenu *menu) {
+  LumaCreativeWorkspace *self = panel->dock;
+  Docked *docked = self != NULL ? docked_for_panel(self, panel) : NULL;
+  if (docked == NULL)
+    return;
+  int count = 0, at = 0;
+  for (guint i = 0; i < self->docked->len; i++) {
+    Docked *d = g_ptr_array_index(self->docked, i);
+    if (d->side != docked->side)
+      continue;
+    if (d == docked)
+      at = count;
+    count++;
+  }
+  g_autoptr(GMenu) section = g_menu_new();
+  gboolean column = docked->side != LUMA_PANEL_SIDE_BOTTOM;
+  if (at > 0)
+    g_menu_append(section, column ? "Move up" : "Move left", "creative-dock.move::up");
+  if (at < count - 1)
+    g_menu_append(section, column ? "Move down" : "Move right", "creative-dock.move::down");
+  if (docked->side != LUMA_PANEL_SIDE_LEFT)
+    g_menu_append(section, "Dock on the left", "creative-dock.move::left");
+  if (docked->side != LUMA_PANEL_SIDE_RIGHT)
+    g_menu_append(section, "Dock on the right", "creative-dock.move::right");
+  if (docked->side != LUMA_PANEL_SIDE_BOTTOM)
+    g_menu_append(section, "Dock at the bottom", "creative-dock.move::bottom");
+  g_menu_append_section(menu, NULL, G_MENU_MODEL(section));
+}
+
+/* set_left/set_right: the one panel keyed "left"/"right", first in its dock. */
+static void set_single(LumaCreativeWorkspace *self, const char *key, LumaFloatingPanel *panel, LumaPanelSide side) {
+  Docked *docked = find_docked(self, key, NULL);
+  if (docked != NULL && docked->panel == panel)
+    return;
+  luma_creative_workspace_remove_panel(self, key);
+  if (panel == NULL)
+    return;
+  dock_add(self, key, panel, side, FALSE);
+  docked = find_docked(self, key, NULL);
+  place_docked(self, docked, side, 0);
+  restack(self);
 }
 
 void luma_creative_workspace_set_left(LumaCreativeWorkspace *self, LumaFloatingPanel *panel) {
   g_return_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self));
   g_return_if_fail(panel == NULL || LUMA_IS_FLOATING_PANEL(panel));
-  set_panel(self, &self->left, panel, LUMA_PANEL_SIDE_LEFT);
+  set_single(self, "left", panel, LUMA_PANEL_SIDE_LEFT);
 }
 
 LumaFloatingPanel *luma_creative_workspace_get_left(LumaCreativeWorkspace *self) {
   g_return_val_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self), NULL);
-  return self->left;
+  return first_on(self, LUMA_PANEL_SIDE_LEFT);
 }
 
 void luma_creative_workspace_set_right(LumaCreativeWorkspace *self, LumaFloatingPanel *panel) {
   g_return_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self));
   g_return_if_fail(panel == NULL || LUMA_IS_FLOATING_PANEL(panel));
-  set_panel(self, &self->right, panel, LUMA_PANEL_SIDE_RIGHT);
+  set_single(self, "right", panel, LUMA_PANEL_SIDE_RIGHT);
 }
 
 LumaFloatingPanel *luma_creative_workspace_get_right(LumaCreativeWorkspace *self) {
   g_return_val_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self), NULL);
-  return self->right;
+  return first_on(self, LUMA_PANEL_SIDE_RIGHT);
 }
 
 void luma_creative_workspace_set_tools(LumaCreativeWorkspace *self, GtkWidget *tools) {
@@ -1167,4 +1814,16 @@ void luma_creative_workspace_set_grid_visible(LumaCreativeWorkspace *self, gbool
 gboolean luma_creative_workspace_get_is_phone(LumaCreativeWorkspace *self) {
   g_return_val_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self), FALSE);
   return self->phone;
+}
+
+void luma_creative_workspace_get_work_area(LumaCreativeWorkspace *self, int *x, int *y, int *width, int *height) {
+  g_return_if_fail(LUMA_IS_CREATIVE_WORKSPACE(self));
+  if (x != NULL)
+    *x = self->work.x;
+  if (y != NULL)
+    *y = self->work.y;
+  if (width != NULL)
+    *width = self->work.width;
+  if (height != NULL)
+    *height = self->work.height;
 }

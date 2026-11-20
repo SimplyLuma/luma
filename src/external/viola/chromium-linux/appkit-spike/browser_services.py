@@ -251,6 +251,29 @@ class BrowserServices:
             + '&nativeProbeRevision=' + ''' + json.dumps(revision_key) + ''';
         })''')
 
+    def extension_icon(self, icon_url, revision=None):
+        # The engine's own extension icon source, drawn the same bounded way
+        # as a favicon; only chrome://extension-icon/ URLs are accepted.
+        if (not isinstance(icon_url, str) or len(icon_url) > 512
+                or not icon_url.startswith('chrome://extension-icon/')):
+            raise ValueError('Invalid extension icon URL')
+        return self.evaluate('sidebar', '''new Promise(resolve => {
+          const image = new Image();
+          const timer = setTimeout(() => resolve(null), 3000);
+          image.onload = () => {
+            clearTimeout(timer);
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = canvas.height = 48;
+              canvas.getContext('2d').drawImage(image, 0, 0, 48, 48);
+              const data = canvas.toDataURL('image/png');
+              resolve(data.length <= 131072 ? data : null);
+            } catch (_) { resolve(null); }
+          };
+          image.onerror = () => { clearTimeout(timer); resolve(null); };
+          image.src = ''' + json.dumps(icon_url) + ''';
+        })''')
+
     def close(self, *, local_only=False):
         if not local_only and self.engine.process.poll() is None and 'sidebar' in self.sessions:
             try:

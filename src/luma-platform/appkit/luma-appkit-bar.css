@@ -752,6 +752,7 @@ box.lumaui-bar-chip.live.well {
 }
 box.lumaui-bar-chip.live.well { border-spacing: 10px; color: @luma_ink; font-weight: 700; }   /* v71 .merec2: the words in ink, the dot says it */
 box.lumaui-bar-chip.live.well box.lumaui-live-dot { min-width: 10px; min-height: 10px; }
+box.lumaui-bar-chip.live label.lumaui-live-detail { color: @luma_muted; font-weight: 400; font-feature-settings: "tnum"; }
 box.lumaui-bar-chip.live.well label.lumaui-live-time { color: @luma_bar_ink_secondary; font-weight: 400; font-feature-settings: "tnum"; }
 /* A bar that is only a panel (Messages' held message): no row, no hairline. */
 box.lumaui-ac-bar.panel-only box.lumaui-ac-foot { padding: 2px; margin-top: 0; box-shadow: none; }

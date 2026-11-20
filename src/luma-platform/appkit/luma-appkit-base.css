@@ -2406,3 +2406,55 @@ box.lumaui-dialog.key button.lumaui-dialog-action {
   box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
 }
 box.lumaui-dialog.key button.lumaui-dialog-action:hover { filter: brightness(1.05); }
+
+/* ── LumaUI: AudioMeter (drawn; the nodes carry its colours) ── */
+box.lumaui-audio-meter > .lumaui-meter-track { color: @luma_well; }
+box.lumaui-audio-meter > .lumaui-meter-low { color: @luma_good; }
+box.lumaui-audio-meter > .lumaui-meter-mid { color: @luma_mark_yellow; }
+box.lumaui-audio-meter > .lumaui-meter-high { color: @luma_destructive; }
+box.lumaui-audio-meter > .lumaui-meter-peak { color: @luma_ink_secondary; }
+
+/* ── LumaUI: Dock (an island tiled with insets) ── */
+overlay.lumaui-dock > box.lumaui-dock-frame { padding: var(--lumaui-dock-gap); }
+/* Under the island's floating action bar: the tiles end above it. */
+overlay.lumaui-dock.under-bar > box.lumaui-dock-frame { padding-bottom: var(--lumaui-dock-bar-clearance); }
+overlay.lumaui-dock.under-bar.phone > box.lumaui-dock-frame { padding-bottom: var(--lumaui-dock-phone-bar-clearance); }
+box.lumaui-dock-tile {
+  min-width: var(--lumaui-dock-min-size); min-height: var(--lumaui-dock-min-size);
+  /* Concentric with the island: its radius less the gap between them. */
+  border-radius: calc(var(--lumaui-window-island-radius) - var(--lumaui-dock-gap)); color: @luma_ink;
+  background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
+}
+box.lumaui-dock-tile.moving { opacity: 0.45; }
+/* A bare tile (a stage, a preview) is the content alone: no well, no header. */
+box.lumaui-dock-tile.bare { background: none; box-shadow: none; }
+box.lumaui-dock-tile-header {
+  min-height: var(--lumaui-dock-header-height); border-spacing: var(--lumaui-dock-header-gap);
+  padding: 0 var(--lumaui-dock-header-padding-end) 0 var(--lumaui-dock-header-padding-start);
+}
+image.lumaui-dock-tile-icon { -gtk-icon-size: var(--lumaui-dock-icon); color: @luma_muted; }
+label.lumaui-dock-tile-title { font-size: var(--lumaui-dock-title-size); font-weight: 600; color: @luma_ink; }
+/* The seams are the gaps between tiles: clear at rest, a short mark while pointed at, held or focused. */
+paned.lumaui-dock-paned > separator, paned.luma-navigation-split > separator {
+  min-width: var(--lumaui-dock-gap); min-height: var(--lumaui-dock-gap);
+  background: none; background-image: none; box-shadow: none; border: none;
+}
+paned.lumaui-dock-paned.horizontal > separator:hover, paned.lumaui-dock-paned.horizontal > separator:focus-visible {
+  background-image: linear-gradient(@luma_muted, @luma_muted);
+  background-size: var(--lumaui-dock-seam-mark) var(--lumaui-dock-seam-mark-length);
+  background-position: center; background-repeat: no-repeat;
+}
+paned.lumaui-dock-paned.vertical > separator:hover, paned.lumaui-dock-paned.vertical > separator:focus-visible {
+  border-radius: 2px;
+  background-image: linear-gradient(@luma_muted, @luma_muted);
+  background-size: var(--lumaui-dock-seam-mark-length) var(--lumaui-dock-seam-mark);
+  background-position: center; background-repeat: no-repeat;
+}
+box.lumaui-dock-target {
+  border-radius: calc(var(--lumaui-window-island-radius) - var(--lumaui-dock-gap));
+  background: alpha(@luma_accent, 0.12); box-shadow: inset 0 0 0 2px alpha(@luma_accent, 0.7);
+}
+flowbox.lumaui-dock-keys { padding-bottom: var(--lumaui-dock-gap); }
+flowbox.lumaui-dock-keys > flowboxchild { padding: 0; }
+box.lumaui-dock-drawer box.lumaui-dock-tile { background: none; box-shadow: none; min-height: 320px; }
+box.luma-navigation-pane { min-height: var(--lumaui-dock-min-size); }

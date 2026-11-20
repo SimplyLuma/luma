@@ -13,12 +13,12 @@ esac
 case "$architecture" in
   x86_64)
     builder=$FEDORA_RPM_BUILD_CONTAINER
-    engine_release=39
-    engine_sha=8a2efa725a32d529f7fd45edd9d96c0983436eeaa0b8f1904f79ed4a9b350b4e ;;
+    engine_release=41
+    engine_sha=77aeb9dd6a82a9effcdab4de32a8af9b79414651b93ea72ce33c2f3c8b9fc333 ;;
   aarch64)
     builder=$FEDORA_RPM_BUILD_CONTAINER_AARCH64
-    engine_release=40
-    engine_sha=48c7b0d15486ab5f17e5f6751b2d3b73b4016b4ca9b0ef3e2723c9ed327f7706 ;;
+    engine_release=42
+    engine_sha=f451d7a036e8ccbf147899c6232a4a9b868ddd64857ac229b92dc6aa14c98aa4 ;;
   *) printf 'error: unsupported Viola architecture: %s\n' "$architecture" >&2; exit 1 ;;
 esac
 if [ "$desktop_profile" = arm-preview ] && [ "$engine_release" -lt 32 ]; then

@@ -176,8 +176,34 @@ class BarChip:
     #: A flat identity with stacked title/detail (v71 Depot); subject preserves the context chip.
     presentation: str = "subject"
     live: bool = False  # recording: red, a pulsing dot for its glyph, `meta` is the running time (v70 .ctxc.merec)
+    #: A live chip's quiet words after its time: a stream's "6,000 kbps · no dropped frames".
+    detail: str | None = None
     #: v71: the live chip as an inset well taking the row's spare width (Memos recording; automatic on a phone).
     well: bool = False
+
+    def update(self, label: str | None = None, *, meta: str | None = None, detail: str | None = None) -> None:
+        """A live chip, as it runs: its running time (`meta`) and `detail` change in place every second
+        without being read out; a new `label` ("Reconnecting") is."""
+        chip = getattr(self, "_live_widget", None)
+        if label is not None:
+            self.label = label
+        if meta is not None:
+            self.meta = meta
+        if detail is not None:
+            self.detail = detail
+        if chip is None:
+            return
+        words = chip.get_first_child().get_next_sibling() if chip.get_first_child() is not None else None
+        if label is not None and isinstance(words, Gtk.Label) and words.get_label() != label:
+            words.set_label(label)
+            chip.update_property([Gtk.AccessibleProperty.LABEL], [label])
+        time_label = getattr(chip, "time_label", None)
+        if meta is not None and time_label is not None and time_label.get_label() != meta:
+            time_label.set_label(meta)
+        detail_label = getattr(chip, "detail_label", None)
+        if detail is not None and detail_label is not None:
+            detail_label.set_label(detail)
+            detail_label.set_visible(bool(detail))
 
 
 @dataclass
@@ -308,6 +334,12 @@ def make_control(item: object, *, size: str = "bar") -> Gtk.Widget:
             time.add_css_class("lumaui-live-time")
             chip.append(time)
             chip.time_label = time
+        if item.detail is not None or item.meta:
+            detail = Gtk.Label(label=item.detail or "", visible=bool(item.detail))
+            detail.add_css_class("lumaui-live-detail")
+            chip.append(detail)
+            chip.detail_label = detail
+        item._live_widget = chip
         chip.update_property([Gtk.AccessibleProperty.LABEL], [f"{item.label} {item.meta or ''}".strip()])
         chip.bar_item = item
         return chip

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="luma_window_shape_v1">
+  <copyright>
+    SPDX-License-Identifier: MIT
+
+    Copyright 2026 Project Luma
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="shape constraints for toplevel windows">
+    This protocol lets a client ask the compositor to keep a toplevel's
+    content at a fixed aspect ratio, the way the ICCCM aspect hints in
+    WM_NORMAL_HINTS do for X11 clients. The compositor applies the ratio to
+    every size it chooses for the window, including the sizes it sends while
+    the user resizes the window interactively, so the content keeps its shape
+    during the resize rather than after it.
+  </description>
+
+  <interface name="luma_window_shape_manager_v1" version="1">
+    <description summary="create shape objects for toplevels">
+      A global that gives toplevels a luma_window_shape_v1 object.
+    </description>
+
+    <enum name="error">
+      <entry name="already_constructed" value="0"
+             summary="the surface already has a luma_window_shape_v1 object"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the manager">
+        Destroys the manager. Objects created through it are not affected.
+      </description>
+    </request>
+
+    <request name="get_window_shape">
+      <description summary="get the shape object of a surface">
+        Creates the shape object of the given surface. A surface has at most
+        one; asking for a second one while the first exists is the
+        already_constructed protocol error.
+
+        The object takes a wl_surface rather than an xdg_toplevel so that
+        toolkits which keep their xdg_toplevel private can use it. Its state
+        has an effect only while the surface has the xdg_toplevel role, and
+        it stays with the surface if the role object is destroyed and
+        created again.
+      </description>
+      <arg name="id" type="new_id" interface="luma_window_shape_v1"/>
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+  </interface>
+
+  <interface name="luma_window_shape_v1" version="1">
+    <description summary="shape constraints of one toplevel">
+      The shape constraints of the xdg_toplevel of one wl_surface. The
+      set_aspect_ratio and unset_aspect_ratio requests are double buffered:
+      they take effect on the next wl_surface.commit, like
+      xdg_toplevel.set_min_size. Once the surface is destroyed, requests are
+      ignored; the object should then be destroyed.
+    </description>
+
+    <enum name="error">
+      <entry name="invalid_aspect_ratio" value="0"
+             summary="width or height is zero, or a value is out of range"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="remove the constraints">
+        Destroys the object. The window loses its aspect ratio at once.
+      </description>
+    </request>
+
+    <request name="set_aspect_ratio">
+      <description summary="keep the content at a fixed aspect ratio">
+        Asks the compositor to keep the window geometry, less base_width and
+        base_height, at width:height. The base is the part of the window
+        geometry that does not scale with the content, such as a header bar;
+        it is in surface-local coordinates. Only the ratio of width and height
+        matters: 4:3 and 640:480 are the same request.
+
+        The compositor applies the ratio when the window floats, both to the
+        sizes it suggests in configure events, including those it sends with
+        the resizing state, and to sizes the client picks itself. For a
+        maximized window the compositor may choose the largest size with the
+        ratio that fits the area the window would otherwise fill. It does not
+        apply the ratio to fullscreen windows, and it may ignore it for tiled
+        windows, whose size is given by the tile: a client should still be
+        ready to letterbox its content in any size it is configured to.
+
+        width and height must be greater than zero and at most 65535, and
+        the base at most 65535 in each direction, or the invalid_aspect_ratio
+        error is raised.
+      </description>
+      <arg name="width" type="uint" summary="width part of the ratio"/>
+      <arg name="height" type="uint" summary="height part of the ratio"/>
+      <arg name="base_width" type="uint"
+           summary="width of the window geometry outside the content"/>
+      <arg name="base_height" type="uint"
+           summary="height of the window geometry outside the content"/>
+    </request>
+
+    <request name="unset_aspect_ratio">
+      <description summary="let the window take any shape again">
+        Removes the aspect ratio set with set_aspect_ratio.
+      </description>
+    </request>
+  </interface>
+</protocol>

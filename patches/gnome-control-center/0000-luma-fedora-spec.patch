@@ -1,11 +1,11 @@
 --- a/gnome-control-center.spec
 +++ b/gnome-control-center.spec
-@@ -28,14 +28,132 @@
+@@ -28,14 +28,133 @@
  
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.68%{?dist}
++Release:        1.luma.69%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -121,6 +121,7 @@
 +Patch1102:      0103-wwan-mobile-data-on-by-default.patch
 +Patch1103:      0104-lumaui-phone-requested-page-leaves-list.patch
 +Patch1104:      0105-global-shortcuts-without-a-dialog.patch
++Patch1105:      0106-lumaui-sound-volume-mixer.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
 +BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.123
@@ -134,7 +135,7 @@
  BuildRequires:  desktop-file-utils
  BuildRequires:  docbook-style-xsl libxslt
  BuildRequires:  gcc
-@@ -85,6 +200,12 @@
+@@ -85,6 +201,12 @@
  %endif
  
  # Versioned library deps
@@ -147,7 +148,7 @@
  Requires: libadwaita%{?_isa} >= %{libadwaita_version}
  Requires: glib2%{?_isa} >= %{glib2_version}
  Requires: gnome-desktop4%{?_isa} >= %{gnome_desktop_version}
-@@ -170,16 +291,10 @@
+@@ -170,16 +292,10 @@
  
  %build
  %meson \
@@ -166,7 +167,7 @@
  %if %{with malcontent}
    -Dmalcontent=true \
  %else
-@@ -200,6 +315,51 @@
+@@ -200,6 +316,51 @@
  
  %find_lang %{name} --all-name --with-gnome
  

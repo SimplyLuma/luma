@@ -1,0 +1,177 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * LumaUI creative family: LumaArrangeView, direct manipulation of boxes
+ * over a picture. A person picks, drags and resizes things laid out on a
+ * fixed-size canvas (a stream's scene, a slide, a page), with snapping
+ * guides and keyboard nudges. The view draws only the selection, its
+ * handles and the guides; the app draws the picture itself (its content).
+ */
+#pragma once
+
+#include <gtk/gtk.h>
+
+G_BEGIN_DECLS
+
+/**
+ * LumaArrangeView:
+ *
+ * Boxes on a canvas, moved and resized by hand.
+ *
+ * The app gives the canvas size in its own units (1920 × 1080) and its
+ * content (a picture of the canvas), and names each box with an id and a
+ * rectangle in canvas units. The view fits the canvas into itself, centred,
+ * and lays the content over exactly that rectangle.
+ *
+ * - Press a box to select it (the topmost under the pointer); press empty
+ *   canvas to clear the selection. Double-click activates a box.
+ * - Drag a selected box to move it; drag one of its eight handles to resize
+ *   it. Shift while resizing keeps the proportions (or frees them, for a box
+ *   that keeps its aspect by default). Alt turns snapping off for the drag.
+ * - Edges and centres snap to the canvas's edges, centre lines and thirds,
+ *   and to the other boxes' edges and centres; a guide shows each snap.
+ * - Keyboard: the arrow keys move the selected box one unit (Shift: ten),
+ *   Tab and Shift+Tab choose the next and previous box, Esc clears the
+ *   selection.
+ * - A locked box can be selected but not moved or resized; a hidden one
+ *   can't be picked on the canvas.
+ *
+ * #LumaArrangeView::item-changed reports every step of a drag (move the
+ * picture with it); #LumaArrangeView::item-committed reports the end of a
+ * drag or a nudge (one undo step, a save). The app owns the rectangles:
+ * the view changes its own copy while a person drags, and the app may
+ * correct it with luma_arrange_view_set_item_rect().
+ *
+ * Tree: widget.lumaui-arrange-view
+ *   ├ content
+ *   └ (style nodes: .lumaui-arrange-frame, -hover, -handle, -knob, -guide, -locked)
+ */
+#define LUMA_TYPE_ARRANGE_VIEW (luma_arrange_view_get_type())
+G_DECLARE_FINAL_TYPE(LumaArrangeView, luma_arrange_view, LUMA, ARRANGE_VIEW, GtkWidget)
+
+/**
+ * luma_arrange_view_new:
+ * @content: (nullable): the picture of the canvas, laid over the fitted canvas
+ *
+ * Returns: (transfer floating): a new view with a 1920 × 1080 canvas
+ */
+GtkWidget *luma_arrange_view_new(GtkWidget *content);
+void luma_arrange_view_set_content(LumaArrangeView *self, GtkWidget *content);
+/**
+ * luma_arrange_view_get_content:
+ * @self: a view
+ *
+ * Returns: (transfer none) (nullable): the content
+ */
+GtkWidget *luma_arrange_view_get_content(LumaArrangeView *self);
+/**
+ * luma_arrange_view_set_canvas_size:
+ * @self: a view
+ * @width: the canvas's width in the app's units (> 0)
+ * @height: its height (> 0)
+ */
+void luma_arrange_view_set_canvas_size(LumaArrangeView *self, double width, double height);
+/**
+ * luma_arrange_view_set_fit_margins:
+ * @self: a view
+ * @left: room to keep clear on the left, in view pixels
+ * @top: at the top
+ * @right: on the right
+ * @bottom: at the bottom (an action bar)
+ *
+ * Fit the canvas into the view less these margins, so floating panels and
+ * bars never cover it (follow #LumaCreativeWorkspace::work-area-changed).
+ * When the margins leave no room, the canvas fits the whole view.
+ */
+void luma_arrange_view_set_fit_margins(LumaArrangeView *self, double left, double top, double right, double bottom);
+/**
+ * luma_arrange_view_add_item:
+ * @self: a view
+ * @id: the box's stable id
+ * @label: what it is, for the accessible name ("Camera")
+ * @x: left, in canvas units
+ * @y: top
+ * @width: width (> 0)
+ * @height: height (> 0)
+ *
+ * Add a box on top of the others.
+ */
+void luma_arrange_view_add_item(LumaArrangeView *self, const char *id, const char *label, double x, double y,
+                                double width, double height);
+void luma_arrange_view_remove_item(LumaArrangeView *self, const char *id);
+void luma_arrange_view_clear(LumaArrangeView *self);
+void luma_arrange_view_set_item_rect(LumaArrangeView *self, const char *id, double x, double y, double width,
+                                     double height);
+/**
+ * luma_arrange_view_get_item_rect:
+ * @self: a view
+ * @id: a box's id
+ * @x: (out) (optional): left
+ * @y: (out) (optional): top
+ * @width: (out) (optional): width
+ * @height: (out) (optional): height
+ *
+ * Returns: whether the view has the box
+ */
+gboolean luma_arrange_view_get_item_rect(LumaArrangeView *self, const char *id, double *x, double *y, double *width,
+                                         double *height);
+void luma_arrange_view_set_item_label(LumaArrangeView *self, const char *id, const char *label);
+void luma_arrange_view_set_item_locked(LumaArrangeView *self, const char *id, gboolean locked);
+void luma_arrange_view_set_item_visible(LumaArrangeView *self, const char *id, gboolean visible);
+/**
+ * luma_arrange_view_set_item_keeps_aspect:
+ * @self: a view
+ * @id: a box's id
+ * @keeps: whether resizing keeps its proportions by default (a picture, a
+ *   camera); Shift then frees them
+ */
+void luma_arrange_view_set_item_keeps_aspect(LumaArrangeView *self, const char *id, gboolean keeps);
+/**
+ * luma_arrange_view_set_order:
+ * @self: a view
+ * @ids: (array zero-terminated=1): the boxes from the bottom to the top;
+ *   boxes not named keep their order below the named ones
+ */
+void luma_arrange_view_set_order(LumaArrangeView *self, const char *const *ids);
+/**
+ * luma_arrange_view_set_selected:
+ * @self: a view
+ * @id: (nullable): the box to select; %NULL clears the selection
+ *
+ * Select without emitting #LumaArrangeView::selection-changed.
+ */
+void luma_arrange_view_set_selected(LumaArrangeView *self, const char *id);
+/**
+ * luma_arrange_view_get_selected:
+ * @self: a view
+ *
+ * Returns: (nullable): the selected box's id
+ */
+const char *luma_arrange_view_get_selected(LumaArrangeView *self);
+void luma_arrange_view_set_snapping(LumaArrangeView *self, gboolean snapping);
+gboolean luma_arrange_view_get_snapping(LumaArrangeView *self);
+/**
+ * luma_arrange_view_canvas_to_view:
+ * @self: a view
+ * @x: a canvas x
+ * @y: a canvas y
+ * @view_x: (out): where it is in the view
+ * @view_y: (out): where it is in the view
+ */
+void luma_arrange_view_canvas_to_view(LumaArrangeView *self, double x, double y, double *view_x, double *view_y);
+
+/**
+ * luma_arrange_snap:
+ * @value: the edge or centre being moved, in canvas units
+ * @lines: (array length=n_lines): where it may snap
+ * @n_lines: how many lines
+ * @threshold: how near counts, in canvas units
+ * @snapped: (out): the line it snapped to, when it did
+ *
+ * The snapping rule, for tests and for apps that place things themselves:
+ * the nearest line within @threshold wins.
+ *
+ * Returns: the offset to add to @value (0 when nothing is near)
+ */
+double luma_arrange_snap(double value, const double *lines, guint n_lines, double threshold, double *snapped);
+
+G_END_DECLS

@@ -1,0 +1,19 @@
+{
+  "_doc": "LumaUI dock: an island tiled with insets (Dock, DockTile) and the sidebar's pane. Merged into lumaui by the generator: --lumaui-dock-*, LUMA_UI_DOCK_*.",
+  "lumaui": {
+    "dock": {
+      "gap": 8,
+      "header_height": 32,
+      "header_padding_start": 12,
+      "header_padding_end": 4,
+      "header_gap": 8,
+      "icon": 16,
+      "title_size": 13,
+      "min_size": 96,
+      "seam_mark": 4,
+      "seam_mark_length": 36,
+      "bar_clearance": 76,
+      "phone_bar_clearance": 98
+    }
+  }
+}
