@@ -409,6 +409,16 @@ class Engine(GObject.Object):
             else:
                 self._add_branch(widget, zorder)
         self._sync_sound()
+        self._idle_check()
+
+    def _idle_check(self) -> None:
+        """Nothing to show and nothing sent: the program rests (PAUSED), so it costs nothing."""
+        if self.pipeline is None:
+            return
+        resting = not self.branches and not self.outputs
+        target = Gst.State.PAUSED if resting else Gst.State.PLAYING
+        if self.pipeline.get_state(0)[2] != target or self.pipeline.get_state(0)[1] != target:
+            self.pipeline.call_async(lambda pipeline, state: pipeline.set_state(state), target)
 
     def update_widget(self, widget: Widget, zorder: int | None = None) -> None:
         """Move, resize or restyle a widget live (no renegotiation unless its size changed)."""
@@ -483,6 +493,7 @@ class Engine(GObject.Object):
         if widget_id in self.branches:
             self._remove_branch(widget_id)
             self.emit("widget-failed", widget_id, reason)
+            self._idle_check()
 
     @staticmethod
     def _link_chain(elements: list[Gst.Element]) -> None:
@@ -632,6 +643,9 @@ class Engine(GObject.Object):
             raise EngineError("nothing to send: the program isn't running")
         if kind in self.outputs:
             raise EngineError(f"already {kind}ing")
+        if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
+            self.pipeline.set_state(Gst.State.PLAYING)
+            self.pipeline.get_state(Gst.SECOND)  # the base time is the playing one
         self._ensure_sound()
         self._ensure_taps()
         output = Output(self, kind, choice, sink, video_kbps, audio_kbps, with_sound=True)
@@ -643,6 +657,7 @@ class Engine(GObject.Object):
             if not self.outputs and self.pipeline is not None:
                 self._drop_taps()
                 self._sync_sound()
+                self._idle_check()
             if kind == "stream" and self.stream_retry is not None:
                 return  # reconnecting, not off
             self.emit("output-state", kind, "off")

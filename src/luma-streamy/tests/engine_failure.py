@@ -62,6 +62,18 @@ def main() -> int:
     engine.stop()
     assert time.monotonic() - t < 1.0
     os.close(fd)
+
+    # Nothing to show and nothing sent: the program rests.
+    empty = Project.starter()
+    idle = Engine(fake=True, preview=False)
+    idle.start(empty)
+    loop = GLib.MainLoop()
+    GLib.timeout_add(800, loop.quit)
+    loop.run()
+    state = idle.pipeline.get_state(Gst.SECOND)[1]
+    print("empty scene", state.value_nick)
+    assert state == Gst.State.PAUSED, state
+    idle.stop()
     return 0
 
 
