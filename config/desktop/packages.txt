@@ -49,6 +49,11 @@ fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
 iio-sensor-proxy-3.8-2.luma.1.fc44.x86_64
 xdg-desktop-portal-1.22.1-1.luma.4.fc44.x86_64
+
+# Camera stack (replace Fedora base packages)
+libcamera-0.7.2-2.luma.1.fc44.x86_64
+libcamera-ipa-0.7.2-2.luma.1.fc44.x86_64
+
 NetworkManager-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-adsl-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-bluetooth-1:1.56.1-2.luma.1.fc44.x86_64
