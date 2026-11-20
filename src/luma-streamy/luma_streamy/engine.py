@@ -85,8 +85,16 @@ def available_factories() -> set[str]:
 _WORKING: dict[str, bool] = {}
 
 
+#: Encoders that are what they say once installed: no driver behind them and no stub package
+#: (openh264's noopenh264 is one) to stand in for them. Probing SVT-AV1 would also start its
+#: thread pool in this process for nothing.
+_SELF_CONTAINED = ("svtav1enc",)
+
+
 def encoder_works(factory: str) -> bool:
     """Whether an encoder really encodes (a stub library or a missing driver fails here)."""
+    if factory in _SELF_CONTAINED:
+        return True
     if factory in _WORKING:
         return _WORKING[factory]
     Gst.init(None)
@@ -203,6 +211,7 @@ class Output:
         self.on_error: Callable[[str], None] | None = None
         self.on_finished: Callable[[], None] | None = None
         self.t0: int | None = None
+        self.started = False
         self.stopping = False
 
     @staticmethod
@@ -216,15 +225,25 @@ class Output:
         self.pipeline.use_clock(clock)
         self.pipeline.set_start_time(Gst.CLOCK_TIME_NONE)
         self.pipeline.set_base_time(base_time + running)
-        self.t0 = running
+        # Time starts at the first picture that arrives, not at the clock's "now": the program's
+        # pictures reach the tap behind the clock, further behind on a busy machine, so a clock
+        # start dropped every picture of a later output.
+        self.t0 = None
+        self.started = True
         if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise EngineError(f"the {self.kind} could not start")
 
     def push(self, src: Gst.Element, sample: Gst.Sample) -> None:
-        if self.stopping or src is None or self.t0 is None:
+        if self.stopping or src is None or not self.started:
             return
         buffer = sample.get_buffer()
-        if buffer.pts == Gst.CLOCK_TIME_NONE or buffer.pts < self.t0:
+        if buffer.pts == Gst.CLOCK_TIME_NONE:
+            return
+        if self.t0 is None:
+            if src is not self.video_src:
+                return  # a recording starts on a picture; the sound before it is dropped
+            self.t0 = buffer.pts
+        if buffer.pts < self.t0:
             return
         if src is self.video_src:
             if src.get_property("current-level-buffers") >= src.get_property("max-buffers"):
@@ -640,6 +659,10 @@ class Engine(GObject.Object):
             return
         if not self._sound or self.pipeline is None:
             return
+        # The sound tap goes with the mixer it hangs from (nothing flows there once it stops).
+        for element in self._taps.pop("sound", []):
+            element.set_state(Gst.State.NULL)
+            self.pipeline.remove(element)
         for spec in graph.sound_program():
             element = self.pipeline.get_by_name(spec.name)
             if element is not None:
@@ -650,12 +673,13 @@ class Engine(GObject.Object):
     # ── Outputs ──
 
     def _ensure_taps(self) -> None:
+        """Open the taps an output reads: made on first use, then only their valves open and close."""
         if "video" not in self._taps:
-            elements = [make(e) for e in graph.tap_video()]
-            self._attach_tap("video", "program", elements)
+            self._attach_tap("video", "program", [make(e) for e in graph.tap_video()])
         if "sound" not in self._taps and self._sound:
-            elements = [make(e) for e in graph.tap_sound()]
-            self._attach_tap("sound", "sound", elements)
+            self._attach_tap("sound", "sound", [make(e) for e in graph.tap_sound()])
+        for elements in self._taps.values():
+            elements[0].set_property("drop", False)
 
     def _attach_tap(self, key: str, tee_name: str, elements: list[Gst.Element]) -> None:
         for element in elements:
@@ -669,17 +693,13 @@ class Engine(GObject.Object):
         self._taps[key] = elements
 
     def _drop_taps(self) -> None:
-        for key, elements in list(self._taps.items()):
-            first = elements[0].get_static_pad("sink")
-            peer = first.get_peer()
-            for element in elements:
-                element.set_state(Gst.State.NULL)
-            if peer is not None:
-                peer.unlink(first)
-                peer.get_parent_element().release_request_pad(peer)
-            for element in elements:
-                self.pipeline.remove(element)
-        self._taps.clear()
+        """Nothing sent: close the taps' valves, so no picture is converted or read back.
+
+        The taps stay linked. Taking a tee branch down while the program runs raced the next
+        output's GL elements, and a branch shut down before it is unlinked answers the tee
+        FLUSHING and stops the program; a closed valve costs nothing either way."""
+        for elements in self._taps.values():
+            elements[0].set_property("drop", True)
 
     def _sample(self, sink: Gst.Element, key: str) -> Gst.FlowReturn:
         sample = sink.emit("pull-sample")

@@ -259,8 +259,10 @@ def choose(available: set[str], codec: str) -> EncoderChoice | None:
 
 
 def tap_video() -> list[Element]:
-    """Program pictures for the encoders: converted to NV12 on the GPU, read back once."""
-    return [Element("queue", "tap-vqueue", {"max-size-buffers": 3, "leaky": 2}),
+    """Program pictures for the encoders: converted to NV12 on the GPU, read back once. The valve
+    closes while nothing is sent, so an idle tap converts and reads back nothing."""
+    return [Element("valve", "tap-vvalve", {"drop": False}),
+            Element("queue", "tap-vqueue", {"max-size-buffers": 3, "leaky": 2}),
             Element("glcolorconvert", "tap-glconvert"),
             Element("capsfilter", "tap-glnv12", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
             Element("gldownload", "tap-download"),
@@ -270,7 +272,8 @@ def tap_video() -> list[Element]:
 
 
 def tap_sound() -> list[Element]:
-    return [Element("queue", "tap-aqueue", {"max-size-time": 500_000_000, "leaky": 2}),
+    return [Element("valve", "tap-avalve", {"drop": False}),
+            Element("queue", "tap-aqueue", {"max-size-time": 500_000_000, "leaky": 2}),
             Element("audioconvert", "tap-aconvert"),
             Element("capsfilter", "tap-s16", {"caps": f"audio/x-raw,format=S16LE,rate={AUDIO_RATE},channels=2"}),
             Element("appsink", "tap-sound", {"emit-signals": True, "drop": True, "max-buffers": 16,
