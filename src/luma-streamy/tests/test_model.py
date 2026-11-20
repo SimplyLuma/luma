@@ -235,3 +235,28 @@ class ModelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LookPerCanvasTest(unittest.TestCase):
+    def test_overrides(self):
+        project = Project.starter()
+        scene = project.active_scene
+        cam = project.add_widget(scene.id, "camera")
+        project.set_effect(cam, "stroke_width", 4)
+        project.set_format("vertical")
+        self.assertEqual(project.effects_on(cam).stroke_width, 4)  # follows landscape
+        project.set_effect(cam, "stroke_width", 12)  # on vertical: its own stroke only
+        self.assertEqual(project.effects_on(cam).stroke_width, 12)
+        self.assertEqual(project.effects_on(cam, "landscape").stroke_width, 4)
+        project.set_format("landscape")
+        project.set_effect(cam, "stroke_width", 6)
+        project.set_effect(cam, "corner_radius", 30)
+        self.assertEqual(project.effects_on(cam, "vertical").stroke_width, 12)  # its own blocks it
+        self.assertEqual(project.effects_on(cam, "vertical").corner_radius, 30)  # the rest follows
+        self.assertEqual(project.own_look(cam), {"stroke_width": 12})
+        again = Project.from_dict(json.loads(json.dumps(project.to_dict())))
+        twin = again.active_scene.widget(cam.id)
+        self.assertEqual(again.effects_on(twin, "vertical").stroke_width, 12)
+        project.sync_look(cam)
+        self.assertEqual(project.effects_on(cam, "vertical").stroke_width, 6)
+        self.assertEqual(project.own_look(cam), {})
