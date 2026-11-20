@@ -69,4 +69,21 @@ assert(/const SYSTEM_SOUNDS_ICON = 'lumaui-bell-symbolic';/.test(volume), 'Syste
 assert(/new FillSlider\(0\)/.test(volume), 'app levels are the shared filled slider');
 assert(/'meter': GObject\.ParamSpec\.double/.test(fillSlider), 'FillSlider draws a meter');
 
+// Muted keeps the volume where it is and says so; the fill and meter go quiet.
+const row = slice('const AppMixerRow', 'const AppMixerSection');
+assert(/this\.slider\.value = Math\.clamp\(app\.volume \?\? 1, 0, MIXER_MAX_VOLUME\);/.test(row),
+    'a muted app keeps its volume on the slider');
+assert(/this\._app\.muted \? _\('Muted'\)/.test(row), 'a muted app reads Muted, not 0%');
+assert(/has_style_class_name\('lumaui-muted-level'\)/.test(fillSlider), 'FillSlider draws muted quietly');
+// The output key is a picker (where it plays and a chevron).
+assert(/'lumaui-chevron-down-symbolic'/.test(row) && /'lumaui-chevron-up-symbolic'/.test(row),
+    'the output key carries a chevron that follows the open list');
+// A row never makes the page's scroll view outgrow its max-height.
+assert(/style_class: 'luma-app-mixer-app',[\s\S]*?y_expand: false,/.test(row), 'rows do not expand the page');
+// The page's settings link is pinned under the scrolled list.
+assert(/_pinPageLink\(menu\) \{/.test(quickSettings) && /this\._pinPageLink\(menu\);/.test(quickSettings) &&
+    /this\._pinPageLink\(null\);/.test(quickSettings), 'a page pins its settings link while open');
+assert(/const maxHeight = Math\.max\(96, Math\.min\(420, \(workArea\?\.height \?\? 600\) \/ scale - 160\) - foot\);/.test(quickSettings),
+    'the scrolled list leaves room for the pinned link');
+
 print('app-mixer-policy: PASS');
