@@ -33,7 +33,7 @@ media_fader_test = executable(
 test('media-fader', media_fader_test, env: ['G_DEBUG=fatal-criticals'])
 
 audio_meter_test = executable('test-luma-audio-meter', 'test-audio-meter.c', dependencies: ui_dep)
-test('audio-meter', audio_meter_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
+test('lumaui-audio-meter', audio_meter_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
 
 media_transport_lcd_test = executable(
   'test-luma-media-transport-lcd',
@@ -131,7 +131,7 @@ if python3.found()
     args: [meson.current_source_dir() / 'test-first-frame-width.py'],
     env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit',
           'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory', 'GTK_A11Y=none'])
-  test('creative-python', python3,
+  test('lumaui-creative-python', python3,
     args: [meson.current_source_dir() / 'test-creative-python.py'],
     depends: [ui_lib, ui_gir[1]],
     env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',

@@ -106,12 +106,24 @@ def dock():
             pass
         else:
             raise AssertionError("refused")
+    from luma_appkit import RowLead, SidebarRow
+
     sidebar = NavigationSidebar(variant="files")
     shares = []
-    pane = sidebar.append_pane("Widgets", Gtk.Label(label="tree"), share=0.4, on_share=shares.append)
-    assert pane is sidebar.pane and sidebar.pane_split.get_end_child() is pane
+    pane = sidebar.append_pane("Widgets", share=0.4, on_share=shares.append)
+    assert pane is sidebar.pane and isinstance(pane, Gtk.ListBox)
+    assert set(sidebar.list.get_css_classes()) <= set(pane.get_css_classes())
+    pane.append(SidebarRow("Camera", lead=RowLead.icon("camera")))
+    pane.append(SidebarRow("Display", lead=RowLead.icon("monitor")))
+    sidebar.clear_pane()
+    rows = []
+    child = pane.get_first_child()
+    while child is not None:
+        rows.append(child)
+        child = child.get_next_sibling()
+    assert len(rows) == 1 and rows[0].has_css_class("luma-navigation-section"), rows
     try:
-        sidebar.append_pane("Again", Gtk.Label())
+        sidebar.append_pane("Again")
     except ValueError:
         pass
     else:

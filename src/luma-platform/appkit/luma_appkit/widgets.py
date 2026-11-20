@@ -1177,14 +1177,15 @@ class NavigationSidebar(Gtk.Box):
         row.update_property([Gtk.AccessibleProperty.LABEL], [label])
         self.list.append(row)
 
-    def append_pane(self, label: str, widget: Gtk.Widget, *, action: tuple | None = None,
-                    share: float = 0.5, on_share: Callable[[float], None] | None = None) -> Gtk.Widget:
-        """A second, resizable part of the sidebar under the list (a scene's widgets under the scenes).
+    def append_pane(self, label: str, *, action: tuple | None = None, share: float = 0.5,
+                    on_share: Callable[[float], None] | None = None) -> Gtk.ListBox:
+        """A second list under the first (a scene's widgets under the scenes), resizable against it.
 
-        The pane has its own heading (SidebarSection, with `action=(icon, label, callback)` as its +)
-        and the content scrolls on its own. A seam between list and pane trades their heights: drag
-        it, or focus it (F8) and use the arrow keys. `share` is the list's share of the height;
-        `on_share(share)` follows a person's moves. The foot stays below both."""
+        Returns its ListBox: the same list as `self.list`, with the same rows, insets and selection,
+        headed by `label` (SidebarSection, with `action=(icon, label, callback)` as its +). Append
+        SidebarRows to it. The two lists trade height at the seam between them, which has no grabber
+        (a pointer finds it; F8 focuses it and the arrow keys move it). `share` is the first list's
+        share of the height; `on_share(share)` follows a person's moves. The foot stays below both."""
         from .rows_navigation import SidebarSection
 
         if getattr(self, "pane", None) is not None:
@@ -1196,17 +1197,17 @@ class NavigationSidebar(Gtk.Box):
         paned.add_css_class("luma-navigation-split")
         paned.update_property([Gtk.AccessibleProperty.LABEL], [f"Resize {label.lower()}"])
         paned.set_start_child(self._scroll)
-        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        pane.add_css_class("luma-navigation-pane")
-        heading = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        heading.add_css_class("luma-navigation-list")
-        heading.append(SidebarSection(label, action=action))
-        pane.append(heading)
-        body = ScrollView(widget)
-        body.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.EXTERNAL)
-        body.set_vexpand(True)
-        pane.append(body)
-        paned.set_end_child(pane)
+        pane = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        for name in self.list.get_css_classes():
+            pane.add_css_class(name)
+        pane.append(SidebarSection(label, action=action))
+        scroll = ScrollView(pane)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.EXTERNAL)
+        viewport = scroll.get_child()
+        if isinstance(viewport, Gtk.Viewport):
+            viewport.set_scroll_to_focus(False)
+        pane.connect("realize", lambda lb: lb.set_adjustment(None))
+        paned.set_end_child(scroll)
         # Where the list was: after the pinned header (or the phone title), before the foot.
         self.insert_child_after(paned, getattr(self, "_header", None) or getattr(self, "phone_title_label", None))
         state = {"share": min(0.85, max(0.15, share)), "applying": False}
@@ -1231,6 +1232,18 @@ class NavigationSidebar(Gtk.Box):
         self.pane = pane
         self.pane_split = paned
         return pane
+
+    def clear_pane(self) -> None:
+        """Remove the pane's rows, keeping its heading."""
+        pane = getattr(self, "pane", None)
+        if pane is None:
+            return
+        child = pane.get_first_child()
+        while child is not None:
+            following = child.get_next_sibling()
+            if child is not pane.get_first_child() or not child.has_css_class("luma-navigation-section"):
+                pane.remove(child)
+            child = following
 
     def append_row(self, row: NavigationRow) -> None:
         self.list.append(row)

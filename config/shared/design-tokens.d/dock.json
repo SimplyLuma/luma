@@ -3,7 +3,7 @@
   "lumaui": {
     "dock": {
       "gap": 8,
-      "header_height": 36,
+      "header_height": 32,
       "header_padding_start": 12,
       "header_padding_end": 4,
       "header_gap": 8,

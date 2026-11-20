@@ -56,7 +56,10 @@ class DockTile(Gtk.Box):
     __gtype_name__ = "LumaUIDockTile"
 
     def __init__(self, key: str, title: str, icon: str, child: Gtk.Widget, *, main: bool = False,
-                 actions: Iterable[Gtk.Widget] = (), more: Callable[[], list] | None = None) -> None:
+                 bare: bool = False, actions: Iterable[Gtk.Widget] = (),
+                 more: Callable[[], list] | None = None) -> None:
+        """``bare``: the content alone, without the well or the header (the stage an app's work is
+        shown on, such as a preview); it still takes its place in the layout and receives drops."""
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         if not key:
             raise ValueError("a dock tile has a key")
@@ -92,6 +95,10 @@ class DockTile(Gtk.Box):
         self.body.add_css_class("lumaui-dock-tile-body")
         self.body.append(child)
         self.append(self.body)
+        self.bare = bare
+        if bare:
+            self.add_css_class("bare")
+            self.header.set_visible(False)
         drag = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
         drag.connect("prepare", lambda *_a: Gdk.ContentProvider.new_for_value(f"lumaui-dock-tile:{self.key}")
                      if self.dock is not None and not self.dock.phone else None)
