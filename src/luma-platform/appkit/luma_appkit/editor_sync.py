@@ -16,7 +16,8 @@ light and dark styles) either follows the other or has its own values:
   look", or "Vertical has its own look (3 changes)"; nothing to press.
 
 ``OverrideDot`` marks a single field that differs from the other side (a small
-accent dot beside its label, with a tooltip).
+accent dot beside its label, with a tooltip). ``ToggleChip`` is a checkable chip
+for a header's actions (which canvases are on), with a live dot.
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ from gi.repository import Gtk  # noqa: E402
 
 from . import icons, lumaui  # noqa: E402
 
-__all__ = ["SyncKey", "OverrideDot"]
+__all__ = ["SyncKey", "OverrideDot", "ToggleChip"]
 
 
 class SyncKey(Gtk.Box):
@@ -119,3 +120,56 @@ class OverrideDot(Gtk.Box):
         self.set_tooltip_text(self._tooltip if self.active else None)
         self.update_property([Gtk.AccessibleProperty.LABEL], [self._tooltip if self.active else ""])
         self.set_opacity(1.0 if self.active else 0.0)
+
+
+class ToggleChip(Gtk.ToggleButton):
+    """A checkable chip for a header's actions (a preview's "Landscape" and "Vertical" canvases).
+
+    Each chip is its own toggle (several may be on). `on_toggle(active)` returning False keeps the chip
+    as it was (the app refuses turning off the last one, or asks first). `live=True` shows a small red
+    dot: an output is using what the chip stands for."""
+
+    __gtype_name__ = "LumaUIToggleChip"
+
+    def __init__(self, label: str, *, icon: str | None = None, active: bool = False, live: bool = False,
+                 on_toggle: Callable[[bool], bool | None] | None = None) -> None:
+        super().__init__(active=active, valign=Gtk.Align.CENTER)
+        self.add_css_class("lumaui-toggle-chip")
+        line = Gtk.Box(spacing=5)
+        if icon:
+            line.append(icons.image(icon))
+        self.label = Gtk.Label(label=label)
+        line.append(self.label)
+        self.live_dot = Gtk.Box(valign=Gtk.Align.CENTER, visible=False)
+        self.live_dot.add_css_class("lumaui-toggle-chip-live")
+        line.append(self.live_dot)
+        self.set_child(line)
+        self.on_toggle = on_toggle
+        self._live = False
+        self._words = label
+        self.set_live(live)
+        self._handler = self.connect("toggled", self._toggled)
+
+    def set_live(self, live: bool) -> None:
+        self._live = bool(live)
+        self.live_dot.set_visible(self._live)
+        lumaui.set_css_class(self, "live", self._live)
+        self.update_property([Gtk.AccessibleProperty.LABEL],
+                             [self._words + (", in use by an output" if self._live else "")])
+
+    @property
+    def live(self) -> bool:
+        return self._live
+
+    def set_active(self, active: bool) -> None:  # noqa: D401 - the app's own state: no on_toggle
+        """Show the app's state (does not call on_toggle)."""
+        self.handler_block(self._handler)
+        try:
+            Gtk.ToggleButton.set_active(self, active)
+        finally:
+            self.handler_unblock(self._handler)
+
+    def _toggled(self, _button) -> None:
+        active = self.get_active()
+        if self.on_toggle is not None and self.on_toggle(active) is False:
+            self.set_active(not active)  # refused: as it was

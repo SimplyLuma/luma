@@ -359,6 +359,7 @@ __all__ = [
     "VolumeSlider",
     "SyncKey",
     "OverrideDot",
+    "ToggleChip",
 ]
 
 
@@ -683,7 +684,7 @@ def __getattr__(name: str):
     if name in {"Dock", "DockTile"}:
         from . import structure_dock
         return getattr(structure_dock, name)
-    if name in {"SyncKey", "OverrideDot"}:
+    if name in {"SyncKey", "OverrideDot", "ToggleChip"}:
         from . import editor_sync
         return getattr(editor_sync, name)
     if name in {"AudioMeter", "VolumeSlider"}:

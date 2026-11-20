@@ -382,6 +382,10 @@ done
 - ArrangeView: set_item_shown_rect()/clear_item_shown_rect(): the selection
   outline and crop frame follow the picture actually on screen during a
   drag; handles and hit testing keep the live rectangle.
+- ToggleChip (luma_appkit): a checkable chip for a header's actions; a
+  refusing on_toggle keeps it; a live dot.
+- DetailsPane(raised=True) / luma_details_pane_set_raised(): a raised island
+  of its own beside the main one (an Inspector).
 
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.142
 - ActionEditor (Python and C): focuses its first field with the text
