@@ -34,7 +34,11 @@ Rules the dock owns, so every app gets the same answers:
   is capped at ``fit_max`` of the dock along that split (the
   ``--lumaui-dock-fit-max-pct`` token, 40%); content past the cap scrolls in
   its tile and the main tile never gives up more. Call ``refit()`` after
-  changing such a tile's content; a person can drag the seam smaller.
+  changing such a tile's content. Fitting is the default size only: a
+  person drags the seam anywhere between the tiles' minimums, that size is
+  kept (``"size"`` on the split in ``layout()``), and a double click on the
+  seam fits the side to its content again. A seam with no room to move
+  (both sides at their minimum) shows no mark and no resize cursor.
 - **Radii stay concentric.** Every tile is LumaUI's card radius
   (``--lumaui-dock-tile-radius``, Settings' grouped cards), never sharpened
   to fit the island: the island holding a dock grows to that radius plus the
@@ -271,8 +275,11 @@ class Dock(Gtk.Overlay):
     def _copy(node):
         if isinstance(node, str):
             return node
-        return {"split": node["split"], "ratio": round(node["ratio"], 4),
+        copy = {"split": node["split"], "ratio": round(node["ratio"], 4),
                 "start": Dock._copy(node["start"]), "end": Dock._copy(node["end"])}
+        if node.get("size"):
+            copy["size"] = int(node["size"])
+        return copy
 
     def _clean(self, node, seen: set):
         """Drop unknown or repeated keys; a split that loses a side becomes the other side."""
@@ -289,7 +296,11 @@ class Dock(Gtk.Overlay):
             return start if end is None else end
         ratio = node.get("ratio", 0.5)
         ratio = min(0.95, max(0.05, float(ratio))) if isinstance(ratio, (int, float)) else 0.5
-        return {"split": node["split"], "ratio": ratio, "start": start, "end": end}
+        clean = {"split": node["split"], "ratio": ratio, "start": start, "end": end}
+        size = node.get("size")
+        if isinstance(size, (int, float)) and size > 0:
+            clean["size"] = int(size)
+        return clean
 
     def set_layout(self, layout) -> None:
         seen: set[str] = set()
@@ -345,8 +356,61 @@ class Dock(Gtk.Overlay):
         paned.update_property([Gtk.AccessibleProperty.LABEL], ["Resize"])
         self._panes.append((paned, node))
         paned.connect("notify::max-position", lambda p, _s, n=node: self._fit(p, n))
+        for name in ("notify::min-position", "notify::max-position"):
+            paned.connect(name, lambda p, _s: self._seam_state(p))
+        self._seam_state(paned)
         paned.connect("notify::position", lambda p, _s, n=node: self._moved(p, n))
+        # A double click on the seam gives a fitted side its content's size again.
+        twice = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        twice.connect("pressed", lambda g, n, x, y, p=paned, nd=node: self._seam_pressed(g, n, x, y, p, nd))
+        paned.add_controller(twice)
+        # Only a person's move sizes a fitted side (GTK also moves the position as it lays out).
+        paned.held = False
+        hold = Gtk.GestureDrag(button=Gdk.BUTTON_PRIMARY, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        hold.connect("drag-begin", lambda _g, x, y, p=paned: setattr(p, "held", self._on_seam(p, x, y)))
+        hold.connect("drag-end", lambda *_a, p=paned: setattr(p, "held", False))
+        paned.add_controller(hold)
+        paned.connect("move-handle", lambda p, *_a: (setattr(p, "held", True),
+                                                     GLib.idle_add(lambda: setattr(p, "held", False))) and False)
         return paned
+
+    @staticmethod
+    def _separator(paned: Gtk.Paned) -> Gtk.Widget | None:
+        child = paned.get_first_child()
+        while child is not None and child.get_css_name() != "separator":
+            child = child.get_next_sibling()
+        return child
+
+    def _seam_state(self, paned: Gtk.Paned) -> None:
+        """A seam that can move shows the resize cursor and its mark; one whose sides are both at
+        their fixed size (no room between the minimums) shows neither."""
+        separator = self._separator(paned)
+        if separator is None:
+            return
+        fixed = paned.get_property("max-position") <= paned.get_property("min-position")
+        horizontal = paned.get_orientation() == Gtk.Orientation.HORIZONTAL
+        separator.set_cursor_from_name(None if fixed else ("col-resize" if horizontal else "row-resize"))
+        if fixed:
+            paned.add_css_class("fixed")
+        else:
+            paned.remove_css_class("fixed")
+
+    def _on_seam(self, paned: Gtk.Paned, x: float, y: float) -> bool:
+        start = paned.get_start_child()
+        if start is None:
+            return False
+        along = x if paned.get_orientation() == Gtk.Orientation.HORIZONTAL else y
+        edge = start.get_width() if paned.get_orientation() == Gtk.Orientation.HORIZONTAL else start.get_height()
+        return edge - 2 <= along <= edge + int(_tokens()["gap"]) + 2
+
+    def _seam_pressed(self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float, paned: Gtk.Paned,
+                      node: dict) -> None:
+        if n_press != 2 or not self._on_seam(paned, x, y) or "size" not in node:
+            return
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+        del node["size"]
+        self._fit(paned, node)
+        self._changed()
 
     def _fit(self, paned: Gtk.Paned, node: dict) -> None:
         """A size change keeps each split's share; a side that fits its content gets its content's size."""
@@ -396,16 +460,16 @@ class Dock(Gtk.Overlay):
         if fits["start"] == fits["end"]:
             return position
         side = "start" if fits["start"] else "end"
-        natural = self._natural(node[side], orientation)
+        if not exact:
+            # A person's drag: anywhere between the tiles' own minimums (the paned keeps those).
+            return position
+        natural = node.get("size") or self._natural(node[side], orientation)
         if natural <= 0:
             return position
         cap = self._cap(orientation)
-        if cap > 0:
+        if cap > 0 and not node.get("size"):
             natural = min(natural, cap)
-        if side == "start":
-            position = natural if exact else min(position, natural)
-        else:
-            position = length - natural if exact else max(position, length - natural)
+        position = natural if side == "start" else length - natural
         return max(0, min(total, position))
 
     def refit(self) -> None:
@@ -450,6 +514,13 @@ class Dock(Gtk.Overlay):
                 self._applying -= 1
             position = clamped
         node["ratio"] = min(0.95, max(0.05, position / total))
+        fits = {side: self._fits(node[side]) for side in ("start", "end")}
+        if fits["start"] != fits["end"] and getattr(paned, "held", False):
+            # A fitted side the person sized keeps that size (saved with the layout) until a
+            # double click on the seam fits it to its content again.
+            horizontal = node["split"] == "h"
+            length = (paned.get_width() if horizontal else paned.get_height()) - int(_tokens()["gap"])
+            node["size"] = position if fits["start"] else max(1, length - position)
         self._changed()
 
     def _changed(self) -> None:

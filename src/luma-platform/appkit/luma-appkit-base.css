@@ -2465,12 +2465,12 @@ paned.lumaui-dock-paned > separator, paned.luma-navigation-split > separator {
   min-width: var(--lumaui-dock-gap); min-height: var(--lumaui-dock-gap);
   background: none; background-image: none; box-shadow: none; border: none;
 }
-paned.lumaui-dock-paned.horizontal > separator:hover, paned.lumaui-dock-paned.horizontal > separator:focus-visible {
+paned.lumaui-dock-paned.horizontal:not(.fixed) > separator:hover, paned.lumaui-dock-paned.horizontal:not(.fixed) > separator:focus-visible {
   background-image: linear-gradient(@luma_muted, @luma_muted);
   background-size: var(--lumaui-dock-seam-mark) var(--lumaui-dock-seam-mark-length);
   background-position: center; background-repeat: no-repeat;
 }
-paned.lumaui-dock-paned.vertical > separator:hover, paned.lumaui-dock-paned.vertical > separator:focus-visible {
+paned.lumaui-dock-paned.vertical:not(.fixed) > separator:hover, paned.lumaui-dock-paned.vertical:not(.fixed) > separator:focus-visible {
   border-radius: 2px;
   background-image: linear-gradient(@luma_muted, @luma_muted);
   background-size: var(--lumaui-dock-seam-mark-length) var(--lumaui-dock-seam-mark);
