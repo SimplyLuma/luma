@@ -5,7 +5,7 @@
 
 Name:           luma-android-runtime
 Version:        0.1.0
-Release:        1.luma.116%{?dist}
+Release:        1.luma.117%{?dist}
 Summary:        Project Luma integration for Android applications
 License:        Apache-2.0 AND GPL-3.0-or-later
 URL:            https://project-luma.local/android
@@ -137,7 +137,7 @@ install -D -m 0644 config/fp6-software-weston.ini \
   %{buildroot}%{_datadir}/luma/android/fp6-software-weston.ini
 
 %check
-PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 152
+PYTHONPATH=%{buildroot}%{python3_sitelib} python3 %{SOURCE2} tests 158
 desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop %{buildroot}%{_datadir}/luma/desktop-overrides/applications/*.desktop
 
 %post
@@ -222,6 +222,11 @@ update-desktop-database %{_datadir}/luma/desktop-overrides/applications >/dev/nu
 %{_unitdir}/luma-android-recover@.service
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.117
+- Let any active local user run the package-session helper's fixed session
+  requests (input-policy, boot-from-charger-mode) without authentication;
+  installs, removals and package queries still require an administrator
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.116
 - Keep media-controller camera nodes (Intel IPU and other ISP capture) out of
   the container and out of the world-writable device list
