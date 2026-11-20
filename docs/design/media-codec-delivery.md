@@ -113,7 +113,10 @@ repository.
 - Control: `luma-openh264 status|enable|disable` shows Cisco's attribution
   and switches both sides; disable removes the file, uninstalls the extension
   and masks it. Applications already running keep what they loaded until they
-  restart. `/usr/share/luma-openh264/NOTICE` is the licensing notice.
+  restart. Settings › Apps shows the switch with the attribution and a
+  link to Cisco's terms; polkit (`50-luma-openh264.rules`) lets the active
+  local session run exactly `luma-openh264 enable` and `disable` without a
+  password. `/usr/share/luma-openh264/NOTICE` is the licensing notice.
 
 Encoders in order of preference: VA H.264 (`vah264lpenc`, `vah264enc`), then
 `openh264enc`, then AV1. Applications choose by starting each encoder on a
