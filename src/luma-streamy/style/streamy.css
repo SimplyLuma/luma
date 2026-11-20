@@ -1,0 +1,3 @@
+/* Streamy's own content: the program picture on the canvas and a mixer row. Tokens only. */
+picture.streamy-program { background: @luma_well; }
+box.streamy-mixer-row { padding: 8px 4px; }

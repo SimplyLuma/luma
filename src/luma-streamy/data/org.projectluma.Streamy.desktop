@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Streamy
+GenericName=Live Streaming and Recording
+Comment=Stream and record your screen, windows and camera
+Exec=streamy
+Icon=org.projectluma.Streamy
+Terminal=false
+Categories=AudioVideo;Video;Recorder;
+Keywords=stream;broadcast;live;record;screen;capture;twitch;youtube;rtmp;
+StartupNotify=true
+DBusActivatable=false
