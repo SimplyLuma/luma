@@ -25,15 +25,18 @@ MKV or fragmented MP4 file.
   `vaav1enc` for AV1; `fdkaacenc` for AAC.
 - `gst-lumaframe/`: the GL element that draws one layer in one pass
   (shadow, rounded mask, stroke, crop, opacity).
-- `luma_streamy/portals.py`: ScreenCast (restore tokens, `pipewire-serial`)
-  and Camera portals.
-- The window is LumaUI: `NavigationSidebar` for scenes, `CreativeWorkspace`
-  with docked `FloatingPanel`s (widgets, inspector, audio) and saved layouts,
-  `ArrangeView` for direct manipulation, `AudioMeter`s, and the
-  `ActionCenter` (Add widget, Record, Go live; a live `BarReadout`).
+- `luma_streamy/portals.py`: ScreenCast and AudioCapture (restore tokens
+  with a single fallback to the picker, `pipewire-serial`) and Camera
+  portals; the host app id is registered with the portal at startup.
+- The window is LumaUI: `NavigationSidebar` for scenes with the scene's
+  widgets in its pane, a `Dock` with the preview as its bare stage and Audio
+  as an inset that fits its strips, `ArrangeView` for direct manipulation,
+  `AudioMeter`s, and the `ActionCenter` (Add widget, Record, Go live; a live
+  chip; a selection's editors grow from the bar).
 
-Stream keys are stored with libsecret. Per-app audio will come from the
-per-app audio portal (`app-audio` widgets read a `pipewiresrc` fd it gives).
+Stream keys are stored with libsecret. App audio widgets carry the apps the
+person picks in the AudioCapture portal (`pipewiresrc` on its remote); the
+Add menu offers them only where that portal is present.
 
 ## Development
 
@@ -51,4 +54,8 @@ STREAMY_FAKE_SOURCES=1 GST_PLUGIN_PATH=<lumaframe build> \
 ```
 
 `STREAMY_SHOT=out.png STREAMY_SHOT_WIDTH=360` renders the window to a PNG and
-quits.
+quits, writing the measured boxes to `out.json`. `tests/conform.py out.json`
+checks them against LumaUI's rules (row insets and heights, glyph centres,
+inset headers, the audio inset's slack, the preview's breathing room, the
+bar chip), and `tests/conform.py --same rest.json editing.json` checks that
+an open editor moved nothing.
