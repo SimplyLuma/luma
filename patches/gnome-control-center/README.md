@@ -322,3 +322,21 @@ stored without a key. One notification from the application (FDO
 `desktop-entry` hint) lists what was bound, the first time only. Shortcuts the
 person already set are untouched, and the compositor still refuses a trigger
 another shortcut owns.
+
+`0106-lumaui-sound-volume-mixer.patch`: **Sound › Volume mixer**
+(`sound-mixer`), the Settings side of the Shell's mixer (gnome-shell 0350):
+the default output, System sounds and every app with a sound stream, each
+with its volume, a live level, mute and (apps) the output it plays on. Apps
+come from `org.projectluma.AudioDevices1` version 2 (`GetApplications`,
+`ApplicationsChanged`, `SetApplication{Volume,Mute,Output}`, `GetOutputs`);
+the output is the Sound page's own GVC controls (`vol`, and a new `mute` key
+on the sound adapter). Outputs are named as the device rows name them, by
+node name (`CFSINKS`: "Line Out", "Built-in Audio"). A wide page draws a
+column per strip, the output's well first; a phone or a TV draws the same
+strips as rows. The slider is LumaUI's scale and the level LumaUI's
+`LumaAudioMeter`; a row lays the meter along its slider where the kit has
+`luma_audio_meter_set_horizontal`. Levels are watched (`WatchLevels`) only
+while the page is mapped in a window that is not suspended, and unwatched
+on leaving; volume writes keep one call per app in flight. The row in Sound's
+More group replaces Volume by app in live mode while the service runs at
+version 2 (`mixer` flag); fixtures keep Volume by app.
