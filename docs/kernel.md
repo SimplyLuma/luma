@@ -16,6 +16,7 @@ Luma base.
 | `zuma` | Google Tensor G3 (zuma) family patches. Empty. | `497791a0a96b` |
 | `msm8953` | Qualcomm MSM8953 (Snapdragon 625/450/632) family patches. Empty. | `497791a0a96b` |
 | `milos` | Qualcomm SM7635, on milos-mainline 7.1.2. Moves to `luma-7.2` first (see Transition). | `c098393e36c0` |
+| `intel-ipu` | Intel IPU6/IPU7 laptop cameras (sensor, ISYS and ipu-bridge fixes) for x86. Not built until x86 leaves the Fedora kernel (see below); every patch is written for upstream. | `9cd56a3b5e8f` |
 
 `497791a0a96b866d90add64041c47acdff49cae6` is the upstream `v7.2.15` commit.
 `main` is the repository's fork point and is not used for builds.
