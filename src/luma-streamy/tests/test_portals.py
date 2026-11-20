@@ -168,19 +168,38 @@ class AppAudioTests(unittest.TestCase):
 
     def setUp(self):
         import os
+        import sys
+        import types
 
-        from luma_appkit import audio_capture
+        # A stand-in luma_appkit.audio_capture: the unit tests run without the platform installed.
+        module = types.ModuleType("luma_appkit.audio_capture")
+        module.APPLICATIONS, module.ALL_SOUND = 1, 2
 
-        self.module, self.saved = audio_capture, (audio_capture.is_available, audio_capture.request_audio_capture)
+        class AudioCaptureError(Exception):
+            def __init__(self, message, cancelled=False):
+                super().__init__(message)
+                self.cancelled = cancelled
+
+        module.AudioCaptureError = AudioCaptureError
+        module.is_available = lambda _bus=None: self.available
+        module.request_audio_capture = self.request
+        package = types.ModuleType("luma_appkit")
+        package.audio_capture = module
+        self.saved = {name: sys.modules.get(name) for name in ("luma_appkit", "luma_appkit.audio_capture")}
+        sys.modules["luma_appkit"], sys.modules["luma_appkit.audio_capture"] = package, module
+        self.module = module
         self.available, self.asked, self.answers = True, [], []
-        audio_capture.is_available = lambda _bus=None: self.available
-        audio_capture.request_audio_capture = self.request
         self.read, self.write = os.pipe()
 
     def tearDown(self):
         import os
+        import sys
 
-        self.module.is_available, self.module.request_audio_capture = self.saved
+        for name, module in self.saved.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
         for fd in (self.read, self.write):
             try:
                 os.close(fd)

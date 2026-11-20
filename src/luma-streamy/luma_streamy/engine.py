@@ -277,8 +277,9 @@ class Output:
         for src in (self.video_src, self.sound_src):
             if src is not None:
                 src.emit("end-of-stream")
-        # A stream whose connection is gone never sees its EOS: give up after 5 s.
-        GLib.timeout_add_seconds(5, self._finish)
+        # A stream whose connection is gone never sees its EOS: give up after 5 s. A recording
+        # waits longer, so a busy machine still drains its encoder and finishes the file.
+        GLib.timeout_add_seconds(5 if self.kind == "stream" else 20, self._finish)
 
     def _message(self, _bus, message: Gst.Message) -> None:
         if message.type == Gst.MessageType.EOS:
