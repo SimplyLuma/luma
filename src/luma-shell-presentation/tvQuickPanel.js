@@ -23,8 +23,8 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 import {tv as TOKENS} from './tvTokens.js';
 import {remoteAction, repeatAllowed} from './tvModel.js';
-import {chipState, firstChip, firstStop, keepRow, levelPercent, mixRgba, noteAge, noteRecords, okGate, okPress,
-    okRelease, originHeldOk, panelRows, scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
+import {chipState, firstChip, firstStop, keepRow, levelOpens, levelPercent, mixRgba, noteAge, noteRecords, okGate,
+    okPress, okRelease, originHeldOk, panelRows, scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
 import {gettext as _} from 'gettext';
 
 const SETTINGS_APP = 'org.gnome.Settings.desktop';
@@ -214,9 +214,15 @@ export class TvQuickPanel {
         }).filter(Boolean);
         const current = item._activeDeviceId ?? null;
         const active = outputs.find(output => output.id === current);
-        return {visible: true, item, outputs, current, name: active?.name ?? item.levelDetail ?? _('Volume'),
+        const maximum = item.slider.maximum_value || 1;
+        // The per-app mixer's model (status/volume.js), held while the panel is open.
+        const mixer = item.appMixer;
+        const apps = mixer?.available ? mixer.applications.map(app => ({id: app.id, name: app.name,
+            gicon: app.gicon, muted: !!app.muted, value: app.muted ? 0 : Math.min(app.volume ?? 1, maximum),
+            maximum})) : [];
+        return {visible: true, item, outputs, current, apps, name: active?.name ?? item.levelDetail ?? _('Volume'),
             gicon: active?.gicon ?? null, value: item.stream.is_muted ? 0 : item.slider.value,
-            maximum: item.slider.maximum_value || 1, muted: item.stream.is_muted};
+            maximum, muted: item.stream.is_muted};
     }
 
     _notes() {
@@ -274,6 +280,8 @@ export class TvQuickPanel {
             item.slider?.connectObject('notify::value', later, this);
             item._control?.connectObject('active-output-update', later, 'output-added', later,
                 'output-removed', later, this);
+            item.appMixer?.hold();
+            item.appMixer?.connectObject('changed', later, 'availability-changed', later, this);
         }
         const watchSource = source => source.connectObject('notification-added', later,
             'notification-removed', later, this);
@@ -299,6 +307,8 @@ export class TvQuickPanel {
         item?.disconnectObject(this);
         item?.slider?.disconnectObject(this);
         item?._control?.disconnectObject(this);
+        item?.appMixer?.disconnectObject(this);
+        item?.appMixer?.release();
         for (const source of Main.messageTray.getSources()) source.disconnectObject(this);
         Main.messageTray.disconnectObject(this);
         this._actions.disconnectObject(this);
@@ -511,7 +521,8 @@ export class TvQuickPanel {
         }
         case 'me': return this._makeMe(row);
         case 'chips': return this._makeChips(row);
-        case 'level': return this._makeLevel();
+        case 'level': return this._makeLevel(this._levelState);
+        case 'app': return this._makeLevel(row.app);
         case 'output':
             return this._line({title: row.output.name, height: q.sub_height, inset: q.sub_inset, size: q.sub_size,
                 endIcon: row.current ? 'lumaui-check-symbolic' : null});
@@ -581,9 +592,9 @@ export class TvQuickPanel {
         return box;
     }
 
-    _makeLevel() {
+    // The volume row, and each app's: its name over its level.
+    _makeLevel(level) {
         const {quick_panel: q} = TOKENS;
-        const level = this._levelState;
         const u = this._u;
         const icon = level.muted ? {icon_name: 'lumaui-volume-x-symbolic'}
             : level.gicon ? {gicon: level.gicon} : {icon_name: 'lumaui-volume-2-symbolic'};
@@ -654,13 +665,14 @@ export class TvQuickPanel {
             actor.style = base + (focused ? this._keyLook() : this._plain());
             const ink = focused ? (actor._danger ? this._m('danger_on_key') : this._m('key_ink')) : this._m('ink');
             const quiet = focused ? this._m('key_ink').replace(/[\d.]+\)$/, '0.62)') : this._m('ink_3');
-            if (row.kind !== 'level') actor._title.style = actor._title.style.replace(/color:[^;]*;/, `color: ${ink};`);
+            const level = row.kind === 'level' || row.kind === 'app';
+            if (!level) actor._title.style = actor._title.style.replace(/color:[^;]*;/, `color: ${ink};`);
             actor._sub && (actor._sub.style = actor._sub.style.replace(/color:[^;]*;/, `color: ${quiet};`));
             actor._end && (actor._end.style = actor._end.style.replace(/color:[^;]*;/, `color: ${quiet};`));
             actor._endIcon && (actor._endIcon.style = actor._endIcon.style.replace(/color:[^;]*;/, `color: ${quiet};`));
             if (actor._lead && row.kind !== 'note')
                 actor._lead.style = actor._lead.style.replace(/color:[^;]*;/, `color: ${focused ? ink : this._m('ink_2')};`);
-            if (row.kind === 'level') {
+            if (level) {
                 actor._title.style = actor._title.style.replace(/color:[^;]*;/, `color: ${quiet};`);
                 actor._value.style = actor._value.style.replace(/color:[^;]*;/, `color: ${focused ? ink : this._m('ink')};`);
                 actor._hint.visible = focused;
@@ -752,6 +764,8 @@ export class TvQuickPanel {
                 this._chip = next;
             } else if (row?.kind === 'level') {
                 this._stepVolume(action);
+            } else if (row?.kind === 'app') {
+                this._stepApp(row.app, action);
             } else if (action === 'left') {
                 // Left off the island's edge closes it.
                 this.close();
@@ -774,6 +788,19 @@ export class TvQuickPanel {
         this._rebuild();
     }
 
+    // An app's own volume, through the mixer (moving it up unmutes it).
+    _stepApp(app, direction) {
+        const mixer = this._volume()?.appMixer;
+        if (!mixer) return;
+        const value = stepLevel(app.value, direction, TOKENS.quick_panel.level_step, app.maximum);
+        mixer.setVolume(app.id, value);
+        if (app.muted && value > 0) mixer.setMuted(app.id, false);
+        // Drawn at once; the mixer's next change confirms it.
+        const entry = mixer.applications.find(a => a.id === app.id);
+        if (entry) Object.assign(entry, {volume: value, muted: app.muted && value <= 0});
+        this._rebuild();
+    }
+
     // OK on a row. Returns false when the panel closed.
     _ok(row) {
         if (!row) return true;
@@ -790,7 +817,7 @@ export class TvQuickPanel {
             return true;
         }
         case 'level':
-            if (this._levelState.outputs.length > 1) {
+            if (levelOpens(this._levelState)) {
                 this._open = {...this._open, outputs: !this._open.outputs};
                 this._rebuild();
             }
@@ -802,6 +829,14 @@ export class TvQuickPanel {
             this._open = {...this._open, outputs: false};
             this._rebuild();
             this._row = Math.max(0, this._rows.findIndex(r => r.kind === 'level'));
+            return true;
+        }
+        case 'app': {
+            const mixer = this._volume()?.appMixer;
+            mixer?.setMuted(row.app.id, !row.app.muted);
+            const entry = mixer?.applications.find(a => a.id === row.app.id);
+            if (entry) entry.muted = !row.app.muted;
+            this._rebuild();
             return true;
         }
         case 'note': {

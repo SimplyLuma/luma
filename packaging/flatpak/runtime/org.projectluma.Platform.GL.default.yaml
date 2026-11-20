@@ -2,6 +2,8 @@
 # Mesa drivers for org.projectluma.Platform, built exactly as Fedora builds
 # org.fedoraproject.Platform.GL.default: Fedora 44's Mesa RPMs, moved into the
 # extension prefix that the runtime's GL extension point mounts at lib64/GL/default.
+# On x86_64 it also carries Luma's Intel VA-API driver (iHD), so VA decode and
+# encode work inside Flatpaks on Intel GPUs.
 base: fedora-f44/gl-default.container.yaml
 upstream:
   repository: https://src.fedoraproject.org/flatpaks/mesa
@@ -20,7 +22,21 @@ remove-packages:
   # the extension's component data; Luma writes its own below.
   - mesa-flatpak-config
 
+add-packages:
+  # Luma's build (packaging/rpm/intel-media-driver-free.spec, VDEnc H.264/H.265
+  # encode on) shadows Fedora's from the luma repository. Fedora's cleanup moves
+  # it with Mesa's drivers to lib/dri, which the GL extension point merges into
+  # lib64/GL/lib/dri on the runtime's LIBVA_DRIVERS_PATH.
+  - name: libva-intel-media-driver
+    platforms:
+      only:
+      - x86_64
+
 cleanup-append: |
+  # The iHD driver's one library the runtime lacks
+  if [ -e /app/lib/dri/iHD_drv_video.so ]; then
+    mv /usr/lib64/libigdgmm.so* /app/lib/
+  fi
   mkdir -p /app/share/metainfo
   cat > /app/share/metainfo/org.projectluma.Platform.GL.default.metainfo.xml <<'XML'
   <?xml version="1.0" encoding="UTF-8"?>

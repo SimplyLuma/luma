@@ -286,16 +286,41 @@ def write_png(path: Path, width: int, height: int, rgb: bytes) -> None:
                      + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
 
-def changed_fraction(a: bytes, b: bytes) -> float:
+def changed_fraction(a: bytes, b: bytes, width: int = 0, height: int = 0) -> float:
+    """The share of sampled pixels that differ. With the frame size, the shell's
+    own bands (top bar and dock) are left out, so only the area where an app's
+    window lands counts."""
     if len(a) != len(b) or not a:
         return 1.0
+    top, bottom = 0, len(a)
+    if width and height and len(a) == width * height * 3:
+        stride = width * 3
+        top, bottom = int(height * APP_AREA[0]) * stride, int(height * APP_AREA[1]) * stride
     step = 3 * 7  # sample every 7th pixel
     total = changed = 0
-    for i in range(0, len(a) - 2, step):
+    for i in range(top, bottom - 2, step):
         total += 1
         if abs(a[i] - b[i]) + abs(a[i + 1] - b[i + 1]) + abs(a[i + 2] - b[i + 2]) > 24:
             changed += 1
     return changed / max(total, 1)
+
+
+# The rows between the top bar and the dock, as fractions of the frame height.
+APP_AREA = (0.06, 0.85)
+WINDOW_FRACTION = 0.02
+
+
+def is_blank(rgb: bytes) -> bool:
+    """A frame that is almost all one dark colour: the display is off."""
+    sample = rgb[::3 * 97]
+    return bool(sample) and sum(1 for v in sample if v > 40) < len(sample) * 0.01
+
+
+def window_verdict(shown: float, after_stop: float) -> bool:
+    """Whether a change on screen was the app's window: it was there while the
+    app ran, and it went away when the app was stopped. A change that stays (the
+    desktop's own windows, notifications, wallpaper) was not the app."""
+    return shown > WINDOW_FRACTION and after_stop < max(WINDOW_FRACTION / 2, shown * 0.25)
 
 
 # -- A run ---------------------------------------------------------------------------
@@ -374,9 +399,24 @@ def run_app(base: Path, key: Path, package: Path | None, app_id: str, fmt: str, 
             step("boot", False, "The test VM's desktop didn't start.", internal=True)
             return result
         step("boot", True, f"Luma started ({int(time.time() - started)} s).")
+        # Android starts in the background after sign-in. Its window and memory
+        # are not the app's, so it stays off while an app is checked.
+        guest.run(f"runuser -u {USER} -- env {session_env(uid)} systemctl --user mask --runtime --now "
+                  "luma-android-prewarm.service >/dev/null 2>&1; "
+                  f"runuser -u {USER} -- env {session_env(uid)} waydroid session stop >/dev/null 2>&1; true",
+                  timeout=60)
+        # A slow boot can outlast the idle delay: the screen blanks, and a blank
+        # screen waking up looks like a window. Keep it on and wake it.
+        guest.run(f"runuser -u {USER} -- env {session_env(uid)} sh -c 'gsettings set org.gnome.desktop.session "
+                  "idle-delay 0; gsettings set org.gnome.desktop.screensaver lock-enabled false' 2>/dev/null; "
+                  "loginctl unlock-sessions 2>/dev/null; true", timeout=30)
+        qmp.command("send-key", keys=[{"type": "qcode", "data": "shift"}])
         time.sleep(8)  # let the shell settle
         before = work / "before.ppm"
         qmp.command("screendump", filename=str(before))
+        if is_blank(read_ppm(before)[2]):
+            step("launch", False, "The test VM's screen was off, so the launch couldn't be watched.", internal=True)
+            return result
         if remote_ref:
             install = guest.run(f"flatpak install --system --noninteractive -y {remote_ref} 2>&1", timeout=1200)
         else:
@@ -399,24 +439,28 @@ def run_app(base: Path, key: Path, package: Path | None, app_id: str, fmt: str, 
         if launch.returncode != 0:
             step("launch", False, "Your app couldn't be started.", detail=launch.stderr[-800:])
             return result
-        alive, fraction = False, 0.0
+        alive, fraction, seen = False, 0.0, 0
         shot = work / "after.ppm"
         launched = time.time()
+        base_rgb = read_ppm(before)[2]
         # A first start builds Flatpak's library cache for the runtime, which
-        # on the VM's cold disk can take over a minute; allow three.
+        # on the VM's cold disk can take over a minute; allow three. The window
+        # has to show in two samples in a row, so a flash elsewhere doesn't count.
         for _ in range(36):
             time.sleep(5)
             state = guest.run(f"runuser -u {USER} -- env {session_env(uid)} systemctl --user is-active "
                               f"depot-review-app", timeout=20).stdout.strip()
             alive = state in ("active", "activating")
             qmp.command("screendump", filename=str(shot))
-            fraction = changed_fraction(read_ppm(before)[2], read_ppm(shot)[2])
-            if not alive or fraction > 0.02:
+            fraction = changed_fraction(base_rgb, read_ppm(shot)[2], WIDTH, HEIGHT)
+            seen = seen + 1 if fraction > WINDOW_FRACTION else 0
+            if not alive or seen >= 2:
                 break
         seconds = int(time.time() - launched)
         time.sleep(3)
         qmp.command("screendump", filename=str(shot))
         width, height, rgb = read_ppm(shot)
+        shown = changed_fraction(base_rgb, rgb, width, height)
         png = out / f"launch-{arch}.png"
         write_png(png, width, height, rgb)
         result["screenshot"] = str(png)
@@ -426,13 +470,27 @@ def run_app(base: Path, key: Path, package: Path | None, app_id: str, fmt: str, 
             step("launch", False, "Your app closed right after it started. Its log is attached for you.",
                  detail=journal.stdout[-1500:])
             return result
-        if fraction <= 0.02:
+        if seen < 2:
             step("launch", False, "Your app started but no window appeared within three minutes.",
                  detail=journal.stdout[-1500:])
             return result
-        step("launch", True, f"Your app opened a window ({seconds} s).")
+        # Stop the app and look again: the change must leave with it.
         guest.run(f"runuser -u {USER} -- env {session_env(uid)} systemctl --user stop depot-review-app", timeout=30)
-        guest.run(f"flatpak kill {app_id}", timeout=20)
+        guest.run(f"runuser -u {USER} -- env {session_env(uid)} flatpak kill {app_id}", timeout=20)
+        after_stop = 1.0
+        for _ in range(4):
+            time.sleep(3)
+            qmp.command("screendump", filename=str(shot))
+            after_stop = changed_fraction(base_rgb, read_ppm(shot)[2], WIDTH, HEIGHT)
+            if window_verdict(shown, after_stop):
+                break
+        log(f"launch: window area {shown:.3f} shown, {after_stop:.3f} after stop")
+        if not window_verdict(shown, after_stop):
+            step("launch", False, "The screen changed while your app ran, but not because of a window of "
+                 "your app. Luma looks at this by hand.", internal=True,
+                 detail=f"changed {shown:.3f} while running, {after_stop:.3f} after stopping it")
+            return result
+        step("launch", True, f"Your app opened a window ({seconds} s).")
         remove = guest.run(f"flatpak uninstall --system --noninteractive -y --delete-data {app_id} 2>&1", timeout=300)
         gone = guest.run(f"! flatpak info --system {app_id} >/dev/null 2>&1 && "
                          f"! test -e /var/lib/flatpak/exports/share/applications/{app_id}.desktop", timeout=30)

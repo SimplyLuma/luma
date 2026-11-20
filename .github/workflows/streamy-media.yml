@@ -1,0 +1,56 @@
+name: Streamy media
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/streamy-media.yml'
+      - 'src/luma-streamy/gst-lumaframe/**'
+  pull_request:
+    paths:
+      - '.github/workflows/streamy-media.yml'
+      - 'src/luma-streamy/gst-lumaframe/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lumaframe:
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    timeout-minutes: 30
+    env:
+      # Headless GL: Mesa's EGL surfaceless platform on llvmpipe.
+      GST_GL_PLATFORM: egl
+      GST_GL_WINDOW: surfaceless
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      CARGO_TERM_COLOR: never
+    defaults:
+      run:
+        working-directory: src/luma-streamy/gst-lumaframe
+    steps:
+      - name: Install Rust, GStreamer and Mesa
+        working-directory: /
+        run: >-
+          dnf -y --setopt=install_weak_deps=False install git-core rust cargo rustfmt clippy gcc
+          pkgconf-pkg-config gstreamer1-devel gstreamer1-plugins-base-devel
+          gstreamer1-plugins-base-tools mesa-dri-drivers mesa-libEGL
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch the locked crates
+        run: cargo fetch --locked
+      - name: Format and lints
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --offline --all-targets -- -D warnings
+      - name: Geometry and shadow maths
+        run: cargo test --locked --offline --lib
+      - name: GL pipelines on llvmpipe
+        run: cargo test --locked --offline --test pipeline -- --test-threads=2
+      - name: Release plugin loads in GStreamer
+        run: |
+          cargo build --release --locked --offline
+          GST_PLUGIN_PATH="$PWD/target/release" gst-inspect-1.0 lumaframe
+          gst-inspect-1.0 --version

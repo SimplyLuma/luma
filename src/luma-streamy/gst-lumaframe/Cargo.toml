@@ -1,0 +1,26 @@
+[package]
+name = "gst-lumaframe"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.92"
+license = "MPL-2.0"
+description = "Luma video effects: lumaframe, a GL layer with rounded corners, stroke, shadow, crop and opacity"
+publish = false
+
+[lib]
+name = "gstlumavideofx"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+gst = { package = "gstreamer", version = "0.25" }
+gst-base = { package = "gstreamer-base", version = "0.25" }
+gst-gl = { package = "gstreamer-gl", version = "0.25", features = ["v1_16"] }
+
+[dev-dependencies]
+gst-video = { package = "gstreamer-video", version = "0.25" }
+gst-app = { package = "gstreamer-app", version = "0.25" }
+
+[profile.release]
+lto = true
+codegen-units = 1

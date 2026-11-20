@@ -728,3 +728,60 @@ redraw each time: the blanked greeter drew a frame every refresh (about 180
 wakeups a second and 9 % of a core on a Pixel 8 Pro, memory bus at its top
 clock) and typed keys went to the hidden list. activate() now focuses the
 list only when it is shown. Test: `keycap-policy.js` in %check. Shell .185.
+
+`0348-file-drag-out-of-shell.patch`: files shown by the Shell can be dragged
+into applications, as if from Filer. `lumaFileDrag.js` is the primitive any
+surface uses: `attach(actor, {files, kinds, preview, began, ended})` makes an
+actor a drag source, and the drag is Mutter's `MetaDataDrag` (mutter 0031),
+so Wayland, Xwayland and Flatpak clients all see an ordinary drag. It offers
+Filer's types in Filer's order: paths as text, the URI list and a document
+portal FileTransfer key (`shell_util_open_paths()` gives the O_PATH
+descriptors; writable, falling back to read-only; stopped 30 s after the
+drag). Shift moves, Control copies, a plain drop copies. Over the Shell it
+uses the targets a drag from Filer uses (`xdndHandler`): an application's
+dock tile opens the files, and a dock folder tile now takes files and
+folders in through Filer's `org.gnome.Nautilus.FileOperations2` (GIO
+copy or move without replacing as the fallback); dropped back into its own
+folder, nothing happens. A pointer press becomes a drag past 8 px, so a click
+stays a click; on touch a long press (450 ms) lifts the item and the first
+movement drags it, and moving first scrolls the list. The drag image is the
+files' faces, stacked with a count, and is hidden from pick. Dock folders
+(0180, 0285): Stack rows, Grid cells and the desktop panel's cards are drag
+sources; Control-click toggles and Shift-click extends a selection, and a
+drag of a selected item carries the selection. During the drag the surface
+is transparent and hidden from pick; a drop closes an attached surface,
+anything else brings it back. Without mutter 0031 nothing changes. Test:
+`file-drag-policy.js` in %check. Shell .186.
+
+`0349-well-background-apps.patch`: the Well showed only kept apps and put
+every other status item behind a generic grid button, even a single one. It
+now shows status items while they fit (four on a desktop or tablet, three on
+a fold, two on a phone, by `formOf`) and folds the rest only when two or more
+would be hidden; kept, attention and recording items always stay in view. The
+overflow shows the stacked faces of the apps it holds and their count. A
+Chromium-family browser (Chrome, Chromium, Edge, Brave, Vivaldi, Viola) names
+every status icon `chrome_status_icon_<n>`, so a web app's icon was labelled
+with the browser's name. A status item now resolves to one installed app: the
+desktop entry it names; for a browser's item, the web app its tooltip names
+(`<browser>-<id>-<profile>.desktop`, `StartupWMClass=crx_<id>`), else the
+browser; the browser is told apart by the item's owner process (D-Bus
+connection PID: window tracker app, else `/proc/<pid>/exe`), and the tooltip
+is read over D-Bus because the AppIndicator host does not keep it. Its name,
+face and pin key come from that app. A browser
+notification whose origin line is an installed web app's site goes to that
+web app. Rules: `js/ui/lumaWellModel.js` (no gi imports). Test:
+`well-overflow-policy.js` in %check. Shell .187.
+
+`0350-app-mixer.patch`: the Sound output page lists System sounds and every
+app with a sound stream under the outputs, from
+`org.projectluma.AudioDevices1` version 2. Each app is the shared filled
+level (`FillSlider`, which gains a `meter` drawn along its foot) with the
+app's icon and name, then a mute key and an output key that opens the
+outputs under the row. Meters are watched only while the page is on screen.
+The model (`AppMixer`, the output slider's `appMixer`) also feeds the TV
+quick panel, which lists each app's volume under the outputs. On a compact
+(phone) drawer the detail page is no longer capped at 420 px.
+The service's level probes (`org.projectluma.AudioDevices`) are skipped by
+the microphone indicator, strip and status well, as pavucontrol is. Without
+the service or before version 2 the page is unchanged. Test:
+`app-mixer-policy.js` in %check. Shell .188.

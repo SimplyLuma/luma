@@ -1,0 +1,658 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] Well: background apps stay in view; one app per status item
+
+The Well showed only kept apps; every other status item went behind a
+generic grid button, even when it was the only one, so the overflow
+revealed a single app at the cost of the same room. It now shows status
+items while they fit (four on a desktop or tablet, fewer on a narrower
+screen) and folds the rest only when two or more would be hidden. The
+overflow shows the stacked faces of the apps it holds and their count.
+
+A Chromium-family browser names every status icon chrome_status_icon_<n>
+and draws in it whichever app asked, so a web app's icon was named after
+the browser ("Chrome"). A status item now resolves to one installed app:
+its own desktop entry; for a browser's item, the web app its tooltip names
+(desktop entry <browser>-<id>-<profile>.desktop or StartupWMClass crx_<id>),
+else the browser. Name, face and the key a pin keeps all come from that
+app. A browser's notification whose origin is an installed web app's site
+is placed under the web app. The rules live in lumaWellModel.js, without
+gi imports, so %check runs them.
+
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index fd3ec54..28ad423 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -3188,6 +3188,15 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-well-popover-title { font-size: 12px; font-weight: 650; letter-spacing: 0; }
+ .luma-well-tile-plate { width: 32px; height: 32px; background-color: transparent; }
+ .luma-well-tile-plate .luma-well-glyph { width: 24px; height: 24px; }
++/* The Well's overflow (0349): the stacked faces of the apps it holds, and
++   how many, at the height of a Well item. Each face sits on a rim of the
++   surface so overlapping icons stay apart. */
++.luma-well-count { min-width: 28px; height: 28px; padding: 0 7px 0 6px; border-radius: 8px; }
++.luma-well-stack { spacing: 5px; }
++.luma-well-stack-face { padding: 1px; border-radius: 5px; background-color: #2a2e34; }
++.luma-status-light .luma-well-stack-face { background-color: #f1f2f3; }
++.luma-well-stack-face .luma-well-glyph { width: 14px; height: 14px; }
++.luma-well-stack-count { font-size: 11px; font-weight: 750; font-feature-settings: "tnum"; }
+ 
+ /* One native frame per radio tile, with no dark lower-border rim. */
+ .quick-settings.luma-studio-options .quick-toggle-has-menu.luma-options-radio,
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index a2441d4..01b506d 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -96,6 +96,7 @@
+     <file>ui/lumaWindowWatch.js</file>
+     <file>ui/lumaFocusVisible.js</file>
+     <file>ui/lumaWell.js</file>
++    <file>ui/lumaWellModel.js</file>
+     <file>ui/lumaDockBadgeModel.js</file>
+     <file>ui/lumaDockBadges.js</file>
+     <file>ui/lumaDockFolders.js</file>
+diff --git a/js/ui/lumaWell.js b/js/ui/lumaWell.js
+index 3b82fd0..3936066 100644
+--- a/js/ui/lumaWell.js
++++ b/js/ui/lumaWell.js
+@@ -20,11 +20,17 @@ import St from 'gi://St';
+ import * as DND from './dnd.js';
+ import * as Main from './main.js';
+ import * as PopupMenu from './popupMenu.js';
++import {formOf} from './lumaPresentation/layout.js';
++import {
++    ATTENTION_LIMIT, ATTENTION_LINGER_MS, PIN_LIMIT, arrange, capacityFor,
++    catalogFrom, isChromiumStatusId, statusItemApp,
++} from './lumaWellModel.js';
+ 
+-export const PIN_LIMIT = 4;
+-export const ATTENTION_LIMIT = 2;
+-export const ATTENTION_LINGER_MS = 3000;
++export {ATTENTION_LIMIT, ATTENTION_LINGER_MS, PIN_LIMIT, arrange};
+ export const READOUT_MAX_CHARS = 6;
++// The overflow shows the faces of the first few apps it holds.
++const STACK_FACES = 3;
++const STACK_GLYPH = 14;
+ // The optical size of every glyph in the Well row, Luma's own and an
+ // extension's: the system indicators' own 14px, not an icon's native size.
+ const GLYPH_SIZE = 14;
+@@ -61,25 +67,6 @@ export class WellStore {
+     }
+ }
+ 
+-// Which items the Well shows, in order, and how many wait behind the count.
+-// Pure, so every rule in the handoff is testable without a Shell.
+-export function arrange(items, {pins, hiddenWhenIdle, pinLimit = PIN_LIMIT, now = Date.now()}) {
+-    const shown = [];
+-    const byKey = new Map(items.map(item => [item.key, item]));
+-    for (const key of pins.slice(0, pinLimit)) {
+-        const item = byKey.get(key);
+-        if (item && !(item.status === 'Passive' && hiddenWhenIdle.includes(key)))
+-            shown.push(item);
+-    }
+-    const asking = items.filter(item => !shown.includes(item) &&
+-        (item.status === 'NeedsAttention' || (item.attentionUntil ?? 0) > now));
+-    shown.push(...asking.slice(0, ATTENTION_LIMIT));
+-    shown.push(...items.filter(item => !shown.includes(item) && item.recording));
+-    const rest = items.filter(item => !shown.includes(item) &&
+-        !(item.status === 'Passive' && hiddenWhenIdle.includes(item.key)));
+-    return {shown, rest};
+-}
+-
+ export function readoutText(label) {
+     const text = (label ?? '').trim();
+     return text.length > 0 && text.length <= READOUT_MAX_CHARS ? text : '';
+@@ -113,18 +100,105 @@ class WellSource {
+         this.recording = false;
+     }
+ 
++    get tooltip() {
++        // The host does not keep the tooltip; resolveProcess() reads it.
++        let tooltip = this._tooltip ?? this.sni?._proxy?.ToolTip;
++        if (tooltip instanceof GLib.Variant)
++            tooltip = tooltip.deepUnpack();
++        return Array.isArray(tooltip) ? `${tooltip[2] ?? ''}`.trim() : '';
++    }
++
++    // The installed app this item belongs to, when one can be named: the
++    // desktop entry the item names, or for a browser's status icon the web
++    // app it speaks for, else the browser. A browser names every status icon
++    // chrome_status_icon_<n> and draws in it whichever app asked, so that id
++    // alone named a web app's icon "Chrome".
++    get app() {
++        if (!this.sni)
++            return null;
++        const desktop = this.sni._proxy?.DesktopEntry ?? this.sni.desktopId;
++        const hint = this._processApp ?? null;
++        const facts = [this.sni.id, this.sni.title, this.tooltip, desktop, hint, this._program].join('\n');
++        if (facts !== this._identityFacts) {
++            this._identityFacts = facts;
++            const apps = Shell.AppSystem.get_default();
++            const found = statusItemApp({id: this.sni.id, title: this.sni.title,
++                tooltip: this.tooltip, desktopEntry: typeof desktop === 'string' ? desktop : '',
++                hint, program: this._program}, catalogFrom(apps));
++            this._identity = found ? {app: apps.lookup_app(found.id), via: found.via} : null;
++        }
++        return this._identity?.app ?? null;
++    }
++
++    // A browser's status icon carries nothing that says which browser sent
++    // it; its owner's process does, and its tooltip says which of the
++    // browser's apps it is for. Asked once, then the Well rebuilds.
++    resolveProcess(done) {
++        const proxy = this.sni?._proxy;
++        const owner = proxy?.g_name_owner;
++        if (this._processAsked || !owner || !isChromiumStatusId(this.sni.id))
++            return;
++        this._processAsked = true;
++        let pending = 2;
++        const settled = () => {
++            if (--pending === 0)
++                done();
++        };
++        Gio.DBus.session.call(owner, proxy.g_object_path, 'org.freedesktop.DBus.Properties', 'Get',
++            new GLib.Variant('(ss)', ['org.kde.StatusNotifierItem', 'ToolTip']),
++            new GLib.VariantType('(v)'), Gio.DBusCallFlags.NONE, -1, null, (bus, result) => {
++                try {
++                    this._tooltip = bus.call_finish(result).deepUnpack()[0].deepUnpack();
++                } catch {
++                    this._tooltip = null;
++                }
++                settled();
++            });
++        Gio.DBus.session.call('org.freedesktop.DBus', '/org/freedesktop/DBus',
++            'org.freedesktop.DBus', 'GetConnectionUnixProcessID', new GLib.Variant('(s)', [owner]),
++            new GLib.VariantType('(u)'), Gio.DBusCallFlags.NONE, -1, null, (bus, result) => {
++                try {
++                    const [pid] = bus.call_finish(result).deepUnpack();
++                    this._processApp = Shell.WindowTracker.get_default().get_app_from_pid(pid)?.get_id() ?? null;
++                    try {
++                        this._program = GLib.file_read_link(`/proc/${pid}/exe`);
++                    } catch {
++                        this._program = '';
++                    }
++                } catch (e) {
++                    console.warn(`[luma-well] could not place a browser status icon: ${e.message}`);
++                }
++                settled();
++            });
++    }
++
++    // Whether the item's face is the app's own icon rather than the one it
++    // sent: always for an app a browser speaks for, so its name and its icon
++    // come from the same app.
++    get facesAsApp() {
++        return Boolean(this.app) && this._identity?.via !== 'entry';
++    }
++
++    get faceKey() {
++        return this.facesAsApp ? this.app.get_id() : '';
++    }
++
+     get key() {
+-        if (this.sni)
++        if (this.sni) {
++            // A browser's status icon ids are a per-run counter; its app is
++            // what a pin keeps.
++            if (this.facesAsApp)
++                return this.app.get_id().toLowerCase();
+             return (this.sni.id || this.sni.title || this.sni.uniqueId || '').toLowerCase();
++        }
+         return (this.tray?._icon?.wm_class || this.tray?.uniqueId || 'tray').toLowerCase();
+     }
+ 
+     get name() {
+-        const desktop = this.sni?._proxy?.DesktopEntry ?? this.sni?.desktopId;
+-        const apps = Shell.AppSystem.get_default();
+-        const app = typeof desktop === 'string' && desktop ? apps.lookup_app(desktop.endsWith('.desktop') ? desktop : `${desktop}.desktop`) : null;
++        const app = this.app;
+         if (app) return app.get_name();
+-        const raw = this.sni?.title || this.sni?.id || this.tray?._icon?.title || this.tray?._icon?.wm_class || '';
++        // A browser's status icon says who it is only in its tooltip.
++        const raw = this.sni?.title || (isChromiumStatusId(this.sni?.id) ? this.tooltip : '') || this.sni?.id || this.tray?._icon?.title || this.tray?._icon?.wm_class || '';
+         const name = raw.replace(/[_-]status[_-]icon.*$/i, '').replace(/[_-]+/g, ' ').trim();
+         return name ? name[0].toUpperCase() + name.slice(1) : _('Application');
+     }
+@@ -138,10 +212,8 @@ class WellSource {
+     }
+ 
+     get detail() {
+-        let tooltip = this.sni?._proxy?.ToolTip;
+-        if (tooltip instanceof GLib.Variant)
+-            tooltip = tooltip.deepUnpack();
+-        const title = Array.isArray(tooltip) ? `${tooltip[2] ?? ''}` : '';
++        // A tooltip that only repeats the app's name says nothing more.
++        const title = this.tooltip.toLowerCase() === this.name.toLowerCase() ? '' : this.tooltip;
+         return title || (this.label && !readoutText(this.label) ? this.label : '');
+     }
+ 
+@@ -164,7 +236,9 @@ class WellSource {
+             }
+             const name = this.sni?.icon?.name;
+             let glyph;
+-            if (host?.gicon) {
++            if (this.facesAsApp) {
++                glyph = new St.Icon({gicon: this.app.get_icon(), icon_size: size});
++            } else if (host?.gicon) {
+                 glyph = new St.Icon({gicon: host.gicon, icon_size: size});
+             } else if (host?.content) {
+                 glyph = new Clutter.Actor({content: host.content, width: size, height: size,
+@@ -315,6 +389,7 @@ class LumaWellItem extends St.Widget {
+             y_align: Clutter.ActorAlign.CENTER, layout_manager: new Clutter.BinLayout(), accessible_role: Atk.Role.PUSH_BUTTON});
+         this.source = source;
+         this._well = well;
++        this.faceKey = source.faceKey;
+         const row = new St.BoxLayout({style_class: 'luma-well-item-row', x_align: Clutter.ActorAlign.CENTER,
+             y_align: Clutter.ActorAlign.CENTER});
+         row.add_child(source.makeGlyph());
+@@ -400,9 +475,18 @@ export const Well = GObject.registerClass({
+         this._items = new Map();
+         this.arrowSide = St.Side.BOTTOM;
+         this._insertion = new St.Widget({style_class: 'luma-well-insertion', visible: false});
+-        this._chip = new St.Button({style_class: 'luma-well-count', can_focus: true,
+-            child: new St.Icon({icon_name: 'view-app-grid-symbolic', icon_size: 16}),
++        // The overflow shows what it holds: the faces of the apps behind it,
++        // stacked, and how many there are.
++        this._stackFaces = new St.Widget({style_class: 'luma-well-stack-faces',
++            layout_manager: new Clutter.FixedLayout(), y_align: Clutter.ActorAlign.CENTER});
++        this._stackCount = new St.Label({style_class: 'luma-well-stack-count',
+             y_align: Clutter.ActorAlign.CENTER});
++        const stack = new St.BoxLayout({style_class: 'luma-well-stack', y_align: Clutter.ActorAlign.CENTER});
++        stack.add_child(this._stackFaces);
++        stack.add_child(this._stackCount);
++        this._stackKeys = '';
++        this._chip = new St.Button({style_class: 'luma-well-count', can_focus: true,
++            child: stack, y_align: Clutter.ActorAlign.CENTER});
+         this._chip.connect('clicked', () => this._togglePopover());
+         this._delegate = this;
+         this._popover = null;
+@@ -436,7 +520,12 @@ export const Well = GObject.registerClass({
+             return true;
+         const source = new WellSource(indicator);
+         this._sources.set(indicator, source);
++        const placed = () => {
++            if (this._sources.get(indicator) === source)
++                this._rebuild();
++        };
+         const changed = () => {
++            source.resolveProcess(placed);
+             if (source.sni?.status !== 'NeedsAttention' && source._wasAsking)
+                 source.attentionUntil = Date.now() + ATTENTION_LINGER_MS;
+             source._wasAsking = source.sni?.status === 'NeedsAttention';
+@@ -458,6 +547,7 @@ export const Well = GObject.registerClass({
+             this._store.save();
+             this._pulse = true;
+         }
++        source.resolveProcess(placed);
+         this._rebuild();
+         return true;
+     }
+@@ -700,9 +790,39 @@ export const Well = GObject.registerClass({
+         return [...this._sources.values()].filter(source => source.sni ? Boolean(source.sni.id) : true);
+     }
+ 
++    // How many items fit, by the form of the screen the Well is on.
++    _capacity() {
++        const monitor = Main.layoutManager.findMonitorForActor?.(this) ?? Main.layoutManager.primaryMonitor;
++        return monitor ? capacityFor(formOf(monitor.width, monitor.height)) : capacityFor(null);
++    }
++
++    _syncStack(rest) {
++        const keys = rest.map(source => source.key).join('\n');
++        this._stackCount.text = `${rest.length}`;
++        if (keys === this._stackKeys)
++            return;
++        this._stackKeys = keys;
++        this._stackFaces.destroy_all_children();
++        const faces = rest.slice(0, STACK_FACES);
++        const step = Math.round(STACK_GLYPH * 0.65);
++        // The first app sits on top; each one after it tucks in behind.
++        faces.forEach((source, index) => {
++            const face = new St.Bin({style_class: 'luma-well-stack-face',
++                child: source.makeGlyph(STACK_GLYPH)});
++            face.set_position(index * step, 0);
++            this._stackFaces.insert_child_at_index(face, 0);
++        });
++        const names = rest.map(source => source.name);
++        this._chip.accessible_name = rest.length === 1
++            ? _('1 more app in the background')
++            : _('%d more apps in the background').format(rest.length);
++        this._chip.set_tooltip_text?.(names.join(', '));
++    }
++
+     _rebuild() {
+         const sources = this._ready();
+-        const {shown, rest} = arrange(sources, this._store);
++        const {shown, rest} = arrange(sources, {pins: this._store.pins,
++            hiddenWhenIdle: this._store.hiddenWhenIdle, capacity: this._capacity()});
+         const extensions = [...(this._extensions ?? new Map()).entries()];
+         // An application can swap its tray icon at any time; the row's size
+         // and ink are its own, not the icon's.
+@@ -715,6 +835,12 @@ export const Well = GObject.registerClass({
+         }
+         for (const source of shown) {
+             let item = this._items.get(source.indicator);
++            // The item learnt whose it is after its face was made.
++            if (item && item.faceKey !== source.faceKey) {
++                item.destroy();
++                this._items.delete(source.indicator);
++                item = null;
++            }
+             if (!item) {
+                 item = new WellItem(this, source);
+                 this._items.set(source.indicator, item);
+@@ -742,11 +868,10 @@ export const Well = GObject.registerClass({
+             index++;
+         }
+         this._rest = rest;
+-        this._chip.accessible_name = rest.length === 1
+-            ? _('1 more app in the background')
+-            : _('%d more apps in the background').format(rest.length);
+-        if (rest.length > 0)
++        if (rest.length > 0) {
++            this._syncStack(rest);
+             this.add_child(this._chip);
++        }
+         this.add_child(this._insertion);
+         this.add_child(this._host);
+         // Luma: a tray with nothing to show holds no width, no spacing and no
+@@ -769,7 +894,9 @@ export const Well = GObject.registerClass({
+                 return GLib.SOURCE_REMOVE;
+             });
+         }
+-        if (this._popover?.isOpen)
++        if (this._popover?.isOpen && rest.length === 0)
++            this._popover.close();
++        else if (this._popover?.isOpen)
+             this._fillPopover();
+         this.emit('changed');
+     }
+diff --git a/js/ui/lumaWellModel.js b/js/ui/lumaWellModel.js
+new file mode 100644
+index 0000000..20b1f4f
+--- /dev/null
++++ b/js/ui/lumaWellModel.js
+@@ -0,0 +1,231 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++// What the Well shows and who each item is, without a Shell: which status
++// items stay in view and which wait behind the overflow, and which installed
++// app a status item or a notification really belongs to. No gi imports, so
++// %check runs it under plain gjs.
++
++export const PIN_LIMIT = 4;
++export const ATTENTION_LIMIT = 2;
++export const ATTENTION_LINGER_MS = 3000;
++
++// How many status items the Well shows before it folds the rest away, by the
++// form of the screen it is on (lumaPresentation/layout.js formOf). A desktop
++// or a tablet has room for four; a narrower screen holds fewer.
++export const CAPACITY = {pocket: 1, phone: 2, fold: 3, tablet: 4};
++
++export function capacityFor(form) {
++    return CAPACITY[form] ?? CAPACITY.tablet;
++}
++
++// Which items the Well shows, in order, and which wait behind the overflow.
++// Kept apps, apps asking for attention and apps recording are always in
++// view. The others fill the Well up to its capacity. The overflow exists only
++// when it hides two or more apps: one app behind a button costs as much room
++// as the app itself, so a single extra app is shown instead.
++export function arrange(items, {pins, hiddenWhenIdle, pinLimit = PIN_LIMIT,
++    capacity = CAPACITY.tablet, now = Date.now()}) {
++    const idleHidden = item => item.status === 'Passive' && hiddenWhenIdle.includes(item.key);
++    const byKey = new Map(items.map(item => [item.key, item]));
++    const fixed = [];
++    for (const key of pins.slice(0, pinLimit)) {
++        const item = byKey.get(key);
++        if (item && !fixed.includes(item) && !idleHidden(item))
++            fixed.push(item);
++    }
++    const asking = items.filter(item => !fixed.includes(item) &&
++        (item.status === 'NeedsAttention' || (item.attentionUntil ?? 0) > now));
++    fixed.push(...asking.slice(0, ATTENTION_LIMIT));
++    fixed.push(...items.filter(item => !fixed.includes(item) && item.recording));
++    const others = items.filter(item => !fixed.includes(item) && !idleHidden(item));
++    const free = Math.max(0, capacity - fixed.length);
++    if (others.length <= Math.max(free, 1))
++        return {shown: [...fixed, ...others], rest: []};
++    // The overflow takes one place of its own.
++    const inline = Math.max(0, free - 1);
++    return {shown: [...fixed, ...others.slice(0, inline)], rest: others.slice(inline)};
++}
++
++// ── Identity ────────────────────────────────────────────────────────────
++// A Chromium-family browser runs every web app it installed in its own
++// process. Its status icon is named chrome_status_icon_<n> whoever it is
++// for, its notifications name the browser's desktop entry, and the window
++// tracker places its process under whichever of its windows it finds
++// first. None of those says which app is speaking; the web app's own
++// desktop entry (<browser>-<32 letters a-p>-<profile>.desktop, StartupWMClass
++// crx_<id>) and the item's own words do.
++
++const WEB_APP_ID = /(?:^|\.)([a-z][a-z0-9_]*(?:-[a-z][a-z0-9_]*)*)-([a-p]{32})-[^.]+\.desktop$/i;
++const WEB_APP_CLASS = /^crx_([a-p]{32})$/i;
++const CHROMIUM_STATUS_ID = /^chrom(?:e|ium)_status_icon_\d+$/i;
++
++// Desktop entries of the browsers that install web apps, by the prefix their
++// web apps' desktop entries carry. Viola is Chromium inside.
++export const BROWSERS = {
++    'chrome': ['google-chrome.desktop', 'com.google.Chrome.desktop',
++        'google-chrome-beta.desktop', 'google-chrome-unstable.desktop'],
++    'chromium': ['chromium-browser.desktop', 'chromium.desktop', 'org.chromium.Chromium.desktop'],
++    'msedge': ['microsoft-edge.desktop', 'com.microsoft.Edge.desktop'],
++    'brave': ['brave-browser.desktop', 'com.brave.Browser.desktop'],
++    'vivaldi': ['vivaldi-stable.desktop', 'com.vivaldi.Vivaldi.desktop'],
++    'viola': ['com.rhyme.viola.desktop', 'viola-browser.desktop'],
++};
++const BROWSER_IDS = new Set(Object.values(BROWSERS).flat().map(id => id.toLowerCase()));
++
++const words = text => (text ?? '').toLowerCase().normalize('NFKC')
++    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
++const compact = text => words(text).replace(/ /g, '');
++
++// The web app a desktop entry launches, or null: {browser, appId}.
++export function webAppOf(desc) {
++    if (!desc)
++        return null;
++    const byId = WEB_APP_ID.exec(desc.id ?? '');
++    const byClass = WEB_APP_CLASS.exec(desc.wmClass ?? '');
++    if (!byId && !byClass)
++        return null;
++    return {browser: byId ? byId[1].toLowerCase() : null,
++        appId: (byId?.[2] ?? byClass[1]).toLowerCase()};
++}
++
++export function isBrowser(desc) {
++    if (!desc || webAppOf(desc))
++        return false;
++    const id = (desc.id ?? '').toLowerCase();
++    return BROWSER_IDS.has(id) || [...BROWSER_IDS].some(known => id.endsWith(`.${known}`)) ||
++        (desc.categories ?? '').split(';').includes('WebBrowser');
++}
++
++export function isChromiumStatusId(id) {
++    return CHROMIUM_STATUS_ID.test(id ?? '');
++}
++
++// The browser that installed a web app: by its desktop entry's prefix, and
++// otherwise by the program its Exec line runs.
++export function browserOf(webApp, catalog) {
++    const prefix = webAppOf(webApp)?.browser;
++    for (const id of BROWSERS[prefix] ?? []) {
++        const desc = catalog.lookup(id);
++        if (desc)
++            return desc;
++    }
++    const program = (webApp.exec ?? '').split('/').pop();
++    const byProgram = program ? catalog.lookup(`${program}.desktop`) : null;
++    return byProgram && isBrowser(byProgram) ? byProgram : null;
++}
++
++export function webAppsOf(browser, catalog) {
++    return catalog.installed().filter(desc => {
++        if (!webAppOf(desc) || desc.hidden)
++            return false;
++        return !browser || browserOf(desc, catalog)?.id === browser.id;
++    });
++}
++
++// The one web app whose name the text gives, whole: "ChatGPT" names ChatGPT,
++// "Google Chrome" names no web app. Two answers are no answer.
++export function webAppNamedIn(text, webApps) {
++    const said = words(text);
++    if (!said)
++        return null;
++    const exact = webApps.filter(desc => words(desc.name) === said);
++    if (exact.length)
++        return exact.length === 1 ? exact[0] : null;
++    const inside = webApps.filter(desc => {
++        const name = words(desc.name);
++        return name.length >= 3 && ` ${said} `.includes(` ${name} `);
++    });
++    return inside.length === 1 ? inside[0] : null;
++}
++
++// The one web app a site belongs to, from the origin a browser puts first in
++// its notification ("chatgpt.com" -> ChatGPT, "app.slack.com" -> Slack).
++export function webAppForOrigin(host, webApps) {
++    const labels = (host ?? '').toLowerCase().split('.').filter(Boolean);
++    if (labels.length < 2)
++        return null;
++    const site = labels.slice(labels[0] === 'www' ? 1 : 0, -1);
++    const keys = new Set([...site, site.join('')].filter(key => key.length >= 3));
++    const found = webApps.filter(desc => keys.has(compact(desc.name)));
++    return found.length === 1 ? found[0] : null;
++}
++
++// The origin line a Chromium-family browser starts a notification body with.
++export function originOfBody(body) {
++    const [first, ...rest] = (body ?? '').split('\n\n');
++    const host = first.replace(/<[^>]*>/g, '').trim();
++    return rest.length && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host) ? host : null;
++}
++
++// The browser family a running program belongs to, from its path
++// (/opt/google/chrome/chrome, /usr/lib64/chromium-browser/chromium-browser,
++// .../viola/viola): the longest family name the file name starts with.
++export function familyOfProgram(program) {
++    const file = (program ?? '').split('/').pop().toLowerCase();
++    const known = Object.keys(BROWSERS).filter(family => file.startsWith(family));
++    return known.sort((a, b) => b.length - a.length)[0] ?? null;
++}
++
++function installedBrowsers(catalog, family = null) {
++    const families = family ? [family] : Object.keys(BROWSERS);
++    return families.flatMap(name => BROWSERS[name]).map(id => catalog.lookup(id)).filter(Boolean);
++}
++
++// Which installed app a status item belongs to, or null. hint is the app the
++// item's process was placed under and program the file it runs, when known.
++// Returns {id, via}: 'entry' when the item named its own desktop entry,
++// 'web-app' or 'browser' when it came from a browser.
++export function statusItemApp({id, title, tooltip, desktopEntry, hint, program}, catalog) {
++    if (desktopEntry) {
++        const own = catalog.lookup(desktopEntry.endsWith('.desktop') ? desktopEntry : `${desktopEntry}.desktop`);
++        if (own)
++            return {id: own.id, via: 'entry'};
++    }
++    const hinted = hint ? catalog.lookup(hint) : null;
++    const fromBrowser = isChromiumStatusId(id) || isBrowser(hinted) || Boolean(webAppOf(hinted));
++    if (!fromBrowser)
++        return null;
++    let browser = webAppOf(hinted) ? browserOf(hinted, catalog) : isBrowser(hinted) ? hinted : null;
++    const family = familyOfProgram(program);
++    browser ??= family ? installedBrowsers(catalog, family)[0] ?? null : null;
++    const candidates = installedBrowsers(catalog);
++    if (!browser && candidates.length === 1)
++        browser = candidates[0];
++    // A browser we cannot tell apart from another: the web app named, from
++    // any of them, still says whose the item is.
++    const webApps = browser ? webAppsOf(browser, catalog) : webAppsOf(null, catalog);
++    const webApp = webAppNamedIn(tooltip, webApps) ?? webAppNamedIn(title, webApps);
++    if (webApp)
++        return {id: webApp.id, via: 'web-app'};
++    browser ??= candidates[0] ?? null;
++    return browser ? {id: browser.id, via: 'browser'} : null;
++}
++
++// Which installed app a notification belongs to, once the daemon has placed
++// it under an app: a browser's notification from a site with an installed
++// web app belongs to that web app. Returns a desktop id or null (no change).
++export function notificationApp(appDesc, body, catalog) {
++    if (!isBrowser(appDesc))
++        return null;
++    const host = originOfBody(body);
++    if (!host)
++        return null;
++    return webAppForOrigin(host, webAppsOf(appDesc, catalog))?.id ?? null;
++}
++
++// The catalogue the identity rules read, from Shell.AppSystem (or anything
++// with lookup_app and get_installed).
++export function catalogFrom(appSystem) {
++    const describe = info => info ? {
++        id: info.get_id?.() ?? '',
++        name: info.get_name?.() ?? '',
++        wmClass: info.get_startup_wm_class?.() ?? '',
++        exec: (info.get_executable?.() ?? '').split(/\s+/)[0],
++        categories: info.get_categories?.() ?? '',
++        hidden: info.get_nodisplay?.() ?? false,
++    } : null;
++    let installed = null;
++    return {
++        lookup: id => describe(appSystem.lookup_app(id)?.get_app_info?.() ?? null),
++        installed: () => (installed ??= appSystem.get_installed().map(describe).filter(Boolean)),
++    };
++}
+diff --git a/js/ui/notificationDaemon.js b/js/ui/notificationDaemon.js
+index 4e7dc6f..4790bf9 100644
+--- a/js/ui/notificationDaemon.js
++++ b/js/ui/notificationDaemon.js
+@@ -8,6 +8,7 @@ import * as Config from '../misc/config.js';
+ import * as Main from './main.js';
+ import * as MessageTray from './messageTray.js';
+ import * as AndroidActivation from './lumaAndroidActivation.js';
++import {catalogFrom, notificationApp} from './lumaWellModel.js';
+ 
+ import {loadInterfaceXML} from '../misc/fileUtils.js';
+ import {NotificationErrors, NotificationError} from '../misc/dbusErrors.js';
+@@ -96,12 +97,30 @@ class FdoNotificationDaemon {
+     // capsule runs in a process the window tracker cannot place, or places
+     // under something else, and its card then showed whatever icon the
+     // notification carried -- often a symbolic glyph -- instead of the app.
+-    _getApp(pid, appId, appName) {
++    //
++    // A browser sends every site's notification under its own desktop entry
++    // and puts the site's origin first in the body. When that site is a web
++    // app installed from the browser, the notification is the web app's: its
++    // card shows the web app's name and icon, as its status icon does.
++    _getApp(pid, appId, appName, body = '') {
++        return this._webAppOf(this._namedApp(pid, appId, appName), body);
++    }
++
++    _namedApp(pid, appId, appName) {
+         return lookupNotifyingApp(appId) ??
+             Shell.WindowTracker.get_default().get_app_from_pid(pid) ??
+             lookupNotifyingApp(appName, {byName: true});
+     }
+ 
++    _webAppOf(app, body) {
++        if (!app?.get_app_info?.())
++            return app;
++        const appSys = Shell.AppSystem.get_default();
++        const catalog = catalogFrom(appSys);
++        const webApp = notificationApp(catalog.lookup(app.get_id()), body, catalog);
++        return (webApp && appSys.lookup_app(webApp)) || app;
++    }
++
+     // Returns the source associated with an app.
+     //
+     // If no existing source is found a new one is created.
+@@ -188,7 +207,7 @@ class FdoNotificationDaemon {
+             const sender = hints['x-shell-sender'];
+             const pid = hints['x-shell-sender-pid'];
+             const appId = hints['desktop-entry'];
+-            const app = this._getApp(pid, appId, appName);
++            const app = this._getApp(pid, appId, appName, body);
+ 
+             id = this._nextNotificationId++;
+             source = app

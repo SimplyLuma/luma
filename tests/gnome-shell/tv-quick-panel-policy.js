@@ -59,6 +59,21 @@ assert(kinds(outputs).includes('level output output sep'), 'the outputs drop und
 assert(outputs.find(row => row.kind === 'output' && row.current).output.name === 'TV', 'the one in use is marked');
 assert(!M.panelRows({...full, level: {...full.level, outputs: [{id: 1}]}, open: {outputs: true}})
     .some(row => row.kind === 'output'), 'one output has no list');
+// The per-app mixer: each app's own volume under the outputs, System sounds first.
+{
+    const apps = [{id: '@system', name: 'System sounds'}, {id: 'org.example.Player', name: 'Player'}];
+    const mixed = M.panelRows({...full, level: {...full.level, apps}, open: {outputs: true}});
+    assert(kinds(mixed).includes('level output output app app sep'), 'the apps drop under the outputs');
+    assert(mixed.filter(row => row.kind === 'app').map(row => row.key).join() === 'app:@system,app:org.example.Player',
+        'apps keep the mixer order and a stable key');
+    assert(!M.panelRows({...full, level: {...full.level, apps}}).some(row => row.kind === 'app'),
+        'apps show only while the volume row is dropped open');
+    assert(kinds(M.panelRows({...full, level: {...full.level, outputs: [{id: 1}], apps}, open: {outputs: true}}))
+        .includes('level app app'), 'one output: the apps alone');
+    assert(M.levelOpens({outputs: [{id: 1}], apps}) && !M.levelOpens({outputs: [{id: 1}], apps: []}),
+        'OK opens the volume row when there is a list to show');
+    assert(M.focusable({kind: 'app'}), 'the remote stops on each app');
+}
 
 // Leave TV Mode (Dell, 4 Nov: TV turned on from Quick Options, and no way back in TV posture):
 // only when TV was chosen, its own section right under the toggles, one Down from them.

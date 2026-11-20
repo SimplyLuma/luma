@@ -1,0 +1,1139 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] Drag files out of the Shell
+
+Files shown by the Shell could not be dragged anywhere: the Shell's own
+drag and drop never reaches a client. lumaFileDrag.js drags them with
+Mutter's MetaDataDrag (mutter 0031), a compositor-owned Wayland drag, so
+any surface that shows files can hand them to Filer, GTK and Qt
+applications, Flatpak applications through the document portal, browser
+drop zones and X11 applications, exactly as a drag from Filer would.
+
+The drag offers Filer's types in Filer's order: paths as text, the URI
+list and a document portal FileTransfer key (StartTransfer with O_PATH
+descriptors from shell_util_open_paths(), stopped after the drag). Shift
+moves and Control copies; a plain drop copies. Over the Shell the drag
+uses the same targets as a drag from Filer (xdndHandler): an
+application's dock tile opens the files, and a dock folder now takes
+files in through Filer's FileOperations2 (with a GIO fallback). The
+cursor and the drag image show whether the Shell would take the drop.
+
+A pointer press becomes a drag past 8 px, so a click stays a click; a
+touch drag starts with a long press, and moving first scrolls. The drag
+image is a stack of the files' faces with a count, hidden from pick.
+
+Dock folders: Stack rows, Grid cells and the desktop panel's cards are
+drag sources. Control-click and Shift-click select, and dragging a
+selected item drags the selection. While the drag runs the surface is
+transparent and lets the pointer through; a drop closes an attached
+surface, a cancel brings it back.
+---
+diff --git a/data/theme/luma-shelf.css b/data/theme/luma-shelf.css
+index 11087f3..caf25ea 100644
+--- a/data/theme/luma-shelf.css
++++ b/data/theme/luma-shelf.css
+@@ -2552,6 +2552,28 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-surface-frost .luma-dockf-cell:hover,
+ .luma-surface-glass .luma-dockf-cell:hover { background-color: rgba(39, 48, 56, 0.06); }
+ .luma-dockf-cell:focus { box-shadow: inset 0 0 0 2px #80a8d2; }
++.luma-dockf-row:selected,
++.luma-dockf-cell:selected { background-color: rgba(128, 168, 210, 0.18); box-shadow: inset 0 0 0 2px rgba(128, 168, 210, 0.75); }
++.luma-dockf-row:lifted,
++.luma-dockf-cell:lifted { background-color: rgba(255, 255, 255, 0.10); }
++
++/* Files dragged out of the Shell (lumaFileDrag.js): the item under the
++ * pointer, a small stack for several, and their count. */
++.luma-file-drag-preview { background-color: transparent; }
++.luma-file-drag-card { background-color: transparent; }
++.luma-file-drag-count {
++  min-width: 22px;
++  height: 22px;
++  border-radius: 11px;
++  padding: 0 6px;
++  background-color: #2f7de1;
++  color: white;
++  font-family: Figtree, sans-serif;
++  font-size: 12px;
++  font-weight: 700;
++  text-align: center;
++  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
++}
+ .luma-dockf-cell-name {
+   font-family: Figtree, sans-serif;
+   font-size: 13px;
+@@ -2620,6 +2642,10 @@ StBoxLayout.luma-notification-tray.luma-surface-dark .luma-notification-tray-cou
+ .luma-dockf-rail:drop .luma-dockf-placeholder {
+   border-color: rgba(128, 168, 210, 0.85);
+   background-color: rgba(128, 168, 210, 0.16); }
++/* A folder tile taking dropped files in. */
++.luma-dockf-tile:drop {
++  border-radius: 12px;
++  background-color: rgba(128, 168, 210, 0.30); }
+ 
+ /* Studio Desktop, luma preset: forty pixel artwork in sixty-eight pixel islands. */
+ .luma-shelf-material, .luma-shelf-shadow, .luma-shelf-stroke { border-radius: 16px; }
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index a2441d4..197ba45 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -99,6 +99,8 @@
+     <file>ui/lumaDockBadgeModel.js</file>
+     <file>ui/lumaDockBadges.js</file>
+     <file>ui/lumaDockFolders.js</file>
++    <file>ui/lumaFileDrag.js</file>
++    <file>ui/lumaFileDragModel.js</file>
+     <file>ui/lumaDockWindows.js</file>
+     <file>ui/lumaNotificationBeacon.js</file>
+     <file>ui/lumaCast.js</file>
+diff --git a/js/ui/lumaDockFolders.js b/js/ui/lumaDockFolders.js
+index 6966dd1..670a628 100644
+--- a/js/ui/lumaDockFolders.js
++++ b/js/ui/lumaDockFolders.js
+@@ -29,6 +29,7 @@ import Gio from 'gi://Gio';
+ import GLib from 'gi://GLib';
+ import GnomeDesktop from 'gi://GnomeDesktop';
+ import GObject from 'gi://GObject';
++import Meta from 'gi://Meta';
+ import Pango from 'gi://Pango';
+ import Shell from 'gi://Shell';
+ import St from 'gi://St';
+@@ -40,6 +41,9 @@ import * as PopupMenu from './popupMenu.js';
+ import * as SurfaceMaterials from './lumaSurfaceMaterials.js';
+ import * as Placement from './lumaPopoverPlacement.js';
+ import * as BadgeModel from './lumaDockBadgeModel.js';
++import * as FileDrag from './lumaFileDrag.js';
++import * as FileDragModel from './lumaFileDragModel.js';
++import {FileFace} from './lumaPresentation/fileFaces.js';
+ import {formatTimeSpan} from '../misc/dateUtils.js';
+ import {DASH_TILE_SIZE, DASH_TILE_GAP, DIVIDER_WIDTH, SHELF_DIVIDER_LENGTH,
+     SHELF_ISLAND_RADIUS} from './shelfMetrics.js';
+@@ -527,6 +531,11 @@ class FolderTile extends St.Button {
+         this.sync();
+     }
+ 
++    // Files dropped on a folder go into it, as in Filer.
++    getFileDropDirectory() {
++        return this.model.isApplications ? null : this.model.file ?? null;
++    }
++
+     _syncLift() {
+         if (!St.Settings.get().enable_animations) {
+             this._mark.translation_y = this.hover ? -3 : 0;
+@@ -890,6 +899,9 @@ class DockFolders extends GObject.Object {
+         this._keyed = false;
+         this._placeLater = 0;
+         this._thumbs = new Map();
++        this._selected = new Set();     // uris of the open folder's selection
++        this._selectionAnchor = null;
++        this._fileDrag = null;
+ 
+         // One rail, whichever island it is in. Married it is a part of the
+         // dock; separated it is the 'folders' island. Nothing is copied.
+@@ -1164,6 +1176,8 @@ class DockFolders extends GObject.Object {
+         if (this._desktopUI?.openApplications(model)) return;
+         this._desktopUI?.willClose();
+         const switching = !!this.openFolder && !this.detached;
++        if (this.openFolder !== model)
++            this.clearSelection();
+         this.openFolder = model;
+         if (!switching)
+             this.detached = false;
+@@ -1194,6 +1208,7 @@ class DockFolders extends GObject.Object {
+             return;
+         this._cancelThumbnails();
+         this._endHeaderDrag();
++        this.clearSelection();
+         const tile = this._tiles.get(this.openFolder.uri);
+         this.openFolder = null;
+         this.detached = false;
+@@ -1289,8 +1304,11 @@ class DockFolders extends GObject.Object {
+                     cell.width = cellWidth;
+                     cell.height = 132 * scaleFactor();
+                 }
+-                cell.connect('clicked', () => this._activate(item));
+-                if (!item.app) this._hookItemMenu(cell, item);
++                cell.connect('clicked', () => this._clickItem(item));
++                if (!item.app) {
++                    this._hookItemMenu(cell, item);
++                    this._hookItemDrag(cell, item);
++                }
+                 row.add_child(cell);
+             });
+             // A short last row keeps the columns, rather than stretching.
+@@ -1303,8 +1321,9 @@ class DockFolders extends GObject.Object {
+         } else {
+             for (const item of items) {
+                 const row = new FolderRow(item, model.isNew(item));
+-                row.connect('clicked', () => this._activate(item));
++                row.connect('clicked', () => this._clickItem(item));
+                 this._hookItemMenu(row, item);
++                this._hookItemDrag(row, item);
+                 body.add_child(row);
+             }
+         }
+@@ -1312,6 +1331,7 @@ class DockFolders extends GObject.Object {
+             const actors = this._itemActors();
+             (actors[Math.min(focusAt, actors.length - 1)] ?? this._surface).grab_key_focus();
+         }
++        this.syncSelection();
+         this._countDirectories(items);
+         this._cancelThumbnails();
+         this._queueThumbnails();
+@@ -1899,6 +1919,126 @@ class DockFolders extends GObject.Object {
+         menu.open();
+     }
+ 
++    // ── Selecting and dragging items ────────────────────────────────────────
++    //
++    // Control-click adds or removes an item, Shift-click selects up to it, as
++    // in Filer; a plain click opens, and clears a selection. Dragging an item
++    // that is selected drags the whole selection.
++
++    _orderedItems() {
++        if (this._desktopUI?.panelActive)
++            return this._desktopUI.orderedItems?.() ?? [];
++        return this.openFolder?.items ?? [];
++    }
++
++    selectClick(item) {
++        const [, , modifiers] = global.get_pointer();
++        const control = modifiers & Clutter.ModifierType.CONTROL_MASK;
++        const shift = modifiers & Clutter.ModifierType.SHIFT_MASK;
++        if (item.app || (!control && !shift)) {
++            this.clearSelection();
++            return false;
++        }
++        if (shift && this._selectionAnchor) {
++            if (!control)
++                this._selected.clear();
++            for (const uri of FileDragModel.rangeBetween(this._orderedItems(),
++                this._selectionAnchor, item))
++                this._selected.add(uri);
++        } else if (this._selected.has(item.uri)) {
++            this._selected.delete(item.uri);
++            this._selectionAnchor = item.uri;
++        } else {
++            this._selected.add(item.uri);
++            this._selectionAnchor = item.uri;
++        }
++        this.syncSelection();
++        return true;
++    }
++
++    clearSelection() {
++        if (!this._selected.size && !this._selectionAnchor)
++            return;
++        this._selected.clear();
++        this._selectionAnchor = null;
++        this.syncSelection();
++    }
++
++    syncSelection(actors = this._itemActors()) {
++        for (const actor of actors) {
++            if (actor.item && this._selected.has(actor.item.uri))
++                actor.add_style_pseudo_class('selected');
++            else
++                actor.remove_style_pseudo_class('selected');
++        }
++    }
++
++    _clickItem(item) {
++        if (this.selectClick(item))
++            return;
++        this._activate(item);
++    }
++
++    _dragItems(item) {
++        return FileDragModel.dragSet(item, this._orderedItems(), this._selected)
++            .filter(i => !i.app);
++    }
++
++    _dragPreview(item) {
++        const face = new FileFace(item);
++        const path = this.previewFor(item, 128);
++        if (path)
++            face.showThumbnail(path);
++        return face;
++    }
++
++    _hookItemDrag(actor, item) {
++        if (item.app || !item.file?.get_path?.())
++            return;
++        FileDrag.attach(actor, {
++            files: () => this._dragItems(item).map(i => i.file),
++            kinds: () => this._dragItems(item).map(i => i.isDirectory
++                ? 'inode/directory' : i.contentType),
++            preview: () => this._dragItems(item).slice(0, 3).map(i => this._dragPreview(i)),
++            began: drag => this._fileDragBegan(drag),
++            ended: result => this._fileDragEnded(result),
++        });
++    }
++
++    // While files are dragged out the surface steps aside, invisible and
++    // out of the pointer's way, so the drop lands on whatever is behind it.
++    // A drop closes an attached surface; a cancelled drag brings it back as
++    // it was, and a detached one always comes back.
++    _fileDragBegan(drag) {
++        this._fileDrag = {drag, detached: this.detached, folder: this.openFolder};
++        this._itemMenu?.close();
++        Shell.util_set_hidden_from_pick(this._surface, true);
++        this._surface.remove_all_transitions();
++        this._surface.ease({opacity: 0,
++            duration: St.Settings.get().enable_animations ? 120 : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    _fileDragEnded(result) {
++        const state = this._fileDrag;
++        this._fileDrag = null;
++        Shell.util_set_hidden_from_pick(this._surface, false);
++        if (!state || this.openFolder !== state.folder)
++            return;
++        const dropped = result !== Meta.DataDragResult.CANCELLED;
++        if (dropped) {
++            this.clearSelection();
++            this.openFolder?.reload();
++        }
++        if (dropped && !state.detached) {
++            this.close();
++            return;
++        }
++        this._surface.ease({opacity: 255,
++            duration: St.Settings.get().enable_animations ? SHOW_TIME : 0,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
+     // ── An item's own menu ──────────────────────────────────────────────────
+     //
+     // The four things a file manager's menu is for, in Filer's own words and
+diff --git a/js/ui/lumaFileDrag.js b/js/ui/lumaFileDrag.js
+new file mode 100644
+index 0000000..ce7c11d
+--- /dev/null
++++ b/js/ui/lumaFileDrag.js
+@@ -0,0 +1,500 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Files dragged out of the Shell.
++//
++// A Shell surface that shows files lets them be dragged as if they came from
++// Filer: into Filer and every other application, Wayland or X11, sandboxed or
++// not, browser drop zones included, and onto the Shell's own file targets (an
++// application's dock tile opens them, a dock folder takes them in). The
++// surface says which actor shows which files and how to step aside; this
++// module owns the gesture, the drag image, the data and the drop.
++//
++// The drag is Mutter's MetaDataDrag, a compositor-owned Wayland drag source,
++// so clients see an ordinary drag and Xwayland gets it through the XDND
++// bridge. It offers what Filer offers, in Filer's order: paths as text, the
++// URI list, and the document portal's transfer key for sandboxed targets.
++// Shift moves and Control copies, as in Filer; with neither a drop copies,
++// because a drag out of a folder's preview must never empty that folder by
++// accident.
++//
++// Pointer: a press becomes a drag once it has travelled DRAG_THRESHOLD, so a
++// click is always a click. Touch: a long press lifts the item and the first
++// movement after it drags; moving before that is a scroll and belongs to the
++// list.
++
++import Clutter from 'gi://Clutter';
++import Gio from 'gi://Gio';
++import GLib from 'gi://GLib';
++import Meta from 'gi://Meta';
++import Shell from 'gi://Shell';
++import St from 'gi://St';
++
++import * as Main from './main.js';
++
++import * as Model from './lumaFileDragModel.js';
++
++export const {Action, DRAG_THRESHOLD, LONG_PRESS_MS, TOUCH_SLOP, MAX_FILES} = Model;
++const SENDER = 'shell';
++const PREVIEW_SIZE = 96;
++const PREVIEW_STACK = 3;
++const PORTAL_BUS = 'org.freedesktop.portal.Documents';
++const PORTAL_PATH = '/org/freedesktop/portal/documents';
++const PORTAL_IFACE = 'org.freedesktop.portal.FileTransfer';
++const PORTAL_BATCH = 16;
++const PORTAL_STOP_DELAY_S = 30;
++
++// Only local files can be dragged: a path is what every target reads.
++export function draggable(files) {
++    return files.filter(file => file?.get_path?.()).slice(0, MAX_FILES);
++}
++
++function bytes(text) {
++    return new GLib.Bytes(new TextEncoder().encode(text));
++}
++
++function scale() {
++    return St.ThemeContext.get_for_stage(global.stage).scale_factor;
++}
++
++export function isSupported() {
++    return typeof Meta.DataDrag?.new === 'function';
++}
++
++// ── The document portal ─────────────────────────────────────────────────────
++//
++// A sandboxed target cannot open a host path. The portal's FileTransfer
++// hands it the same files as documents: the source registers descriptors
++// under a key, and the target exchanges the key for paths it can open. The
++// key stays valid for every target that asks until the drag is over.
++
++class PortalTransfer {
++    constructor(paths) {
++        this._paths = paths;
++        this._key = null;
++        this._stopped = false;
++        this.ready = this._start();
++    }
++
++    _call(method, parameters, fdList = null) {
++        return new Promise((resolve, reject) => {
++            Gio.DBus.session.call_with_unix_fd_list(PORTAL_BUS, PORTAL_PATH, PORTAL_IFACE,
++                method, parameters, null, Gio.DBusCallFlags.NONE, 5000, fdList, null,
++                (connection, result) => {
++                    try {
++                        const [reply] = connection.call_with_unix_fd_list_finish(result);
++                        resolve(reply);
++                    } catch (error) {
++                        reject(error);
++                    }
++                });
++        });
++    }
++
++    async _register(writable) {
++        const options = {
++            writable: GLib.Variant.new_boolean(writable),
++            autostop: GLib.Variant.new_boolean(false),
++        };
++        const reply = await this._call('StartTransfer',
++            new GLib.Variant('(a{sv})', [options]));
++        const [key] = reply.deep_unpack();
++        try {
++            for (let start = 0; start < this._paths.length; start += PORTAL_BATCH) {
++                const batch = this._paths.slice(start, start + PORTAL_BATCH);
++                const fds = Shell.util_open_paths(batch);
++                await this._call('AddFiles', new GLib.Variant('(saha{sv})',
++                    [key, batch.map((_path, i) => i), {}]), fds);
++            }
++        } catch (error) {
++            this._stop(key);
++            throw error;
++        }
++        return key;
++    }
++
++    // Writable like Filer's, so an editor can save in place; a file that
++    // cannot be written is still offered, read-only.
++    async _start() {
++        try {
++            try {
++                this._key = await this._register(true);
++            } catch (error) {
++                this._key = await this._register(false);
++            }
++        } catch (error) {
++            console.debug(`Luma file drag: no document portal transfer: ${error.message}`);
++            return null;
++        }
++        if (this._stopped)
++            this._stop(this._key);
++        return this._key;
++    }
++
++    _stop(key) {
++        if (!key)
++            return;
++        Gio.DBus.session.call(PORTAL_BUS, PORTAL_PATH, PORTAL_IFACE, 'StopTransfer',
++            new GLib.Variant('(s)', [key]), null, Gio.DBusCallFlags.NONE, -1, null,
++            (connection, result) => {
++                try {
++                    connection.call_finish(result);
++                } catch (error) {
++                    console.debug(`Luma file drag: StopTransfer: ${error.message}`);
++                }
++            });
++    }
++
++    // A target may still be exchanging the key just after the drop.
++    stopLater() {
++        GLib.timeout_add_seconds(GLib.PRIORITY_LOW, PORTAL_STOP_DELAY_S, () => {
++            this._stopped = true;
++            this._stop(this._key);
++            this._key = null;
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++}
++
++// ── The drag image ──────────────────────────────────────────────────────────
++
++class DragPreview {
++    constructor(actors, count, hotspot) {
++        const size = PREVIEW_SIZE * scale();
++        this.actor = new St.Widget({
++            style_class: 'luma-file-drag-preview',
++            layout_manager: new Clutter.BinLayout(),
++            width: size, height: size,
++            reactive: false,
++            opacity: 0,
++        });
++        // The image is never what the drag is over: it must not be picked,
++        // or every client would see the Shell under the pointer.
++        Shell.util_set_hidden_from_pick(this.actor, true);
++        actors.slice(0, PREVIEW_STACK).reverse().forEach((child, i, all) => {
++            const depth = all.length - 1 - i;
++            const card = new St.Bin({style_class: 'luma-file-drag-card',
++                x_expand: true, y_expand: true,
++                x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER,
++                child});
++            card.set_pivot_point(0.5, 0.5);
++            card.rotation_angle_z = depth * 6;
++            card.translation_x = depth * 4 * scale();
++            card.translation_y = -depth * 3 * scale();
++            this.actor.add_child(card);
++        });
++        if (count > 1) {
++            this._badge = new St.Label({style_class: 'luma-file-drag-count',
++                text: `${count}`, x_expand: true, y_expand: true,
++                x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START});
++            this.actor.add_child(this._badge);
++        }
++        this._hotspot = hotspot;
++        Main.layoutManager.uiGroup.add_child(this.actor);
++        this.actor.set_pivot_point(hotspot[0], hotspot[1]);
++    }
++
++    show(x, y) {
++        this.moveTo(x, y);
++        this.actor.ease({opacity: 255, scale_x: 1.04, scale_y: 1.04,
++            duration: 120, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
++    }
++
++    moveTo(x, y) {
++        const [w, h] = this.actor.get_size();
++        this.actor.set_position(Math.round(x - w * this._hotspot[0]),
++            Math.round(y - h * this._hotspot[1]));
++        // Above everything the Shell draws, menus and the popover included.
++        this.actor.get_parent()?.set_child_above_sibling(this.actor, null);
++    }
++
++    setRefused(refused) {
++        this.actor.opacity = refused ? 200 : 255;
++    }
++
++    // Dropped: the item went where it was let go. Cancelled: it goes back
++    // to where it came from, if that is still on screen.
++    finish(result, origin) {
++        const done = () => this.actor.destroy();
++        if (!St.Settings.get().enable_animations) {
++            done();
++            return;
++        }
++        if (result === Meta.DataDragResult.CANCELLED && origin?.get_stage() && origin.mapped) {
++            const [x, y] = origin.get_transformed_position();
++            const [w, h] = origin.get_transformed_size();
++            const [pw, ph] = this.actor.get_size();
++            this.actor.ease({x: x + (w - pw) / 2, y: y + (h - ph) / 2,
++                scale_x: 1, scale_y: 1, opacity: 0, duration: 220,
++                mode: Clutter.AnimationMode.EASE_OUT_CUBIC, onStopped: done});
++            return;
++        }
++        this.actor.ease({scale_x: result === Meta.DataDragResult.CANCELLED ? 1 : 0.6,
++            scale_y: result === Meta.DataDragResult.CANCELLED ? 1 : 0.6,
++            opacity: 0, duration: 160,
++            mode: Clutter.AnimationMode.EASE_OUT_QUAD, onStopped: done});
++    }
++}
++
++// ── One drag ────────────────────────────────────────────────────────────────
++
++let _current = null;
++
++export function current() {
++    return _current;
++}
++
++export class FileDrag {
++    // files: Gio.File[]; kinds: content types in the same order (for the
++    // Shell's own targets); origin: the actor the drag left from.
++    constructor(files, {kinds = [], origin = null, preview = null, hotspot = [0.5, 0.5]} = {}) {
++        this.files = draggable(files);
++        this.kinds = this.files.map(file => kinds[files.indexOf(file)] ?? 'application/octet-stream');
++        this._origin = origin;
++        this._previewActors = preview ?? [];
++        this._hotspot = hotspot;
++        this.result = null;
++    }
++
++    // Starts the drag from the press or motion `event`. Returns false, with
++    // nothing left behind, when it cannot.
++    begin(event) {
++        if (!this.files.length || !isSupported() || _current)
++            return false;
++        const uris = this.files.map(file => file.get_uri());
++        const paths = this.files.map(file => file.get_path());
++        const drag = Meta.DataDrag.new(global.context);
++        drag.set_content(Model.MIME_TEXT, bytes(Model.plainText(paths)));
++        drag.set_content(Model.MIME_URI_LIST, bytes(Model.uriList(uris)));
++        drag.offer(Model.MIME_PORTAL);
++        drag.offer(Model.MIME_PORTAL_OLD);
++        drag.set_actions(Action.COPY | Action.MOVE, Action.COPY);
++
++        // The Shell's own targets answer through the handler Filer's drags
++        // use, so a dock tile treats these files exactly as Filer's.
++        this._token = Main.xdndHandler?.beginFileDrag?.(SENDER,
++            uris.map((uri, i) => [uri, this.kinds[i]])) ?? '';
++
++        drag.connect('motion', (_drag, x, y) => this._motion(x, y));
++        drag.connect('drop', (_drag, x, y) => this._drop(x, y));
++        drag.connect('ended', (_drag, result) => this._ended(result));
++        drag.connect('finished', () => this._finished());
++
++        this._drag = drag;
++        try {
++            if (!drag.begin(event))
++                throw new Error('the drag did not start');
++        } catch (error) {
++            console.warn(`Luma file drag: ${error.message}`);
++            this._drag = null;
++            this._endShellDrag(false);
++            return false;
++        }
++        _current = this;
++
++        const [x, y] = event.get_coords();
++        this._preview = new DragPreview(this._previewActors, this.files.length, this._hotspot);
++        this._preview.show(x, y);
++
++        // Requested only once someone may ask for it, and answered as soon
++        // as the portal has it: a target that asks earlier waits.
++        this._portal = new PortalTransfer(paths);
++        this._portal.ready.then(key => {
++            const content = key ? bytes(Model.portalKey(key)) : null;
++            drag.set_content(Model.MIME_PORTAL, content);
++            drag.set_content(Model.MIME_PORTAL_OLD, content);
++        });
++
++        // Escape is the drag's own; a lock or a mode change ends it too.
++        this._sessionId = Main.sessionMode.connect('updated', () => drag.cancel());
++        return true;
++    }
++
++    _motion(x, y) {
++        this._preview?.moveTo(x, y);
++        if (this._drag?.over_client) {
++            this._preview?.setRefused(false);
++            return Action.NONE;
++        }
++        const [, , modifiers] = global.get_pointer();
++        const action = Main.xdndHandler?.fileDropActionAt?.(SENDER, this._token, x, y,
++            Model.actionForModifiers(modifiers)) ?? Action.NONE;
++        this._preview?.setRefused(action === Action.NONE);
++        return action;
++    }
++
++    _drop(x, y) {
++        const [, , modifiers] = global.get_pointer();
++        const action = Main.xdndHandler?.fileDropActionAt?.(SENDER, this._token, x, y,
++            Model.actionForModifiers(modifiers)) ?? Action.NONE;
++        if (action === Action.NONE)
++            return false;
++        this._dropAction = action;
++        return true;
++    }
++
++    _endShellDrag(succeeded) {
++        if (!this._token)
++            return;
++        Main.xdndHandler.endFileDrag(SENDER, this._token, succeeded, this._dropAction);
++        this._token = '';
++    }
++
++    // The pointer let go: a new drag may start, while a client that took
++    // this one may still be reading it until finished.
++    _ended(result) {
++        this.result = result;
++        if (_current === this)
++            _current = null;
++        this._endShellDrag(result === Meta.DataDragResult.DROPPED_ON_COMPOSITOR);
++        this._preview?.finish(result, this._origin);
++        this._preview = null;
++        if (this._sessionId)
++            Main.sessionMode.disconnect(this._sessionId);
++        this._sessionId = 0;
++        this.onEnded?.(result);
++    }
++
++    _finished() {
++        this._portal?.stopLater();
++        this._portal = null;
++        this._drag = null;
++    }
++
++    cancel() {
++        this._drag?.cancel();
++    }
++}
++
++// ── The gesture ─────────────────────────────────────────────────────────────
++//
++// attach(actor, source) makes `actor` a place files are dragged from:
++//   source.files(): Gio.File[] (the selection when the actor is in one)
++//   source.kinds?(): content types, same order
++//   source.preview?(): actors for the drag image, one per file shown
++//   source.began?(drag), source.ended?(result): step aside, come back
++//
++// It watches the stage after a press rather than grabbing, so a press always
++// reaches what it landed on; nothing is taken until the gesture is a drag.
++
++export function attach(actor, source) {
++    let armed = null;
++
++    const disarm = () => {
++        if (!armed)
++            return;
++        if (armed.timer)
++            GLib.source_remove(armed.timer);
++        if (armed.watch)
++            global.stage.disconnect(armed.watch);
++        if (armed.lifted && actor.get_stage())
++            actor.remove_style_pseudo_class('lifted');
++        armed = null;
++    };
++
++    const start = event => {
++        const files = source.files?.() ?? [];
++        const drag = new FileDrag(files, {
++            kinds: source.kinds?.() ?? [],
++            origin: actor,
++            preview: source.preview?.() ?? [],
++            hotspot: armed.hotspot,
++        });
++        disarm();
++        // The press is the drag's now: the button forgets it, so the
++        // release cannot also be a click.
++        actor.fake_release?.();
++        if (!drag.begin(event))
++            return false;
++        drag.onEnded = result => source.ended?.(result, drag);
++        source.began?.(drag);
++        return true;
++    };
++
++    const onCaptured = (_stage, event) => {
++        if (!armed)
++            return Clutter.EVENT_PROPAGATE;
++        try {
++            const type = event.type();
++            if (armed.touch) {
++                if (event.get_event_sequence()?.get_slot() !== armed.slot)
++                    return Clutter.EVENT_PROPAGATE;
++                if (type === Clutter.EventType.TOUCH_UPDATE) {
++                    const [x, y] = event.get_coords();
++                    if (!armed.lifted) {
++                        if (Model.travelled(x - armed.x, y - armed.y, TOUCH_SLOP * scale()))
++                            disarm();
++                        return Clutter.EVENT_PROPAGATE;
++                    }
++                    return start(event) ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
++                }
++                if (type === Clutter.EventType.TOUCH_END ||
++                    type === Clutter.EventType.TOUCH_CANCEL) {
++                    const lifted = armed.lifted;
++                    disarm();
++                    // A long press that never moved was not a tap either.
++                    return lifted ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
++                }
++                return Clutter.EVENT_PROPAGATE;
++            }
++            if (type === Clutter.EventType.MOTION) {
++                const [x, y] = event.get_coords();
++                if (!Model.travelled(x - armed.x, y - armed.y, DRAG_THRESHOLD * scale()))
++                    return Clutter.EVENT_PROPAGATE;
++                return start(event) ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
++            }
++            if (type === Clutter.EventType.BUTTON_RELEASE ||
++                (type === Clutter.EventType.LEAVE && !actor.get_stage()))
++                disarm();
++        } catch (error) {
++            logError(error, 'Luma file drag: the gesture ended on an error');
++            disarm();
++        }
++        return Clutter.EVENT_PROPAGATE;
++    };
++
++    const arm = (event, touch) => {
++        disarm();
++        if (!isSupported() || _current)
++            return;
++        const [x, y] = event.get_coords();
++        const [ax, ay] = actor.get_transformed_position();
++        const [aw, ah] = actor.get_transformed_size();
++        armed = {
++            x, y, touch,
++            slot: event.get_event_sequence()?.get_slot(),
++            hotspot: Model.hotspot(x, y, ax, ay, aw, ah),
++            watch: global.stage.connect('captured-event', onCaptured),
++        };
++        if (touch) {
++            armed.timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, LONG_PRESS_MS, () => {
++                armed.timer = 0;
++                armed.lifted = true;
++                // Lifted: the tap is gone, the next movement drags.
++                actor.fake_release?.();
++                actor.add_style_pseudo_class('lifted');
++                return GLib.SOURCE_REMOVE;
++            });
++        }
++    };
++
++    const pressId = actor.connect('button-press-event', (_a, event) => {
++        if (event.get_button() === Clutter.BUTTON_PRIMARY)
++            arm(event, false);
++        return Clutter.EVENT_PROPAGATE;
++    });
++    const touchId = actor.connect('touch-event', (_a, event) => {
++        if (event.type() === Clutter.EventType.TOUCH_BEGIN)
++            arm(event, true);
++        return Clutter.EVENT_PROPAGATE;
++    });
++    const destroyId = actor.connect('destroy', () => disarm());
++
++    return {
++        detach() {
++            disarm();
++            actor.disconnect(pressId);
++            actor.disconnect(touchId);
++            actor.disconnect(destroyId);
++        },
++    };
++}
+diff --git a/js/ui/lumaFileDragModel.js b/js/ui/lumaFileDragModel.js
+new file mode 100644
+index 0000000..fdea963
+--- /dev/null
++++ b/js/ui/lumaFileDragModel.js
+@@ -0,0 +1,76 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// The rules of a file drag out of the Shell (lumaFileDrag.js), without the
++// Shell, so they can be tested on their own.
++
++// Meta.DataDragAction values.
++export const Action = {NONE: 0, COPY: 1, MOVE: 2, ASK: 4};
++
++// What a drag of files offers, in Filer's order (GTK's file list): paths as
++// text, the URI list, and the document portal's transfer key, new and old
++// names.
++export const MIME_TEXT = 'text/plain;charset=utf-8';
++export const MIME_URI_LIST = 'text/uri-list';
++export const MIME_PORTAL = 'application/vnd.portal.filetransfer';
++export const MIME_PORTAL_OLD = 'application/vnd.portal.files';
++export const MIME_TYPES = [MIME_TEXT, MIME_URI_LIST, MIME_PORTAL, MIME_PORTAL_OLD];
++
++export const DRAG_THRESHOLD = 8;        // px, GTK's default
++export const LONG_PRESS_MS = 450;
++export const TOUCH_SLOP = 12;           // px a finger may wander during the long press
++export const MAX_FILES = 64;            // what the Shell's own targets accept
++
++// Clutter.ModifierType bits.
++const SHIFT_MASK = 1 << 0;
++
++// RFC 2483: one URI per line, CRLF.
++export function uriList(uris) {
++    return uris.map(uri => `${uri}\r\n`).join('');
++}
++
++// GTK's text form of a file list: paths, one per line.
++export function plainText(paths) {
++    return paths.join('\n');
++}
++
++// GTK writes the key with its terminating NUL.
++export function portalKey(key) {
++    return `${key}\0`;
++}
++
++// Filer's modifier rules: Shift moves, Control copies. With neither a drop
++// copies: a drag out of a folder's preview must never empty the folder by
++// accident.
++export function actionForModifiers(modifiers) {
++    return modifiers & SHIFT_MASK ? Action.MOVE : Action.COPY;
++}
++
++// A press is a click until it has travelled further than the threshold.
++export function travelled(dx, dy, threshold) {
++    return Math.hypot(dx, dy) > threshold;
++}
++
++// Where the pointer took hold of the item, as fractions of its size, so the
++// drag image stays under the same spot of the item.
++export function hotspot(x, y, ax, ay, aw, ah) {
++    const fraction = (v, start, length) =>
++        length > 0 ? Math.min(1, Math.max(0, (v - start) / length)) : 0.5;
++    return [fraction(x, ax, aw), fraction(y, ay, ah)];
++}
++
++// The files one drag carries: what was pressed, or the selection when the
++// pressed item is part of it, in the order shown; never more than MAX_FILES.
++export function dragSet(pressed, ordered, selected, key = item => item.uri) {
++    if (!selected.has(key(pressed)))
++        return [pressed];
++    return ordered.filter(item => selected.has(key(item))).slice(0, MAX_FILES);
++}
++
++// Shift-click selects everything from the anchor to the item, inclusive.
++export function rangeBetween(ordered, anchor, item, key = i => i.uri) {
++    const from = ordered.findIndex(i => key(i) === anchor);
++    const to = ordered.findIndex(i => key(i) === key(item));
++    if (from < 0 || to < 0)
++        return [key(item)];
++    return ordered.slice(Math.min(from, to), Math.max(from, to) + 1).map(key);
++}
+diff --git a/js/ui/xdndHandler.js b/js/ui/xdndHandler.js
+index efc2b86..171dfee 100644
+--- a/js/ui/xdndHandler.js
++++ b/js/ui/xdndHandler.js
+@@ -188,7 +188,9 @@ export class XdndHandler extends Signals.EventEmitter {
+         return token;
+     }
+ 
+-    endFileDrag(sender, token, succeeded) {
++    // `action` is the drop's own (the Shell's drags know it); otherwise it
++    // follows the modifiers held when the drop lands.
++    endFileDrag(sender, token, succeeded, action = null) {
+         const drag = this._fileDrag;
+         if (!drag || drag.sender !== sender || drag.token !== token)
+             return;
+@@ -197,9 +199,36 @@ export class XdndHandler extends Signals.EventEmitter {
+             return;
+         }
+         drag.sourceEnded = true;
++        drag.action = action;
+         this._maybeFinishFileDrag();
+     }
+ 
++    // What a drop at (x, y) would do for the drag `token`: Meta.DataDragAction
++    // values, NONE where nothing takes it. Also moves the drop highlight.
++    fileDropActionAt(sender, token, x, y, wanted) {
++        const drag = this._fileDrag;
++        if (!drag || drag.sender !== sender || drag.token !== token)
++            return 0;
++        const actor = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y);
++        this._updateFileDropTarget(actor);
++        return this._fileDropAction(drag, drag.target, wanted);
++    }
++
++    _fileDropAction(drag, target, wanted) {
++        if (!target || target.inert)
++            return 0;
++        if (target.directory)
++            return wanted;
++        if (target.folderDrop)
++            return drag.folders ? 1 : 0;
++        return 1;
++    }
++
++    _modifierAction() {
++        const [, , modifiers] = global.get_pointer();
++        return modifiers & Clutter.ModifierType.SHIFT_MASK ? 2 : 1;
++    }
++
+     _fileDragMatchesApp(appInfo, files) {
+         if (!appInfo || (!appInfo.supports_uris() && !appInfo.supports_files()))
+             return false;
+@@ -212,6 +241,16 @@ export class XdndHandler extends Signals.EventEmitter {
+         const drag = this._fileDrag;
+         let target = null;
+         while (actor) {
++            // A folder on the dock takes files and folders in, as a folder
++            // in Filer does. Dropped back where they already are, nothing
++            // happens, and nothing beneath it answers instead.
++            const directory = actor._delegate?.getFileDropDirectory?.();
++            if (directory) {
++                const inert = drag.files.every(([uri]) =>
++                    Gio.File.new_for_uri(uri).get_parent()?.equal(directory));
++                target = {actor, directory, inert};
++                break;
++            }
+             // Somewhere that takes folders answers first, and answers for
+             // either kind: a file dropped there has to be refused out loud
+             // rather than fall through and look like nothing happened.
+@@ -227,16 +266,22 @@ export class XdndHandler extends Signals.EventEmitter {
+             }
+             actor = actor.get_parent();
+         }
++        if (drag.target?.actor === target?.actor && drag.target?.directory === target?.directory)
++            return;
+         if (drag.target) {
+             drag.target.actor.disconnect(drag.target.destroyId);
+             drag.target.actor.remove_style_pseudo_class('drop');
+         }
+         drag.target = target;
+-        if (target) {
++        if (target && !target.inert) {
+             target.destroyId = target.actor.connect('destroy', () => {
+                 drag.target = null;
+             });
+             target.actor.add_style_pseudo_class('drop');
++        } else if (target) {
++            target.destroyId = target.actor.connect('destroy', () => {
++                drag.target = null;
++            });
+         }
+     }
+ 
+@@ -269,9 +314,14 @@ export class XdndHandler extends Signals.EventEmitter {
+         // and subsequent drags cannot replay this launch.
+         const folders = drag.folders, files = drag.files;
+         const folderDrop = target?.folderDrop ?? null;
++        const action = drag.action ?? this._modifierAction();
+         this._clearFileDrag();
+-        if (!inside)
++        if (!inside || target.inert)
+             return;
++        if (target.directory) {
++            this._transferDroppedFiles(target.directory, files, action);
++            return;
++        }
+         if (folderDrop) {
+             if (!folders) {
+                 Main.notifyError(_('Only folders can be pinned to the dock'),
+@@ -284,6 +334,54 @@ export class XdndHandler extends Signals.EventEmitter {
+         this._openDroppedFiles(target.appInfo, files);
+     }
+ 
++    // Into a folder, the way Filer does it: Filer's own file operations, with
++    // its progress, conflict questions and undo. Without Filer, GIO copies or
++    // moves each file and never replaces one that is already there.
++    async _transferDroppedFiles(directory, files, action) {
++        const move = action === 2;
++        const uris = files.map(([uri]) => uri);
++        try {
++            await Gio.DBus.session.call('org.gnome.Nautilus',
++                '/org/gnome/Nautilus/FileOperations2', 'org.gnome.Nautilus.FileOperations2',
++                move ? 'MoveURIs' : 'CopyURIs',
++                new GLib.Variant('(assa{sv})', [uris, directory.get_uri(), {
++                    'timestamp': GLib.Variant.new_uint32(global.get_current_time()),
++                }]), null, Gio.DBusCallFlags.NONE, -1, null);
++            return;
++        } catch (error) {
++            console.debug(`Luma file drop: Filer's file operations unavailable: ${error.message}`);
++        }
++        for (const uri of uris) {
++            const file = Gio.File.new_for_uri(uri);
++            const destination = directory.get_child(file.get_basename());
++            try {
++                await new Promise((resolve, reject) => {
++                    const done = (object, result) => {
++                        try {
++                            if (move)
++                                object.move_finish(result);
++                            else
++                                object.copy_finish(result);
++                            resolve();
++                        } catch (error) {
++                            reject(error);
++                        }
++                    };
++                    if (move) {
++                        file.move_async(destination, Gio.FileCopyFlags.NOFOLLOW_SYMLINKS,
++                            GLib.PRIORITY_DEFAULT, null, null, done);
++                    } else {
++                        file.copy_async(destination, Gio.FileCopyFlags.NOFOLLOW_SYMLINKS,
++                            GLib.PRIORITY_DEFAULT, null, null, done);
++                    }
++                });
++            } catch (error) {
++                Main.notifyError(move ? _('Could not move %s').format(file.get_basename())
++                    : _('Could not copy %s').format(file.get_basename()), error.message);
++            }
++        }
++    }
++
+     // Never pin what the source merely said was a folder: the directories
+     // are confirmed off the Shell's main thread first, exactly as the
+     // regular-file path re-checks its own.
+diff --git a/src/shell-util.c b/src/shell-util.c
+index 2ccf624..22e5690 100644
+--- a/src/shell-util.c
++++ b/src/shell-util.c
+@@ -1,5 +1,10 @@
+ /* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*- */
+ 
++/* O_PATH */
++#ifndef _GNU_SOURCE
++#define _GNU_SOURCE
++#endif
++
+ #include "config.h"
+ 
+ #include <errno.h>
+@@ -55,6 +60,46 @@ stop_pick (ClutterActor *actor)
+  * If @hidden is %TRUE, hide @actor from pick even with a mode of
+  * %CLUTTER_PICK_ALL; if @hidden is %FALSE, unhide @actor.
+  */
++/**
++ * shell_util_open_paths:
++ * @paths: (array zero-terminated=1): absolute paths
++ * @error: return location for an error
++ *
++ * Opens each path as an O_PATH file descriptor, which names a file or folder
++ * without reading it, as the document portal's FileTransfer wants them.
++ *
++ * Returns: (transfer full): the descriptors, in the order of @paths
++ */
++GUnixFDList *
++shell_util_open_paths (const char * const  *paths,
++                       GError             **error)
++{
++  g_autoptr (GUnixFDList) list = g_unix_fd_list_new ();
++  int i;
++
++  for (i = 0; paths[i]; i++)
++    {
++      int fd = open (paths[i], O_PATH | O_CLOEXEC);
++      int saved_errno = errno;
++
++      if (fd < 0)
++        {
++          g_set_error (error, G_IO_ERROR, g_io_error_from_errno (saved_errno),
++                       "%s: %s", paths[i], g_strerror (saved_errno));
++          return NULL;
++        }
++
++      if (g_unix_fd_list_append (list, fd, error) < 0)
++        {
++          close (fd);
++          return NULL;
++        }
++      close (fd);
++    }
++
++  return g_steal_pointer (&list);
++}
++
+ void
+ shell_util_set_hidden_from_pick (ClutterActor *actor,
+                                  gboolean      hidden)
+diff --git a/src/shell-util.h b/src/shell-util.h
+index 81dd6da..2ada94e 100644
+--- a/src/shell-util.h
++++ b/src/shell-util.h
+@@ -8,8 +8,13 @@
+ #include <meta/meta-cursor-tracker.h>
+ #include <meta/meta-window-actor.h>
+ 
++#include <gio/gunixfdlist.h>
++
+ G_BEGIN_DECLS
+ 
++GUnixFDList *shell_util_open_paths     (const char * const *paths,
++                                        GError            **error);
++
+ void     shell_util_set_hidden_from_pick       (ClutterActor     *actor,
+                                                 gboolean          hidden);
+ 
