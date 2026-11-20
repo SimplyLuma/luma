@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.134%{?dist}
+Release:        1.luma.135%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,12 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.135
+- LumaVolumeSlider (VolumeSlider in luma_appkit): the kit's slider for a
+  volume, upright for a mixer's strip or flat for a row, with LumaAudioMeter
+  laid along exactly its track; unity mark and reset, muted, keys along it
+  only, ::moved for the person's moves; tokens --lumaui-volume-slider-*
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.134
 - DockTile(fit=True): a tile never larger than its content along its split;
   on a phone it stays under the main tile; Dock.refit() after a change.

@@ -151,11 +151,56 @@
 .ow-primary:hover { background-color: @luma_primary_hover; }
 .ow-primary:disabled, .ow-secondary:disabled { opacity: 0.5; }
 
-/* Share sound (capture_picker.py): the level under each app's name is the
-   shared progress well with the accent fill, thin enough to read as a meter. */
-.ac-row { padding-top: 9px; padding-bottom: 9px; }
-.ac-meter, .ac-meter > trough { min-height: 4px; border-radius: 2px; }
-.ac-meter > trough { background-color: alpha(@luma_ink, 0.10); border: none; box-shadow: none; }
-.ac-meter > trough > block.filled { background-color: @luma_accent; border-radius: 2px; min-height: 4px; }
-.ac-meter > trough > block.empty { background: none; }
-.ac-check { margin-left: 6px; }
+/* ── Share sound (capture_picker.py) ──────────────────────────────────────
+ * Luma Share's card (the Shell's luma-share.css): the asking app with the
+ * sharing badge, a centred question and what happens, the choices on one
+ * rounded block, and an equal Cancel and Share pair. Colour is the kit's
+ * tokens; violet is Share's sharing colour, nothing else uses it. */
+@define-color ac_sharing #7d5cf0;
+
+window.ac-dialog { background-color: @luma_content; border-radius: 24px; }
+.ac-card { padding: 26px 24px 20px; }
+
+.ac-who { margin-bottom: 14px; }
+/* A 26 violet circle with the sound glyph, ringed 3 in the card's fill. */
+.ac-badge {
+  min-width: 20px; min-height: 20px; margin: 0 -7px -7px 0;
+  border-radius: 999px; border: 3px solid @luma_content;
+  background-color: @ac_sharing; color: #ffffff;
+}
+.ac-badge image { -gtk-icon-size: 12px; color: #ffffff; }
+
+.ac-title { font-size: 17px; font-weight: 750; letter-spacing: -0.31px; color: @luma_ink; }
+.ac-body { margin-top: 6px; padding: 0 16px; font-size: 13.5px; color: @luma_muted; }
+
+/* The choices: rounded blocks of rows on the control fill, as Share's options. */
+.ac-scroll { margin-top: 18px; }
+list.ac-list { padding: 4px; border-radius: 14px; background-color: @luma_hover; }
+list.ac-list > row.ac-row {
+  min-height: 40px; padding: 7px 10px; border-radius: 10px;
+  background-color: transparent; color: @luma_ink;
+}
+list.ac-list > row.ac-row:hover { background-color: @luma_hover; }
+list.ac-list > row.ac-row:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+.ac-name { font-size: 13px; font-weight: 650; color: @luma_ink; }
+.ac-line { margin-top: 1px; font-size: 11.5px; color: @luma_muted; }
+.ac-all-tile { min-width: 28px; min-height: 28px; border-radius: 8px; background-color: @luma_hover; color: @luma_ink_secondary; }
+.ac-all-tile image { -gtk-icon-size: 16px; }
+/* LumaUI's meter, a short mono bar beside the name; LumaUI's checkbox ends the row. */
+box.lumaui-audio-meter.ac-meter { margin-right: 2px; }
+box.lumaui-audio-meter.ac-meter > .lumaui-meter-track { color: @luma_line; }
+.ac-caption { margin: 14px 10px 6px; font-size: 11.5px; font-weight: 650; color: @luma_muted; }
+.ac-empty { margin: 4px 10px 0; font-size: 12.5px; color: @luma_muted; }
+
+/* Luma Share's pair: two equal 42 buttons; Share is ink on the card. */
+.ac-actions { margin-top: 18px; }
+.ac-actions > button {
+  min-height: 42px; padding: 0; border-radius: 12px; border: none; box-shadow: none;
+  font-size: 13.5px; font-weight: 700;
+}
+.ac-actions > button.ac-cancel { background-color: @luma_hover; color: @luma_ink; }
+.ac-actions > button.ac-cancel:hover { background-color: alpha(@luma_ink, 0.11); }
+.ac-actions > button.ac-share { background-color: @luma_ink; color: @luma_content; }
+.ac-actions > button.ac-share:hover { background-color: alpha(@luma_ink, 0.88); }
+.ac-actions > button.ac-share:disabled { background-color: alpha(@luma_ink, 0.40); color: @luma_content; }
+.ac-actions > button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }

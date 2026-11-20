@@ -2,7 +2,7 @@
 
 Name:           luma-portal
 Version:        0.1.0
-Release:        1.luma.11%{?dist}
+Release:        1.luma.12%{?dist}
 Summary:        Project Luma's desktop portal backend
 License:        Apache-2.0
 URL:            https://projectluma.org/platform/portal
@@ -16,7 +16,8 @@ Requires:       python3 >= 3.11
 Requires:       python3-gobject
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
-Requires:       luma-developer-platform
+# The Share sound picker is built from LumaUI parts (AppIcon, Checkbox, AudioMeter).
+Requires:       luma-developer-platform >= 0.1.0-1.luma.135
 # org.freedesktop.portal.AudioCapture (patches/xdg-desktop-portal 0004)
 Requires:       xdg-desktop-portal >= 1.22.1-1.luma.4
 # CreateCapture, GetApplications and the level meters
@@ -103,6 +104,13 @@ grep -Fq 'is-recording' luma_portal/mutter.py
 %config(noreplace) %{_sysconfdir}/xdg-desktop-portal/gnome-portals.conf
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.12
+- Share sound picker as Luma Share's card: the asking app with the sharing
+  badge, the question, the choices on rounded blocks of LumaUI rows (app
+  icon, name, LumaUI's meter, LumaUI's checkbox; the row is the control), an
+  equal Cancel and Share pair; sized to its content, the list scrolls past
+  half the screen. All sound has no meter.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.11
 - Restore a shared screen or window through xdg-desktop-portal's restore
   data, so an application's restore token skips the picker; a choice that
