@@ -21,8 +21,8 @@ unchanged.
 diff --git a/src/mesa/state_tracker/st_cb_clear.c b/src/mesa/state_tracker/st_cb_clear.c
 --- a/src/mesa/state_tracker/st_cb_clear.c
 +++ b/src/mesa/state_tracker/st_cb_clear.c
-@@ -279,6 +279,14 @@
-    cso_set_sample_mask(cso, ~0);
+@@ -279,6 +279,14 @@ clear_with_quad(struct gl_context *ctx, unsigned clear_buffers)
+    cso_set_sample_coverage(cso, 1.0f, false);
     cso_set_min_samples(cso, 1);
     st->clear.raster.multisample = st->state.fb_num_samples > 1;
 +   /* The quad covers only the scissor rectangle. Keep the scissor (which

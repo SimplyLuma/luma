@@ -42,6 +42,15 @@ gtk4-4.22.4-1.luma.23.creator20261006.1.fc44.x86_64
 libadwaita-1.9.3-1.luma.55.creator20261005.1.fc44.x86_64
 libhandy-1.8.3-10.luma.9.fc44.x86_64
 
+# Graphics drivers (replace the Fedora Mesa family): 26.3 drives Mali-G715
+# (panthor), plus the v3d and st patches in patches/mesa.
+mesa-dri-drivers-26.3.0-1.luma.1.fc44.x86_64
+mesa-filesystem-26.3.0-1.luma.1.fc44.x86_64
+mesa-libEGL-26.3.0-1.luma.1.fc44.x86_64
+mesa-libGL-26.3.0-1.luma.1.fc44.x86_64
+mesa-libgbm-26.3.0-1.luma.1.fc44.x86_64
+mesa-vulkan-drivers-26.3.0-1.luma.1.fc44.x86_64
+
 # Graphical boot (replace the Fedora Plymouth family)
 luma-boot-theme-0.1.0-1.luma.21.creator20261006.2.fc44.noarch
 fwupd-2.1.7-1.luma.1.fc44.x86_64

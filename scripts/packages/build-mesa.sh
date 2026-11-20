@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# mesa: Fedora's mesa-26.2.5-1.fc44.src.rpm with the Luma patch series in patches/mesa
-# (0000-luma-fedora-spec.patch adds the others and the .luma release).
+# mesa: Fedora's mesa-26.3.0-1.fc46.src.rpm, rebuilt for Fedora 44, with the
+# Luma patch series in patches/mesa (0000-luma-fedora-spec.patch adds the
+# others and the .luma release). Fedora 44 has no 26.3 build yet; 26.3 is the
+# first release that drives Mali-G715 (panthor, v11).
 # Mesa builds with every CPU of the builder: it is far larger than the
 # packages the workflow's RPM_BUILD_NCPUS is sized for.
 
@@ -11,9 +13,14 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck disable=SC1091
 . "$repo_root/config/desktop/inputs.env"
 package=mesa
-srpm_name=mesa-26.2.5-1.fc44.src.rpm
-srpm_url=https://kojipkgs.fedoraproject.org/packages/mesa/26.2.5/1.fc44/src/mesa-26.2.5-1.fc44.src.rpm
-srpm_sha256=97ff8f530e7a484835d393b7c11adefec152e82c90a45a697f31e55ba43068ee
+srpm_name=mesa-26.3.0-1.fc46.src.rpm
+srpm_url=https://kojipkgs.fedoraproject.org/packages/mesa/26.3.0/1.fc46/src/mesa-26.3.0-1.fc46.src.rpm
+srpm_sha256=8c030a66f51958cc2494dbc6f0babcda794801c2313147d3c448ff641eda00d4
+# Build-only headers for the virtio (Venus) Vulkan driver. Fedora 44 has them
+# in updates-testing only; install the one RPM rather than the whole repo.
+venus_name=venus-protocol-devel-1.1.3-1.fc44.noarch.rpm
+venus_url=https://kojipkgs.fedoraproject.org/packages/venus-protocol/1.1.3/1.fc44/noarch/$venus_name
+venus_sha256=8feb0dc18732853e6fa6b88e777ff8b7bd8ab2aa0cf3498124b376509e89cb03
 
 for tool in cpio curl git mktemp podman rpm2cpio sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || {
@@ -43,12 +50,19 @@ printf '%s  %s\n' "$srpm_sha256" "$srpm" | sha256sum --check --status || {
   printf 'error: %s source RPM checksum mismatch\n' "$package" >&2
   exit 1
 }
+venus="$cache_dir/$venus_name"
+[ -f "$venus" ] || curl -fL --retry 3 -o "$venus" "$venus_url"
+printf '%s  %s\n' "$venus_sha256" "$venus" | sha256sum --check --status || {
+  printf 'error: %s checksum mismatch\n' "$venus_name" >&2
+  exit 1
+}
 
 work_dir=$(mktemp -d "$output_dir/work.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT INT TERM
 extract_dir="$work_dir/srpm"
 rpmbuild_dir="$work_dir/rpmbuild"
-mkdir -p "$extract_dir" "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+mkdir -p "$extract_dir" "$rpmbuild_dir"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS,BUILDREQS}
+install -m 0644 "$venus" "$rpmbuild_dir/BUILDREQS/"
 rpm2cpio "$srpm" >"$work_dir/srpm.cpio"
 ( cd "$extract_dir" && cpio -idm --quiet <"$work_dir/srpm.cpio" )
 mv "$extract_dir/$package.spec" "$rpmbuild_dir/SPECS/"
@@ -68,7 +82,7 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/$package.spec" \
 "$repo_root/scripts/packages/run-in-rpm-builder.sh" \
   "$rpmbuild_dir" "$builder_container" '
     set -euo pipefail
-    dnf5 -y install rpm-build dnf5-plugins
+    dnf5 -y install rpm-build dnf5-plugins BUILDREQS/*.rpm
     dnf5 -y builddep SPECS/'"$package"'.spec
     rpmbuild -ba --define "_smp_build_ncpus $(nproc)" --define "_topdir $PWD" SPECS/'"$package"'.spec || {
       # Rust crates and other generated build requirements: install, then build.
