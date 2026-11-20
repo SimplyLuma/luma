@@ -137,6 +137,10 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
         # WirePlumber links a camera-portal client's stream only when it says it is a camera.
         props["stream-properties"] = "props,media.role=Camera"
     head = [Element("pipewiresrc", f"{prefix}-src", props)]
+    if kind == "window":
+        # Its caps are set to what downstream takes, alpha formats first (Engine._alpha_first): a
+        # window's rounded corners stay transparent.
+        head.append(Element("capsfilter", f"{prefix}-alpha", {}))
     if kind in ("display", "window") and os.environ.get("STREAMY_CAPTURE_MEMORY") == "system":
         head.append(Element("capsfilter", f"{prefix}-sysmem", {"caps": "video/x-raw"}))
     if kind == "camera":
@@ -297,7 +301,7 @@ def program(canvas: tuple[int, int]) -> list[Element]:
     return [
         # No added latency: a move or resize shows on the next program frame; a source that is slower
         # than the canvas has its last picture reused.
-        Element("glvideomixer", "mixer", {"background": 1, "latency": 0, "force-live": True,
+        Element("glvideomixerelement", "mixer", {"background": 1, "latency": 0, "force-live": True,
                                           "start-time-selection": 1}),
         Element("capsfilter", "program-caps", {"caps": f"video/x-raw(memory:GLMemory),width={width},height={height},"
                                                         f"framerate={FPS}/1,format=RGBA"}),

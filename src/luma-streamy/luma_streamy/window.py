@@ -276,7 +276,10 @@ class StreamyWindow(AppWindow):
         x0, _y0 = self.arrange.canvas_to_view(0, 0)
         x1, _y1 = self.arrange.canvas_to_view(*self.project.canvas)
         if x1 - x0 > 8:
-            self.engine.set_preview_size((x1 - x0) * self.get_scale_factor(), 0)
+            # Device pixels at the surface's own (fractional) scale: the picture is drawn 1:1.
+            surface = self.get_surface()
+            scale = surface.get_scale() if surface is not None and hasattr(surface, "get_scale") else None
+            self.engine.set_preview_size(round((x1 - x0) * (scale or self.get_scale_factor())), 0)
         return False
 
     def _body(self) -> Gtk.Widget:

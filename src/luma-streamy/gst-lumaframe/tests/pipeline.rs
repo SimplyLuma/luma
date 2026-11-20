@@ -817,3 +817,44 @@ fn crop_meta_survives_colour_conversion() {
         assert_eq!(out.px(x, y), [0, 0, 255, 255], "blue quadrant at {x},{y}");
     }
 }
+
+#[test]
+fn revision_commits_changes_together_and_stamps_buffers() {
+    let input = solid(64, 48, [255, 0, 0, 255]);
+    let mut h = Harness::new(64, 48, None, &[]);
+    h.set("revision", 1u64);
+    h.send(&input);
+    let sample = h.sink.try_pull_sample(gst::ClockTime::from_seconds(20)).unwrap();
+    assert_eq!(sample.buffer().unwrap().offset(), 1);
+
+    // Held until the next revision commits it.
+    h.set("margin", 10.0);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (64, 48));
+    h.set("revision", 2u64);
+    h.send(&input);
+    let sample = h.sink.try_pull_sample(gst::ClockTime::from_seconds(20)).unwrap();
+    assert_eq!(sample.buffer().unwrap().offset(), 2);
+    let info = gst_video::VideoInfo::from_caps(sample.caps().unwrap()).unwrap();
+    assert_eq!((info.width(), info.height()), (84, 68));
+}
+
+#[test]
+fn downscale_averages_the_footprint() {
+    // Alternating one-pixel columns, drawn at a quarter of the width: an even
+    // grey, never one column's colour.
+    let (w, h) = (256, 16);
+    let mut data = Vec::with_capacity(w * h * 4);
+    for _y in 0..h {
+        for x in 0..w {
+            let v = if x % 2 == 0 { 255 } else { 0 };
+            data.extend_from_slice(&[v, v, v, 255]);
+        }
+    }
+    let input = Frame { w, h, data };
+    let out = run(&input, &props(&[("box-width", 64.0), ("box-height", 16.0)]));
+    for x in 4..60 {
+        let p = out.px(x, 8);
+        assert!((p[0] as i32 - 128).abs() <= 40, "column {x}: {p:?}");
+    }
+}

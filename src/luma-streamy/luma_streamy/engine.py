@@ -15,6 +15,7 @@ Python only builds and edits the graph; every frame stays in GStreamer.
 from __future__ import annotations
 
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -22,7 +23,8 @@ from typing import Callable
 import gi
 
 gi.require_version("Gst", "1.0")
-from gi.repository import GLib, GObject, Gst  # noqa: E402
+gi.require_version("GstBase", "1.0")
+from gi.repository import GLib, GObject, Gst, GstBase  # noqa: E402,F401 (GstBase: Aggregator.peek_next_sample)
 
 from . import graph  # noqa: E402
 from .graph import Chain, Element, EncoderChoice  # noqa: E402
@@ -167,6 +169,24 @@ def crop_meta(buffer: Gst.Buffer) -> tuple[int, int, int, int] | None:
     base = int(found.group(1), 16) + 2 * ctypes.sizeof(ctypes.c_void_p)  # flags (padded) and info
     values = [ctypes.c_uint.from_address(base + 4 * i).value for i in range(4)]
     return tuple(values) if values[2] and values[3] else None
+
+
+#: Formats with alpha: SHM names and DRM fourccs (DMABuf drm-format, "AR24:<modifier>").
+ALPHA_FORMATS = ("BGRA", "RGBA", "ARGB", "ABGR")
+ALPHA_FOURCCS = ("AR24", "AB24", "RA24", "BA24")
+
+
+def prefer_alpha(caps: str) -> str:
+    """``caps`` with every format list ordered alpha first, so a window cast with transparent
+    (rounded) corners is offered and taken with its alpha rather than as an opaque XR24/BGRx."""
+    import re
+
+    def order(found: re.Match) -> str:
+        items = [v.strip() for v in found.group(2).split(",")]
+        alpha = [v for v in items if v in ALPHA_FORMATS or v.split(":")[0] in ALPHA_FOURCCS]
+        return f"{found.group(1)}{{ {', '.join(alpha + [v for v in items if v not in alpha])} }}"
+
+    return re.sub(r"(\b(?:drm-)?format=\(string\))\{([^}]*)\}", order, caps)
 
 
 def log(text: str) -> None:
@@ -368,6 +388,9 @@ class Engine(GObject.Object):
         "widget-waiting": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         # widget id, width, height: the picture's own size changed (a window cast's crop region)
         "source-size": (GObject.SignalFlags.RUN_FIRST, None, (str, int, int)),
+        # widget id, x, y, width, height: where the preview frame on screen now draws the widget's
+        # box (canvas pixels), so an outline drawn over it never parts from the picture
+        "frame-shown": (GObject.SignalFlags.RUN_FIRST, None, (str, float, float, float, float)),
     }
 
     def __init__(self, *, fake: bool | None = None, preview: bool = True,
@@ -395,6 +418,18 @@ class Engine(GObject.Object):
         self.preview_size: tuple[int, int] | None = None
         self.enabled = False
         self._generation = 0
+        #: Atomic layer geometry: each mixer pad's geometry per lumaframe revision, applied by the
+        #: mixer's samples-selected for the buffer it actually composites (see _samples_selected).
+        self._geom_lock = threading.Lock()
+        self._revision = 0
+        self._revs: dict[Gst.Pad, dict[int, tuple]] = {}
+        self._applied: dict[Gst.Pad, tuple] = {}
+        self._applied_rev: dict[Gst.Pad, int] = {}
+        self._pad_widget: dict[Gst.Pad, str] = {}
+        self._composited: list[tuple[int, dict]] = []  # (program pts, {widget id: box}), newest last
+        self._on_screen: dict[str, tuple] = {}
+        #: Enum properties last set by nick, per (element name, property): a move never re-sets them.
+        self._strings: dict[tuple[str, str], str] = {}
 
     # ── The program pipeline ──
 
@@ -414,6 +449,10 @@ class Engine(GObject.Object):
         for spec in graph.program(self.canvas):
             self.pipeline.add(make(spec))
         link_all([self.pipeline.get_by_name(e.name) for e in graph.program(self.canvas)])
+        mixer = self.pipeline.get_by_name("mixer")
+        if mixer.find_property("emit-signals") is not None:
+            mixer.set_property("emit-signals", True)
+            self._selected_handler = (mixer, mixer.connect("samples-selected", self._samples_selected))
         if self.want_preview:
             self._add_preview()
         bus = self.pipeline.get_bus()
@@ -432,6 +471,11 @@ class Engine(GObject.Object):
             self._remove_branch(widget_id)
         pipeline = self.pipeline
         pipeline.get_bus().remove_signal_watch()
+        if getattr(self, "_selected_handler", None):
+            mixer, handler = self._selected_handler
+            mixer.set_property("emit-signals", False)
+            mixer.disconnect(handler)
+            self._selected_handler = None
         self.pipeline = None
         # The preview's GTK sink stops here, on the thread its paintable belongs to.
         preview = pipeline.get_by_name("preview")
@@ -485,16 +529,23 @@ class Engine(GObject.Object):
         if bin_.find_property("async") is not None:
             bin_.set_property("async", False)
         # The preview is scaled on the GPU to the size it is shown at: no full-size copy for the screen.
+        # Bilinear scaling aliases past 2:1, so a large reduction goes in two steps (at most 2:1 each,
+        # a box filter in effect); a small one passes the first step through.
         queue = make(Element("queue", "preview-queue", {"max-size-buffers": 1, "leaky": 2}))
+        half = make(Element("glcolorscale", "preview-scale-half"))
+        half_size = make(Element("capsfilter", "preview-size-half", {"caps": self._preview_caps(2)}))
         scale = make(Element("glcolorscale", "preview-scale"))
         size = make(Element("capsfilter", "preview-size", {"caps": self._preview_caps()}))
-        for element in (queue, scale, size, bin_):
+        for element in (queue, half, half_size, scale, size, bin_):
             self.pipeline.add(element)
-        link_all([queue, scale, size, bin_])
+        link_all([queue, half, half_size, scale, size, bin_])
         self.pipeline.get_by_name("program").link(queue)
+        sink.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, self._preview_frame)
 
-    def _preview_caps(self) -> str:
+    def _preview_caps(self, factor: int = 1) -> str:
         width, height = self.preview_size or (self.canvas[0] // 2, self.canvas[1] // 2)
+        cw, ch = self.canvas
+        width, height = min(cw, width * factor), min(ch, height * factor)
         return f"video/x-raw(memory:GLMemory),width={width},height={height}"
 
     def set_preview_size(self, width: int, height: int) -> None:
@@ -505,9 +556,10 @@ class Engine(GObject.Object):
         if (width, height) == self.preview_size:
             return
         self.preview_size = (width, height)
-        size = self.pipeline.get_by_name("preview-size") if self.pipeline is not None else None
-        if size is not None:
-            size.set_property("caps", Gst.Caps.from_string(self._preview_caps()))
+        for name, factor in (("preview-size-half", 2), ("preview-size", 1)):
+            size = self.pipeline.get_by_name(name) if self.pipeline is not None else None
+            if size is not None:
+                size.set_property("caps", Gst.Caps.from_string(self._preview_caps(factor)))
 
     # ── Scenes and widgets ──
 
@@ -611,6 +663,7 @@ class Engine(GObject.Object):
             pad.set_property(name, value)
         pad.set_property("alpha", 0.0 if self.outputs else 1.0)
         elements[-1].get_static_pad("src").link(pad)
+        self._place(elements[-1], pad, widget, chain.pad, True)
         self.placeholders[widget.id] = Branch(widget.id, elements, pad, True, shown=True,
                                               generation=self._generation)
         self._placeholder_words[widget.id] = words
@@ -621,24 +674,28 @@ class Engine(GObject.Object):
         if card is None:
             return
         frame = card.elements[-1]
+        changed = False
         for name, value in graph.frame_props(widget).items():
             if frame.find_property(name) is None:
                 continue
             if isinstance(value, str):
-                _set_prop(frame, name, value)
+                if self._strings.get((frame.get_name(), name)) != value:
+                    self._strings[(frame.get_name(), name)] = value
+                    _set_prop(frame, name, value)
+                    changed = True
             elif frame.get_property(name) != value:
                 frame.set_property(name, value)
+                changed = True
         props = graph.mixer_pad_props(widget, zorder if zorder is not None else card.pad.get_property("zorder"))
         props["alpha"] = 0.0 if self.outputs else 1.0
-        for name, value in props.items():
-            if card.pad.get_property(name) != value:
-                card.pad.set_property(name, value)
+        self._place(frame, card.pad, widget, props, changed)
 
     def _remove_placeholder(self, widget_id: str) -> None:
         card = self.placeholders.pop(widget_id, None)
         self._placeholder_words.pop(widget_id, None)
         if card is None:
             return
+        self._forget_pad(card.pad)
         self.branches[f"placeholder:{widget_id}"] = card
         self._remove_branch(f"placeholder:{widget_id}")
 
@@ -659,20 +716,23 @@ class Engine(GObject.Object):
             props = graph.frame_props(widget)
             if branch.fade < FADE_MS:
                 props["opacity"] = props["opacity"] * branch.fade / FADE_MS
+            changed = False
             for name, value in props.items():
                 if frame.find_property(name) is None:
                     continue  # an older lumaframe (no stroke-position): its default
                 if isinstance(value, str):
-                    _set_prop(frame, name, value)
+                    if self._strings.get((frame.get_name(), name)) != value:
+                        self._strings[(frame.get_name(), name)] = value
+                        _set_prop(frame, name, value)
+                        changed = True
                 elif frame.get_property(name) != value:
                     frame.set_property(name, value)
+                    changed = True
             flip = next((e for e in branch.elements if e.get_factory().get_name() == "glvideoflip"), None)
             if flip is not None:
                 Gst.util_set_object_arg(flip, "method", graph.flip_method(widget))
             pad_props = graph.mixer_pad_props(widget, zorder if zorder is not None else branch.pad.get_property("zorder"))
-            for name, value in pad_props.items():
-                if branch.pad.get_property(name) != value:
-                    branch.pad.set_property(name, value)
+            self._place(frame, branch.pad, widget, pad_props, changed)
         else:
             volume = next(e for e in branch.elements if e.get_factory().get_name() == "volume")
             for name, value in graph.volume_props(widget).items():
@@ -722,6 +782,8 @@ class Engine(GObject.Object):
             return
         branch = Branch(widget.id, elements, pad, widget.has_picture, generation=self._generation)
         self.branches[widget.id] = branch
+        if widget.has_picture:
+            self._place(elements[-1], pad, widget, chain.pad, True)
         if not widget.has_picture:
             self._sync_monitor(branch, widget)
         if widget.has_picture:
@@ -736,6 +798,9 @@ class Engine(GObject.Object):
         if not self.fake and widget.kind in ("display", "window", "camera"):
             elements[0].get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, self._source_buffer,
                                                         {"branch": branch, "seen": None})
+        alpha = next((e for e in elements if e.get_name().endswith("-alpha")), None)
+        if alpha is not None:
+            elements[0].get_static_pad("src").add_probe(Gst.PadProbeType.QUERY_DOWNSTREAM, self._alpha_first, alpha)
         if os.environ.get("STREAMY_TRACE"):
             self._trace(branch, elements)
 
@@ -759,6 +824,25 @@ class Engine(GObject.Object):
             GLib.idle_add(self._apply_crop, branch, width, height, crop)
         return Gst.PadProbeReturn.OK
 
+    @staticmethod
+    def _alpha_first(_pad: Gst.Pad, info: Gst.PadProbeInfo, capsfilter: Gst.Element) -> Gst.PadProbeReturn:
+        """A window cast asks what it may send: before the query passes, the capsfilter after the
+        source takes what downstream accepts with the alpha formats first (its caps lead the answer)."""
+        query = info.get_query()
+        if query is None or query.type != Gst.QueryType.CAPS or not capsfilter.get_property("caps").is_any():
+            return Gst.PadProbeReturn.OK
+        ask = Gst.Query.new_caps(query.parse_caps())
+        if not capsfilter.get_static_pad("src").peer_query(ask):
+            return Gst.PadProbeReturn.OK
+        caps = ask.parse_caps_result()
+        if caps is None or caps.is_any() or caps.is_empty():
+            return Gst.PadProbeReturn.OK
+        text = caps.to_string()
+        ordered = prefer_alpha(text)
+        if ordered != text:
+            capsfilter.set_property("caps", Gst.Caps.from_string(ordered))
+        return Gst.PadProbeReturn.OK
+
     def _apply_crop(self, branch: Branch, width: int, height: int, crop) -> bool:
         """A window cast's buffers are the size of the cast and the window a crop region inside them
         (GstVideoCropMeta, often on DMABuf the GL upload takes as it is). The region is the picture:
@@ -771,14 +855,136 @@ class Engine(GObject.Object):
             x, y = min(x, width - 1), min(y, height - 1)
             w, h = min(w, width - x), min(h, height - y)
             if frame.find_property("content-width") is not None:
+                changed = False
                 for name, value in (("content-x", x), ("content-y", y), ("content-width", w), ("content-height", h)):
                     if frame.get_property(name) != value:
                         frame.set_property(name, type(frame.get_property(name))(value))
+                        changed = True
+                if changed:
+                    self._commit(frame, branch.pad)
+                    log(f"widget {branch.widget_id}: source {w}x{h} px (of {width}x{height}) drawn in a "
+                        f"{frame.get_property('box-width'):.0f}x{frame.get_property('box-height'):.0f} px box")
             else:
                 log(f"widget {branch.widget_id}: this lumaframe has no content rect; the crop region is not applied")
             self.emit("source-size", branch.widget_id, w, h)
         else:
             self.emit("source-size", branch.widget_id, width, height)
+        return False
+
+    # ── Atomic layer geometry ──
+    #
+    # A lumaframe layer's size includes its shadow margin, so a Look change resizes the buffer and moves
+    # its mixer pad (xpos = x - margin). Set from here, the two would land on different frames and the
+    # picture would jump. Instead every lumaframe change is committed as one revision, stamped on the
+    # buffers drawn with it, and the mixer pad takes the geometry of the revision of the buffer the
+    # mixer is about to composite. A plain move (same revision) applies on the next program frame.
+
+    _GEOMETRY = ("xpos", "ypos", "width", "height")
+
+    def _place(self, frame: Gst.Element, pad: Gst.Pad | None, widget: Widget, pad_props: dict,
+               changed: bool) -> None:
+        """Commit ``frame``'s pending changes (``changed``) and where its pad draws it."""
+        if pad is None:
+            return
+        for name, value in pad_props.items():
+            if name not in self._GEOMETRY and pad.get_property(name) != value:
+                pad.set_property(name, value)
+        geometry = tuple(pad_props[k] for k in self._GEOMETRY)
+        box = (float(widget.x), float(widget.y), float(widget.width), float(widget.height))
+        if frame.find_property("revision") is None:  # an older lumaframe: as it was, not atomic
+            for name, value in zip(self._GEOMETRY, geometry):
+                if pad.get_property(name) != value:
+                    pad.set_property(name, value)
+            return
+        with self._geom_lock:
+            self._pad_widget[pad] = widget.id
+            revs = self._revs.setdefault(pad, {})
+            if not changed and revs:
+                latest = max(revs)
+                revs[latest] = (geometry, box)  # same layer, moved: the next frame shows it
+                if self._applied_rev.get(pad) != latest:
+                    return  # a change is on its way: the mixer applies the move with it
+                self._applied[pad] = geometry
+            else:
+                geometry = None
+        if geometry is not None:
+            # The mixer already composites this revision: move the pad now, as a plain move.
+            for name, value in zip(self._GEOMETRY, revs[latest][0]):
+                pad.set_property(name, value)
+            return
+        with self._geom_lock:
+            self._revision += 1
+            revision = self._revision
+            revs[revision] = (tuple(pad_props[k] for k in self._GEOMETRY), box)
+        frame.set_property("revision", revision)
+
+    def _commit(self, frame: Gst.Element, pad: Gst.Pad | None) -> None:
+        """A change to ``frame`` that keeps its geometry (opacity, content rect)."""
+        if pad is None or frame.find_property("revision") is None:
+            return
+        with self._geom_lock:
+            revs = self._revs.get(pad)
+            if not revs:
+                return
+            self._revision += 1
+            revision = self._revision
+            revs[revision] = revs[max(revs)]
+        frame.set_property("revision", revision)
+
+    def _forget_pad(self, pad: Gst.Pad | None) -> None:
+        with self._geom_lock:
+            self._revs.pop(pad, None)
+            self._applied.pop(pad, None)
+            self._applied_rev.pop(pad, None)
+            self._pad_widget.pop(pad, None)
+
+    def _samples_selected(self, mixer, _segment, pts, _dts, _duration, _info) -> None:
+        """The mixer's thread, before it composites a frame: each layer's pad takes the geometry of
+        the revision its selected buffer was drawn with."""
+        boxes = {}
+        with self._geom_lock:
+            pads = list(self._revs.items())
+        for pad, revs in pads:
+            sample = mixer.peek_next_sample(pad)
+            buffer = sample.get_buffer() if sample is not None else None
+            if buffer is None:
+                continue
+            with self._geom_lock:
+                entry = revs.get(buffer.offset)
+                if entry is None:
+                    continue
+                for old in [r for r in revs if r < buffer.offset]:
+                    del revs[old]
+                applied = self._applied.get(pad)
+                self._applied[pad] = entry[0]
+                self._applied_rev[pad] = buffer.offset
+                widget_id = self._pad_widget.get(pad)
+            if applied != entry[0]:
+                for name, value in zip(self._GEOMETRY, entry[0]):
+                    pad.set_property(name, value)
+            if widget_id is not None:
+                boxes[widget_id] = entry[1]
+        with self._geom_lock:
+            self._composited.append((pts, boxes))
+            del self._composited[:-16]
+
+    def _preview_frame(self, _pad, info) -> Gst.PadProbeReturn:
+        """A program frame reaches the preview: what it shows, for the outline (frame-shown)."""
+        buffer = info.get_buffer()
+        if buffer is None:
+            return Gst.PadProbeReturn.OK
+        with self._geom_lock:
+            boxes = next((b for t, b in reversed(self._composited) if t <= buffer.pts), None)
+        if boxes is not None:
+            changed = {k: v for k, v in boxes.items() if self._on_screen.get(k) != v}
+            if changed:
+                self._on_screen.update(changed)
+                GLib.idle_add(self._emit_shown, changed)
+        return Gst.PadProbeReturn.OK
+
+    def _emit_shown(self, boxes: dict) -> bool:
+        for widget_id, box in boxes.items():
+            self.emit("frame-shown", widget_id, *box)
         return False
 
     def _trace(self, branch: Branch, elements: list) -> None:
@@ -850,6 +1056,7 @@ class Engine(GObject.Object):
             branch.fade = min(FADE_MS, branch.fade + FADE_MS // steps)
             target = self.effects_of(widget).clamped().opacity
             branch.elements[-1].set_property("opacity", target * branch.fade / FADE_MS)
+            self._commit(branch.elements[-1], branch.pad)
             if branch.fade >= FADE_MS:
                 self._remove_placeholder(widget.id)  # the real picture is in: the card goes
             return branch.fade < FADE_MS
@@ -909,6 +1116,7 @@ class Engine(GObject.Object):
         pipeline = self.pipeline
         last = branch.elements[-1].get_static_pad("src")
         mixer_pad = branch.pad
+        self._forget_pad(mixer_pad)
         if mixer_pad is not None:
             # An unlinked live source posts not-linked; keep its data out of the way first.
             last.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM, lambda *_a: Gst.PadProbeReturn.DROP)
