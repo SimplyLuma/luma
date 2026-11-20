@@ -1,0 +1,161 @@
+#!/usr/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+#
+# Cisco's OpenH264 binary on a Luma computer: downloaded from Cisco onto this
+# device, never shipped by Luma (see /usr/share/luma-openh264/NOTICE).
+#
+#   luma-openh264 [status]   what is downloaded and whether it is used
+#   luma-openh264 enable     use it: download it now, on the OS and for Flatpaks
+#   luma-openh264 disable    stop using it and remove it
+#   luma-openh264 sync       what luma-openh264.service runs: bring this
+#                            computer in line with the setting
+#
+# The OS side is /var/lib/openh264/libopenh264.so.8, which Luma's noopenh264
+# loads when it is there. The Flatpak side is the extra-data extension
+# org.projectluma.Platform.openh264, installed next to org.projectluma.Platform.
+# Exit status 75 means Cisco's server could not be reached; nothing changed.
+set -euo pipefail
+
+conf=${LUMA_OPENH264_CONF:-/usr/share/luma-openh264/cisco-openh264.conf}
+state=${LUMA_OPENH264_STATE:-/var/lib/openh264}
+disabled_marker=${LUMA_OPENH264_DISABLED:-/etc/luma-openh264/disabled}
+# Tests use file://; the device only ever downloads over HTTPS.
+protocols=${LUMA_OPENH264_PROTOCOLS:-=https}
+arch=${LUMA_OPENH264_ARCH:-$(uname -m)}
+flatpak=${LUMA_OPENH264_FLATPAK-flatpak}
+attribution='OpenH264 Video Codec provided by Cisco Systems, Inc.'
+
+die() { printf 'luma-openh264: %s\n' "$*" >&2; exit 1; }
+say() { printf 'luma-openh264: %s\n' "$*"; }
+
+# shellcheck disable=SC1090
+. "$conf"
+case $arch in
+  x86_64) key=X86_64 ;;
+  aarch64) key=AARCH64 ;;
+  *) die "Cisco publishes no OpenH264 binary for $arch" ;;
+esac
+url_var=OPENH264_${key}_URL size_var=OPENH264_${key}_SIZE
+sha_var=OPENH264_${key}_SHA256 library_sha_var=OPENH264_${key}_LIBRARY_SHA256
+url=${!url_var} size=${!size_var} sha256=${!sha_var} library_sha256=${!library_sha_var}
+library=$state/$OPENH264_SONAME
+extension=org.projectluma.Platform.openh264
+extension_ref=runtime/$extension/$arch/$OPENH264_FLATPAK_BRANCH
+platform_ref=runtime/org.projectluma.Platform/$arch/$OPENH264_FLATPAK_BRANCH
+
+enabled() { [ ! -e "$disabled_marker" ]; }
+
+library_current() {
+  [ -f "$library" ] && [ ! -L "$library" ] &&
+    [ "$(sha256sum <"$library" | cut -d' ' -f1)" = "$library_sha256" ]
+}
+
+work=
+trap '[ -z "$work" ] || rm -rf "$work"' EXIT
+
+download() {
+  install -d -m 0755 "$state"
+  local status=0
+  work=$(mktemp -d "$state/.download.XXXXXX")
+  curl --proto "$protocols" --proto-redir "$protocols" -fsSL --retry 3 --retry-delay 10 \
+    --connect-timeout 30 --max-time 600 --max-filesize "$size" -o "$work/archive" "$url" || status=$?
+  if [ "$status" != 0 ]; then
+    say "could not download $url from Cisco (curl $status); will try again"
+    return 75
+  fi
+  [ "$(stat -c %s "$work/archive")" = "$size" ] || die "$url: unexpected size"
+  [ "$(sha256sum <"$work/archive" | cut -d' ' -f1)" = "$sha256" ] ||
+    die "$url does not match the recorded SHA-256; not using it"
+  bunzip2 -c "$work/archive" >"$work/library"
+  [ "$(sha256sum <"$work/library" | cut -d' ' -f1)" = "$library_sha256" ] ||
+    die "$url unpacks to an unexpected library; not using it"
+  chmod 0644 "$work/library"
+  if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then
+    chcon -t lib_t "$work/library" 2>/dev/null || true
+  fi
+  mv -f "$work/library" "$library"
+  printf 'version=%s\nurl=%s\nsha256=%s\n' "$OPENH264_VERSION" "$url" "$sha256" >"$work/source"
+  mv -f "$work/source" "$state/source"
+  say "downloaded OpenH264 $OPENH264_VERSION from Cisco: $attribution"
+}
+
+have_flatpak_platform() {
+  [ -n "$flatpak" ] && command -v "$flatpak" >/dev/null 2>&1 &&
+    "$flatpak" --system info "$platform_ref" >/dev/null 2>&1
+}
+
+have_extension() {
+  [ -n "$flatpak" ] && command -v "$flatpak" >/dev/null 2>&1 &&
+    "$flatpak" --system info "$extension_ref" >/dev/null 2>&1
+}
+
+sync_flatpak() {
+  [ -n "$flatpak" ] && command -v "$flatpak" >/dev/null 2>&1 || return 0
+  if enabled; then
+    "$flatpak" --system mask --remove "$extension" >/dev/null 2>&1 || true
+    have_flatpak_platform || return 0
+    have_extension && return 0
+    # flatpak downloads the binary from Cisco itself (the extension's extra data).
+    if ! "$flatpak" --system install --noninteractive -y luma "$extension_ref"; then
+      say "could not install $extension; will try again"
+      return 75
+    fi
+  else
+    "$flatpak" --system mask "$extension" >/dev/null 2>&1 || true
+    if have_extension; then
+      "$flatpak" --system uninstall --noninteractive -y "$extension_ref" ||
+        die "could not remove $extension"
+    fi
+  fi
+}
+
+sync() {
+  local status=0
+  if enabled; then
+    library_current || download || status=$?
+    [ "$status" = 0 ] || [ "$status" = 75 ] || return "$status"
+  else
+    rm -f "$library" "$state/source"
+  fi
+  sync_flatpak || { local flatpak_status=$?; [ "$status" != 0 ] || status=$flatpak_status; }
+  return "$status"
+}
+
+require_root() {
+  [ "$(id -u)" = 0 ] && return 0
+  command -v pkexec >/dev/null 2>&1 || die "run this as root"
+  exec pkexec "$0" "$@"
+}
+
+status() {
+  printf '%s\n\n' "$attribution"
+  if enabled; then echo "Setting:  enabled (luma-openh264 disable turns it off)"
+  else echo "Setting:  disabled (luma-openh264 enable turns it on)"; fi
+  if library_current; then echo "System:   OpenH264 $OPENH264_VERSION downloaded from Cisco ($library)"
+  elif enabled; then echo "System:   not downloaded yet; luma-openh264.service downloads it from Cisco"
+  else echo "System:   not on this computer"; fi
+  if have_extension; then echo "Flatpaks: $extension installed"
+  elif have_flatpak_platform; then echo "Flatpaks: $extension not installed"
+  fi
+  printf '\nCisco license: https://www.openh264.org/BINARY_LICENSE.txt\n'
+}
+
+command=${1:-status}
+case $command in
+  status) status ;;
+  sync) [ "$(id -u)" = 0 ] || [ -n "${LUMA_OPENH264_STATE:-}" ] || die "sync runs as root"; sync ;;
+  enable)
+    [ -n "${LUMA_OPENH264_STATE:-}" ] || require_root "$@"
+    rm -f "$disabled_marker"
+    say "enabled: $attribution"
+    sync
+    ;;
+  disable)
+    [ -n "${LUMA_OPENH264_STATE:-}" ] || require_root "$@"
+    install -d -m 0755 "$(dirname "$disabled_marker")"
+    : >"$disabled_marker"
+    sync
+    say "disabled; Cisco's OpenH264 binary is removed from this computer"
+    ;;
+  *) die "usage: luma-openh264 [status|enable|disable|sync]" ;;
+esac

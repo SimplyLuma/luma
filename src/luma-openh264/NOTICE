@@ -1,0 +1,22 @@
+OpenH264 Video Codec provided by Cisco Systems, Inc.
+
+Luma's software H.264 encoder and decoder (GStreamer's openh264enc and
+openh264dec, and FFmpeg's libopenh264) use Cisco's OpenH264 binary. Luma does
+not include, build or redistribute that binary: on each device it is
+downloaded directly from Cisco (ciscobinary.openh264.org), checked against the
+SHA-256 recorded in /usr/share/luma-openh264/cisco-openh264.conf, and stored in
+/var/lib/openh264. Flatpak applications get the same file through the
+org.projectluma.Platform.openh264 extension, whose download also comes from
+Cisco. Cisco's license for the binary, including the conditions that apply to
+software using it, is at https://www.openh264.org/BINARY_LICENSE.txt.
+
+You control whether the binary is used:
+
+  luma-openh264 status     show what is downloaded and whether it is used
+  luma-openh264 disable    remove it from this computer and its Flatpak runtime
+  luma-openh264 enable     download it from Cisco again and use it
+
+When it is disabled or not yet downloaded, H.264 encoding falls back to the
+hardware encoders (VA-API) or to other codecs, and openh264enc reports that it
+cannot start. Applications that were already running use a newly downloaded
+binary after they restart.

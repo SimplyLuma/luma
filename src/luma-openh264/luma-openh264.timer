@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep Cisco's OpenH264 binary downloaded while it is enabled
+Documentation=file:///usr/share/luma-openh264/NOTICE
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=6h
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

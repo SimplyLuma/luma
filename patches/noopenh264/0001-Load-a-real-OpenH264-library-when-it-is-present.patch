@@ -1,0 +1,210 @@
+From 714c920402d31aa55d033c6a581a22489a72db18 Mon Sep 17 00:00:00 2001
+From: Project Luma <maintainers@projectluma.org>
+Date: Thu, 19 Nov 2026 23:43:39 -0500
+Subject: [PATCH] Load a real OpenH264 library when it is present
+
+---
+ codec/decoder/meson.build                 |  2 +-
+ codec/decoder/plus/src/welsDecoderExt.cpp | 17 ++++++++++---
+ codec/encoder/meson.build                 |  4 ++-
+ codec/encoder/plus/src/welsEncoderExt.cpp | 20 +++++++++++++--
+ codec/loader.cpp                          | 31 +++++++++++++++++++++++
+ codec/loader.h                            | 17 +++++++++++++
+ meson.build                               |  5 ++++
+ meson_options.txt                         |  2 ++
+ 8 files changed, 91 insertions(+), 7 deletions(-)
+ create mode 100644 codec/loader.cpp
+ create mode 100644 codec/loader.h
+ create mode 100644 meson_options.txt
+
+diff --git a/codec/decoder/meson.build b/codec/decoder/meson.build
+index 00c0872..80a1751 100644
+--- a/codec/decoder/meson.build
++++ b/codec/decoder/meson.build
+@@ -3,4 +3,4 @@ cpp_sources = [
+ ]
+ 
+ libdecoder = static_library('decoder', cpp_sources,
+-  include_directories: inc)
++  include_directories: [inc, include_directories('..')])
+diff --git a/codec/decoder/plus/src/welsDecoderExt.cpp b/codec/decoder/plus/src/welsDecoderExt.cpp
+index 558a8ca..24e1c40 100644
+--- a/codec/decoder/plus/src/welsDecoderExt.cpp
++++ b/codec/decoder/plus/src/welsDecoderExt.cpp
+@@ -22,11 +22,16 @@
+ 
+ #include "codec_api.h"
+ 
++#include "loader.h"
++
+ /*
+ *  WelsGetDecoderCapability
+ *  @return: DecCapability information
+ */
+-int WelsGetDecoderCapability (SDecoderCapability*) {
++int WelsGetDecoderCapability (SDecoderCapability* pDecCapability) {
++  auto real = NOOPENH264_REAL (WelsGetDecoderCapability, int (*) (SDecoderCapability*));
++  if (real)
++    return real (pDecCapability);
+   return 3; // ERR_API_FAILED, see codec/decoder/core/inc/error_code.h
+ }
+ 
+@@ -34,12 +39,18 @@ int WelsGetDecoderCapability (SDecoderCapability*) {
+ *   WelsCreateDecoder
+ *   @return:    success in return 0, otherwise failed.
+ */
+-long WelsCreateDecoder (ISVCDecoder**) {
++long WelsCreateDecoder (ISVCDecoder** ppDecoder) {
++  auto real = NOOPENH264_REAL (WelsCreateDecoder, long (*) (ISVCDecoder**));
++  if (real)
++    return real (ppDecoder);
+   return 3; // ERR_API_FAILED, see codec/decoder/core/inc/error_code.h
+ }
+ 
+ /*
+ *   WelsDestroyDecoder
+ */
+-void WelsDestroyDecoder (ISVCDecoder*) {
++void WelsDestroyDecoder (ISVCDecoder* pDecoder) {
++  auto real = NOOPENH264_REAL (WelsDestroyDecoder, void (*) (ISVCDecoder*));
++  if (real)
++    real (pDecoder);
+ }
+diff --git a/codec/encoder/meson.build b/codec/encoder/meson.build
+index 5508d81..f37f45a 100644
+--- a/codec/encoder/meson.build
++++ b/codec/encoder/meson.build
+@@ -1,6 +1,8 @@
+ cpp_sources = [
+   'plus/src/welsEncoderExt.cpp',
++  '../loader.cpp',
+ ]
+ 
+ libencoder = static_library('encoder', cpp_sources,
+-  include_directories: inc)
++  cpp_args: real_library_args,
++  include_directories: [inc, include_directories('..')])
+diff --git a/codec/encoder/plus/src/welsEncoderExt.cpp b/codec/encoder/plus/src/welsEncoderExt.cpp
+index 8fef6c4..6754f44 100644
+--- a/codec/encoder/plus/src/welsEncoderExt.cpp
++++ b/codec/encoder/plus/src/welsEncoderExt.cpp
+@@ -25,17 +25,33 @@
+ 
+ #include <inttypes.h>
+ 
+-int32_t WelsCreateSVCEncoder (ISVCEncoder**) {
++#include "loader.h"
++
++int32_t WelsCreateSVCEncoder (ISVCEncoder** ppEncoder) {
++  auto real = NOOPENH264_REAL (WelsCreateSVCEncoder, int32_t (*) (ISVCEncoder**));
++  if (real)
++    return real (ppEncoder);
+   return 1; // Failure
+ }
+ 
+-void WelsDestroySVCEncoder (ISVCEncoder*) {
++void WelsDestroySVCEncoder (ISVCEncoder* pEncoder) {
++  auto real = NOOPENH264_REAL (WelsDestroySVCEncoder, void (*) (ISVCEncoder*));
++  if (real)
++    real (pEncoder);
+ }
+ 
+ OpenH264Version WelsGetCodecVersion() {
++  auto real = NOOPENH264_REAL (WelsGetCodecVersion, OpenH264Version (*) ());
++  if (real)
++    return real ();
+   return g_stCodecVersion;
+ }
+ 
+ void WelsGetCodecVersionEx (OpenH264Version* pVersion) {
++  auto real = NOOPENH264_REAL (WelsGetCodecVersionEx, void (*) (OpenH264Version*));
++  if (real) {
++    real (pVersion);
++    return;
++  }
+   *pVersion = g_stCodecVersion;
+ }
+diff --git a/codec/loader.cpp b/codec/loader.cpp
+new file mode 100644
+index 0000000..71ee9c5
+--- /dev/null
++++ b/codec/loader.cpp
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++
++#include "loader.h"
++
++#include <dlfcn.h>
++#include <pthread.h>
++#include <stddef.h>
++
++#ifndef NOOPENH264_REAL_LIBRARY
++#define NOOPENH264_REAL_LIBRARY ""
++#endif
++
++static void *real_library;
++static pthread_once_t real_library_once = PTHREAD_ONCE_INIT;
++
++static void open_real_library (void) {
++  const char *path = NOOPENH264_REAL_LIBRARY;
++  if (path[0] == '\0')
++    return;
++  /* RTLD_LOCAL: its symbols never interpose this stub's for other objects.
++   * A missing file is the normal case until the binary is downloaded. */
++  real_library = dlopen (path, RTLD_NOW | RTLD_LOCAL);
++}
++
++void *noopenh264_real_symbol (const char *name, void *own) {
++  pthread_once (&real_library_once, open_real_library);
++  if (real_library == NULL)
++    return NULL;
++  void *symbol = dlsym (real_library, name);
++  return symbol == own ? NULL : symbol;
++}
+diff --git a/codec/loader.h b/codec/loader.h
+new file mode 100644
+index 0000000..0596f80
+--- /dev/null
++++ b/codec/loader.h
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later
++ *
++ * Forwarding to a real OpenH264 library that is not part of the system image,
++ * such as Cisco's binary downloaded onto the device.
++ */
++#ifndef NOOPENH264_LOADER_H
++#define NOOPENH264_LOADER_H
++
++/* The real library's definition of an OpenH264 entry point, or NULL when no
++ * real library is configured or present, or it lacks the symbol. OWN is this
++ * stub's own definition, so the stub never forwards to itself. */
++void *noopenh264_real_symbol (const char *name, void *own);
++
++#define NOOPENH264_REAL(name, type) \
++  ((type) noopenh264_real_symbol (#name, (void *) &name))
++
++#endif
+diff --git a/meson.build b/meson.build
+index 214d2c5..c22c07d 100644
+--- a/meson.build
++++ b/meson.build
+@@ -22,6 +22,11 @@ inc = include_directories([
+   join_paths('codec', 'api', 'wels'),
+ ])
+ 
++real_library_args = []
++if get_option('real_library') != ''
++  real_library_args += ['-DNOOPENH264_REAL_LIBRARY="@0@"'.format(get_option('real_library'))]
++endif
++
+ api_headers = []
+ api_header_deps = []
+ 
+diff --git a/meson_options.txt b/meson_options.txt
+new file mode 100644
+index 0000000..2c34cde
+--- /dev/null
++++ b/meson_options.txt
+@@ -0,0 +1,2 @@
++option('real_library', type: 'string', value: '',
++  description: 'Absolute path of a real OpenH264 library to forward to when it exists; empty builds a plain stub')

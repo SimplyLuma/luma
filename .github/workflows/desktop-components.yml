@@ -33,6 +33,8 @@ on:
       - 'tests/fixtures/valet-v70/**'
       - 'tools/lumaui-conform/scenarios/ari.json'
       - 'config/desktop/system-flatpak-replacements.txt'
+      - 'src/luma-openh264/**'
+      - 'packaging/rpm/luma-openh264.spec'
   workflow_dispatch:
     inputs:
       groups:

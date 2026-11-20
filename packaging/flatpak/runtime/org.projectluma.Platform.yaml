@@ -23,6 +23,17 @@ rename:
 extension-overrides:
   org.projectluma.Platform.GL:
     versions: 44;1.4
+  # Cisco's OpenH264 binary (an extra-data extension: the device downloads it
+  # from Cisco when the extension is installed; scripts/depot/runtime/
+  # openh264-extension.sh). Its library directory comes before the runtime's
+  # own, so it replaces the noopenh264 stub for gstreamer1-plugin-openh264.
+  # Not autodownloaded: luma-openh264.service installs or removes it to
+  # follow luma-openh264 enable/disable.
+  org.projectluma.Platform.openh264:
+    directory: lib64/openh264
+    add-ld-path: extra
+    autodelete: true
+    no-autodownload: true
   org.projectluma.Platform.Locale:
     locale-subset: true
 
@@ -47,8 +58,9 @@ add-packages:
   # Media and documents used by first-party apps (Reel, Session, Canvas)
   - gst-editing-services
   # Software H.264 encode and decode (openh264enc/openh264dec), linked to the
-  # runtime's noopenh264 placeholder as on the OS; it works once the Cisco
-  # binary reaches the device (docs/design/media-codec-delivery.md). Hardware
+  # runtime's noopenh264 placeholder; Cisco's binary replaces it from the
+  # org.projectluma.Platform.openh264 extension above
+  # (docs/design/media-codec-delivery.md). Hardware
   # H.264/H.265 encode on Intel is GStreamer's va plugin with the iHD driver
   # in org.projectluma.Platform.GL.default.
   - gstreamer1-plugin-openh264
@@ -81,6 +93,10 @@ cleanup-replace:
     to: "mkdir -p /usr/share/runtime/locale/$l/qt6 && mv $f /usr/share/runtime/locale/$l/qt6/\n    ln -sf ../../runtime/locale/$l/qt6/$f ."
 
 cleanup-append: |
+  # Mount point of org.projectluma.Platform.openh264 (bwrap cannot create it
+  # in the read-only /usr)
+  mkdir -p /usr/lib64/openh264
+
   # Luma: icon caches for the platform's own theme (file triggers do not run
   # for every theme in an install root)
   gtk-update-icon-cache -qf /usr/share/icons/Prairie

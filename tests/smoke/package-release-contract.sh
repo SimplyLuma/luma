@@ -87,6 +87,7 @@ for family, names in {
     "gnome-control-center": ("gnome-control-center", "gnome-control-center-filesystem"),
     "mesa": ("mesa-dri-drivers", "mesa-filesystem", "mesa-libEGL", "mesa-libGL", "mesa-libgbm",
              "mesa-vulkan-drivers"),
+    "noopenh264": ("noopenh264",),
 }.items():
     patch = root / "patches" / family / "0000-luma-fedora-spec.patch"
     if not patch.exists():
