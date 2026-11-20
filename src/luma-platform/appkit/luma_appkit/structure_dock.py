@@ -496,8 +496,14 @@ class Dock(Gtk.Overlay):
         parent = tile.get_parent()
         if parent is not None:
             parent.remove(tile)
+        # The kit's one drawer surface (the menu drawer's), with its grab handle.
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.add_css_class("lumaui-menu-drawer")
         card.add_css_class("lumaui-dock-drawer")
+        card.update_property([Gtk.AccessibleProperty.LABEL], [tile.title])
+        grab = Gtk.Box(halign=Gtk.Align.CENTER)
+        grab.add_css_class("lumaui-drawer-handle")
+        card.append(grab)
         card.append(tile)
         host = LayerHost.window_host(self)
         self._drawer = (key, card, host.present_modal(card, on_cancel=self._drawer_closed, drawer=True))
