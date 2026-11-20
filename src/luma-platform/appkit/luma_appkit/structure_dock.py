@@ -15,15 +15,28 @@ Rules the dock owns, so every app gets the same answers:
 - **Seams resize.** Where two tiles meet, the gap is a seam: drag it (or
   focus it with F8 and use the arrow keys) and the two sides trade space.
   Each side keeps at least what its tile needs.
-- **Headers move tiles.** Drag a tile by its header onto another: the edge
-  you drop on splits that tile and puts yours there; the middle swaps the
-  two. The header's More menu does the same from the keyboard (Move left,
-  right, up or down swaps with the nearest neighbour that way).
+- **Headers dock tiles anywhere.** Pick a tile up by its header (or its
+  tab; a long press on a touch screen) and drag it: over another tile, the
+  edge bands (a quarter of it each way) split that tile and put yours on that
+  side, the middle stacks the two as tabs; within ``OUTER_BAND`` (24 px) of
+  the dock's own edge it becomes a full-height column or full-width row
+  (``EDGE_SHARE`` of the dock). A preview shows exactly where and how big it
+  will land, gliding between places; nothing moves until release, and Esc
+  cancels. The emptied place goes; the other tiles keep their shares. The
+  header's More menu moves from the keyboard (Move left, right, up or down
+  swaps with the nearest neighbour that way). No docking on a phone.
+- **Tabs.** Tiles stacked in one place show a strip of their tabs (the
+  current tile's actions and More at its end) over the current tile;
+  ``show_tile(key)`` brings one forward.
 - **Layouts are data.** ``layout()`` is a tree of ``{"split": "h"|"v",
-  "ratio": start share, "start": …, "end": …}`` with tile keys at the
-  leaves, plain JSON for settings; ``set_layout()`` restores one (unknown
-  keys are skipped, missing tiles join the end). ``on_layout`` follows a
-  person's moves and resizes.
+  "ratio": start share, "start": …, "end": …}`` and tab groups
+  ``{"tabs": [keys], "current": key}``, with tile keys at the leaves, plain
+  JSON for settings (one app-wide layout, not one per document);
+  ``set_layout()`` restores one (unknown keys are skipped, missing tiles
+  join the end). ``on_layout`` follows a person's moves and resizes;
+  ``on_rearrange(previous, new)`` follows each dock by drag, for undo.
+  ``tree_dock()``, ``tree_dock_edge()`` and ``tree_remove()`` are the same
+  operations on plain data.
 - **The action bar stays clear.** ``under_bar=True`` ends the tiles above
   the island's floating bar, so it never covers a tile's edge.
 - **A tile can fit its content.** ``DockTile(fit=True)`` (a mixer's strips)
@@ -54,13 +67,29 @@ from __future__ import annotations
 
 from typing import Callable, Iterable
 
-from gi.repository import Gdk, GLib, GObject, Gtk
+import gi
+
+gi.require_version("Gdk", "4.0")
+gi.require_version("Graphene", "1.0")
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gdk, GLib, GObject, Graphene, Gtk  # noqa: E402
 
 from . import lumaui
 
-__all__ = ["Dock", "DockTile", "EDGES", "PHONE"]
+__all__ = ["Dock", "DockTile", "EDGES", "PHONE", "ZONES", "tree_keys", "tree_remove", "tree_dock", "tree_dock_edge"]
 
 EDGES = ("left", "right", "top", "bottom", "center")
+#: Where a dragged tile lands on another: an edge band splits that tile, the middle stacks them as tabs.
+ZONES = ("left", "right", "top", "bottom", "tabs")
+#: The share of the dock a tile dropped on the dock's own edge takes (a full-height column, a full-width row).
+EDGE_SHARE = 0.25
+#: How close to the dock's outer edge a drop is a full-span drop (px), and an edge band's share of a tile.
+OUTER_BAND = 24
+EDGE_BAND = 0.25
+#: The drop preview's move from one place to the next (ms).
+PREVIEW_MS = 120
+#: A drag starts once the pointer has moved this far (px), so a click on a header stays a click.
+DRAG_THRESHOLD = 8
 #: Where a tile other than the main one goes on a phone.
 PHONE = ("inline", "drawer")
 _SAVE_DELAY_MS = 300
@@ -70,6 +99,102 @@ def _tokens() -> dict:
     from . import lumaui_tokens
 
     return getattr(lumaui_tokens, "DOCK", {"gap": 8, "min_size": 96, "header_height": 36, "fit_max_pct": 40})
+
+
+# ── Layout trees (pure data) ──
+#
+# A layout is a tile key, a split {"split": "h"|"v", "ratio", "start", "end"[, "size"]}, or a tab
+# group {"tabs": [keys], "current": key} (one place showing one of its tiles at a time).
+
+
+def tree_keys(node) -> list[str]:
+    """Every tile key in a layout, in order."""
+    if node is None:
+        return []
+    if isinstance(node, str):
+        return [node]
+    if "tabs" in node:
+        return list(node["tabs"])
+    return tree_keys(node["start"]) + tree_keys(node["end"])
+
+
+def _tabs(keys: list[str], current: str | None):
+    """A tab group of `keys`, or the one key itself, or None."""
+    if not keys:
+        return None
+    if len(keys) == 1:
+        return keys[0]
+    return {"tabs": list(keys), "current": current if current in keys else keys[0]}
+
+
+def tree_remove(node, key: str):
+    """The layout without `key`; a tab group left with one tile becomes that tile, and a split left
+    with one side becomes that side (no empty places stay)."""
+    if node is None or node == key:
+        return None
+    if isinstance(node, str):
+        return node
+    if "tabs" in node:
+        keys = [k for k in node["tabs"] if k != key]
+        current = node.get("current")
+        return _tabs(keys, current if current != key else (keys[0] if keys else None))
+    start, end = tree_remove(node["start"], key), tree_remove(node["end"], key)
+    if start is None or end is None:
+        return start if end is None else end
+    if start is node["start"] and end is node["end"]:
+        return node
+    return {**node, "start": start, "end": end}
+
+
+def _slot_of(node, key: str):
+    """The place `key` is shown in: the key itself, or the tab group holding it."""
+    if isinstance(node, str):
+        return node if node == key else None
+    if "tabs" in node:
+        return node if key in node["tabs"] else None
+    return _slot_of(node["start"], key) or _slot_of(node["end"], key)
+
+
+def _replace_slot(node, slot, new):
+    if node is slot or node == slot and isinstance(slot, str):
+        return new
+    if isinstance(node, str) or "tabs" in node:
+        return node
+    return {**node, "start": _replace_slot(node["start"], slot, new), "end": _replace_slot(node["end"], slot, new)}
+
+
+def tree_dock(node, key: str, target: str, zone: str):
+    """Move tile `key` onto `target`'s place: an edge zone splits that place in half with `key` on that
+    side; "tabs" stacks them as tabs, `key` showing. `target` may be in a tab group (the group splits)."""
+    if zone not in ZONES:
+        raise ValueError(f"a drop zone is one of {ZONES}, not {zone!r}")
+    if key == target:
+        return node
+    rest = tree_remove(node, key)
+    slot = _slot_of(rest, target)
+    if slot is None:
+        raise ValueError(f"no tile {target!r} in the layout")
+    if zone == "tabs":
+        keys = list(slot["tabs"]) if isinstance(slot, dict) else [slot]
+        new = _tabs(keys + [key], key)
+    else:
+        first = zone in ("left", "top")
+        new = {"split": "h" if zone in ("left", "right") else "v", "ratio": 0.5,
+               "start": key if first else slot, "end": slot if first else key}
+    return _replace_slot(rest, slot, new)
+
+
+def tree_dock_edge(node, key: str, edge: str, share: float = EDGE_SHARE):
+    """Move tile `key` to the dock's own `edge`: a full-height column (left, right) or a full-width row
+    (top, bottom) taking `share` of the dock; everything else keeps its arrangement in the rest."""
+    if edge not in ("left", "right", "top", "bottom"):
+        raise ValueError(f"a dock edge is left, right, top or bottom, not {edge!r}")
+    rest = tree_remove(node, key)
+    if rest is None:
+        return key
+    first = edge in ("left", "top")
+    return {"split": "h" if edge in ("left", "right") else "v", "ratio": share if first else 1 - share,
+            "start": key if first else rest, "end": rest if first else key}
 
 
 class DockTile(Gtk.Box):
@@ -139,21 +264,23 @@ class DockTile(Gtk.Box):
         if bare:
             self.add_css_class("bare")
             self.header.set_visible(False)
-        drag = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
-        drag.connect("prepare", lambda *_a: Gdk.ContentProvider.new_for_value(f"lumaui-dock-tile:{self.key}")
-                     if self.dock is not None and not self.dock.phone else None)
-        drag.connect("drag-begin", self._drag_begin)
-        drag.connect("drag-end", lambda *_a: self.remove_css_class("moving"))
-        self.header.add_controller(drag)
 
     def set_title(self, title: str) -> None:
         self.title = title
         self.title_label.set_label(title)
         self.update_property([Gtk.AccessibleProperty.LABEL], [title])
 
-    def _drag_begin(self, source: Gtk.DragSource, _drag) -> None:
-        source.set_icon(Gtk.WidgetPaintable.new(self.header), 24, 18)
-        self.add_css_class("moving")
+    def _restore_header(self) -> None:
+        """Its header back as it was (a tab group borrows its actions and More, and hides it)."""
+        if self.actions.get_parent() is not self.header:
+            if self.actions.get_parent() is not None:
+                self.actions.get_parent().remove(self.actions)
+            self.header.insert_child_after(self.actions, self.title_label)
+        if self.more_button.get_parent() is not self.header:
+            if self.more_button.get_parent() is not None:
+                self.more_button.get_parent().remove(self.more_button)
+            self.header.insert_child_after(self.more_button, self.actions)
+        self.header.set_visible(not self.bare)
 
     def _more(self, button: Gtk.Button) -> None:
         from .action_bubble import FloatingMenu, MenuItem
@@ -221,16 +348,21 @@ class Dock(Gtk.Overlay):
         self.on_layout = on_layout
         self._refit_id = 0
         self._allocated = (0, 0)
+        #: Called with (previous layout, new layout) after a person docks a tile somewhere else, so an app
+        #: can put the previous one on its undo stack (``on_layout`` also follows).
+        self.on_rearrange: Callable[[object, object], None] | None = None
         self.target = Gtk.Box(can_target=False, visible=False)
         self.target.add_css_class("lumaui-dock-target")
         self._target_rect: Gdk.Rectangle | None = None
+        self._target_motion: tuple | None = None  # (from, to, start µs) while the preview moves
+        self._target_tick = 0
         self.add_overlay(self.target)
         self.connect("get-child-position", self._place_target)
-        drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
-        drop.connect("motion", self._drop_motion)
-        drop.connect("leave", lambda *_a: self._show_target(None))
-        drop.connect("drop", self._dropped)
-        self.add_controller(drop)
+        self._slots: list[tuple[object, Gtk.Widget]] = []  # each place in the layout and its widget
+        self._root_widget: Gtk.Widget | None = None
+        self._grab: dict | None = None  # the header drag under way
+        for tile in self.tiles.values():
+            self._watch(tile.header, tile.key)
         self.set_layout(layout if layout is not None else self._default_layout())
         from .structure_adapt import WidthWatch
 
@@ -275,6 +407,8 @@ class Dock(Gtk.Overlay):
     def _copy(node):
         if isinstance(node, str):
             return node
+        if "tabs" in node:
+            return {"tabs": list(node["tabs"]), "current": node["current"]}
         copy = {"split": node["split"], "ratio": round(node["ratio"], 4),
                 "start": Dock._copy(node["start"]), "end": Dock._copy(node["end"])}
         if node.get("size"):
@@ -288,6 +422,13 @@ class Dock(Gtk.Overlay):
                 seen.add(node)
                 return node
             return None
+        if isinstance(node, dict) and isinstance(node.get("tabs"), list):
+            keys = []
+            for key in node["tabs"]:
+                if isinstance(key, str) and key in self.tiles and key not in seen and not self.tiles[key].bare:
+                    seen.add(key)
+                    keys.append(key)
+            return _tabs(keys, node.get("current"))
         if not isinstance(node, dict) or node.get("split") not in ("h", "v"):
             return None
         start = self._clean(node.get("start"), seen)
@@ -316,8 +457,11 @@ class Dock(Gtk.Overlay):
     def _detach_tiles(self) -> None:
         for tile in self.tiles.values():
             tile.remove_css_class("inline")
+            tile._restore_header()
             parent = tile.get_parent()
-            if isinstance(parent, Gtk.Paned):
+            if isinstance(parent, Gtk.Stack):
+                parent.remove(tile)
+            elif isinstance(parent, Gtk.Paned):
                 if parent.get_start_child() is tile:
                     parent.set_start_child(None)
                 else:
@@ -330,10 +474,12 @@ class Dock(Gtk.Overlay):
         try:
             self._detach_tiles()
             self._panes = []
+            self._slots = []
             if self.phone:
                 content = self._phone_content()
             else:
                 content = self._build(self._tree)
+            self._root_widget = None if self.phone else content
             frame = Gtk.Box(hexpand=True, vexpand=True)
             frame.add_css_class("lumaui-dock-frame")
             content.set_hexpand(True)
@@ -345,7 +491,12 @@ class Dock(Gtk.Overlay):
 
     def _build(self, node) -> Gtk.Widget:
         if isinstance(node, str):
+            self._slots.append((node, self.tiles[node]))
             return self.tiles[node]
+        if "tabs" in node:
+            group = self._build_tabs(node)
+            self._slots.append((node, group))
+            return group
         paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL if node["split"] == "h"
                           else Gtk.Orientation.VERTICAL, wide_handle=True,
                           resize_start_child=True, resize_end_child=True,
@@ -566,39 +717,246 @@ class Dock(Gtk.Overlay):
     # ── Moving tiles ──
 
     @staticmethod
-    def _remove(node, key):
+    def _swap(node, a: str, b: str):
+        """The layout with tiles `a` and `b` in each other's places."""
         if isinstance(node, str):
-            return None if node == key else node
-        start, end = Dock._remove(node["start"], key), Dock._remove(node["end"], key)
-        if start is None or end is None:
-            return end if start is None else start
-        node["start"], node["end"] = start, end
-        return node
-
-    @staticmethod
-    def _replace(node, key, new):
-        if isinstance(node, str):
-            return new if node == key else node
-        node["start"] = Dock._replace(node["start"], key, new)
-        node["end"] = Dock._replace(node["end"], key, new)
-        return node
+            return b if node == a else a if node == b else node
+        if "tabs" in node:
+            keys = [b if k == a else a if k == b else k for k in node["tabs"]]
+            current = node["current"]
+            return {"tabs": keys, "current": b if current == a else a if current == b else current}
+        return {**node, "start": Dock._swap(node["start"], a, b), "end": Dock._swap(node["end"], a, b)}
 
     def move_tile(self, key: str, target: str, edge: str) -> None:
-        """Put tile ``key`` at ``edge`` of tile ``target`` (``"center"`` swaps the two)."""
-        if edge not in EDGES:
-            raise ValueError(f"an edge is one of {EDGES}, not {edge!r}")
+        """Put tile ``key`` at ``edge`` of tile ``target``: an edge splits ``target``'s place, ``"tabs"``
+        stacks them as tabs, ``"center"`` swaps the two (the keyboard's Move left/right/up/down)."""
+        if edge not in EDGES and edge != "tabs":
+            raise ValueError(f"an edge is one of {EDGES + ('tabs',)}, not {edge!r}")
         if key == target or key not in self.tiles or target not in self.tiles:
             return
         if edge == "center":
-            self._tree = self._replace(self._replace(self._replace(self._tree, key, "\0"), target, key), "\0", target)
+            self._apply(self._swap(self._tree, key, target))
         else:
-            tree = self._remove(self._tree, key)
-            orientation = "h" if edge in ("left", "right") else "v"
-            first = edge in ("left", "top")
-            node = self.split(orientation, 0.5, key if first else target, target if first else key)
-            self._tree = self._replace(tree, target, node)
+            self._apply(tree_dock(self._tree, key, target, edge))
+
+    def move_to_edge(self, key: str, edge: str) -> None:
+        """Put tile ``key`` along the dock's own ``edge``: a full-height column or full-width row."""
+        if key in self.tiles:
+            self._apply(tree_dock_edge(self._tree, key, edge))
+
+    def _apply(self, tree, *, rearranged: bool = False) -> None:
+        previous = self.layout()
+        self._tree = tree
         self._rebuild()
         self._changed()
+        if rearranged and self.on_rearrange is not None:
+            self.on_rearrange(previous, self.layout())
+
+    # ── Tab groups ──
+
+    def _build_tabs(self, node: dict) -> Gtk.Widget:
+        """A place holding several tiles: a strip of their tabs (the current one's actions and More at
+        its end) over the current tile; the others wait in a stack."""
+        group = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        group.add_css_class("lumaui-dock-tile")
+        group.add_css_class("lumaui-dock-tabs")
+        group.set_overflow(Gtk.Overflow.HIDDEN)
+        strip = Gtk.Box()
+        strip.add_css_class("lumaui-dock-tile-header")
+        strip.add_css_class("lumaui-dock-tab-strip")
+        row = Gtk.Box(hexpand=True, accessible_role=Gtk.AccessibleRole.TAB_LIST)
+        row.add_css_class("lumaui-dock-tab-row")
+        strip.append(row)
+        group.tools = Gtk.Box()
+        group.tools.add_css_class("lumaui-dock-tab-tools")
+        strip.append(group.tools)
+        group.append(strip)
+        group.stack = Gtk.Stack(hexpand=True, vexpand=True)
+        group.append(group.stack)
+        group.buttons = {}
+        from .icons import image
+
+        for key in node["tabs"]:
+            tile = self.tiles[key]
+            tile.header.set_visible(False)
+            group.stack.add_named(tile, key)
+            button = Gtk.Button(accessible_role=Gtk.AccessibleRole.TAB)
+            button.add_css_class("lumaui-dock-tab")
+            line = Gtk.Box(spacing=6)
+            glyph = image(tile.icon)
+            glyph.add_css_class("lumaui-dock-tile-icon")
+            line.append(glyph)
+            words = Gtk.Label(label=tile.title, ellipsize=3)
+            words.add_css_class("lumaui-dock-tile-title")
+            line.append(words)
+            button.set_child(line)
+            button.update_property([Gtk.AccessibleProperty.LABEL], [tile.title])
+            button.connect("clicked", lambda _b, k=key, n=node, g=group: self._select_tab(g, n, k, save=True))
+            self._watch(button, key)
+            row.append(button)
+            group.buttons[key] = button
+        self._select_tab(group, node, node["current"], save=False)
+        return group
+
+    def _select_tab(self, group: Gtk.Widget, node: dict, key: str, *, save: bool) -> None:
+        for other in node["tabs"]:
+            self.tiles[other]._restore_header()
+            self.tiles[other].header.set_visible(False)
+        node["current"] = key
+        group.stack.set_visible_child_name(key)
+        tile = self.tiles[key]
+        for widget in (tile.actions, tile.more_button):
+            widget.get_parent().remove(widget)
+            group.tools.append(widget)
+        for other, button in group.buttons.items():
+            lumaui.set_css_class(button, "current", other == key)
+            # SELECTED is a tristate (an int): a bool there is a GLib critical.
+            button.update_state([Gtk.AccessibleState.SELECTED], [GObject.Value(GObject.TYPE_INT, int(other == key))])
+        group.update_property([Gtk.AccessibleProperty.LABEL], [tile.title])
+        if save:
+            self._changed()
+
+    def show_tile(self, key: str) -> None:
+        """Bring tile ``key`` to the front of its tab group (nothing to do for a tile on its own)."""
+        for slot, widget in self._slots:
+            if isinstance(slot, dict) and key in slot["tabs"] and slot["current"] != key:
+                self._select_tab(widget, slot, key, save=True)
+
+    # ── Docking by dragging a header (or a tab) ──
+
+    def _watch(self, widget: Gtk.Widget, key: str) -> None:
+        drag = Gtk.GestureDrag(button=Gdk.BUTTON_PRIMARY, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        drag.connect("drag-begin", self._grab_begin, widget, key)
+        drag.connect("drag-update", self._grab_update)
+        drag.connect("drag-end", self._grab_end)
+        widget.add_controller(drag)
+        # On a touch screen a tile is picked up by a long press, so a swipe still scrolls.
+        press = Gtk.GestureLongPress(touch_only=True, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        press.connect("pressed", lambda *_a: self._grab is not None and self._grab.update(armed=True))
+        widget.add_controller(press)
+
+    def _grab_begin(self, gesture: Gtk.GestureDrag, x: float, y: float, widget: Gtk.Widget, key: str) -> None:
+        if self.phone or self.tiles[key].bare or len(self.tiles) < 2:
+            gesture.set_state(Gtk.EventSequenceState.DENIED)
+            return
+        device = gesture.get_device()
+        touch = device is not None and device.get_source() == Gdk.InputSource.TOUCHSCREEN
+        self._grab = {"key": key, "widget": widget, "x": x, "y": y, "started": False, "touch": touch,
+                      "armed": False, "gesture": gesture, "zone": None, "keys": None}
+
+    def _grab_update(self, gesture: Gtk.GestureDrag, dx: float, dy: float) -> None:
+        grab = self._grab
+        if grab is None or grab["gesture"] is not gesture:
+            return
+        if not grab["started"]:
+            if (dx * dx + dy * dy) ** 0.5 < DRAG_THRESHOLD:
+                return
+            if grab["touch"] and not grab["armed"]:
+                self._grab = None
+                gesture.set_state(Gtk.EventSequenceState.DENIED)
+                return
+            grab["started"] = True
+            gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+            self.tiles[grab["key"]].add_css_class("moving")
+            root = self.get_root()
+            if root is not None:
+                keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+                keys.connect("key-pressed", self._grab_key)
+                root.add_controller(keys)
+                grab["keys"] = (root, keys)
+        ok, point = grab["widget"].compute_point(self, Graphene.Point().init(grab["x"] + dx, grab["y"] + dy))
+        if not ok:
+            return
+        grab["zone"] = self._zone(point.x, point.y, grab["key"])
+        self._show_target(grab["zone"][2] if grab["zone"] else None)
+
+    def _grab_end(self, gesture: Gtk.GestureDrag, _dx: float, _dy: float) -> None:
+        grab = self._grab
+        if grab is None or grab["gesture"] is not gesture:
+            return
+        zone = grab["zone"] if grab["started"] else None
+        self._end_grab()
+        if zone is None:
+            return
+        target, where, _rect = zone
+        tree = tree_dock_edge(self._tree, grab["key"], where) if target is None else \
+            tree_dock(self._tree, grab["key"], target, where)
+        if tree != self._tree:
+            self._apply(tree, rearranged=True)
+
+    def _grab_key(self, _controller, keyval: int, _code: int, _state) -> bool:
+        if keyval != Gdk.KEY_Escape or self._grab is None:
+            return False
+        gesture = self._grab["gesture"]
+        self._end_grab()  # nothing moved: the layout is as it was
+        gesture.set_state(Gtk.EventSequenceState.DENIED)
+        return True
+
+    def cancel_drag(self) -> None:
+        """Stop a header drag without docking (Esc does this)."""
+        if self._grab is not None:
+            self._grab_key(None, Gdk.KEY_Escape, 0, 0)
+
+    def _end_grab(self) -> None:
+        grab, self._grab = self._grab, None
+        if grab is None:
+            return
+        self.tiles[grab["key"]].remove_css_class("moving")
+        if grab["keys"] is not None:
+            root, keys = grab["keys"]
+            root.remove_controller(keys)
+        self._show_target(None)
+
+    def _widget_rect(self, widget: Gtk.Widget) -> Gdk.Rectangle | None:
+        if widget is None or not widget.get_mapped():
+            return None
+        ok, rect = widget.compute_bounds(self)
+        if not ok:
+            return None
+        area = Gdk.Rectangle()
+        area.x, area.y = round(rect.get_x()), round(rect.get_y())
+        area.width, area.height = round(rect.get_width()), round(rect.get_height())
+        return area
+
+    def _zone(self, x: float, y: float, dragged: str) -> tuple[str | None, str, Gdk.Rectangle] | None:
+        """Where a tile dragged to (`x`, `y`) would land: (target tile, zone, the rectangle it would take),
+        target None for the dock's own edge; None where it can't go."""
+        whole = self._widget_rect(self._root_widget)
+        if whole is not None and whole.x <= x <= whole.x + whole.width and whole.y <= y <= whole.y + whole.height:
+            near = min((("left", x - whole.x), ("right", whole.x + whole.width - x), ("top", y - whole.y),
+                        ("bottom", whole.y + whole.height - y)), key=lambda e: e[1])
+            if near[1] <= OUTER_BAND and tree_keys(self._tree) != [dragged]:
+                return None, near[0], self._part(whole, near[0], EDGE_SHARE)
+        for slot, widget in self._slots:
+            if slot == dragged:
+                continue
+            r = self._widget_rect(widget)
+            if r is None or not (r.x <= x <= r.x + r.width and r.y <= y <= r.y + r.height):
+                continue
+            fx, fy = (x - r.x) / max(1, r.width), (y - r.y) / max(1, r.height)
+            edge, depth = min((("left", fx), ("right", 1 - fx), ("top", fy), ("bottom", 1 - fy)), key=lambda e: e[1])
+            members = slot["tabs"] if isinstance(slot, dict) else [slot]
+            target = next(k for k in members if k != dragged)
+            if depth < EDGE_BAND:
+                return target, edge, self._part(r, edge, 0.5)
+            if dragged in members or self.tiles[target].bare:
+                return None  # already there; a bare tile (a stage) takes no tabs
+            return target, "tabs", r
+        return None
+
+    @staticmethod
+    def _part(r: Gdk.Rectangle, edge: str, share: float) -> Gdk.Rectangle:
+        area = Gdk.Rectangle()
+        area.x, area.y, area.width, area.height = r.x, r.y, r.width, r.height
+        if edge in ("left", "right"):
+            area.width = round(r.width * share)
+            if edge == "right":
+                area.x = r.x + r.width - area.width
+        else:
+            area.height = round(r.height * share)
+            if edge == "bottom":
+                area.y = r.y + r.height - area.height
+        return area
 
     def _bounds(self, key: str) -> Gdk.Rectangle | None:
         """A tile's place in the dock, or None while it isn't laid out (a phone's drawer)."""
@@ -646,67 +1004,47 @@ class Dock(Gtk.Overlay):
 
     # ── Drag and drop ──
 
-    def _zone(self, x: float, y: float, dragged: str) -> tuple[str, str, Gdk.Rectangle] | None:
-        for key in self.tiles:
-            if key == dragged:
-                continue
-            r = self._bounds(key)
-            if r is None:
-                continue
-            fx = (x - r.x) / max(1, r.width)
-            fy = (y - r.y) / max(1, r.height)
-            if not (0 <= fx <= 1 and 0 <= fy <= 1):
-                continue
-            if 0.3 <= fx <= 0.7 and 0.3 <= fy <= 0.7:
-                return key, "center", r
-            edge = min((("left", fx), ("right", 1 - fx), ("top", fy), ("bottom", 1 - fy)), key=lambda e: e[1])[0]
-            area = Gdk.Rectangle()
-            area.x, area.y, area.width, area.height = r.x, r.y, r.width, r.height
-            if edge == "left":
-                area.width //= 2
-            elif edge == "right":
-                area.x += area.width // 2
-                area.width -= area.width // 2
-            elif edge == "top":
-                area.height //= 2
-            else:
-                area.y += area.height // 2
-                area.height -= area.height // 2
-            return key, edge, area
-        return None
-
-    def _dragged(self, value) -> str | None:
-        text = value if isinstance(value, str) else None
-        if text and text.startswith("lumaui-dock-tile:") and text[17:] in self.tiles:
-            return text[17:]
-        return None
-
-    def _moving(self) -> str | None:
-        """The tile of this dock being dragged by its header (its drag-begin marks it `moving`).
-
-        The drag's content can't be read here: PyGObject's ContentProvider.get_value() takes no
-        type, so it never returns the string; the dock knows its own tiles instead."""
-        return next((key for key, tile in self.tiles.items() if tile.has_css_class("moving")), None)
-
-    def _drop_motion(self, _target: Gtk.DropTarget, x: float, y: float):
-        key = self._moving()
-        zone = self._zone(x, y, key) if key else None
-        self._show_target(zone[2] if zone else None)
-        return Gdk.DragAction.MOVE if zone else 0
-
-    def _dropped(self, _target, value, x: float, y: float) -> bool:
-        self._show_target(None)
-        key = self._dragged(value)
-        zone = self._zone(x, y, key) if key else None
-        if zone is None:
-            return False
-        self.move_tile(key, zone[0], zone[1])
-        return True
-
     def _show_target(self, rect: Gdk.Rectangle | None) -> None:
-        self._target_rect = rect
-        self.target.set_visible(rect is not None)
+        """The drop preview: exactly where and how big the tile would land, gliding there in PREVIEW_MS."""
+        if rect is None:
+            self._target_motion = None
+            self._target_rect = None
+            self.target.set_visible(False)
+            self.queue_allocate()
+            return
+        now = self._target_rect
+        if now is not None and (now.x, now.y, now.width, now.height) == (rect.x, rect.y, rect.width, rect.height):
+            return
+        if now is None or not self.target.get_visible():
+            self._target_rect = rect
+            self.target.set_visible(True)
+            self.queue_allocate()
+            return
+        clock = self.get_frame_clock()
+        start = clock.get_frame_time() if clock is not None else GLib.get_monotonic_time()
+        self._target_motion = (now, rect, start)
+        if not self._target_tick:
+            self._target_tick = self.add_tick_callback(self._glide)
+
+    def _glide(self, _widget, clock) -> bool:
+        if self._target_motion is None:
+            self._target_tick = 0
+            return GLib.SOURCE_REMOVE
+        start_rect, goal, start = self._target_motion
+        t = min(1.0, (clock.get_frame_time() - start) / (PREVIEW_MS * 1000))
+        ease = 1 - (1 - t) ** 3
+        area = Gdk.Rectangle()
+        area.x = round(start_rect.x + (goal.x - start_rect.x) * ease)
+        area.y = round(start_rect.y + (goal.y - start_rect.y) * ease)
+        area.width = round(start_rect.width + (goal.width - start_rect.width) * ease)
+        area.height = round(start_rect.height + (goal.height - start_rect.height) * ease)
+        self._target_rect = area
         self.queue_allocate()
+        if t >= 1:
+            self._target_motion = None
+            self._target_tick = 0
+            return GLib.SOURCE_REMOVE
+        return GLib.SOURCE_CONTINUE
 
     def _place_target(self, _overlay, widget, allocation) -> bool:
         if widget is not self.target or self._target_rect is None:
