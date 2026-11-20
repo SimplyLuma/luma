@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.132%{?dist}
+Release:        1.luma.133%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -161,6 +161,8 @@ xvfb-run -a --server-args="-screen 0 1280x1024x24" dbus-run-session -- \
   python3 tests/timeline.py
 # The standard badge value agents publish for their dock icon.
 PYTHONPATH="$PWD/appkit" python3 tests/background_badge.py
+# The audio capture client against a stand-in portal on a private bus.
+dbus-run-session -- env PYTHONPATH="$PWD/appkit" python3 tests/audio_capture.py
 # New UI regressions require a display: exit 77 is not package evidence.
 test_runtime=$(mktemp -d)
 chmod 0700 "$test_runtime"
@@ -376,6 +378,11 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.133
+- luma_appkit.audio_capture: request_audio_capture() and AudioCapture, the
+  client for the Audio Capture portal (pipewiresrc on the granted remote,
+  restore tokens, close)
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.132
 - luma_window_set_aspect_ratio(), luma_window_set_aspect_content() and
   luma_window_get_aspect_ratio_enforced(): a window keeps its content at a
