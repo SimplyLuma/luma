@@ -77,3 +77,4 @@ G_END_DECLS
 #include "luma-creative-layers.h"
 #include "luma-creative-properties.h"
 #include "luma-arrange-view.h"
+#include "luma-color-picker.h"

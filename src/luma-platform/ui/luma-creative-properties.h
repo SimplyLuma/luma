@@ -8,6 +8,9 @@
 
 #include <gtk/gtk.h>
 
+#include "luma-action-center.h"
+#include "luma-color-picker.h"
+
 G_BEGIN_DECLS
 
 /**
@@ -146,13 +149,17 @@ void luma_property_number_set_compact(LumaPropertyNumber *self, gboolean compact
  * LumaPropertyColor:
  *
  * A colour (v70 .suclrrow): its swatch, and its hex code to type. The
- * swatch opens the document's palette when it has one. Mixed selections and
+ * swatch opens a #LumaColorPicker (with the document's palette, if set) in
+ * a popover, or in an action center's grown panel
+ * (luma_property_color_set_action_center(), or #LumaPropertyColor::open-picker
+ * to host it yourself). Mixed selections and
  * fills a code can't say (gradients) show a word instead, not editable.
  * Extra controls (a stroke's width, Remove) follow with
  * luma_property_color_add_suffix().
  *
- * Emits #LumaPropertyColor::color-changed when a person picks or types a
- * colour, never for luma_property_color_set_rgba().
+ * Emits #LumaPropertyColor::color-changed for every change a person makes
+ * (live while dragging in the picker) and #LumaPropertyColor::color-committed
+ * once when they finish one; never for luma_property_color_set_rgba().
  *
  * Tree: box.lumaui-creative-color > button.lumaui-creative-swatch > drawingarea,
  *   entry.lumaui-creative-hex, suffixes …
@@ -187,6 +194,13 @@ void luma_property_color_set_word(LumaPropertyColor *self, const char *word);
  * @n_colors: how many
  */
 void luma_property_color_set_palette(LumaPropertyColor *self, const GdkRGBA *colors, guint n_colors);
+/**
+ * luma_property_color_set_action_center:
+ * @self: a field
+ * @center: (nullable): grow this action center's panel with the picker
+ *   instead of a popover (the field in a bar's own panel, or one beside it)
+ */
+void luma_property_color_set_action_center(LumaPropertyColor *self, LumaActionCenter *center);
 /**
  * luma_property_color_add_suffix:
  * @self: a field

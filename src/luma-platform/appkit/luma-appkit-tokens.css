@@ -2544,6 +2544,18 @@
   --lumaui-creative-arrange-frame: 1.5px;
   --lumaui-creative-arrange-guide: 1px;
   --lumaui-creative-arrange-nudge-large: 10px;
+  --lumaui-creative-picker-width: 248px;
+  --lumaui-creative-picker-padding: 12px;
+  --lumaui-creative-picker-radius: 18px;
+  --lumaui-creative-picker-gap: 10px;
+  --lumaui-creative-picker-area-height: 156px;
+  --lumaui-creative-picker-area-radius: 10px;
+  --lumaui-creative-picker-strip: 14px;
+  --lumaui-creative-picker-knob: 16px;
+  --lumaui-creative-picker-swatch: 22px;
+  --lumaui-creative-picker-swatch-gap: 6px;
+  --lumaui-creative-picker-swatch-radius: 7px;
+  --lumaui-creative-picker-recent-max: 12px;
   --lumaui-dial-key-size: 76px;
   --lumaui-dial-key-phone-size: 80px;
   --lumaui-dial-key-tone-size: 56px;

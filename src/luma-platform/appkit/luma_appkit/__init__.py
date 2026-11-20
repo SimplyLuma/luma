@@ -350,7 +350,7 @@ __all__ = [
     "WAVEFORM_KINDS",
     # ── end LumaUI media
     "ToolBar", "Tool", "Flyout", "TOOL_SEPARATOR", "Layer", "LayerTree",
-    "PropertySection", "PropertyNumber", "PropertyColor", "PropertyChoice", "AlignmentActions",
+    "PropertySection", "PropertyNumber", "PropertyColor", "ColorPicker", "recent_colors", "PropertyChoice", "AlignmentActions",
     "CreativeWorkspace",
     "FloatingPanel",
     "ArrangeView", "ArrangeItem",
@@ -684,7 +684,7 @@ def __getattr__(name: str):
     if name in {"AudioMeter", "VolumeSlider"}:
         from . import media_meter
         return getattr(media_meter, name)
-    if name in {"ToolBar", "Tool", "Flyout", "TOOL_SEPARATOR", "Layer", "LayerTree", "PropertySection", "PropertyNumber", "PropertyColor", "PropertyChoice", "AlignmentActions", "ArrangeView", "ArrangeItem"}:
+    if name in {"ToolBar", "Tool", "Flyout", "TOOL_SEPARATOR", "Layer", "LayerTree", "PropertySection", "PropertyNumber", "PropertyColor", "ColorPicker", "recent_colors", "PropertyChoice", "AlignmentActions", "ArrangeView", "ArrangeItem"}:
         from . import creative_parts
         return getattr(creative_parts, name)
     if name in {"CreativeWorkspace", "FloatingPanel"}:

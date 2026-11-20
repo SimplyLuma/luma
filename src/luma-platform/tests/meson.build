@@ -117,7 +117,7 @@ lumaui_part_tests = [
   'badges', 'toast', 'destructive-dialog', 'stacked-button', 'details-pane', 'table-header',
   'action-center', 'cards', 'file-card', 'selection-bubble', 'navigation-trail-bar',
   'menu-drawer', 'contact', 'text-field', 'place-search', 'message-bubble', 'type-label',
-  'creative-workspace', 'creative-tools', 'creative-layers', 'creative-properties', 'arrange-view', 'controls', 'progress-line', 'title-island', 'list-first', 'tab-bar',
+  'creative-workspace', 'creative-tools', 'creative-layers', 'creative-properties', 'arrange-view', 'color-picker', 'controls', 'progress-line', 'title-island', 'list-first', 'tab-bar',
 ]
 foreach stem : lumaui_part_tests
   if fs.exists('test-lumaui-' + stem + '.c')

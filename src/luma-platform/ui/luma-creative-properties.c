@@ -505,7 +505,7 @@ void luma_property_number_set_compact(LumaPropertyNumber *self, gboolean compact
 
 /* ── LumaPropertyColor ── */
 
-enum { COLOR_CHANGED, COLOR_N_SIGNALS };
+enum { COLOR_CHANGED, COLOR_COMMITTED, COLOR_OPEN_PICKER, COLOR_N_SIGNALS };
 static guint color_signals[COLOR_N_SIGNALS];
 
 struct _LumaPropertyColor {
@@ -518,6 +518,7 @@ struct _LumaPropertyColor {
   char *word;
   GArray *palette; /* GdkRGBA */
   char *label;
+  LumaActionCenter *center; /* weak: grows with the picker instead of a popover */
 };
 
 G_DEFINE_FINAL_TYPE(LumaPropertyColor, luma_property_color, GTK_TYPE_BOX)
@@ -602,6 +603,7 @@ static void color_commit(LumaPropertyColor *self) {
     return;
   }
   color_apply(self, &parsed);
+  g_signal_emit(self, color_signals[COLOR_COMMITTED], 0, &self->rgba);
 }
 
 static void hex_activated(GtkEntry *entry G_GNUC_UNUSED, gpointer user_data) {
@@ -612,48 +614,53 @@ static void hex_left(GtkEventControllerFocus *focus G_GNUC_UNUSED, gpointer user
   color_commit(LUMA_PROPERTY_COLOR(user_data));
 }
 
-static void palette_picked(GtkButton *button, gpointer user_data) {
+static void picker_changed(LumaColorPicker *picker G_GNUC_UNUSED, GdkRGBA *rgba, gpointer user_data) {
   LumaPropertyColor *self = user_data;
-  guint index = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(button), "luma-palette-index"));
-  if (self->palette != NULL && index < self->palette->len) {
-    GdkRGBA picked = g_array_index(self->palette, GdkRGBA, index);
-    if (self->popover != NULL)
-      gtk_popover_popdown(GTK_POPOVER(self->popover));
-    color_apply(self, &picked);
-  }
+  if (self->word == NULL && gdk_rgba_equal(rgba, &self->rgba))
+    return;
+  color_apply(self, rgba);
+}
+
+static void picker_committed(LumaColorPicker *picker G_GNUC_UNUSED, GdkRGBA *rgba, gpointer user_data) {
+  g_signal_emit(user_data, color_signals[COLOR_COMMITTED], 0, rgba);
+}
+
+/* A picker on this field: it shows the field's colour and palette, and its changes are the field's. */
+static GtkWidget *picker_for(LumaPropertyColor *self) {
+  GtkWidget *picker = luma_color_picker_new();
+  luma_color_picker_set_rgba(LUMA_COLOR_PICKER(picker), &self->rgba);
+  if (self->palette != NULL)
+    luma_color_picker_set_palette(LUMA_COLOR_PICKER(picker), (const GdkRGBA *)self->palette->data,
+                                  self->palette->len);
+  g_signal_connect_object(picker, "color-changed", G_CALLBACK(picker_changed), self, 0);
+  g_signal_connect_object(picker, "color-committed", G_CALLBACK(picker_committed), self, 0);
+  return picker;
 }
 
 static void swatch_clicked(GtkButton *button G_GNUC_UNUSED, gpointer user_data) {
   LumaPropertyColor *self = user_data;
-  if (self->palette == NULL || self->palette->len == 0)
-    return;
-  if (self->popover == NULL) {
-    self->popover = gtk_popover_new();
-    gtk_widget_add_css_class(self->popover, "lumaui-creative-palette-popover");
-    gtk_popover_set_has_arrow(GTK_POPOVER(self->popover), FALSE);
-    gtk_widget_set_parent(self->popover, self->swatch);
+  GtkWidget *picker = g_object_ref_sink(picker_for(self));
+  gboolean handled = FALSE;
+  g_signal_emit(self, color_signals[COLOR_OPEN_PICKER], 0, picker, &handled);
+  if (!handled && self->center != NULL) {
+    luma_action_center_grow_panel(self->center, "lumaui-color", picker);
+  } else if (!handled) {
+    if (self->popover == NULL) {
+      self->popover = gtk_popover_new();
+      gtk_widget_add_css_class(self->popover, "lumaui-color-picker-popover");
+      gtk_popover_set_has_arrow(GTK_POPOVER(self->popover), FALSE);
+      gtk_widget_set_parent(self->popover, self->swatch);
+    }
+    gtk_popover_set_child(GTK_POPOVER(self->popover), picker);
+    gtk_popover_popup(GTK_POPOVER(self->popover));
   }
-  GtkWidget *grid = gtk_grid_new();
-  gtk_widget_add_css_class(grid, "lumaui-creative-palette");
-  for (guint i = 0; i < self->palette->len; i++) {
-    GdkRGBA *rgba = &g_array_index(self->palette, GdkRGBA, i);
-    GtkWidget *pick = gtk_button_new();
-    gtk_widget_add_css_class(pick, "lumaui-creative-palette-swatch");
-    gtk_button_set_child(GTK_BUTTON(pick), swatch_area(rgba));
-    g_autofree char *code = luma_property_color_format(rgba);
-    gtk_widget_set_tooltip_text(pick, code);
-    luma_ui_set_accessible_label(pick, code);
-    g_object_set_data(G_OBJECT(pick), "luma-palette-index", GUINT_TO_POINTER(i));
-    g_signal_connect(pick, "clicked", G_CALLBACK(palette_picked), self);
-    gtk_grid_attach(GTK_GRID(grid), pick, (int)(i % 5), (int)(i / 5), 1, 1);
-  }
-  gtk_popover_set_child(GTK_POPOVER(self->popover), grid);
-  gtk_popover_popup(GTK_POPOVER(self->popover));
+  g_object_unref(picker);
 }
 
 static void luma_property_color_dispose(GObject *object) {
   LumaPropertyColor *self = LUMA_PROPERTY_COLOR(object);
   g_clear_pointer(&self->popover, gtk_widget_unparent);
+  g_clear_weak_pointer(&self->center);
   G_OBJECT_CLASS(luma_property_color_parent_class)->dispose(object);
 }
 
@@ -673,10 +680,37 @@ static void luma_property_color_class_init(LumaPropertyColorClass *klass) {
   /**
    * LumaPropertyColor::color-changed:
    * @self: the field
-   * @rgba: the colour a person picked or typed
+   * @rgba: the colour a person is picking or typed
+   *
+   * Every change, live while the picker is dragged (preview it).
    */
   color_signals[COLOR_CHANGED] = g_signal_new("color-changed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0, NULL,
                                               NULL, NULL, G_TYPE_NONE, 1, GDK_TYPE_RGBA);
+  /**
+   * LumaPropertyColor::color-committed:
+   * @self: the field
+   * @rgba: the colour picked
+   *
+   * Once per finished change (a drag let go, a swatch, the eyedropper, a
+   * typed code): one undo step.
+   */
+  color_signals[COLOR_COMMITTED] = g_signal_new("color-committed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0,
+                                                NULL, NULL, NULL, G_TYPE_NONE, 1, GDK_TYPE_RGBA);
+  /**
+   * LumaPropertyColor::open-picker:
+   * @self: the field
+   * @picker: a #LumaColorPicker on this field, ready to show
+   *
+   * The swatch was pressed. Return %TRUE after showing @picker yourself (a
+   * grown panel of your own ActionCenter); otherwise it opens in the action
+   * center set with luma_property_color_set_action_center(), or in a popover
+   * from the swatch.
+   *
+   * Returns: whether the handler showed the picker
+   */
+  color_signals[COLOR_OPEN_PICKER] = g_signal_new("open-picker", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0,
+                                                  g_signal_accumulator_true_handled, NULL, NULL, G_TYPE_BOOLEAN, 1,
+                                                  LUMA_TYPE_COLOR_PICKER);
 }
 
 static void luma_property_color_init(LumaPropertyColor *self) {
@@ -690,6 +724,7 @@ static void luma_property_color_init(LumaPropertyColor *self) {
   self->paint = swatch_area(&self->rgba);
   gtk_button_set_child(GTK_BUTTON(self->swatch), self->paint);
   g_signal_connect(self->swatch, "clicked", G_CALLBACK(swatch_clicked), self);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(self->swatch), GTK_ACCESSIBLE_PROPERTY_HAS_POPUP, TRUE, -1);
   gtk_box_append(GTK_BOX(self), self->swatch);
   self->hex = gtk_entry_new();
   gtk_widget_add_css_class(self->hex, "lumaui-creative-hex");
@@ -746,7 +781,12 @@ void luma_property_color_set_palette(LumaPropertyColor *self, const GdkRGBA *col
     self->palette = g_array_sized_new(FALSE, FALSE, sizeof(GdkRGBA), n_colors);
     g_array_append_vals(self->palette, colors, n_colors);
   }
-  gtk_accessible_update_property(GTK_ACCESSIBLE(self->swatch), GTK_ACCESSIBLE_PROPERTY_HAS_POPUP, n_colors > 0, -1);
+}
+
+void luma_property_color_set_action_center(LumaPropertyColor *self, LumaActionCenter *center) {
+  g_return_if_fail(LUMA_IS_PROPERTY_COLOR(self));
+  g_return_if_fail(center == NULL || LUMA_IS_ACTION_CENTER(center));
+  g_set_weak_pointer(&self->center, center);
 }
 
 void luma_property_color_add_suffix(LumaPropertyColor *self, GtkWidget *widget) {

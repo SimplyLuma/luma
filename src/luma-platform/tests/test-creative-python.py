@@ -36,6 +36,49 @@ def docks():
         raise AssertionError("an unknown side is refused")
 
 
+def picker():
+    from gi.repository import Gdk
+    from luma_appkit import ColorPicker, PropertyColor, recent_colors
+
+    changes, commits = [], []
+    p = ColorPicker("1F6FE0", palette=["FF0000"], on_change=changes.append, on_commit=commits.append)
+    assert p.get_rgba().to_string() == Gdk.RGBA(red=0x1F / 255, green=0x6F / 255, blue=0xE0 / 255, alpha=1).to_string()
+    assert isinstance(recent_colors(), list)
+    # A field hosts its picker where the app says: here a stand-in for an ActionCenter's grow().
+    grown = []
+
+    class Bar:
+        def grow(self, key, widget):
+            grown.append((key, widget))
+
+    field = PropertyColor("Fill", "1F6FE0", bar=Bar(), on_commit=commits.append)
+    swatch = field.get_first_child()
+    swatch.emit("clicked")
+    assert grown and grown[0][0] == "lumaui-color-Fill" and type(grown[0][1]).__name__ == "ColorPicker", grown
+
+
+def picker():
+    from gi.repository import Gdk
+    from luma_appkit import ColorPicker, PropertyColor, recent_colors
+
+    changes, commits = [], []
+    p = ColorPicker("1F6FE0", palette=["FF0000"], on_change=changes.append, on_commit=commits.append)
+    blue = Gdk.RGBA()
+    blue.parse("#1F6FE0")
+    assert p.get_rgba().equal(blue), p.get_rgba().to_string()
+    assert isinstance(recent_colors(), list)
+    # A field hosts its picker where the app says: here a stand-in for an ActionCenter's grow().
+    grown = []
+
+    class Bar:
+        def grow(self, key, widget):
+            grown.append((key, widget))
+
+    field = PropertyColor("Fill", "1F6FE0", bar=Bar(), on_commit=commits.append)
+    field.get_first_child().emit("clicked")
+    assert grown and grown[0][0] == "lumaui-color-Fill" and type(grown[0][1]).__name__ == "ColorPicker", grown
+
+
 def arrange():
     picked, commits = [], []
     view = ArrangeView(Gtk.Label(label="canvas"), canvas=(1080, 1920),
@@ -46,6 +89,17 @@ def arrange():
     assert ok and (x, y, w, h) == (10, 20, 300, 400)
     view.set_selected("a")
     assert view.get_selected() == "a" and picked == []
+    # A croppable box keeps the app's crop; crop mode and the drag mode reach Python.
+    modes, crops = [], []
+    view = ArrangeView(items=[ArrangeItem("w", "Wide", 0, 0, 1280, 360, keeps_aspect=True, croppable=True,
+                                          crop=(0.1, 0, 0.2, 0))],
+                       on_crop=lambda *a: crops.append(a), on_drag_mode=modes.append)
+    ok, *crop = view.get_item_crop("w")
+    assert ok and [round(c, 6) for c in crop] == [0.1, 0, 0.2, 0], crop
+    view.set_cropping("w")
+    assert view.get_cropping() == "w" and view.get_selected() == "w" and view.get_drag_mode() == "none"
+    view.set_cropping(None)
+    assert view.get_cropping() is None
     try:
         ArrangeView(items=[ArrangeItem("a", "A", 0, 0, 0, 10)])
     except ValueError:
@@ -313,6 +367,8 @@ def meter_track():
 if __name__ == "__main__":
     docks()
     arrange()
+    picker()
+    picker()
     meter()
     live_chip()
     dock()
