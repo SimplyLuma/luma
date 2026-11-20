@@ -190,8 +190,8 @@ def main() -> int:
         rows = rows or applications()
         check(rows.get("ToneA", {}).get("name") == "ToneA" and rows.get("ToneA", {}).get("kind") == "app",
               "an app without a desktop entry keeps its own name")
-        check(all("@system" != k or v["kind"] == "system" for k, v in rows.items()),
-              "System sounds is its own row")
+        check(rows.get("@system", {}).get("kind") == "system",
+              "System sounds is always a row, even with no sound playing")
 
         # Volume and mute, per app.
         call("SetApplicationVolume", GLib.Variant("(sd)", ("ToneA", 0.5)))
@@ -208,6 +208,8 @@ def main() -> int:
         check(wait_for(lambda: linked_to("ToneA", DAC[0]), 3), "ToneA plays on the USB DAC")
         check(linked_to("ToneB", SPEAKER[0]) and not linked_to("ToneB", DAC[0]), "ToneB stays on the speaker")
         check(wait_for(lambda: applications()["ToneA"]["output"] == DAC[0], 3), "GetApplications reports ToneA's output")
+        check(applications()["ToneB"]["output"] == "" and applications()["ToneB"]["playing_on"] == SPEAKER[0],
+              "ToneB follows the default and reports where it plays")
 
         # Remembered across a new stream.
         stop(a)
@@ -220,6 +222,8 @@ def main() -> int:
         time.sleep(0.5)
         b = tone("ToneB", 1320)
         check(wait_for(lambda: stream_volume("ToneB")[1] is True, 5), "a new ToneB stream comes back muted")
+        check(wait_for(lambda: linked_to("ToneB", SPEAKER[0]), 5) and not linked_to("ToneB", DAC[0]),
+              "ToneB shares ToneA's media role but not its output")
         call("SetApplicationMute", GLib.Variant("(sb)", ("ToneB", False)))
         wait_for(lambda: stream_volume("ToneB")[1] is False, 3)
 

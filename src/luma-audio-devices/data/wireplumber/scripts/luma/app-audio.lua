@@ -250,10 +250,21 @@ SimpleEventHook {
       }
       apply_volume (node, saved.volume, saved.mute)
     end
-    if saved.target and props ["state.restore-target"] ~= "false" and
+    if props ["state.restore-target"] ~= "false" and
         not props ["target.object"] and not props ["node.target"] then
-      log:info (node, "restoring output of " .. key .. ": " .. saved.target)
-      set_target (node, saved.target)
+      if saved.target then
+        log:info (node, "restoring output of " .. key .. ": " .. saved.target)
+        set_target (node, saved.target)
+      elseif props ["media.role"] then
+        -- The stock hook restored the output remembered for this media role,
+        -- which another app may have chosen. Without a choice of its own the
+        -- app follows the default.
+        local default = cutils.get_default_metadata_object ()
+        if default and default:find (node ["bound-id"], "target.object") then
+          log:info (node, "dropping the output remembered for the role of " .. key)
+          set_target (node, nil)
+        end
+      end
     end
   end
 }:register ()

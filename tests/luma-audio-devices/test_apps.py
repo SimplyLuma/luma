@@ -226,8 +226,13 @@ class MixerModel(unittest.TestCase):
             node(44, {"media.class": "Stream/Input/Audio", "application.name": "Recorder"}),
             node(45, {"media.class": "Stream/Output/Audio", "stream.monitor": "true", "application.name": "x"}),
             node(60, {"media.class": "Audio/Sink", "node.name": "speaker-b"}),
+            node(61, {"media.class": "Audio/Sink", "node.name": "speaker-a"}),
+            {"id": 70, "type": "PipeWire:Interface:Link", "info": {"output-node-id": 40, "input-node-id": 60}},
+            {"id": 71, "type": "PipeWire:Interface:Link", "info": {"output-node-id": 42, "input-node-id": 61}},
             {"id": 2, "type": "PipeWire:Interface:Metadata", "props": {"metadata.name": "default"},
-             "metadata": [{"subject": 40, "key": "target.object", "value": "1060"}]},
+             "metadata": [{"subject": 40, "key": "target.object", "value": "1060"},
+                          # A stale target the stream does not use is not its output.
+                          {"subject": 42, "key": "target.object", "value": "1060"}]},
         ])
         return graph
 
@@ -236,6 +241,7 @@ class MixerModel(unittest.TestCase):
         self.assertTrue(mixer.update(self.graph()))
         rows = {row["id"]: row for row in mixer.rows()}
         self.assertEqual(list(rows), ["@system", "paplay", "ToneA"])
+        self.assertEqual(rows["paplay"]["output"], "")
         self.assertEqual(rows["@system"]["name"], "System sounds")
         tone = rows["ToneA"]
         self.assertEqual(tone["streams"], [40, 41])
@@ -245,6 +251,17 @@ class MixerModel(unittest.TestCase):
         self.assertEqual(tone["output"], "speaker-b")
         self.assertTrue(rows["paplay"]["muted"])
         self.assertFalse(mixer.update(self.graph()))
+
+    def test_system_sounds_always_listed(self):
+        graph = Graph()
+        graph.apply([{"id": 3, "type": "PipeWire:Interface:Metadata", "props": {"metadata.name": "route-settings"},
+                      "metadata": [{"subject": 0, "key": "restore.stream.Output/Audio.media.role:Notification",
+                                    "value": '{"volume": 0.125, "mute": true}'}]}])
+        mixer = Mixer(None, _Control())
+        mixer.update(graph)
+        (row,) = mixer.rows()
+        self.assertEqual((row["id"], row["kind"], row["muted"]), ("@system", "system", True))
+        self.assertAlmostEqual(row["volume"], 0.5, places=3)
 
     def test_commands(self):
         control = _Control()

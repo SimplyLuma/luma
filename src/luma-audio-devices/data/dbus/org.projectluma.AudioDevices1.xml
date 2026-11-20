@@ -120,8 +120,9 @@
     <signal name="OutputsChanged"/>
 
     <!--
-      GetApplications (version 2): the mixer. One entry for System sounds and
-      one per app with a sound stream, System sounds first, then by name.
+      GetApplications (version 2): the mixer. One entry for System sounds
+      (always present, with its remembered volume) and one per app with a
+      sound stream, System sounds first, then by name.
       Keys:
         id (s)          the app key: Flatpak app id, application.id, name or
                         binary, in that order; "@system" for System sounds
@@ -131,7 +132,9 @@
         kind (s)        "system" or "app"
         volume (d)      0..1.5 on the cubic scale GNOME sliders use
         muted (b)
-        output (s)      node name of the app's own output; "" follows the default
+        output (s)      node name of the output the app was sent to and plays
+                        on; "" when it follows the default
+        playing_on (s)  node name of the output it plays on now, or ""
         playing (b)     a stream of the app is running now
         streams (au)    PipeWire node ids of the app's streams
         pid (x)         process id of one stream's client, or 0
