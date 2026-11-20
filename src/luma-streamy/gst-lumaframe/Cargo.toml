@@ -16,9 +16,9 @@ path = "src/lib.rs"
 gst = { package = "gstreamer", version = "0.25" }
 gst-base = { package = "gstreamer-base", version = "0.25" }
 gst-gl = { package = "gstreamer-gl", version = "0.25", features = ["v1_16"] }
+gst-video = { package = "gstreamer-video", version = "0.25" }
 
 [dev-dependencies]
-gst-video = { package = "gstreamer-video", version = "0.25" }
 gst-app = { package = "gstreamer-app", version = "0.25" }
 
 [profile.release]

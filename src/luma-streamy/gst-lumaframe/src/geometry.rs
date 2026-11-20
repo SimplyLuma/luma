@@ -43,6 +43,10 @@ pub struct Settings {
     pub box_width: f64,
     pub box_height: f64,
     pub margin: f64,
+    pub content_x: f64,
+    pub content_y: f64,
+    pub content_width: f64,
+    pub content_height: f64,
     pub crop_left: f64,
     pub crop_top: f64,
     pub crop_right: f64,
@@ -67,6 +71,10 @@ impl Default for Settings {
             box_width: 0.0,
             box_height: 0.0,
             margin: 0.0,
+            content_x: 0.0,
+            content_y: 0.0,
+            content_width: 0.0,
+            content_height: 0.0,
             crop_left: 0.0,
             crop_top: 0.0,
             crop_right: 0.0,
@@ -124,19 +132,59 @@ pub fn margin_for(s: &Settings) -> f64 {
     (reach + shadow).ceil()
 }
 
-/// Source texture coordinates of the visible part: origin and extent, 0..1.
-pub fn crop_rect(s: &Settings) -> [f64; 4] {
+/// A `GstVideoCropMeta` rectangle: x, y, width, height in source pixels.
+pub type CropMeta = (u32, u32, u32, u32);
+
+/// The whole input in texture coordinates: origin and extent.
+pub const WHOLE_INPUT: [f64; 4] = [0.0, 0.0, 1.0, 1.0];
+
+/// The part of the source the box shows before `crop-*`, in source pixels
+/// (x, y, width, height), clamped to the input.
+///
+/// With `content-width` 0 a buffer's crop meta, if it has a non-empty one,
+/// gives the whole rect. Otherwise `content-x`/`-y` set the origin and a
+/// `content-width`/`-height` of 0 runs to the input's edge on that axis, so
+/// the defaults are the whole input.
+pub fn content_rect(s: &Settings, input: (i32, i32), meta: Option<CropMeta>) -> (f64, f64, f64, f64) {
+    let (iw, ih) = (input.0.max(1) as f64, input.1.max(1) as f64);
+    let (x, y, w, h) = match meta {
+        Some((mx, my, mw, mh)) if s.content_width <= 0.0 && mw > 0 && mh > 0 => {
+            (mx as f64, my as f64, mw as f64, mh as f64)
+        }
+        _ => (s.content_x, s.content_y, s.content_width, s.content_height),
+    };
+    let axis = |o: f64, len: f64, full: f64| {
+        let o = o.clamp(0.0, full - 1.0);
+        let rest = full - o;
+        (o, if len > 0.0 { len.min(rest) } else { rest })
+    };
+    let (x, w) = axis(x, w, iw);
+    let (y, h) = axis(y, h, ih);
+    (x, y, w, h)
+}
+
+/// [`content_rect`] in texture coordinates: origin and extent, 0..1.
+pub fn content_region(s: &Settings, input: (i32, i32), meta: Option<CropMeta>) -> [f64; 4] {
+    let (iw, ih) = (input.0.max(1) as f64, input.1.max(1) as f64);
+    let (x, y, w, h) = content_rect(s, input, meta);
+    [x / iw, y / ih, w / iw, h / ih]
+}
+
+/// Source texture coordinates of the visible part, origin and extent: the
+/// `crop-*` fractions cut from `region` (origin and extent, 0..1).
+pub fn crop_rect(s: &Settings, region: [f64; 4]) -> [f64; 4] {
     [
-        s.crop_left,
-        s.crop_top,
-        (1.0 - s.crop_left - s.crop_right).max(0.0),
-        (1.0 - s.crop_top - s.crop_bottom).max(0.0),
+        region[0] + s.crop_left * region[2],
+        region[1] + s.crop_top * region[3],
+        region[2] * (1.0 - s.crop_left - s.crop_right).max(0.0),
+        region[3] * (1.0 - s.crop_top - s.crop_bottom).max(0.0),
     ]
 }
 
-/// Where a point of the box (0..1 on each axis) samples the source.
+/// Where a point of the box (0..1 on each axis) samples the source, for the
+/// whole input as content.
 pub fn crop_map(s: &Settings, box_uv: (f64, f64)) -> (f64, f64) {
-    let c = crop_rect(s);
+    let c = crop_rect(s, WHOLE_INPUT);
     (
         c[0] + box_uv.0.clamp(0.0, 1.0) * c[2],
         c[1] + box_uv.1.clamp(0.0, 1.0) * c[3],
@@ -237,6 +285,11 @@ pub struct Layout {
 
 impl Layout {
     pub fn new(s: &Settings, input: (i32, i32), output: (i32, i32)) -> Layout {
+        Layout::for_frame(s, input, output, None)
+    }
+
+    /// The layout for one input buffer, with its crop meta if it has one.
+    pub fn for_frame(s: &Settings, input: (i32, i32), output: (i32, i32), meta: Option<CropMeta>) -> Layout {
         let (bw, bh) = box_size(s, input);
         let canvas = canvas_size(s, input);
         let short = 0.5 * bw.min(bh);
@@ -264,7 +317,7 @@ impl Layout {
             outer_half: (half.0 + stroke_out, half.1 + stroke_out),
             outer_radius: radius + stroke_out,
             stroke_color: argb_to_rgba(s.stroke_color),
-            crop: crop_rect(s),
+            crop: crop_rect(s, content_region(s, input, meta)),
             shadow_color: argb_to_rgba(s.shadow_color),
             shadow_offset: (s.shadow_offset_x, s.shadow_offset_y),
             sigma: 0.5 * s.shadow_blur,
@@ -757,5 +810,86 @@ mod tests {
                 assert!(a < 0.5 / 255.0, "{x},{y}: {a}");
             }
         }
+    }
+
+    #[test]
+    fn content_rect_defaults_to_the_whole_input() {
+        let d = Settings::default();
+        assert_eq!(content_rect(&d, (5120, 1440), None), (0.0, 0.0, 5120.0, 1440.0));
+        assert_eq!(content_region(&d, (97, 61), None), WHOLE_INPUT);
+        // Bit for bit the crop of before: fractions of the whole input.
+        let s = Settings {
+            crop_left: 0.13,
+            crop_top: 0.07,
+            crop_right: 0.21,
+            crop_bottom: 0.33,
+            ..Default::default()
+        };
+        let whole = crop_rect(&s, content_region(&s, (97, 61), None));
+        assert_eq!(whole, [0.13, 0.07, 1.0 - 0.13 - 0.21, 1.0 - 0.07 - 0.33]);
+    }
+
+    #[test]
+    fn content_rect_selects_and_clamps() {
+        let s = Settings {
+            content_x: 100.0,
+            content_y: 50.0,
+            content_width: 1124.0,
+            content_height: 667.0,
+            ..Default::default()
+        };
+        assert_eq!(content_rect(&s, (5120, 1440), None), (100.0, 50.0, 1124.0, 667.0));
+        // Past the input's edge it is cut there.
+        assert_eq!(content_rect(&s, (1000, 600), None), (100.0, 50.0, 900.0, 550.0));
+        // A size of 0 runs to the edge on that axis.
+        let s = Settings {
+            content_x: 20.0,
+            content_height: 30.0,
+            ..Default::default()
+        };
+        assert_eq!(content_rect(&s, (200, 100), None), (20.0, 0.0, 180.0, 30.0));
+        let s = Settings {
+            content_x: 9999.0,
+            ..Default::default()
+        };
+        assert_eq!(content_rect(&s, (200, 100), None), (199.0, 0.0, 1.0, 100.0));
+    }
+
+    #[test]
+    fn crop_meta_is_the_content_unless_content_width_is_set() {
+        let meta = Some((0, 0, 1124, 667));
+        let d = Settings::default();
+        assert_eq!(content_rect(&d, (5120, 1440), meta), (0.0, 0.0, 1124.0, 667.0));
+        // An empty meta is ignored.
+        assert_eq!(content_rect(&d, (64, 48), Some((3, 3, 0, 10))), (0.0, 0.0, 64.0, 48.0));
+        let s = Settings {
+            content_width: 512.0,
+            ..Default::default()
+        };
+        assert_eq!(content_rect(&s, (5120, 1440), meta), (0.0, 0.0, 512.0, 1440.0));
+    }
+
+    #[test]
+    fn crop_applies_within_the_content() {
+        let s = Settings {
+            content_x: 1000.0,
+            content_y: 200.0,
+            content_width: 1000.0,
+            content_height: 400.0,
+            box_width: 100.0,
+            box_height: 100.0,
+            crop_left: 0.25,
+            crop_right: 0.25,
+            crop_top: 0.1,
+            ..Default::default()
+        };
+        let l = Layout::new(&s, (4000, 1000), (100, 100));
+        let want = [0.3125, 0.24, 0.125, 0.36];
+        assert!((0..4).all(|i| close(l.crop[i], want[i], 1e-12)), "{:?}", l.crop);
+        // The box's corners sample the cropped region's corners.
+        let (u, v) = l.source_coord((0.0, 0.0));
+        assert!(close(u * 4000.0, 1250.0, 1e-9) && close(v * 1000.0, 240.0, 1e-9));
+        let (u, v) = l.source_coord((100.0, 100.0));
+        assert!(close(u * 4000.0, 1750.0, 1e-9) && close(v * 1000.0, 600.0, 1e-9));
     }
 }

@@ -64,6 +64,18 @@ struct Harness {
 impl Harness {
     /// appsrc (RGBA) ! glupload ! glcolorconvert ! lumaframe [! downstream] ! gldownload ! appsink
     fn new(input_w: usize, input_h: usize, downstream: Option<&str>, props: &[(&str, glib::Value)]) -> Harness {
+        Harness::with_format("RGBA", input_w, input_h, downstream, props)
+    }
+
+    /// As [`Harness::new`] with another input format, which glcolorconvert
+    /// converts to RGBA.
+    fn with_format(
+        format: &str,
+        input_w: usize,
+        input_h: usize,
+        downstream: Option<&str>,
+        props: &[(&str, glib::Value)],
+    ) -> Harness {
         init();
         let forced = downstream.map(|caps| format!("! {caps} ")).unwrap_or_default();
         let desc = format!(
@@ -80,7 +92,7 @@ impl Harness {
         let frame = pipeline.by_name("frame").unwrap();
         src.set_caps(Some(
             &gst::Caps::builder("video/x-raw")
-                .field("format", "RGBA")
+                .field("format", format)
                 .field("width", input_w as i32)
                 .field("height", input_h as i32)
                 .field("framerate", gst::Fraction::new(30, 1))
@@ -107,11 +119,19 @@ impl Harness {
     }
 
     fn send(&mut self, input: &Frame) {
+        self.send_with_crop_meta(input, None);
+    }
+
+    /// Push `input`, with a GstVideoCropMeta of (x, y, width, height) if given.
+    fn send_with_crop_meta(&mut self, input: &Frame, crop: Option<(u32, u32, u32, u32)>) {
         let mut buffer = gst::Buffer::from_slice(input.data.clone());
         {
             let b = buffer.get_mut().unwrap();
             b.set_pts(gst::ClockTime::from_mseconds(self.pts * 33));
             b.set_duration(gst::ClockTime::from_mseconds(33));
+            if let Some(rect) = crop {
+                gst_video::VideoCropMeta::add(b, rect);
+            }
         }
         self.pts += 1;
         self.src.push_buffer(buffer).unwrap();
@@ -168,6 +188,10 @@ fn settings(list: &[(&str, f64)], colours: &[(&str, u32)]) -> Settings {
             "box-width" => s.box_width = v,
             "box-height" => s.box_height = v,
             "margin" => s.margin = v,
+            "content-x" => s.content_x = v,
+            "content-y" => s.content_y = v,
+            "content-width" => s.content_width = v,
+            "content-height" => s.content_height = v,
             "crop-left" => s.crop_left = v,
             "crop-top" => s.crop_top = v,
             "crop-right" => s.crop_right = v,
@@ -641,4 +665,155 @@ fn stroke_position_changes_while_playing_without_renegotiating() {
     assert_eq!((out.w, out.h), (96, 76));
     assert_eq!(out.px(48, 5), [0, 255, 0, 255]);
     assert_eq!(out.px(48, 9), [0, 0, 255, 255]);
+}
+
+/// Quadrants: red, green / blue, white.
+fn quadrants(w: usize, h: usize) -> Frame {
+    Frame::new(w, h, |x, y| match (x < w / 2, y < h / 2) {
+        (true, true) => [255, 0, 0, 255],
+        (false, true) => [0, 255, 0, 255],
+        (true, false) => [0, 0, 255, 255],
+        (false, false) => [255, 255, 255, 255],
+    })
+}
+
+/// Points of a 100×50 box away from the quadrant edges, which the linear
+/// filter blends.
+const SAMPLES: [(usize, usize); 6] = [(50, 25), (10, 10), (90, 40), (10, 40), (90, 10), (30, 30)];
+
+#[test]
+fn content_rect_selects_the_source_region() {
+    let input = quadrants(64, 48);
+    let mut h = Harness::new(
+        64,
+        48,
+        None,
+        &props(&[
+            ("box-width", 100.0),
+            ("box-height", 50.0),
+            ("content-x", 32.0),
+            ("content-width", 32.0),
+            ("content-height", 24.0),
+        ]),
+    );
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (100, 50));
+    for (x, y) in SAMPLES {
+        assert_eq!(out.px(x, y), [0, 255, 0, 255], "green quadrant at {x},{y}");
+    }
+    // Uniforms only while PLAYING; crop-* then cut fractions of the content.
+    h.set("content-y", 24.0);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (100, 50));
+    for (x, y) in SAMPLES {
+        assert_eq!(out.px(x, y), [255, 255, 255, 255], "white quadrant at {x},{y}");
+    }
+    h.set("content-x", 0.0);
+    h.set("content-y", 0.0);
+    h.set("content-width", 64.0);
+    h.set("content-height", 48.0);
+    h.set("crop-left", 0.49);
+    h.set("crop-bottom", 0.49);
+    let out = h.push(&input);
+    for (x, y) in SAMPLES {
+        assert_eq!(out.px(x, y), [0, 255, 0, 255], "cropped content at {x},{y}");
+    }
+}
+
+#[test]
+fn content_rect_matches_the_model() {
+    let list = [
+        ("box-width", 120.0),
+        ("box-height", 80.0),
+        ("margin", 10.0),
+        ("corner-radius", 12.0),
+        ("content-x", 100.0),
+        ("content-y", 40.0),
+        ("content-width", 200.0),
+        ("content-height", 120.0),
+        ("crop-left", 0.1),
+        ("crop-top", 0.2),
+    ];
+    let src = [200, 60, 30, 255];
+    let out = run(&solid(512, 256, src), &props(&list));
+    assert_eq!((out.w, out.h), (140, 100));
+    assert_matches_model(&out, &settings(&list, &[]), (512, 256), src, 3);
+}
+
+#[test]
+fn crop_meta_selects_the_content_per_buffer() {
+    let input = quadrants(64, 48);
+    let mut h = Harness::new(64, 48, None, &props(&[("box-width", 100.0), ("box-height", 50.0)]));
+    // Record whether the meta reaches lumaframe through glupload and
+    // glcolorconvert.
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let s = seen.clone();
+    h.frame
+        .static_pad("sink")
+        .unwrap()
+        .add_probe(gst::PadProbeType::BUFFER, move |_, info| {
+            if let Some(b) = info.buffer() {
+                s.lock()
+                    .unwrap()
+                    .push(b.meta::<gst_video::VideoCropMeta>().map(|m| m.rect()));
+            }
+            gst::PadProbeReturn::Ok
+        });
+
+    h.send_with_crop_meta(&input, Some((32, 24, 32, 24)));
+    let out = h.pull();
+    assert_eq!((out.w, out.h), (100, 50), "a crop meta does not change the size");
+    for (x, y) in SAMPLES {
+        assert_eq!(out.px(x, y), [255, 255, 255, 255], "white quadrant at {x},{y}");
+    }
+    // The next buffer's meta moved: the box follows.
+    h.send_with_crop_meta(&input, Some((32, 0, 32, 24)));
+    let out = h.pull();
+    for (x, y) in SAMPLES {
+        assert_eq!(out.px(x, y), [0, 255, 0, 255], "green quadrant at {x},{y}");
+    }
+    // No meta: the whole input.
+    let out = h.push(&input);
+    assert_eq!(out.px(1, 1), [255, 0, 0, 255]);
+    assert_eq!(out.px(98, 48), [255, 255, 255, 255]);
+    // content-width set: the properties win over the meta.
+    h.set("content-width", 32.0);
+    h.set("content-height", 24.0);
+    h.send_with_crop_meta(&input, Some((32, 24, 32, 24)));
+    let out = h.pull();
+    for (x, y) in SAMPLES {
+        assert_eq!(out.px(x, y), [255, 0, 0, 255], "red quadrant at {x},{y}");
+    }
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [
+            Some((32, 24, 32, 24)),
+            Some((32, 0, 32, 24)),
+            None,
+            Some((32, 24, 32, 24))
+        ],
+        "crop meta at lumaframe's sink"
+    );
+}
+
+#[test]
+fn crop_meta_survives_colour_conversion() {
+    // BGRA in: glcolorconvert converts rather than passing the buffer on.
+    let rgba = quadrants(64, 48);
+    let bgra = Frame::new(64, 48, |x, y| {
+        let [r, g, b, a] = rgba.px(x, y);
+        [b, g, r, a]
+    });
+    let mut h = Harness::with_format(
+        "BGRA",
+        64,
+        48,
+        None,
+        &props(&[("box-width", 100.0), ("box-height", 50.0)]),
+    );
+    h.send_with_crop_meta(&bgra, Some((0, 24, 32, 24)));
+    let out = h.pull();
+    for (x, y) in SAMPLES {
+        assert_eq!(out.px(x, y), [0, 0, 255, 255], "blue quadrant at {x},{y}");
+    }
 }
