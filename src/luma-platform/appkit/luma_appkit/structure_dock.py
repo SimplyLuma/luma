@@ -593,6 +593,8 @@ class Dock(Gtk.Overlay):
         if isinstance(node, str):
             tile = self.tiles.get(node)
             return tile is not None and tile.fit
+        if "tabs" in node:
+            return all(self._fits(key) for key in node["tabs"])
         return self._fits(node["start"]) and self._fits(node["end"])
 
     def _natural(self, node, orientation: Gtk.Orientation) -> int:
@@ -602,6 +604,10 @@ class Dock(Gtk.Overlay):
             tile = self.tiles[node]
             across = tile.get_width() if orientation == Gtk.Orientation.VERTICAL else tile.get_height()
             return tile.measure(orientation, across if across > 0 else -1)[1]
+        if "tabs" in node:
+            # The current tile's content plus the strip of tabs over it (its header is hidden).
+            current = self._natural(node["current"], orientation)
+            return current + (int(_tokens()["header_height"]) if orientation == Gtk.Orientation.VERTICAL else 0)
         start, end = self._natural(node["start"], orientation), self._natural(node["end"], orientation)
         along = (node["split"] == "v") == (orientation == Gtk.Orientation.VERTICAL)
         return start + end + int(_tokens()["gap"]) if along else max(start, end)
