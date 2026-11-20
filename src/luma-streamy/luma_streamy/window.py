@@ -16,7 +16,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
     SEPARATOR, ActionCenter, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView, AudioMeter,
-    BarAction, BarChip, BarReadout, Command, CommandGroup, CommandRegistry, CornerPill, CreativeWorkspace,
+    BarAction, BarChip, Command, CommandGroup, CommandRegistry, CornerPill, CreativeWorkspace,
     DestructiveDialog, FloatingPanel, IconOnlyButton, Inset, Layer, LayerTree, ListEmptyState, ModeSwitch,
     NavigationSidebar, PanelRow, PropertyColor, PropertyNumber, PropertySection, RowLead, SidebarFoot, SidebarRow,
     SidebarToggle, TextButton, Toast, ToastHost, TypeLabel, ValueSlider, add_style_sheet, panel_list,
@@ -593,14 +593,12 @@ class StreamyWindow(AppWindow):
         items: list = []
         live = self.stream_state != "off"
         if live:
-            self.readout = BarReadout(clock(time.monotonic() - (self.live_since or time.monotonic())),
-                                      self._stream_words(), state="connecting" if self.stream_state != "on"
-                                      else "live", note="Reconnecting" if self.stream_state == "reconnecting"
-                                      else "Live")
+            self.readout = BarChip(self._stream_word(), meta=clock(time.monotonic() - (self.live_since or
+                                                                                       time.monotonic())),
+                                   detail=self._stream_words(), live=True)
             items.append(self.readout)
         elif self.recording_since is not None:
-            self.readout = BarReadout(clock(time.monotonic() - self.recording_since), None, state="recording",
-                                      note="Recording")
+            self.readout = BarChip("Recording", meta=clock(time.monotonic() - self.recording_since), live=True)
             items.append(self.readout)
         else:
             self.readout = None
@@ -639,6 +637,9 @@ class StreamyWindow(AppWindow):
                 MenuItem("Lock" if not (self._selected_widget() and self._selected_widget().locked) else "Unlock",
                          icon="lock", on_activate=self.toggle_lock)]
 
+    def _stream_word(self) -> str:
+        return {"reconnecting": "Reconnecting", "starting": "Connecting"}.get(self.stream_state, "Live")
+
     def _stream_words(self) -> str:
         stats = self.engine.stats("stream")
         if stats is None:
@@ -650,9 +651,10 @@ class StreamyWindow(AppWindow):
     def _every_second(self) -> bool:
         if self.readout is not None:
             if self.stream_state != "off" and self.live_since is not None:
-                self.readout.set(clock(time.monotonic() - self.live_since), self._stream_words())
+                self.readout.update(self._stream_word(), meta=clock(time.monotonic() - self.live_since),
+                                    detail=self._stream_words())
             elif self.recording_since is not None:
-                self.readout.set(clock(time.monotonic() - self.recording_since), None)
+                self.readout.update(meta=clock(time.monotonic() - self.recording_since))
         self._update_thumbnail()
         return True
 
