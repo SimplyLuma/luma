@@ -204,11 +204,48 @@ def fit_group():
     assert abs(audio.get_height() - cap) <= 1, (audio.get_height(), cap)
     assert audio.scroller is not None and audio.scroller.get_vadjustment().get_upper() > audio.scroller.get_height()
     assert preview.get_height() >= d.get_height() - cap - 3 * DOCK["gap"], preview.get_height()
+    # The seam moves: a drag sizes the fitted side anywhere above its minimum, kept through a refit
+    # and in the layout; a double click on the seam fits it to its content again.
+    outer = next(p for p, node in d._panes if node["split"] == "v")
+    length = outer.get_height() - DOCK["gap"]
+    outer.held = True  # as while a person drags it
+    outer.set_position(length - 200)
+    settle()
+    assert abs(audio.get_height() - 200) <= 2, audio.get_height()
+    d.refit()
+    settle()
+    assert abs(audio.get_height() - 200) <= 2, ("a refit undid the drag", audio.get_height())
+    assert d.layout()["size"] == 200, d.layout()
+    outer.set_position(length - 5)  # past the tile's minimum: the paned stops it there
+    settle()
+    outer.held = False
+    assert audio.get_height() >= DOCK["min_size"] - 1, audio.get_height()
+    d._seam_pressed(Gtk.GestureClick(), 2, 1, outer.get_start_child().get_height() + 2, outer,
+                    next(node for p, node in d._panes if p is outer))
+    settle()
+    assert "size" not in d.layout() and abs(audio.get_height() - cap) <= 1, audio.get_height()
+    seam = d._separator(outer)
+    assert seam.get_cursor() is not None and seam.get_cursor().get_name() == "row-resize", seam.get_cursor()
+    assert not outer.has_css_class("fixed")
     # On a phone a fit tile stays inline unless it asks for a drawer.
     window.set_default_size(400, 700)
     settle()
     assert d.phone and widgets.has_css_class("inline") and not audio.get_mapped()
     assert not island.has_css_class("lumaui-docked")
+    window.destroy()
+    # A seam with no room (both sides at their minimum) shows no mark and no resize cursor.
+    pair = Dock([DockTile("a", "A", "layers", Gtk.Box(), main=True), DockTile("b", "B", "layers", Gtk.Box())],
+                layout=Dock.split("v", 0.5, "a", "b"))
+    window = Gtk.Window(default_width=900, default_height=1)
+    window.set_child(pair)
+    window.present()
+    settle()
+    seam = pair._panes[0][0]
+    assert seam.has_css_class("fixed") and pair._separator(seam).get_cursor() is None, \
+        (seam.get_property("min-position"), seam.get_property("max-position"))
+    window.set_default_size(900, 700)
+    settle()
+    assert not seam.has_css_class("fixed") and pair._separator(seam).get_cursor().get_name() == "row-resize"
     window.destroy()
     for bad in (lambda: DockTile("x", "X", "layers", Gtk.Box(), phone="inline"),
                 lambda: DockTile("x", "X", "layers", Gtk.Box(), fit=True, phone="sheet"),

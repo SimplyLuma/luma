@@ -1254,6 +1254,35 @@ class NavigationSidebar(Gtk.Box):
             row.set_tv_island(True, rail)
 
 
+class NavigationList(Gtk.Box):
+    """A sidebar variant's list where there is no sidebar: an inset's rows (a scene's widgets beside
+    its mixer) that read as the sidebar's own.
+
+    `list` is the ListBox; append SidebarRows (and SidebarSections) to it. Rows take the variant's
+    metrics, selection chip and row keys, exactly as in a NavigationSidebar of that variant, with
+    none of the sidebar's frame (no surface, width or window gutter)."""
+
+    __gtype_name__ = "LumaUINavigationList"
+
+    def __init__(self, variant: str = "files") -> None:
+        from .rows_navigation import SIDEBAR_VARIANTS
+
+        if variant not in SIDEBAR_VARIANTS:
+            raise ValueError(f"a navigation list's variant is one of {SIDEBAR_VARIANTS}, not {variant!r}")
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+        for name in ("luma-navigation-sidebar", "lumaui-navigation-inset", "lumaui-sidebar-variant",
+                     f"lumaui-sidebar-{variant}"):
+            self.add_css_class(name)
+        self.variant = variant
+        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.list.add_css_class("luma-navigation-list")
+        self.append(self.list)
+
+    def clear(self) -> None:
+        while child := self.list.get_first_child():
+            self.list.remove(child)
+
+
 class StatusBar(Gtk.Box):
     """Compact island footer for totals, ranges, capacity, and sync state."""
 

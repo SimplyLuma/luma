@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.136%{?dist}
+Release:        1.luma.137%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,14 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.137
+- Dock: a fitted side's seam moves anywhere between the tiles' minimums; a
+  person's drag (pointer or F8 and keys) keeps that size as "size" on the
+  split in layout(), and a double click on the seam fits it again.
+- Dock: seams show the resize cursor; a seam with no room to move shows no
+  mark and no resize cursor.
+- NavigationList(variant): a sidebar variant's list outside a sidebar.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.136
 - Light dismiss for a grown action bar (panel, More, editor; Python and C):
   a primary press or tap outside it, or Esc, folds it; the press is consumed

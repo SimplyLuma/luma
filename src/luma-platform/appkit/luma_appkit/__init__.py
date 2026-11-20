@@ -61,6 +61,7 @@ __all__ = [
     "motion_duration",
     "NavigationRow",
     "NavigationSidebar",
+    "NavigationList",
     "NavigationTrail",
     "Place",
     "bind_navigation_input",
@@ -387,7 +388,7 @@ def __getattr__(name: str):
         "AppWindow", "add_style_sheet", "add_style_builder", "command_menu_model", "evaluate_number", "NumericField", "AlignCluster", "AVATAR_TONES", "AVATAR_GLYPHS", "Avatar", "avatar_initials", "avatar_kind", "avatar_tone", "ConnectedButtonGroup",
         "ColorSwatch", "EmptyState", "ListEmptyState", "FieldRow", "IconButton",
         "InlineRenameField", "Island", "MobileHeader", "IslandSplitView", "IslandOverlaySplitView", "motion_duration",
-        "NavigationRow", "NavigationSidebar", "SaveStatus", "ScrollView", "SectionLabel",
+        "NavigationRow", "NavigationSidebar", "NavigationList", "SaveStatus", "ScrollView", "SectionLabel",
         "StatusBar", "Toolbar", "centre_controls", "install_appkit",
     }:
         from . import widgets
