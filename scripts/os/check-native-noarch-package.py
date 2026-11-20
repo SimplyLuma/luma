@@ -41,6 +41,7 @@ REQUIRED = {
         '/usr/lib/systemd/system/timers.target.wants/luma-openh264.timer',
         '/usr/lib/systemd/system-preset/60-luma-openh264.preset',
         '/usr/lib/tmpfiles.d/luma-openh264.conf',
+        '/usr/share/polkit-1/rules.d/50-luma-openh264.rules',
     },
     'luma-desktop-launcher-policy': {
         '/usr/share/luma/system-flatpak-replacements.txt',

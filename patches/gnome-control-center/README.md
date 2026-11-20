@@ -340,3 +340,14 @@ while the page is mapped in a window that is not suspended, and unwatched
 on leaving; volume writes keep one call per app in flight. The row in Sound's
 More group replaces Volume by app in live mode while the service runs at
 version 2 (`mixer` flag); fixtures keep Volume by app.
+
+`0107-lumaui-apps-openh264-switch.patch`: **Apps › OpenH264 video codec**,
+the control Cisco's binary license asks for where the person manages it: a
+switch with Cisco's attribution ("OpenH264 Video Codec provided by Cisco
+Systems, Inc.") and a row that opens Cisco's terms
+(`https://www.openh264.org/BINARY_LICENSE.txt`). The `h264` key is what
+`luma-openh264 status` reports (`cc-luma-live-openh264.c`); a change runs
+`pkexec /usr/bin/luma-openh264 enable|disable`, which luma-openh264's polkit
+rule allows for the active local session, then reads the status again.
+Without luma-openh264 the rows are left out; the Apps page does not wait for
+the status.

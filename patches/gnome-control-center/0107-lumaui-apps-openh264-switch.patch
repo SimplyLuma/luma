@@ -1,0 +1,240 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 20 Nov 2026 18:00:00 -0600
+Subject: [PATCH] lumaui: Apps › OpenH264 video codec
+
+Apps gains Cisco's OpenH264 switch: "OpenH264 video codec", Cisco's
+attribution under it, and a row that opens Cisco's binary license terms.
+The setting is what `luma-openh264 status` reports; a change runs
+`pkexec /usr/bin/luma-openh264 enable|disable` (allowed for the active
+local session by luma-openh264's polkit rule) and reads the status again.
+Without luma-openh264 the rows are left out. The Apps page does not wait
+for the status.
+---
+diff --git a/shell/cc-luma-live-openh264.c b/shell/cc-luma-live-openh264.c
+new file mode 100644
+index 0000000..948257d
+--- /dev/null
++++ b/shell/cc-luma-live-openh264.c
+@@ -0,0 +1,135 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* Live OpenH264 switch (Apps): Cisco's binary, downloaded from Cisco onto
++ * this computer by luma-openh264. "h264" is the setting as
++ * `luma-openh264 status` reports it; a change runs
++ * `pkexec /usr/bin/luma-openh264 enable|disable` (polkit allows both for the
++ * active local session) and reads the status again. Without luma-openh264
++ * the key is never published and the row is left out. The Apps page does not
++ * wait for this adapter. */
++#include "cc-luma-live.h"
++#include <string.h>
++
++#define ADAPTER "openh264"
++#define TOOL "/usr/bin/luma-openh264"
++static const char * const pages[] = { NULL };
++
++typedef struct {
++  CcLumaFixture *model;
++  GCancellable *cancel;
++  gboolean ready, busy;
++} OpenH264;
++
++static void read_status (OpenH264 *s);
++
++static void
++mark_ready (OpenH264 *s)
++{
++  if (s->ready) return;
++  s->ready = TRUE;
++  cc_luma_live_ready (s->model, ADAPTER);
++}
++
++static void
++status_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  g_autoptr (GError) error = NULL;
++  g_autofree char *out = NULL;
++  if (!g_subprocess_communicate_utf8_finish (G_SUBPROCESS (source), result, &out, NULL, &error) &&
++      g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    return;
++  OpenH264 *s = data;
++  /* "Setting:  enabled (…)" or "Setting:  disabled (…)" */
++  const char *line = out ? strstr (out, "\nSetting:") : NULL;
++  if (line && g_subprocess_get_successful (G_SUBPROCESS (source)))
++    {
++      line += strlen ("\nSetting:");
++      while (*line == ' ') line++;
++      cc_luma_fixture_publish_boolean (s->model, "h264", g_str_has_prefix (line, "enabled"));
++    }
++  else
++    g_message ("Settings: OpenH264 status: %s", error ? error->message : "unreadable");
++  mark_ready (s);
++}
++
++static void
++read_status (OpenH264 *s)
++{
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GSubprocess) p = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
++                                                &error, TOOL, "status", NULL);
++  if (!p)
++    {
++      g_message ("Settings: OpenH264 status: %s", error->message);
++      mark_ready (s);
++      return;
++    }
++  g_subprocess_communicate_utf8_async (p, NULL, s->cancel, status_done, s);
++}
++
++static void
++change_done (GObject *source, GAsyncResult *result, gpointer data)
++{
++  g_autoptr (GError) error = NULL;
++  gboolean waited = g_subprocess_wait_finish (G_SUBPROCESS (source), result, &error);
++  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) return;
++  OpenH264 *s = data;
++  s->busy = FALSE;
++  /* 75: Cisco's server could not be reached; the setting is changed and the
++   * service downloads the file later. */
++  if (!waited || (g_subprocess_get_exit_status (G_SUBPROCESS (source)) != 0 &&
++                  g_subprocess_get_exit_status (G_SUBPROCESS (source)) != 75))
++    g_message ("Settings: luma-openh264: %s", error ? error->message : "failed");
++  read_status (s);
++}
++
++static gboolean
++openh264_write (gpointer state, const char *key, JsonNode *value, GError **error)
++{
++  OpenH264 *s = state;
++  if (!g_str_equal (key, "h264")) return FALSE;
++  if (!value || !JSON_NODE_HOLDS_VALUE (value) || json_node_get_value_type (value) != G_TYPE_BOOLEAN)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "OpenH264 is on or off");
++      return FALSE;
++    }
++  if (s->busy)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_BUSY, "OpenH264 is still changing");
++      return FALSE;
++    }
++  gboolean on = json_node_get_boolean (value);
++  g_autoptr (GSubprocess) p = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_SILENCE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
++                                                error, "pkexec", TOOL, on ? "enable" : "disable", NULL);
++  if (!p) return FALSE;
++  s->busy = TRUE;
++  cc_luma_fixture_publish_boolean (s->model, "h264", on);
++  g_subprocess_wait_async (p, s->cancel, change_done, s);
++  return TRUE;
++}
++
++static gpointer
++openh264_start (CcLumaFixture *model)
++{
++  OpenH264 *s = g_new0 (OpenH264, 1);
++  s->model = model;
++  s->cancel = g_cancellable_new ();
++  if (!g_file_test (TOOL, G_FILE_TEST_IS_EXECUTABLE))
++    {
++      mark_ready (s);
++      return s;
++    }
++  cc_luma_fixture_own_key (model, "h264");
++  read_status (s);
++  return s;
++}
++
++static void
++openh264_stop (gpointer state)
++{
++  OpenH264 *s = state;
++  g_cancellable_cancel (s->cancel);
++  g_clear_object (&s->cancel);
++  g_free (s);
++}
++
++const CcLumaAdapter cc_luma_adapter_openh264 = { ADAPTER, pages, openh264_start, openh264_write, openh264_stop };
+diff --git a/shell/cc-luma-live.c b/shell/cc-luma-live.c
+index 9ea2686..3f4a66d 100644
+--- a/shell/cc-luma-live.c
++++ b/shell/cc-luma-live.c
+@@ -14,7 +14,8 @@ extern const CcLumaAdapter cc_luma_adapter_network, cc_luma_adapter_airplane,
+ extern const CcLumaAdapter cc_luma_adapter_users, cc_luma_adapter_about, cc_luma_adapter_ssh, cc_luma_adapter_datetime,
+   cc_luma_adapter_sharing, cc_luma_adapter_region, cc_luma_adapter_privacy, cc_luma_adapter_accounts,
+   cc_luma_adapter_wellbeing, cc_luma_adapter_security;
+-extern const CcLumaAdapter cc_luma_adapter_apps, cc_luma_adapter_appoptions, cc_luma_adapter_tv, cc_luma_adapter_tv_account;
++extern const CcLumaAdapter cc_luma_adapter_apps, cc_luma_adapter_appoptions, cc_luma_adapter_tv, cc_luma_adapter_tv_account,
++  cc_luma_adapter_openh264;
+ static const CcLumaAdapter *adapters[] = {
+   &cc_luma_adapter_network, &cc_luma_adapter_airplane, &cc_luma_adapter_proxy,
+   /* Bluetooth reads BlueZ over D-Bus: no second BluetoothClient beside the panel's. */
+@@ -36,6 +37,8 @@ static const CcLumaAdapter *adapters[] = {
+   &cc_luma_adapter_home, &cc_luma_adapter_shelf, &cc_luma_adapter_windows, &cc_luma_adapter_notifications, &cc_luma_adapter_search,
+   &cc_luma_adapter_printers,
+   &cc_luma_adapter_apps, &cc_luma_adapter_appoptions,
++  /* Cisco's OpenH264 on or off (luma-openh264): one switch in Apps. */
++  &cc_luma_adapter_openh264,
+   &cc_luma_adapter_tv, &cc_luma_adapter_tv_account,
+   NULL
+ };
+@@ -206,6 +209,10 @@ cc_luma_live_model_new (GError **error)
+   /* Which display the rows show is the page's own choice (VM run
+    * 20260930T214237-dp3-writes: a tile click stays on this page). */
+   cc_luma_fixture_verify_key (model, "dsel");
++  /* OpenH264 off and on through pkexec luma-openh264 (VM 20 Nov, run
++   * 20261120T1537-openh264-settings, Settings in the session): Cisco's file
++   * removed and downloaded again, kept on reopening. */
++  cc_luma_fixture_verify_key (model, "h264");
+   /* Join and mirror with two displays: Mirror then Revert Settings goes back
+    * (VM run 20260930T230328-dp13-heads2-mirror), Mirror kept and kept on
+    * reopening (20260930T230745-dp15-heads2-mirror-keep), Join from mirror
+diff --git a/shell/cc-luma-view-application-options.c b/shell/cc-luma-view-application-options.c
+index ea5fbbb..f93bb71 100644
+--- a/shell/cc-luma-view-application-options.c
++++ b/shell/cc-luma-view-application-options.c
+@@ -497,6 +497,27 @@ cc_luma_view_apps_row_widgets (GtkWidget *root)
+   return r ? r->rows->len : 0;
+ }
+ 
++/* Cisco's binary terms: its attribution and an on/off control where the
++ * person manages it, with the terms one click away. Shown while
++ * luma-openh264 reports the setting (cc-luma-live-openh264.c). */
++#define OPENH264_TERMS "https://www.openh264.org/BINARY_LICENSE.txt"
++static void openh264_terms (GtkButton *button, View *v G_GNUC_UNUSED)
++{
++  g_autoptr (GtkUriLauncher) launcher = gtk_uri_launcher_new (OPENH264_TERMS);
++  gtk_uri_launcher_launch (launcher, GTK_WINDOW (gtk_widget_get_root (GTK_WIDGET (button))), NULL, NULL, NULL);
++}
++static void openh264_rows (View *v)
++{
++  JsonNode *on = cc_luma_fixture_get (v->model, "h264");
++  if (!on || !JSON_NODE_HOLDS_VALUE (on)) return;
++  GtkBox *rows = cf_group (v, NULL, NULL);
++  cf_sw (v, rows, "h264", "OpenH264 video codec", "OpenH264 Video Codec provided by Cisco Systems, Inc.", cf_lead_icon ("film"));
++  GtkWidget *terms = cf_row (rows, cf_lead_icon ("file-text"), "Cisco’s license terms", NULL,
++                             luma_ui_icon_new ("square-arrow-out-up-right"), TRUE);
++  gtk_widget_set_tooltip_text (terms, OPENH264_TERMS);
++  g_signal_connect (terms, "clicked", G_CALLBACK (openh264_terms), v);
++}
++
+ static void apps_render (View *v);
+ static guint perf_renders;
+ static gint64 perf_render_us;
+@@ -527,6 +548,7 @@ static void apps_render (View *v)
+   GtkBox *rows = cf_group (v, NULL, NULL);
+   cf_nv (v, rows, "defaults", "Default apps", "Which app opens links, mail, music and photos", NULL, cf_lead_icon ("app-window"));
+   cf_nv (v, rows, "media", "Removable media", "What happens when you plug in a drive or phone", NULL, cf_lead_icon ("usb"));
++  openh264_rows (v);
+   JsonNode *category_node = json_object_get_member (data, "CFAPPCATS");
+   JsonObject *categories = category_node && JSON_NODE_HOLDS_OBJECT (category_node) ? json_node_get_object (category_node) : NULL;
+   if (json_array_get_length (apps) >= RECYCLE_FROM)
+diff --git a/shell/meson.build b/shell/meson.build
+index 7b11ec9..4fe77e3 100644
+--- a/shell/meson.build
++++ b/shell/meson.build
+@@ -114,6 +114,7 @@ common_sources = files(
+   'cc-luma-live-printers.c',
+   'cc-luma-live-applications.c',
+   'cc-luma-live-app-options.c',
++  'cc-luma-live-openh264.c',
+   'cc-luma-rows.c',
+   'cc-luma-view-hardware.c',
+   'cc-luma-view-people.c',

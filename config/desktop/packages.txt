@@ -13,8 +13,8 @@
 # deployment's rpmdb. Keep the shared pins in step with inputs.env.
 
 # Shell, window manager and settings (replace Fedora base packages)
-gnome-control-center-50.4-1.luma.70.fc44.x86_64
-gnome-control-center-filesystem-50.4-1.luma.70.fc44.noarch
+gnome-control-center-50.4-1.luma.71.fc44.x86_64
+gnome-control-center-filesystem-50.4-1.luma.71.fc44.noarch
 gnome-shell-50.3-1.luma.189.fc44.x86_64
 gdm-1:50.3-1.luma.1.fc44.x86_64
 gnome-shell-common-50.3-1.luma.189.fc44.noarch
@@ -45,7 +45,7 @@ libhandy-1.8.3-10.luma.9.fc44.x86_64
 # Software H.264: Luma's noopenh264 (replaces Fedora's) uses Cisco's OpenH264
 # binary once luma-openh264 has downloaded it from Cisco onto the device.
 noopenh264-2.6.0-4.luma.1.fc44.x86_64
-luma-openh264-0.1.0-1.luma.1.fc44.noarch
+luma-openh264-0.1.0-1.luma.2.fc44.noarch
 
 # Graphical boot (replace the Fedora Plymouth family)
 luma-boot-theme-0.1.0-1.luma.21.creator20261006.2.fc44.noarch

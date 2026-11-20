@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Cisco's binary terms ask for an on/off control where the person manages
+// it (Settings › Apps). Turning OpenH264 on or off is the person's choice for
+// their own computer: the active local session may run exactly
+// "luma-openh264 enable" or "luma-openh264 disable" without a password.
+// Anything else keeps the action's default, administrator authentication.
+polkit.addRule(function(action, subject) {
+    if (action.id != "org.projectluma.openh264" || !subject.active || !subject.local) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var tool = "/usr/bin/luma-openh264";
+    var requests = ["enable", "disable"];
+    if (action.lookup("program") == tool) {
+        for (var i = 0; i < requests.length; i++) {
+            if (action.lookup("command_line") == tool + " " + requests[i]) {
+                return polkit.Result.YES;
+            }
+        }
+    }
+    return polkit.Result.NOT_HANDLED;
+});
