@@ -7,6 +7,36 @@
 //! against. Coordinates are canvas pixels with the origin at the top-left of
 //! the padded output; the content rect starts at (`margin`, `margin`).
 
+use gst::glib;
+
+/// Where the stroke lies relative to the content box edge.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, glib::Enum)]
+#[repr(u32)]
+#[enum_type(name = "GstLumaFrameStrokePosition")]
+pub enum StrokePosition {
+    /// Inside the box, covering the content's edge.
+    #[default]
+    #[enum_value(name = "Inside the box edge", nick = "inside")]
+    Inside = 0,
+    /// Straddling the box edge, half inside and half outside.
+    #[enum_value(name = "Centred on the box edge", nick = "center")]
+    Center = 1,
+    /// Outside the box, in the margin; the box itself is unchanged.
+    #[enum_value(name = "Outside the box edge", nick = "outside")]
+    Outside = 2,
+}
+
+impl StrokePosition {
+    /// How far a stroke `width` wide reaches beyond the box edge.
+    pub fn reach(self, width: f64) -> f64 {
+        match self {
+            StrokePosition::Inside => 0.0,
+            StrokePosition::Center => 0.5 * width,
+            StrokePosition::Outside => width,
+        }
+    }
+}
+
 /// The element's properties, already range-checked by GObject.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
@@ -20,6 +50,7 @@ pub struct Settings {
     pub corner_radius: f64,
     pub stroke_width: f64,
     pub stroke_color: u32,
+    pub stroke_position: StrokePosition,
     pub shadow_blur: f64,
     pub shadow_offset_x: f64,
     pub shadow_offset_y: f64,
@@ -43,6 +74,7 @@ impl Default for Settings {
             corner_radius: 0.0,
             stroke_width: 0.0,
             stroke_color: DEFAULT_STROKE_COLOR,
+            stroke_position: StrokePosition::Inside,
             shadow_blur: 0.0,
             shadow_offset_x: 0.0,
             shadow_offset_y: 0.0,
@@ -76,6 +108,20 @@ pub fn output_size(s: &Settings, input: (i32, i32)) -> (i32, i32) {
     let (cw, ch) = canvas_size(s, input);
     let px = |v: f64| v.round().clamp(1.0, i32::MAX as f64) as i32;
     (px(cw), px(ch))
+}
+
+/// The smallest `margin` that holds the whole layer: the stroke's reach
+/// beyond the box plus, with a shadow, three sigmas of blur (1.5 ×
+/// `shadow-blur`) and the larger offset, rounded up to whole pixels. The
+/// shadow is a blur of the stroke's outer edge, so it starts past the reach.
+pub fn margin_for(s: &Settings) -> f64 {
+    let reach = s.stroke_position.reach(s.stroke_width);
+    let shadow = if (s.shadow_color >> 24) > 0 {
+        1.5 * s.shadow_blur + s.shadow_offset_x.abs().max(s.shadow_offset_y.abs())
+    } else {
+        0.0
+    };
+    (reach + shadow).ceil()
 }
 
 /// Source texture coordinates of the visible part: origin and extent, 0..1.
@@ -170,6 +216,15 @@ pub struct Layout {
     pub half: (f64, f64),
     pub radius: f64,
     pub stroke: f64,
+    /// How far the stroke's inner edge lies inside the box edge.
+    pub stroke_in: f64,
+    /// How far the stroke's outer edge lies outside the box edge.
+    pub stroke_out: f64,
+    /// The outer edge of box and stroke: half size and corner radius, the
+    /// box grown by `stroke_out` with concentric corners. The shadow is cast
+    /// by this shape.
+    pub outer_half: (f64, f64),
+    pub outer_radius: f64,
     pub stroke_color: [f64; 4],
     /// Source origin and extent in texture coordinates.
     pub crop: [f64; 4],
@@ -188,13 +243,26 @@ impl Layout {
         // Scale from output pixels to canvas pixels, averaged over the axes:
         // 1 when the output is the size the element asked for.
         let aa = 0.5 * (canvas.0 / output.0.max(1) as f64 + canvas.1 / output.1.max(1) as f64);
+        let half = (0.5 * bw, 0.5 * bh);
+        let radius = s.corner_radius.clamp(0.0, short);
+        // The part of the stroke inside the box stops at the box's centre.
+        let stroke = match s.stroke_position {
+            StrokePosition::Inside => s.stroke_width.clamp(0.0, short),
+            StrokePosition::Center => s.stroke_width.clamp(0.0, 2.0 * short),
+            StrokePosition::Outside => s.stroke_width.max(0.0),
+        };
+        let stroke_out = s.stroke_position.reach(stroke);
         Layout {
             canvas,
             aa,
             centre: (s.margin + 0.5 * bw, s.margin + 0.5 * bh),
-            half: (0.5 * bw, 0.5 * bh),
-            radius: s.corner_radius.clamp(0.0, short),
-            stroke: s.stroke_width.clamp(0.0, short),
+            half,
+            radius,
+            stroke,
+            stroke_in: stroke - stroke_out,
+            stroke_out,
+            outer_half: (half.0 + stroke_out, half.1 + stroke_out),
+            outer_radius: radius + stroke_out,
             stroke_color: argb_to_rgba(s.stroke_color),
             crop: crop_rect(s),
             shadow_color: argb_to_rgba(s.shadow_color),
@@ -211,28 +279,36 @@ impl Layout {
         (self.crop[0] + u * self.crop[2], self.crop[1] + v * self.crop[3])
     }
 
-    /// Shadow alpha (before the shadow colour's own alpha) at `p`.
+    /// Shadow alpha (before the shadow colour's own alpha) at `p`: cast by
+    /// the outer edge of box and stroke.
     pub fn shadow(&self, p: (f64, f64)) -> f64 {
         let q = (p.0 - self.shadow_offset.0, p.1 - self.shadow_offset.1);
         if self.sigma < SHADOW_SIGMA_MIN_PX * self.aa {
-            coverage(rounded_rect_sdf(q, self.centre, self.half, self.radius), self.aa)
+            coverage(
+                rounded_rect_sdf(q, self.centre, self.outer_half, self.outer_radius),
+                self.aa,
+            )
         } else {
             let rel = (q.0 - self.centre.0, q.1 - self.centre.1);
-            rounded_rect_shadow(rel, self.half, self.radius, self.sigma)
+            rounded_rect_shadow(rel, self.outer_half, self.outer_radius, self.sigma)
         }
     }
 
     /// The straight-alpha RGBA of the output pixel whose centre is the canvas
     /// point `p`, given the source sample `src` (straight alpha) there.
     pub fn shade(&self, p: (f64, f64), src: [f64; 4]) -> [f64; 4] {
+        // Distance from the box edge; the stroke's outer edge is the same
+        // rounded rect grown by `stroke_out`, so its distance is d - stroke_out.
         let d = rounded_rect_sdf(p, self.centre, self.half, self.radius);
         let inside = coverage(d, self.aa);
-        // Premultiplied colour of the part of the pixel inside the shape.
+        let outer = coverage(d - self.stroke_out, self.aa);
+        // Premultiplied colour of the part of the pixel inside the box.
         let mut a = src[3];
         let mut rgb = [src[0] * a, src[1] * a, src[2] * a];
         if self.stroke > 0.0 && inside > 0.0 {
-            // The stroke's share of the covered area, laid over the source.
-            let band = (inside - coverage(d + self.stroke, self.aa)).max(0.0);
+            // The share of the box's covered area under the stroke, laid
+            // over the source.
+            let band = (inside - coverage(d + self.stroke_in, self.aa)).max(0.0);
             let sa = self.stroke_color[3] * band / inside;
             for (c, s) in rgb.iter_mut().zip(self.stroke_color) {
                 *c = s * sa + *c * (1.0 - sa);
@@ -243,10 +319,19 @@ impl Layout {
         for c in rgb.iter_mut() {
             *c *= inside;
         }
+        if self.stroke > 0.0 {
+            // The stroke beyond the box edge, over nothing.
+            let sa = self.stroke_color[3] * (outer - inside).max(0.0);
+            for (c, s) in rgb.iter_mut().zip(self.stroke_color) {
+                *c += s * sa;
+            }
+            a += sa;
+        }
         if self.shadow_color[3] > 0.0 {
-            // The shadow lies outside the shape only (as CSS box-shadow), so a
-            // translucent source never shows it through.
-            let sh = self.shadow(p) * self.shadow_color[3] * (1.0 - inside);
+            // The shadow lies outside the box and stroke only (as CSS
+            // box-shadow), so a translucent source or stroke never shows it
+            // through.
+            let sh = self.shadow(p) * self.shadow_color[3] * (1.0 - outer);
             for (c, s) in rgb.iter_mut().zip(self.shadow_color) {
                 *c += s * sh;
             }
@@ -494,5 +579,183 @@ mod tests {
         assert!(below > above + 0.02, "{below} vs {above}");
         assert!(below < 0.5 * 0.4 + 1e-9);
         assert!(l.shade((1.0, 1.0), src)[3] < 1e-6);
+    }
+
+    const POSITIONS: [StrokePosition; 3] = [StrokePosition::Inside, StrokePosition::Center, StrokePosition::Outside];
+
+    fn stroked(position: StrokePosition, radius: f64) -> Settings {
+        Settings {
+            box_width: 100.0,
+            box_height: 60.0,
+            margin: 20.0,
+            corner_radius: radius,
+            stroke_width: 8.0,
+            stroke_color: 0xFFFF0000,
+            stroke_position: position,
+            shadow_color: 0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn inside_is_the_default_and_leaves_the_outer_edge_on_the_box() {
+        assert_eq!(Settings::default().stroke_position, StrokePosition::Inside);
+        let l = Layout::new(&stroked(StrokePosition::Inside, 12.0), (10, 10), (140, 100));
+        assert_eq!((l.stroke, l.stroke_in, l.stroke_out), (8.0, 8.0, 0.0));
+        assert_eq!((l.outer_half, l.outer_radius), (l.half, l.radius));
+    }
+
+    #[test]
+    fn stroke_position_grows_the_outer_edge_with_concentric_corners() {
+        for (position, out) in POSITIONS.into_iter().zip([0.0, 4.0, 8.0]) {
+            for r in [0.0, 12.0, 30.0] {
+                let l = Layout::new(&stroked(position, r), (10, 10), (140, 100));
+                assert_eq!((l.stroke_in, l.stroke_out), (8.0 - out, out), "{position:?}");
+                assert_eq!(l.outer_half, (50.0 + out, 30.0 + out));
+                assert_eq!(l.outer_radius, r + out);
+                assert_eq!(l.half, (50.0, 30.0), "the box itself is unchanged");
+                // The outer edge is the box's offset curve: same corner centres.
+                for p in [
+                    (70.0, 50.0),
+                    (0.0, 0.0),
+                    (125.0, 85.0),
+                    (130.0, 50.0),
+                    (66.0, 3.0),
+                    (20.0, 20.0),
+                ] {
+                    let grown = rounded_rect_sdf(p, l.centre, l.outer_half, l.outer_radius);
+                    let offset = rounded_rect_sdf(p, l.centre, l.half, l.radius) - out;
+                    assert!(close(grown, offset, 1e-9), "{position:?} r={r} {p:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stroke_positions_on_a_straight_edge() {
+        let red = [1.0, 0.0, 0.0, 1.0];
+        let green = [0.0, 1.0, 0.0, 1.0];
+        // The box's left edge is at x = 20; row 50 is mid-height.
+        for (position, first) in POSITIONS.into_iter().zip([20, 16, 12]) {
+            let l = Layout::new(&stroked(position, 12.0), (10, 10), (140, 100));
+            let at = |x: usize| l.shade((x as f64 + 0.5, 50.0), green);
+            assert_eq!(at(first - 1)[3], 0.0, "{position:?}");
+            for x in first..first + 8 {
+                assert_eq!(at(x), red, "{position:?} stroke at {x}");
+            }
+            assert_eq!(at(first + 8), green, "{position:?} content");
+            assert_eq!(output_size(&stroked(position, 12.0), (10, 10)), (140, 100));
+        }
+    }
+
+    #[test]
+    fn outside_stroke_follows_the_grown_corner() {
+        let l = Layout::new(&stroked(StrokePosition::Outside, 12.0), (10, 10), (140, 100));
+        // Top-left corner arc centre at (32, 32); along its diagonal the box
+        // ends at 12, the stroke at 20.
+        let k = std::f64::consts::FRAC_1_SQRT_2;
+        let at = |dist: f64| l.shade((32.0 - dist * k, 32.0 - dist * k), [0.0, 1.0, 0.0, 1.0]);
+        assert_eq!(at(10.0), [0.0, 1.0, 0.0, 1.0]);
+        assert_eq!(at(14.0), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(at(19.0), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(at(21.0)[3], 0.0);
+    }
+
+    #[test]
+    fn translucent_outside_stroke_is_over_nothing_and_shadow_starts_beyond_it() {
+        for position in POSITIONS {
+            let s = Settings {
+                stroke_color: 0x80FF0000,
+                shadow_color: 0xFF000000,
+                shadow_offset_x: 4.0,
+                ..stroked(position, 0.0)
+            };
+            let l = Layout::new(&s, (10, 10), (140, 100));
+            let reach = l.stroke_out;
+            let src = [0.0, 1.0, 0.0, 1.0];
+            // Right edge of the box at x = 120. The pixel just inside the
+            // stroke's outer edge: half-alpha red over nothing (outside the
+            // box) or over the source (inside position), never the shadow.
+            let px = l.shade((120.0 + reach - 0.5, 50.0), src);
+            let half = 128.0 / 255.0;
+            let want = if position == StrokePosition::Inside {
+                [half, 1.0 - half, 0.0, 1.0]
+            } else {
+                [1.0, 0.0, 0.0, half]
+            };
+            assert!((0..4).all(|i| close(px[i], want[i], 1e-12)), "{position:?}: {px:?}");
+            // Past the stroke: the sharp shadow, cast by the outer edge.
+            assert_eq!(l.shade((120.0 + reach + 3.5, 50.0), src), [0.0, 0.0, 0.0, 1.0]);
+            assert_eq!(l.shade((120.0 + reach + 4.5, 50.0), src)[3], 0.0);
+        }
+    }
+
+    #[test]
+    fn stroke_clamps_by_position() {
+        let s = Settings {
+            box_width: 100.0,
+            box_height: 40.0,
+            stroke_width: 90.0,
+            ..Default::default()
+        };
+        let layout = |position| {
+            let l = Layout::new(
+                &Settings {
+                    stroke_position: position,
+                    ..s.clone()
+                },
+                (10, 10),
+                (100, 40),
+            );
+            (l.stroke, l.stroke_in, l.stroke_out)
+        };
+        assert_eq!(layout(StrokePosition::Inside), (20.0, 20.0, 0.0));
+        assert_eq!(layout(StrokePosition::Center), (40.0, 20.0, 20.0));
+        assert_eq!(layout(StrokePosition::Outside), (90.0, 0.0, 90.0));
+    }
+
+    #[test]
+    fn margin_holds_stroke_reach_and_shadow() {
+        let mut s = Settings {
+            stroke_width: 6.0,
+            shadow_blur: 10.0,
+            shadow_offset_x: -3.0,
+            shadow_offset_y: 8.0,
+            ..Default::default()
+        };
+        assert_eq!(margin_for(&s), 23.0);
+        s.stroke_position = StrokePosition::Center;
+        assert_eq!(margin_for(&s), 26.0);
+        s.stroke_position = StrokePosition::Outside;
+        assert_eq!(margin_for(&s), 29.0);
+        s.shadow_color = 0x00FF_FFFF;
+        assert_eq!(margin_for(&s), 6.0);
+        s.stroke_width = 2.5;
+        s.stroke_position = StrokePosition::Center;
+        assert_eq!(margin_for(&s), 2.0);
+        assert_eq!(margin_for(&Settings::default()), 0.0);
+        // At that margin the layer's edge pixels are (all but) transparent.
+        let s = Settings {
+            box_width: 100.0,
+            box_height: 60.0,
+            corner_radius: 12.0,
+            stroke_width: 6.0,
+            stroke_position: StrokePosition::Outside,
+            shadow_blur: 10.0,
+            shadow_offset_y: 8.0,
+            ..Default::default()
+        };
+        let s = Settings {
+            margin: margin_for(&s),
+            ..s
+        };
+        let (w, h) = output_size(&s, (10, 10));
+        let l = Layout::new(&s, (10, 10), (w, h));
+        for x in 0..w {
+            for y in [0, h - 1] {
+                let a = l.shade((x as f64 + 0.5, y as f64 + 0.5), [1.0; 4])[3];
+                assert!(a < 0.5 / 255.0, "{x},{y}: {a}");
+            }
+        }
     }
 }

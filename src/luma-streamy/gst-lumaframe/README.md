@@ -5,7 +5,8 @@ GStreamer plugin `lumavideofx` (`libgstlumavideofx.so`) with one element,
 single GL pass, for `glvideomixer`.
 
 - the source stretched into a box, masked by an anti-aliased rounded rect;
-- a stroke just inside the box edge, following the corners;
+- a stroke inside, centred on or outside the box edge, following the
+  corners;
 - an analytic Gaussian drop shadow in a transparent margin (the closed-form
   blurred rounded rect described in "Fast Rounded Rectangle Shadows",
   madebyevan.com; erf across x, exact Gaussian-mass slices down y);
@@ -24,11 +25,12 @@ pixels.
 | Property | Range, default | Meaning |
 | --- | --- | --- |
 | `box-width`, `box-height` | ≥ 0, 0 | Content box size; 0 = input size on that axis |
-| `margin` | ≥ 0, 0 | Transparent room on every side for the shadow |
+| `margin` | ≥ 0, 0 | Transparent room on every side for the shadow and an outside stroke |
 | `crop-left`, `-top`, `-right`, `-bottom` | 0–0.49, 0 | Fraction of the source cut on that side; the rest fills the box |
 | `corner-radius` | ≥ 0, 0 | Clamped to half the box's shorter side |
-| `stroke-width` | ≥ 0, 0 | Outline inside the box edge; 0 = none |
+| `stroke-width` | ≥ 0, 0 | Outline along the box edge; 0 = none |
 | `stroke-color` | uint 0xAARRGGBB, 0xFFFFFFFF | Outline colour |
+| `stroke-position` | enum `inside`, `center`, `outside`; `inside` | Which side of the box edge the outline lies on |
 | `shadow-blur` | ≥ 0, 0 | Blur radius as CSS `box-shadow`: Gaussian sigma = blur / 2; 0 = sharp |
 | `shadow-offset-x`, `-y` | any, 0 | Shadow offset; positive is right / down |
 | `shadow-color` | uint 0xAARRGGBB, 0x66000000 | Alpha is the shadow's opacity; 0 = no shadow |
@@ -38,7 +40,34 @@ Output size is `round(box-width + 2·margin) × round(box-height + 2·margin)`.
 A change that alters it renegotiates before the next buffer; any other change
 only updates uniforms. If downstream fixes another size, the layer is scaled
 to it. Place a layer in `glvideomixer` at its canvas position minus `margin`.
-A margin of `shadow-blur` plus the larger offset holds the whole shadow.
+
+`stroke-position` moves the stroke without moving the box: `inside` covers
+the content's edge, `center` straddles it (±`stroke-width`/2) and `outside`
+lies wholly in the margin. Corners stay concentric: the stroke's outer edge
+is the box grown by its reach (0, `stroke-width`/2 or `stroke-width`) with
+radius `corner-radius` + reach. The shadow is cast by that outer edge and
+starts beyond it. The inward part of a stroke is clamped at the box's centre.
+
+The margin must hold the stroke's reach plus the shadow. Three sigmas of blur
+(1.5 × `shadow-blur`) leave less than 0.2 % of the shadow's opacity, so:
+
+```
+margin = ceil(reach + 1.5 · shadow-blur + max(|shadow-offset-x|, |shadow-offset-y|))
+reach  = 0 (inside), stroke-width / 2 (center), stroke-width (outside)
+```
+
+with the shadow terms 0 when `shadow-color`'s alpha is 0. In Rust it is
+`gstlumavideofx::geometry::margin_for(&settings)`; in Python:
+
+```python
+import math
+
+def lumaframe_margin(stroke_width, stroke_position, shadow_blur,
+                     shadow_x, shadow_y, shadow_alpha):
+    reach = {"inside": 0.0, "center": 0.5, "outside": 1.0}[stroke_position] * stroke_width
+    shadow = 1.5 * shadow_blur + max(abs(shadow_x), abs(shadow_y)) if shadow_alpha > 0 else 0.0
+    return float(math.ceil(reach + shadow))
+```
 
 `glvideomixer` (1.28) recomputes a pad's geometry only when a pad property
 changes, not when its input caps do: when a layer's size changes, set the
@@ -47,16 +76,17 @@ GL pipelines in one process should share one `GstGLDisplay` (set a
 `gst.gl.GLDisplay` context on each pipeline); with separate displays one
 pipeline's teardown can break EGL context creation in another.
 
-The shadow is drawn outside the box only (as CSS), so it never shows through
-a translucent source. Fully transparent output pixels are transparent black.
+The shadow is drawn outside the box and stroke only (as CSS), so it never
+shows through a translucent source or stroke. Fully transparent output
+pixels are transparent black.
 With the defaults the element is a passthrough.
 
 ## Example
 
 ```sh
 gst-launch-1.0 videotestsrc ! glupload ! glcolorconvert ! \
-  lumaframe box-width=640 box-height=360 margin=40 corner-radius=24 \
-    stroke-width=4 shadow-blur=30 shadow-offset-y=8 ! \
+  lumaframe box-width=640 box-height=360 margin=57 corner-radius=24 \
+    stroke-width=4 stroke-position=outside shadow-blur=30 shadow-offset-y=8 ! \
   glvideomixer background=checker ! gldownload ! videoconvert ! autovideosink
 ```
 

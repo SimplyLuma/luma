@@ -7,7 +7,7 @@ use std::sync::{Once, OnceLock};
 use gst::glib;
 use gst::prelude::*;
 use gst_gl::prelude::*;
-use gstlumavideofx::geometry::{Layout, Settings};
+use gstlumavideofx::geometry::{self, Layout, Settings, StrokePosition};
 
 /// One GL display for every pipeline in the process. Each pipeline making
 /// its own would share the same EGLDisplay underneath, and one pipeline's
@@ -486,4 +486,159 @@ fn resizes_inside_glvideomixer_while_playing() {
     assert_eq!(out.px(150, 100), [255, 0, 0, 255]);
     assert_eq!(out.px(250, 200)[3], 0);
     assert_eq!(out.px(0, 0)[3], 0);
+}
+
+const POSITIONS: [StrokePosition; 3] = [StrokePosition::Inside, StrokePosition::Center, StrokePosition::Outside];
+
+/// Golden pixels of an opaque 4 px stroke on an 80×60 box in an 8 px margin,
+/// down the middle of the top edge (straight at every radius) and across
+/// the top-left corner's diagonal.
+#[test]
+fn stroke_positions_golden_pixels() {
+    const GREEN: [u8; 4] = [0, 255, 0, 255];
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    // First stroke row, diagonal pixels in the stroke at radius 12 and just
+    // past its outer edge (corner arc centre at 20,20: concentric radii).
+    for (position, first, (in_stroke, past)) in [
+        (StrokePosition::Inside, 8, (12, 10)),
+        (StrokePosition::Center, 6, (11, 9)),
+        (StrokePosition::Outside, 4, (10, 7)),
+    ] {
+        for radius in [0.0, 12.0, 1000.0] {
+            let mut p = props(&[
+                ("box-width", 80.0),
+                ("box-height", 60.0),
+                ("margin", 8.0),
+                ("corner-radius", radius),
+                ("stroke-width", 4.0),
+            ]);
+            p.push(("stroke-color", 0xFF00FF00u32.to_value()));
+            p.push(("shadow-color", 0u32.to_value()));
+            p.push(("stroke-position", position.to_value()));
+            let out = run(&solid(32, 24, BLUE), &p);
+            assert_eq!((out.w, out.h), (96, 76), "the box and output size are unchanged");
+            let at = |y| out.px(48, y);
+            assert_eq!(at(first - 1)[3], 0, "{position:?} r={radius} above the stroke");
+            for y in first..first + 4 {
+                assert_eq!(at(y), GREEN, "{position:?} r={radius} stroke row {y}");
+            }
+            assert_eq!(at(first + 4), BLUE, "{position:?} r={radius} content");
+            assert_eq!(out.px(48, 38), BLUE);
+            if radius == 12.0 {
+                assert_eq!(out.px(in_stroke, in_stroke), GREEN, "{position:?} corner stroke");
+                assert_eq!(out.px(past, past)[3], 0, "{position:?} past the corner");
+            }
+        }
+    }
+}
+
+#[test]
+fn shadow_starts_outside_the_stroke() {
+    // Sharp opaque shadow 4 px right of the outer edge; the box's right edge
+    // is at x = 88 and row 38 is mid-height.
+    for (position, reach) in POSITIONS.into_iter().zip([0, 2, 4]) {
+        let mut p = props(&[
+            ("box-width", 80.0),
+            ("box-height", 60.0),
+            ("margin", 8.0),
+            ("corner-radius", 12.0),
+            ("stroke-width", 4.0),
+            ("shadow-offset-x", 4.0),
+        ]);
+        p.push(("stroke-color", 0x80FF0000u32.to_value()));
+        p.push(("shadow-color", 0xFF000000u32.to_value()));
+        p.push(("stroke-position", position.to_value()));
+        let out = run(&solid(32, 24, [0, 0, 255, 255]), &p);
+        let edge = 88 + reach;
+        // Translucent stroke over the source inside the box, over nothing
+        // outside it: never over the shadow.
+        let last = out.px(edge - 1, 38);
+        if position == StrokePosition::Inside {
+            assert!(close(last, [128, 0, 127, 255], 1), "{position:?}: {last:?}");
+        } else {
+            assert!(close(last, [255, 0, 0, 128], 1), "{position:?}: {last:?}");
+        }
+        for x in edge..edge + 4 {
+            assert_eq!(out.px(x, 38), [0, 0, 0, 255], "{position:?} shadow at {x}");
+        }
+        assert_eq!(out.px(edge + 4, 38)[3], 0, "{position:?}");
+    }
+}
+
+#[test]
+fn stroke_positions_match_the_model() {
+    for position in POSITIONS {
+        for radius in [0.0, 12.0, 1000.0] {
+            let mut s = settings(
+                &[
+                    ("box-width", 100.0),
+                    ("box-height", 60.0),
+                    ("corner-radius", radius),
+                    ("stroke-width", 6.0),
+                    ("shadow-blur", 12.0),
+                    ("shadow-offset-x", 4.0),
+                    ("shadow-offset-y", 6.0),
+                ],
+                &[("stroke-color", 0xC0FF2000u32), ("shadow-color", 0x99102030u32)],
+            );
+            s.stroke_position = position;
+            s.margin = geometry::margin_for(&s);
+            let mut p = props(&[
+                ("box-width", s.box_width),
+                ("box-height", s.box_height),
+                ("margin", s.margin),
+                ("corner-radius", radius),
+                ("stroke-width", s.stroke_width),
+                ("shadow-blur", s.shadow_blur),
+                ("shadow-offset-x", s.shadow_offset_x),
+                ("shadow-offset-y", s.shadow_offset_y),
+            ]);
+            p.push(("stroke-color", s.stroke_color.to_value()));
+            p.push(("shadow-color", s.shadow_color.to_value()));
+            p.push(("stroke-position", position.to_value()));
+            let src = [40, 160, 220, 200];
+            let out = run(&solid(64, 48, src), &p);
+            eprintln!("{position:?} radius {radius}, margin {}", s.margin);
+            assert_matches_model(&out, &s, (64, 48), src, 3);
+            // The margin holds it all: the frame's border is transparent.
+            for x in 0..out.w {
+                assert_eq!(out.px(x, 0)[3], 0);
+                assert_eq!(out.px(x, out.h - 1)[3], 0);
+            }
+            for y in 0..out.h {
+                assert_eq!(out.px(0, y)[3], 0);
+                assert_eq!(out.px(out.w - 1, y)[3], 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn stroke_position_changes_while_playing_without_renegotiating() {
+    let input = solid(64, 48, [0, 0, 255, 255]);
+    let mut h = Harness::new(
+        64,
+        48,
+        None,
+        &[
+            ("box-width", 80.0.to_value()),
+            ("box-height", 60.0.to_value()),
+            ("margin", 8.0.to_value()),
+            ("stroke-width", 4.0.to_value()),
+            ("stroke-color", 0xFF00FF00u32.to_value()),
+            ("shadow-color", 0u32.to_value()),
+        ],
+    );
+    assert_eq!(
+        h.frame.property::<StrokePosition>("stroke-position"),
+        StrokePosition::Inside
+    );
+    let out = h.push(&input);
+    assert_eq!(out.px(48, 3)[3], 0);
+    assert_eq!(out.px(48, 9), [0, 255, 0, 255]);
+    h.set("stroke-position", StrokePosition::Outside);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (96, 76));
+    assert_eq!(out.px(48, 5), [0, 255, 0, 255]);
+    assert_eq!(out.px(48, 9), [0, 0, 255, 255]);
 }
