@@ -1,0 +1,173 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] libcamera: software_isp: Bound the luminance histogram index
+
+SwStatsCpu derives the histogram bin from the sample values and assumes
+they fit the bit depth of the format. Unpacked 10- and 12-bit formats
+store samples in 16-bit containers, so a frame holding larger values
+indexes past the end of yHistogram. With _GLIBCXX_ASSERTIONS, as in
+distribution builds, the std::array bounds check aborts the process;
+without it the write corrupts memory.
+
+This happens with the Intel IPU7 ISYS, which returns buffers the
+firmware rejected (bad frame dimensions) as completed, filled with
+0xffff. The abort takes down the camera service, for example
+WirePlumber and every PipeWire node it manages.
+
+Clamp the bin to the last one so out-of-range samples count as
+saturated.
+
+Add a test that feeds 10-bit samples of 0xffff through the statistics.
+---
+ src/libcamera/software_isp/swstats_cpu.cpp | 11 ++-
+ test/meson.build                           |  4 +
+ test/swstats-cpu.cpp                       | 90 ++++++++++++++++++++++
+ 3 files changed, 104 insertions(+), 1 deletion(-)
+ create mode 100644 test/swstats-cpu.cpp
+
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 7fb77ce7..9a3f207a 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include "libcamera/internal/software_isp/swstats_cpu.h"
+ 
++#include <algorithm>
++
+ #include <libcamera/base/log.h>
+ 
+ #include <libcamera/stream.h>
+@@ -179,6 +181,12 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 	uint64_t sumG = 0;                \
+ 	uint64_t sumB = 0;
+ 
++/*
++ * Samples are not guaranteed to fit the bit depth of the format: unpacked
++ * formats store them in wider containers, and a receiver may hand over a frame
++ * it failed to capture. Count out-of-range luminance in the top bin instead of
++ * indexing past the end of the histogram.
++ */
+ #define SWSTATS_ACCUMULATE_LINE_STATS(div) \
+ 	sumR += r;                         \
+ 	sumG += g;                         \
+@@ -187,7 +195,8 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 	yVal = r * kRedYMul;               \
+ 	yVal += g * kGreenYMul;            \
+ 	yVal += b * kBlueYMul;             \
+-	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++;
++	yVal = yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div)); \
++	stats.yHistogram[std::min<uint64_t>(yVal, SwIspStats::kYHistogramSize - 1)]++;
+ 
+ #define SWSTATS_FINISH_LINE_STATS() \
+ 	stats.sum_.r() += sumR;     \
+diff --git a/test/meson.build b/test/meson.build
+index e4450625..6b2b2e8a 100644
+--- a/test/meson.build
++++ b/test/meson.build
+@@ -79,6 +79,10 @@ internal_tests = [
+     {'name': 'yaml-parser', 'sources': ['yaml-parser.cpp']},
+ ]
+ 
++if softisp_enabled
++    internal_tests += {'name': 'swstats-cpu', 'sources': ['swstats-cpu.cpp']}
++endif
++
+ internal_non_parallel_tests = [
+     {'name': 'fence', 'sources': ['fence.cpp']},
+     {'name': 'mapped-buffer', 'sources': ['mapped-buffer.cpp']},
+diff --git a/test/swstats-cpu.cpp b/test/swstats-cpu.cpp
+new file mode 100644
+index 00000000..4d24a8c3
+--- /dev/null
++++ b/test/swstats-cpu.cpp
+@@ -0,0 +1,90 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++/*
++ * SwStatsCpu out-of-range sample test
++ */
++
++#include <iostream>
++#include <stdint.h>
++#include <sys/mman.h>
++#include <vector>
++
++#include <libcamera/camera_manager.h>
++#include <libcamera/formats.h>
++#include <libcamera/geometry.h>
++#include <libcamera/stream.h>
++
++#include "libcamera/internal/software_isp/swisp_stats.h"
++#include "libcamera/internal/software_isp/swstats_cpu.h"
++
++#include "test.h"
++
++using namespace std;
++using namespace libcamera;
++
++class SwStatsCpuTest : public Test
++{
++protected:
++	int run()
++	{
++		constexpr unsigned int kWidth = 64;
++		constexpr unsigned int kHeight = 16;
++
++		CameraManager cm;
++		SwStatsCpu stats(cm);
++		if (!stats.isValid()) {
++			cerr << "Failed to create the statistics buffer" << endl;
++			return TestFail;
++		}
++
++		StreamConfiguration cfg;
++		cfg.pixelFormat = formats::SGRBG10;
++		cfg.size = { kWidth, kHeight };
++		cfg.stride = kWidth * sizeof(uint16_t);
++		if (stats.configure(cfg)) {
++			cerr << "Failed to configure the statistics" << endl;
++			return TestFail;
++		}
++		stats.setWindow(Rectangle(cfg.size));
++
++		/*
++		 * Unpacked 10-bit samples live in 16-bit containers. A frame the
++		 * receiver failed to capture may hold any value there.
++		 */
++		vector<uint16_t> frame(kWidth * kHeight, 0xffff);
++
++		stats.startFrame(0);
++		for (unsigned int y = 0; y < kHeight; y += 2) {
++			const uint8_t *lines[3] = {
++				nullptr,
++				reinterpret_cast<const uint8_t *>(&frame[y * kWidth]),
++				reinterpret_cast<const uint8_t *>(&frame[(y + 1) * kWidth]),
++			};
++			stats.processLine0(0, y, lines);
++		}
++		stats.finishFrame(0, 0);
++
++		void *mem = mmap(nullptr, sizeof(SwIspStats), PROT_READ, MAP_SHARED,
++				 stats.getStatsFD().get(), 0);
++		if (mem == MAP_FAILED) {
++			cerr << "Failed to map the statistics" << endl;
++			return TestFail;
++		}
++
++		const SwIspStats *result = static_cast<const SwIspStats *>(mem);
++		uint64_t below = 0;
++		for (unsigned int i = 0; i < SwIspStats::kYHistogramSize - 1; i++)
++			below += result->yHistogram[i];
++		uint32_t top = result->yHistogram[SwIspStats::kYHistogramSize - 1];
++		munmap(mem, sizeof(SwIspStats));
++
++		if (below || !top) {
++			cerr << "Out-of-range samples not counted in the top bin: "
++			     << below << " below, " << top << " in the top bin" << endl;
++			return TestFail;
++		}
++
++		return TestPass;
++	}
++};
++
++TEST_REGISTER(SwStatsCpuTest)
