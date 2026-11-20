@@ -158,7 +158,7 @@ class StreamyWindow(AppWindow):
         self.widget_tree = LayerTree(self.widget_store, on_select=self._tree_selected,
                                      on_visibility=self._tree_visibility, on_rename=self._tree_renamed,
                                      on_reorder=self._tree_reorder, on_context=self._tree_context)
-        self.widgets_empty = ListEmptyState("Add a display, a window or a camera with +")
+        self.widgets_empty = ListEmptyState("No widgets in this scene")
         widgets = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         widgets.append(self.widget_tree)
         widgets.append(self.widgets_empty)
@@ -187,7 +187,7 @@ class StreamyWindow(AppWindow):
         self.audio_box.add_css_class("streamy-mixer")
         audio_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
         audio_scroll.set_child(self.audio_box)
-        self.audio_empty = ListEmptyState("Add a microphone or desktop audio with +")
+        self.audio_empty = ListEmptyState("No microphone or desktop audio")
         audio = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         audio.append(self.audio_empty)
         audio.append(audio_scroll)
@@ -219,7 +219,7 @@ class StreamyWindow(AppWindow):
         body.append(self.sidebar)
         body.append(self.host)
         # The toggle (F9) moves the sidebar into a drawer below its width, so it comes after the frame.
-        self.sidebar_toggle = SidebarToggle(self.sidebar)
+        self.sidebar_toggle = SidebarToggle(self.sidebar, drawer_below=901)
         self.set_leading(self.sidebar_toggle)
         return body
 
@@ -773,7 +773,7 @@ class StreamyWindow(AppWindow):
         scene = self.project.active_scene
         if paintable is None or scene is None or not self.sidebar.get_mapped():
             return
-        if not any(w.has_picture and w.visible for w in scene.widgets):
+        if not any(w.has_picture and w.visible and w.id not in self.widget_errors for w in scene.widgets):
             if self._thumbs.pop(scene.id, None) is not None:
                 self._refresh_scenes()
             return  # nothing to show: the row keeps its glyph, not a black square
