@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenH264 Video Codec provided by Cisco Systems, Inc. (download from Cisco)
+Documentation=file:///usr/share/luma-openh264/NOTICE
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/luma-openh264 sync
+# 75: Cisco's server could not be reached; the timer tries again.
+SuccessExitStatus=75
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes

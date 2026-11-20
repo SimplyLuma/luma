@@ -93,9 +93,10 @@ class NativeMatrix(unittest.TestCase):
 
     def test_noarch_checker_changes_only_rebuild_its_consumers(self):
         rows = matrix.matrix(ROOT, {'scripts/os/check-native-noarch-package.py'})['include']
-        self.assertEqual(len(rows), 8)
+        self.assertEqual(len(rows), 9)
         self.assertEqual({row['component'] for row in rows},
-                         {'application-installer', 'ari', 'desktop-launcher-policy', 'shell-state', 'icon-theme', 'android-runtime'})
+                         {'application-installer', 'ari', 'desktop-launcher-policy', 'shell-state', 'icon-theme',
+                          'android-runtime', 'openh264'})
         self.assertTrue(all(row['spec'] for row in rows))
 
     def test_missing_noarch_cohort_addition_checks_only_two_canonical_jobs(self):
@@ -135,7 +136,7 @@ class NativeMatrix(unittest.TestCase):
         self.assertEqual({row['component'] for row in rows}, {'shell-state', 'icon-theme'})
         checked = matrix.matrix(ROOT, {matrix.WORKFLOW, 'scripts/os/check-native-noarch-package.py'},
                                 previous_workflow=previous)['include']
-        self.assertEqual(len(checked), 8)
+        self.assertEqual(len(checked), 9)
 
     def test_unknown_or_nonrouting_workflow_changes_still_rebuild_every_group(self):
         import tempfile

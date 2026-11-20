@@ -226,6 +226,23 @@
       "paths": [
         "patches/mesa/"
       ]
+    },
+    "noopenh264": {
+      "recipe": "scripts/packages/build-noopenh264.sh",
+      "paths": [
+        "patches/noopenh264/"
+      ]
+    },
+    "openh264": {
+      "recipe": "scripts/packages/build-luma-openh264.sh",
+      "architectures": [
+        "x86_64"
+      ],
+      "spec": "packaging/rpm/luma-openh264.spec",
+      "paths": [
+        "src/luma-openh264/",
+        "packaging/rpm/luma-openh264.spec"
+      ]
     }
   }
 }

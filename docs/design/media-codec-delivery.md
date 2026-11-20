@@ -1,7 +1,7 @@
 # Platform media playback
 
-Status: investigated proposal, 2026-10-21. No codec delivery change is enabled
-by this document.
+Status: investigated 2026-10-21; delivery implemented 2026-11-19 (section
+"Delivery" below).
 
 Luma should provide working media playback as a maintained platform capability:
 connected setup prepares it once, applications use shared APIs, and updates
@@ -88,3 +88,44 @@ hardware/software fallback, disabled codecs, offline setup and interrupted
 updates. Confirm the precise Cisco delivery/use arrangement, or obtain Luma's
 own rights for a fully bundled codec. No such independent commercial arrangement
 has been established here.
+
+## Delivery
+
+Hardware encode is Luma's own drivers: `intel-media-driver-free` with VDEnc
+H.264/H.265 (`packaging/rpm/intel-media-driver-free.spec`) and Mesa built with
+`video-codecs=all_free,h264enc,h265enc` (`patches/mesa`), on the OS and in
+`org.projectluma.Platform.GL.default`. GStreamer's va plugin registers
+`vah264lpenc`/`vah265lpenc` (Intel) and `vah264enc`/`vah265enc` (AMD) from
+the driver's entrypoints. Hardware decode of H.264/H.265/VC-1 stays off.
+
+Software H.264 is Cisco's own unmodified binary
+(`src/luma-openh264/cisco-openh264.conf`: Cisco's generic Linux 2.6.0 build for
+x86_64 and aarch64, URL, size and SHA-256 of the download and of the
+library). Fedora's RPMs from the fedora-cisco-openh264 repository are not
+used: they are covered by Fedora's own arrangement with Cisco, and on an image
+system they could only be layered, which makes every update depend on that
+repository.
+
+- OS: `luma-openh264.service` (timer: a minute after boot, then every six
+  hours) downloads the file from ciscobinary.openh264.org over HTTPS, checks
+  both SHA-256s, and renames it into `/var/lib/openh264/libopenh264.so.8`.
+  Luma's `noopenh264` (`patches/noopenh264`) forwards to that file when it
+  exists and is the stub otherwise, so `openh264enc` works in every process
+  started afterwards, with no registry rebuild and nothing in `/usr` changed.
+  A failed download keeps the installed file and is retried; it never blocks
+  an update.
+- Flatpak: `org.projectluma.Platform.openh264` is an extra-data extension
+  (`scripts/depot/runtime/openh264-extension.sh`). Depot publishes only its
+  metadata; flatpak downloads the same Cisco file onto the device and
+  `apply_extra` unpacks it into `lib64/openh264/extra`, which the Platform's
+  extension point puts on the library path ahead of the runtime's noopenh264.
+  `luma-openh264.service` installs it whenever the Platform is installed.
+- Control: `luma-openh264 status|enable|disable` shows Cisco's attribution
+  and switches both sides; disable removes the file, uninstalls the extension
+  and masks it. Applications already running keep what they loaded until they
+  restart. `/usr/share/luma-openh264/NOTICE` is the licensing notice.
+
+Encoders in order of preference: VA H.264 (`vah264lpenc`, `vah264enc`), then
+`openh264enc`, then AV1. Applications choose by starting each encoder on a
+test frame, since a missing driver entrypoint or the noopenh264 stub fails at
+start, not at lookup (`src/luma-streamy/luma_streamy/engine.py`).

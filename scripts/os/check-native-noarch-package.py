@@ -35,6 +35,12 @@ REQUIRED = {
         '/usr/lib/systemd/system/multi-user.target.wants/luma-retired-system-apps.service',
     },
     'luma-ari': {'/usr/bin/ari', '/usr/lib/systemd/user/ari-daemon.service'},
+    'luma-openh264': {
+        '/usr/bin/luma-openh264', '/usr/share/luma-openh264/cisco-openh264.conf',
+        '/usr/lib/systemd/system/luma-openh264.service',
+        '/usr/lib/systemd/system/timers.target.wants/luma-openh264.timer',
+        '/usr/lib/tmpfiles.d/luma-openh264.conf',
+    },
     'luma-desktop-launcher-policy': {
         '/usr/share/luma/system-flatpak-replacements.txt',
         '/usr/libexec/luma-flatpak-replacements',

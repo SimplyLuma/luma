@@ -3,7 +3,7 @@
 #
 # Sign assembled runtime components into the Luma remote.
 #
-#   publish-runtime.sh [COMPONENT...]    (default: Platform Sdk Platform.GL.default)
+#   publish-runtime.sh [COMPONENT...]    (default: Platform Sdk Platform.GL.default Platform.openh264)
 #
 # Platform: its share/runtime/locale tree is split out into
 #   org.projectluma.Platform.Locale (a locale-subset extension, so people
@@ -12,6 +12,9 @@
 #   the locale tree is dropped rather than published twice.
 # GL.default and Office: the assembled commit is re-signed into the remote
 #   unchanged with `flatpak build-commit-from`.
+# openh264: nothing to assemble. The extension is laid out here from
+#   src/luma-openh264/cisco-openh264.conf (runtime/openh264-extension.sh): extra
+#   data naming Cisco's binary, which each device downloads from Cisco.
 #
 # Nothing is uploaded here; update-remote.sh regenerates the summary and
 # deltas, and sync-remote.sh uploads.
@@ -20,7 +23,7 @@ set -euo pipefail
 depot_require_signing_control
 
 components=("$@")
-[ "${#components[@]}" -gt 0 ] || components=(Platform Sdk Platform.GL.default)
+[ "${#components[@]}" -gt 0 ] || components=(Platform Sdk Platform.GL.default Platform.openh264)
 fingerprint=$(depot_gpg_fingerprint)
 gpg_args=(--gpg-sign="$fingerprint" --gpg-homedir="$DEPOT_KEYS/gnupg")
 "$(dirname -- "$0")/init-remote.sh"
@@ -31,7 +34,17 @@ export_tree() {  # export_tree BUILD_DIR SUBJECT
 }
 
 for component in "${components[@]}"; do
-  case "$component" in Platform|Sdk|Platform.GL.default|Platform.Office) ;; *) depot_die "unknown runtime component" ;; esac
+  case "$component" in Platform|Sdk|Platform.GL.default|Platform.Office|Platform.openh264) ;; *) depot_die "unknown runtime component" ;; esac
+  if [ "$component" = Platform.openh264 ]; then
+    work="$DEPOT_ROOT/work/publish/$component"
+    depot_in_signer rm -rf "$work"
+    depot_in_signer bash "$depot_repo_root/scripts/depot/runtime/openh264-extension.sh" \
+      "$work" "$DEPOT_ARCH" "$DEPOT_RUNTIME_BRANCH" >/dev/null
+    depot_log "exporting runtime/org.projectluma.$component/$DEPOT_ARCH/$DEPOT_RUNTIME_BRANCH"
+    export_tree "$work" "org.projectluma.$component $DEPOT_RUNTIME_BRANCH (Cisco OpenH264, extra data)"
+    depot_in_signer rm -rf "$work"
+    continue
+  fi
   result="$depot_out/runtime/$component"
   [ -d "$result/ostree" ] || depot_die "no assembled $component; run build-runtime.sh $component"
   build_id=$(cat "$result/BUILD_ID")

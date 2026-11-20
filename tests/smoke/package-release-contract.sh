@@ -85,6 +85,7 @@ for family, names in {
     "gnome-shell": ("gnome-shell", "gnome-shell-common"),
     "mutter": ("mutter", "mutter-common"),
     "gnome-control-center": ("gnome-control-center", "gnome-control-center-filesystem"),
+    "noopenh264": ("noopenh264",),
 }.items():
     patch = root / "patches" / family / "0000-luma-fedora-spec.patch"
     if not patch.exists():
