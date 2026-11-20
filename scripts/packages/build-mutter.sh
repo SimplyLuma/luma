@@ -94,7 +94,7 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/mutter.spec" \
     dnf5 -y builddep SPECS/mutter.spec
     rpmbuild -ba --noclean --define "_lto_cflags -flto=2" \
       --define "_topdir $PWD" SPECS/mutter.spec
-    architecture=${LUMA_RPM_BUILDER_ARCHITECTURE}
+    architecture=${LUMA_RPM_BUILDER_ARCHITECTURE:-$(rpm --eval "%{_arch}")}
     release=$(rpmspec -q --srpm --qf "%{release}" SPECS/mutter.spec)
     rpm=$(find "RPMS/$architecture" -type f -name "mutter-50.4-${release}.*.rpm" \
       ! -name "*-devel-*" ! -name "*-tests-*" ! -name "*-debuginfo-*" \
