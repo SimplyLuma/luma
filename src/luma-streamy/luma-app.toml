@@ -1,0 +1,30 @@
+schema_version = "0.1"
+
+[application]
+id = "org.projectluma.Streamy"
+name = "Streamy"
+version = "0.1.0"
+entrypoint = "bin/streamy"
+
+[platform]
+ui_contract = "1"
+semantics_contract = "1"
+
+[responsive]
+adaptive = true
+test_widths = [360, 500, 1024, 1280]
+input_modes = ["pointer", "touch", "keyboard"]
+presentation_modes = ["windowed", "fullscreen-mobile"]
+
+[distribution]
+portals = ["org.freedesktop.portal.ScreenCast", "org.freedesktop.portal.Camera", "org.freedesktop.portal.FileChooser", "org.freedesktop.portal.Secret"]
+
+[lifecycle]
+reset = "Scenes, layouts and settings in $XDG_DATA_HOME/streamy are removed; stream keys stay in the keyring until removed there."
+uninstall = "Recordings in Videos/Streamy are kept."
+
+[conformance]
+accessibility = true
+keyboard = true
+semantics = true
+reduced_motion = true

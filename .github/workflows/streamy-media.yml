@@ -5,11 +5,11 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/streamy-media.yml'
-      - 'src/luma-streamy/gst-lumaframe/**'
+      - 'src/luma-streamy/**'
   pull_request:
     paths:
       - '.github/workflows/streamy-media.yml'
-      - 'src/luma-streamy/gst-lumaframe/**'
+      - 'src/luma-streamy/**'
   workflow_dispatch:
 
 permissions:
@@ -54,3 +54,46 @@ jobs:
           cargo build --release --locked --offline
           GST_PLUGIN_PATH="$PWD/target/release" gst-inspect-1.0 lumaframe
           gst-inspect-1.0 --version
+
+  app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Scene model, layouts and the pipeline graph
+        run: PYTHONPATH=src/luma-streamy python3 -B -m unittest discover -s src/luma-streamy/tests -p 'test_*.py' -v
+
+  engine:
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    timeout-minutes: 30
+    env:
+      GST_GL_PLATFORM: egl
+      GST_GL_WINDOW: surfaceless
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      CARGO_TERM_COLOR: never
+    steps:
+      - name: Install Rust, GStreamer, the encoders and Mesa
+        run: >-
+          dnf -y --setopt=install_weak_deps=False --enablerepo=fedora-cisco-openh264 install git-core rust cargo gcc
+          pkgconf-pkg-config gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-base-tools
+          gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-openh264 openh264
+          mesa-dri-drivers mesa-libEGL python3-gobject python3-cairo ffmpeg-free
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build lumaframe
+        working-directory: src/luma-streamy/gst-lumaframe
+        run: cargo build --release --locked
+      - name: A failing or silent source comes out of the program without stalling it
+        run: GST_PLUGIN_PATH="$PWD/src/luma-streamy/gst-lumaframe/target/release" python3 src/luma-streamy/tests/engine_failure.py
+      - name: Record 10 s headless and check the file
+        run: |
+          export GST_PLUGIN_PATH="$PWD/src/luma-streamy/gst-lumaframe/target/release"
+          mkdir -p /tmp/smoke
+          python3 src/luma-streamy/tests/engine_smoke.py /tmp/smoke -
+          ffprobe -v error -show_entries format=duration:stream=codec_name,width,height,sample_rate -of compact /tmp/smoke/smoke.mkv | tee /tmp/smoke/probe.txt
+          grep -q 'codec_name=h264|width=1920|height=1080' /tmp/smoke/probe.txt
+          grep -q 'codec_name=aac|sample_rate=48000' /tmp/smoke/probe.txt

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<component type="desktop-application">
+  <id>org.projectluma.Streamy</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Streamy</name>
+  <summary>Stream and record your screen, windows and camera</summary>
+  <description>
+    <p>Streamy puts displays, windows, cameras, images and sound together in scenes and sends them live or to a file.</p>
+    <ul>
+      <li>Rounded corners, a stroke and a soft shadow on any widget, drawn on the graphics card</li>
+      <li>Drag, resize and snap widgets on the canvas; nudge them with the arrow keys</li>
+      <li>Landscape or vertical canvas</li>
+      <li>Stream to Twitch, YouTube or any RTMP server, with hardware encoding where the computer has it</li>
+      <li>Record to MKV or MP4</li>
+      <li>Only the scene on screen captures; nothing runs while you aren't using it</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">org.projectluma.Streamy.desktop</launchable>
+  <developer id="org.projectluma">
+    <name>Project Luma</name>
+  </developer>
+  <url type="homepage">https://simplyluma.com</url>
+  <url type="vcs-browser">https://github.com/SimplyLuma/luma</url>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <releases>
+    <release version="0.1.0" date="2026-11-20"/>
+  </releases>
+</component>
