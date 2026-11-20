@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.139%{?dist}
+Release:        1.luma.140%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,17 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.140
+- FloatingMenu.popup(anchor, x=, y=) / luma_floating_menu_popup_at(): a
+  context menu with its corner on a point, flipped at the window's edges.
+- Cascading submenus: MenuItem(submenu=[...]) / add_submenu(); hover with a
+  250 ms aim grace, Right opens, Left and Esc close one level; drilled in
+  place with Back on a phone. MenuItem(shortcut=) / add_shortcut_item().
+- Dock: header drags show their drop target again (the drag's content isn't
+  readable from PyGObject; the dock follows its own moving tile).
+- Lucide: ratio, save, unlink, headphone-off, maximize, shrink,
+  move-horizontal, move-vertical, redo-2, send-to-back, squircle.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.139
 - Dock: a split's ratio is a share of its own length (both tiles and the
   seam, as drawn), so 0.5 gives two equal tiles. Only a person's move of a
