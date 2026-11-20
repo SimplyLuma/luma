@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.186%{?dist}
++Release:        1.luma.187%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,398 @@ Patch: gnome-shell-favourite-apps-firefox.patch
+@@ -32,6 +32,400 @@ Patch: gnome-shell-favourite-apps-firefox.patch
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -347,6 +347,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1326:      0346-keyboard-tap-on-field-shows.patch
 +Patch1327:      0347-gdm-hidden-user-list-focus.patch
 +Patch1328:      0348-file-drag-out-of-shell.patch
++Patch1329:      0349-well-background-apps.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
@@ -410,10 +411,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9060:     cellularStatus.js
 +Source9061:     search-keyboard-policy.js
 +Source9062:     file-drag-policy.js
++Source9063:     well-overflow-policy.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +463,9 @@ BuildRequires:  pkgconfig(libpipewire-0.3) >= %{pipewire_version}
+@@ -71,6 +465,9 @@ BuildRequires:  pkgconfig(libpipewire-0.3) >= %{pipewire_version}
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -423,7 +425,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +485,16 @@ Conflicts: %{name} < 48~rc-5
+@@ -90,6 +487,16 @@ Conflicts: %{name} < 48~rc-5
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -440,7 +442,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +594,60 @@ BuildArch: noarch
+@@ -189,8 +596,60 @@ BuildArch: noarch
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -501,7 +503,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +665,37 @@ BuildArch: noarch
+@@ -208,9 +667,38 @@ BuildArch: noarch
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -536,10 +538,11 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9059} js/ui/dateMenu.js js/ui/calendar.js src/calendar-server/gnome-shell-calendar-server.c
 +gjs -m %{SOURCE9061} js/ui/lumaSearch.js
 +gjs -m %{SOURCE9062} js/ui/lumaFileDragModel.js js/ui/lumaFileDrag.js js/ui/lumaDockFolders.js js/ui/lumaPresentation/launcherFolders.js js/ui/xdndHandler.js
++gjs -m %{SOURCE9063} js/ui/lumaWellModel.js js/ui/lumaWell.js js/ui/notificationDaemon.js
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +703,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
+@@ -218,7 +706,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
  %endif
  
  %files -f %{name}.lang
@@ -548,7 +551,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +735,11 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
+@@ -250,6 +738,11 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
@@ -560,7 +563,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %{_userunitdir}/org.gnome.Shell-disable-extensions.service
  #{_userunitdir}/org.gnome.Shell.target
  %{_userunitdir}/org.gnome.Shell@.service
-@@ -272,6 +762,12 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
+@@ -272,6 +765,12 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
  %{_datadir}/glib-2.0/schemas/*.xml
  
  %changelog

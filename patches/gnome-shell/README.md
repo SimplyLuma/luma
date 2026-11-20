@@ -752,3 +752,22 @@ drag of a selected item carries the selection. During the drag the surface
 is transparent and hidden from pick; a drop closes an attached surface,
 anything else brings it back. Without mutter 0031 nothing changes. Test:
 `file-drag-policy.js` in %check. Shell .186.
+
+`0349-well-background-apps.patch`: the Well showed only kept apps and put
+every other status item behind a generic grid button, even a single one. It
+now shows status items while they fit (four on a desktop or tablet, three on
+a fold, two on a phone, by `formOf`) and folds the rest only when two or more
+would be hidden; kept, attention and recording items always stay in view. The
+overflow shows the stacked faces of the apps it holds and their count. A
+Chromium-family browser (Chrome, Chromium, Edge, Brave, Vivaldi, Viola) names
+every status icon `chrome_status_icon_<n>`, so a web app's icon was labelled
+with the browser's name. A status item now resolves to one installed app: the
+desktop entry it names; for a browser's item, the web app its tooltip names
+(`<browser>-<id>-<profile>.desktop`, `StartupWMClass=crx_<id>`), else the
+browser; the browser is told apart by the item's owner process (D-Bus
+connection PID: window tracker app, else `/proc/<pid>/exe`), and the tooltip
+is read over D-Bus because the AppIndicator host does not keep it. Its name,
+face and pin key come from that app. A browser
+notification whose origin line is an installed web app's site goes to that
+web app. Rules: `js/ui/lumaWellModel.js` (no gi imports). Test:
+`well-overflow-policy.js` in %check. Shell .187.
