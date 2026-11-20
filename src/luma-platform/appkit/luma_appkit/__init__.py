@@ -353,6 +353,7 @@ __all__ = [
     "CreativeWorkspace",
     "FloatingPanel",
     "ArrangeView", "ArrangeItem",
+    "Dock", "DockTile",
     "AudioMeter",
 ]
 
@@ -675,6 +676,9 @@ def __getattr__(name: str):
         from . import waveform
         return getattr(waveform, name)
     # ── end LumaUI media
+    if name in {"Dock", "DockTile"}:
+        from . import structure_dock
+        return getattr(structure_dock, name)
     if name == "AudioMeter":
         from . import media_meter
         return getattr(media_meter, name)

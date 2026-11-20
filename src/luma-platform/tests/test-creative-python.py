@@ -78,10 +78,51 @@ def live_chip():
     BarChip("Recording", meta="0:01").update(meta="0:02")  # not drawn yet: only the data changes
 
 
+def dock():
+    from luma_appkit import Dock, DockTile, NavigationSidebar
+
+    tiles = [DockTile(k, k.title(), "layers", Gtk.Label(label=k), main=(k == "preview"))
+             for k in ("preview", "audio", "inspector")]
+    seen = []
+    layout = Dock.split("h", 0.7, Dock.split("v", 0.6, "preview", "audio"), "inspector")
+    d = Dock(tiles, layout=layout, on_layout=seen.append)
+    assert d.layout() == layout, d.layout()
+    assert d.main_key == "preview"
+    d.move_tile("inspector", "preview", "left")
+    assert d.layout() == {"split": "v", "ratio": 0.6, "start": {"split": "h", "ratio": 0.5, "start": "inspector",
+                                                                "end": "preview"}, "end": "audio"}, d.layout()
+    d.move_tile("audio", "inspector", "center")
+    assert d.layout()["end"] == "inspector" and d.layout()["start"]["start"] == "audio"
+    # Unknown keys go, repeated keys go, missing tiles join; ratios are clamped.
+    d.set_layout({"split": "v", "ratio": 3, "start": "ghost", "end": {"split": "h", "ratio": 0.4,
+                                                                      "start": "audio", "end": "audio"}})
+    assert d.layout() == {"split": "h", "ratio": 0.75, "start": {"split": "h", "ratio": 0.75, "start": "audio",
+                                                                 "end": "preview"}, "end": "inspector"}, d.layout()
+    for bad in (lambda: Dock([]), lambda: Dock.split("x", 0.5, "a", "b"),
+                lambda: d.move_tile("audio", "preview", "middle")):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("refused")
+    sidebar = NavigationSidebar(variant="files")
+    shares = []
+    pane = sidebar.append_pane("Widgets", Gtk.Label(label="tree"), share=0.4, on_share=shares.append)
+    assert pane is sidebar.pane and sidebar.pane_split.get_end_child() is pane
+    try:
+        sidebar.append_pane("Again", Gtk.Label())
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("one pane")
+
+
 if __name__ == "__main__":
     docks()
     arrange()
     meter()
     live_chip()
+    dock()
     GLib.MainContext.default().iteration(False)
     print("ok")

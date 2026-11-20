@@ -1177,6 +1177,61 @@ class NavigationSidebar(Gtk.Box):
         row.update_property([Gtk.AccessibleProperty.LABEL], [label])
         self.list.append(row)
 
+    def append_pane(self, label: str, widget: Gtk.Widget, *, action: tuple | None = None,
+                    share: float = 0.5, on_share: Callable[[float], None] | None = None) -> Gtk.Widget:
+        """A second, resizable part of the sidebar under the list (a scene's widgets under the scenes).
+
+        The pane has its own heading (SidebarSection, with `action=(icon, label, callback)` as its +)
+        and the content scrolls on its own. A seam between list and pane trades their heights: drag
+        it, or focus it (F8) and use the arrow keys. `share` is the list's share of the height;
+        `on_share(share)` follows a person's moves. The foot stays below both."""
+        from .rows_navigation import SidebarSection
+
+        if getattr(self, "pane", None) is not None:
+            raise ValueError("a sidebar has one pane")
+        self.remove(self._scroll)
+        paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL, wide_handle=True, vexpand=True,
+                          resize_start_child=True, resize_end_child=True,
+                          shrink_start_child=False, shrink_end_child=False)
+        paned.add_css_class("luma-navigation-split")
+        paned.update_property([Gtk.AccessibleProperty.LABEL], [f"Resize {label.lower()}"])
+        paned.set_start_child(self._scroll)
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        pane.add_css_class("luma-navigation-pane")
+        heading = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        heading.add_css_class("luma-navigation-list")
+        heading.append(SidebarSection(label, action=action))
+        pane.append(heading)
+        body = ScrollView(widget)
+        body.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.EXTERNAL)
+        body.set_vexpand(True)
+        pane.append(body)
+        paned.set_end_child(pane)
+        # Where the list was: after the pinned header (or the phone title), before the foot.
+        self.insert_child_after(paned, getattr(self, "_header", None) or getattr(self, "phone_title_label", None))
+        state = {"share": min(0.85, max(0.15, share)), "applying": False}
+
+        def fit(*_args) -> None:
+            total = paned.get_property("max-position")
+            if total > 0:
+                state["applying"] = True
+                paned.set_position(round(state["share"] * total))
+                state["applying"] = False
+
+        def moved(*_args) -> None:
+            total = paned.get_property("max-position")
+            if state["applying"] or total <= 0:
+                return
+            state["share"] = min(0.85, max(0.15, paned.get_position() / total))
+            if on_share is not None:
+                on_share(state["share"])
+
+        paned.connect("notify::max-position", fit)
+        paned.connect("notify::position", moved)
+        self.pane = pane
+        self.pane_split = paned
+        return pane
+
     def append_row(self, row: NavigationRow) -> None:
         self.list.append(row)
         tv, rail = getattr(self, "_tv_state", (False, False))
