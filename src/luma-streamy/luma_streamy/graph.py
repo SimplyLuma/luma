@@ -118,7 +118,9 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
                 Element("videoconvert", f"{prefix}-convert"),
                 Element("imagefreeze", f"{prefix}-freeze", {"is-live": True}),
                 Element("capsfilter", f"{prefix}-rate", {"caps": f"video/x-raw,framerate={FPS}/1"})]
-    props = {"always-copy": False, "keepalive-time": 1000}
+    # do-timestamp: PipeWire's own times aren't the pipeline's; stamping on arrival keeps the mixer in step.
+    # resend-last + keepalive: a still screen (no damage, no new frames) keeps its picture.
+    props = {"always-copy": False, "keepalive-time": 1000, "resend-last": True, "do-timestamp": True}
     if fd is not None:
         props["fd"] = fd
     if node is not None and node.startswith("path:"):
