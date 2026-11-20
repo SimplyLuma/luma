@@ -1,0 +1,15 @@
+[
+  {"case": "flatpak pulse stream", "props": {"pipewire.access.portal.app_id": "org.mozilla.firefox", "application.name": "Firefox", "application.process.binary": "firefox", "media.class": "Stream/Output/Audio"}, "key": "org.mozilla.firefox", "system": false, "playback": true},
+  {"case": "flatpak native client", "props": {"application.name": "Streamy", "media.class": "Stream/Output/Audio"}, "client": {"pipewire.access.portal.app_id": "org.projectluma.Streamy"}, "key": "org.projectluma.Streamy", "system": false, "playback": true},
+  {"case": "application id", "props": {"application.id": "org.gnome.Rhythmbox3", "application.name": "Rhythmbox", "media.role": "Music", "media.class": "Stream/Output/Audio"}, "key": "org.gnome.Rhythmbox3", "system": false, "playback": true},
+  {"case": "name before interpreter", "props": {"application.name": "ToneA", "application.process.binary": "gst-launch-1.0", "media.class": "Stream/Output/Audio"}, "key": "ToneA", "system": false, "playback": true},
+  {"case": "binary path", "props": {"application.process.binary": "/usr/bin/mpv", "media.class": "Stream/Output/Audio"}, "key": "mpv", "system": false, "playback": true},
+  {"case": "binary from client", "props": {"media.class": "Stream/Output/Audio"}, "client": {"application.process.binary": "paplay"}, "key": "paplay", "system": false, "playback": true},
+  {"case": "blank values skipped", "props": {"pipewire.access.portal.app_id": " ", "application.id": "", "application.name": "Chromium", "media.class": "Stream/Output/Audio"}, "key": "Chromium", "system": false, "playback": true},
+  {"case": "no identity", "props": {"media.name": "AudioStream", "media.class": "Stream/Output/Audio"}, "key": null, "system": false, "playback": true},
+  {"case": "event sound", "props": {"application.name": "GNOME Shell", "media.role": "Notification", "media.class": "Stream/Output/Audio"}, "key": "GNOME Shell", "system": true, "playback": true},
+  {"case": "event role lower case", "props": {"application.name": "canberra", "media.role": "event", "media.class": "Stream/Output/Audio"}, "key": "canberra", "system": true, "playback": true},
+  {"case": "level meter", "props": {"application.id": "org.projectluma.AudioDevices", "stream.monitor": "true", "media.class": "Stream/Output/Audio"}, "key": "org.projectluma.AudioDevices", "system": false, "playback": false},
+  {"case": "capture node", "props": {"luma.audio-capture.id": "ab12", "media.class": "Audio/Source/Virtual/Capture"}, "key": null, "system": false, "playback": false},
+  {"case": "recording stream", "props": {"application.name": "Recorder", "media.class": "Stream/Input/Audio"}, "key": "Recorder", "system": false, "playback": false}
+]

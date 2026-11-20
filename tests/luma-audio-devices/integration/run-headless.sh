@@ -5,11 +5,12 @@
 #
 # Needs: pipewire pipewire-utils pipewire-pulseaudio pipewire-config-raop
 # wireplumber wireplumber-libs python3-gobject dbus-daemon glib2 dconf lua, plus
+# gstreamer1-plugins-good pipewire-gstreamer pulseaudio-utils (mixer scenario),
 # luma-audio-policy installed (the RPM, or `meson install` of
 # src/luma-audio-devices into /usr). For the AirPlay scenario also avahi,
 # nss-mdns and a reachable AirPlay receiver (see scenario_airplay.py).
 #
-# Usage: run-headless.sh [outputs|airplay|all]
+# Usage: run-headless.sh [outputs|mixer|airplay|all]
 set -u
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 what=${1:-all}
@@ -51,7 +52,7 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 python3 "$here/fake_desktop.py" >"$run_dir/fake-desktop.out" 2>&1 & pids+=($!)
 pipewire >"$run_dir/pipewire.log" 2>&1 & pids+=($!)
 sleep 1
-WIREPLUMBER_DEBUG=s-luma-output-policy:4 wireplumber >"$run_dir/wireplumber.log" 2>&1 & pids+=($!)
+WIREPLUMBER_DEBUG=s-luma-output-policy:4,s-luma-app-audio:4 wireplumber >"$run_dir/wireplumber.log" 2>&1 & pids+=($!)
 pipewire-pulse >"$run_dir/pulse.log" 2>&1 & pids+=($!)
 sleep 2
 
@@ -90,6 +91,10 @@ fi
 if [ "$what" = outputs ] || [ "$what" = all ]; then
   echo "== output scenarios"
   python3 "$here/scenario_outputs.py" || status=1
+fi
+if [ "$what" = mixer ] || [ "$what" = all ]; then
+  echo "== per-app mixer and capture scenarios"
+  python3 "$here/scenario_mixer.py" || status=1
 fi
 if [ "$what" = airplay ] || [ "$what" = all ]; then
   echo "== AirPlay scenarios"

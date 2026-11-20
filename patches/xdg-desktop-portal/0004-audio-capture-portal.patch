@@ -1,0 +1,1862 @@
+From: Project Luma <noreply@projectluma.org>
+Subject: [PATCH] audio-capture: add the Audio Capture portal
+
+org.freedesktop.portal.AudioCapture lets an application record the sound
+other applications play after the user chose which: one or more
+applications, or all sound except the caller's own. It follows the
+ScreenCast portal: CreateSession, SelectSources (types, multiple,
+audio_mode with the ScreenCast v7 values, restore_token, persist_mode),
+Start and OpenPipeWireRemote, with restore tokens kept by the frontend
+in the "audio-capture" permission table.
+
+The backend (org.freedesktop.impl.portal.AudioCapture) shows the choice
+and returns exactly one PipeWire node carrying the chosen sound. The
+remote handed to the application sees that node only: core rwx, node
+factory r, the node rx, everything else hidden, with the same client
+properties as a ScreenCast remote.
+
+Tests: tests/test_audiocapture.py with a dbusmock backend template.
+---
+diff --git a/data/meson.build b/data/meson.build
+index 9f2eaf1..5e0ad02 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -6,6 +6,7 @@ endif
+ 
+ portal_sources = files(
+   'org.freedesktop.portal.Account.xml',
++  'org.freedesktop.portal.AudioCapture.xml',
+   'org.freedesktop.portal.Background.xml',
+   'org.freedesktop.portal.Camera.xml',
+   'org.freedesktop.portal.Clipboard.xml',
+@@ -47,6 +48,7 @@ portal_impl_sources = files(
+   'org.freedesktop.impl.portal.Access.xml',
+   'org.freedesktop.impl.portal.Account.xml',
+   'org.freedesktop.impl.portal.AppChooser.xml',
++  'org.freedesktop.impl.portal.AudioCapture.xml',
+   'org.freedesktop.impl.portal.Background.xml',
+   'org.freedesktop.impl.portal.Clipboard.xml',
+   'org.freedesktop.impl.portal.DynamicLauncher.xml',
+diff --git a/data/org.freedesktop.impl.portal.AudioCapture.xml b/data/org.freedesktop.impl.portal.AudioCapture.xml
+new file mode 100644
+index 0000000..c216f93
+--- /dev/null
++++ b/data/org.freedesktop.impl.portal.AudioCapture.xml
+@@ -0,0 +1,122 @@
++<?xml version="1.0"?>
++<!--
++ SPDX-License-Identifier: LGPL-2.1-or-later
++
++ This library is free software; you can redistribute it and/or
++ modify it under the terms of the GNU Lesser General Public
++ License as published by the Free Software Foundation; either
++ version 2.1 of the License, or (at your option) any later version.
++
++ This library is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ Lesser General Public License for more details.
++
++ You should have received a copy of the GNU Lesser General Public
++ License along with this library. If not, see <http://www.gnu.org/licenses/>.
++-->
++
++<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
++  <!--
++      org.freedesktop.impl.portal.AudioCapture:
++      @short_description: Audio capture portal backend interface
++
++      The backend shows the choice and creates the PipeWire node carrying the
++      chosen sound. The frontend restricts the caller's PipeWire remote to
++      that node and handles restore tokens.
++
++      This documentation describes version 1 of this interface.
++  -->
++  <interface name="org.freedesktop.impl.portal.AudioCapture">
++    <!--
++        CreateSession:
++        @handle: Object path for the :ref:`org.freedesktop.impl.portal.Request` object representing this call
++        @session_handle: Object path for the :ref:`org.freedesktop.impl.portal.Session` object representing the session being created
++        @app_id: App id of the application
++        @options: Vardict with optional further information
++        @response: Numeric response
++        @results: Vardict with the results of the call
++
++        Create an audio capture session.
++    -->
++    <method name="CreateSession">
++      <arg type="o" name="handle" direction="in"/>
++      <arg type="o" name="session_handle" direction="in"/>
++      <arg type="s" name="app_id" direction="in"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In3" value="QVariantMap"/>
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="u" name="response" direction="out"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
++      <arg type="a{sv}" name="results" direction="out"/>
++    </method>
++    <!--
++        SelectSources:
++        @handle: Object path for the :ref:`org.freedesktop.impl.portal.Request` object representing this call
++        @session_handle: Object path for the :ref:`org.freedesktop.impl.portal.Session` object
++        @app_id: App id of the application
++        @options: Vardict with optional further information
++        @response: Numeric response
++        @results: Vardict with the results of the call
++
++        Supported keys in the @options vardict include:
++
++        * ``types`` (``u``), ``multiple`` (``b``), ``audio_mode`` (``u``),
++          ``persist_mode`` (``u``): as in
++          :ref:`org.freedesktop.portal.AudioCapture.SelectSources`.
++
++        * ``restore_data`` (``(suv)``)
++
++          The data the backend returned with a previous ``Start``, when the
++          application passed a valid restore token: vendor, version, data.
++    -->
++    <method name="SelectSources">
++      <arg type="o" name="handle" direction="in"/>
++      <arg type="o" name="session_handle" direction="in"/>
++      <arg type="s" name="app_id" direction="in"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In3" value="QVariantMap"/>
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="u" name="response" direction="out"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
++      <arg type="a{sv}" name="results" direction="out"/>
++    </method>
++    <!--
++        Start:
++        @handle: Object path for the :ref:`org.freedesktop.impl.portal.Request` object representing this call
++        @session_handle: Object path for the :ref:`org.freedesktop.impl.portal.Session` object
++        @app_id: App id of the application
++        @parent_window: Identifier for the application window, see :doc:`window-identifiers`
++        @options: Vardict with optional further information
++        @response: Numeric response
++        @results: Vardict with the results of the call
++
++        Show the choice (unless restore data still applies) and create the
++        capture node. The following results are expected:
++
++        * ``streams`` (``a(ua{sv})``): exactly one stream, as in
++          :ref:`org.freedesktop.portal.AudioCapture.Start`.
++
++        * ``persist_mode`` (``u``) and ``restore_data`` (``(suv)``): what to
++          store for a restore token, when the session may persist.
++    -->
++    <method name="Start">
++      <arg type="o" name="handle" direction="in"/>
++      <arg type="o" name="session_handle" direction="in"/>
++      <arg type="s" name="app_id" direction="in"/>
++      <arg type="s" name="parent_window" direction="in"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In4" value="QVariantMap"/>
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="u" name="response" direction="out"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.Out1" value="QVariantMap"/>
++      <arg type="a{sv}" name="results" direction="out"/>
++    </method>
++    <!--
++        AvailableSourceTypes: as in :ref:`org.freedesktop.portal.AudioCapture:AvailableSourceTypes`.
++    -->
++    <property name="AvailableSourceTypes" type="u" access="read"/>
++    <!--
++        AvailableAudioModes: as in :ref:`org.freedesktop.portal.AudioCapture:AvailableAudioModes`.
++    -->
++    <property name="AvailableAudioModes" type="u" access="read"/>
++    <property name="version" type="u" access="read"/>
++  </interface>
++</node>
+diff --git a/data/org.freedesktop.portal.AudioCapture.xml b/data/org.freedesktop.portal.AudioCapture.xml
+new file mode 100644
+index 0000000..7afd9b2
+--- /dev/null
++++ b/data/org.freedesktop.portal.AudioCapture.xml
+@@ -0,0 +1,210 @@
++<?xml version="1.0"?>
++<!--
++ SPDX-License-Identifier: LGPL-2.1-or-later
++
++ This library is free software; you can redistribute it and/or
++ modify it under the terms of the GNU Lesser General Public
++ License as published by the Free Software Foundation; either
++ version 2.1 of the License, or (at your option) any later version.
++
++ This library is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ Lesser General Public License for more details.
++
++ You should have received a copy of the GNU Lesser General Public
++ License along with this library. If not, see <http://www.gnu.org/licenses/>.
++-->
++
++<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
++  <!--
++      org.freedesktop.portal.AudioCapture:
++      @short_description: Audio capture portal
++
++      The Audio Capture portal lets an application record the sound other
++      applications play, after the user chose which: one or more
++      applications, or all sound except the caller's own. The caller gets a
++      PipeWire remote that can see only one node carrying that sound, never
++      the microphone, the outputs or any other stream. A new stream of a
++      chosen application joins the node while the session lives.
++
++      The sound is the applications' output as they play it, after their own
++      volume.
++
++      This documentation describes version 1 of this interface.
++  -->
++  <interface name="org.freedesktop.portal.AudioCapture">
++    <!--
++        CreateSession:
++        @options: Vardict with optional further information
++        @handle: Object path for the :ref:`org.freedesktop.portal.Request` object representing this call
++
++        Create an audio capture session. A successfully created session can
++        at any time be closed using
++        :ref:`org.freedesktop.portal.Session.Close`, or may at any time be
++        closed by the portal implementation, which will be signalled via
++        :ref:`org.freedesktop.portal.Session::Closed`.
++
++        Supported keys in the @options vardict include:
++
++        * ``handle_token`` (``s``)
++
++          A string that will be used as the last element of the @handle. Must be a valid
++          object path element. See the :ref:`org.freedesktop.portal.Request` documentation for
++          more information about the @handle.
++
++        * ``session_handle_token`` (``s``)
++
++          A string that will be used as the last element of the session handle. Must be a valid
++          object path element. See the :ref:`org.freedesktop.portal.Session` documentation for
++          more information about the session handle.
++
++        The following results get returned via the :ref:`org.freedesktop.portal.Request::Response` signal:
++
++        * ``session_handle`` (``s``)
++
++          The session handle. An object path for the
++          :ref:`org.freedesktop.portal.Session` object representing the created
++          session.
++    -->
++    <method name="CreateSession">
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In0" value="QVariantMap"/>
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="o" name="handle" direction="out"/>
++    </method>
++    <!--
++        SelectSources:
++        @session_handle: Object path for the :ref:`org.freedesktop.portal.Session` object
++        @options: Vardict with optional further information
++        @handle: Object path for the :ref:`org.freedesktop.portal.Request` object representing this call
++
++        Configure what the user may choose from in
++        :ref:`org.freedesktop.portal.AudioCapture.Start`.
++
++        Supported keys in the @options vardict include:
++
++        * ``handle_token`` (``s``)
++
++          A string that will be used as the last element of the @handle. Must be a valid
++          object path element. See the :ref:`org.freedesktop.portal.Request` documentation for
++          more information about the @handle.
++
++        * ``types`` (``u``)
++
++          Bitmask of what the user may choose. Default is all advertised in
++          :ref:`org.freedesktop.portal.AudioCapture:AvailableSourceTypes`.
++
++        * ``multiple`` (``b``)
++
++          Whether to allow choosing more than one application. Default is no.
++
++        * ``audio_mode`` (``u``)
++
++          Whether all sound includes the caller's own. One of the modes
++          advertised in
++          :ref:`org.freedesktop.portal.AudioCapture:AvailableAudioModes`, with
++          the values of the ScreenCast audio modes: ``2`` ExcludeSelf (the
++          default) or ``4`` IncludeSelf.
++
++        * ``restore_token`` (``s``)
++
++          The token to restore a previous session, as for
++          :ref:`org.freedesktop.portal.ScreenCast.SelectSources`. If the stored
++          choice can still be honoured, ``Start`` shows nothing.
++
++        * ``persist_mode`` (``u``)
++
++          How this session should persist: ``0`` do not persist (default),
++          ``1`` while the application is running, ``2`` until explicitly
++          revoked.
++    -->
++    <method name="SelectSources">
++      <arg type="o" name="session_handle" direction="in"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In1" value="QVariantMap"/>
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="o" name="handle" direction="out"/>
++    </method>
++    <!--
++        Start:
++        @session_handle: Object path for the :ref:`org.freedesktop.portal.Session` object
++        @parent_window: Identifier for the application window, see :doc:`window-identifiers`
++        @options: Vardict with optional further information
++        @handle: Object path for the :ref:`org.freedesktop.portal.Request` object representing this call
++
++        Ask the user what to share and start the capture.
++
++        Supported keys in the @options vardict include:
++
++        * ``handle_token`` (``s``)
++
++          A string that will be used as the last element of the @handle. Must be a valid
++          object path element. See the :ref:`org.freedesktop.portal.Request` documentation for
++          more information about the @handle.
++
++        The following results get returned via the
++        :ref:`org.freedesktop.portal.Request::Response` signal:
++
++        * ``streams`` (``a(ua{sv})``)
++
++          One stream: the PipeWire node id and a vardict with:
++
++          * ``source_type`` (``u``): what the user chose, see
++            :ref:`org.freedesktop.portal.AudioCapture:AvailableSourceTypes`.
++
++          * ``applications`` (``as``): the names of the chosen applications,
++            for the caller to show what it records. Empty for all sound.
++
++          * ``pipewire-serial`` (``t``): the object serial of the node, the
++            value to connect to (``target.object``).
++
++        * ``restore_token`` (``s``)
++
++          The restore token, when ``persist_mode`` was not 0 and the user
++          allowed the choice to be remembered. Store the token from every
++          successful start and pass it next time; the previous one may stop
++          working.
++    -->
++    <method name="Start">
++      <arg type="o" name="session_handle" direction="in"/>
++      <arg type="s" name="parent_window" direction="in"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In2" value="QVariantMap"/>
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="o" name="handle" direction="out"/>
++    </method>
++    <!--
++        OpenPipeWireRemote:
++        @session_handle: Object path for the :ref:`org.freedesktop.portal.Session` object
++        @options: Vardict with optional further information
++        @fd: File descriptor of an open PipeWire remote.
++
++        Open a file descriptor to the PipeWire remote where the capture node
++        is. The remote sees that node only.
++    -->
++    <method name="OpenPipeWireRemote">
++      <annotation name="org.gtk.GDBus.C.Name" value="open_pipewire_remote"/>
++      <annotation name="org.gtk.GDBus.C.UnixFD" value="true"/>
++      <arg type="o" name="session_handle" direction="in"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In1" value="QVariantMap"/>
++      <arg type="a{sv}" name="options" direction="in"/>
++      <arg type="h" name="fd" direction="out"/>
++    </method>
++    <!--
++        AvailableSourceTypes:
++
++        A bitmask of available source types:
++
++        - ``1``: APPLICATIONS: one or more applications the user picks.
++        - ``2``: SYSTEM: all sound, without the caller's own unless
++          ``audio_mode`` is IncludeSelf.
++    -->
++    <property name="AvailableSourceTypes" type="u" access="read"/>
++    <!--
++        AvailableAudioModes:
++
++        A bitmask of the audio modes ``SelectSources`` accepts, as for
++        ScreenCast: ``2`` ExcludeSelf, ``4`` IncludeSelf.
++    -->
++    <property name="AvailableAudioModes" type="u" access="read"/>
++    <property name="version" type="u" access="read"/>
++  </interface>
++</node>
+diff --git a/doc/api-reference.rst b/doc/api-reference.rst
+index fc64301..b2a60c6 100644
+--- a/doc/api-reference.rst
++++ b/doc/api-reference.rst
+@@ -36,6 +36,7 @@ All apps have access to the portals below:
+    :maxdepth: 1
+ 
+    doc-org.freedesktop.portal.Account.rst
++   doc-org.freedesktop.portal.AudioCapture.rst
+    doc-org.freedesktop.portal.Background.rst
+    doc-org.freedesktop.portal.Camera.rst
+    doc-org.freedesktop.portal.Clipboard.rst
+diff --git a/doc/impl-dbus-interfaces.rst b/doc/impl-dbus-interfaces.rst
+index 937d2d1..5983a6d 100644
+--- a/doc/impl-dbus-interfaces.rst
++++ b/doc/impl-dbus-interfaces.rst
+@@ -11,6 +11,7 @@ accessible to sandboxed applications.
+    doc-org.freedesktop.impl.portal.Access.rst
+    doc-org.freedesktop.impl.portal.Account.rst
+    doc-org.freedesktop.impl.portal.AppChooser.rst
++   doc-org.freedesktop.impl.portal.AudioCapture.rst
+    doc-org.freedesktop.impl.portal.Background.rst
+    doc-org.freedesktop.impl.portal.Clipboard.rst
+    doc-org.freedesktop.impl.portal.DynamicLauncher.rst
+diff --git a/src/audio-capture.c b/src/audio-capture.c
+new file mode 100644
+index 0000000..39161ce
+--- /dev/null
++++ b/src/audio-capture.c
+@@ -0,0 +1,1033 @@
++/*
++ * Copyright © 2017-2018 Red Hat, Inc
++ * Copyright © 2026 Project Luma
++ *
++ * SPDX-License-Identifier: LGPL-2.1-or-later
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library. If not, see <http://www.gnu.org/licenses/>.
++ *
++ */
++
++/*
++ * The Audio Capture portal. Sessions, requests, restore tokens and the
++ * restricted PipeWire remote follow the ScreenCast portal (screen-cast.c);
++ * the backend decides what the user shares and returns the one node that
++ * carries it.
++ */
++
++#include "config.h"
++
++#include "audio-capture.h"
++
++#include <stdint.h>
++
++#include <gio/gunixfdlist.h>
++#include <pipewire/pipewire.h>
++
++#include "pipewire.h"
++#include "xdp-context.h"
++#include "xdp-dbus.h"
++#include "xdp-impl-dbus.h"
++#include "xdp-portal-config.h"
++#include "xdp-request.h"
++#include "xdp-session-persistence.h"
++#include "xdp-session.h"
++#include "xdp-utils.h"
++
++#define AUDIO_CAPTURE_SOURCE_TYPE_APPLICATIONS (1 << 0)
++#define AUDIO_CAPTURE_SOURCE_TYPE_SYSTEM (1 << 1)
++#define AUDIO_CAPTURE_SOURCE_TYPES_ALL \
++  (AUDIO_CAPTURE_SOURCE_TYPE_APPLICATIONS | AUDIO_CAPTURE_SOURCE_TYPE_SYSTEM)
++
++#define PERMISSION_ITEM(item_id, item_permissions) \
++  ((struct pw_permission) { \
++    .id = item_id, \
++    .permissions = item_permissions \
++  })
++
++typedef struct _AudioCapture AudioCapture;
++typedef struct _AudioCaptureClass AudioCaptureClass;
++
++struct _AudioCapture
++{
++  XdpDbusAudioCaptureSkeleton parent_instance;
++
++  XdpContext *context;
++  XdpDbusImplAudioCapture *impl;
++};
++
++struct _AudioCaptureClass
++{
++  XdpDbusAudioCaptureSkeletonClass parent_class;
++};
++
++GType audio_capture_get_type (void);
++static void audio_capture_iface_init (XdpDbusAudioCaptureIface *iface);
++
++static GQuark quark_request_session;
++
++G_DEFINE_TYPE_WITH_CODE (AudioCapture, audio_capture,
++                         XDP_DBUS_TYPE_AUDIO_CAPTURE_SKELETON,
++                         G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_AUDIO_CAPTURE,
++                                                audio_capture_iface_init));
++
++G_DEFINE_AUTOPTR_CLEANUP_FUNC (AudioCapture, g_object_unref)
++
++typedef enum _AudioCaptureSessionState
++{
++  AUDIO_CAPTURE_SESSION_STATE_INIT,
++  AUDIO_CAPTURE_SESSION_STATE_SELECTING_SOURCES,
++  AUDIO_CAPTURE_SESSION_STATE_SOURCES_SELECTED,
++  AUDIO_CAPTURE_SESSION_STATE_STARTING,
++  AUDIO_CAPTURE_SESSION_STATE_STARTED,
++  AUDIO_CAPTURE_SESSION_STATE_CLOSED
++} AudioCaptureSessionState;
++
++typedef struct _AudioCaptureSession
++{
++  XdpSession parent;
++
++  AudioCaptureSessionState state;
++
++  /* The one node the backend created for this session, or 0. */
++  uint32_t node_id;
++  char *restore_token;
++  XdpSessionPersistenceMode persist_mode;
++  GVariant *restore_data;
++} AudioCaptureSession;
++
++typedef struct _AudioCaptureSessionClass
++{
++  XdpSessionClass parent_class;
++} AudioCaptureSessionClass;
++
++GType audio_capture_session_get_type (void);
++
++G_DEFINE_TYPE (AudioCaptureSession, audio_capture_session, xdp_session_get_type ())
++
++G_DEFINE_AUTOPTR_CLEANUP_FUNC (AudioCaptureSession, g_object_unref);
++
++G_GNUC_UNUSED static inline AudioCaptureSession *
++AUDIO_CAPTURE_SESSION (gpointer ptr)
++{
++  return G_TYPE_CHECK_INSTANCE_CAST (ptr, audio_capture_session_get_type (), AudioCaptureSession);
++}
++
++G_GNUC_UNUSED static inline gboolean
++IS_AUDIO_CAPTURE_SESSION (gpointer ptr)
++{
++  return G_TYPE_CHECK_INSTANCE_TYPE (ptr, audio_capture_session_get_type ());
++}
++
++static void
++audio_capture_session_close (XdpSession *session)
++{
++  AudioCaptureSession *audio_capture_session = AUDIO_CAPTURE_SESSION (session);
++
++  audio_capture_session->state = AUDIO_CAPTURE_SESSION_STATE_CLOSED;
++
++  xdp_session_persistence_generate_and_save_restore_token (session,
++                                                           AUDIO_CAPTURE_PERMISSION_TABLE,
++                                                           audio_capture_session->persist_mode,
++                                                           &audio_capture_session->restore_token,
++                                                           &audio_capture_session->restore_data);
++
++  g_debug ("audio capture session owned by '%s' closed", session->sender);
++}
++
++static void
++audio_capture_session_finalize (GObject *object)
++{
++  AudioCaptureSession *audio_capture_session = AUDIO_CAPTURE_SESSION (object);
++
++  g_clear_pointer (&audio_capture_session->restore_token, g_free);
++  g_clear_pointer (&audio_capture_session->restore_data, g_variant_unref);
++
++  G_OBJECT_CLASS (audio_capture_session_parent_class)->finalize (object);
++}
++
++static void
++audio_capture_session_init (AudioCaptureSession *audio_capture_session)
++{
++}
++
++static void
++audio_capture_session_class_init (AudioCaptureSessionClass *klass)
++{
++  GObjectClass *object_class;
++  XdpSessionClass *session_class;
++
++  object_class = G_OBJECT_CLASS (klass);
++  object_class->finalize = audio_capture_session_finalize;
++
++  session_class = (XdpSessionClass *)klass;
++  session_class->close = audio_capture_session_close;
++}
++
++static AudioCaptureSession *
++audio_capture_session_new (AudioCapture  *audio_capture,
++                           GVariant      *options,
++                           XdpRequest    *request,
++                           GError       **error)
++{
++  XdpSession *session;
++  GDBusInterfaceSkeleton *interface_skeleton =
++    G_DBUS_INTERFACE_SKELETON (request);
++  const char *session_token;
++  GDBusConnection *connection =
++    g_dbus_interface_skeleton_get_connection (interface_skeleton);
++  GDBusConnection *impl_connection =
++    g_dbus_proxy_get_connection (G_DBUS_PROXY (audio_capture->impl));
++  const char *impl_dbus_name =
++    g_dbus_proxy_get_name (G_DBUS_PROXY (audio_capture->impl));
++
++  session_token = lookup_session_token (options);
++  session = g_initable_new (audio_capture_session_get_type (), NULL, error,
++                            "context", audio_capture->context,
++                            "sender", request->sender,
++                            "app-id", xdp_app_info_get_id (request->app_info),
++                            "token", session_token,
++                            "connection", connection,
++                            "impl-connection", impl_connection,
++                            "impl-dbus-name", impl_dbus_name,
++                            NULL);
++
++  if (session)
++    g_debug ("audio capture session owned by '%s' created", session->sender);
++
++  return (AudioCaptureSession *) session;
++}
++
++/* CreateSession ------------------------------------------------------------ */
++
++static void
++create_session_done (GObject      *source_object,
++                     GAsyncResult *res,
++                     gpointer      data)
++{
++  XdpDbusImplAudioCapture *impl = (XdpDbusImplAudioCapture *) source_object;
++  g_autoptr(XdpRequest) request = data;
++  XdpSession *session;
++  guint response = 2;
++  gboolean should_close_session;
++  g_auto(GVariantBuilder) results_builder =
++    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
++  g_autoptr(GError) error = NULL;
++
++  REQUEST_AUTOLOCK (request);
++
++  session = g_object_get_qdata (G_OBJECT (request), quark_request_session);
++  SESSION_AUTOLOCK_UNREF (g_object_ref (session));
++  g_object_set_qdata (G_OBJECT (request), quark_request_session, NULL);
++
++  if (!xdp_dbus_impl_audio_capture_call_create_session_finish (impl,
++                                                               &response,
++                                                               NULL,
++                                                               res,
++                                                               &error))
++    {
++      g_dbus_error_strip_remote_error (error);
++      g_warning ("A backend call failed: %s", error->message);
++      should_close_session = TRUE;
++      goto out;
++    }
++
++  if (request->exported && response == 0)
++    {
++      if (!xdp_session_export (session, &error))
++        {
++          g_warning ("Failed to export session: %s", error->message);
++          response = 2;
++          should_close_session = TRUE;
++          goto out;
++        }
++
++      should_close_session = FALSE;
++      xdp_session_register (session);
++    }
++  else
++    {
++      should_close_session = TRUE;
++    }
++
++  g_variant_builder_add (&results_builder, "{sv}",
++                         "session_handle", g_variant_new_string (session->id));
++
++out:
++  if (request->exported)
++    {
++      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
++                                      response,
++                                      g_variant_builder_end (&results_builder));
++      xdp_request_unexport (request);
++    }
++
++  if (should_close_session)
++    xdp_session_close (session, FALSE);
++}
++
++static gboolean
++handle_create_session (XdpDbusAudioCapture   *object,
++                       GDBusMethodInvocation *invocation,
++                       GVariant              *arg_options)
++{
++  AudioCapture *audio_capture = (AudioCapture *) object;
++  XdpRequest *request = xdp_request_from_invocation (invocation);
++  g_autoptr(GError) error = NULL;
++  g_autoptr(XdpDbusImplRequest) impl_request = NULL;
++  XdpSession *session;
++  g_auto(GVariantBuilder) options_builder =
++    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
++  g_autoptr(GVariant) options = NULL;
++
++  REQUEST_AUTOLOCK (request);
++
++  impl_request = xdp_dbus_impl_request_proxy_new_sync (
++    g_dbus_proxy_get_connection (G_DBUS_PROXY (audio_capture->impl)),
++    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
++    g_dbus_proxy_get_name (G_DBUS_PROXY (audio_capture->impl)),
++    request->id,
++    NULL, &error);
++
++  if (!impl_request)
++    {
++      g_dbus_method_invocation_return_gerror (invocation, error);
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  xdp_request_set_impl_request (request, impl_request);
++  xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
++
++  session = XDP_SESSION (audio_capture_session_new (audio_capture,
++                                                    arg_options,
++                                                    request,
++                                                    &error));
++  if (!session)
++    {
++      g_dbus_method_invocation_return_gerror (invocation, error);
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
++
++  g_object_set_qdata_full (G_OBJECT (request),
++                           quark_request_session,
++                           g_object_ref (session),
++                           g_object_unref);
++
++  xdp_dbus_impl_audio_capture_call_create_session (audio_capture->impl,
++                                                   request->id,
++                                                   session->id,
++                                                   xdp_app_info_get_id (request->app_info),
++                                                   options,
++                                                   NULL,
++                                                   create_session_done,
++                                                   g_object_ref (request));
++
++  xdp_dbus_audio_capture_complete_create_session (object, invocation, request->id);
++
++  return G_DBUS_METHOD_INVOCATION_HANDLED;
++}
++
++/* SelectSources ------------------------------------------------------------ */
++
++static void
++select_sources_done (GObject      *source_object,
++                     GAsyncResult *res,
++                     gpointer      data)
++{
++  XdpDbusImplAudioCapture *impl = (XdpDbusImplAudioCapture *) source_object;
++  g_autoptr(XdpRequest) request = data;
++  XdpSession *session;
++  guint response = 2;
++  gboolean should_close_session;
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) results = NULL;
++
++  REQUEST_AUTOLOCK (request);
++
++  session = g_object_get_qdata (G_OBJECT (request), quark_request_session);
++  SESSION_AUTOLOCK_UNREF (g_object_ref (session));
++  g_object_set_qdata (G_OBJECT (request), quark_request_session, NULL);
++
++  if (!xdp_dbus_impl_audio_capture_call_select_sources_finish (impl,
++                                                               &response,
++                                                               &results,
++                                                               res,
++                                                               &error))
++    {
++      g_dbus_error_strip_remote_error (error);
++      g_warning ("A backend call failed: %s", error->message);
++    }
++
++  should_close_session = !request->exported || response != 0;
++
++  if (request->exported)
++    {
++      if (!results)
++        {
++          g_auto(GVariantBuilder) results_builder =
++            G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
++
++          results = g_variant_ref_sink (g_variant_builder_end (&results_builder));
++        }
++
++      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request), response, results);
++      xdp_request_unexport (request);
++    }
++
++  if (should_close_session)
++    {
++      xdp_session_close (session, TRUE);
++    }
++  else if (!session->closed)
++    {
++      AudioCaptureSession *audio_capture_session = AUDIO_CAPTURE_SESSION (session);
++
++      g_assert_cmpint (audio_capture_session->state,
++                       ==,
++                       AUDIO_CAPTURE_SESSION_STATE_SELECTING_SOURCES);
++      audio_capture_session->state = AUDIO_CAPTURE_SESSION_STATE_SOURCES_SELECTED;
++    }
++}
++
++static gboolean
++validate_source_types (const char  *key,
++                       GVariant    *value,
++                       GVariant    *options,
++                       gpointer     user_data,
++                       GError     **error)
++{
++  AudioCapture *audio_capture = user_data;
++  uint32_t available =
++    xdp_dbus_audio_capture_get_available_source_types (XDP_DBUS_AUDIO_CAPTURE (audio_capture));
++  uint32_t types = g_variant_get_uint32 (value);
++
++  if (types == 0 || (types & ~AUDIO_CAPTURE_SOURCE_TYPES_ALL) != 0)
++    {
++      g_set_error (error, XDG_DESKTOP_PORTAL_ERROR, XDG_DESKTOP_PORTAL_ERROR_INVALID_ARGUMENT,
++                   "Unsupported source types: %x", types);
++      return FALSE;
++    }
++
++  if ((types & available) == 0)
++    {
++      g_set_error (error, XDG_DESKTOP_PORTAL_ERROR, XDG_DESKTOP_PORTAL_ERROR_INVALID_ARGUMENT,
++                   "Unavailable source types: %x", types);
++      return FALSE;
++    }
++
++  return TRUE;
++}
++
++static gboolean
++validate_audio_mode (const char  *key,
++                     GVariant    *value,
++                     GVariant    *options,
++                     gpointer     user_data,
++                     GError     **error)
++{
++  AudioCapture *audio_capture = user_data;
++  uint32_t available =
++    xdp_dbus_audio_capture_get_available_audio_modes (XDP_DBUS_AUDIO_CAPTURE (audio_capture));
++  uint32_t mode = g_variant_get_uint32 (value);
++
++  if (__builtin_popcount (mode) != 1)
++    {
++      g_set_error (error, XDG_DESKTOP_PORTAL_ERROR, XDG_DESKTOP_PORTAL_ERROR_INVALID_ARGUMENT,
++                   "Invalid audio mode %x", mode);
++      return FALSE;
++    }
++
++  if (!(available & mode))
++    {
++      g_set_error (error, XDG_DESKTOP_PORTAL_ERROR, XDG_DESKTOP_PORTAL_ERROR_INVALID_ARGUMENT,
++                   "Unavailable audio mode %x", mode);
++      return FALSE;
++    }
++
++  return TRUE;
++}
++
++static gboolean
++validate_restore_token (const char  *key,
++                        GVariant    *value,
++                        GVariant    *options,
++                        gpointer     user_data,
++                        GError     **error)
++{
++  const char *restore_token = g_variant_get_string (value, NULL);
++  return xdp_session_persistence_validate_restore_token (restore_token, error);
++}
++
++static gboolean
++validate_persist_mode (const char  *key,
++                       GVariant    *value,
++                       GVariant    *options,
++                       gpointer     user_data,
++                       GError     **error)
++{
++  return xdp_session_persistence_validate_persist_mode (g_variant_get_uint32 (value),
++                                                        error);
++}
++
++static XdpOptionKey audio_capture_select_sources_options[] = {
++  { "types", G_VARIANT_TYPE_UINT32, validate_source_types },
++  { "multiple", G_VARIANT_TYPE_BOOLEAN, NULL },
++  { "audio_mode", G_VARIANT_TYPE_UINT32, validate_audio_mode },
++  { "restore_token", G_VARIANT_TYPE_STRING, validate_restore_token },
++  { "persist_mode", G_VARIANT_TYPE_UINT32, validate_persist_mode },
++};
++
++static gboolean
++handle_select_sources (XdpDbusAudioCapture   *object,
++                       GDBusMethodInvocation *invocation,
++                       const char            *arg_session_handle,
++                       GVariant              *arg_options)
++{
++  AudioCapture *audio_capture = (AudioCapture *) object;
++  XdpRequest *request = xdp_request_from_invocation (invocation);
++  XdpSession *session;
++  AudioCaptureSession *audio_capture_session;
++  g_autoptr(GError) error = NULL;
++  g_autoptr(XdpDbusImplRequest) impl_request = NULL;
++  g_auto(GVariantBuilder) options_builder =
++    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
++  g_autoptr(GVariant) options = NULL;
++  XdpSessionPersistenceMode persist_mode;
++
++  REQUEST_AUTOLOCK (request);
++
++  session = xdp_session_from_request (arg_session_handle, request);
++  if (!session || !IS_AUDIO_CAPTURE_SESSION (session))
++    {
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_ACCESS_DENIED,
++                                             "Invalid session");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  SESSION_AUTOLOCK_UNREF (session);
++
++  audio_capture_session = AUDIO_CAPTURE_SESSION (session);
++  switch (audio_capture_session->state)
++    {
++    case AUDIO_CAPTURE_SESSION_STATE_INIT:
++      break;
++    case AUDIO_CAPTURE_SESSION_STATE_SELECTING_SOURCES:
++    case AUDIO_CAPTURE_SESSION_STATE_SOURCES_SELECTED:
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "Sources already selected");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    case AUDIO_CAPTURE_SESSION_STATE_STARTING:
++    case AUDIO_CAPTURE_SESSION_STATE_STARTED:
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "Can only select sources before starting");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    case AUDIO_CAPTURE_SESSION_STATE_CLOSED:
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "Invalid session");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  impl_request = xdp_dbus_impl_request_proxy_new_sync (
++    g_dbus_proxy_get_connection (G_DBUS_PROXY (audio_capture->impl)),
++    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
++    g_dbus_proxy_get_name (G_DBUS_PROXY (audio_capture->impl)),
++    request->id,
++    NULL, &error);
++
++  if (!impl_request)
++    {
++      g_dbus_method_invocation_return_gerror (invocation, error);
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  xdp_request_set_impl_request (request, impl_request);
++  xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
++
++  if (!xdp_filter_options (arg_options, &options_builder,
++                           audio_capture_select_sources_options,
++                           G_N_ELEMENTS (audio_capture_select_sources_options),
++                           audio_capture, &error))
++    {
++      g_dbus_method_invocation_return_gerror (invocation, error);
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
++
++  if (!g_variant_lookup (options, "persist_mode", "u", &persist_mode))
++    persist_mode = XDP_SESSION_PERSISTENCE_MODE_NONE;
++  audio_capture_session->persist_mode = persist_mode;
++
++  /* A restore token becomes the data it stands for. Backends never see
++   * tokens, only what they returned for an earlier session of the same app.
++   */
++  xdp_session_persistence_replace_restore_token_with_data (session,
++                                                           AUDIO_CAPTURE_PERMISSION_TABLE,
++                                                           &options,
++                                                           &audio_capture_session->restore_token);
++
++  g_object_set_qdata_full (G_OBJECT (request),
++                           quark_request_session,
++                           g_object_ref (session),
++                           g_object_unref);
++  audio_capture_session->state = AUDIO_CAPTURE_SESSION_STATE_SELECTING_SOURCES;
++
++  xdp_dbus_impl_audio_capture_call_select_sources (audio_capture->impl,
++                                                   request->id,
++                                                   arg_session_handle,
++                                                   xdp_app_info_get_id (request->app_info),
++                                                   options,
++                                                   NULL,
++                                                   select_sources_done,
++                                                   g_object_ref (request));
++
++  xdp_dbus_audio_capture_complete_select_sources (object, invocation, request->id);
++
++  return G_DBUS_METHOD_INVOCATION_HANDLED;
++}
++
++/* Start -------------------------------------------------------------------- */
++
++static gboolean
++process_results (AudioCaptureSession  *audio_capture_session,
++                 GVariant            **in_out_results,
++                 GError              **error)
++{
++  g_autoptr(GVariantIter) streams_iter = NULL;
++  g_autoptr(GVariant) stream_options = NULL;
++  uint32_t node_id;
++  GVariant *results = *in_out_results;
++
++  if (!g_variant_lookup (results, "streams", "a(ua{sv})", &streams_iter))
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED, "No streams");
++      return FALSE;
++    }
++
++  /* Exactly one node: everything the user chose, mixed by the backend. */
++  if (g_variant_iter_n_children (streams_iter) != 1 ||
++      !g_variant_iter_next (streams_iter, "(u@a{sv})", &node_id, &stream_options) ||
++      node_id == 0 || node_id == SPA_ID_INVALID)
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                   "The backend must return exactly one stream");
++      return FALSE;
++    }
++
++  audio_capture_session->node_id = node_id;
++
++  xdp_session_persistence_replace_restore_data_with_token (XDP_SESSION (audio_capture_session),
++                                                           AUDIO_CAPTURE_PERMISSION_TABLE,
++                                                           in_out_results,
++                                                           &audio_capture_session->persist_mode,
++                                                           &audio_capture_session->restore_token,
++                                                           &audio_capture_session->restore_data);
++  return TRUE;
++}
++
++static void
++start_done (GObject      *source_object,
++            GAsyncResult *res,
++            gpointer      data)
++{
++  XdpDbusImplAudioCapture *impl = (XdpDbusImplAudioCapture *) source_object;
++  g_autoptr(XdpRequest) request = data;
++  XdpSession *session;
++  AudioCaptureSession *audio_capture_session;
++  guint response = 2;
++  gboolean should_close_session;
++  g_autoptr(GVariant) results = NULL;
++  g_autoptr(GError) error = NULL;
++
++  REQUEST_AUTOLOCK (request);
++
++  session = g_object_get_qdata (G_OBJECT (request), quark_request_session);
++  SESSION_AUTOLOCK_UNREF (g_object_ref (session));
++  g_object_set_qdata (G_OBJECT (request), quark_request_session, NULL);
++
++  if (!xdp_dbus_impl_audio_capture_call_start_finish (impl,
++                                                      &response,
++                                                      &results,
++                                                      res,
++                                                      &error))
++    {
++      g_dbus_error_strip_remote_error (error);
++      g_warning ("A backend call failed: %s", error->message);
++      g_clear_error (&error);
++    }
++
++  should_close_session = !request->exported || response != 0;
++
++  audio_capture_session = AUDIO_CAPTURE_SESSION (session);
++
++  if (request->exported)
++    {
++      if (response == 0)
++        {
++          if (!process_results (audio_capture_session, &results, &error))
++            {
++              g_warning ("Failed to process results: %s", error->message);
++              g_clear_error (&error);
++              g_clear_pointer (&results, g_variant_unref);
++              response = 2;
++              should_close_session = TRUE;
++            }
++        }
++
++      if (!results)
++        {
++          g_auto(GVariantBuilder) results_builder =
++            G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
++
++          results = g_variant_ref_sink (g_variant_builder_end (&results_builder));
++        }
++
++      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request), response, results);
++      xdp_request_unexport (request);
++    }
++
++  if (should_close_session)
++    {
++      xdp_session_close (session, TRUE);
++    }
++  else if (!session->closed)
++    {
++      g_assert (audio_capture_session->state ==
++                AUDIO_CAPTURE_SESSION_STATE_STARTING);
++      g_debug ("audio capture session owned by '%s' started", session->sender);
++      audio_capture_session->state = AUDIO_CAPTURE_SESSION_STATE_STARTED;
++    }
++}
++
++static gboolean
++handle_start (XdpDbusAudioCapture   *object,
++              GDBusMethodInvocation *invocation,
++              const char            *arg_session_handle,
++              const char            *arg_parent_window,
++              GVariant              *arg_options)
++{
++  AudioCapture *audio_capture = (AudioCapture *) object;
++  XdpRequest *request = xdp_request_from_invocation (invocation);
++  XdpSession *session;
++  AudioCaptureSession *audio_capture_session;
++  g_autoptr(GError) error = NULL;
++  g_autoptr(XdpDbusImplRequest) impl_request = NULL;
++  g_auto(GVariantBuilder) options_builder =
++    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
++  g_autoptr(GVariant) options = NULL;
++
++  REQUEST_AUTOLOCK (request);
++
++  session = xdp_session_from_request (arg_session_handle, request);
++  if (!session || !IS_AUDIO_CAPTURE_SESSION (session))
++    {
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_ACCESS_DENIED,
++                                             "Invalid session");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  SESSION_AUTOLOCK_UNREF (session);
++
++  audio_capture_session = AUDIO_CAPTURE_SESSION (session);
++  switch (audio_capture_session->state)
++    {
++    case AUDIO_CAPTURE_SESSION_STATE_SOURCES_SELECTED:
++      break;
++    case AUDIO_CAPTURE_SESSION_STATE_INIT:
++    case AUDIO_CAPTURE_SESSION_STATE_SELECTING_SOURCES:
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "Sources not selected");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    case AUDIO_CAPTURE_SESSION_STATE_STARTING:
++    case AUDIO_CAPTURE_SESSION_STATE_STARTED:
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "Can only start once");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    case AUDIO_CAPTURE_SESSION_STATE_CLOSED:
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "Invalid session");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  impl_request = xdp_dbus_impl_request_proxy_new_sync (
++    g_dbus_proxy_get_connection (G_DBUS_PROXY (audio_capture->impl)),
++    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
++    g_dbus_proxy_get_name (G_DBUS_PROXY (audio_capture->impl)),
++    request->id,
++    NULL, &error);
++
++  if (!impl_request)
++    {
++      g_dbus_method_invocation_return_gerror (invocation, error);
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  xdp_request_set_impl_request (request, impl_request);
++  xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
++
++  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
++
++  g_object_set_qdata_full (G_OBJECT (request),
++                           quark_request_session,
++                           g_object_ref (session),
++                           g_object_unref);
++  audio_capture_session->state = AUDIO_CAPTURE_SESSION_STATE_STARTING;
++
++  xdp_dbus_impl_audio_capture_call_start (audio_capture->impl,
++                                          request->id,
++                                          arg_session_handle,
++                                          xdp_app_info_get_id (request->app_info),
++                                          arg_parent_window,
++                                          options,
++                                          NULL,
++                                          start_done,
++                                          g_object_ref (request));
++
++  xdp_dbus_audio_capture_complete_start (object, invocation, request->id);
++
++  return G_DBUS_METHOD_INVOCATION_HANDLED;
++}
++
++/* OpenPipeWireRemote ------------------------------------------------------- */
++
++static PipeWireRemote *
++open_pipewire_audio_capture_remote (const char  *app_id,
++                                    uint32_t     node_id,
++                                    GError     **error)
++{
++  struct pw_properties *pipewire_properties;
++  PipeWireRemote *remote;
++  g_autoptr(GArray) permission_items = NULL;
++
++  /* The same client properties as a ScreenCast remote: WirePlumber's portal
++   * access script leaves a remote with no media roles alone, and the session
++   * manager knows which app it belongs to. */
++  pipewire_properties = pw_properties_new ("pipewire.access.portal.app_id", app_id,
++                                           "pipewire.access.portal.media_roles", "",
++                                           NULL);
++  remote = pipewire_remote_new_sync (pipewire_properties,
++                                     NULL, NULL, NULL, NULL,
++                                     error);
++  if (!remote)
++    return NULL;
++
++  permission_items = g_array_new (FALSE, TRUE, sizeof (struct pw_permission));
++
++  /* Core rwx and the node factory r, to create the recording stream. */
++  g_array_append_val (permission_items,
++                      PERMISSION_ITEM (PW_ID_CORE, PW_PERM_RWX));
++  g_array_append_val (permission_items,
++                      PERMISSION_ITEM (remote->node_factory_id, PW_PERM_R));
++
++  /* The capture node can be seen and its parameters read; nothing else. */
++  g_array_append_val (permission_items,
++                      PERMISSION_ITEM (node_id, PW_PERM_R | PW_PERM_X));
++
++  /* Hide all existing and future objects except the ones listed above. */
++  g_array_append_val (permission_items,
++                      PERMISSION_ITEM (PW_ID_ANY, 0));
++
++  pw_client_update_permissions (pw_core_get_client (remote->core),
++                                permission_items->len,
++                                (const struct pw_permission *)permission_items->data);
++
++  pipewire_remote_roundtrip (remote);
++
++  return remote;
++}
++
++static gboolean
++handle_open_pipewire_remote (XdpDbusAudioCapture   *object,
++                             GDBusMethodInvocation *invocation,
++                             GUnixFDList           *in_fd_list,
++                             const char            *arg_session_handle,
++                             GVariant              *arg_options)
++{
++  XdpAppInfo *app_info = xdp_invocation_get_app_info (invocation);
++  XdpSession *session;
++  AudioCaptureSession *audio_capture_session;
++  PipeWireRemote *remote;
++  g_autoptr(GUnixFDList) out_fd_list = NULL;
++  int fd;
++  int fd_id;
++  g_autoptr(GError) error = NULL;
++
++  session = xdp_session_from_app_info (arg_session_handle, app_info);
++  if (!session || !IS_AUDIO_CAPTURE_SESSION (session))
++    {
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_ACCESS_DENIED,
++                                             "Invalid session");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  SESSION_AUTOLOCK_UNREF (session);
++
++  audio_capture_session = AUDIO_CAPTURE_SESSION (session);
++  if (audio_capture_session->state != AUDIO_CAPTURE_SESSION_STATE_STARTED ||
++      audio_capture_session->node_id == 0)
++    {
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "No streams available");
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  remote = open_pipewire_audio_capture_remote (session->app_id,
++                                               audio_capture_session->node_id,
++                                               &error);
++  if (!remote)
++    {
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_FAILED,
++                                             "%s", error->message);
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  out_fd_list = g_unix_fd_list_new ();
++  fd = pw_core_steal_fd (remote->core);
++  fd_id = g_unix_fd_list_append (out_fd_list, fd, &error);
++  close (fd);
++  pipewire_remote_destroy (remote);
++
++  if (fd_id == -1)
++    {
++      g_dbus_method_invocation_return_error (invocation,
++                                             G_DBUS_ERROR,
++                                             G_DBUS_ERROR_ACCESS_DENIED,
++                                             "Failed to append fd: %s",
++                                             error->message);
++      return G_DBUS_METHOD_INVOCATION_HANDLED;
++    }
++
++  xdp_dbus_audio_capture_complete_open_pipewire_remote (object, invocation,
++                                                        out_fd_list,
++                                                        g_variant_new_handle (fd_id));
++  return G_DBUS_METHOD_INVOCATION_HANDLED;
++}
++
++static void
++audio_capture_iface_init (XdpDbusAudioCaptureIface *iface)
++{
++  iface->handle_create_session = handle_create_session;
++  iface->handle_select_sources = handle_select_sources;
++  iface->handle_start = handle_start;
++  iface->handle_open_pipewire_remote = handle_open_pipewire_remote;
++}
++
++static void
++audio_capture_dispose (GObject *object)
++{
++  AudioCapture *audio_capture = (AudioCapture *) object;
++
++  g_clear_object (&audio_capture->impl);
++
++  G_OBJECT_CLASS (audio_capture_parent_class)->dispose (object);
++}
++
++static void
++audio_capture_init (AudioCapture *audio_capture)
++{
++}
++
++static void
++audio_capture_class_init (AudioCaptureClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++
++  object_class->dispose = audio_capture_dispose;
++
++  quark_request_session =
++    g_quark_from_static_string ("-xdp-request-audio-capture-session");
++}
++
++static AudioCapture *
++audio_capture_new (XdpContext              *context,
++                   XdpDbusImplAudioCapture *impl)
++{
++  AudioCapture *audio_capture;
++
++  audio_capture = g_object_new (audio_capture_get_type (), NULL);
++  audio_capture->context = context;
++  audio_capture->impl = g_object_ref (impl);
++
++  /* The backend shows a dialog; Start waits for the user. */
++  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (audio_capture->impl), G_MAXINT);
++
++  xdp_dbus_audio_capture_set_version (XDP_DBUS_AUDIO_CAPTURE (audio_capture),
++                                      MIN (xdp_dbus_impl_audio_capture_get_version (audio_capture->impl), 1));
++
++  g_object_bind_property (G_OBJECT (audio_capture->impl), "available-source-types",
++                          G_OBJECT (audio_capture), "available-source-types",
++                          G_BINDING_SYNC_CREATE);
++  g_object_bind_property (G_OBJECT (audio_capture->impl), "available-audio-modes",
++                          G_OBJECT (audio_capture), "available-audio-modes",
++                          G_BINDING_SYNC_CREATE);
++
++  return audio_capture;
++}
++
++void
++init_audio_capture (XdpContext *context)
++{
++  g_autoptr(AudioCapture) audio_capture = NULL;
++  GDBusConnection *connection = xdp_context_get_connection (context);
++  XdpPortalConfig *config = xdp_context_get_config (context);
++  XdpImplConfig *impl_config;
++  g_autoptr(XdpDbusImplAudioCapture) impl = NULL;
++  g_autoptr(GError) error = NULL;
++
++  impl_config = xdp_portal_config_find (config, AUDIO_CAPTURE_DBUS_IMPL_IFACE);
++  if (impl_config == NULL)
++    return;
++
++  impl = xdp_dbus_impl_audio_capture_proxy_new_sync (connection,
++                                                     G_DBUS_PROXY_FLAGS_NONE,
++                                                     impl_config->dbus_name,
++                                                     DESKTOP_DBUS_PATH,
++                                                     NULL,
++                                                     &error);
++  if (impl == NULL)
++    {
++      g_warning ("Failed to create audio capture proxy: %s", error->message);
++      return;
++    }
++
++  audio_capture = audio_capture_new (context, impl);
++
++  xdp_context_take_and_export_portal (context,
++                                      G_DBUS_INTERFACE_SKELETON (g_steal_pointer (&audio_capture)),
++                                      XDP_CONTEXT_EXPORT_FLAGS_NONE);
++}
+diff --git a/src/audio-capture.h b/src/audio-capture.h
+new file mode 100644
+index 0000000..080693f
+--- /dev/null
++++ b/src/audio-capture.h
+@@ -0,0 +1,25 @@
++/*
++ * Copyright © 2026 Project Luma
++ *
++ * SPDX-License-Identifier: LGPL-2.1-or-later
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library. If not, see <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#pragma once
++
++#include "xdp-types.h"
++
++void init_audio_capture (XdpContext *context);
+diff --git a/src/meson.build b/src/meson.build
+index 7e06400..68754e5 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -100,6 +100,7 @@ xdg_desktop_portal_sources = files(
+   'notification.c',
+   'open-uri.c',
+   'pipewire.c',
++  'audio-capture.c',
+   'power-profile-monitor.c',
+   'print.c',
+   'proxy-resolver.c',
+diff --git a/src/xdp-context.c b/src/xdp-context.c
+index 1a5d59b..0daf11c 100644
+--- a/src/xdp-context.c
++++ b/src/xdp-context.c
+@@ -44,6 +44,7 @@
+ #include "registry.h"
+ #include "remote-desktop.h"
+ #include "screen-cast.h"
++#include "audio-capture.h"
+ #include "screenshot.h"
+ #include "secret.h"
+ #include "settings.h"
+@@ -408,6 +409,7 @@ xdp_context_register (XdpContext       *context,
+   init_global_shortcuts (context);
+   init_dynamic_launcher (context);
+   init_screen_cast (context);
++  init_audio_capture (context);
+   init_remote_desktop (context);
+   init_clipboard (context);
+   init_input_capture (context);
+diff --git a/src/xdp-types.h b/src/xdp-types.h
+index c9dee7c..81ec0c1 100644
+--- a/src/xdp-types.h
++++ b/src/xdp-types.h
+@@ -124,6 +124,10 @@ typedef struct _XdpDbusImplAccess XdpDbusImplAccess;
+ #define SCREEN_CAST_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".ScreenCast"
+ #define SCREEN_CAST_PERMISSION_TABLE "screencast"
+ 
++#define AUDIO_CAPTURE_DBUS_IFACE DESKTOP_DBUS_IFACE ".AudioCapture"
++#define AUDIO_CAPTURE_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".AudioCapture"
++#define AUDIO_CAPTURE_PERMISSION_TABLE "audio-capture"
++
+ #define SCREENSHOT_DBUS_IFACE DESKTOP_DBUS_IFACE ".Screenshot"
+ #define SCREENSHOT_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Screenshot"
+ #define SCREENSHOT_PERMISSION_TABLE "screenshot"
+diff --git a/tests/conftest.py b/tests/conftest.py
+index a59feb9..671e3bb 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -204,6 +204,7 @@ def xdg_desktop_portal_dir_default_files() -> Dict[str, bytes]:
+         "org.freedesktop.impl.portal.Access",
+         "org.freedesktop.impl.portal.Account",
+         "org.freedesktop.impl.portal.AppChooser",
++        "org.freedesktop.impl.portal.AudioCapture",
+         "org.freedesktop.impl.portal.Background",
+         "org.freedesktop.impl.portal.Clipboard",
+         "org.freedesktop.impl.portal.DynamicLauncher",
+diff --git a/tests/meson.build b/tests/meson.build
+index ae5a7bf..97499e6 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -82,6 +82,7 @@ endif
+ 
+ pytest_files = [
+   'test_account.py',
++  'test_audiocapture.py',
+   'test_background.py',
+   'test_camera.py',
+   'test_clipboard.py',
+@@ -108,6 +109,7 @@ pytest_files = [
+ ]
+ 
+ template_files = [
++  'templates/audiocapture.py',
+   'templates/access.py',
+   'templates/account.py',
+   'templates/appchooser.py',
+diff --git a/tests/templates/audiocapture.py b/tests/templates/audiocapture.py
+new file mode 100644
+index 0000000..a728708
+--- /dev/null
++++ b/tests/templates/audiocapture.py
+@@ -0,0 +1,142 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++#
++# This file is formatted with Python Black
++# mypy: disable-error-code="misc"
++
++from tests.templates.xdp_utils import Response, init_logger, ImplRequest, ImplSession
++
++import dbus
++import dbus.service
++from dataclasses import dataclass
++
++
++BUS_NAME = "org.freedesktop.impl.portal.Test"
++MAIN_OBJ = "/org/freedesktop/portal/desktop"
++SYSTEM_BUS = False
++MAIN_IFACE = "org.freedesktop.impl.portal.AudioCapture"
++VERSION = 1
++
++
++logger = init_logger(__name__)
++
++
++@dataclass
++class AudioCaptureParameters:
++    delay: int
++    response: int
++    n_streams: int
++    node_id: int
++
++
++def load(mock, parameters={}):
++    logger.debug(f"Loading parameters: {parameters}")
++
++    assert not hasattr(mock, "audiocapture_params")
++    mock.audiocapture_params = AudioCaptureParameters(
++        delay=parameters.get("delay", 50),
++        response=parameters.get("response", 0),
++        n_streams=parameters.get("n-streams", 1),
++        node_id=parameters.get("node-id", 42),
++    )
++
++    mock.AddProperties(
++        MAIN_IFACE,
++        dbus.Dictionary(
++            {
++                "version": dbus.UInt32(parameters.get("version", VERSION)),
++                "AvailableSourceTypes": dbus.UInt32(
++                    parameters.get("source-types", 0b11)
++                ),
++                "AvailableAudioModes": dbus.UInt32(parameters.get("audio-modes", 0b110)),
++            }
++        ),
++    )
++    mock.sessions: dict[str, ImplSession] = {}
++    mock.selected: dict[str, dict] = {}
++
++
++@dbus.service.method(
++    MAIN_IFACE,
++    in_signature="oosa{sv}",
++    out_signature="ua{sv}",
++    async_callbacks=("cb_success", "cb_error"),
++)
++def CreateSession(self, handle, session_handle, app_id, options, cb_success, cb_error):
++    logger.debug(f"CreateSession({handle}, {session_handle}, {app_id}, {options})")
++    params = self.audiocapture_params
++
++    session = ImplSession(self, BUS_NAME, session_handle, app_id).export()
++    self.sessions[session_handle] = session
++
++    request = ImplRequest(self, BUS_NAME, handle, logger, cb_success, cb_error)
++    request.respond(
++        Response(params.response, {"session_handle": session.handle}),
++        delay=params.delay,
++    )
++
++
++@dbus.service.method(
++    MAIN_IFACE,
++    in_signature="oosa{sv}",
++    out_signature="ua{sv}",
++    async_callbacks=("cb_success", "cb_error"),
++)
++def SelectSources(self, handle, session_handle, app_id, options, cb_success, cb_error):
++    logger.debug(f"SelectSources({handle}, {session_handle}, {app_id}, {options})")
++    params = self.audiocapture_params
++
++    assert session_handle in self.sessions
++    self.selected[session_handle] = dict(options)
++
++    request = ImplRequest(self, BUS_NAME, handle, logger, cb_success, cb_error)
++    request.respond(Response(params.response, {}), delay=params.delay)
++
++
++@dbus.service.method(
++    MAIN_IFACE,
++    in_signature="oossa{sv}",
++    out_signature="ua{sv}",
++    async_callbacks=("cb_success", "cb_error"),
++)
++def Start(
++    self, handle, session_handle, app_id, parent_window, options, cb_success, cb_error
++):
++    logger.debug(f"Start({handle}, {session_handle}, {app_id}, {parent_window}, {options})")
++    params = self.audiocapture_params
++
++    assert session_handle in self.sessions
++    selected = self.selected.get(session_handle, {})
++
++    streams = [
++        (
++            dbus.UInt32(params.node_id + index),
++            dbus.Dictionary(
++                {
++                    "source_type": dbus.UInt32(1),
++                    "applications": dbus.Array(["Test Tone"], signature="s"),
++                    "pipewire-serial": dbus.UInt64(1000 + index),
++                },
++                signature="sv",
++            ),
++        )
++        for index in range(params.n_streams)
++    ]
++    results = {"streams": dbus.Array(streams, signature="(ua{sv})")}
++    persist_mode = selected.get("persist_mode", 0)
++    if persist_mode:
++        results["persist_mode"] = dbus.UInt32(persist_mode)
++        results["restore_data"] = dbus.Struct(
++            (
++                "test",
++                dbus.UInt32(1),
++                dbus.Dictionary(
++                    {"apps": dbus.Array(["test.tone"], signature="s")},
++                    signature="sv",
++                    variant_level=1,
++                ),
++            ),
++            signature="suv",
++        )
++
++    request = ImplRequest(self, BUS_NAME, handle, logger, cb_success, cb_error)
++    request.respond(Response(params.response, results), delay=params.delay)
+diff --git a/tests/test_audiocapture.py b/tests/test_audiocapture.py
+new file mode 100644
+index 0000000..96a55ee
+--- /dev/null
++++ b/tests/test_audiocapture.py
+@@ -0,0 +1,152 @@
++# SPDX-License-Identifier: LGPL-2.1-or-later
++#
++# This file is formatted with Python Black
++
++import tests.xdp_utils as xdp
++
++import dbus
++import pytest
++
++
++@pytest.fixture
++def required_templates():
++    return {"audiocapture": {}}
++
++
++def create_session(dbus_con, token="session_token0"):
++    audiocapture_intf = xdp.get_portal_iface(dbus_con, "AudioCapture")
++    request = xdp.Request(dbus_con, audiocapture_intf)
++    response = request.call("CreateSession", options={"session_handle_token": token})
++    assert response
++    assert response.response == 0
++    return audiocapture_intf, xdp.Session.from_response(dbus_con, response)
++
++
++def select_sources(dbus_con, intf, session, **options):
++    request = xdp.Request(dbus_con, intf)
++    return request.call("SelectSources", session_handle=session.handle, options=options)
++
++
++def start(dbus_con, intf, session):
++    request = xdp.Request(dbus_con, intf)
++    return request.call("Start", session_handle=session.handle, parent_window="", options={})
++
++
++class TestAudioCapture:
++    def test_version(self, portals, dbus_con):
++        xdp.check_version(dbus_con, "AudioCapture", 1)
++
++    def test_properties(self, portals, dbus_con):
++        properties = dbus.Interface(
++            dbus_con.get_object("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"),
++            "org.freedesktop.DBus.Properties",
++        )
++        iface = "org.freedesktop.portal.AudioCapture"
++        assert properties.Get(iface, "AvailableSourceTypes") == 0b11
++        assert properties.Get(iface, "AvailableAudioModes") == 0b110
++
++    def test_create_close_session(self, portals, dbus_con, xdp_app_info):
++        mock_intf = xdp.get_mock_iface(dbus_con)
++        intf, session = create_session(dbus_con)
++
++        method_calls = mock_intf.GetMethodCalls("CreateSession")
++        assert len(method_calls) > 0
++        _, args = method_calls[-1]
++        assert args[1] == session.handle
++        assert args[2] == xdp_app_info.app_id
++
++        session.close()
++        xdp.wait_for(lambda: session.closed)
++
++    @pytest.mark.parametrize("types", (0, 4, 0b111))
++    def test_invalid_types(self, portals, dbus_con, types):
++        intf, session = create_session(dbus_con)
++        with pytest.raises(dbus.exceptions.DBusException) as excinfo:
++            select_sources(dbus_con, intf, session, types=dbus.UInt32(types))
++        assert excinfo.value.get_dbus_name() == "org.freedesktop.portal.Error.InvalidArgument"
++
++    @pytest.mark.parametrize("mode", (1, 0b110, 8))
++    def test_invalid_audio_mode(self, portals, dbus_con, mode):
++        intf, session = create_session(dbus_con)
++        with pytest.raises(dbus.exceptions.DBusException) as excinfo:
++            select_sources(dbus_con, intf, session, audio_mode=dbus.UInt32(mode))
++        assert excinfo.value.get_dbus_name() == "org.freedesktop.portal.Error.InvalidArgument"
++
++    def test_start_returns_one_stream(self, portals, dbus_con):
++        mock_intf = xdp.get_mock_iface(dbus_con)
++        intf, session = create_session(dbus_con)
++
++        response = select_sources(
++            dbus_con, intf, session, types=dbus.UInt32(1), multiple=True,
++            audio_mode=dbus.UInt32(2),
++        )
++        assert response.response == 0
++        _, args = mock_intf.GetMethodCalls("SelectSources")[-1]
++        assert args[3]["types"] == 1
++        assert args[3]["multiple"] is True or args[3]["multiple"] == 1
++        assert args[3]["audio_mode"] == 2
++
++        response = start(dbus_con, intf, session)
++        assert response.response == 0
++        streams = response.results["streams"]
++        assert len(streams) == 1
++        node_id, props = streams[0]
++        assert node_id == 42
++        assert props["source_type"] == 1
++        assert list(props["applications"]) == ["Test Tone"]
++        assert props["pipewire-serial"] == 1000
++        assert "restore_token" not in response.results
++
++    def test_start_twice_fails(self, portals, dbus_con):
++        intf, session = create_session(dbus_con)
++        select_sources(dbus_con, intf, session)
++        assert start(dbus_con, intf, session).response == 0
++        with pytest.raises(dbus.exceptions.DBusException):
++            start(dbus_con, intf, session)
++
++    def test_start_before_select_fails(self, portals, dbus_con):
++        intf, session = create_session(dbus_con)
++        with pytest.raises(dbus.exceptions.DBusException):
++            start(dbus_con, intf, session)
++
++    @pytest.mark.parametrize("template_params", ({"audiocapture": {"n-streams": 2}},))
++    def test_backend_must_return_one_stream(self, portals, dbus_con):
++        intf, session = create_session(dbus_con)
++        select_sources(dbus_con, intf, session)
++        response = start(dbus_con, intf, session)
++        assert response.response == 2
++        xdp.wait_for(lambda: session.closed)
++
++    def test_restore_token(self, portals, dbus_con):
++        mock_intf = xdp.get_mock_iface(dbus_con)
++        intf, session = create_session(dbus_con)
++        select_sources(dbus_con, intf, session, persist_mode=dbus.UInt32(2))
++        response = start(dbus_con, intf, session)
++        assert response.response == 0
++        token = response.results["restore_token"]
++        assert token
++        # Backends never see tokens, only their own data.
++        assert "restore_data" not in response.results
++
++        session.close()
++        xdp.wait_for(lambda: session.closed)
++
++        intf, session = create_session(dbus_con, token="session_token1")
++        select_sources(
++            dbus_con, intf, session, restore_token=token, persist_mode=dbus.UInt32(2)
++        )
++        _, args = mock_intf.GetMethodCalls("SelectSources")[-1]
++        assert "restore_token" not in args[3]
++        vendor, version, data = args[3]["restore_data"]
++        assert vendor == "test"
++        assert version == 1
++        assert list(data["apps"]) == ["test.tone"]
++        response = start(dbus_con, intf, session)
++        assert response.response == 0
++        assert response.results["restore_token"]
++        assert mock_intf.GetMethodCalls("Start")
++
++    def test_open_pipewire_remote_needs_a_started_session(self, portals, dbus_con):
++        intf, session = create_session(dbus_con)
++        with pytest.raises(dbus.exceptions.DBusException):
++            intf.OpenPipeWireRemote(session.handle, {})

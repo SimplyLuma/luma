@@ -48,7 +48,7 @@ fwupd-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
 iio-sensor-proxy-3.8-2.luma.1.fc44.x86_64
-xdg-desktop-portal-1.22.1-1.luma.3.fc44.x86_64
+xdg-desktop-portal-1.22.1-1.luma.4.fc44.x86_64
 NetworkManager-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-adsl-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-bluetooth-1:1.56.1-2.luma.1.fc44.x86_64
@@ -75,7 +75,7 @@ plymouth-theme-spinner-24.004.60-24.luma.3.fc44.x86_64
 # Luma platform, assets and core applications
 google-caveat-fonts-2.000-1.luma.1.fc44.noarch
 google-figtree-fonts-2.0.3-1.luma.4.fc44.noarch
-luma-audio-policy-0.1.0-1.luma.3.fc44.noarch
+luma-audio-policy-0.1.0-1.luma.4.fc44.noarch
 luma-sound-theme-0.1.0-2.luma.1.fc44.noarch
 luma-background-0.1.0-1.luma.5.creator20261007.1.fc44.noarch
 luma-backgrounds-0.2.0-1.luma.4.fc44.noarch

@@ -39,5 +39,16 @@ from the SRPM pinned in `config/desktop/inputs.env` (desktop-components group
   (`/etc/xdg/gnome-mimeapps.list` from luma-desktop-launcher-policy), the
   file opens in it directly. GIO's fallback default and lists in data
   directories still ask; `ask` and always-ask still win. Luma-specific.
+- `0004-audio-capture-portal.patch`: adds `org.freedesktop.portal.AudioCapture`
+  (`src/audio-capture.c`, `data/org.freedesktop.portal.AudioCapture.xml`,
+  `data/org.freedesktop.impl.portal.AudioCapture.xml`). An application asks to
+  record other applications' sound; the backend (luma-portal) shows the choice
+  and returns one PipeWire node; `OpenPipeWireRemote` returns a remote that
+  sees only that node (core rwx, node factory r, the node rx, `PW_ID_ANY` 0).
+  Sessions, option validation and restore tokens (permission table
+  `audio-capture`) follow ScreenCast; `audio_mode` uses the ScreenCast v7
+  values from flatpak/xdg-desktop-portal#2208. Tests:
+  `tests/test_audiocapture.py`. Written to be proposed upstream.
 - `0000-luma-fedora-spec.patch`: adds the patches, the `luma.N` release and a
-  `%check` running the upstream OpenURI integration tests.
+  `%check` running the upstream OpenURI and the AudioCapture integration
+  tests.
