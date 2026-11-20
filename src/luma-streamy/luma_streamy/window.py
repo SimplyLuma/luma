@@ -257,6 +257,15 @@ class StreamyWindow(AppWindow):
         # On a phone each is a key over the preview and a bottom drawer, so the preview keeps the screen.
         widgets = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
         widgets.set_child(self.widget_nav)
+        # Blank space under the rows: right click or long press adds a widget.
+        blank = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+        blank.connect("pressed", lambda _g, _n, _x, y: self.widget_list.get_row_at_y(int(y)) is None and
+                      self._add_widget_menu(widgets))
+        widgets.add_controller(blank)
+        hold = Gtk.GestureLongPress(touch_only=True)
+        hold.connect("pressed", lambda _g, _x, y: self.widget_list.get_row_at_y(int(y)) is None and
+                     self._add_widget_menu(widgets))
+        widgets.add_controller(hold)
         self.widgets_tile = DockTile("widgets", "Widgets", "layers", widgets, phone="drawer", actions=[add])
         self.audio_tile = DockTile("audio", "Audio", "volume-2", audio, phone="drawer")
         self.dock = Dock([self.preview_tile, self.widgets_tile, self.audio_tile], layout=self.layouts.current,
@@ -1733,12 +1742,15 @@ class StreamyWindow(AppWindow):
 
     # ── Widgets ──
 
-    def add_widget(self, kind: str) -> None:
+    def add_widget(self, kind: str, at: tuple[float, float] | None = None) -> None:
         scene = self.project.active_scene
         if scene is None:
             return
         self._checkpoint(f"Add {KINDS[kind][0].lower()}")
         w = self.project.add_widget(scene.id, kind)
+        if at is not None and w.has_picture:
+            # Centred on the point it was asked for (a right click on the canvas).
+            w.x, w.y = at[0] - w.width / 2, at[1] - w.height / 2
         if self.fake and kind in getattr(self, "_fake_images", {}):
             w.source["fake-image"] = self._fake_images[kind]
         if kind == "image" and not self.fake:
@@ -1891,7 +1903,21 @@ class StreamyWindow(AppWindow):
             if w.has_picture and w.x <= cx <= w.x + w.width and w.y <= cy <= w.y + w.height:
                 self._widget_menu(w.id, self.arrange)
                 return True
+        if 0 <= cx <= self.project.canvas[0] and 0 <= cy <= self.project.canvas[1]:
+            self._add_widget_menu(self.arrange, at=(cx, cy))  # blank canvas: add one there
+            return True
         return False
+
+    def _add_widget_menu(self, anchor: Gtk.Widget, at: tuple[float, float] | None = None) -> None:
+        """Blank space's menu (the canvas, the Widgets panel): the + menu's kinds, from the same commands."""
+        from luma_appkit.action_bubble import FloatingMenu
+
+        rows: list = ["Add widget"]
+        for kind in self._addable():
+            command = self.commands.get(f"widget.add-{kind}")
+            rows.append(MenuItem(command.label.replace("Add ", "").capitalize(), icon=command.icon,
+                                 on_activate=lambda k=kind: self.add_widget(k, at=at)))
+        FloatingMenu(rows, label="Add widget", title="Add widget").popup(anchor)
 
     def rename_widget(self, w: Widget) -> None:
         entry = Gtk.Entry(text=w.name, hexpand=True)
