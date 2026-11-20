@@ -191,7 +191,10 @@ class StreamyWindow(AppWindow):
         audio = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         audio.append(self.audio_empty)
         audio.append(audio_scroll)
-        self.preview_tile = DockTile("preview", "Preview", "monitor", self.arrange, main=True)
+        self.canvas_facts = TypeLabel("", role="caption")
+        self.canvas_facts.add_css_class("streamy-canvas-facts")
+        self.preview_tile = DockTile("preview", "Preview", "monitor", self.arrange, main=True,
+                                     actions=[self.canvas_facts])
         self.audio_tile = DockTile("audio", "Audio", "volume-2", audio)
         self.inspector_tile = DockTile("inspector", "Inspector", "sliders-horizontal", inspector_scroll)
         self.dock = Dock([self.preview_tile, self.audio_tile, self.inspector_tile], layout=self.layouts.current,
@@ -422,6 +425,8 @@ class StreamyWindow(AppWindow):
                 self.sidebar.list.select_row(row)
 
     def _refresh_canvas(self) -> None:
+        width, height = self.project.canvas
+        self.canvas_facts.label.set_label(f"{width} × {height} · {graph.FPS} fps")
         scene = self.project.active_scene
         self.arrange.clear()
         self.arrange.set_canvas_size(*self.project.canvas)
@@ -635,30 +640,35 @@ class StreamyWindow(AppWindow):
         self.audio_empty.set_visible(not sounds)
         box.get_parent().get_parent().set_visible(bool(sounds))
         for w in sounds:
-            strip = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            # The mute key leads the strip; the name, meter and volume share one left edge beside it.
+            strip = Gtk.Box()
             strip.add_css_class("streamy-strip")
             strip.update_property([Gtk.AccessibleProperty.LABEL], [w.name])
-            line = Gtk.Box()
-            line.add_css_class("streamy-strip-head")
             mute = IconOnlyButton("volume-x" if w.muted else w.icon,
                                   f"Unmute {w.name}" if w.muted else f"Mute {w.name}", size="small")
+            mute.set_valign(Gtk.Align.START)
             mute.connect("clicked", lambda *_a, wid=w: self._toggle_mute(wid))
             if w.muted:
                 mute.add_css_class("streamy-muted")
-            line.append(mute)
+            strip.append(mute)
+            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+            column.add_css_class("streamy-strip-body")
+            strip.append(column)
+            line = Gtk.Box()
+            line.add_css_class("streamy-strip-head")
             name = TypeLabel(w.name, role="row-title")
             name.set_hexpand(True)
             line.append(name)
             level = TypeLabel(self._db_words(w), role="caption")
             level.add_css_class("streamy-strip-db")
             line.append(level)
-            strip.append(line)
+            column.append(line)
             meter = AudioMeter(2, horizontal=True, label=f"{w.name} level")
             meter.set_hexpand(True)
-            strip.append(meter)
+            column.append(meter)
             volume = ValueRange(w.volume_db, -60, 6, 1, label=f"{w.name} volume")
             volume.connect("value-changed", lambda _r, value, wid=w, words=level: self._volume_moved(wid, value, words))
-            strip.append(volume)
+            column.append(volume)
             box.append(strip)
             self._meters[w.id] = meter
 
