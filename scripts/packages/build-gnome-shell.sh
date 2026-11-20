@@ -491,7 +491,7 @@ done < <(sed -n 's/^+Patch[0-9][0-9]*:[[:space:]]*\([^[:space:]]*\.patch\)$/\1/p
       python3 SOURCES/check-rpm-directory-modes.py payload-modes.txt
     done < <(find RPMS -type f -name "*.rpm" -print)
 
-    architecture=${LUMA_RPM_BUILDER_ARCHITECTURE:-x86_64}
+    architecture=${LUMA_RPM_BUILDER_ARCHITECTURE:-$(rpm --eval "%{_arch}")}
     shell_rpm=$(find "RPMS/$architecture" -type f -name "gnome-shell-*.rpm" \
       ! -name "*-debuginfo-*" ! -name "*-debugsource-*" -print -quit)
     verify_dir=$(mktemp -d "$PWD/verify.XXXXXX")
