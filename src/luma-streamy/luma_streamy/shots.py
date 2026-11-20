@@ -28,6 +28,9 @@ def schedule(window, path: str) -> None:
         if os.environ.get("STREAMY_SHOT_EDITOR"):
             window.edit_destination(then_go=True)
             return False
+        if os.environ.get("STREAMY_SHOT_DRAWER"):
+            window.dock.open_drawer(os.environ["STREAMY_SHOT_DRAWER"])
+            return False
         if os.environ.get("STREAMY_SHOT_RECORDING"):
             window.toggle_record()
             return False
