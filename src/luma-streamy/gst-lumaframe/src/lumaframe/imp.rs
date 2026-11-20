@@ -5,7 +5,7 @@
  *
  * Draws one layer of a composited scene in a single GL pass: the source
  * stretched into a box with anti-aliased rounded corners, an optional stroke
- * just inside the box edge, an analytic Gaussian drop shadow in a transparent
+ * inside, centred on or outside the box edge, an analytic Gaussian drop shadow in a transparent
  * margin around it, a crop of the source and an overall opacity. The output
  * is RGBA with straight alpha, so `glvideomixer`'s default blending
  * composites it directly.
@@ -37,7 +37,7 @@ use gst_gl::prelude::*;
 use gst_gl::subclass::prelude::*;
 use gst_gl::subclass::GLFilterMode;
 
-use crate::geometry::{self, Layout, Settings};
+use crate::geometry::{self, Layout, Settings, StrokePosition};
 
 static CAT: LazyLock<gst::DebugCategory> =
     LazyLock::new(|| gst::DebugCategory::new("lumaframe", gst::DebugColorFlags::empty(), Some("Luma GL layer")));
@@ -126,13 +126,14 @@ impl ObjectImpl for LumaFrame {
                  * GstLumaFrame:margin:
                  *
                  * Transparent room on every side of the box, in canvas pixels,
-                 * where the shadow is drawn. Place the layer at its canvas
-                 * position minus the margin.
+                 * where the shadow and an outside or centred stroke are
+                 * drawn. Place the layer at its canvas position minus the
+                 * margin.
                  */
                 double(
                     "margin",
                     "Margin",
-                    "Transparent room around the box for the shadow, canvas pixels, every side",
+                    "Transparent room around the box for the shadow and an outside stroke, canvas pixels, every side",
                     0.0,
                     MAX_PX,
                     0.0,
@@ -207,17 +208,35 @@ impl ObjectImpl for LumaFrame {
                 /*
                  * GstLumaFrame:stroke-width:
                  *
-                 * Width of the outline drawn just inside the box edge,
-                 * following the corners, in canvas pixels. 0 draws none.
+                 * Width of the outline along the box edge, following the
+                 * corners, in canvas pixels; stroke-position says which side
+                 * of the edge. 0 draws none.
                  */
                 double(
                     "stroke-width",
                     "Stroke width",
-                    "Outline width inside the box edge in canvas pixels (0 = none)",
+                    "Outline width along the box edge in canvas pixels (0 = none)",
                     0.0,
                     MAX_PX,
                     0.0,
                 ),
+                /*
+                 * GstLumaFrame:stroke-position:
+                 *
+                 * Where the stroke lies: inside the box edge, covering the
+                 * content's edge; centred on it; or outside it, in the
+                 * margin, leaving the box and the output size unchanged.
+                 * Corners stay concentric: the outer edge's radius is
+                 * corner-radius plus the stroke's reach outside the box
+                 * (stroke-width for outside, half of it for center). The
+                 * shadow is cast by that outer edge. The margin must hold
+                 * the reach plus the shadow.
+                 */
+                glib::ParamSpecEnum::builder_with_default("stroke-position", StrokePosition::Inside)
+                    .nick("Stroke position")
+                    .blurb("Where the stroke lies: inside, centred on or outside the box edge")
+                    .mutable_playing()
+                    .build(),
                 /*
                  * GstLumaFrame:stroke-color:
                  *
@@ -233,10 +252,10 @@ impl ObjectImpl for LumaFrame {
                  * GstLumaFrame:shadow-blur:
                  *
                  * Shadow blur radius in canvas pixels, as CSS box-shadow: the
-                 * Gaussian's standard deviation is half this value, and the
-                 * shadow fades out about one blur radius beyond its edge, so
-                 * a margin of shadow-blur plus the offset holds all of it.
-                 * 0 gives a sharp shadow.
+                 * Gaussian's standard deviation is half this value. The
+                 * shadow is cast by the outer edge of box and stroke; a
+                 * margin of the stroke's reach + 1.5 × shadow-blur + the
+                 * larger offset holds all of it. 0 gives a sharp shadow.
                  */
                 double(
                     "shadow-blur",
@@ -319,6 +338,7 @@ impl ObjectImpl for LumaFrame {
             "corner-radius" => s.corner_radius = f(),
             "stroke-width" => s.stroke_width = f(),
             "stroke-color" => s.stroke_color = value.get().expect("type checked by GObject"),
+            "stroke-position" => s.stroke_position = value.get().expect("type checked by GObject"),
             "shadow-blur" => s.shadow_blur = f(),
             "shadow-offset-x" => s.shadow_offset_x = f(),
             "shadow-offset-y" => s.shadow_offset_y = f(),
@@ -352,6 +372,7 @@ impl ObjectImpl for LumaFrame {
             "corner-radius" => s.corner_radius.to_value(),
             "stroke-width" => s.stroke_width.to_value(),
             "stroke-color" => s.stroke_color.to_value(),
+            "stroke-position" => s.stroke_position.to_value(),
             "shadow-blur" => s.shadow_blur.to_value(),
             "shadow-offset-x" => s.shadow_offset_x.to_value(),
             "shadow-offset-y" => s.shadow_offset_y.to_value(),
@@ -529,6 +550,9 @@ impl GLFilterImpl for LumaFrame {
             s.set_uniform_4f("u_rect", f(l.centre.0), f(l.centre.1), f(l.half.0), f(l.half.1));
             s.set_uniform_1f("u_radius", f(l.radius));
             s.set_uniform_1f("u_stroke", f(l.stroke));
+            s.set_uniform_1f("u_stroke_in", f(l.stroke_in));
+            s.set_uniform_1f("u_stroke_out", f(l.stroke_out));
+            s.set_uniform_3f("u_outer", f(l.outer_half.0), f(l.outer_half.1), f(l.outer_radius));
             let c = l.stroke_color;
             s.set_uniform_4f("u_stroke_color", f(c[0]), f(c[1]), f(c[2]), f(c[3]));
             let c = l.crop;

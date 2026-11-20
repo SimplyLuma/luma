@@ -10,7 +10,10 @@ uniform vec2 u_canvas;        // canvas size: box plus the margins
 uniform float u_aa;           // canvas pixels per output pixel
 uniform vec4 u_rect;          // content rect: centre.xy, half size.zw
 uniform float u_radius;
-uniform float u_stroke;
+uniform float u_stroke;       // stroke width
+uniform float u_stroke_in;    // stroke inner edge, inside the box edge
+uniform float u_stroke_out;   // stroke outer edge, outside the box edge
+uniform vec3 u_outer;         // outer edge of box and stroke: half size.xy, radius.z
 uniform vec4 u_stroke_color;  // straight alpha
 uniform vec4 u_crop;          // source origin.xy, extent.zw (0..1)
 uniform vec4 u_shadow_color;  // straight alpha
@@ -70,18 +73,22 @@ void main() {
   vec2 c = u_rect.xy;
   vec2 h = u_rect.zw;
 
+  // The stroke's outer edge is the box grown by u_stroke_out with concentric
+  // corners: its distance is d - u_stroke_out.
   float d = rrect_sdf(p, c, h, u_radius);
   float inside = coverage(d);
+  float outer = coverage(d - u_stroke_out);
 
   vec2 uv = clamp((p - (c - h)) / (2.0 * h), 0.0, 1.0);
   vec4 src = texture2D(tex, u_crop.xy + uv * u_crop.zw);
-  // Premultiplied colour of the part of the pixel inside the shape.
+  // Premultiplied colour of the part of the pixel inside the box.
   float a = src.a;
   vec3 rgb = src.rgb * a;
 
   if (u_stroke > 0.0 && inside > 0.0) {
-    // The stroke's share of the covered area, laid over the source.
-    float band = max(inside - coverage(d + u_stroke), 0.0);
+    // The share of the box's covered area under the stroke, laid over the
+    // source.
+    float band = max(inside - coverage(d + u_stroke_in), 0.0);
     float sa = u_stroke_color.a * band / inside;
     rgb = u_stroke_color.rgb * sa + rgb * (1.0 - sa);
     a = sa + a * (1.0 - sa);
@@ -89,15 +96,22 @@ void main() {
   a *= inside;
   rgb *= inside;
 
+  if (u_stroke > 0.0) {
+    // The stroke beyond the box edge, over nothing.
+    float sa = u_stroke_color.a * max(outer - inside, 0.0);
+    rgb += u_stroke_color.rgb * sa;
+    a += sa;
+  }
+
   if (u_shadow_color.a > 0.0) {
     vec2 q = p - u_shadow_offset;
     float s;
     if (u_sigma < u_sigma_min)
-      s = coverage(rrect_sdf(q, c, h, u_radius));
+      s = coverage(rrect_sdf(q, c, u_outer.xy, u_outer.z));
     else
-      s = rrect_shadow(q - c, h, u_radius, u_sigma);
-    // Outside the shape only, as CSS box-shadow.
-    s *= u_shadow_color.a * (1.0 - inside);
+      s = rrect_shadow(q - c, u_outer.xy, u_outer.z, u_sigma);
+    // Outside the box and stroke only, as CSS box-shadow.
+    s *= u_shadow_color.a * (1.0 - outer);
     rgb += u_shadow_color.rgb * s;
     a += s;
   }
