@@ -14,6 +14,7 @@ adds the kit's keyword style on top; every function returns the C object:
     PropertySection(title, *fields, action=(icon, label, "win.action"))
     PropertyNumber(label, value, unit=), PropertyColor(label, "1F6FE0"),
     PropertyChoice(label, [(key, label, icon)], segments=), AlignmentActions()
+    ArrangeView(content, canvas=(w, h), items=[ArrangeItem(...)], on_select=, on_change=, on_commit=)
 
 Everything the C parts say about behaviour (drawers on a phone, focus mode,
 scrubbing numbers, the flyout) holds here too: see
@@ -35,6 +36,8 @@ __all__ = [
     "PropertyColor",
     "PropertyChoice",
     "AlignmentActions",
+    "ArrangeItem",
+    "ArrangeView",
     "lumaui_module",
 ]
 
@@ -255,3 +258,61 @@ def AlignmentActions(action: str | None = None, *, on_align: Callable[[str], Non
     """The six alignments; ``action`` is a GAction taking the key ("win.align")."""
     L = lumaui_module()
     return _connect(L.AlignmentActions.new(action), "align", on_align)
+
+
+class ArrangeItem(NamedTuple):
+    """One box on an ArrangeView's canvas, in canvas units."""
+
+    id: str
+    label: str
+    x: float
+    y: float
+    width: float
+    height: float
+    locked: bool = False
+    visible: bool = True
+    keeps_aspect: bool = False
+
+
+def ArrangeView(content=None, *, canvas: tuple[float, float] = (1920, 1080), items: Iterable[ArrangeItem] = (),
+                selected: str | None = None, snapping: bool = True,
+                on_select: Callable[[str | None], None] | None = None,
+                on_change: Callable[[str, float, float, float, float], None] | None = None,
+                on_commit: Callable[[str, float, float, float, float], None] | None = None,
+                on_activate: Callable[[str], None] | None = None):
+    """Boxes on a canvas, moved and resized by hand, with snapping guides.
+
+    ``content`` is the picture of the canvas (it covers the fitted canvas).
+    ``on_change`` follows every step of a drag or nudge; ``on_commit`` is the
+    end of one (an undo step). Update boxes with ``set_item_rect(id, x, y, w, h)``.
+    """
+    L = lumaui_module()
+    view = L.ArrangeView.new(content)
+    width, height = canvas
+    view.set_canvas_size(width, height)
+    seen: set[str] = set()
+    for item in items:
+        if item.id in seen:
+            raise ValueError(f"box ids are unique: {item.id!r}")
+        seen.add(item.id)
+        add_arrange_item(view, item)
+    view.set_snapping(snapping)
+    if selected is not None:
+        view.set_selected(selected)
+    _connect(view, "selection-changed", on_select)
+    _connect(view, "item-changed", on_change)
+    _connect(view, "item-committed", on_commit)
+    _connect(view, "item-activated", on_activate)
+    return view
+
+
+def add_arrange_item(view, item: ArrangeItem) -> None:
+    """Add (or replace) one box on an ArrangeView."""
+    if item.width <= 0 or item.height <= 0:
+        raise ValueError(f"a box has a size: {item!r}")
+    if view.get_item_rect(item.id)[0]:
+        view.remove_item(item.id)
+    view.add_item(item.id, item.label, item.x, item.y, item.width, item.height)
+    view.set_item_locked(item.id, item.locked)
+    view.set_item_visible(item.id, item.visible)
+    view.set_item_keeps_aspect(item.id, item.keeps_aspect)

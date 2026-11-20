@@ -334,11 +334,22 @@ gboolean   luma_audio_meter_get_clipped     (LumaAudioMeter *self);
 double     luma_audio_meter_db_to_fraction  (double db);
 ```
 
-One or two vertical level bars (`channels` must be 1 or 2) mapping −60 dB to
-+12 dB. `_set_levels()` takes linear amplitudes. A peak at or above 0 dB latches
-the `clipping` style until `_reset_clip()`. The accessible description is
-updated in 6 dB steps rather than on every frame, so screen readers are not
-flooded.
+A mono or stereo level meter (`channels` must be 1 or 2) mapping −60 dB to
++12 dB, drawn by LumaUI: a recessed track per channel filled in three zones
+(quiet, loud from −18 dB, hot from −6 dB) and a peak tick that holds 1.5 s.
+Rises show at once and falls follow meter ballistics (24 dB/s); the meter
+animates only while something falls, so a still one costs nothing. Bars run
+bottom to top; `luma_audio_meter_set_horizontal()` runs them left to right, one
+under the other, for a mixer row. `_set_levels()` takes linear amplitudes. A
+peak at or above 0 dB latches the `clipping` style until `_reset_clip()`. The
+accessible value and description are updated in 6 dB steps rather than on
+every frame, so screen readers are not flooded.
+
+```c
+void       luma_audio_meter_set_horizontal  (LumaAudioMeter *self, gboolean horizontal);
+double     luma_audio_meter_get_level_db    (LumaAudioMeter *self, guint channel);
+double     luma_audio_meter_get_peak_db     (LumaAudioMeter *self, guint channel);
+```
 
 ## `LumaHistogram`
 

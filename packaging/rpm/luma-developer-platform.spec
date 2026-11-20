@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.130%{?dist}
+Release:        1.luma.131%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -376,6 +376,18 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.131
+- Dock and DockTile: an island tiled with insets (concentric with the
+  island), seams that resize, tiles dragged by their headers onto another
+  tile's edge or middle, a bare stage tile, JSON layouts, a bar clearance
+  and a phone's drawers.
+- NavigationSidebar.append_pane: a second list under the first, with the
+  same rows and insets, resizable at a seam without a grabber.
+- CreativeWorkspace docks keyed panels left, right or bottom, with saved
+  layouts and work-area-changed.
+- ArrangeView: boxes on a canvas with handles, snapping guides and nudges.
+- AudioMeter is drawn by LumaUI (zones, peak hold, ballistics, rows).
+- BarChip(live=True) takes a detail and updates in place.
 * Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.130
 - Title island: its title button reads "<title>. Details" or "<title>.
   Places", as v71 names it.

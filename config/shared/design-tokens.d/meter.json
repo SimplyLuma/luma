@@ -1,0 +1,13 @@
+{
+  "_doc": "LumaUI audio meter: bar metrics and the dBFS where its zones change colour. Merged into lumaui by the generator: --lumaui-meter-*, LUMA_UI_METER_*.",
+  "lumaui": {
+    "meter": {
+      "bar": 4,
+      "gap": 2,
+      "min_length": 24,
+      "length": 120,
+      "mid_db": -18,
+      "high_db": -6
+    }
+  }
+}

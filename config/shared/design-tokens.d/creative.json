@@ -71,7 +71,16 @@
       "grid_spacing": 64,
       "grid_min_spacing": 32,
       "grid_dot": 0.9,
-      "gone_shift": 24
+      "gone_shift": 24,
+      "dock_bottom_max_height_pct": 40,
+      "dock_target": 6,
+      "arrange_handle": 8,
+      "arrange_handle_hit": 24,
+      "arrange_handle_hit_touch": 44,
+      "arrange_snap": 6,
+      "arrange_frame": 1.5,
+      "arrange_guide": 1,
+      "arrange_nudge_large": 10
     },
     "motion": {
       "creative_panel_move_ms": 380,

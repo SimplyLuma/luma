@@ -1188,10 +1188,10 @@ API.
 | Family | Names | Module |
 | --- | --- | --- |
 | Action center and selection | `ActionCenter`, `ActionEditor`, `BarAction`, `BarChip`, `BarContext`, `BarPrompt`, `SEPARATOR`, `SPACER`, `SelectionBubble` | `luma_appkit/action_*.py` |
-| Bar items, sharing and export | `BarEntry`, `BarSearch`, `BarThumbnail`, `BarReadout`, `BarMenu`, `SplitAction`, `ZoomControl`, `DocumentHeader`, `ShareSheet`, `ExportSheet` | `luma_appkit/bar_*.py` |
+| Bar items, sharing and export | `BarEntry`, `BarSearch`, `BarThumbnail`, `BarReadout`, `BarChip(live=True, meta=, detail=)` with `update()` for a running recording or stream, `BarMenu`, `SplitAction`, `ZoomControl`, `DocumentHeader`, `ShareSheet`, `ExportSheet` | `luma_appkit/bar_*.py` |
 | Content | `Card`, `ContentLitCard`, `AccountCard`, `PersonAvatar`, `ContentLitHeader`, `FileCard`, `OpenButton`, `OpenInMenu`, `ContactCard`, `ContactActions`, `EventCard`, `SongCard`, `PlaceCard`, `PlaceSearch`, `TextField`, `HeroTitleField`, `ParagraphField`, `MessageBubble`, `StatusPill` | `luma_appkit/content_*.py` |
 | Rows and sidebars | `SidebarRow`, `SidebarSection`, `RowLead`, `RowAction`, `ProgressLine`, `AvatarStack`, `FavouritesStrip`, `Mark`, `MarkButton`, `MarkPicker`, `MarkValue`, `RichMenuItem`, `MenuSection`, `AppIcon`, `NoteCard` | `luma_appkit/rows_*.py` |
-| Media and imaging | `MediaGrid`, `MediaTile`, `ImageViewport`, `MediaTransport`, `Timeline`, `AdjustmentPanel`, `CoverArt`, `VoiceClip`, `ValueSlider`, `CreativeWorkspace`, `FloatingPanel` | `luma_appkit/media_*.py`, `luma_appkit/creative_workspace.py` |
+| Media and imaging | `MediaGrid`, `MediaTile`, `ImageViewport`, `MediaTransport`, `Timeline`, `AdjustmentPanel`, `CoverArt`, `VoiceClip`, `ValueSlider`, `AudioMeter`, `CreativeWorkspace` (docks and saved layouts), `FloatingPanel`, `ArrangeView`, `ArrangeItem` | `luma_appkit/media_*.py`, `luma_appkit/creative_workspace.py`, `luma_appkit/creative_parts.py` |
 
 ```python
 sidebar = NavigationSidebar(variant="people")        # people, destinations, resources, files, tree

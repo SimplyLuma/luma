@@ -193,8 +193,10 @@ static void test_workspace_tree(void) {
   g_assert_true(GTK_IS_LABEL(nth(workspace, 1)));
   g_assert_true(nth(workspace, 2) == left);
   g_assert_true(nth(workspace, 3) == right);
-  g_assert_true(nth(workspace, 4) == zoom);
-  g_assert_true(nth(workspace, 5) == tools);
+  g_assert_true(gtk_widget_has_css_class(nth(workspace, 4), "lumaui-creative-dock-target"));
+  g_assert_false(gtk_widget_get_visible(nth(workspace, 4)));
+  g_assert_true(nth(workspace, 5) == zoom);
+  g_assert_true(nth(workspace, 6) == tools);
   g_assert_true(gtk_widget_has_css_class(right, "right"));
   g_assert_true(luma_floating_panel_get_side(LUMA_FLOATING_PANEL(right)) == LUMA_PANEL_SIDE_RIGHT);
   g_assert_true(gtk_widget_has_css_class(zoom, "lumaui-creative-zoom"));
@@ -305,6 +307,113 @@ static void test_workspace_phone(void) {
   gtk_window_destroy(GTK_WINDOW(window));
 }
 
+static GtkWidget *docked_panel(const char *title) {
+  GtkWidget *panel = luma_floating_panel_new(title, "layers");
+  luma_floating_panel_set_child(LUMA_FLOATING_PANEL(panel), gtk_label_new(title));
+  return panel;
+}
+
+static void count_layout(GObject *object G_GNUC_UNUSED, gpointer data) { (*(int *)data)++; }
+
+static void test_workspace_docks(void) {
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
+  LumaCreativeWorkspace *ws = LUMA_CREATIVE_WORKSPACE(luma_creative_workspace_new(gtk_label_new("work")));
+  GtkWidget *widgets = docked_panel("Widgets"), *inspector = docked_panel("Inspector");
+  GtkWidget *audio = docked_panel("Audio"), *notes = docked_panel("Notes");
+  luma_creative_workspace_add_panel(ws, "widgets", LUMA_FLOATING_PANEL(widgets), LUMA_PANEL_SIDE_LEFT);
+  luma_creative_workspace_add_panel(ws, "notes", LUMA_FLOATING_PANEL(notes), LUMA_PANEL_SIDE_LEFT);
+  luma_creative_workspace_add_panel(ws, "inspector", LUMA_FLOATING_PANEL(inspector), LUMA_PANEL_SIDE_RIGHT);
+  luma_creative_workspace_add_panel(ws, "audio", LUMA_FLOATING_PANEL(audio), LUMA_PANEL_SIDE_BOTTOM);
+  int changes = 0;
+  g_signal_connect(ws, "layout-changed", G_CALLBACK(count_layout), &changes);
+  gtk_window_set_child(GTK_WINDOW(window), GTK_WIDGET(ws));
+  gtk_window_present(GTK_WINDOW(window));
+  settle();
+  g_assert_true(luma_creative_workspace_get_panel(ws, "audio") == LUMA_FLOATING_PANEL(audio));
+  g_assert_true(gtk_widget_has_css_class(audio, "bottom"));
+  /* A movable panel's header has More, and the close glyph names its dock. */
+  GtkWidget *close = gtk_widget_get_last_child(header_of(audio));
+  g_assert_true(gtk_widget_has_css_class(gtk_widget_get_prev_sibling(close), "more"));
+  /* The left dock stacks top to bottom, sharing one inset between cards. */
+  graphene_rect_t a = bounds_in(card_of(widgets), GTK_WIDGET(ws)), b = bounds_in(card_of(notes), GTK_WIDGET(ws));
+  g_assert_cmpfloat(a.origin.x, ==, 10);
+  g_assert_cmpfloat(b.origin.x, ==, 10);
+  g_assert_cmpfloat(b.origin.y, >=, a.origin.y + a.size.height + 9);
+  /* The bottom dock sits between the side docks, above the bottom edge. */
+  graphene_rect_t c = bounds_in(card_of(audio), GTK_WIDGET(ws)), r = bounds_in(card_of(inspector), GTK_WIDGET(ws));
+  int height = gtk_widget_get_height(GTK_WIDGET(ws));
+  g_assert_cmpfloat(c.origin.x, >=, a.origin.x + a.size.width);
+  g_assert_cmpfloat(c.origin.x + c.size.width, <=, r.origin.x);
+  g_assert_cmpfloat(c.origin.y + c.size.height, ==, height - 10);
+  g_assert_cmpfloat(c.size.height, <=, height * 0.4 + 1);
+  /* The work area: between the open side docks, above the open bottom dock. */
+  int wx, wy, ww, wh;
+  luma_creative_workspace_get_work_area(ws, &wx, &wy, &ww, &wh);
+  g_assert_cmpint(wx, ==, (int)(a.origin.x + a.size.width + 10));
+  g_assert_cmpint(wx + ww, ==, (int)(r.origin.x - 10));
+  g_assert_cmpint(wy + wh, ==, (int)(c.origin.y - 10));
+  /* Moving and the saved layout. */
+  luma_creative_workspace_move_panel(ws, "notes", LUMA_PANEL_SIDE_RIGHT, 0);
+  g_assert_cmpint(changes, ==, 1);
+  g_assert_true(gtk_widget_has_css_class(notes, "right"));
+  g_autoptr(GVariant) layout = luma_creative_workspace_get_layout(ws);
+  g_autofree char *text = g_variant_print(layout, FALSE);
+  g_assert_cmpstr(text, ==,
+                  "[('widgets', 'left', false), ('notes', 'right', false), ('inspector', 'right', false), ('audio', 'bottom', false)]");
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(audio), TRUE);
+  g_assert_cmpint(changes, ==, 2);
+  g_autoptr(GVariant) preset = g_variant_parse(G_VARIANT_TYPE("a(ssb)"),
+                                               "[('inspector', 'left', true), ('gone', 'left', false), ('audio', 'bottom', false)]",
+                                               NULL, NULL, NULL);
+  g_assert_true(luma_creative_workspace_set_layout(ws, preset));
+  g_assert_cmpint(changes, ==, 2);
+  g_assert_true(luma_floating_panel_get_side(LUMA_FLOATING_PANEL(inspector)) == LUMA_PANEL_SIDE_LEFT);
+  g_assert_true(luma_floating_panel_get_folded(LUMA_FLOATING_PANEL(inspector)));
+  g_assert_false(luma_floating_panel_get_folded(LUMA_FLOATING_PANEL(audio)));
+  g_autoptr(GVariant) after = luma_creative_workspace_get_layout(ws);
+  g_autofree char *after_text = g_variant_print(after, FALSE);
+  g_assert_cmpstr(after_text, ==,
+                  "[('inspector', 'left', true), ('widgets', 'left', false), ('notes', 'right', false), ('audio', 'bottom', false)]");
+  g_autoptr(GVariant) wrong = g_variant_new_string("left");
+  g_assert_false(luma_creative_workspace_set_layout(ws, g_variant_ref_sink(wrong)));
+  /* The keyboard's way: More's dock actions. */
+  g_assert_true(gtk_widget_activate_action(GTK_WIDGET(notes), "creative-dock.move", "s", "bottom"));
+  g_assert_true(luma_floating_panel_get_side(LUMA_FLOATING_PANEL(notes)) == LUMA_PANEL_SIDE_BOTTOM);
+  g_assert_true(gtk_widget_activate_action(GTK_WIDGET(audio), "creative-dock.move", "s", "down"));
+  g_assert_cmpint(changes, ==, 4);
+  luma_creative_workspace_remove_panel(ws, "notes");
+  /* Folded panels leave the work area to the content. */
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(widgets), TRUE);
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(inspector), TRUE);
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(audio), TRUE);
+  settle();
+  luma_creative_workspace_get_work_area(ws, &wx, &wy, &ww, &wh);
+  g_assert_cmpint(wx, ==, 0);
+  g_assert_cmpint(ww, ==, gtk_widget_get_width(GTK_WIDGET(ws)));
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(widgets), FALSE);
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(audio), FALSE);
+  g_assert_null(luma_creative_workspace_get_panel(ws, "notes"));
+  /* A phone: every docked panel is a pill, one drawer at a time, and the
+   * saved layout keeps the computer's folding. */
+  gtk_window_set_default_size(GTK_WINDOW(window), 400, 800);
+  settle();
+  g_assert_true(luma_floating_panel_get_folded(LUMA_FLOATING_PANEL(audio)));
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(audio), FALSE);
+  luma_floating_panel_set_folded(LUMA_FLOATING_PANEL(widgets), FALSE);
+  g_assert_true(luma_floating_panel_get_folded(LUMA_FLOATING_PANEL(audio)));
+  g_assert_true(luma_floating_panel_get_is_drawer(LUMA_FLOATING_PANEL(widgets)));
+  g_autoptr(GVariant) phone = luma_creative_workspace_get_layout(ws);
+  g_autofree char *phone_text = g_variant_print(phone, FALSE);
+  g_assert_cmpstr(phone_text, ==,
+                  "[('inspector', 'left', true), ('widgets', 'left', false), ('audio', 'bottom', false)]");
+  gtk_window_set_default_size(GTK_WINDOW(window), 1200, 800);
+  settle();
+  g_assert_false(luma_floating_panel_get_folded(LUMA_FLOATING_PANEL(audio)));
+  g_assert_true(luma_floating_panel_get_folded(LUMA_FLOATING_PANEL(inspector)));
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 static void test_title_menu_opens(void) {
   GtkWidget *window = gtk_window_new();
   gtk_window_set_default_size(GTK_WINDOW(window), 1000, 700);
@@ -341,5 +450,6 @@ int main(int argc, char **argv) {
   g_test_add_func("/lumaui/creative/workspace/tree", test_workspace_tree);
   g_test_add_func("/lumaui/creative/workspace/layout", test_workspace_layout);
   g_test_add_func("/lumaui/creative/workspace/phone", test_workspace_phone);
+  g_test_add_func("/lumaui/creative/workspace/docks", test_workspace_docks);
   return g_test_run();
 }
