@@ -81,6 +81,8 @@ class SourceRow(Gtk.ListBoxRow):
         for offset in ("low", "high", "full"):
             self.meter.remove_offset_value(offset)
         column.append(self.meter)
+        # All sound has no single level worth showing; only apps get a meter.
+        self.meter.set_visible(key != "@all")
         box.append(column)
 
         self.check = Gtk.CheckButton(valign=Gtk.Align.CENTER)

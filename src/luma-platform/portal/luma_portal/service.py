@@ -310,6 +310,10 @@ def _install_style() -> None:
     import os
     import pathlib
 
+    # Imported here, not taken from ensure_toolkit(): that import is local to
+    # it, and a NameError here stopped every chooser and picker from opening.
+    from luma_appkit import add_style_sheet
+
     display = None
     try:
         from gi.repository import Gdk
