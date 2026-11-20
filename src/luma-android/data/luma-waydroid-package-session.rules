@@ -1,9 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 polkit.addRule(function(action, subject) {
-    if (action.id == "org.projectluma.waydroid-package-session" &&
-        subject.active && subject.local &&
-        subject.isInGroup("wheel")) {
+    if (action.id != "org.projectluma.waydroid-package-session" ||
+        !subject.active || !subject.local) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    if (subject.isInGroup("wheel")) {
         return polkit.Result.YES;
     }
+    // Session upkeep that every sign-in runs on its own must not ask anyone
+    // for a password. These fixed command lines are the helper's
+    // SESSION_REQUESTS, the only requests it accepts from a non-administrator.
+    // Installs, removals and package queries keep the action's default:
+    // administrator authentication.
+    var helper = "/usr/libexec/luma-waydroid-package-session";
+    var sessionRequests = [
+        "input-policy desktop",
+        "input-policy tablet",
+        "input-policy handheld",
+        "boot-from-charger-mode"
+    ];
+    if (action.lookup("program") == helper) {
+        for (var i = 0; i < sessionRequests.length; i++) {
+            if (action.lookup("command_line") == helper + " " + sessionRequests[i]) {
+                return polkit.Result.YES;
+            }
+        }
+    }
+    return polkit.Result.NOT_HANDLED;
 });
