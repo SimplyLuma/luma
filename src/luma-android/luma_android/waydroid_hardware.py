@@ -7,6 +7,9 @@ It is specific to the existing user-zero, non-UID-remapped Waydroid transport.
 """
 from __future__ import annotations
 
+import fcntl
+import os
+import struct
 from pathlib import Path
 
 INTERFACE = 'lineageos.waydroid.IHardware'
@@ -173,6 +176,81 @@ def install_container_policy(run, defines):
     run.user = user
 
 
+VIDIOC_QUERYCAP = 0x80685600
+V4L2_CAP_VIDEO_CAPTURE = 0x00000001
+V4L2_CAP_VIDEO_CAPTURE_MPLANE = 0x00001000
+V4L2_CAP_VIDEO_M2M_MPLANE = 0x00004000
+V4L2_CAP_VIDEO_M2M = 0x00008000
+V4L2_CAP_META_CAPTURE = 0x00800000
+V4L2_CAP_IO_MC = 0x20000000
+V4L2_CAP_DEVICE_CAPS = 0x80000000
+HOST_CAMERA_CAPS = (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE |
+                    V4L2_CAP_META_CAPTURE)
+
+
+def video_node_caps(path, opener=os.open, ioctl=fcntl.ioctl):
+    """The node's V4L2 device capabilities, or None when it cannot be queried."""
+    try:
+        fd = opener(path, os.O_RDWR | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
+        return None
+    try:
+        cap = bytearray(104)
+        ioctl(fd, VIDIOC_QUERYCAP, cap)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    capabilities, device_caps = struct.unpack_from('<II', cap, 84)
+    return device_caps if capabilities & V4L2_CAP_DEVICE_CAPS else capabilities
+
+
+def host_owned_camera(caps) -> bool:
+    """A media-controller capture node: part of a camera pipeline the host runs.
+
+    Intel IPU, other ISP and CSI-2 receiver capture nodes (V4L2_CAP_IO_MC)
+    carry raw sensor data only after the host's libcamera configures the
+    media graph and processes every frame. Android's external camera HAL
+    opens /dev/video* by itself, so it can never use them, and with access it
+    probes, reformats or streams them under the host camera service. UVC
+    webcams and codecs are not media-controller centric and still reach
+    Android, which opens them only while an app uses the camera.
+    """
+    return (caps is not None and bool(caps & V4L2_CAP_IO_MC) and
+            bool(caps & HOST_CAMERA_CAPS) and
+            not caps & (V4L2_CAP_VIDEO_M2M | V4L2_CAP_VIDEO_M2M_MPLANE))
+
+
+class VideoNodeGlob:
+    """The provider's glob module with host-owned camera nodes withheld.
+
+    The provider bind-mounts every /dev/video* node into the container and
+    makes it world-writable. Both come from glob('/dev/video*'), in the node
+    and permission setup; host-owned camera nodes leave both lists.
+    """
+
+    def __init__(self, backend, caps=video_node_caps):
+        self.backend = backend
+        self.caps = caps
+
+    def glob(self, pattern, *args, **kwargs):
+        paths = self.backend.glob(pattern, *args, **kwargs)
+        if pattern != '/dev/video*':
+            return paths
+        return [path for path in paths if not host_owned_camera(self.caps(path))]
+
+    def __getattr__(self, name):
+        return getattr(self.backend, name)
+
+
+def install_video_node_policy(*modules, caps=video_node_caps):
+    for module in modules:
+        current = module.glob
+        if isinstance(current, VideoNodeGlob):
+            continue
+        module.glob = VideoNodeGlob(current, caps)
+
+
 def main():
     import os
     import sys
@@ -184,8 +262,11 @@ def main():
     sys.path.insert(0, '/usr/lib/waydroid')
     import tools
     import tools.helpers.run
+    import tools.actions.container_manager
+    import tools.helpers.lxc
     from tools.interfaces import IHardware
     install_guard(IHardware)
+    install_video_node_policy(tools.helpers.lxc, tools.actions.container_manager)
     install_container_policy(tools.helpers.run, container_defines(profile_limits(os.environ)))
     sys.argv = ['waydroid', 'container', 'start']
     os.umask(0o022)
