@@ -65,6 +65,23 @@ if ! rpm -q viola-browser-stable >/dev/null 2>&1; then
 fi
 emit viola-installed pass "$(rpm -q viola-browser-stable)"
 
+# The signed Viola Flatpak (the browser a person opens) runs the same engine
+# as the image's package. An older Flatpak engine lacks the host-drawn
+# prompts, so the Web Store's Add and an extension's Remove wait on a dialog
+# nobody can see.
+flatpak_engine=$(flatpak info --system --show-location com.rhyme.viola 2>/dev/null)/files/lib/viola/browser/chrome
+if [ ! -f "$flatpak_engine" ]; then
+  emit viola-flatpak-engine skip 'no system Viola Flatpak'
+else
+  rpm_sum=$(sha256sum /opt/viola/browser/chrome | cut -d' ' -f1)
+  flatpak_sum=$(sha256sum "$flatpak_engine" | cut -d' ' -f1)
+  if [ -n "$rpm_sum" ] && [ "$rpm_sum" = "$flatpak_sum" ]; then
+    emit viola-flatpak-engine pass "the Flatpak and the package run engine ${rpm_sum:0:16}"
+  else
+    emit viola-flatpak-engine fail "Flatpak engine ${flatpak_sum:0:16} is not the package's ${rpm_sum:0:16} ($(flatpak info --system com.rhyme.viola 2>/dev/null | awk '/Version:/ {print $2}'))"
+  fi
+fi
+
 # session_env USER: the environment a GNOME session of USER starts apps with.
 session_env() {
   local u=$1 home runtime line gen

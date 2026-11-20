@@ -28,7 +28,11 @@ class BrowserFavicons:
         if len(self.pending) >= 256:
             return
         self.pending[key] = [callback]
-        future = self.pool.submit(self.services.favicon, url, revision)
+        # An extension's icon comes from its own source; every other icon is
+        # a page's favicon.
+        fetch = (self.services.extension_icon if url.startswith('chrome://extension-icon/')
+                 else self.services.favicon)
+        future = self.pool.submit(fetch, url, revision)
         def completed(result):
             try:
                 data = result.result()

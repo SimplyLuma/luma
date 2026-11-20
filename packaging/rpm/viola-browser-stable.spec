@@ -9,17 +9,17 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 46
+%global native_release 47
 # The native host is shared. Both CPUs use source-built engines from the same
-# tree (engine patches 0001-0007); each has its own release number.
+# tree (engine patches 0001-0008); each has its own release number.
 %ifarch aarch64
-%global engine_release 40
-%global approved_release 20261117-native40-arm-desktop
-%global engine_sha256 404ed0a4906979decbd762f854b8a17f6b76e4d25263060c81cad48aefeae2c5
+%global engine_release 42
+%global approved_release 20261119-native42-arm-desktop
+%global engine_sha256 dd8afae6f35a187afe9254abc0544fff2272ab10d99c49d6cf43005d25f129dd
 %else
-%global engine_release 39
-%global approved_release 20261117-native39-x86-desktop
-%global engine_sha256 aab6eae3b4a9e04bffa7c501a7e64b9150011f6c9628778a01275147e97a0d80
+%global engine_release 41
+%global approved_release 20261119-native41-x86-desktop
+%global engine_sha256 f0d2df116052799620f9c3321c7110f5460e92c89f6a1d9c5eb9fffb4b2fd05e
 %endif
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261117.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261119.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -284,6 +284,15 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native47.creator20261119.1
+- Removing an extension asks in the bar (engine patch 0008); the dialog on the undisplayed window never answered.
+- The Web Store's package download is not listed in Downloads or notices.
+- An Extensions key in the bar runs an extension and draws its popup in the bar; pinned extensions keep their icon in the bar; an extension's menu is drawn natively.
+- The host's DevTools session on a popup no longer opens an inspector beside it.
+- The Web Store's banner asking to switch to Chrome to install is hidden; Viola installs from it.
+- Files dropped on a page reach it as a drag of those files.
+- Engines native41 (x86) and native42 (ARM): native39 and native40 with 0008; only chrome differs.
+
 * Tue Nov 17 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native46.creator20261117.1
 - Audio streams are named Viola (application.id com.rhyme.viola) from the out-of-process audio service: engine patch 0007.
 - Engines native39 (x86) and native40 (ARM): native37 and native38 with 0007; only chrome differs.

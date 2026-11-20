@@ -55,7 +55,9 @@ class ExtensionPromptPanel(Gtk.Box):
         self.accept_button = None
         if accept_label:
             self.accept_button = Gtk.Button(label=accept_label, hexpand=True)
-            self.accept_button.add_css_class('viola-signin-action')
+            # Removing an extension is the destructive confirm's red action.
+            self.accept_button.add_css_class('lumaui-panel-confirm-action' if prompt.get('danger')
+                                             else 'viola-signin-action')
             self.accept_button.connect('clicked', lambda _b: self.accept())
             buttons.append(self.accept_button)
         self.append(buttons)

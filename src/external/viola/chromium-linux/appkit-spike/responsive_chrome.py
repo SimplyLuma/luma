@@ -12,6 +12,7 @@ from luma_appkit.bar_panel import PanelRow, panel_list
 from native_footer import NativeFooter
 from native_signin import SignInPanel, is_signin
 from native_extension_prompt import ExtensionPromptPanel, is_extension_prompt
+from native_extensions import NativeExtensions, extension_rows, rows_signature
 from native_address_focus import AddressEdit
 
 
@@ -41,6 +42,19 @@ def address_control(item, size):
 register_item(BrowserAddress, address_control)
 
 
+@dataclass
+class ExtensionBarItem:
+    widget: Gtk.Widget
+
+
+def extension_control(item, size):
+    # A pinned extension's own icon; LumaUI owns its place in the bar.
+    return item.widget
+
+
+register_item(ExtensionBarItem, extension_control)
+
+
 # Below these widths a browser window folds its sidebar away (compact) and
 # then becomes the phone composition.
 COMPACT_WIDTH = 900
@@ -67,6 +81,7 @@ class ResponsiveChrome:
         self.scroll_direction = 0
         self.signin = None
         self.signin_answered = None
+        self.extensions = host.extensions = NativeExtensions(host)
         self.center = ActionCenter().attach(host.page_layers)
         self.center.set_name('viola-page-bar')
         self.center.bar.add_css_class('viola-page-bar-motion')
@@ -264,7 +279,8 @@ class ResponsiveChrome:
         # exactly when New Tab delivers its first state.
         signature = (self.phone, state.get('canGoBack') if self.phone else None,
                      state.get('canGoForward') if self.phone else None,
-                     len(tabs) if self.phone else None)
+                     len(tabs) if self.phone else None,
+                     rows_signature(extension_rows(state)))
         if not force and signature == self.signature:
             if self.phone and self.search and not self.center.searching:
                 self.search.set_text('' if url == 'about:blank' else url)
@@ -304,8 +320,16 @@ class ResponsiveChrome:
             BarAction('rotate-cw', tooltip='Reload', on_activate=lambda: self.host.send('nav:reload')),
             BarAction('share-2', tooltip='Share page', on_activate=self.show_share),
             BarAction('download', tooltip='Downloads', on_activate=self.show_downloads),
-            BarAction('ellipsis', tooltip='Browser menu', on_activate=self.browser_menu),
         ]
+        # Pinned extensions keep their icon in the bar; the Extensions key
+        # lists every enabled one. Neither shows without extensions.
+        rows = [] if self.host.mini else extension_rows(state)
+        extension_items = [ExtensionBarItem(self.extensions.bar_button(row))
+                           for row in rows if row.get('pinned')][:4]
+        if rows:
+            extension_items.append(BarAction('blocks', tooltip='Extensions', on_activate=self.show_extensions))
+        actions += extension_items
+        actions.append(BarAction('ellipsis', tooltip='Browser menu', on_activate=self.browser_menu))
         if self.host.mini:
             actions.append(BarAction('', 'Open in Viola', primary=True, keep_label=True,
                 tooltip='Move this live page into the full browser',
@@ -318,7 +342,13 @@ class ResponsiveChrome:
         self.host.reload = self.host.address_field.get_next_sibling()
         self.share_anchor = self.host.reload.get_next_sibling()
         self.download_anchor = self.share_anchor.get_next_sibling()
-        self.host.menu_button = self.download_anchor.get_next_sibling()
+        following = self.download_anchor.get_next_sibling()
+        self.extensions_anchor = None
+        for index in range(len(extension_items)):
+            if index == len(extension_items) - 1:
+                self.extensions_anchor = following
+            following = following.get_next_sibling()
+        self.host.menu_button = following
         if self.host.mini:
             self.expand = self.host.menu_button.get_next_sibling()
             self.expand.set_visible(not getattr(self.host, 'developer_tools', False))
@@ -589,9 +619,21 @@ class ResponsiveChrome:
                 PanelRow('Reload', icon='rotate-cw', on_activate=lambda: self.command('nav:reload')),
                 PanelRow('Unpin from top' if any(tab['id'] == state.get('activeTabId') for tab in state.get('favorites', [])) else 'Pin to top', icon='pin', on_activate=self.toggle_pin),
                 PanelRow('New private window', icon='eye-off', on_activate=self.host._new_private_window),
+                *([PanelRow('Extensions', icon='blocks', closes=False, on_activate=self.show_extensions)]
+                  if extension_rows(state) else []),
                 PanelRow('Browser menu', icon='ellipsis', on_activate=self.browser_menu)]
         self.center.grow('more', panel_list(rows, label='More'))
         self.panel = 'more'
+
+    def show_extensions(self):
+        # A row folds the panel itself; only a panel still grown folds here.
+        if self.center.grown == 'extensions':
+            self.center.fold(); self.panel = None
+            return
+        self.query_generation += 1
+        self.center.grow('extensions', self.extensions.panel,
+                         anchor=None if self.phone else getattr(self, 'extensions_anchor', None))
+        self.panel = 'extensions'
 
     def command(self, channel):
         self.center.fold(); self.panel = None
