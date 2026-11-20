@@ -2439,8 +2439,7 @@ overlay.lumaui-dock > box.lumaui-dock-frame { padding: var(--lumaui-dock-gap); }
 overlay.lumaui-dock.under-bar > box.lumaui-dock-frame { padding-bottom: var(--lumaui-dock-bar-clearance); }
 overlay.lumaui-dock.under-bar.phone > box.lumaui-dock-frame { padding-bottom: var(--lumaui-dock-phone-bar-clearance); }
 /* Every tile is the kit's card radius, never sharpened by the island's: the island holding a dock grows to
- * that radius plus the gap instead, so the two stay concentric. */
-.luma-island.lumaui-docked { border-radius: calc(var(--lumaui-dock-tile-radius) + var(--lumaui-dock-gap)); }
+ * that radius plus the gap instead (lumaui-toolkit.css, .luma-island.lumaui-docked), so the two stay concentric. */
 box.lumaui-dock-tile {
   min-width: var(--lumaui-dock-min-size); min-height: var(--lumaui-dock-min-size);
   border-radius: var(--lumaui-dock-tile-radius); color: @luma_ink;
