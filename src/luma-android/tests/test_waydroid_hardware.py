@@ -2,12 +2,14 @@
 from types import SimpleNamespace
 from unittest import TestCase, mock
 from pathlib import Path
+import os
 import tempfile
 
 from luma_android.waydroid_hardware import (
     GuardedGbinder, GuardedServiceManager, INTERFACE, EX_SECURITY,
     SERVICE_NAME, install_guard, install_session_guards,
     verify_confinement, EX_UNSUPPORTED_OPERATION,
+    VideoNodeGlob, host_owned_camera, install_video_node_policy, video_node_caps,
 )
 
 
@@ -181,3 +183,51 @@ class LegacyClipboardSelection(TestCase):
         self.assertTrue(independent.canClip)
         with self.assertRaises(RuntimeError):
             disable_legacy_clipboard(SimpleNamespace())
+
+
+# Device capabilities as the kernel reports them (VIDIOC_QUERYCAP).
+IPU7_ISYS_CAPTURE = 0x24200001   # capture, streaming, ext pix format, IO_MC
+UVC_CAPTURE = 0x04200001
+UVC_METADATA = 0x04a00000
+STATEFUL_DECODER = 0x04204000    # M2M mplane
+STATELESS_DECODER_MC = 0x24204000
+
+
+class HostCameraNodes(TestCase):
+    def test_media_controller_capture_nodes_stay_with_the_host(self):
+        self.assertTrue(host_owned_camera(IPU7_ISYS_CAPTURE))
+        for caps in (UVC_CAPTURE, UVC_METADATA, STATEFUL_DECODER,
+                     STATELESS_DECODER_MC, None):
+            with self.subTest(caps=caps):
+                self.assertFalse(host_owned_camera(caps))
+
+    def test_querycap_reads_device_caps_when_the_driver_reports_them(self):
+        def ioctl(fd, request, buffer):
+            self.assertEqual(request, 0x80685600)
+            buffer[84:92] = (0xa4200001).to_bytes(4, 'little') + \
+                IPU7_ISYS_CAPTURE.to_bytes(4, 'little')
+        read, write = os.pipe()
+        os.close(write)
+        self.assertEqual(video_node_caps('/dev/video0', opener=lambda *_: read, ioctl=ioctl),
+                         IPU7_ISYS_CAPTURE)
+
+    def test_unqueryable_nodes_are_left_to_the_provider(self):
+        def opener(*_):
+            raise PermissionError
+        self.assertIsNone(video_node_caps('/dev/video0', opener=opener))
+        self.assertFalse(host_owned_camera(None))
+
+    def test_only_the_video_node_lists_are_filtered(self):
+        caps = {'/dev/video0': IPU7_ISYS_CAPTURE, '/dev/video1': IPU7_ISYS_CAPTURE,
+                '/dev/video2': UVC_CAPTURE, '/dev/video3': STATEFUL_DECODER}
+        backend = SimpleNamespace(
+            glob=lambda pattern: sorted(caps) if pattern == '/dev/video*' else ['/dev/fb0'],
+            escape=lambda value: value)
+        module = SimpleNamespace(glob=backend)
+        install_video_node_policy(module, caps=caps.get)
+        install_video_node_policy(module, caps=caps.get)
+        self.assertIsInstance(module.glob, VideoNodeGlob)
+        self.assertIs(module.glob.backend, backend)
+        self.assertEqual(module.glob.glob('/dev/video*'), ['/dev/video2', '/dev/video3'])
+        self.assertEqual(module.glob.glob('/dev/fb*'), ['/dev/fb0'])
+        self.assertEqual(module.glob.escape('x'), 'x')
