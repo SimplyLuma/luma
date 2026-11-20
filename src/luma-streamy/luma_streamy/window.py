@@ -304,8 +304,7 @@ class StreamyWindow(AppWindow):
         def failed(reason: str) -> None:
             if reason == "cancelled":
                 return
-            words = {"no camera": "No camera was found", "failed": "It isn't available"}.get(reason, reason)
-            self._widget_failed(None, widget.id, words)
+            self._widget_failed(None, widget.id, "nocamera" if reason == "no camera" else "missing")
 
         if widget.kind == "camera":
             self.portals.camera(widget.id, done=done, failed=failed)
@@ -318,8 +317,28 @@ class StreamyWindow(AppWindow):
     def _show_scene(self) -> None:
         self.engine.show_scene(self.project.active_scene, skip=set(self.widget_errors))
 
+    @staticmethod
+    def problem_words(w: Widget, reason: str) -> str:
+        """What happened to a widget's source, and what fixes it, in a sentence or two."""
+        thing = {"camera": "The camera", "display": "The shared display", "window": "The shared window",
+                 "image": "The image", "microphone": "The microphone",
+                 "desktop-audio": "Desktop audio"}.get(w.kind, w.name)
+        if reason == "busy":
+            return f"{thing} is in use by another app. Close it there, then try again."
+        if reason == "denied":
+            return f"Streamy isn't allowed to use {thing.lower()}. Allow it in Settings, then try again."
+        if w.kind == "camera":
+            if reason == "nocamera":
+                return "No camera was found. Connect one, then try again."
+            return "The camera didn't start. Another app may be using it; close that app, then try again."
+        if w.kind in ("display", "window"):
+            return f"{thing} stopped before its picture arrived. Share it again."
+        if w.kind == "image":
+            return "The image can't be opened. Choose another one."
+        return f"{thing} stopped. Try again."
+
     def _widget_failed(self, _engine, widget_id: str, reason: str) -> None:
-        """A source failed: say so on the widget, offer Try again, keep everything else running."""
+        """A source failed: say so on the widget, offer the fix, keep everything else running."""
         try:
             _scene, w = self.project.find_widget(widget_id)
         except ModelError:
@@ -327,7 +346,7 @@ class StreamyWindow(AppWindow):
         self.widget_errors[widget_id] = reason
         if self.portals is not None:
             self.portals.close(widget_id)
-        Toast.show(self.host, f"{w.name} unavailable", kind="warning")
+        Toast.show(self.host, f"{w.name} couldn't start", kind="warning")
         self.refresh_all()
 
     def retry_widget(self, w: Widget) -> None:
@@ -336,7 +355,10 @@ class StreamyWindow(AppWindow):
             self.portals.close(w.id)
         self.refresh_all()
         if w.kind in ("display", "window", "camera") and not self.fake:
-            self._choose_source(w, restore=True)
+            # Share again: the picker, not the old choice that just failed.
+            self._choose_source(w, restore=w.kind == "camera")
+        elif w.kind == "image" and not self.fake:
+            self._choose_image(w)
         else:
             self._show_scene()
 
@@ -575,8 +597,10 @@ class StreamyWindow(AppWindow):
         items = [TypeLabel(words, role="body", wrap=True)]
         problem = self.widget_errors.get(w.id)
         if problem is not None:
-            items = [TypeLabel(f"Unavailable. {problem}.", role="body", wrap=True),
-                     TextButton("Try again", style="plain", on_click=lambda: self.retry_widget(w))]
+            fix = "Share again…" if w.kind in ("display", "window") else (
+                "Choose image…" if w.kind == "image" else "Try again")
+            items = [TypeLabel(self.problem_words(w, problem), role="body", wrap=True),
+                     TextButton(fix, style="plain", on_click=lambda: self.retry_widget(w))]
             return PropertySection("Source", *items)
         if w.kind in ("display", "window"):
             button = TextButton("Share another…" if w.kind == "display" else "Choose another window…", style="plain",

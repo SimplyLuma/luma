@@ -52,8 +52,8 @@ def main() -> int:
     GLib.timeout_add(4500, loop.quit)
     loop.run()
     print("failed", failed, "branches", sorted(engine.branches), "longest stall", round(max(gaps), 3))
-    assert missing.id in failed and failed[missing.id] == "It isn't available", failed
-    assert hung.id in failed and failed[hung.id] == "It didn't send a picture", failed
+    assert missing.id in failed and failed[missing.id] == "missing", failed
+    assert hung.id in failed and failed[hung.id] == "silent", failed
     assert good.id in engine.branches and good.id not in failed
     assert max(gaps) < 0.5, f"the main loop stalled for {max(gaps):.2f} s"
     # Let the stuck source go, then stop everything without waiting on it.

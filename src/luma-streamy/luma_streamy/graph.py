@@ -120,7 +120,9 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
     props = {"always-copy": False, "keepalive-time": 1000}
     if fd is not None:
         props["fd"] = fd
-    if node is not None:
+    if node is not None and node.startswith("path:"):
+        props["path"] = node[5:]  # an old portal's node id, when no serial could be found
+    elif node is not None:
         props["target-object"] = node
     if kind == "camera":
         # WirePlumber links a camera-portal client's stream only when it says it is a camera.

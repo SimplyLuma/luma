@@ -117,19 +117,23 @@ def choose_encoders(codec: str) -> EncoderChoice | None:
     return graph.choose(working, codec)
 
 
-FIRST_PICTURE_S = 10
+#: A capture that sends no picture in this long has failed; say so instead of waiting.
+FIRST_PICTURE_S = 8
+
+#: Why a source failed: "busy", "missing", "denied", "silent" (no picture in time) or "stopped".
+REASONS = ("busy", "missing", "denied", "silent", "stopped")
 
 
 def source_problem(message: str, debug: str) -> str:
-    """A source's GStreamer error as a short plain reason."""
+    """A source's GStreamer error as one of REASONS."""
     text = f"{message} {debug}".lower()
     if "busy" in text or "ebusy" in text or "in use" in text:
-        return "It's in use by another app"
+        return "busy"
     if "target not found" in text or "no such" in text or "not found" in text:
-        return "It isn't available"
-    if "permission" in text or "not allowed" in text:
-        return "Streamy isn't allowed to use it"
-    return "It stopped"
+        return "missing"
+    if "permission" in text or "not allowed" in text or "denied" in text:
+        return "denied"
+    return "stopped"
 
 
 @dataclass
@@ -486,7 +490,7 @@ class Engine(GObject.Object):
     def _no_picture(self, branch: Branch) -> bool:
         branch.watchdog = 0
         if self.branches.get(branch.widget_id) is branch and not branch.shown:
-            self._fail(branch.widget_id, "It didn't send a picture")
+            self._fail(branch.widget_id, "silent")
         return False
 
     def _fail(self, widget_id: str, reason: str) -> None:

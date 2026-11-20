@@ -48,6 +48,43 @@ class PortalError(RuntimeError):
     pass
 
 
+def _devices(fd: int, wanted: str):
+    """The PipeWire devices a remote shows, through GStreamer's provider (which owns and closes ``fd``)."""
+    import gi
+
+    gi.require_version("Gst", "1.0")
+    from gi.repository import Gst
+
+    Gst.init(None)
+    factory = Gst.DeviceProviderFactory.find("pipewiredeviceprovider")
+    if factory is None:
+        os.close(fd)
+        return None, []
+    provider = factory.get()
+    provider.set_property("fd", fd)
+    if not provider.start():
+        return None, []
+    return provider, [d for d in provider.get_devices() if d.get_device_class().startswith(wanted)]
+
+
+def _prop(device, key: str):
+    props = device.get_properties()
+    return str(props.get_value(key)) if props is not None and props.has_field(key) else None
+
+
+def node_serial(fd: int, node_id: int) -> str | None:
+    """The object.serial of node ``node_id`` on a portal remote, or None when it can't be told."""
+    provider, devices = _devices(fd, "Video/")
+    try:
+        for device in devices:
+            if _prop(device, "object.id") == str(node_id) or _prop(device, "node.id") == str(node_id):
+                return _prop(device, "object.serial")
+        return None
+    finally:
+        if provider is not None:
+            provider.stop()
+
+
 def camera_nodes(fd: int) -> list[tuple[str, str, tuple[int, int] | None]]:
     """(target, name, size) for each camera on a camera-portal PipeWire remote.
 
@@ -185,20 +222,31 @@ class Portals:
                 failed("nothing was shared")
                 return
             node_id, props = streams[0]
-            # pipewire-serial (v6) is stable where node ids are reused.
-            serial = props.get("pipewire-serial")
-            node = str(serial) if serial is not None else str(node_id)
             size = tuple(props["size"]) if "size" in props else None
+            remote = lambda: self._open_remote(SCREENCAST, [GLib.Variant("o", session)])  # noqa: E731
+            # pipewiresrc's target-object is an object.serial (or a node name), never a node id.
+            # pipewire-serial (portal v6) is that serial; older portals give only the id, which
+            # the session's own remote resolves to its serial.
+            serial = props.get("pipewire-serial")
+
+            def resolved(found: str | None) -> bool:
+                capture = Capture(-1, found, size, results.get("restore_token"), session)
+                capture.path = None if found else str(node_id)
+                capture.remote = remote
+                self.captures[widget_id] = capture
+                done(capture)
+                return False
+
+            if serial is not None:
+                resolved(str(serial))
+                return
             try:
-                fd = self._open_remote(SCREENCAST, [GLib.Variant("o", session)])
+                fd = remote()
             except GLib.Error as error:
                 failed(error.message)
                 return
-            os.close(fd)  # each stream opens its own connection to the session's remote
-            capture = Capture(-1, node, size, results.get("restore_token"), session)
-            capture.remote = lambda: self._open_remote(SCREENCAST, [GLib.Variant("o", session)])
-            self.captures[widget_id] = capture
-            done(capture)
+            threading.Thread(target=lambda: GLib.idle_add(resolved, node_serial(fd, int(node_id))),
+                             name="streamy-screencast-node", daemon=True).start()
 
         self._request(SCREENCAST, "CreateSession", [], {"session_handle_token": GLib.Variant("s", self._token())},
                       created, failed)
@@ -255,11 +303,13 @@ class Portals:
                           Gio.DBusCallFlags.NONE, -1, None, None)
 
     def source_for(self, widget) -> tuple[int | None, str | None]:
-        """The engine's question: a fresh PipeWire connection (pipewiresrc owns it) and the node to target."""
+        """The engine's question: a fresh PipeWire connection (pipewiresrc owns it) and the node to target
+        (an object.serial, or "path:<id>" when only the id is known)."""
         capture = self.captures.get(widget.id)
         if capture is None:
             return None, None
         try:
-            return capture.remote(), capture.node
+            target = capture.node or (f"path:{capture.path}" if getattr(capture, "path", None) else None)
+            return capture.remote(), target
         except GLib.Error:
             return None, None
