@@ -554,8 +554,10 @@ class FloatingMenu(Gtk.Box):
     def _present(self, host: LayerHost) -> None:
         """Lay the card over `host`, the window's one top layer, scrolling when taller than it."""
         self._host = host
-        available_height = max(96, host.get_height() - 16)
-        if self._scroll is None and _natural(self)[1] > available_height:
+        # A host made just now (LayerHost.install) has no size yet: the window's is the room.
+        room = host.get_height() if host.get_height() > 0 else (host.get_root().get_height() if host.get_root() else 0)
+        available_height = max(96, room - 16)
+        if self._scroll is None and room > 0 and _natural(self)[1] > available_height:
             # Keep every choice reachable when a short window cannot fit the menu.
             content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             while child := self.get_first_child():

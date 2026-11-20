@@ -68,6 +68,18 @@ rows = ["Order", MenuItem("Bring to front", shortcut="Ctrl+Shift+]"), MenuItem("
         MenuItem("Size", icon="ratio", submenu=[MenuItem("Fit"), MenuItem("Fill"), MenuItem("Stretch")]),
         MenuItem("Delete", danger=True)]
 
+# A window whose host is made by the first menu (no size yet) still gets the whole card, unclipped.
+fresh = Gtk.Window(default_width=700, default_height=500)
+fresh_body = Gtk.Box(hexpand=True, vexpand=True)
+fresh.set_child(fresh_body)
+fresh.present()
+settle()
+menu = FloatingMenu(rows).popup(fresh_body, x=200, y=60)
+settle()
+assert menu._scroll is None, "a short menu doesn't scroll (it was wrapped to 96 px when the host had no size)"
+menu.close()
+fresh.destroy()
+
 # At a point: the menu's corner on the click, not at the big anchor's edge.
 menu = FloatingMenu(rows).popup(canvas, x=120, y=90)
 settle()
