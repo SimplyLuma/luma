@@ -30,7 +30,8 @@ class DesktopTargets(unittest.TestCase):
         original = target.packages(ROOT, 'x86_64')
         actual = target.packages(ROOT, 'aarch64')
         self.assertEqual(actual, [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p
-                                  for p in original if target.package_name(p) != 'intel-crashlog'])
+                                  for p in original
+                                  if target.package_name(p) not in ('intel-crashlog', 'libva-intel-media-driver')])
         self.assertFalse(any(p.endswith('.x86_64') for p in actual))
         self.assertFalse(any('surfacepreview' in p for p in actual))
 
@@ -93,7 +94,7 @@ class DesktopTargets(unittest.TestCase):
         self.assertEqual(arm, [p.removesuffix('.x86_64') + '.aarch64' if p.endswith('.x86_64') else p
                                for p in x86 if p not in x86_only])
         desktop = set(target.packages(ROOT, 'aarch64'))
-        for name in ('gtk4-', 'libadwaita-', 'luma-developer-platform-'):
+        for name in ('gtk4-', 'libadwaita-', 'luma-developer-platform-', 'mesa-dri-drivers-', 'mesa-libgbm-'):
             main = next(p for p in arm if p.startswith(name) and '-devel-' not in p)
             self.assertIn(main, desktop)
         for name in ('webkitgtk6.0', 'webkit2gtk4.1', 'javascriptcoregtk6.0', 'javascriptcoregtk4.1'):

@@ -4,6 +4,13 @@ Applied by `0000-luma-fedora-spec.patch` to Fedora's mesa 26.2.5-1 spec
 (release `.luma.N`) on top of `mesa-26.2.5.tar.xz`; built by
 `scripts/packages/build-mesa.sh` (desktop-components group `mesa`).
 
+The spec patch also builds hardware H.264 and H.265 encode:
+`-Dvideo-codecs=all_free,h264enc,h265enc`. Fedora builds Mesa with the
+`all_free` default, so radeonsi, d3d12 and virtio_gpu offer no H.264/H.265
+encode entrypoints to VA-API and RADV/ANV no H.264/H.265 Vulkan video
+encode. Decode of H.264, H.265 and VC-1 stays off (`h264dec`, `h265dec` and
+`vc1dec` are not enabled).
+
 | Patch | Origin | Why |
 |---|---|---|
 | 0001 | Luma, 2026-11-02; not upstream yet (submit to mesa/mesa, applies to main as of 2026-11-02) | v3d (Raspberry Pi 4/5): a blit from a raster (linear) source, such as a compositor's scanout buffer, into a texture of another format or at another offset filled its tiled temporary with `util_resource_copy_region()`: the whole source level mapped and tiled on the CPU, after a GPU wait. A backdrop blur does this every frame. The temporary is now filled by a TLB load/store job covering only the tiles the blit reads; the CPU copy stays as the fallback (multisample, depth/stencil, non-renderable formats, arrays, 3D). |
