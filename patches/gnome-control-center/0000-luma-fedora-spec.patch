@@ -5,7 +5,7 @@
  Name:           gnome-control-center
  Version:        50.4
 -Release:        %autorelease
-+Release:        1.luma.69%{?dist}
++Release:        1.luma.70%{?dist}
  Summary:        Utilities to configure the GNOME desktop
  
  License:        GPL-2.0-or-later AND CC0-1.0
@@ -124,7 +124,7 @@
 +Patch1105:      0106-lumaui-sound-volume-mixer.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
-+BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.123
++BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.135
 +BuildRequires:  pkgconfig(xkbcommon)
 +# GTestDBus in the adapter tests spawns a private bus.
 +BuildRequires:  dbus-daemon
@@ -141,7 +141,7 @@
  # Versioned library deps
 +Requires:       luma-shell-state >= 0.2.0-1.luma.34
 +Requires:       gnome-shell >= 50.3-1.luma.119.creator20261021.1
-+Requires:       luma-developer-platform >= 0.1.0-1.luma.123
++Requires:       luma-developer-platform >= 0.1.0-1.luma.135
 +# Settings › Apps › Background Activity shows and changes what the Luma
 +# background service runs; without it the page says so and changes nothing.
 +Recommends:     luma-background
