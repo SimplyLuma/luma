@@ -9,6 +9,7 @@ ui_headers = files(
   'luma-pane.h',
   'luma-media-fader.h',
   'luma-audio-meter.h',
+  'luma-volume-slider.h',
   'luma-segmented-control.h',
   'luma-inspector-section.h',
   'luma-histogram.h',
@@ -16,6 +17,7 @@ ui_headers = files(
   'luma-color-well.h',
   'luma-context.h',
   'luma-surface-backdrop.h',
+  'luma-window-shape.h',
   'luma-save-sheet.h',
   'luma-ui.h',
 )
@@ -68,24 +70,27 @@ ui_c_args = []
 if gio_unix_dep.found() and meson.get_compiler('c').has_header('gio/gdesktopappinfo.h', dependencies: gio_unix_dep)
   ui_c_args += '-DLUMA_HAVE_DESKTOP_APP_INFO'
 endif
-background_effect_sources = []
+wayland_protocol_sources = []
 if wayland_client_dep.found()
   ui_c_args += '-DLUMA_HAVE_WAYLAND'
   wayland_scanner = find_program('wayland-scanner')
-  background_effect_protocol = files('../protocols/ext-background-effect-v1.xml')
-  background_effect_client_header = custom_target(
-    'ext-background-effect-v1-client-header',
-    input: background_effect_protocol,
-    output: 'ext-background-effect-v1-client-protocol.h',
-    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
-  )
-  background_effect_client_code = custom_target(
-    'ext-background-effect-v1-client-code',
-    input: background_effect_protocol,
-    output: 'ext-background-effect-v1-client-protocol.c',
-    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
-  )
-  background_effect_sources = [background_effect_client_header, background_effect_client_code]
+  # ext-background-effect-v1 (standard) and luma-window-shape-v1 (Luma's
+  # Mutter; the same XML is the Mutter package's protocol source).
+  foreach protocol : ['ext-background-effect-v1', 'luma-window-shape-v1']
+    protocol_xml = files('../protocols/' + protocol + '.xml')
+    wayland_protocol_sources += custom_target(
+      protocol + '-client-header',
+      input: protocol_xml,
+      output: protocol + '-client-protocol.h',
+      command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+    )
+    wayland_protocol_sources += custom_target(
+      protocol + '-client-code',
+      input: protocol_xml,
+      output: protocol + '-client-protocol.c',
+      command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+    )
+  endforeach
 endif
 
 ui_sources = files(
@@ -103,6 +108,7 @@ ui_sources = files(
   'luma-pane.c',
   'luma-media-fader.c',
   'luma-audio-meter.c',
+  'luma-volume-slider.c',
   'luma-segmented-control.c',
   'luma-inspector-section.c',
   'luma-histogram.c',
@@ -110,6 +116,7 @@ ui_sources = files(
   'luma-color-well.c',
   'luma-context.c',
   'luma-surface-backdrop.c',
+  'luma-window-shape.c',
   'luma-save-sheet.c',
   'luma-ui-init.c',
 )
@@ -139,7 +146,7 @@ ui_inc = include_directories('.', '../semantics')
 ui_lib = library(
   'luma-ui-1',
   ui_sources,
-  background_effect_sources,
+  wayland_protocol_sources,
   ui_resources,
   version: '0.1.0',
   soversion: '0',

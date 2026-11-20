@@ -80,6 +80,7 @@ token. C apps never select `.lumaui-*` in their own sheets.
 | **Docks** `LumaCreativeWorkspace`: `add_panel(key, panel, LumaPanelSide)` (left, right or bottom; movable by dragging the header or from its More menu), `remove_panel()`, `get_panel()`, `move_panel(key, side, index)`, `get_layout()` / `set_layout()` (`a(ssb)`: key, side, folded), signal `layout-changed` | `CreativeWorkspace(panels=[(key, panel, side)], layout=, on_layout=)`, `creative_workspace.workspace_layout()`, `apply_layout()` |
 | **Arrange** `LumaArrangeView`: `new(content)`, `set_canvas_size(w, h)`, `add_item(id, label, x, y, w, h)`, `set_item_rect/label/locked/visible/keeps_aspect()`, `remove_item()`, `clear()`, `set_order(ids)`, `set_selected()`, `set_snapping()`, `canvas_to_view()`; signals `selection-changed(id)`, `item-changed(id, x, y, w, h)` (every step), `item-committed(…)` (the end of a drag or a nudge), `item-activated(id)`; `luma_arrange_snap()` | `ArrangeView(content, canvas=, items=[ArrangeItem(...)], on_select=, on_change=, on_commit=, on_activate=)` |
 | **Meter** `LumaAudioMeter`: `new(channels)`, `set_levels_db(l, r)`, `set_levels(l, r)`, `set_horizontal()`, `get_level_db(ch)`, `get_peak_db(ch)`, `set_clipped()`, `reset_clip()` | `AudioMeter(channels, horizontal=, label=)` |
+| **Volume** `LumaVolumeSlider`: `new(orientation, lower, upper)`, `set_value()`, `set_range()`, `set_steps()`, `set_unity()`, `set_unit()`, `set_muted()`, `set_meter_channels()`, `get_meter()`, `::moved` | `VolumeSlider(lower, upper, value=, unity=, unit=, meter=, horizontal=, label=, on_move=)` |
 | **Media** `LumaTimeline`: `new()`, `begin_update()` / `clear()` / `end_update()`, `set_frame_rate(num, den)`, `set_duration_frames()`, `append_lane()`, `set_lane_state()`, `append_region()`, `append_marker()`, `set_loop_frames()`, `set_position_frames()`, `set_selected_region()`, `set_tool()`, `set_snapping()`, `set_zoom()`, `set_export_status()`; signals in `luma-timeline.h` | `Timeline(lanes, duration, fps, position, selected, tool, snapping, zoom, callbacks)` |
 
 The gtk-doc comments in each header are the reference. A Python name written
@@ -108,6 +109,35 @@ LumaUI does no media read or cache work. `set_position_frames` moves only
 the playhead, and meter-only `set_lane_state` updates only the meter. LumaUI
 owns the 52 px ruler, 64 px lanes, clip and track controls, loop/marker chrome,
 and 214 px desktop / 116 px phone headers. Controls remain present on phone.
+
+## Windows that keep their shape
+
+A window whose content has a fixed shape, such as a game or a video view,
+asks Luma's compositor to keep it (C API level 10):
+
+```c
+luma_window_set_aspect_content (window, game_view);
+if (!luma_window_set_aspect_ratio (window, 4, 3))
+  /* No compositor support: keep the app's own fit-after-resize. */;
+```
+
+Only the ratio matters (4:3 and 640:480 are the same); `0, 0` removes it.
+`luma_window_set_aspect_content()` names the widget that shows the content, so
+the header bar and other chrome keep their own size and the ratio holds for
+that widget alone; without it the whole window keeps the ratio. Either call
+may come before or after the window is shown.
+
+The compositor applies the ratio to every size it picks while the window
+floats, live while the person drags any edge or corner, and to sizes the app
+asks for. Maximizing makes the window the largest size with that ratio,
+centred. A window in a tile fills its tile and a fullscreen window fills the
+screen, so the content must still letterbox in any size.
+
+`luma_window_set_aspect_ratio()` returns `TRUE` when the compositor keeps
+the ratio; `luma_window_get_aspect_ratio_enforced()` asks without setting
+one. Elsewhere (another compositor, X11, macOS, Windows) the calls do nothing
+and return `FALSE`. Python reaches the same calls through introspection as
+`LumaUI.window_set_aspect_ratio()`.
 
 ## Where C differs from Python
 

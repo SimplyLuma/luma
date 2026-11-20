@@ -34,6 +34,8 @@ test('media-fader', media_fader_test, env: ['G_DEBUG=fatal-criticals'])
 
 audio_meter_test = executable('test-luma-audio-meter', 'test-audio-meter.c', dependencies: ui_dep)
 test('lumaui-audio-meter', audio_meter_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
+volume_slider_test = executable('test-luma-volume-slider', 'test-volume-slider.c', dependencies: ui_dep)
+test('lumaui-volume-slider', volume_slider_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
 
 media_transport_lcd_test = executable(
   'test-luma-media-transport-lcd',
@@ -94,6 +96,17 @@ test(
   'surface-backdrop',
   surface_backdrop_test,
   env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'],
+)
+
+window_shape_test = executable(
+  'test-luma-window-shape',
+  'test-window-shape.c',
+  dependencies: ui_dep,
+)
+test(
+  'window-shape',
+  window_shape_test,
+  env: ['G_DEBUG=fatal-criticals'],
 )
 
 # LumaUI parts (ADR-052): a part's C test joins once it exists, and the parity

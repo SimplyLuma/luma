@@ -2569,7 +2569,8 @@
   --lumaui-dock-gap: 8px;
   --lumaui-dock-header-height: 32px;
   --lumaui-dock-header-padding-start: 12px;
-  --lumaui-dock-header-padding-end: 4px;
+  --lumaui-dock-header-padding-end: 6px;
+  --lumaui-dock-header-button: 28px;
   --lumaui-dock-header-gap: 8px;
   --lumaui-dock-icon: 16px;
   --lumaui-dock-title-size: 13px;
@@ -2940,6 +2941,14 @@
   --lumaui-meter-length: 120px;
   --lumaui-meter-mid-db: -18px;
   --lumaui-meter-high-db: -6px;
+  --lumaui-volume-slider-track: 4px;
+  --lumaui-volume-slider-knob: 14px;
+  --lumaui-volume-slider-hit: 24px;
+  --lumaui-volume-slider-meter-gap: 4px;
+  --lumaui-volume-slider-length: 160px;
+  --lumaui-volume-slider-min-length: 48px;
+  --lumaui-volume-slider-mark: 8px;
+  --lumaui-volume-slider-focus: 2px;
   --lumaui-monitor-chart-radius: 16px;
   --lumaui-monitor-core-radius: 9px;
   --lumaui-monitor-content-gutter: 30px;

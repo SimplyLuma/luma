@@ -1,16 +1,24 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The ScreenCast and Camera portals, asynchronously, with restore tokens.
+"""The ScreenCast and Camera portals, and app sound through luma_appkit.audio_capture.
 
-A display or window widget owns one ScreenCast session. The session stays
-open while the widget exists, even when its scene isn't shown, so showing
-it again needs no picker: only its PipeWire node is stopped. Restore tokens
-are single-use: every Start returns a new one, which the widget keeps.
+A display or window widget owns one ScreenCast session. The session stays open while
+the widget exists, even when its scene isn't shown, so showing it again needs no
+picker: only its PipeWire node is stopped. An app-audio widget owns one capture
+(luma_appkit's AudioCapture) while its scene is shown; off-scene it is closed and
+comes back from its restore token. Restore tokens are single-use: every share
+returns a new one, which the widget keeps.
+
+Restoring never strands a widget: a token the portal refuses (malformed, forgotten,
+from an older portal) or a restore that fails is retried once as a fresh pick, and
+every way a pick can end reaches ``done`` or ``failed`` with a reason the window can
+put into words ("cancelled", "timeout", "failed", "unavailable").
 """
 from __future__ import annotations
 
 import os
 import secrets
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -21,10 +29,27 @@ PATH = "/org/freedesktop/portal/desktop"
 SCREENCAST = "org.freedesktop.portal.ScreenCast"
 CAMERA = "org.freedesktop.portal.Camera"
 REQUEST = "org.freedesktop.portal.Request"
+REGISTRY = "org.freedesktop.host.portal.Registry"
 
 MONITOR, WINDOW = 1, 2
 CURSOR_EMBEDDED = 2
 PERSIST_UNTIL_REVOKED = 2
+#: An older luma-portal gave up on its picker after D-Bus's default 25 s and answered
+#: "cancelled". A cancel that lands right then is that timeout, not the person.
+_DBUS_DEFAULT_TIMEOUT = 25.0
+
+
+def register_host_app(app_id: str) -> None:
+    """Tell xdg-desktop-portal who this host app is, before any other portal call on the
+    session bus: the picker and the Shell's sharing pill then name Streamy, and restore
+    tokens are kept for it rather than for "a host application". A portal without the
+    registry (older than 1.19) is fine: nothing changes."""
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call_sync(BUS, PATH, REGISTRY, "Register", GLib.Variant("(sa{sv})", (app_id, {})), None,
+                      Gio.DBusCallFlags.NONE, 2000, None)
+    except GLib.Error:
+        pass
 
 
 @dataclass
@@ -38,6 +63,10 @@ class Capture:
     session: str | None = None
     path: str | None = None
     name: str | None = None
+    #: App audio: what is heard, in words ("Spotify, Firefox", "All sound"), and the
+    #: luma_appkit capture that owns the session and the remote.
+    description: str | None = None
+    owner: object = None
     opener: Callable | None = None
     opening: bool = False
     pool: list = field(default_factory=list)
@@ -129,6 +158,8 @@ class Portals:
         self.sender = self.bus.get_unique_name()[1:].replace(".", "_")
         self.captures: dict[str, Capture] = {}  # widget id -> open capture
         self.on_ready: Callable[[str], None] | None = None
+        #: A capture the portal ended by itself (widget id).
+        self.on_ended: Callable[[str], None] | None = None
 
     # ── Requests ──
 
@@ -186,38 +217,114 @@ class Portals:
         except GLib.Error:
             return None
 
-    # ── Screen and window capture ──
+    # ── Screen, window and application sound ──
 
     def screencast(self, widget_id: str, *, window: bool, restore_token: str | None,
                    done: Callable[[Capture], None], failed: Callable[[str], None], parent: str = "") -> None:
         """Pick (or restore) a display or a window; ``done`` gets the open capture."""
+        cursor_modes = self._property(SCREENCAST, "AvailableCursorModes") or 0
+        options = {"types": GLib.Variant("u", WINDOW if window else MONITOR),
+                   "multiple": GLib.Variant("b", False)}
+        if cursor_modes & CURSOR_EMBEDDED:
+            options["cursor_mode"] = GLib.Variant("u", CURSOR_EMBEDDED)
+        self._share(SCREENCAST, widget_id, options, restore_token, done, failed, parent)
+
+    def audio_capture_available(self) -> bool:
+        """Whether Luma's Audio Capture portal is here (the Share sound picker chooses what is heard)."""
+        from luma_appkit import audio_capture
+
+        return audio_capture.is_available(self.bus)
+
+    def app_audio(self, widget_id: str, *, restore_token: str | None, done: Callable[[Capture], None],
+                  failed: Callable[[str], None], parent: str = "", retried: bool = False) -> None:
+        """Pick (or restore) the sound a widget carries: chosen apps, or all sound but Streamy's own.
+        A token the portal no longer honours falls back to the picker once, as screen shares do."""
+        from luma_appkit import audio_capture
+
         if widget_id in self.captures:
             done(self.captures[widget_id])
             return
-        cursor_modes = self._property(SCREENCAST, "AvailableCursorModes") or 0
-        version = self._property(SCREENCAST, "version") or 1
+        if not self.audio_capture_available():
+            failed("unavailable")
+            return
+
+        def ready(granted, error) -> None:
+            if error is not None:
+                if error.cancelled:
+                    failed("cancelled")
+                elif restore_token and not retried:
+                    self.app_audio(widget_id, restore_token=None, done=done, failed=failed, parent=parent,
+                                   retried=True)
+                else:
+                    failed("failed")
+                return
+            capture = Capture(-1, granted.target, None, granted.restore_token, granted.session_handle)
+            capture.description = granted.description
+            capture.owner = granted
+            # The capture owns its remote; each pipewiresrc gets a duplicate of it to own and close.
+            capture.opener = lambda give: give(os.dup(granted.fd) if granted.fd >= 0 else None)
+            granted.on_closed = lambda _c: self._ended(widget_id, capture)
+            capture.pool.append(os.dup(granted.fd))
+            self.captures[widget_id] = capture
+            done(capture)
+
+        audio_capture.request_audio_capture(parent or None, ready, types=audio_capture.APPLICATIONS |
+                                            audio_capture.ALL_SOUND, multiple=True, include_self=False,
+                                            persist=True, restore_token=restore_token, connection=self.bus)
+
+    def _ended(self, widget_id: str, capture: "Capture") -> None:
+        """The portal ended a capture (the person stopped sharing): the widget hears so."""
+        if self.captures.get(widget_id) is capture:
+            self.close(widget_id)
+            if self.on_ended is not None:
+                self.on_ended(widget_id)
+
+    def _share(self, interface: str, widget_id: str, options: dict, restore_token: str | None,
+               done: Callable[[Capture], None], failed: Callable[[str], None], parent: str,
+               *, retried: bool = False) -> None:
+        """CreateSession → SelectSources → Start → OpenPipeWireRemote, the ScreenCast way.
+
+        A restore token is only a shortcut: if the portal refuses it, or the restored
+        share fails, the same widget is asked once more with no token (the picker)."""
+        if widget_id in self.captures:
+            done(self.captures[widget_id])
+            return
+        version = self._property(interface, "version") or 1
+        token = restore_token if version >= 4 and not retried else None
+        state = {"session": None, "started": 0.0}
+        reasons = ("cancelled", "failed", "timeout")
+        given_up = failed
+        failed = lambda reason: given_up(reason if reason in reasons else "failed")  # noqa: E731
+
+        def again(reason: str) -> None:
+            self._close_session(state["session"])
+            if token and not retried and reason != "cancelled":
+                self._share(interface, widget_id, options, None, done, failed, parent, retried=True)
+                return
+            if reason == "cancelled" and state["started"] and \
+                    abs(time.monotonic() - state["started"] - _DBUS_DEFAULT_TIMEOUT) < 1.5:
+                reason = "timeout"  # the picker's own D-Bus call ran out, not the person
+            failed(reason)
 
         def created(results: dict) -> None:
-            session = results["session_handle"]
-            options = {"types": GLib.Variant("u", WINDOW if window else MONITOR),
-                       "multiple": GLib.Variant("b", False)}
-            if cursor_modes & CURSOR_EMBEDDED:
-                options["cursor_mode"] = GLib.Variant("u", CURSOR_EMBEDDED)
+            session = state["session"] = results["session_handle"]
+            select = dict(options)
             if version >= 4:
-                options["persist_mode"] = GLib.Variant("u", PERSIST_UNTIL_REVOKED)
-                if restore_token:
-                    options["restore_token"] = GLib.Variant("s", restore_token)
-            self._request(SCREENCAST, "SelectSources", [GLib.Variant("o", session)], options,
-                          lambda _r: start(session), failed)
+                select["persist_mode"] = GLib.Variant("u", PERSIST_UNTIL_REVOKED)
+                if token:
+                    select["restore_token"] = GLib.Variant("s", token)
+            self._request(interface, "SelectSources", [GLib.Variant("o", session)], select,
+                          lambda _r: start(session), again)
 
         def start(session: str) -> None:
-            self._request(SCREENCAST, "Start", [GLib.Variant("o", session), GLib.Variant("s", parent)], {},
-                          lambda results: started(session, results), failed)
+            state["started"] = time.monotonic()
+            self._request(interface, "Start", [GLib.Variant("o", session), GLib.Variant("s", parent)], {},
+                          lambda results: started(session, results), again)
 
         def started(session: str, results: dict) -> None:
             streams = results.get("streams") or []
             if not streams:
-                failed("nothing was shared")
+                again("failed")
                 return
             node_id, props = streams[0]
             size = tuple(props["size"]) if "size" in props else None
@@ -228,11 +335,11 @@ class Portals:
             capture = Capture(-1, str(serial) if serial is not None else None, size,
                               results.get("restore_token"), session)
             capture.path = None if serial is not None else str(node_id)
-            capture.opener = lambda ready: self._open_remote_async(SCREENCAST, [GLib.Variant("o", session)], ready)
+            capture.opener = lambda ready: self._open_remote_async(interface, [GLib.Variant("o", session)], ready)
 
             def first(fd: int | None) -> None:
                 if fd is None:
-                    failed("failed")
+                    again("failed")
                     return
                 capture.pool.append(fd)
                 self.captures[widget_id] = capture
@@ -240,8 +347,13 @@ class Portals:
 
             capture.opener(first)
 
-        self._request(SCREENCAST, "CreateSession", [], {"session_handle_token": GLib.Variant("s", self._token())},
+        self._request(interface, "CreateSession", [], {"session_handle_token": GLib.Variant("s", self._token())},
                       created, failed)
+
+    def _close_session(self, session: str | None) -> None:
+        if session:
+            self.bus.call(BUS, session, "org.freedesktop.portal.Session", "Close", None, None,
+                          Gio.DBusCallFlags.NONE, -1, None, None)
 
     # ── Cameras ──
 
@@ -290,9 +402,11 @@ class Portals:
         for fd in capture.pool:
             os.close(fd)
         capture.pool.clear()
-        if capture.session:
-            self.bus.call(BUS, capture.session, "org.freedesktop.portal.Session", "Close", None, None,
-                          Gio.DBusCallFlags.NONE, -1, None, None)
+        if capture.owner is not None:
+            capture.owner.on_closed = None
+            capture.owner.close()  # ends its session and closes its remote
+        else:
+            self._close_session(capture.session)
 
     def source_for(self, widget) -> tuple[int | None, str | None]:
         """The engine's question: a PipeWire connection of its own (pipewiresrc owns it) and the node

@@ -1,5 +1,5 @@
 {
-  "_doc": "LumaUI audio meter: bar metrics and the dBFS where its zones change colour. Merged into lumaui by the generator: --lumaui-meter-*, LUMA_UI_METER_*.",
+  "_doc": "LumaUI audio meter and volume slider: bar metrics, the dBFS where the meter's zones change colour, and the slider's track, knob and meter spacing. Merged into lumaui by the generator: --lumaui-meter-*, --lumaui-volume-slider-*, LUMA_UI_METER_*, LUMA_UI_VOLUME_SLIDER_*.",
   "lumaui": {
     "meter": {
       "bar": 4,
@@ -8,6 +8,16 @@
       "length": 120,
       "mid_db": -18,
       "high_db": -6
+    },
+    "volume_slider": {
+      "track": 4,
+      "knob": 14,
+      "hit": 24,
+      "meter_gap": 4,
+      "length": 160,
+      "min_length": 48,
+      "mark": 8,
+      "focus": 2
     }
   }
 }

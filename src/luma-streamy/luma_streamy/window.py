@@ -16,11 +16,11 @@ gi.require_version("Adw", "1")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
-    SEPARATOR, ActionCenter, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView, AudioMeter,
+    SEPARATOR, ActionCenter, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView,
     BarAction, BarChip, Command, CommandGroup, CommandRegistry, Dock, DockTile,
     DestructiveDialog, IconOnlyButton, ListEmptyState, ModeSwitch,
-    NavigationSidebar, PropertyColor, PropertyNumber, PropertySection, RowLead, SidebarFoot, SidebarRow,
-    SidebarToggle, TextButton, Toast, ToastHost, TypeLabel, ValueRange, ValueSlider, add_style_sheet,
+    NavigationSidebar, PropertyColor, PropertyNumber, PropertySection, RowAction, RowLead, SidebarFoot, SidebarRow,
+    SidebarToggle, TextButton, Toast, ToastHost, TypeLabel, ValueSlider, VolumeSlider, add_style_sheet,
 )
 from luma_appkit.action_bubble import MenuItem  # noqa: E402
 from luma_appkit.creative_parts import add_arrange_item  # noqa: E402
@@ -69,6 +69,7 @@ class StreamyWindow(AppWindow):
         self._meters: dict[str, object] = {}
         self._building = False
         self.widget_errors: dict[str, str] = {}
+        self._app_audio: bool | None = None
 
         commands = self._commands()
         super().__init__(application=application, app_id=APP_ID, title="Streamy", icon_name=APP_ID,
@@ -93,6 +94,7 @@ class StreamyWindow(AppWindow):
         self.engine = engine or Engine(sources=self._source_for)
         if self.portals is not None:
             self.portals.on_ready = lambda _widget_id: self._show_scene()
+            self.portals.on_ended = lambda widget_id: self._widget_failed(None, widget_id, "ended")
         self.engine.connect("levels", self._levels)
         self.engine.connect("problem", lambda _e, text: Toast.show(self.host, text, kind="warning"))
         self.engine.connect("output-state", self._output_state)
@@ -112,8 +114,8 @@ class StreamyWindow(AppWindow):
 
     def _commands(self) -> CommandRegistry:
         add = tuple(Command(f"widget.add-{kind}", f"Add {KINDS[kind][0].lower()}", lambda k=kind: self.add_widget(k),
-                            icon=KINDS[kind][1]) for kind in ("display", "window", "camera", "image", "microphone",
-                                                              "desktop-audio"))
+                            icon=KINDS[kind][1], enabled=lambda k=kind: k in self._addable())
+                    for kind in ("display", "window", "camera", "image", "microphone", "desktop-audio", "app-audio"))
         layouts = tuple(Command(f"layout.{key}", label, lambda k=key: self.use_layout(k), icon="layout-dashboard")
                         for key, (label, _l) in PRESETS.items())
         return CommandRegistry((
@@ -182,14 +184,16 @@ class StreamyWindow(AppWindow):
         self.audio_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, max_children_per_line=4,
                                      min_children_per_line=1, valign=Gtk.Align.START, column_spacing=24)
         self.audio_box.add_css_class("streamy-mixer")
-        audio_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        audio_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True,
+                                          propagate_natural_height=True)
         audio_scroll.set_child(self.audio_box)
         self.audio_empty = ListEmptyState("No microphone or desktop audio")
         audio = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         audio.append(self.audio_empty)
         audio.append(audio_scroll)
         self.preview_tile = DockTile("preview", "Preview", "monitor", self.arrange, main=True, bare=True)
-        self.audio_tile = DockTile("audio", "Audio", "volume-2", audio)
+        # The mixer is as tall as its strips: the preview takes the rest, so neither holds empty well.
+        self.audio_tile = DockTile("audio", "Audio", "volume-2", audio, fit=True)
         self.dock = Dock([self.preview_tile, self.audio_tile], layout=self.layouts.current,
                          under_bar=True, on_layout=self.layouts.remember)
         self.preview_tile.connect("notify::width", lambda *_a: GLib.idle_add(self._size_preview))
@@ -275,7 +279,8 @@ class StreamyWindow(AppWindow):
         if scene is None or self.fake or self.portals is None:
             return
         for w in scene.widgets:
-            if w.kind in ("display", "window", "camera") and w.visible and w.id not in self.portals.captures:
+            if w.kind in ("display", "window", "camera", "app-audio") and w.visible and \
+                    w.id not in self.portals.captures and w.id not in self.widget_errors:
                 self._choose_source(w, restore=True)
 
     def _choose_source(self, widget: Widget, *, restore: bool) -> None:
@@ -283,8 +288,13 @@ class StreamyWindow(AppWindow):
             return
 
         def done(capture) -> None:
+            self.widget_errors.pop(widget.id, None)
             if capture.restore_token:
                 widget.source["restore-token"] = capture.restore_token  # single-use: keep the new one
+            if widget.kind == "app-audio" and capture.description:
+                widget.source["heard"] = capture.description
+                if not widget.source.get("named"):
+                    widget.name = capture.description[:40]
             if capture.aspect and not widget.source.get("sized"):
                 widget.source["sized"] = True
                 h = widget.width / capture.aspect
@@ -293,27 +303,59 @@ class StreamyWindow(AppWindow):
             self._show_scene()
 
         def failed(reason: str) -> None:
-            if reason == "cancelled":
-                return
-            self._widget_failed(None, widget.id, "nocamera" if reason == "no camera" else "missing")
+            # Every ending leaves the widget saying what happened and offering the fix; nothing
+            # asks again by itself (a scene switch must not keep raising the picker).
+            if reason == "no camera":
+                reason = "nocamera"
+            elif reason == "cancelled":
+                reason = "unshared"
+            elif reason not in ("timeout", "unavailable", "ended"):
+                reason = "missing"
+            widget.source.pop("restore-token", None)  # spent or refused: the next share picks afresh
+            self._widget_failed(None, widget.id, reason)
 
         if widget.kind == "camera":
             self.portals.camera(widget.id, done=done, failed=failed)
-        else:
-            token = widget.source.get("restore-token") if restore else None
-            self._with_parent(lambda parent: self.portals.screencast(
-                widget.id, window=widget.kind == "window", restore_token=token, done=done, failed=failed,
-                parent=parent))
+            return
+        token = widget.source.get("restore-token") if restore else None
+        if widget.kind == "app-audio":
+            self._with_parent(lambda parent: self.portals.app_audio(
+                widget.id, restore_token=token, done=done, failed=failed, parent=parent))
+            return
+        self._with_parent(lambda parent: self.portals.screencast(
+            widget.id, window=widget.kind == "window", restore_token=token, done=done, failed=failed,
+            parent=parent))
 
     def _show_scene(self) -> None:
         self.engine.show_scene(self.project.active_scene, skip=set(self.widget_errors))
+        self._close_offscene_sound()
+
+    def _close_offscene_sound(self) -> None:
+        """An app-audio capture lives only while its scene is shown; its restore token brings it back."""
+        if self.portals is None:
+            return
+        scene = self.project.active_scene
+        shown = {w.id for w in scene.widgets} if scene else set()
+        for other in self.project.scenes:
+            for w in other.widgets:
+                if w.kind == "app-audio" and w.id not in shown and w.id in self.portals.captures:
+                    self.portals.close(w.id)
 
     @staticmethod
     def problem_words(w: Widget, reason: str) -> str:
         """What happened to a widget's source, and what fixes it, in a sentence or two."""
         thing = {"camera": "The camera", "display": "The shared display", "window": "The shared window",
                  "image": "The image", "microphone": "The microphone",
-                 "desktop-audio": "Desktop audio"}.get(w.kind, w.name)
+                 "desktop-audio": "Desktop audio", "app-audio": "The apps' sound"}.get(w.kind, w.name)
+        if reason == "unshared":
+            what = {"display": "a display", "window": "a window", "app-audio": "the apps to hear"}.get(w.kind, "it")
+            return f"Nothing is shared yet. Choose {what} to show it here."
+        if reason == "ended":
+            return "Sharing this sound was stopped. Choose apps to hear them again."
+        if reason == "timeout":
+            return "The picker stopped waiting before anything was chosen. Share again when you're ready."
+        if reason == "unavailable":
+            return "This Luma doesn't offer app sound yet. Desktop audio carries everything this computer plays."
         if reason == "busy":
             return f"{thing} is in use by another app. Close it there, then try again."
         if reason == "denied":
@@ -324,9 +366,29 @@ class StreamyWindow(AppWindow):
             return "The camera didn't start. Another app may be using it; close that app, then try again."
         if w.kind in ("display", "window"):
             return f"{thing} stopped before its picture arrived. Share it again."
+        if w.kind == "app-audio":
+            return f"{thing} stopped. Choose the apps again."
         if w.kind == "image":
             return "The image can't be opened. Choose another one."
         return f"{thing} stopped. Try again."
+
+    def _show_problem(self, w: Widget) -> None:
+        self.select(w.id)
+        if self.center.grown != "source":
+            self._grow("source")
+
+    @staticmethod
+    def fix_words(w: Widget, reason: str) -> str | None:
+        """The key that fixes a widget's problem, or None when nothing here can."""
+        if reason == "unavailable":
+            return None
+        if w.kind == "app-audio":
+            return "Choose apps"
+        if w.kind in ("display", "window"):
+            return "Share" if reason == "unshared" else "Share again"
+        if w.kind == "image":
+            return "Choose image"
+        return "Try again"
 
     def _widget_failed(self, _engine, widget_id: str, reason: str) -> None:
         """A source failed: say so on the widget, offer the fix, keep everything else running."""
@@ -337,7 +399,10 @@ class StreamyWindow(AppWindow):
         self.widget_errors[widget_id] = reason
         if self.portals is not None:
             self.portals.close(widget_id)
-        Toast.show(self.host, f"{w.name} couldn't start", kind="warning")
+        if reason == "timeout":
+            Toast.show(self.host, "The picker stopped waiting. Share again when you're ready.", kind="warning")
+        elif reason != "unshared":  # a person who pressed Cancel knows
+            Toast.show(self.host, f"{w.name} couldn't start", kind="warning")
         self.refresh_all()
 
     def retry_widget(self, w: Widget) -> None:
@@ -345,7 +410,7 @@ class StreamyWindow(AppWindow):
         if self.portals is not None:
             self.portals.close(w.id)
         self.refresh_all()
-        if w.kind in ("display", "window", "camera") and not self.fake:
+        if w.kind in ("display", "window", "camera", "app-audio") and not self.fake:
             # Share again: the picker, not the old choice that just failed.
             self._choose_source(w, restore=w.kind == "camera")
         elif w.kind == "image" and not self.fake:
@@ -460,9 +525,24 @@ class StreamyWindow(AppWindow):
         self._widget_rows = {}
         widgets = list(reversed(scene.widgets)) if scene else []
         for w in widgets:
-            meta = "Unavailable" if w.id in self.widget_errors else "Locked" if w.locked else (
-                "Hidden" if not w.visible else ("Muted" if w.has_sound and w.muted else ""))
-            row = SidebarRow(w.name, lead=RowLead.icon(w.icon), meta=meta, muted=not w.visible)
+            # Hidden and muted are the trailing key's to say; the meta names what it can't.
+            problem = self.widget_errors.get(w.id)
+            # The trailing key states the widget's one switch: a picture's eye, a sound's speaker. Off
+            # (hidden, muted) always shows; on waits for the row (hover, selection, focus), so the list
+            # reads calm and every row keeps one height.
+            if problem:
+                # A widget without its source says so at its end; the key opens Source, which
+                # explains and offers the fix.
+                words = "Not shared" if problem == "unshared" else "Unavailable"
+                key = RowAction("circle-alert", f"{w.name}: {words}", lambda wid=w: self._show_problem(wid))
+            elif w.has_picture:
+                key = RowAction("eye" if w.visible else "eye-off", f"Hide {w.name}" if w.visible else f"Show {w.name}",
+                                lambda wid=w: self._set_visible(wid, not wid.visible), quiet=w.visible)
+            else:
+                key = RowAction("volume-x" if w.muted else "volume-2", f"Unmute {w.name}" if w.muted else f"Mute {w.name}",
+                                lambda wid=w: self._toggle_mute(wid), quiet=not w.muted)
+            row = SidebarRow(w.name, lead=RowLead.icon(w.icon), title_icon="lock" if w.locked else None, trail=key,
+                             muted=not w.visible or bool(problem))
             row.widget_id = w.id
             click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
             click.connect("pressed", lambda _g, _n, _x, _y, wid=w.id, r=row: self._widget_menu(wid, r))
@@ -605,20 +685,22 @@ class StreamyWindow(AppWindow):
             "image": Path(w.source.get("path", "")).name or "No image",
             "microphone": "The default microphone",
             "desktop-audio": "Everything this computer plays",
-            "app-audio": "One app's sound",
+            "app-audio": w.source.get("heard") or "The sound of the apps you choose",
         }[w.kind]
         items = [TypeLabel(words, role="body", wrap=True)]
         problem = self.widget_errors.get(w.id)
         if problem is not None:
-            fix = "Share again…" if w.kind in ("display", "window") else (
-                "Choose image…" if w.kind == "image" else "Try again")
-            items = [TypeLabel(self.problem_words(w, problem), role="body", wrap=True),
-                     TextButton(fix, style="plain", on_click=lambda: self.retry_widget(w))]
+            items = [TypeLabel(self.problem_words(w, problem), role="body", wrap=True)]
+            fix = self.fix_words(w, problem)
+            if fix:
+                items.append(TextButton(f"{fix}…", style="plain", on_click=lambda: self.retry_widget(w)))
             return PropertySection("Source", *items)
         if w.kind in ("display", "window"):
             button = TextButton("Share another…" if w.kind == "display" else "Choose another window…", style="plain",
                                 on_click=lambda: self._reshare(w))
             items.append(button)
+        elif w.kind == "app-audio":
+            items.append(TextButton("Choose other apps…", style="plain", on_click=lambda: self._reshare(w)))
         elif w.kind == "image":
             button = TextButton("Choose image…", style="plain", on_click=lambda: self._choose_image(w))
             items.append(button)
@@ -671,7 +753,7 @@ class StreamyWindow(AppWindow):
     # ── Audio inset ──
 
     def _refresh_audio(self) -> None:
-        """A strip per sound: mute, name and level in dB, the meter, then the volume."""
+        """A strip per sound: mute, name and level in dB, then the volume with its meter along it."""
         box = self.audio_box
         box.remove_all()
         self._meters.clear()
@@ -680,7 +762,7 @@ class StreamyWindow(AppWindow):
         self.audio_empty.set_visible(not sounds)
         box.get_parent().get_parent().set_visible(bool(sounds))
         for w in sounds:
-            # The mute key leads the strip; the name, meter and volume share one left edge beside it.
+            # The mute key leads the strip; the name and the volume's track share one left edge beside it.
             strip = Gtk.Box()
             strip.add_css_class("streamy-strip")
             strip.update_property([Gtk.AccessibleProperty.LABEL], [w.name])
@@ -703,14 +785,18 @@ class StreamyWindow(AppWindow):
             level.add_css_class("streamy-strip-db")
             line.append(level)
             column.append(line)
-            meter = AudioMeter(2, horizontal=True, label=f"{w.name} level")
-            meter.set_hexpand(True)
-            column.append(meter)
-            volume = ValueRange(w.volume_db, -60, 6, 1, label=f"{w.name} volume")
-            volume.connect("value-changed", lambda _r, value, wid=w, words=level: self._volume_moved(wid, value, words))
+            # LumaUI's volume with its level along the track (one part): the stereo meter
+            # runs under the fader over exactly its length, 0 dB marked, muted goes quiet.
+            volume = VolumeSlider(-60, 6, value=w.volume_db, unity=0, unit="dB", meter=2, horizontal=True,
+                                  label=f"{w.name} volume",
+                                  on_move=lambda value, wid=w, words=level: self._volume_moved(wid, value, words))
+            volume.set_muted(w.muted)
+            volume.set_hexpand(True)
             column.append(volume)
+            meter = volume.get_meter()
             box.append(strip)
             self._meters[w.id] = meter
+        self.dock.refit()
 
     @staticmethod
     def _db_words(w: Widget) -> str:
@@ -740,9 +826,16 @@ class StreamyWindow(AppWindow):
 
     # ── The bar ──
 
+    def _addable(self) -> tuple[str, ...]:
+        kinds = ("display", "window", "camera", "image", "microphone", "desktop-audio")
+        # App audio needs Luma's AudioCapture portal; asked once, after the window is up.
+        if self._app_audio is None and self.portals is not None:
+            self._app_audio = self.portals.audio_capture_available()
+        return kinds + (("app-audio",) if self._app_audio or self.fake else ())
+
     def _add_menu(self) -> list:
         return [MenuItem(KINDS[kind][0], icon=KINDS[kind][1], on_activate=lambda k=kind: self.add_widget(k))
-                for kind in ("display", "window", "camera", "image", "microphone", "desktop-audio")]
+                for kind in self._addable()]
 
     def _refresh_bar(self) -> None:
         items: list = []
@@ -762,19 +855,22 @@ class StreamyWindow(AppWindow):
             if items:
                 items.append(SEPARATOR)
             items.append(BarChip(w.name, on_dismiss=self.deselect))
-            if w.id in self.widget_errors:
-                items.append(BarAction("rotate-ccw", "Share again" if w.kind in ("display", "window")
-                                       else "Try again", primary=True, on_activate=lambda: self.retry_widget(w)))
             if w.has_picture:
                 items += [BarAction("frame", "Position", key="position", panel=lambda: self._position_panel(w)),
                           BarAction("sparkles", "Style", key="style", panel=lambda: self._style_panel(w)),
                           BarAction("crop", "Crop", key="crop", panel=lambda: self._crop_panel(w))]
             else:
                 items.append(BarAction("volume-2", "Volume", key="volume", panel=lambda: self._volume_panel(w)))
-            if w.kind in ("display", "window", "image"):
-                items.append(BarAction("monitor-up" if w.kind != "image" else "image", tooltip="Source",
+            if w.kind in ("display", "window", "image", "app-audio"):
+                items.append(BarAction({"image": "image", "app-audio": "audio-lines"}.get(w.kind, "monitor-up"),
+                                       tooltip="Source",
                                        key="source", panel=lambda: self._source_panel(w)))
             items.append(BarAction("layers", tooltip="Arrange", menu=self._arrange_menu))
+            # A widget without its source ends the bar with the fix, as the bar's one key.
+            fix = self.fix_words(w, self.widget_errors[w.id]) if w.id in self.widget_errors else None
+            if fix:
+                items.append(BarAction("monitor-up" if w.kind in ("display", "window") else "rotate-ccw", fix,
+                                       primary=True, on_activate=lambda: self.retry_widget(w)))
             # Rare and destructive ones wait under ⋯, so the chip keeps its name while an editor is open.
             more = [BarAction("eye" if not w.visible else "eye-off", "Show" if not w.visible else "Hide",
                               on_activate=self.toggle_hidden),
@@ -963,7 +1059,7 @@ class StreamyWindow(AppWindow):
         self.selected = w.id
         self._changed(structure=True)
         self._show_scene()
-        if kind in ("display", "window", "camera") and not self.fake:
+        if kind in ("display", "window", "camera", "app-audio") and not self.fake:
             self._choose_source(w, restore=False)
         Toast.show(self.host, f"{w.name} added", kind="added")
 
@@ -1039,6 +1135,7 @@ class StreamyWindow(AppWindow):
         def done() -> None:
             if entry.get_text().strip():
                 w.name = entry.get_text().strip()
+                w.source["named"] = True  # an app-audio widget keeps a name the person gave it
                 self.center.fold()
                 self._changed(structure=True)
 

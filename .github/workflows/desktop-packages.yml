@@ -18,6 +18,9 @@ on:
       - 'packaging/rpm/luma-setup.spec'
       - 'scripts/packages/build-intel-media-driver-free.sh'
       - 'packaging/rpm/intel-media-driver-free.spec'
+      - 'scripts/packages/build-libcamera.sh'
+      - 'packaging/rpm/libcamera.spec'
+      - 'patches/libcamera-fedora/**'
       - 'config/desktop/inputs.env'
   workflow_dispatch:
 
@@ -99,5 +102,37 @@ jobs:
         with:
           name: desktop-intel-media-driver-x86_64
           path: build/packages/intel-media-driver-free/
+          if-no-files-found: error
+          retention-days: 30
+
+  libcamera:
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            architecture: x86_64
+            image: registry.fedoraproject.org/fedora@sha256:69b1219730fe52d6cbb0874cbc1a36dd43b722354a603f6cdf73acbff8dd7c59
+          - runner: ubuntu-24.04-arm
+            architecture: aarch64
+            image: registry.fedoraproject.org/fedora@sha256:22dbf85bb441d15ebec58522f98636699b4dc722d89f19a3f01c8ed382695b57
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+    env:
+      LUMA_TARGET_ARCHITECTURE: ${{ matrix.architecture }}
+      LUMA_RPM_BUILDER_DIRECT: '1'
+    steps:
+      - name: Prepare native Fedora build tools
+        run: dnf5 -y install git cpio curl rpm-build dnf5-plugins python3 findutils glibc-langpack-en
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build and check libcamera (swstats-cpu test in %check)
+        run: bash scripts/packages/build-libcamera.sh
+      - name: Retain checked packages and source RPMs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-libcamera-${{ matrix.architecture }}
+          path: build/packages/libcamera/
           if-no-files-found: error
           retention-days: 30

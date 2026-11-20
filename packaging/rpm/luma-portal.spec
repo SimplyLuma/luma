@@ -2,7 +2,7 @@
 
 Name:           luma-portal
 Version:        0.1.0
-Release:        1.luma.9%{?dist}
+Release:        1.luma.12%{?dist}
 Summary:        Project Luma's desktop portal backend
 License:        Apache-2.0
 URL:            https://projectluma.org/platform/portal
@@ -16,11 +16,20 @@ Requires:       python3 >= 3.11
 Requires:       python3-gobject
 Requires:       gtk4 >= 4.18
 Requires:       libadwaita >= 1.7
-Requires:       luma-developer-platform
-Requires:       xdg-desktop-portal
+# The Share sound picker is built from LumaUI parts (AppIcon, Checkbox, AudioMeter).
+Requires:       luma-developer-platform >= 0.1.0-1.luma.135
+# org.freedesktop.portal.AudioCapture (patches/xdg-desktop-portal 0004)
+Requires:       xdg-desktop-portal >= 1.22.1-1.luma.4
+# CreateCapture, GetApplications and the level meters
+Requires:       luma-audio-policy >= 0.1.0-1.luma.4
+# pw-dump: a stream's object.serial when Mutter announces only its node id.
+Requires:       pipewire-utils
 
 %description
-Luma's portal backend. It implements two interfaces. AppChooser is the dialog shown when a file is
+Luma's portal backend. It implements AppChooser, ScreenCast and
+AudioCapture. AudioCapture shows the Share sound picker and asks
+luma-audio-devices for one capture node carrying the chosen apps' sound.
+The first two: AppChooser is the dialog shown when a file is
 to be opened with something other than its default application. ScreenCast
 answers "share my screen": it asks the Shell to show Luma's picker, with live
 previews of every window and screen, and then creates the stream through
@@ -70,6 +79,8 @@ grep -Fqx 'org.freedesktop.impl.portal.ScreenCast=luma;gnome;' \
   data/luma-appchooser.conf
 grep -Fq 'org.freedesktop.impl.portal.ScreenCast' data/luma.portal
 grep -Fq 'org.freedesktop.impl.portal.AppChooser' data/luma.portal
+grep -Fq 'org.freedesktop.impl.portal.AudioCapture' data/luma.portal
+grep -Fqx 'org.freedesktop.impl.portal.AudioCapture=luma;' data/luma-appchooser.conf
 # Nothing may reach the picker except through the Shell's own interface, and
 # nothing may stream before Share: the Mutter session is created in Start.
 grep -Fq 'org.projectluma.Shell.ScreenShare' luma_portal/screencast.py
@@ -93,6 +104,25 @@ grep -Fq 'is-recording' luma_portal/mutter.py
 %config(noreplace) %{_sysconfdir}/xdg-desktop-portal/gnome-portals.conf
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.12
+- Share sound picker as Luma Share's card: the asking app with the sharing
+  badge, the question, the choices on rounded blocks of LumaUI rows (app
+  icon, name, LumaUI's meter, LumaUI's checkbox; the row is the control), an
+  equal Cancel and Share pair; sized to its content, the list scrolls past
+  half the screen. All sound has no meter.
+
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.11
+- Restore a shared screen or window through xdg-desktop-portal's restore
+  data, so an application's restore token skips the picker; a choice that
+  no longer applies shows the picker instead of failing
+- Wait for the person at the picker without a D-Bus timeout
+- Give applications each stream's pipewire-serial (Mutter's
+  PipeWireStreamAddedV2, or the node's object.serial from PipeWire), so
+  pipewiresrc finds the stream; a node id is "target not found"
+* Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.10
+- AudioCapture backend: the Share sound picker lists the apps playing with
+  live levels and "All sound except" the caller; the chosen sound becomes one
+  capture node from luma-audio-devices; restore data skips the picker
 * Thu Sep 17 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.9
 - Answer screen sharing requests, so an application asking to share the
   screen gets Luma's picker with live previews of every window and screen

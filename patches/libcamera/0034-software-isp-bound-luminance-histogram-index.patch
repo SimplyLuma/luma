@@ -1,0 +1,36 @@
+From: Project Luma <maintainers@projectluma.org>
+Subject: [PATCH] software_isp: bound the luminance histogram index
+
+The histogram bin comes from the sample values, which unpacked 10/12-bit
+formats hold in 16-bit containers. A frame with larger values (a capture
+the receiver rejected but returned) indexed past yHistogram and
+yHistogramGrid; with _GLIBCXX_ASSERTIONS the bounds check aborts the
+camera service. Count out-of-range samples in the top bin, as
+patches/libcamera-fedora/0003 does for the desktop.
+
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 1ff40322..fbf2339d 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include "libcamera/internal/software_isp/swstats_cpu.h"
+ 
++#include <algorithm>
++
+ #include <libcamera/base/log.h>
+ 
+ #include <libcamera/stream.h>
+@@ -224,8 +226,10 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 	yVal = r * kRedYMul;               \
+ 	yVal += g * kGreenYMul;            \
+ 	yVal += b * kBlueYMul;             \
+-	const unsigned int histIndex = yVal * SwIspStats::kYHistogramSize / \
+-		(256 * 256 * (div)); \
++	/* Out-of-range samples count in the top bin. */ \
++	const unsigned int histIndex = std::min<uint64_t>( \
++		yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div)), \
++		SwIspStats::kYHistogramSize - 1); \
+ 	const unsigned int gridX = x < gridXBoundary1 ? 0 \
+ 		: x < gridXBoundary2 ? 1 : 2; \
+ 	const unsigned int gridIndex = gridY * 3 + gridX; \

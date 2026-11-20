@@ -40,6 +40,7 @@ gtk-doc comments in each header are their reference.
 | [`LumaColorWell`](#lumacolorwell) | `GtkBox` | A color button with an editable value |
 | [`LumaMediaFader`](#lumamediafader) | `GtkScale` | A decibel fader |
 | [`LumaAudioMeter`](#lumaaudiometer) | `GtkBox` | A mono or stereo level meter |
+| [`LumaVolumeSlider`](#lumavolumeslider) | `GtkWidget` | A volume, upright or flat, with a meter along it |
 | [`LumaHistogram`](#lumahistogram) | `GtkDrawingArea` | An image histogram |
 | [`LumaCurveEditor`](#lumacurveeditor) | `GtkDrawingArea` | A tone curve editor |
 | [`LumaWelcomeView`](#lumawelcomeview) | `GtkWidget` | The welcome surface for creative apps |
@@ -350,6 +351,47 @@ void       luma_audio_meter_set_horizontal  (LumaAudioMeter *self, gboolean hori
 double     luma_audio_meter_get_level_db    (LumaAudioMeter *self, guint channel);
 double     luma_audio_meter_get_peak_db     (LumaAudioMeter *self, guint channel);
 ```
+
+## `LumaVolumeSlider`
+
+```c
+GtkWidget      *luma_volume_slider_new                (GtkOrientation orientation, double lower, double upper);
+void            luma_volume_slider_set_value          (LumaVolumeSlider *self, double value);
+double          luma_volume_slider_get_value          (LumaVolumeSlider *self);
+void            luma_volume_slider_set_range          (LumaVolumeSlider *self, double lower, double upper);
+void            luma_volume_slider_set_steps          (LumaVolumeSlider *self, double step, double page);
+void            luma_volume_slider_set_unity          (LumaVolumeSlider *self, double unity);
+void            luma_volume_slider_set_unit           (LumaVolumeSlider *self, const char *unit);
+void            luma_volume_slider_set_muted          (LumaVolumeSlider *self, gboolean muted);
+void            luma_volume_slider_set_meter_channels (LumaVolumeSlider *self, guint channels);
+LumaAudioMeter *luma_volume_slider_get_meter          (LumaVolumeSlider *self);
+void            luma_volume_slider_get_track_bounds   (LumaVolumeSlider *self, graphene_rect_t *bounds);
+/* signal */    void (*moved) (LumaVolumeSlider *self, double value);
+```
+
+A volume for mixers and sound rows: the kit's slider (a recessed 4 px track
+filled to the value, a raised 14 px knob with a state ring), standing upright
+for a channel strip (`GTK_ORIENTATION_VERTICAL`, 160 px natural, 48 px least)
+or lying flat for a row. `_set_meter_channels(1|2)` lays a `LumaAudioMeter`
+along the track over exactly the track's length (beside it standing, under it
+lying, 4 px from the knob), so level and volume read on one scale; feed it
+through `_get_meter()`. Across, the slider is the knob, the gap and the meter,
+and never less than the 24 px hit width.
+
+Any range works (0–100 %, 0–150 %, −60–+6 dB). A `unity` value inside the
+range is marked across the track and a double click returns to it. Arrows
+along the slider step by the small step (arrows across it move focus, so a
+TV remote walks a column of flat sliders), Page Up/Down by the page step, Home/End go to the
+ends, the wheel steps, and a press on the track jumps there and drags. Only
+those moves (and an assistive technology's) emit `::moved`; `_set_value()` and
+a range that clamps the value do not. Muted, the fill and the meter go quiet
+and the knob stays at the volume. The accessible value text uses the unit
+("68%", "−6 dB", "…, muted").
+
+Tokens: `--lumaui-volume-slider-*` / `LUMA_UI_VOLUME_SLIDER_*` (track, knob,
+hit, meter gap, length, unity mark, focus). Style nodes:
+`lumaui-volume-slider(.vertical|.horizontal)(.muted)` with
+`.lumaui-volume-track`, `-fill`, `-knob`, `-ring`, `-shadow`, `-mark`, `-focus`.
 
 ## `LumaHistogram`
 

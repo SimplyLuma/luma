@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,46 @@
+@@ -29,13 +29,49 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.22%{?dist}
++Release:       1.luma.23%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -14,6 +14,7 @@
  Source0:       http://download.gnome.org/sources/%{name}/%{major_version}/%{name}-%{tarball_version}.tar.xz
 +Source1:       ext-background-effect-v1.xml
 +Source2:       default-monitor-scale.py
++Source3:       luma-window-shape-v1.xml
 +Patch1000:     0001-luma-handheld-scales.patch
 +Patch1001:     0002-clutter-Add-blur-node-support-for-framebuffer-region.patch
 +Patch1002:     0003-compositor-Add-background-blur-support.patch
@@ -45,19 +46,23 @@
 +Patch1028:     0029-stage-impl-Clip-compact-damage-with-the-scissor-alone.patch
 +Patch1029:     0030-backends-native-Probe-input-again-when-a-session-starts-inactive.patch
 +Patch1030:     0031-wayland-Let-the-compositor-drag-data-to-clients.patch
++Patch1031:     0032-wayland-Send-a-configure-without-resizing-when-a-resize-ends.patch
++Patch1032:     0033-wayland-Let-a-client-keep-its-window-at-an-aspect-ratio.patch
  
  
  BuildRequires: cvt
-@@ -169,6 +198,8 @@
+@@ -169,6 +201,10 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
 +install -D -m 0644 %{SOURCE1} \
 +  src/wayland/protocol/ext-background-effect-v1.xml
++install -D -m 0644 %{SOURCE3} \
++  src/wayland/protocol/luma-window-shape-v1.xml
  
  %build
  %meson -Degl_device=true
-@@ -179,6 +210,29 @@
+@@ -179,6 +214,29 @@
  
  %find_lang %{name}
  
@@ -87,7 +92,7 @@
  %files -f %{name}.lang
  %license COPYING
  %doc NEWS
-@@ -200,6 +253,7 @@
+@@ -200,6 +257,7 @@
  %{_datadir}/GConf/gsettings/mutter-schemas.convert
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.gschema.xml
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.wayland.gschema.xml

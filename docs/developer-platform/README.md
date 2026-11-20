@@ -75,3 +75,8 @@ release-check` checks the cross-architecture, desktop/mobile release evidence.
 [TV Mode](tv-mode.md) describes the TV posture: how an application learns it
 through LumaUI, what every window gets in TV posture, the shared TV scale, and
 how an application opts in to the TV home.
+
+[Recording other apps' sound](audio-capture.md) covers
+`luma_appkit.audio_capture`: the Audio Capture portal, the Share sound picker,
+restore tokens and a ready `pipewiresrc`, with no PipeWire socket in the
+sandbox.

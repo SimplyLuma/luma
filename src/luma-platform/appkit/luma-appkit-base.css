@@ -2414,6 +2414,24 @@ box.lumaui-audio-meter > .lumaui-meter-mid { color: @luma_mark_yellow; }
 box.lumaui-audio-meter > .lumaui-meter-high { color: @luma_destructive; }
 box.lumaui-audio-meter > .lumaui-meter-peak { color: @luma_ink_secondary; }
 
+/* LumaVolumeSlider (luma-volume-slider.c): the kit's slider (a recessed 4 px
+ * track in the state fill, a raised 14 px knob with a state ring) drawn
+ * upright or flat, with a meter along it. Muted, the fill and meter go quiet. */
+lumaui-volume-slider { outline: none; }
+lumaui-volume-slider > .lumaui-volume-track { color: @luma_line; }
+/* The meter's track matches the slider's, so the pair reads on a well (a Settings card) too. */
+lumaui-volume-slider > box.lumaui-audio-meter > .lumaui-meter-track { color: @luma_line; }
+lumaui-volume-slider > .lumaui-volume-fill { color: @luma_state; }
+lumaui-volume-slider > .lumaui-volume-knob { color: @luma_knob; }
+lumaui-volume-slider > .lumaui-volume-ring { color: @luma_knob_ring; }
+lumaui-volume-slider > .lumaui-volume-shadow { color: @luma_island_shadow; }
+lumaui-volume-slider > .lumaui-volume-mark { color: alpha(@luma_ink_secondary, .55); }
+lumaui-volume-slider > .lumaui-volume-focus { color: alpha(@luma_focus_ring, .45); }
+lumaui-volume-slider.muted > .lumaui-volume-fill { color: alpha(@luma_muted, .45); }
+lumaui-volume-slider.muted > .lumaui-volume-ring { color: alpha(@luma_muted, .7); }
+lumaui-volume-slider.muted > box.lumaui-audio-meter { opacity: .35; }
+lumaui-volume-slider:disabled { opacity: .5; }
+
 /* ── LumaUI: Dock (an island tiled with insets) ── */
 overlay.lumaui-dock > box.lumaui-dock-frame { padding: var(--lumaui-dock-gap); }
 /* Under the island's floating action bar: the tiles end above it. */
@@ -2434,6 +2452,12 @@ box.lumaui-dock-tile-header {
 }
 image.lumaui-dock-tile-icon { -gtk-icon-size: var(--lumaui-dock-icon); color: @luma_muted; }
 label.lumaui-dock-tile-title { font-size: var(--lumaui-dock-title-size); font-weight: 600; color: @luma_ink; }
+/* Header keys fit the header and centre their glyph as far from the end as the title's glyph is from the start. */
+box.lumaui-dock-tile-header button.lumaui-dock-tile-more, box.lumaui-dock-tile-actions > button {
+  min-width: var(--lumaui-dock-header-button); min-height: var(--lumaui-dock-header-button); padding: 0;
+  border-radius: calc(var(--lumaui-dock-header-button) / 4);
+}
+box.lumaui-dock-tile-header button.lumaui-dock-tile-more image, box.lumaui-dock-tile-actions > button image { -gtk-icon-size: var(--lumaui-dock-icon); }
 /* The seams are the gaps between tiles: clear at rest, a short mark while pointed at, held or focused. */
 paned.lumaui-dock-paned > separator, paned.luma-navigation-split > separator {
   min-width: var(--lumaui-dock-gap); min-height: var(--lumaui-dock-gap);
@@ -2457,4 +2481,5 @@ box.lumaui-dock-target {
 flowbox.lumaui-dock-keys { padding-bottom: var(--lumaui-dock-gap); }
 flowbox.lumaui-dock-keys > flowboxchild { padding: 0; }
 box.lumaui-dock-drawer box.lumaui-dock-tile { background: none; box-shadow: none; min-height: 320px; }
+box.lumaui-dock-tile.inline { margin-top: var(--lumaui-dock-gap); min-height: 0; }
 box.luma-navigation-pane { min-height: var(--lumaui-dock-min-size); }

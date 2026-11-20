@@ -13,11 +13,11 @@
 # deployment's rpmdb. Keep the shared pins in step with inputs.env.
 
 # Shell, window manager and settings (replace Fedora base packages)
-gnome-control-center-50.4-1.luma.68.fc44.x86_64
-gnome-control-center-filesystem-50.4-1.luma.68.fc44.noarch
-gnome-shell-50.3-1.luma.188.fc44.x86_64
+gnome-control-center-50.4-1.luma.70.fc44.x86_64
+gnome-control-center-filesystem-50.4-1.luma.70.fc44.noarch
+gnome-shell-50.3-1.luma.189.fc44.x86_64
 gdm-1:50.3-1.luma.1.fc44.x86_64
-gnome-shell-common-50.3-1.luma.188.fc44.noarch
+gnome-shell-common-50.3-1.luma.189.fc44.noarch
 gnome-settings-daemon-50.1-1.luma.3.fc44.x86_64
 gnome-shell-extension-luma-tiling-toggle-0.1.0-1.luma.15.fc44.noarch
 gnome-shell-extension-tiling-shell-17.3-1.luma.28.fc44.noarch
@@ -25,8 +25,8 @@ luma-calculator-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
 luma-disks-0.1.0-1.luma.4.creator20261004.1.fc44.noarch
 luma-maps-0.1.0-1.luma.7.creator20261005.1.fc44.noarch
 luma-terminal-0.1.0-1.luma.11.fc44.noarch
-mutter-50.4-1.luma.22.fc44.x86_64
-mutter-common-50.4-1.luma.22.fc44.noarch
+mutter-50.4-1.luma.23.fc44.x86_64
+mutter-common-50.4-1.luma.23.fc44.noarch
 ibus-1.5.34-4.luma.2.fc44.x86_64
 ibus-gtk3-1.5.34-4.luma.2.fc44.x86_64
 ibus-gtk4-1.5.34-4.luma.2.fc44.x86_64
@@ -53,7 +53,12 @@ fwupd-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
 iio-sensor-proxy-3.8-2.luma.1.fc44.x86_64
-xdg-desktop-portal-1.22.1-1.luma.3.fc44.x86_64
+xdg-desktop-portal-1.22.1-1.luma.4.fc44.x86_64
+
+# Camera stack (replace Fedora base packages)
+libcamera-0.7.2-2.luma.1.fc44.x86_64
+libcamera-ipa-0.7.2-2.luma.1.fc44.x86_64
+
 NetworkManager-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-adsl-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-bluetooth-1:1.56.1-2.luma.1.fc44.x86_64
@@ -80,7 +85,7 @@ plymouth-theme-spinner-24.004.60-24.luma.3.fc44.x86_64
 # Luma platform, assets and core applications
 google-caveat-fonts-2.000-1.luma.1.fc44.noarch
 google-figtree-fonts-2.0.3-1.luma.4.fc44.noarch
-luma-audio-policy-0.1.0-1.luma.3.fc44.noarch
+luma-audio-policy-0.1.0-1.luma.4.fc44.noarch
 luma-sound-theme-0.1.0-2.luma.1.fc44.noarch
 luma-background-0.1.0-1.luma.5.creator20261007.1.fc44.noarch
 luma-backgrounds-0.2.0-1.luma.4.fc44.noarch
@@ -90,8 +95,8 @@ luma-cast-backend-common-0.1.0-1.luma.1.fc44.noarch
 luma-cast-dlna-0.1.0-1.luma.1.fc44.noarch
 luma-cast-googlecast-0.1.0-1.luma.2.fc44.x86_64
 luma-cast-miracast-0.1.0-1.luma.1.fc44.x86_64
-luma-developer-platform-0.1.0-1.luma.131.fc44.x86_64
-luma-developer-platform-sdk-0.1.0-1.luma.131.fc44.noarch
+luma-developer-platform-0.1.0-1.luma.135.fc44.x86_64
+luma-developer-platform-sdk-0.1.0-1.luma.135.fc44.noarch
 luma-mods-0.1.0-1.luma.24.creator20261007.1.fc44.noarch
 luma-monitor-0.1.0-1.luma.22.fc44.noarch
 luma-notification-policy-0.1.0-1.luma.1~preview.20260905.1.fc44.noarch
@@ -112,13 +117,13 @@ luma-calls-0.1.0-1.luma.3.fc44.noarch
 luma-charlie-0.2.14-1.luma.7.creator20261118.1.fc44.noarch
 luma-continuity-0.1.0-0.68.experiment.fc44.noarch
 luma-media-bridge-0.1.0-1.luma.2.fc44.noarch
-luma-portal-0.1.0-1.luma.9.fc44.noarch
+luma-portal-0.1.0-1.luma.12.fc44.noarch
 luma-wifi-guard-0.1.0-1.luma.1.fc44.noarch
 python3-authlib-1.7.2-0.1.luma.experiment.fc44.noarch
 python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 
 # Compatibility (Android and Windows applications)
-luma-android-runtime-0.1.0-1.luma.115.fc44.noarch
+luma-android-runtime-0.1.0-1.luma.117.fc44.noarch
 luma-android-images-20.0-1.luma.18.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
 luma-application-installer-0.1.0-1.luma.99.fc44.noarch
@@ -134,6 +139,7 @@ luma-ari-runtime-0.4.0-1.luma.2.fc44.x86_64
 luma-display-config-0.1.0-1.luma.7.creator20261024.1.fc44.noarch
 luma-leaf-0.1.0-1.luma.13.creator20261007.1.fc44.noarch
 luma-tide-0.1.0-2.luma.40.fc44.noarch
+luma-streamy-0.1.0-1.luma.3.fc44.x86_64
 luma-viewer-0.1.0-1.luma.18.nightly20261026.1.fc44.noarch
 intel-crashlog-1.2.0-1.luma.1.fc44.x86_64
 luma-vitals-0.1.0-1.luma.16.fc44.noarch
@@ -143,6 +149,17 @@ luma-vitals-crash-evidence-0.1.0-1.luma.16.fc44.noarch
 luma-vitals-power-guard-0.1.0-1.luma.16.fc44.noarch
 viola-browser-stable-151.0.7922.72-15.viola8210.native47.creator20261119.1.fc44.x86_64
 luma-messages-e2ee-0.1.0-1.luma.2.creator20261007.1.fc44.x86_64
+
+# Graphics drivers with hardware H.264/H.265 encode (replace Fedora's, which
+# build none): Mesa with video-codecs h264enc/h265enc (patches/mesa) on every
+# CPU, and on x86_64 the Intel media driver with VDEnc encode.
+mesa-dri-drivers-26.2.5-1.luma.5.fc44.x86_64
+mesa-filesystem-26.2.5-1.luma.5.fc44.x86_64
+mesa-libEGL-26.2.5-1.luma.5.fc44.x86_64
+mesa-libGL-26.2.5-1.luma.5.fc44.x86_64
+mesa-libgbm-26.2.5-1.luma.5.fc44.x86_64
+mesa-vulkan-drivers-26.2.5-1.luma.5.fc44.x86_64
+libva-intel-media-driver-26.3.5-1.luma.1.fc44.x86_64
 
 # Raspberry Pi 5 hardware target only (config/os/desktop-targets.json
 # hardware_targets): the Luma Pi kernel replaces Fedora's, platform support,

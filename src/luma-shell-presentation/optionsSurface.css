@@ -324,8 +324,6 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-heading { padding: 0 2px; font-size: 12px; font-weight: 650; color: rgba(238,240,244,.62); }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-list { spacing: 8px; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level > StBoxLayout { spacing: 4px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-level-foreground .luma-app-mixer-icon { margin-left: 11px; icon-size: 18px; color: rgba(238,240,244,.65); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-name { margin-left: 9px; font-size: 12.5px; font-weight: 650; color: rgba(238,240,244,.88); }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-route { margin-left: 5px; font-size: 11.5px; color: rgba(238,240,244,.45); }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-idle .luma-app-mixer-name { color: rgba(238,240,244,.6); }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-options-level-key,
@@ -352,3 +350,23 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-options-level-key:focus { background-color: rgba(20,22,26,.06); }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-options-level-key:checked,
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-options-level-key:checked { color: #318bd5; }
+/* A detail page's settings link, pinned under its scrolled list (quickSettings.js _pinPageLink). */
+.quick-settings.luma-studio-options .luma-options-page-foot { padding: 0 12px; }
+/* The list fades where it continues past the scroll view's edge, above the pinned link. */
+.quick-settings.luma-studio-options .luma-options-page-scroll.luma-options-page-scroll { -st-vfade-offset: 28px; }
+/* The app rows' icon and name share the device rows' columns above them
+ * (icon centre and title start), and every row's level reads at one edge. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-level-foreground .luma-app-mixer-icon { margin-left: 13px; icon-size: 18px; color: rgba(238,240,244,.65); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-name { margin-left: 17px; font-size: 12.5px; font-weight: 650; color: rgba(238,240,244,.88); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-quick-level-value { min-width: 44px; text-align: right; }
+/* The output key is a picker on a key at rest: where the app plays and a chevron. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output { width: 40px; height: 30px; margin-left: 2px; border-radius: 10px; background-color: rgba(255,255,255,.07); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output:focus { background-color: rgba(255,255,255,.12); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output:checked { background-color: rgba(97,179,242,.18); color: #61b3f2; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-output-face { spacing: 3px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-output-icon { icon-size: 16px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-output-chevron { icon-size: 12px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output { background-color: rgba(20,22,26,.06); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output:focus,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output:focus { background-color: rgba(20,22,26,.1); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output:checked, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output:checked { background-color: rgba(49,139,213,.14); color: #318bd5; }

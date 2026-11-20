@@ -3,7 +3,7 @@ flowbox.streamy-mixer { padding: 0 var(--lumaui-dock-header-padding-start) var(-
 flowbox.streamy-mixer > flowboxchild { padding: 0; background: none; }
 box.streamy-strip { border-spacing: 4px; padding: 6px 0 10px; min-width: 220px; }
 box.streamy-strip-body { border-spacing: 6px; padding-top: 4px; }
-box.streamy-strip-head { border-spacing: 8px; }
+box.streamy-strip-head { border-spacing: 8px; padding: 0 5px; } /* on the volume track's ends (LumaVolumeSlider: knob 14, track 4) */
 .streamy-strip-db, .streamy-canvas-facts { font-feature-settings: "tnum"; }
 button.streamy-muted { color: @luma_destructive; }
 box.streamy-editor { min-width: 300px; }

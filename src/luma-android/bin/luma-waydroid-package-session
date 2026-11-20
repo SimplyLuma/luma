@@ -20,6 +20,16 @@ PAYLOAD = re.compile(r"^luma-[0-9a-f]{32}-[0-9]{4}\.apk$")
 PACKAGE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
 LXC_PATH = "/var/lib/waydroid/lxc"
 LXC_NAME = "waydroid"
+# Session upkeep that every sign-in runs on its own: Android's input policy for
+# the device class, and the transition out of charger-only boot. These fixed
+# requests are the only ones open to a non-administrator. The polkit rule
+# admits exactly these command lines (50-luma-waydroid-package-session.rules).
+SESSION_REQUESTS = frozenset({
+    ("input-policy", "desktop"),
+    ("input-policy", "tablet"),
+    ("input-policy", "handheld"),
+    ("boot-from-charger-mode",),
+})
 
 
 def fail(message: str) -> NoReturn:
@@ -83,12 +93,9 @@ def main() -> int:
     removal = removal_command(arguments)
     list_request = arguments == ["installed-packages"]
     profile_request = arguments == ["device-profile"]
-    charger_mode_request = arguments == ["boot-from-charger-mode"]
-    input_policy_request = (
-        len(arguments) == 2
-        and arguments[0] == "input-policy"
-        and arguments[1] in {"desktop", "tablet", "handheld"}
-    )
+    session_request = tuple(arguments) in SESSION_REQUESTS
+    charger_mode_request = session_request and arguments[0] == "boot-from-charger-mode"
+    input_policy_request = session_request and arguments[0] == "input-policy"
     install_request = len(arguments) >= 6 and arguments[:5] == [
         "pm", "install", "--user", "0", "-r"
     ]
@@ -113,7 +120,7 @@ def main() -> int:
         caller_groups = os.getgrouplist(caller.pw_name, caller.pw_gid)
     except KeyError:
         fail("the privileged installer group is unavailable")
-    if wheel_gid not in caller_groups:
+    if wheel_gid not in caller_groups and not session_request:
         fail("the requesting user cannot manage Android compatibility")
 
     def android_command(*command: str, capture: bool = False) -> str:

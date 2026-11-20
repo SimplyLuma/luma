@@ -241,11 +241,17 @@ def _lead(widget: Gtk.Widget, kind: str, size: str | None = None) -> Gtk.Widget:
 
 @dataclass(frozen=True)
 class RowAction:
-    """A trailing action in a row (Remove, Retry): a Lucide glyph and the words it stands for."""
+    """A trailing action in a row (Remove, Retry): a Lucide glyph and the words it stands for.
+
+    ``quiet=True`` shows it only while the row is hovered, selected or focused (a layer's eye):
+    a row whose glyph states something worth reading at rest (a hidden layer's eye-off) passes
+    False, so state reads at a glance and the list stays calm.
+    """
 
     icon: str
     label: str
     on_activate: Callable[[], None]
+    quiet: bool = False
 
 
 # ── the row ──────────────────────────────────────────────────────────────────
@@ -463,6 +469,8 @@ class SidebarRow(_row_base()):  # type: ignore[misc]
             widget = Gtk.Button(tooltip_text=trail.label, valign=Gtk.Align.CENTER)
             widget.set_child(icons.image(trail.icon))
             widget.add_css_class("lumaui-row-action")
+            if trail.quiet:
+                widget.add_css_class("quiet")
             widget.update_property([Gtk.AccessibleProperty.LABEL], [trail.label])
             widget.connect("clicked", lambda _b, cb=trail.on_activate: cb())
         else:

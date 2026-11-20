@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.131%{?dist}
+Release:        1.luma.135%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -161,6 +161,8 @@ xvfb-run -a --server-args="-screen 0 1280x1024x24" dbus-run-session -- \
   python3 tests/timeline.py
 # The standard badge value agents publish for their dock icon.
 PYTHONPATH="$PWD/appkit" python3 tests/background_badge.py
+# The audio capture client against a stand-in portal on a private bus.
+dbus-run-session -- env PYTHONPATH="$PWD/appkit" python3 tests/audio_capture.py
 # New UI regressions require a display: exit 77 is not package evidence.
 test_runtime=$(mktemp -d)
 chmod 0700 "$test_runtime"
@@ -171,7 +173,7 @@ python3 - <<'PY_CHECK'
 import json
 from pathlib import Path
 rows = [json.loads(line) for line in Path("%{_vpath_builddir}/meson-logs/testlog.json").read_text().splitlines() if line.strip()]
-expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch", "first-frame-width", "tv-island")}
+expected = {"luma-developer-platform:" + name for name in ("semantics", "background-agent", "context", "adopted-context", "media-fader", "scaffold", "application-icon", "window-frame", "welcome", "application-menu", "native-app-updates", "empty-state", "save-sheet", "surface-policy", "surface-backdrop", "window-shape", "reorder-hint", "media-transport-lcd", "timeline", "mobile-identity", "hidden-width-watch", "first-frame-width", "tv-island")}
 names = {row["name"] for row in rows}
 # Platform checks, plus LumaUI-1's own part tests, token check and C/Python parity.
 lumaui = {name for name in names if name.startswith("luma-developer-platform:lumaui-")}
@@ -376,6 +378,31 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.135
+- LumaVolumeSlider (VolumeSlider in luma_appkit): the kit's slider for a
+  volume, upright for a mixer's strip or flat for a row, with LumaAudioMeter
+  laid along exactly its track; unity mark and reset, muted, keys along it
+  only, ::moved for the person's moves; tokens --lumaui-volume-slider-*
+
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.134
+- DockTile(fit=True): a tile never larger than its content along its split;
+  on a phone it stays under the main tile; Dock.refit() after a change.
+- A grown action bar is never narrower than its resting row, so the subject
+  chip keeps its name while an editor is open (Python and C).
+- Dock tile headers: 28 px keys, glyphs inset 12 px at both ends.
+- RowAction(quiet=True) waits for hover, selection or focus.
+
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.133
+- luma_appkit.audio_capture: request_audio_capture() and AudioCapture, the
+  client for the Audio Capture portal (pipewiresrc on the granted remote,
+  restore tokens, close)
+
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.132
+- luma_window_set_aspect_ratio(), luma_window_set_aspect_content() and
+  luma_window_get_aspect_ratio_enforced(): a window keeps its content at a
+  fixed ratio through Luma's luma_window_shape_v1 protocol, live while it is
+  resized; elsewhere a no-op that returns FALSE. C API level 10.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.131
 - Dock and DockTile: an island tiled with insets (concentric with the
   island), seams that resize, tiles dragged by their headers onto another

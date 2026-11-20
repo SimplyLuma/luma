@@ -73,7 +73,10 @@ def checks(engine, project, scene, second, out_dir, url) -> int:
     stats = engine.stats("record")
     print("record kbps", round(stats.bitrate_kbps), "frames", stats.frames, "dropped", stats.dropped)
     engine.stop_record()
-    run_for(2)
+    for _ in range(100):  # the file is finished when its EOS has drained (slow on software GL)
+        if ("record", "off") in states:
+            break
+        run_for(0.2)
     assert ("record", "off") in states, states
 
     if url == "-":

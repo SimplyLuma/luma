@@ -49,6 +49,21 @@ def cursor_mode_for_portal(portal_mode: int) -> int:
     return MUTTER_CURSOR_HIDDEN
 
 
+def serial_of(dump: str, node_id: int) -> int | None:
+    """The object.serial of node ``node_id`` in pw-dump's JSON, or None."""
+    import json
+
+    try:
+        objects = json.loads(dump)
+    except ValueError:
+        return None
+    for item in objects if isinstance(objects, list) else []:
+        if isinstance(item, dict) and item.get("id") == node_id:
+            serial = ((item.get("info") or {}).get("props") or {}).get("object.serial")
+            return int(serial) if isinstance(serial, (int, str)) and str(serial).isdigit() else None
+    return None
+
+
 class Stream:
     """One Mutter stream, and the PipeWire node it eventually announces."""
 
@@ -59,27 +74,90 @@ class Stream:
         self.source_type = source_type
         self.geometry = geometry
         self.node_id: int | None = None
+        #: The node's object.serial (Mutter 47+, PipeWireStreamAddedV2): what
+        #: an application's pipewiresrc targets. A node id is not a target.
+        self.node_serial: int | None = None
         #: Called once Mutter announces the PipeWire node for this stream.
         self.on_node = None
-        self._subscription = connection.signal_subscribe(
-            SCREEN_CAST_NAME, STREAM_IFACE, "PipeWireStreamAdded", path, None,
-            Gio.DBusSignalFlags.NONE, self._on_node, None)
+        #: The node was announced (and its serial read, when Mutter sends one).
+        self.announced = False
+        self._announce = 0
+        self._subscriptions = [
+            connection.signal_subscribe(
+                SCREEN_CAST_NAME, STREAM_IFACE, signal, path, None,
+                Gio.DBusSignalFlags.NONE, handler, None)
+            for signal, handler in (("PipeWireStreamAdded", self._on_node),
+                                    ("PipeWireStreamAddedV2", self._on_node_v2))]
 
     def _on_node(self, _connection, _sender, _path, _iface, _signal, parameters,
                  _data) -> None:
         (self.node_id,) = parameters.unpack()
-        LOGGER.info("stream %s is PipeWire node %s", self.path, self.node_id)
+        # Mutter sends V2 (with the serial) right after this one: answer once it
+        # has been read, or without a serial from a Mutter that has no V2.
+        if not self._announce:
+            self._announce = GLib.idle_add(self._announced)
+
+    def _on_node_v2(self, _connection, _sender, _path, _iface, _signal, parameters,
+                    _data) -> None:
+        (properties,) = parameters.unpack()
+        self.node_id = int(properties.get("node-id", self.node_id or 0)) or self.node_id
+        if "node-serial" in properties:
+            self.node_serial = int(properties["node-serial"])
+        if not self._announce:
+            self._announce = GLib.idle_add(self._announced)
+
+    def _announced(self) -> bool:
+        self._announce = 0
+        if self.node_serial is None and self.node_id is not None:
+            # A Mutter before ScreenCast API 5 gives only the id: read the
+            # serial from PipeWire, as an application on the portal's remote
+            # can target only a serial (or a name), never an id.
+            self._read_serial()
+            return GLib.SOURCE_REMOVE
+        self._done()
+        return GLib.SOURCE_REMOVE
+
+    def _read_serial(self) -> None:
+        try:
+            dump = Gio.Subprocess.new(["pw-dump", "-N", str(self.node_id)],
+                                      Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+        except GLib.Error as error:
+            LOGGER.warning("could not read node %s's serial: %s", self.node_id, error.message)
+            self._done()
+            return
+
+        def read(process, result) -> None:
+            try:
+                _ok, out, _err = process.communicate_utf8_finish(result)
+                self.node_serial = serial_of(out or "", self.node_id)
+            except GLib.Error as error:
+                LOGGER.warning("could not read node %s's serial: %s", self.node_id, error.message)
+            self._done()
+
+        dump.communicate_utf8_async(None, None, read)
+
+    def _done(self) -> None:
+        if self.announced or not self._subscriptions:
+            return  # closed meanwhile, or already told
+        self.announced = True
+        LOGGER.info("stream %s is PipeWire node %s (serial %s)", self.path, self.node_id,
+                    self.node_serial)
         if self.on_node:
             self.on_node(self)
 
     def close(self) -> None:
-        if self._subscription:
-            self._connection.signal_unsubscribe(self._subscription)
-            self._subscription = 0
+        for subscription in self._subscriptions:
+            self._connection.signal_unsubscribe(subscription)
+        self._subscriptions = []
+        if self._announce:
+            GLib.source_remove(self._announce)
+            self._announce = 0
 
     def portal_properties(self) -> dict:
         """What the frontend puts in the application's `streams` entry."""
         properties = {"source_type": GLib.Variant("u", self.source_type)}
+        if self.node_serial is not None:
+            properties["pipewire-serial"] = GLib.Variant("t", self.node_serial)
         if self.geometry:
             x, y, width, height = self.geometry
             properties["position"] = GLib.Variant("(ii)", (x, y))
@@ -155,7 +233,7 @@ class ScreenCastSession:
     def ready(self) -> bool:
         """True once every stream has its PipeWire node."""
         return bool(self.streams) and all(
-            stream.node_id is not None for stream in self.streams)
+            stream.announced for stream in self.streams)
 
     def start(self) -> None:
         self._connection.call_sync(

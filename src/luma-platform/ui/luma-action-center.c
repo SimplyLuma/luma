@@ -1172,6 +1172,8 @@ struct _LumaActionCenter {
   int text_cap;
   int bar_bottom;
   int phone_grown_inset;
+  /* The bar's width when it grew from rest: a grown bar is never narrower, so its row keeps its room. */
+  int resting_width;
   gboolean phone_wide;
   LumaActionEditor *editor;
   GtkWidget *bar, *context_line, *head_row, *bar_row, *card, *split;
@@ -1456,6 +1458,8 @@ static void center_layout(LumaActionCenter *self, int width, gboolean *phone_out
   } else if (center_is_grown(self) && !g_str_equal(state, "split")) {
     int gutter = self->phone_grown_inset >= 0 ? self->phone_grown_inset : AC_PHONE_GUTTER;
     wanted = phone ? width - 2 * gutter : MIN(AC_GROWN_WIDTH, width - AC_GROWN_ROOM);
+    if (!phone && self->resting_width > 0)
+      wanted = MAX(wanted, MIN(self->resting_width, width - AC_GROWN_ROOM));
   } else if (phone && (self->phone_wide || wide || field || g_str_equal(state, "split"))) {
     wanted = width - 2 * AC_PHONE_GUTTER;
   } else if (wide) {
@@ -2295,6 +2299,13 @@ static void tv_panel_row(GtkWidget *panel) {
 
 static void center_open_panel(LumaActionCenter *self, const char *key, GtkWidget *panel, GtkWidget *entry) {
   luma_action_center_set_panel_padding(self, TRUE);
+  if (!center_is_grown(self)) {
+    /* What the row needs now (it may have just been shown), and never less than it had. */
+    int natural = 0;
+    gtk_widget_measure(GTK_WIDGET(self), GTK_ORIENTATION_HORIZONTAL, -1, NULL, &natural, NULL, NULL);
+    self->resting_width = MAX(gtk_widget_get_mapped(GTK_WIDGET(self)) ? gtk_widget_get_width(GTK_WIDGET(self)) : 0,
+                              natural);
+  }
   if (panel != NULL)
     g_object_ref_sink(panel);
   if (entry != NULL)

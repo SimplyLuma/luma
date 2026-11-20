@@ -44,5 +44,20 @@ center.set_phone_grown_inset(None)
 center.show_bar([BarAction("x", "Cancel"), BarAction("check", "Save")], fill=True)
 center.grow("form", Gtk.Label(label="Form")); settle()
 assert center.get_width() == 370, center.get_width()
+# A row wider than the grown width keeps its room: the subject chip's name is not ellipsized.
+from luma_appkit import BarChip
+w.set_default_size(1280, 700); settle()
+center.show_bar([BarChip("Face camera", on_dismiss=lambda: None), BarAction("frame", "Position", key="position"),
+                 BarAction("sparkles", "Style", key="style"), BarAction("crop", "Crop", key="crop"),
+                 BarAction("layers", tooltip="Arrange"), BarAction("trash-2", "Delete")])
+settle()
+resting = center.get_width()
+assert resting > ACTION_CENTER["grow_width"], resting
+center.grow("style", Gtk.Label(label="Style")); settle()
+assert center.get_width() >= resting, (resting, center.get_width())
+center.grow("crop", Gtk.Label(label="Crop")); settle()
+assert center.get_width() >= resting, (resting, center.get_width())
+center.fold(); settle()
+assert center.get_width() == resting, (resting, center.get_width())
 w.close()
-print("ActionCenter grown inset/default/fill and four-width resize PASS")
+print("ActionCenter grown inset/default/fill, four-width resize and resting width PASS")
