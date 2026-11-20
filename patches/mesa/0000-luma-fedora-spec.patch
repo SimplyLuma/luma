@@ -1,5 +1,5 @@
 diff --git a/mesa.spec b/mesa.spec
-index d458d19..4c59c7c 100644
+index d458d19..b601e4c 100644
 --- a/mesa.spec
 +++ b/mesa.spec
 @@ -91,7 +91,7 @@
@@ -7,7 +7,7 @@ index d458d19..4c59c7c 100644
  Summary:        Mesa graphics libraries
  Version:        26.2.5
 -Release:        %autorelease
-+Release:        1.luma.4%{?dist}
++Release:        1.luma.5%{?dist}
  License:        MIT AND BSD-3-Clause AND SGI-B-2.0
  URL:            https://mesa3d.org
  
@@ -24,10 +24,21 @@ index d458d19..4c59c7c 100644
  BuildRequires:  meson >= 1.3.0
  BuildRequires:  gcc
  BuildRequires:  gcc-c++
-@@ -754,6 +760,18 @@ ln -s libGLX_mesa.so.0 %{buildroot}%{_libdir}/libGLX_system.so.0
+@@ -448,6 +454,7 @@ rewrite_wrap_file rustc-hash
+ %endif
+   -Dgallium-va=%{?with_va:enabled}%{!?with_va:disabled} \
+   -Dgallium-mediafoundation=disabled \
++  -Dvideo-codecs=all_free,h264enc,h265enc \
+   -Dteflon=%{?with_teflon:true}%{!?with_teflon:false} \
+ %if 0%{?with_opencl}
+   -Dgallium-rusticl=true \
+@@ -754,6 +761,21 @@ ln -s libGLX_mesa.so.0 %{buildroot}%{_libdir}/libGLX_system.so.0
  %endif
  
  %changelog
++* Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 26.2.5-1.luma.5
++- Build H.264 and H.265 hardware encode (video-codecs h264enc, h265enc)
++
 +* Tue Nov 03 2026 Project Luma <maintainers@projectluma.org> - 26.2.5-1.luma.4
 +- st: keep the scissor for a scissored clear drawn as a quad
 +
