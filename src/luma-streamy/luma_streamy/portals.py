@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import secrets
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from gi.repository import Gio, GLib
@@ -31,11 +31,16 @@ PERSIST_UNTIL_REVOKED = 2
 class Capture:
     """An open capture: the PipeWire fd, the node to target, and what the portal said."""
 
-    fd: int  # unused once open: each stream asks remote() for its own connection
+    fd: int  # unused: each stream takes a connection of its own from ``pool``
     node: str | None
     size: tuple[int, int] | None
     restore_token: str | None
     session: str | None = None
+    path: str | None = None
+    name: str | None = None
+    opener: Callable | None = None
+    opening: bool = False
+    pool: list = field(default_factory=list)
 
     @property
     def aspect(self) -> float | None:
@@ -70,19 +75,6 @@ def _devices(fd: int, wanted: str):
 def _prop(device, key: str):
     props = device.get_properties()
     return str(props.get_value(key)) if props is not None and props.has_field(key) else None
-
-
-def node_serial(fd: int, node_id: int) -> str | None:
-    """The object.serial of node ``node_id`` on a portal remote, or None when it can't be told."""
-    provider, devices = _devices(fd, "Video/")
-    try:
-        for device in devices:
-            if _prop(device, "object.id") == str(node_id) or _prop(device, "node.id") == str(node_id):
-                return _prop(device, "object.serial")
-        return None
-    finally:
-        if provider is not None:
-            provider.stop()
 
 
 def camera_nodes(fd: int) -> list[tuple[str, str, tuple[int, int] | None]]:
@@ -136,6 +128,7 @@ class Portals:
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.sender = self.bus.get_unique_name()[1:].replace(".", "_")
         self.captures: dict[str, Capture] = {}  # widget id -> open capture
+        self.on_ready: Callable[[str], None] | None = None
 
     # ── Requests ──
 
@@ -171,13 +164,18 @@ class Portals:
         self.bus.call(BUS, PATH, interface, method, GLib.Variant.new_tuple(*args, GLib.Variant("a{sv}", options)),
                       None, Gio.DBusCallFlags.NONE, -1, None, called)
 
-    def _open_remote(self, interface: str, args: list) -> int:
-        result, fds = self.bus.call_with_unix_fd_list_sync(
-            BUS, PATH, interface, "OpenPipeWireRemote",
-            GLib.Variant.new_tuple(*args, GLib.Variant("a{sv}", {})), GLib.VariantType("(h)"),
-            Gio.DBusCallFlags.NONE, -1, None, None)
-        index = result.unpack()[0]
-        return fds.get(index)
+    def _open_remote_async(self, interface: str, args: list, done: Callable[[int | None], None]) -> None:
+        """OpenPipeWireRemote without waiting on the portal: ``done(fd)``, or ``done(None)``."""
+        def opened(bus, result) -> None:
+            try:
+                value, fds = bus.call_with_unix_fd_list_finish(result)
+                done(fds.get(value.unpack()[0]))
+            except GLib.Error:
+                done(None)
+
+        self.bus.call_with_unix_fd_list(BUS, PATH, interface, "OpenPipeWireRemote",
+                                        GLib.Variant.new_tuple(*args, GLib.Variant("a{sv}", {})),
+                                        GLib.VariantType("(h)"), Gio.DBusCallFlags.NONE, 10000, None, None, opened)
 
     def _property(self, interface: str, name: str):
         try:
@@ -223,30 +221,24 @@ class Portals:
                 return
             node_id, props = streams[0]
             size = tuple(props["size"]) if "size" in props else None
-            remote = lambda: self._open_remote(SCREENCAST, [GLib.Variant("o", session)])  # noqa: E731
-            # pipewiresrc's target-object is an object.serial (or a node name), never a node id.
-            # pipewire-serial (portal v6) is that serial; older portals give only the id, which
-            # the session's own remote resolves to its serial.
+            # pipewiresrc's target-object is an object.serial, never a node id: pipewire-serial
+            # (portal v6) is that serial; an older portal gives only the id, which goes to "path"
+            # (pw_stream_connect's target id, as OBS connects).
             serial = props.get("pipewire-serial")
+            capture = Capture(-1, str(serial) if serial is not None else None, size,
+                              results.get("restore_token"), session)
+            capture.path = None if serial is not None else str(node_id)
+            capture.opener = lambda ready: self._open_remote_async(SCREENCAST, [GLib.Variant("o", session)], ready)
 
-            def resolved(found: str | None) -> bool:
-                capture = Capture(-1, found, size, results.get("restore_token"), session)
-                capture.path = None if found else str(node_id)
-                capture.remote = remote
+            def first(fd: int | None) -> None:
+                if fd is None:
+                    failed("failed")
+                    return
+                capture.pool.append(fd)
                 self.captures[widget_id] = capture
                 done(capture)
-                return False
 
-            if serial is not None:
-                resolved(str(serial))
-                return
-            try:
-                fd = remote()
-            except GLib.Error as error:
-                failed(error.message)
-                return
-            threading.Thread(target=lambda: GLib.idle_add(resolved, node_serial(fd, int(node_id))),
-                             name="streamy-screencast-node", daemon=True).start()
+            capture.opener(first)
 
         self._request(SCREENCAST, "CreateSession", [], {"session_handle_token": GLib.Variant("s", self._token())},
                       created, failed)
@@ -262,12 +254,9 @@ class Portals:
             return
 
         def allowed(_results: dict) -> None:
-            try:
-                fd = self._open_remote(CAMERA, [])
-            except GLib.Error as error:
-                failed(error.message)
-                return
+            self._open_remote_async(CAMERA, [], lambda fd: look_on(fd) if fd is not None else failed("failed"))
 
+        def look_on(fd: int) -> None:
             # The remote shows only the cameras Streamy may use; its own registry names
             # them. Asking it takes a moment, so it happens off the window's thread. One
             # PipeWire connection per remote: this one is for looking, each stream opens its own.
@@ -281,7 +270,7 @@ class Portals:
                     return False
                 serial, name, size = nodes[0]
                 capture = Capture(-1, serial, size, None)
-                capture.remote = lambda: self._open_remote(CAMERA, [])
+                capture.opener = lambda ready: self._open_remote_async(CAMERA, [], ready)
                 capture.name = name
                 self.captures[widget_id] = capture
                 done(capture)
@@ -298,18 +287,42 @@ class Portals:
         capture = self.captures.pop(widget_id, None)
         if capture is None:
             return
+        for fd in capture.pool:
+            os.close(fd)
+        capture.pool.clear()
         if capture.session:
             self.bus.call(BUS, capture.session, "org.freedesktop.portal.Session", "Close", None, None,
                           Gio.DBusCallFlags.NONE, -1, None, None)
 
     def source_for(self, widget) -> tuple[int | None, str | None]:
-        """The engine's question: a fresh PipeWire connection (pipewiresrc owns it) and the node to target
-        (an object.serial, or "path:<id>" when only the id is known)."""
+        """The engine's question: a PipeWire connection of its own (pipewiresrc owns it) and the node
+        (an object.serial, or "path:<id>"). Connections are opened ahead without waiting on the portal;
+        when none is ready this says (None, None) and ``on_ready(widget_id)`` follows once one is."""
         capture = self.captures.get(widget.id)
         if capture is None:
             return None, None
-        try:
-            target = capture.node or (f"path:{capture.path}" if getattr(capture, "path", None) else None)
-            return capture.remote(), target
-        except GLib.Error:
-            return None, None
+        target = capture.node or (f"path:{capture.path}" if capture.path else None)
+        if capture.pool:
+            fd = capture.pool.pop()
+            self._refill(widget.id, capture)
+            return fd, target
+        self._refill(widget.id, capture, notify=True)
+        return None, None
+
+    def _refill(self, widget_id: str, capture: "Capture", notify: bool = False) -> None:
+        if capture.opening or capture.opener is None or capture.pool:
+            return
+        capture.opening = True
+
+        def ready(fd: int | None) -> None:
+            capture.opening = False
+            if self.captures.get(widget_id) is not capture:
+                if fd is not None:
+                    os.close(fd)
+                return
+            if fd is not None:
+                capture.pool.append(fd)
+                if notify and self.on_ready is not None:
+                    self.on_ready(widget_id)
+
+        capture.opener(ready)

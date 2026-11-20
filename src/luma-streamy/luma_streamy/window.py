@@ -89,6 +89,8 @@ class StreamyWindow(AppWindow):
             self._fill_fake_sources()
 
         self.engine = engine or Engine(sources=self._source_for)
+        if self.portals is not None:
+            self.portals.on_ready = lambda _widget_id: self._show_scene()
         self.engine.connect("levels", self._levels)
         self.engine.connect("problem", lambda _e, text: Toast.show(self.host, text, kind="warning"))
         self.engine.connect("output-state", self._output_state)
