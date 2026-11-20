@@ -439,8 +439,6 @@ class StreamyWindow(AppWindow):
                 self.sidebar.list.select_row(row)
 
     def _refresh_canvas(self) -> None:
-        width, height = self.project.canvas
-        self.canvas_facts.label.set_label(f"{width} × {height} · {graph.FPS} fps")
         scene = self.project.active_scene
         self.arrange.clear()
         self.arrange.set_canvas_size(*self.project.canvas)
@@ -455,9 +453,8 @@ class StreamyWindow(AppWindow):
             self.arrange.set_selected(self.selected)
 
     def _refresh_widgets(self) -> None:
-        """The scene's widgets in the sidebar, top first: a row each, with Hide/Show at its end."""
-        from luma_appkit import RowAction
-
+        """The scene's widgets in the sidebar, top first: a row each; Hide, Lock and the rest are in its
+        context menu and the bar."""
         scene = self.project.active_scene
         self.sidebar.clear_pane()
         self._widget_rows = {}
@@ -465,10 +462,7 @@ class StreamyWindow(AppWindow):
         for w in widgets:
             meta = "Unavailable" if w.id in self.widget_errors else "Locked" if w.locked else (
                 "Hidden" if not w.visible else ("Muted" if w.has_sound and w.muted else ""))
-            row = SidebarRow(w.name, lead=RowLead.icon(w.icon), meta=meta,
-                             trail=RowAction("eye-off" if w.visible else "eye", "Hide" if w.visible else "Show",
-                                             lambda wid=w: self._set_visible(wid, not wid.visible)),
-                             muted=not w.visible)
+            row = SidebarRow(w.name, lead=RowLead.icon(w.icon), meta=meta, muted=not w.visible)
             row.widget_id = w.id
             click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
             click.connect("pressed", lambda _g, _n, _x, _y, wid=w.id, r=row: self._widget_menu(wid, r))
@@ -772,7 +766,7 @@ class StreamyWindow(AppWindow):
                 items.append(BarAction("rotate-ccw", "Share again" if w.kind in ("display", "window")
                                        else "Try again", primary=True, on_activate=lambda: self.retry_widget(w)))
             if w.has_picture:
-                items += [BarAction("move", "Position", key="position", panel=lambda: self._position_panel(w)),
+                items += [BarAction("frame", "Position", key="position", panel=lambda: self._position_panel(w)),
                           BarAction("sparkles", "Style", key="style", panel=lambda: self._style_panel(w)),
                           BarAction("crop", "Crop", key="crop", panel=lambda: self._crop_panel(w))]
             else:
@@ -780,11 +774,12 @@ class StreamyWindow(AppWindow):
             if w.kind in ("display", "window", "image"):
                 items.append(BarAction("monitor-up" if w.kind != "image" else "image", tooltip="Source",
                                        key="source", panel=lambda: self._source_panel(w)))
-            items += [BarAction("layers", tooltip="Arrange", menu=self._arrange_menu),
-                      BarAction("eye" if not w.visible else "eye-off", tooltip="Show" if not w.visible else "Hide",
-                                on_activate=self.toggle_hidden),
-                      BarAction("trash-2", tooltip="Delete", danger=True, on_activate=self.delete_selected)]
-            more = [BarAction("plus", "Add widget", menu=self._add_menu)]
+            items.append(BarAction("layers", tooltip="Arrange", menu=self._arrange_menu))
+            # Rare and destructive ones wait under ⋯, so the chip keeps its name while an editor is open.
+            more = [BarAction("eye" if not w.visible else "eye-off", "Show" if not w.visible else "Hide",
+                              on_activate=self.toggle_hidden),
+                    BarAction("trash-2", "Delete", danger=True, on_activate=self.delete_selected),
+                    BarAction("plus", "Add widget", menu=self._add_menu)]
             if live:
                 more.append(BarAction("square", "End stream…", danger=True, on_activate=self.ask_end_stream))
             self.center.show_bar(items, more=more)
