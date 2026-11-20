@@ -43,7 +43,8 @@ from . import lumaui_tokens as tokens  # noqa: E402
 from .action_center import SEPARATOR, BarAction, make_control  # noqa: E402
 from .structure_layers import LayerHost  # noqa: E402
 
-__all__ = ["SelectionBubble", "float_at", "FloatingMenu", "SearchMenu", "MenuItem"]
+__all__ = ["SelectionBubble", "float_at", "float_at_point", "FloatingMenu", "SearchMenu", "MenuItem",
+           "SUBMENU_GRACE_MS"]
 
 
 # ── placement ──────────────────────────────────────────────────────────────
@@ -318,22 +319,85 @@ class SelectionBubble(Gtk.Box):
 
 # ── a small anchored menu (a placeholder for F2's MenuDrawer) ──────────────
 
+#: How long a submenu stays open while the pointer heads for it across other rows (ms).
+SUBMENU_GRACE_MS = 250
+
+
+def float_at_point(host: Gtk.Widget, widget: Gtk.Widget, x: float, y: float, *, edge: int = 8,
+                   width: int | None = None) -> tuple[bool, bool]:
+    """Place `widget` (an overlay of `host`) with its top start corner at the point (`x`, `y`) in host
+    coordinates: a context menu at the pointer. It flips to the point's other side where it would
+    cross `edge` from the host's edge, and only when neither side fits is it shifted (never to an edge
+    it wasn't near). Returns (flipped across, flipped up)."""
+    widget.set_halign(Gtk.Align.START)
+    widget.set_valign(Gtk.Align.START)
+    for setter in (widget.set_margin_start, widget.set_margin_top, widget.set_margin_end, widget.set_margin_bottom):
+        setter(0)
+    if width:
+        widget.set_size_request(width, -1)
+    bw, bh = _natural(widget, width or -1)
+    hw, hh = host.get_width(), host.get_height()
+    rtl = host.get_direction() == Gtk.TextDirection.RTL
+    # In the reading direction: start at the point, else end at it.
+    forward = (x - bw) if rtl else x
+    backward = x if rtl else (x - bw)
+    fits = (lambda left: edge <= left <= hw - bw - edge) if hw > 0 else (lambda left: True)
+    across = not fits(forward) and fits(backward)
+    left = backward if across else forward
+    if hw > 0:
+        left = max(edge, min(left, hw - bw - edge))
+    top, up = y, False
+    if hh > 0 and y + bh > hh - edge:
+        if y - bh >= edge:
+            top, up = y - bh, True
+        else:
+            top = max(edge, hh - bh - edge)
+    if rtl and hw > 0:
+        left = hw - left - bw  # START is the right edge: measure the margin from there
+    widget.set_margin_start(max(0, int(round(left))))
+    widget.set_margin_top(max(0, int(round(top))))
+    lumaui.set_css_class(widget, "below", not up)
+    return across, up
+
+
 class MenuItem:
-    """One row: an icon (a Lucide name or a Gio.Icon), a label, an optional note on the right."""
+    """One row: an icon (a Lucide name or a Gio.Icon), a label, an optional note on the right.
+
+    `shortcut` ("Ctrl+D") shows as keycaps on a leaf row. `submenu` (rows, as FloatingMenu takes) makes
+    the row open a cascading menu: beside it on a computer, drilled in place with a Back row on a phone.
+    """
 
     def __init__(self, label: str, *, icon: str | None = None, gicon: object | None = None,
                  note: str | None = None, on_activate: Callable[[], None] | None = None,
-                 selected: bool = False, danger: bool = False) -> None:
+                 selected: bool = False, danger: bool = False, shortcut: str | None = None,
+                 submenu: Sequence[object] | None = None) -> None:
+        if submenu is not None and (on_activate is not None or shortcut is not None):
+            raise ValueError("a row that opens a submenu has no action or shortcut of its own")
         self.label, self.icon, self.gicon, self.note = label, icon, gicon, note
         self.on_activate, self.selected, self.danger = on_activate, selected, danger
+        self.shortcut = shortcut
+        self.submenu = list(submenu) if submenu is not None else None
+
+
+def _shortcut_widget(shortcut: str) -> Gtk.Widget:
+    from .platform import keycap
+    box = Gtk.Box(spacing=2)
+    box.add_css_class("lumaui-menu-shortcut")
+    for part in [p for p in shortcut.replace(" ", "").split("+") if p]:
+        cap = Gtk.Label(label=keycap(part))
+        cap.add_css_class("lumaui-menu-keycap")
+        box.append(cap)
+    return box
 
 
 class FloatingMenu(Gtk.Box):
-    """A short menu anchored to a control: a popover card on a computer, a drawer on a phone.
+    """A short menu anchored to a control or a point: a card in the window's layer host on a computer,
+    a panel in the bar's frame on a phone.
 
-    At phone width it presents through F2's `MenuDrawer.present_items`, the one
-    menu drawer every LumaUI menu uses; on a computer it is this floating card.
-    `rows` holds MenuItem, a heading string, or None for a separator.
+    `rows` holds MenuItem, a heading string, or None for a separator. A MenuItem with `submenu=`
+    cascades: hovering it (or → on it) opens its menu beside it, a pointer heading for that menu
+    keeps it open for SUBMENU_GRACE_MS across other rows, ← or Esc closes one level. On a phone a
+    submenu drills in place with a Back row.
     """
 
     __gtype_name__ = "LumaUIFloatingMenu"
@@ -348,7 +412,7 @@ class FloatingMenu(Gtk.Box):
         self.add_css_class("lumaui-menu")
         lumaui.set_css_class(self, "wide", width == "wide")
         lumaui.set_css_class(self, "narrow", width == "narrow")
-        self._title, self._label = title, label
+        self._title, self._label, self._width = title, label, width
         self.update_property([Gtk.AccessibleProperty.LABEL], [label])
         self.buttons: list[Gtk.Button] = []
         self._rows = list(rows)
@@ -359,6 +423,13 @@ class FloatingMenu(Gtk.Box):
         self._keys: Gtk.EventControllerKey | None = None
         self._return: Gtk.Widget | None = None
         self._scroll: Gtk.ScrolledWindow | None = None
+        # Cascades: the menu this one opened from, the one open from it, and the row that opened it.
+        self.parent_menu: FloatingMenu | None = None
+        self.submenu: FloatingMenu | None = None
+        self._submenu_button: Gtk.Button | None = None
+        self._hovered: tuple[Gtk.Button, MenuItem | None] | None = None
+        self._pointer: list[tuple[float, float]] = []  # the last pointer points, host coordinates
+        self._switch_id = 0
         self.handle_bar = Gtk.Box(halign=Gtk.Align.CENTER, visible=False)
         self.handle_bar.add_css_class("lumaui-drawer-handle")
         self.append(self.handle_bar)
@@ -394,17 +465,42 @@ class FloatingMenu(Gtk.Box):
                     note = Gtk.Label(label=row.note)
                     note.add_css_class("lumaui-menu-note")
                     line.append(note)
+                if getattr(row, "shortcut", None):
+                    line.append(_shortcut_widget(row.shortcut))
+                if getattr(row, "submenu", None) is not None:
+                    button.add_css_class("submenu")
+                    chevron = icons.image("chevron-right")
+                    chevron.add_css_class("lumaui-menu-chevron")
+                    line.append(chevron)
+                    button.update_property([Gtk.AccessibleProperty.HAS_POPUP], [True])
                 button.set_child(line)
                 name = f"{row.label}, {row.note}" if row.note else row.label
+                if getattr(row, "shortcut", None):
+                    button.update_property([Gtk.AccessibleProperty.KEY_SHORTCUTS], [row.shortcut])
                 button.update_property([Gtk.AccessibleProperty.LABEL], [name])
                 button.connect("clicked", self._activated, row)
                 self.buttons.append(button)
                 self.append(button)
+            if row is None or isinstance(row, str) or not isinstance(row, MenuItem):
+                continue
+            hover = Gtk.EventControllerMotion()
+            hover.connect("enter", lambda _c, _x, _y, b=button, r=row: self._hover(b, r))
+            button.add_controller(hover)
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._motion)
+        self.add_controller(motion)
 
-    def popup(self, anchor: Gtk.Widget, *, align: str = "end", frame_bottom: int | None = None,
-              frame_max_fraction: float | None = None, frame_opaque: bool | None = None,
-              side: str | None = None) -> "FloatingMenu":
-        """Open under or over `anchor` (over it in the lower half of the window, as v70's lMenu).
+    # ── opening ─────────────────────────────────────────────────────────
+
+    def popup(self, anchor: Gtk.Widget, *, x: float | None = None, y: float | None = None, align: str = "end",
+              frame_bottom: int | None = None, frame_max_fraction: float | None = None,
+              frame_opaque: bool | None = None, side: str | None = None) -> "FloatingMenu":
+        """Open from `anchor`.
+
+        With `x` and `y` (a point in `anchor`'s coordinates: the pointer of a right click, the touch
+        point of a long press) the menu's corner sits at that point and flips to its other side at the
+        window's edges: a context menu. Without them it opens under or over `anchor` (over it in the
+        lower half of the window, as v70's lMenu), as for the Menu key or Shift+F10.
 
         `align` lines the menu up with the anchor's "start", "center" or "end" edge; `side` ("above" or
         "below") fixes that side and clamps to the window edge (Memos' speed menu rises).
@@ -413,6 +509,10 @@ class FloatingMenu(Gtk.Box):
             raise ValueError('a menu opens "above" or "below" its anchor')
         if align not in ("start", "center", "end"):
             raise ValueError('a menu aligns with its anchor\'s "start", "center" or "end"')
+        if (x is None) != (y is None):
+            raise ValueError("a menu opens at a point (x and y) or from its anchor (neither)")
+        if self.is_open:
+            self.close()
         host = LayerHost.window_host(anchor)
         lumaui.install(host.get_display())
         root = anchor.get_root()
@@ -422,17 +522,41 @@ class FloatingMenu(Gtk.Box):
         if lumaui.is_phone_width(host) or lumaui.mobile_form_factor():
             # v71: on a phone every menu rises from the bar's place (the bar's frame), not a drawer.
             from .bar_frame import BarFrame
-            from .bar_panel import panel_list
-            self._drawer = BarFrame.present(anchor, panel_list(self._rows, label=self._label), kind="menu",
+            self._drawer = BarFrame.present(anchor, self._phone_page(self._rows), kind="menu",
                                             title=self._title, bottom=frame_bottom,
                                             max_fraction=frame_max_fraction, opaque=frame_opaque)
             self._drawer.on_closed = self._drawer_cancelled
             return self
+        catcher = Gtk.Box(hexpand=True, vexpand=True)
+        click = Gtk.GestureClick(button=0)
+        click.connect("released", lambda *_a: self.close())
+        catcher.add_controller(click)
+        self._catcher = catcher
+        host.add_overlay(catcher)
+        self._present(host)
+        if x is not None:
+            ok, point = anchor.compute_point(host, Graphene.Point().init(float(x), float(y)))
+            px, py = (point.x, point.y) if ok else (float(x), float(y))
+            float_at_point(host, self, px, py)
+        else:
+            rect = rect_in(host, anchor)
+            prefer = side or ("above" if rect.y > host.get_height() * 0.5 else "below")
+            float_at(host, self, rect, prefer=prefer, align=align, offset=8, edge=8, flip=side is None)
+        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self._key)
+        if root is not None:
+            root.add_controller(keys)
+            self._keys = keys
+        if self.buttons:
+            self.buttons[0].grab_focus()
+        return self
+
+    def _present(self, host: LayerHost) -> None:
+        """Lay the card over `host`, the window's one top layer, scrolling when taller than it."""
         self._host = host
         available_height = max(96, host.get_height() - 16)
-        if _natural(self)[1] > available_height:
-            # Keep every choice reachable when a short window cannot fit the
-            # menu above or below the transport key.
+        if self._scroll is None and _natural(self)[1] > available_height:
+            # Keep every choice reachable when a short window cannot fit the menu.
             content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             while child := self.get_first_child():
                 self.remove(child)
@@ -444,27 +568,130 @@ class FloatingMenu(Gtk.Box):
             scroll.set_child(content)
             self._scroll = scroll
             self.append(scroll)
-        catcher = Gtk.Box(hexpand=True, vexpand=True)
-        click = Gtk.GestureClick()
-        click.connect("released", lambda *_a: self.close())
-        catcher.add_controller(click)
-        self._catcher = catcher
-        host.add_overlay(catcher)
         host.add_overlay(self)
-        rect = rect_in(host, anchor)
-        prefer = side or ("above" if rect.y > host.get_height() * 0.5 else "below")
-        float_at(host, self, rect, prefer=prefer, align=align, offset=8, edge=8, flip=side is None)
-        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
-        keys.connect("key-pressed", self._key)
-        if root is not None:
-            root.add_controller(keys)
-            self._keys = keys
         lumaui.on_next_frame(self, lambda: self.add_css_class("shown"))
-        if self.buttons:
-            self.buttons[0].grab_focus()
-        return self
+
+    # ── cascades ────────────────────────────────────────────────────────
+
+    @property
+    def root_menu(self) -> "FloatingMenu":
+        menu = self
+        while menu.parent_menu is not None:
+            menu = menu.parent_menu
+        return menu
+
+    def open_submenu(self, button: Gtk.Button, *, focus: bool = False) -> "FloatingMenu | None":
+        """Open the submenu of `button`'s row beside this menu (the row's own menu, made each time)."""
+        row = next((r for b, r in self._items() if b is button), None)
+        if row is None or getattr(row, "submenu", None) is None or self._host is None:
+            return None
+        self._cancel_switch()
+        if self.submenu is not None and self._submenu_button is button:
+            if focus and self.submenu.buttons:
+                self.submenu.buttons[0].grab_focus()
+            return self.submenu
+        self.close_submenu()
+        child = FloatingMenu(row.submenu, label=row.label, width=self._width)
+        child.parent_menu = self
+        lumaui.set_css_class(child, "lumaui-media", self.has_css_class("lumaui-media"))
+        child.add_css_class("submenu")
+        child._present(self._host)
+        self.submenu, self._submenu_button = child, button
+        button.add_css_class("open")
+        self._place_submenu(child, button)
+        if focus and child.buttons:
+            child.buttons[0].grab_focus()
+        return child
+
+    def _place_submenu(self, child: "FloatingMenu", button: Gtk.Button) -> None:
+        host = self._host
+        ok, menu = self.compute_bounds(host)
+        ok_row, row = button.compute_bounds(host)
+        if not (ok and ok_row):
+            return
+        cw, ch = _natural(child)
+        hw, hh = host.get_width(), host.get_height()
+        rtl = host.get_direction() == Gtk.TextDirection.RTL
+        gap, edge = 2, 8
+        after = menu.origin.x + menu.size.width + gap
+        before = menu.origin.x - gap - cw
+        first, second = (before, after) if rtl else (after, before)
+        left = first if edge <= first <= hw - cw - edge else second
+        left = max(edge, min(left, hw - cw - edge))
+        pad = 6  # the card's padding: its first row lines up with the row it opened from
+        top = max(edge, min(row.origin.y - pad, hh - ch - edge))
+        child.set_halign(Gtk.Align.START)
+        child.set_valign(Gtk.Align.START)
+        child.set_margin_start(max(0, int(round(hw - left - cw if rtl else left))))
+        child.set_margin_top(max(0, int(round(top))))
+        lumaui.set_css_class(child, "flipped", (left < menu.origin.x) != rtl)
+
+    def close_submenu(self) -> None:
+        """Close the menu open from this one (and any open from it)."""
+        child, button = self.submenu, self._submenu_button
+        self.submenu = self._submenu_button = None
+        if child is not None:
+            child.close()
+        if button is not None:
+            button.remove_css_class("open")
+
+    def _items(self):
+        rows = [r for r in self._rows if isinstance(r, MenuItem)]
+        plain = [b for b in self.buttons if b.has_css_class("lumaui-menu-item") and not b.has_css_class("rich")]
+        return list(zip(plain, rows)) if len(plain) == len(rows) else []
+
+    def _hover(self, button: Gtk.Button, row: MenuItem) -> None:
+        """The pointer came onto a row: open its submenu, or close another, unless the pointer is on its
+        way to the open submenu (then wait SUBMENU_GRACE_MS and look again)."""
+        self._hovered = (button, row)
+        if self.submenu is not None and self._submenu_button is not button and self._heading_to_submenu():
+            self._cancel_switch()
+            self._switch_id = GLib.timeout_add(SUBMENU_GRACE_MS, self._switch)
+            return
+        self._switch()
+
+    def _switch(self) -> bool:
+        self._switch_id = 0
+        if self._hovered is None or self._host is None:
+            return False
+        button, row = self._hovered
+        if getattr(row, "submenu", None) is not None:
+            self.open_submenu(button)
+        elif self.submenu is not None:
+            self.close_submenu()
+        return False
+
+    def _cancel_switch(self) -> None:
+        if self._switch_id:
+            GLib.source_remove(self._switch_id)
+            self._switch_id = 0
+
+    def _motion(self, _controller: Gtk.EventControllerMotion, x: float, y: float) -> None:
+        if self._host is None:
+            return
+        ok, point = self.compute_point(self._host, Graphene.Point().init(x, y))
+        if ok:
+            self._pointer = (self._pointer + [(point.x, point.y)])[-2:]
+
+    def _heading_to_submenu(self) -> bool:
+        """Whether the pointer's last move points into the triangle from where it was to the open
+        submenu's near edge (the usual menu-aim rule)."""
+        child = self.submenu
+        if child is None or len(self._pointer) < 2:
+            return False
+        ok, box = child.compute_bounds(self._host)
+        if not ok:
+            return False
+        (ax, ay), (px, py) = self._pointer
+        near = box.origin.x if box.origin.x >= ax else box.origin.x + box.size.width
+        b, c = (near, box.origin.y), (near, box.origin.y + box.size.height)
+        return _in_triangle((px, py), (ax, ay), b, c)
+
+    # ── closing ─────────────────────────────────────────────────────────
 
     def close(self) -> None:
+        self._cancel_switch()
+        self.close_submenu()
         if self._drawer is not None:
             drawer, self._drawer = self._drawer, None
             drawer.close()
@@ -476,6 +703,7 @@ class FloatingMenu(Gtk.Box):
         host, self._host = self._host, None
         if host is None:
             return
+        self.remove_css_class("shown")
         root = host.get_root()
         if self._keys is not None and root is not None:
             root.remove_controller(self._keys)
@@ -484,7 +712,7 @@ class FloatingMenu(Gtk.Box):
             if widget is not None and widget.get_parent() is host:
                 host.remove_overlay(widget)
         self._catcher = None
-        if self._return is not None and self._return.get_mapped():
+        if self.parent_menu is None and self._return is not None and self._return.get_mapped():
             self._return.grab_focus()
 
     def _drawer_cancelled(self) -> None:
@@ -495,8 +723,11 @@ class FloatingMenu(Gtk.Box):
     def is_open(self) -> bool:
         return self._host is not None or self._handle is not None or self._drawer is not None
 
-    def _activated(self, _button: Gtk.Button, row: MenuItem) -> None:
-        self.close()
+    def _activated(self, button: Gtk.Button, row: MenuItem) -> None:
+        if getattr(row, "submenu", None) is not None:
+            self.open_submenu(button, focus=True)
+            return
+        self.root_menu.close()
         if row.on_activate is not None:
             row.on_activate()
 
@@ -504,17 +735,65 @@ class FloatingMenu(Gtk.Box):
         root = self.get_root()
         if isinstance(root.get_focus() if root is not None else None, Gtk.Text):
             return False  # an inline rename (MN1) owns its keys
-        if keyval == Gdk.KEY_Escape:
-            self.close()
+        menu = self  # the keys belong to the deepest open level
+        while menu.submenu is not None:
+            menu = menu.submenu
+        rtl = self.get_direction() == Gtk.TextDirection.RTL
+        deeper, back = (Gdk.KEY_Left, Gdk.KEY_Right) if rtl else (Gdk.KEY_Right, Gdk.KEY_Left)
+        focus = root.get_focus() if root is not None else None
+        current = next((b for b in menu.buttons if focus is b or (focus and focus.is_ancestor(b))), None)
+        if keyval == Gdk.KEY_Escape or (keyval == back and menu.parent_menu is not None):
+            if menu.parent_menu is None:
+                self.close()
+            else:
+                parent, opener = menu.parent_menu, menu.parent_menu._submenu_button
+                parent.close_submenu()
+                if opener is not None:
+                    opener.grab_focus()
             return True
-        if keyval in (Gdk.KEY_Up, Gdk.KEY_Down) and self.buttons:
-            root = self.get_root()
-            focus = root.get_focus() if root is not None else None
-            index = next((i for i, b in enumerate(self.buttons) if focus is b or (focus and focus.is_ancestor(b))), -1)
+        if keyval == deeper and current is not None and current.has_css_class("submenu"):
+            menu.open_submenu(current, focus=True)
+            return True
+        if keyval in (Gdk.KEY_Up, Gdk.KEY_Down) and menu.buttons:
+            index = menu.buttons.index(current) if current in menu.buttons else -1
             step = 1 if keyval == Gdk.KEY_Down else -1
-            self.buttons[(index + step) % len(self.buttons)].grab_focus()
+            menu.buttons[(index + step) % len(menu.buttons)].grab_focus()
             return True
         return False
+
+    # ── a phone: a page in the bar's frame, submenus drilled in place ──────
+
+    def _phone_page(self, rows: Sequence[object], back: Callable[[], None] | None = None) -> Gtk.Widget:
+        from .bar_panel import PanelRow, panel_list
+        shown: list[object] = []
+        if back is not None:
+            shown.append(PanelRow("Back", icon="chevron-left", closes=False, on_activate=back))
+        for row in rows:
+            if isinstance(row, MenuItem) and row.submenu is not None:
+                shown.append(PanelRow(row.label, icon=row.icon, gicon=row.gicon, note=row.note, submenu=True,
+                                      on_activate=lambda r=row: self._drill(r)))
+            else:
+                shown.append(row)
+        return panel_list(shown, label=self._label)
+
+    def _drill(self, row: MenuItem) -> None:
+        frame = self._drawer
+        if frame is None:
+            return
+        shown = frame.scroller.get_child()
+        previous = shown.get_child() if isinstance(shown, Gtk.Viewport) else shown
+        if isinstance(shown, Gtk.Viewport):
+            shown.set_child(None)  # the page goes back in when Back is pressed
+        frame.scroller.set_child(self._phone_page(row.submenu, back=lambda: frame.scroller.set_child(previous)))
+
+
+def _in_triangle(p, a, b, c) -> bool:
+    def sign(p1, p2, p3):
+        return (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1])
+    d1, d2, d3 = sign(p, a, b), sign(p, b, c), sign(p, c, a)
+    negative = d1 < 0 or d2 < 0 or d3 < 0
+    positive = d1 > 0 or d2 > 0 or d3 > 0
+    return not (negative and positive)
 
 
 class SearchMenu(FloatingMenu):

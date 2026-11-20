@@ -1090,6 +1090,15 @@
       "gtk_symbolic_sha256": "7bce431d399cd2e3c38ba56472ca36102039e8d4170a030b42061588a43c01f7"
     },
     {
+      "lucide": "headphone-off",
+      "icon": "lumaui-headphone-off-symbolic",
+      "source": "upstream/lucide/lumaui/headphone-off.svg",
+      "sha256": "78c1b36b08ba38acbda1fd2780b340cbe137395e8381892da5dc390f13c54cb8",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "91095c595b90fb5013f088a3ccda5d1929b9cacbcbebf9c8cf1a2b7004299e56",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/headphone-off.svg"
+    },
+    {
       "lucide": "headphones",
       "icon": "lumaui-headphones-symbolic",
       "source": "upstream/lucide/lumaui/headphones.svg",
@@ -1402,6 +1411,15 @@
       "gtk_symbolic_sha256": "e6e5964647c89735b13f037666a379152f39c7c3549f542ace5bbd455dff9fef"
     },
     {
+      "lucide": "maximize",
+      "icon": "lumaui-maximize-symbolic",
+      "source": "upstream/lucide/lumaui/maximize.svg",
+      "sha256": "1b3d90a4b1fb82d13da74c3063f08996f9b323a3c2c8e8516c263d958db8a238",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "60472d6440c5a6fae22e8a38a1d6430fc7fdde0f96d0fd9ad5eb583161ea7df2",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/maximize.svg"
+    },
+    {
       "lucide": "maximize-2",
       "icon": "lumaui-maximize-2-symbolic",
       "source": "upstream/lucide/lumaui/maximize-2.svg",
@@ -1552,6 +1570,24 @@
       "sha256": "d0b60d9d5486e4cf23c98b9be0a16e24921baa6dfd45159e90c73139b1ee0352",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "91100a58bb52351dd04cc3462cdd16ac2bb3e8ba7f47e43e419f6b81958d47b1"
+    },
+    {
+      "lucide": "move-horizontal",
+      "icon": "lumaui-move-horizontal-symbolic",
+      "source": "upstream/lucide/lumaui/move-horizontal.svg",
+      "sha256": "6ef75c8d9889b7484bf69e8a1b0af07e33fe7f146f47b6462feca2e26a7e6401",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "d3fcf320949219a2d3ab0cc1d640cc0e2e4dd0d2fbf988dd340c651b0739ed2b",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/move-horizontal.svg"
+    },
+    {
+      "lucide": "move-vertical",
+      "icon": "lumaui-move-vertical-symbolic",
+      "source": "upstream/lucide/lumaui/move-vertical.svg",
+      "sha256": "1fc96daa2b7c36219df77a294cf819fe99e473dd6f402e2f2a0242a5c68598de",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "e824948db811aecabe75fcb6cd88ce37d4fd865a189c29dbeeb08d91def45538",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/move-vertical.svg"
     },
     {
       "lucide": "music",
@@ -1845,6 +1881,15 @@
       "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/radio-tower.svg"
     },
     {
+      "lucide": "ratio",
+      "icon": "lumaui-ratio-symbolic",
+      "source": "upstream/lucide/lumaui/ratio.svg",
+      "sha256": "62952c73bb09e5a50b8f68da5aca383945a7963527ee372d58c189d381db7a19",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "1b0bc2bfafb9032f2ede396dfed8dbaf7b274f2aae85e3524ee1d3e410ef0e93",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/ratio.svg"
+    },
+    {
       "lucide": "receipt",
       "icon": "lumaui-receipt-symbolic",
       "source": "upstream/lucide/lumaui/receipt.svg",
@@ -1867,6 +1912,15 @@
       "sha256": "cabb2e0aaaa21882f413d9c3aa6f38b7862ff384ffa550d99bff1025eddb9906",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "fba0763cf842091f3aff75cd2206a4336ddd0062cd9769730c0ecf742d61d6dc"
+    },
+    {
+      "lucide": "redo-2",
+      "icon": "lumaui-redo-2-symbolic",
+      "source": "upstream/lucide/lumaui/redo-2.svg",
+      "sha256": "c2791e73d31bd12f2728ebac6bc92cb17cad1581838205b064b24f1614088b58",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "e68d65f18aa2c18afdb0e0fa53cc847a1683be92bf463067e2d4fe6c0e608c90",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/redo-2.svg"
     },
     {
       "lucide": "refresh-ccw",
@@ -1949,6 +2003,15 @@
       "gtk_symbolic_sha256": "ae8720825e57e7d8be9ed1e96c5470cb9748e80f135da86c950e1872561e17ad"
     },
     {
+      "lucide": "save",
+      "icon": "lumaui-save-symbolic",
+      "source": "upstream/lucide/lumaui/save.svg",
+      "sha256": "bbac3d7295da5f110da60e758dc1f0cd8d2f692b4d655b82b0197551ad03c5d8",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "47ec19a56cac4904bf3b8c48d7d83af361cbfa8c0abf79ea8880b76e08c367a9",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/save.svg"
+    },
+    {
       "lucide": "scaling",
       "icon": "lumaui-scaling-symbolic",
       "source": "upstream/lucide/lumaui/scaling.svg",
@@ -2011,6 +2074,15 @@
       "sha256": "89c71ff477a2d8ee31be20e01cc18a3947b0e597c24f055722edd168c1b0968e",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "092d601e8feceb11142cb5127525be3501fb522a1fac2c89ac3aeeb81042d80a"
+    },
+    {
+      "lucide": "send-to-back",
+      "icon": "lumaui-send-to-back-symbolic",
+      "source": "upstream/lucide/lumaui/send-to-back.svg",
+      "sha256": "751f04ac4cb8300d423196c24dd690d30ba8714fcb198b259926ddbd22524301",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "f04abc4655447ff419af198b1350aceb26dbec1fe15a9ff5e36cc2773eb8448b",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/send-to-back.svg"
     },
     {
       "lucide": "server",
@@ -2084,6 +2156,15 @@
       "sha256": "7069fe705ce9ac8e6d2ffb16af7942a0e958a90be7691fa3cf81c6b86c30f8fa",
       "upstream_version": "1.48.0",
       "gtk_symbolic_sha256": "111b1eeae1e0605cb86ed6fc5f7599b474a562e79e93eb1c6fce1d718fdf289c"
+    },
+    {
+      "lucide": "shrink",
+      "icon": "lumaui-shrink-symbolic",
+      "source": "upstream/lucide/lumaui/shrink.svg",
+      "sha256": "363587d0df18423791f9ca0716e062d5d0c1e411888e2717932359230f295ff6",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "b34086e661c5e0f3e9695ecda018c2b9f2f5c6b92be0913f3a1706dee72e210d",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/shrink.svg"
     },
     {
       "lucide": "shuffle",
@@ -2253,6 +2334,15 @@
       "sha256": "303cd0b78e574f38c1dc7157b50381c68080c6044fb8b1300baf68146c3ea3a8",
       "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "e2df3ff9256e5eb8cc9c476a28b06861c618cd44f6326f3efe6e7b38e9aec625"
+    },
+    {
+      "lucide": "squircle",
+      "icon": "lumaui-squircle-symbolic",
+      "source": "upstream/lucide/lumaui/squircle.svg",
+      "sha256": "42b8ee3b751c1c5dd3c07d66dd3e22715ef2b042aaebd28099d3b3092772afa8",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "42a8ba38e2bf74713a846febfa1b432130a3a93f7b20cdea0bb90f1c8f015188",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/squircle.svg"
     },
     {
       "lucide": "star",
@@ -2502,6 +2592,15 @@
       "sha256": "f60c5fc68efed7334adf65e81a3c1d8f8fd7313198352d61d75507e633471dc9",
       "upstream_version": "1.48.0",
       "gtk_symbolic_sha256": "41c516e3c0b1c254c47ca76d5a011dcbf84d53d196768a775657ecd4c23f53b2"
+    },
+    {
+      "lucide": "unlink",
+      "icon": "lumaui-unlink-symbolic",
+      "source": "upstream/lucide/lumaui/unlink.svg",
+      "sha256": "ec8b95329e54182564275ae81f361187d9c230de8d6ec814e2078cc3ea37ffe1",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "b1fd7643eb505068d092927b714ccf45ffb7a909024710b803485478e5408429",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/unlink.svg"
     },
     {
       "lucide": "upload",
