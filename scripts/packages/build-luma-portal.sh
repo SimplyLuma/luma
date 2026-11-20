@@ -51,7 +51,8 @@ install -m 0644 "$repo_root/packaging/rpm/luma-portal.spec" "$rpmbuild_dir/SPECS
   "$rpmbuild_dir" "$builder_container" "
     set -euo pipefail
     dnf5 -q -y install \
-      desktop-file-utils gtk4 libadwaita python3-devel python3-gobject rpm-build
+      desktop-file-utils gtk4 libadwaita python3-devel python3-gobject rpm-build \
+      systemd-rpm-macros
     rpmbuild -ba --define \"_topdir \$PWD\" SPECS/luma-portal.spec
   "
 
