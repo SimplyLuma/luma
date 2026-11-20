@@ -16,11 +16,11 @@ gi.require_version("Adw", "1")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
-    SEPARATOR, ActionCenter, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView, AudioMeter,
+    SEPARATOR, ActionCenter, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView,
     BarAction, BarChip, Command, CommandGroup, CommandRegistry, Dock, DockTile,
     DestructiveDialog, IconOnlyButton, ListEmptyState, ModeSwitch,
     NavigationSidebar, PropertyColor, PropertyNumber, PropertySection, RowAction, RowLead, SidebarFoot, SidebarRow,
-    SidebarToggle, TextButton, Toast, ToastHost, TypeLabel, ValueRange, ValueSlider, add_style_sheet,
+    SidebarToggle, TextButton, Toast, ToastHost, TypeLabel, ValueSlider, VolumeSlider, add_style_sheet,
 )
 from luma_appkit.action_bubble import MenuItem  # noqa: E402
 from luma_appkit.creative_parts import add_arrange_item  # noqa: E402
@@ -753,7 +753,7 @@ class StreamyWindow(AppWindow):
     # ── Audio inset ──
 
     def _refresh_audio(self) -> None:
-        """A strip per sound: mute, name and level in dB, the meter, then the volume."""
+        """A strip per sound: mute, name and level in dB, then the volume with its meter along it."""
         box = self.audio_box
         box.remove_all()
         self._meters.clear()
@@ -762,7 +762,7 @@ class StreamyWindow(AppWindow):
         self.audio_empty.set_visible(not sounds)
         box.get_parent().get_parent().set_visible(bool(sounds))
         for w in sounds:
-            # The mute key leads the strip; the name, meter and volume share one left edge beside it.
+            # The mute key leads the strip; the name and the volume's track share one left edge beside it.
             strip = Gtk.Box()
             strip.add_css_class("streamy-strip")
             strip.update_property([Gtk.AccessibleProperty.LABEL], [w.name])
@@ -785,12 +785,15 @@ class StreamyWindow(AppWindow):
             level.add_css_class("streamy-strip-db")
             line.append(level)
             column.append(line)
-            meter = AudioMeter(2, horizontal=True, label=f"{w.name} level")
-            meter.set_hexpand(True)
-            column.append(meter)
-            volume = ValueRange(w.volume_db, -60, 6, 1, label=f"{w.name} volume")
-            volume.connect("value-changed", lambda _r, value, wid=w, words=level: self._volume_moved(wid, value, words))
+            # LumaUI's volume with its level along the track (one part): the stereo meter
+            # runs under the fader over exactly its length, 0 dB marked, muted goes quiet.
+            volume = VolumeSlider(-60, 6, value=w.volume_db, unity=0, unit="dB", meter=2, horizontal=True,
+                                  label=f"{w.name} volume",
+                                  on_move=lambda value, wid=w, words=level: self._volume_moved(wid, value, words))
+            volume.set_muted(w.muted)
+            volume.set_hexpand(True)
             column.append(volume)
+            meter = volume.get_meter()
             box.append(strip)
             self._meters[w.id] = meter
         self.dock.refit()

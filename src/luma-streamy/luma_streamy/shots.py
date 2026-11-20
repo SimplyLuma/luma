@@ -50,6 +50,24 @@ def _children(widget: Gtk.Widget) -> list[Gtk.Widget]:
     return out
 
 
+def _strip_parts(strip: Gtk.Widget, window) -> dict:
+    """A strip's name, its volume's drawn track (LumaVolumeSlider) and the meter along it."""
+    heads = _find(strip, "streamy-strip-head")
+    name = heads[0].get_first_child() if heads else None
+    sliders = _find(strip, "lumaui-volume-slider")
+    track = meter = None
+    if sliders:
+        slider = sliders[0]
+        local = slider.get_track_bounds()
+        origin = _box(slider, window)
+        if origin is not None:
+            track = [round(origin[0] + local.get_x(), 1), round(origin[1] + local.get_y(), 1),
+                     round(local.get_width(), 1), round(local.get_height(), 1)]
+        if slider.get_meter() is not None:
+            meter = _box(slider.get_meter(), window)
+    return {"name": _box(name, window) if name is not None else None, "track": track, "meter": meter}
+
+
 def measure(window) -> dict:
     """The boxes that LumaUI's rules are about, in window coordinates."""
     from luma_appkit import SidebarRow
@@ -96,6 +114,7 @@ def measure(window) -> dict:
         "tiles": tiles,
         "audio_content": _box(audio_content, window),
         "strips": [_box(w, window) for w in _find(window.audio_box, "streamy-strip")],
+        "strip_parts": [_strip_parts(w, window) for w in _find(window.audio_box, "streamy-strip")],
         "video": [stage[0] + x0, stage[1] + y0, x1 - x0, y1 - y0] if stage else None,
         "bar": _box(window.center, window),
         "chip": [{"text": lab.get_label(), "box": _box(lab, window),
