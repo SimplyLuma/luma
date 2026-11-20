@@ -6,8 +6,8 @@ needed to change the host UI.
 
 | CPU | Retained engine | Archive SHA-256 |
 | --- | --- | --- |
-| x86_64 | native39 | `8a2efa725a32d529f7fd45edd9d96c0983436eeaa0b8f1904f79ed4a9b350b4e` |
-| aarch64 | native40 | `48c7b0d15486ab5f17e5f6751b2d3b73b4016b4ca9b0ef3e2723c9ed327f7706` |
+| x86_64 | native41 | `77aeb9dd6a82a9effcdab4de32a8af9b79414651b93ea72ce33c2f3c8b9fc333` |
+| aarch64 | native42 | `f451d7a036e8ccbf147899c6232a4a9b868ddd64857ac229b92dc6aa14c98aa4` |
 
 The ARM desktop preview requires native32 or later. Its source-built engine
 includes the native shared-memory frame transport used by the installed
@@ -15,11 +15,14 @@ includes the native shared-memory frame transport used by the installed
 engine patches 0003 (one tab in a new private window) and 0004 (a site's
 HTTP sign-in drawn by the host). native36 is native33 with engine patch 0005
 (WebRTC readback fallback outside the context lock). native38 is native36 with
-engine patch 0006 (extension prompts drawn by the host), and native40 is native38
-with engine patch 0007 (audio streams named Viola); only `chrome` differs.
+engine patch 0006 (extension prompts drawn by the host), native40 is native38
+with engine patch 0007 (audio streams named Viola), and native42 is native40
+with engine patch 0008 (extension removal, menus and popups for the host);
+only `chrome` differs.
 The ARM64 executable has SHA-256
-`404ed0a4906979decbd762f854b8a17f6b76e4d25263060c81cad48aefeae2c5`. On x86,
-native37 is native35 with engine patch 0006, and native39 is native37 with 0007.
+`dd8afae6f35a187afe9254abc0544fff2272ab10d99c49d6cf43005d25f129dd`. On x86,
+native37 is native35 with engine patch 0006, native39 is native37 with 0007,
+and native41 is native39 with 0008.
 The earlier mobile native31 input remains historical provenance; it cannot
 substitute for the desktop preview's current engine. Upstream notices and license
 files remain inside the admitted archive.
