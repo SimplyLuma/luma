@@ -33,6 +33,7 @@ __all__ = ("GraphMonitor", "WirePlumberControl", "PipeWireUnavailable")
 log = logging.getLogger("luma-audio-devices")
 
 MANUAL_ONLY_SETTING = "luma.audio.manual-only-outputs"
+APP_AUDIO_METADATA = "luma-app-audio"
 CONFIGURED_SINK_KEY = "default.configured.audio.sink"
 DEFAULT_SINK_KEY = "default.audio.sink"
 RAOP_SINK_MODULE = "libpipewire-module-raop-sink"
@@ -54,8 +55,10 @@ class GraphMonitor:
     COALESCE_MS = 120
 
     def __init__(self, on_outputs: Callable[[dict[str, OutputNode]], None],
-                 on_ready: Callable[[], None], command: list[str] | None = None) -> None:
+                 on_ready: Callable[[], None], command: list[str] | None = None,
+                 on_graph: Callable[[], None] | None = None) -> None:
         self._on_outputs = on_outputs
+        self._on_graph = on_graph
         self._on_ready = on_ready
         self._command = command or ["pw-dump", "--monitor", "--no-colors"]
         self.graph = Graph()
@@ -128,6 +131,11 @@ class GraphMonitor:
             self._on_outputs(outputs)
         except Exception:  # keep following the graph whatever one update does
             log.exception("handling a graph change failed")
+        if self._on_graph is not None:
+            try:
+                self._on_graph()
+            except Exception:
+                log.exception("handling a stream change failed")
         return GLib.SOURCE_REMOVE
 
     def _on_exit(self, process, result) -> None:
@@ -172,6 +180,7 @@ class WirePlumberControl:
         self._core = None
         self._objects = None
         self._metadata = None
+        self._app_metadata = None
         self._settings = None
         self._modules: dict[str, object] = {}
         self._legacy_cleared = False
@@ -205,6 +214,7 @@ class WirePlumberControl:
         log.warning("lost the connection to PipeWire")
         self.connected = False
         self._metadata = None
+        self._app_metadata = None
         self._settings = None
         self._modules.clear()
         self._objects = None
@@ -218,6 +228,9 @@ class WirePlumberControl:
 
     def _on_object_added(self, _om, obj) -> None:
         props = self.Wp.GlobalProxy.get_global_properties(obj)
+        if props is not None and props.get("metadata.name") == APP_AUDIO_METADATA:
+            self._app_metadata = obj
+            return
         if props is None or props.get("metadata.name") != "default":
             return
         self._metadata = obj
@@ -229,6 +242,8 @@ class WirePlumberControl:
     def _on_object_removed(self, _om, obj) -> None:
         if obj is self._metadata:
             self._metadata = None
+        if obj is self._app_metadata:
+            self._app_metadata = None
 
     def _on_metadata_changed(self, _metadata, subject, key, _type, value) -> None:
         if subject == 0 and key == DEFAULT_SINK_KEY:
@@ -256,6 +271,34 @@ class WirePlumberControl:
         self._metadata.set(0, CONFIGURED_SINK_KEY, "Spa:String:JSON",
                            json.dumps({"name": node_name}))
         return True
+
+    # Per-app audio (luma/app-audio.lua) -------------------------------------
+
+    @property
+    def app_audio_ready(self) -> bool:
+        return self._app_metadata is not None
+
+    def app_audio_command(self, key: str, value: dict | None) -> bool:
+        """Write one command to the luma-app-audio metadata, or remove it
+        (value None). WirePlumber applies it and removes app.* commands."""
+        if self._app_metadata is None:
+            log.warning("cannot apply %s: WirePlumber's luma-app-audio metadata is missing", key)
+            return False
+        if value is None:
+            self._app_metadata.set(0, key, None, None)
+        else:
+            self._app_metadata.set(0, key, "Spa:String:JSON", json.dumps(value))
+        return True
+
+    def own_client_id(self) -> int | None:
+        """This service's PipeWire client id: WirePlumber ends the captures it
+        owns when it leaves."""
+        if self._core is None:
+            return None
+        try:
+            return int(self._core.get_own_bound_id())
+        except Exception:
+            return None
 
     # Settings ---------------------------------------------------------------
 

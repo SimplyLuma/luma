@@ -11,7 +11,10 @@ D-Bus activatable as org.projectluma.AudioDevices) that
 * runs the opt-in AirPlay picker and keeps remembered receivers' outputs in
   step with the network (airplay.py, avahi.py);
 * publishes org.projectluma.AudioDevices1 for the Shell's sound menu and
-  Settings (data/dbus/org.projectluma.AudioDevices1.xml).
+  Settings (data/dbus/org.projectluma.AudioDevices1.xml);
+* runs the per-app mixer (mixer.py), its live level meters (levels.py, only
+  while watched) and the capture sessions behind the audio capture portal
+  (captures.py), with WirePlumber's luma/app-audio.lua.
 
 It holds no timers while nothing happens: pw-dump, Avahi and D-Bus signals
 wake it.
@@ -33,8 +36,11 @@ gi.require_version("Gio", "2.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
-from . import __version__, classify, migration, routing  # noqa: E402
+from . import __version__, apps, classify, migration, routing  # noqa: E402
 from .airplay import AirPlayManager  # noqa: E402
+from .captures import CaptureError, CaptureManager  # noqa: E402
+from .levels import LevelMeters  # noqa: E402
+from .mixer import Mixer  # noqa: E402
 from .avahi import AirPlayDiscovery  # noqa: E402
 from .pipewire import GraphMonitor, PipeWireUnavailable, WirePlumberControl  # noqa: E402
 from .secrets import PasswordStore  # noqa: E402
@@ -53,6 +59,7 @@ SETTINGS_SCHEMA = "org.projectluma.audio-devices"
 LEGACY_PROMPT_NOTIFICATION = "new-output"
 FAILURE_NOTIFICATION = "airplay-failed"
 SAVE_DELAY_MS = 1500
+INTERFACE_VERSION = 2
 
 
 def _interface_xml() -> str:
@@ -104,7 +111,16 @@ class AudioDevicesService(Gio.Application):
                                             startup_grace=_env_seconds("LUMA_AUDIO_DEVICES_STARTUP_GRACE",
                                                                        routing.STARTUP_GRACE))
         self.control = WirePlumberControl(self._default_changed, self._pipewire_connected)
-        self.graph = GraphMonitor(self._outputs_changed, lambda: None)
+        self.graph = GraphMonitor(self._outputs_changed, lambda: None, on_graph=self._streams_changed)
+        try:
+            index = apps.DesktopIndex()
+        except Exception:  # names fall back to the stream's own
+            log.exception("cannot index desktop entries")
+            index = None
+        self.mixer = Mixer(index, self.control)
+        self.levels = LevelMeters(lambda: self._connection, self._level_serials, OBJECT_PATH, INTERFACE)
+        self.captures = CaptureManager(self.control, lambda k, v: self.graph.graph.nodes_with(k, v),
+                                       lambda: self._connection)
         self.passwords = PasswordStore()
         self.discovery = AirPlayDiscovery(self._discovery_changed)
         self.airplay = AirPlayManager(self.store, self.control, self.passwords, self.discovery,
@@ -146,6 +162,7 @@ class AudioDevicesService(Gio.Application):
         pass
 
     def do_shutdown(self) -> None:
+        self.levels.stop_all()
         self.graph.stop()
         if self._save_id:
             GLib.source_remove(self._save_id)
@@ -191,6 +208,46 @@ class AudioDevicesService(Gio.Application):
             self._emit_properties_changed()
         self._perform(actions)
         self._emit_signal("OutputDevicesChanged")
+        self._emit_signal("OutputsChanged")
+
+    def _streams_changed(self) -> None:
+        if self.mixer.update(self.graph.graph):
+            self._emit_applications()
+        self.captures.graph_changed()
+        if self.levels.active:
+            self.levels.refresh()
+
+    def _emit_applications(self) -> None:
+        if self._connection is None:
+            return
+        rows = [_to_vardict(row) for row in self.mixer.rows()]
+        self._connection.emit_signal(None, OBJECT_PATH, INTERFACE, "ApplicationsChanged",
+                                     GLib.Variant("(aa{sv})", (rows,)))
+
+    def _level_serials(self, target: str) -> list[tuple[int, bool]]:
+        """The PipeWire serials a level target stands for; True for a device."""
+        if target.startswith("output:"):
+            name = target[len("output:"):] or self._default or self.graph.graph.default_sink() or ""
+            for node in self.graph.graph.output_nodes().values():
+                if node.name == name:
+                    serial = node.props.get("object.serial")
+                    try:
+                        return [(int(serial), True)]
+                    except (TypeError, ValueError):
+                        return []
+            return []
+        row = self.mixer.applications.get(target)
+        return [(serial, False) for serial in row.serials] if row else []
+
+    def _outputs(self) -> list[dict]:
+        default = self._default or self.graph.graph.default_sink()
+        rows = []
+        for name, output in sorted(self._output_nodes.items(), key=lambda item: item[1].name.casefold()):
+            if name in self._hidden_outputs and name != default:
+                continue
+            rows.append(_to_vardict({"name": name, "description": output.name, "icon": output.icon,
+                                     "default": name == default}))
+        return rows
 
     def _default_changed(self, node_name: str | None) -> None:
         if node_name == self._default:
@@ -305,6 +362,58 @@ class AudioDevicesService(Gio.Application):
                     invocation.return_dbus_error(ERROR_PREFIX + "NotFound", "That receiver isn’t remembered.")
             elif method == "GetOutputDevices":
                 invocation.return_value(GLib.Variant("(aa{sv})", (self._output_devices(),)))
+            elif method == "GetApplications":
+                invocation.return_value(GLib.Variant("(aa{sv})", ([_to_vardict(r) for r in self.mixer.rows()],)))
+            elif method == "GetOutputs":
+                invocation.return_value(GLib.Variant("(aa{sv})", (self._outputs(),)))
+            elif method in ("SetApplicationVolume", "SetApplicationMute", "SetApplicationOutput"):
+                key, value = parameters.unpack()
+                # Any app key is accepted, playing or not: WirePlumber applies
+                # it to the app's streams and keeps it for the next one.
+                if not key:
+                    invocation.return_dbus_error(ERROR_PREFIX + "InvalidArgument", "No app was given.")
+                    return
+                if method == "SetApplicationVolume":
+                    done = self.mixer.set_volume(key, value)
+                elif method == "SetApplicationMute":
+                    done = self.mixer.set_mute(key, value)
+                else:
+                    if value and value not in self._output_nodes:
+                        invocation.return_dbus_error(ERROR_PREFIX + "NotFound", "That output isn’t connected.")
+                        return
+                    done = self.mixer.set_output(key, value)
+                if done:
+                    invocation.return_value(None)
+                else:
+                    invocation.return_dbus_error(ERROR_PREFIX + "Unavailable",
+                                                 "The sound system isn’t ready yet.")
+            elif method == "WatchLevels":
+                (targets,) = parameters.unpack()
+                invocation.return_value(GLib.Variant("(u)", (self.levels.watch(sender, list(targets)),)))
+            elif method == "UnwatchLevels":
+                (watch_id,) = parameters.unpack()
+                self.levels.unwatch(sender, watch_id)
+                invocation.return_value(None)
+            elif method == "CreateCapture":
+                requester, mode, chosen, include_self, label = parameters.unpack()
+
+                def answer(*result) -> None:
+                    if len(result) == 1 and isinstance(result[0], CaptureError):
+                        invocation.return_dbus_error(ERROR_PREFIX + result[0].code, str(result[0]))
+                    else:
+                        capture_id, node_id, serial = result
+                        invocation.return_value(GLib.Variant("(sut)", (capture_id, node_id, serial)))
+
+                try:
+                    self.captures.create(sender, requester, mode, list(chosen), include_self, label, answer)
+                except CaptureError as error:
+                    invocation.return_dbus_error(ERROR_PREFIX + error.code, str(error))
+            elif method == "CloseCapture":
+                (capture_id,) = parameters.unpack()
+                if self.captures.close(sender, capture_id):
+                    invocation.return_value(None)
+                else:
+                    invocation.return_dbus_error(ERROR_PREFIX + "NotFound", "There is no such capture.")
             elif method == "ForgetOutputDevice":
                 (key,) = parameters.unpack()
                 self._perform(self.policy.forget_device(key, time.time()))
@@ -321,7 +430,7 @@ class AudioDevicesService(Gio.Application):
 
     def _properties(self) -> dict[str, GLib.Variant]:
         return {
-            "Version": GLib.Variant("u", 1),
+            "Version": GLib.Variant("u", INTERFACE_VERSION),
             "AirPlayAvailable": GLib.Variant("b", self.discovery.available),
             "AirPlayBrowsing": GLib.Variant("b", self.airplay.browsing),
             "HiddenOutputs": GLib.Variant("as", self._hidden_outputs),
@@ -403,6 +512,10 @@ def _to_vardict(entry: dict) -> dict[str, GLib.Variant]:
             result[key] = GLib.Variant("b", value)
         elif isinstance(value, int):
             result[key] = GLib.Variant("x", value)
+        elif isinstance(value, float):
+            result[key] = GLib.Variant("d", value)
+        elif isinstance(value, list) and all(isinstance(v, int) for v in value):
+            result[key] = GLib.Variant("au", value)
         elif isinstance(value, GLib.Variant):
             result[key] = value
         else:

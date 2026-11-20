@@ -2,8 +2,8 @@
 
 Name:           luma-audio-policy
 Version:        0.1.0
-Release:        1.luma.3%{?dist}
-Summary:        Sound outputs that never take over on their own, and opt-in AirPlay
+Release:        1.luma.4%{?dist}
+Summary:        Luma sound policy: outputs, per-app mixer, app audio capture, opt-in AirPlay
 License:        MPL-2.0 AND CC-BY-SA-4.0
 URL:            https://projectluma.org/sound
 Source0:        luma-audio-policy.tar.gz
@@ -29,6 +29,12 @@ Requires:       pipewire-utils >= 1.6
 Requires:       wireplumber >= 0.5.10
 # Wp-0.5 GObject introspection data
 Requires:       wireplumber-libs >= 0.5.10
+# Level meters: pipewiresrc, level, audioconvert, fakesink, only while watched
+Requires:       python3-gobject
+Requires:       gstreamer1
+Requires:       gstreamer1-plugins-base
+Requires:       gstreamer1-plugins-good
+Requires:       pipewire-gstreamer
 # AirPlay receivers are found through Avahi; passwords go to the keyring.
 Recommends:     avahi
 Recommends:     libsecret
@@ -46,6 +52,13 @@ every decision, and provides the AirPlay picker: receivers are looked for only
 while the picker is open, and only the receiver the person chooses becomes an
 output. The Shell's sound menu and Settings use it through
 org.projectluma.AudioDevices1.
+
+It also runs the per-app mixer: every app playing sound, with its volume,
+mute, output and a live level meter that runs only while watched. Volumes,
+mutes and outputs are remembered per app (luma/app-audio.lua), not per
+media role. The same WirePlumber script holds the capture sessions behind
+the audio capture portal, and keeps portal-restricted PipeWire remotes from
+reaching anything but the capture granted to them.
 
 %prep
 %autosetup -n luma-audio-policy
@@ -69,7 +82,7 @@ for key in NoDisplay=true DBusActivatable=true Name=Sound Icon=audio-volume-high
   grep -Fqx "$key" %{buildroot}%{_datadir}/applications/org.projectluma.AudioDevices.desktop
 done
 glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
-PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_audio_devices.classify, luma_audio_devices.routing"
+PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_audio_devices.classify, luma_audio_devices.routing, luma_audio_devices.apps, luma_audio_devices.mixer, luma_audio_devices.levels, luma_audio_devices.captures"
 cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 
 %files
@@ -79,8 +92,10 @@ cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 %{_datadir}/pipewire/pipewire.conf.d/40-luma-network-audio-opt-in.conf
 %{_datadir}/wireplumber/wireplumber.conf.d/60-luma-audio-policy.conf
 %{_datadir}/wireplumber/scripts/lib/luma-output-policy.lua
+%{_datadir}/wireplumber/scripts/lib/luma-app-audio.lua
 %dir %{_datadir}/wireplumber/scripts/luma
 %{_datadir}/wireplumber/scripts/luma/output-policy.lua
+%{_datadir}/wireplumber/scripts/luma/app-audio.lua
 %{_userunitdir}/luma-audio-devices.service
 %{_userunitdir}/graphical-session.target.wants/luma-audio-devices.service
 %{_datadir}/dbus-1/services/org.projectluma.AudioDevices.service
@@ -90,6 +105,14 @@ cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 %{_datadir}/icons/hicolor/scalable/status/luma-network-speaker-symbolic.svg
 
 %changelog
+* Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.4
+- Per-app mixer in org.projectluma.AudioDevices1 version 2: GetApplications,
+  ApplicationsChanged, SetApplicationVolume/Mute/Output and GetOutputs
+- Level meters (WatchLevels, Levels) from passive monitor streams that run
+  only while a client watches
+- luma/app-audio.lua: volume, mute and output remembered per app; capture
+  nodes for the audio capture portal that follow the chosen apps' new
+  streams; portal-restricted remotes link only to their own capture
 * Wed Sep 16 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.3
 - Never ask about output devices: the "Use <device> for sound?" notification,
   its answers and the new-device-prompts setting are removed

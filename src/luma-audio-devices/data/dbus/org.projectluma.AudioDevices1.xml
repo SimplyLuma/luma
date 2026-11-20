@@ -12,7 +12,8 @@
   -->
   <interface name="org.projectluma.AudioDevices1">
     <!--
-      Version: 1 for this interface.
+      Version: 2 for this interface. Version 2 adds the per-app mixer, level
+      meters and capture sessions; clients check it before calling them.
     -->
     <property name="Version" type="u" access="read"/>
 
@@ -104,5 +105,109 @@
 
     <signal name="AirPlayReceiversChanged"/>
     <signal name="OutputDevicesChanged"/>
+
+    <!--
+      GetOutputs (version 2): the outputs a person can send sound to right
+      now, for per-app output pickers. Keys:
+        name (s)         PipeWire node name, the value SetApplicationOutput takes
+        description (s)  display name
+        icon (s)         symbolic icon name
+        default (b)      the current default output
+    -->
+    <method name="GetOutputs">
+      <arg name="outputs" type="aa{sv}" direction="out"/>
+    </method>
+    <signal name="OutputsChanged"/>
+
+    <!--
+      GetApplications (version 2): the mixer. One entry for System sounds
+      (always present, with its remembered volume) and one per app with a
+      sound stream, System sounds first, then by name.
+      Keys:
+        id (s)          the app key: Flatpak app id, application.id, name or
+                        binary, in that order; "@system" for System sounds
+        name (s)        the app's name from its desktop entry
+        icon (s)        a GIcon string (icon name or file)
+        desktop_id (s)  the desktop entry, or ""
+        kind (s)        "system" or "app"
+        volume (d)      0..1.5 on the cubic scale GNOME sliders use
+        muted (b)
+        output (s)      node name of the output the app was sent to and plays
+                        on; "" when it follows the default
+        playing_on (s)  node name of the output it plays on now, or ""
+        playing (b)     a stream of the app is running now
+        streams (au)    PipeWire node ids of the app's streams
+        pid (x)         process id of one stream's client, or 0
+      Volume, mute and output are remembered per app across restarts. The
+      Set methods accept any app id, playing or not; a value set for an app
+      that is not playing applies to its next stream.
+    -->
+    <method name="GetApplications">
+      <arg name="applications" type="aa{sv}" direction="out"/>
+    </method>
+    <signal name="ApplicationsChanged">
+      <arg name="applications" type="aa{sv}"/>
+    </signal>
+    <method name="SetApplicationVolume">
+      <arg name="id" type="s" direction="in"/>
+      <arg name="volume" type="d" direction="in"/>
+    </method>
+    <method name="SetApplicationMute">
+      <arg name="id" type="s" direction="in"/>
+      <arg name="muted" type="b" direction="in"/>
+    </method>
+    <!--
+      SetApplicationOutput: send an app to one output (a name from GetOutputs)
+      or back to the default ("").
+    -->
+    <method name="SetApplicationOutput">
+      <arg name="id" type="s" direction="in"/>
+      <arg name="output" type="s" direction="in"/>
+    </method>
+
+    <!--
+      WatchLevels (version 2): live meters for app ids, "@system",
+      "output:<node name>" or "output:" (the default output). Levels is sent to
+      the caller only, about 20 times a second, with meter positions from 0
+      (-60 dB) to 1 (0 dBFS), until UnwatchLevels or until the caller leaves
+      the bus. Nothing is metered while nobody watches; watch only while the
+      meters are on screen. Call again with a new list when the rows change.
+    -->
+    <method name="WatchLevels">
+      <arg name="targets" type="as" direction="in"/>
+      <arg name="watch" type="u" direction="out"/>
+    </method>
+    <method name="UnwatchLevels">
+      <arg name="watch" type="u" direction="in"/>
+    </method>
+    <signal name="Levels">
+      <arg name="watch" type="u"/>
+      <arg name="levels" type="a{sd}"/>
+    </signal>
+
+    <!--
+      CreateCapture (version 2): for the audio capture portal backend. Creates
+      one PipeWire node carrying the audio of the chosen apps (mode "apps",
+      app ids from GetApplications, "@system" allowed) or of every app but the
+      requester (mode "system"; include_self keeps the requester's own). New
+      streams of those apps join it while it lives. The node is tagged with
+      the requester's app id; a portal-restricted PipeWire remote of that app
+      may link to it and to nothing else. Returns the capture id, node id and
+      object serial. The capture ends with CloseCapture or when the caller
+      leaves the bus.
+    -->
+    <method name="CreateCapture">
+      <arg name="requester" type="s" direction="in"/>
+      <arg name="mode" type="s" direction="in"/>
+      <arg name="apps" type="as" direction="in"/>
+      <arg name="include_self" type="b" direction="in"/>
+      <arg name="label" type="s" direction="in"/>
+      <arg name="id" type="s" direction="out"/>
+      <arg name="node" type="u" direction="out"/>
+      <arg name="serial" type="t" direction="out"/>
+    </method>
+    <method name="CloseCapture">
+      <arg name="id" type="s" direction="in"/>
+    </method>
   </interface>
 </node>

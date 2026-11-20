@@ -75,7 +75,7 @@ plymouth-theme-spinner-24.004.60-24.luma.3.fc44.x86_64
 # Luma platform, assets and core applications
 google-caveat-fonts-2.000-1.luma.1.fc44.noarch
 google-figtree-fonts-2.0.3-1.luma.4.fc44.noarch
-luma-audio-policy-0.1.0-1.luma.3.fc44.noarch
+luma-audio-policy-0.1.0-1.luma.4.fc44.noarch
 luma-sound-theme-0.1.0-2.luma.1.fc44.noarch
 luma-background-0.1.0-1.luma.5.creator20261007.1.fc44.noarch
 luma-backgrounds-0.2.0-1.luma.4.fc44.noarch
