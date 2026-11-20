@@ -150,3 +150,12 @@
 }
 .ow-primary:hover { background-color: @luma_primary_hover; }
 .ow-primary:disabled, .ow-secondary:disabled { opacity: 0.5; }
+
+/* Share sound (capture_picker.py): the level under each app's name is the
+   shared progress well with the accent fill, thin enough to read as a meter. */
+.ac-row { padding-top: 9px; padding-bottom: 9px; }
+.ac-meter, .ac-meter > trough { min-height: 4px; border-radius: 2px; }
+.ac-meter > trough { background-color: alpha(@luma_ink, 0.10); border: none; box-shadow: none; }
+.ac-meter > trough > block.filled { background-color: @luma_accent; border-radius: 2px; min-height: 4px; }
+.ac-meter > trough > block.empty { background: none; }
+.ac-check { margin-left: 6px; }

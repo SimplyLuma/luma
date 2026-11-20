@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Luma's portal backend.
 
-Two interfaces live here.
+Three interfaces live here: AppChooser, ScreenCast and AudioCapture
+(audiocapture.py, the Share sound picker in capture_picker.py).
 
 AppChooser is built as the portal rather than as a dialog Files owns, so a
 sandboxed application asking OpenURI to choose gets the same chooser as a
@@ -24,6 +25,7 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 from . import apps  # noqa: E402
+from .audiocapture import AudioCapturePortal  # noqa: E402
 from .screencast import ScreenCastPortal  # noqa: E402
 
 # Gtk, Adw, the app kit and the dialog are deliberately NOT imported here.
@@ -253,6 +255,17 @@ def ensure_toolkit() -> None:
     _toolkit_ready = True
 
 
+def show_capture_picker(caller_id, caller_name, types, multiple, parent_window, on_done):
+    """Present the Share sound picker; on_done(choice or None)."""
+    ensure_toolkit()
+    from .capture_picker import CapturePicker
+    picker = CapturePicker(caller_id=caller_id, caller_name=caller_name,
+                           types=types, multiple=multiple, on_done=on_done)
+    picker.connect("map", lambda *_a: parent_to_caller(picker, parent_window))
+    picker.present()
+    return picker
+
+
 def parent_to_caller(window, parent_window: str) -> None:
     """Make the chooser a dialog of the window that requested it."""
 
@@ -282,6 +295,9 @@ def main(argv: list[str] | None = None) -> int:
     # Shell, so nothing here can repeat the Adw-before-the-name deadlock that
     # ensure_toolkit() exists to avoid.
     ScreenCastPortal(connection, OBJECT_PATH)
+    # Audio capture draws its picker here, so it goes through ensure_toolkit()
+    # like the chooser: nothing touches Gdk before the name is owned.
+    AudioCapturePortal(connection, OBJECT_PATH, show_capture_picker)
     Gio.bus_own_name_on_connection(
         connection, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
         lambda *_a: LOGGER.info("owning %s", BUS_NAME),
