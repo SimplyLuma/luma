@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: Apache-2.0
-"""The Python builders for docks, ArrangeView, AudioMeter and the live BarReadout."""
+"""The Python builders for docks, ArrangeView, AudioMeter and the live chip's updates."""
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -8,8 +8,9 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 Gtk.init()
 
-from luma_appkit import (ArrangeItem, ArrangeView, AudioMeter, BarReadout,  # noqa: E402
+from luma_appkit import (ArrangeItem, ArrangeView, AudioMeter, BarChip,  # noqa: E402
                          CreativeWorkspace, FloatingPanel)
+from luma_appkit.action_center import make_control  # noqa: E402
 from luma_appkit.creative_parts import lumaui_module  # noqa: E402
 from luma_appkit.creative_workspace import apply_layout, workspace_layout  # noqa: E402
 
@@ -65,31 +66,22 @@ def meter():
         raise AssertionError("channels are 1 or 2")
 
 
-def readout():
-    live = BarReadout("0:00:12", "6,000 kbps", state="live", note="Live")
-    widget = live._build()
+def live_chip():
+    chip = BarChip("Live", meta="0:00:12", detail="6,000 kbps", live=True)
+    widget = make_control(chip)
     assert widget.has_css_class("live")
-    live.set("0:00:13", "5,980 kbps")
-    live.set_state("connecting", "Reconnecting")
-    assert live.state == "connecting" and live.note == "Reconnecting"
-    try:
-        BarReadout("1", state="paused")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("an unknown state is refused")
-    try:
-        BarReadout("1").set_state("live")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("a plain readout has no state")
+    chip.update(meta="0:00:13", detail="5,980 kbps · no dropped frames")
+    assert widget.time_label.get_label() == "0:00:13"
+    assert widget.detail_label.get_label().startswith("5,980")
+    chip.update("Reconnecting")
+    assert chip.label == "Reconnecting"
+    BarChip("Recording", meta="0:01").update(meta="0:02")  # not drawn yet: only the data changes
 
 
 if __name__ == "__main__":
     docks()
     arrange()
     meter()
-    readout()
+    live_chip()
     GLib.MainContext.default().iteration(False)
     print("ok")

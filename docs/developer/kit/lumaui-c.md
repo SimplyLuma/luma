@@ -124,7 +124,7 @@ and 214 px desktop / 116 px phone headers. Controls remain present on phone.
   holds itself; it goes when it closes.
 - **SidebarFoot** emits `search-changed` after the typing pause (180 ms).
 - **Not in C yet:** SidebarToggle's `closed=` callback, DetailsItem's `when=`,
-  the editable FactRow, `BarEntry`, and the live `BarReadout(state=)`.
+  the editable FactRow, `BarEntry`, and the live chip's `detail` and `update()`.
 
 ## Parity
 

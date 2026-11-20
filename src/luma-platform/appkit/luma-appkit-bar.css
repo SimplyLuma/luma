@@ -752,6 +752,7 @@ box.lumaui-bar-chip.live.well {
 }
 box.lumaui-bar-chip.live.well { border-spacing: 10px; color: @luma_ink; font-weight: 700; }   /* v71 .merec2: the words in ink, the dot says it */
 box.lumaui-bar-chip.live.well box.lumaui-live-dot { min-width: 10px; min-height: 10px; }
+box.lumaui-bar-chip.live label.lumaui-live-detail { color: @luma_muted; font-weight: 400; font-feature-settings: "tnum"; }
 box.lumaui-bar-chip.live.well label.lumaui-live-time { color: @luma_bar_ink_secondary; font-weight: 400; font-feature-settings: "tnum"; }
 /* A bar that is only a panel (Messages' held message): no row, no hairline. */
 box.lumaui-ac-bar.panel-only box.lumaui-ac-foot { padding: 2px; margin-top: 0; box-shadow: none; }
@@ -902,11 +903,6 @@ button.lumaui-bar-tile label.lumaui-bar-tile-sub {
   font-size: var(--lumaui-favourites-sub-size); font-weight: 500; color: @luma_muted;
 }
 box.lumaui-bar-readout-first { border-spacing: var(--lumaui-bar-readout-note-gap); }
-/* A live readout: the state's mark before the time. */
-box.lumaui-bar-readout-mark { min-width: 8px; min-height: 8px; border-radius: 4px; margin-top: 1px; }
-box.lumaui-bar-readout-mark.live, box.lumaui-bar-readout-mark.recording { background: @luma_destructive; }
-box.lumaui-bar-readout-mark.connecting { background: @luma_warning_ink; }
-box.lumaui-bar-readout.live label.lumaui-bar-readout-primary { font-feature-settings: "tnum"; }
 label.lumaui-bar-readout-note { font-size: var(--lumaui-bar-readout-note-size); font-weight: var(--lumaui-bar-readout-note-weight); color: @luma_bar_readout_note; }
 .lumaui-action-center.phone box.lumaui-bar-readout {
   padding: 0 var(--lumaui-bar-readout-phone-padding-end) 0 var(--lumaui-bar-readout-phone-padding-start);
