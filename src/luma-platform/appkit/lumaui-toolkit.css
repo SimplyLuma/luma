@@ -84,6 +84,9 @@ window.luma-app-window .luma-live-sidebar-roomy .luma-live-rail-section .luma-si
   /* The inner edge and shade are drawn over the island's content by Island (v70 .isle::after). */
   box-shadow: 0 0 0 1px @luma_island_out, 0 1px 0 @luma_island_lip; /* v70 --isle-out: a ring in dark, a lit lip in light (K) */
 }
+/* An island holding a Dock (hand-edited; keep on re-import): its tiles' radius plus the gap, so the radii stay
+ * concentric and a tile is never sharpened to fit the island. */
+.luma-island.lumaui-docked { border-radius: calc(var(--lumaui-dock-tile-radius) + var(--lumaui-dock-gap)); }
 window.luma-app-window {
   background-color: @luma_window;
   background-image: linear-gradient(to bottom, @luma_window_top, @luma_window_bottom);

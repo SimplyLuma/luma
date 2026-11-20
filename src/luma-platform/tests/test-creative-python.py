@@ -174,6 +174,105 @@ def fitted_dock():
     assert not row.trail_widget.has_css_class("quiet")
 
 
+def fit_group():
+    """Tiles that all fit, side by side under the main tile, are as tall as the taller one, up to the cap."""
+    from luma_appkit import Dock, DockTile, Island
+    from luma_appkit.lumaui_tokens import DOCK
+
+    short, tall = Gtk.Box(height_request=60), Gtk.Box(height_request=140)
+    preview = DockTile("preview", "Preview", "monitor", Gtk.Box(), main=True, bare=True)
+    widgets = DockTile("widgets", "Widgets", "layers", short, fit=True)
+    audio = DockTile("audio", "Audio", "volume-2", tall, fit=True, phone="drawer")
+    d = Dock([preview, widgets, audio],
+             layout=Dock.split("v", 0.5, "preview", Dock.split("h", 0.5, "widgets", "audio")))
+    assert d.fit_max == DOCK["fit_max_pct"] / 100
+    island = Island()
+    island.append(d)
+    window = Gtk.Window(default_width=1000, default_height=700)
+    window.set_child(island)
+    window.present()
+    settle()
+    assert island.has_css_class("lumaui-docked"), "an island holding a dock is concentric with its tiles"
+    natural = audio.measure(Gtk.Orientation.VERTICAL, audio.get_width())[1]
+    assert abs(audio.get_height() - natural) <= 1 and audio.get_height() == widgets.get_height(), \
+        (audio.get_height(), widgets.get_height(), natural)
+    # Past the cap the content scrolls in its tile; the main tile keeps the rest.
+    tall.set_size_request(-1, 900)
+    d.refit()
+    settle()
+    cap = int(d.fit_max * d.get_height())
+    assert abs(audio.get_height() - cap) <= 1, (audio.get_height(), cap)
+    assert audio.scroller is not None and audio.scroller.get_vadjustment().get_upper() > audio.scroller.get_height()
+    assert preview.get_height() >= d.get_height() - cap - 3 * DOCK["gap"], preview.get_height()
+    # On a phone a fit tile stays inline unless it asks for a drawer.
+    window.set_default_size(400, 700)
+    settle()
+    assert d.phone and widgets.has_css_class("inline") and not audio.get_mapped()
+    assert not island.has_css_class("lumaui-docked")
+    window.destroy()
+    for bad in (lambda: DockTile("x", "X", "layers", Gtk.Box(), phone="inline"),
+                lambda: DockTile("x", "X", "layers", Gtk.Box(), fit=True, phone="sheet"),
+                lambda: Dock([DockTile("x", "X", "layers", Gtk.Box())], fit_max=0)):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("refused")
+
+
+def sidebar_headings():
+    """A heading's words start on the rows' lead in every sidebar variant."""
+    from luma_appkit import NavigationSidebar, RowLead, SidebarRow
+    from luma_appkit.rows_navigation import SIDEBAR_VARIANTS
+
+    leads = {"people": lambda: RowLead.face("Priya Raman"), "resources": lambda: RowLead.well("cpu"),
+             "files": lambda: RowLead.thumbnail(None, kind="image")}
+    for variant in SIDEBAR_VARIANTS:
+        window = Gtk.Window(default_width=900, default_height=600)
+        sidebar = NavigationSidebar(variant=variant)
+        sidebar.append_section("Scenes")
+        sidebar.append_row(SidebarRow("Main", lead=leads.get(variant, lambda: RowLead.icon("inbox"))(), subtitle="2"))
+        window.set_child(sidebar)
+        window.present()
+        settle()
+        heading, lead = _first(sidebar, "luma-navigation-heading"), _first(sidebar, "lumaui-row-lead")
+        hx = heading.compute_bounds(sidebar)[1].get_x()
+        lx = lead.compute_bounds(sidebar)[1].get_x()
+        assert abs(hx - lx) <= 1, (variant, hx, lx)
+        window.destroy()
+
+
+def _first(widget, css):
+    if widget.has_css_class(css):
+        return widget
+    child = widget.get_first_child()
+    while child is not None:
+        found = _first(child, css)
+        if found is not None:
+            return found
+        child = child.get_next_sibling()
+    return None
+
+
+def meter_track():
+    """A silent meter's empty track reads against the well it sits on."""
+    from luma_appkit import VolumeSlider
+
+    slider = VolumeSlider(-60, 6, value=-60, meter=2, horizontal=True)
+    window = Gtk.Window(default_width=300, default_height=120)
+    window.set_child(slider)
+    window.present()
+    settle()
+    track = _first(slider.get_meter(), "lumaui-meter-track")
+    found, well = slider.get_style_context().lookup_color("luma_well")
+    colour = track.get_color()
+    assert colour.alpha >= 0.12, colour.to_string()
+    if found:
+        assert colour.to_string() != well.to_string(), "the track is not the well's own colour"
+    window.destroy()
+
+
 if __name__ == "__main__":
     docks()
     arrange()
@@ -181,5 +280,8 @@ if __name__ == "__main__":
     live_chip()
     dock()
     fitted_dock()
+    fit_group()
+    sidebar_headings()
+    meter_track()
     GLib.MainContext.default().iteration(False)
     print("ok")

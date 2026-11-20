@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.135%{?dist}
+Release:        1.luma.136%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,20 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.136
+- Light dismiss for a grown action bar (panel, More, editor; Python and C):
+  a primary press or tap outside it, or Esc, folds it; the press is consumed
+  and a field in the bar commits its edit first.
+- Dock tiles use --lumaui-dock-tile-radius (the card radius); an island
+  holding a dock is that radius plus the gap round, so radii stay concentric.
+- Dock: a side whose tiles all fit their content is as tall as the taller,
+  capped at Dock(fit_max=) / --lumaui-dock-fit-max-pct (40%), then scrolls;
+  DockTile(phone="drawer") makes a fitted tile a key and drawer on a phone.
+- NavigationSidebar: a section heading starts on the rows' lead in every
+  variant (files and tree insets; headings no longer take a toolkit row's
+  padding).
+- VolumeSlider and AudioMeter: the empty track reads at rest on a well.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.135
 - LumaVolumeSlider (VolumeSlider in luma_appkit): the kit's slider for a
   volume, upright for a mixer's strip or flat for a row, with LumaAudioMeter

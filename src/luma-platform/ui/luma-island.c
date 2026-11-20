@@ -58,8 +58,11 @@ static void luma_island_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
       gtk_widget_has_css_class(widget, "drawer") || gtk_widget_has_css_class(widget, "embedded"))
     return;
   GskRoundedRect outline;
+  /* An island holding a dock (luma_appkit.Dock) is concentric with its tiles. */
   gsk_rounded_rect_init_from_rect(&outline, &GRAPHENE_RECT_INIT(0, 0, width, height),
-                                   LUMA_UI_WINDOW_ISLAND_RADIUS);
+                                   gtk_widget_has_css_class(widget, "lumaui-docked")
+                                       ? LUMA_UI_DOCK_TILE_RADIUS + LUMA_UI_DOCK_GAP
+                                       : LUMA_UI_WINDOW_ISLAND_RADIUS);
   GtkStyleContext *style = gtk_widget_get_style_context(widget);
   inset(snapshot, style, &outline, "luma_island_edge", 0, 0, 1, 0);
   inset(snapshot, style, &outline, "luma_island_rim", 0, 1, 0, 0);

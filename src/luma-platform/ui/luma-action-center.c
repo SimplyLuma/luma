@@ -1202,6 +1202,9 @@ struct _LumaActionCenter {
   /* TV: the bar on demand (luma-tv-frame.c) */
   gboolean tv_demand, tv_open;
   GtkWidget *tv_from; /* weak: what the remote was on when the bar came up */
+  /* Light dismiss: a press and Esc watched on the window the bar is in (installed while rooted). */
+  GtkWidget *dismiss_root;
+  GtkEventController *dismiss_press, *dismiss_keys;
 };
 
 G_DEFINE_FINAL_TYPE(LumaActionCenter, luma_action_center, GTK_TYPE_BOX)
@@ -1255,8 +1258,101 @@ static void luma_action_center_get_property(GObject *object, guint id, GValue *v
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, id, pspec);
 }
 
+/* Light dismiss. A grown bar (a panel, ⋯, the editor) folds back to its row on a primary press or tap
+ * anywhere outside it in its window, or on Esc. The press is consumed (capture phase, claimed), so it does
+ * not also select or drag what is under it. A field in the bar with an edit commits first: it loses focus,
+ * which is where LumaUI's fields commit. A press on another layer over the island (a sheet, a toast) is not
+ * outside: that layer owns it. */
+static gboolean center_is_open(LumaActionCenter *self) {
+  return self->grown_key != NULL || g_str_equal(self->state, "editor");
+}
+
+static gboolean center_is_outside(LumaActionCenter *self, GtkWidget *widget) {
+  if (widget == NULL || widget == GTK_WIDGET(self) || gtk_widget_is_ancestor(widget, GTK_WIDGET(self)))
+    return FALSE;
+  if (self->host != NULL && GTK_IS_OVERLAY(self->host) && gtk_widget_is_ancestor(widget, self->host)) {
+    GtkWidget *layer = widget;
+    while (gtk_widget_get_parent(layer) != self->host)
+      layer = gtk_widget_get_parent(layer);
+    if (layer != gtk_overlay_get_child(GTK_OVERLAY(self->host)))
+      return FALSE;
+  }
+  return TRUE;
+}
+
+static void center_light_dismiss(LumaActionCenter *self) {
+  GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(self));
+  GtkWidget *focus = root != NULL ? gtk_root_get_focus(root) : NULL;
+  if (focus != NULL && gtk_widget_is_ancestor(focus, GTK_WIDGET(self)))
+    gtk_root_set_focus(root, NULL);
+  if (self->grown_key != NULL)
+    center_fold_panel(self, FALSE);
+  else
+    luma_action_center_fold(self);
+}
+
+static void center_outside_pressed(GtkGestureClick *gesture, int n_press G_GNUC_UNUSED, double x, double y,
+                                   gpointer user_data) {
+  LumaActionCenter *self = LUMA_ACTION_CENTER(user_data);
+  GtkWidget *root = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
+  if (!center_is_open(self) || !gtk_widget_get_mapped(GTK_WIDGET(self)) ||
+      !center_is_outside(self, gtk_widget_pick(root, x, y, GTK_PICK_DEFAULT))) {
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_DENIED);
+    return;
+  }
+  gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+  center_light_dismiss(self);
+}
+
+static gboolean center_outside_key(GtkEventControllerKey *keys G_GNUC_UNUSED, guint keyval, guint code G_GNUC_UNUSED,
+                                   GdkModifierType state G_GNUC_UNUSED, gpointer user_data) {
+  LumaActionCenter *self = LUMA_ACTION_CENTER(user_data);
+  if (keyval != GDK_KEY_Escape || !center_is_open(self) || !gtk_widget_get_mapped(GTK_WIDGET(self)))
+    return FALSE;
+  GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(self));
+  GtkWidget *focus = root != NULL ? gtk_root_get_focus(root) : NULL;
+  if (focus != NULL && !gtk_widget_is_ancestor(focus, GTK_WIDGET(self)) && !center_is_outside(self, focus))
+    return FALSE; /* Esc belongs to the layer that has focus */
+  center_light_dismiss(self);
+  return TRUE;
+}
+
+static void luma_action_center_root(GtkWidget *widget) {
+  LumaActionCenter *self = LUMA_ACTION_CENTER(widget);
+  GTK_WIDGET_CLASS(luma_action_center_parent_class)->root(widget);
+  GtkWidget *root = GTK_WIDGET(gtk_widget_get_root(widget));
+  if (root == NULL)
+    return;
+  self->dismiss_press = GTK_EVENT_CONTROLLER(gtk_gesture_click_new());
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(self->dismiss_press), GDK_BUTTON_PRIMARY);
+  gtk_event_controller_set_propagation_phase(self->dismiss_press, GTK_PHASE_CAPTURE);
+  gtk_event_controller_set_name(self->dismiss_press, "lumaui-light-dismiss");
+  g_signal_connect(self->dismiss_press, "pressed", G_CALLBACK(center_outside_pressed), self);
+  self->dismiss_keys = gtk_event_controller_key_new();
+  gtk_event_controller_set_propagation_phase(self->dismiss_keys, GTK_PHASE_CAPTURE);
+  gtk_event_controller_set_name(self->dismiss_keys, "lumaui-light-dismiss");
+  g_signal_connect(self->dismiss_keys, "key-pressed", G_CALLBACK(center_outside_key), self);
+  gtk_widget_add_controller(root, self->dismiss_press);
+  gtk_widget_add_controller(root, self->dismiss_keys);
+  self->dismiss_root = root;
+}
+
+static void luma_action_center_unroot(GtkWidget *widget) {
+  LumaActionCenter *self = LUMA_ACTION_CENTER(widget);
+  if (self->dismiss_root != NULL) {
+    gtk_widget_remove_controller(self->dismiss_root, self->dismiss_press);
+    gtk_widget_remove_controller(self->dismiss_root, self->dismiss_keys);
+    self->dismiss_root = NULL;
+    self->dismiss_press = self->dismiss_keys = NULL;
+  }
+  GTK_WIDGET_CLASS(luma_action_center_parent_class)->unroot(widget);
+}
+
 static void luma_action_center_class_init(LumaActionCenterClass *klass) {
   GObjectClass *object_class = G_OBJECT_CLASS(klass);
+  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
+  widget_class->root = luma_action_center_root;
+  widget_class->unroot = luma_action_center_unroot;
   object_class->dispose = luma_action_center_dispose;
   object_class->finalize = luma_action_center_finalize;
   object_class->get_property = luma_action_center_get_property;

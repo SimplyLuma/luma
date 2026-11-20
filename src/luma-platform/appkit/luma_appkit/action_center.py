@@ -18,7 +18,11 @@ reference and is ported exactly):
 - **split**: two bars side by side (a stack on a phone).
 
 Esc folds the editor back to the bar and keeps the draft ("Draft: …" in the
-prompt, restored when it grows again). Ctrl+Return runs the primary action.
+prompt, restored when it grows again). Every grown bar (a panel, ⋯, the
+editor) light-dismisses: a primary press or tap anywhere outside it in its
+window, or Esc, folds it to the bar at rest. That press is consumed, so it
+does not also select or drag what is under it, and a field in the bar with an
+edit commits first (it loses focus). Ctrl+Return runs the primary action.
 Everything is reachable with Tab. On a phone the editor is a full-width sheet
 from the bottom edge and the bars span the width. The bar registers with the
 nearest ToastHost, so toasts clear it.
@@ -979,6 +983,8 @@ class ActionCenter(Gtk.Box):
         self._panel_only: Callable[[], None] | None = None
         self._tab_switch = None
         self._tab_bar = None
+        #: Light dismiss: (window, press, keys) watched while the bar is rooted.
+        self._dismiss: tuple[Gtk.Widget, Gtk.EventController, Gtk.EventController] | None = None
 
         # The bar (and its double-height context line).
         self.bar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, accessible_role=Gtk.AccessibleRole.TOOLBAR)
@@ -1029,6 +1035,79 @@ class ActionCenter(Gtk.Box):
             self.append(part)
         if editor is not None:
             self.set_editor(editor)
+
+    # ── light dismiss ─────────────────────────────────────────────────────
+    # A grown bar (a panel, ⋯, the editor, a panel-only bar) folds back to its row on a primary press or
+    # tap anywhere outside it in its window, or on Esc. The press is consumed (capture phase, claimed), so
+    # it does not also select or drag what is under it. A field in the bar with an edit commits first: it
+    # loses focus, which is where LumaUI's fields commit. A press on another layer over the island (a
+    # sheet, a toast) is not outside: that layer owns it.
+
+    def _is_open(self) -> bool:
+        return self._panel_key is not None or self._state == "editor" or self._panel_only is not None
+
+    def do_root(self) -> None:
+        Gtk.Box.do_root(self)
+        root = self.get_root()
+        if not isinstance(root, Gtk.Widget):
+            return
+        press = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY, propagation_phase=Gtk.PropagationPhase.CAPTURE,
+                                 name="lumaui-light-dismiss")
+        press.connect("pressed", self._outside_pressed)
+        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE, name="lumaui-light-dismiss")
+        keys.connect("key-pressed", self._outside_key)
+        root.add_controller(press)
+        root.add_controller(keys)
+        self._dismiss = (root, press, keys)
+
+    def do_unroot(self) -> None:
+        if self._dismiss is not None:
+            root, press, keys = self._dismiss
+            root.remove_controller(press)
+            root.remove_controller(keys)
+            self._dismiss = None
+        Gtk.Box.do_unroot(self)
+
+    def _outside(self, widget: Gtk.Widget | None) -> bool:
+        if widget is None or widget is self or widget.is_ancestor(self):
+            return False
+        host = self._host
+        if isinstance(host, Gtk.Overlay) and widget.is_ancestor(host):
+            layer = widget
+            while layer.get_parent() is not host:
+                layer = layer.get_parent()
+            if layer is not host.get_child():
+                return False
+        return True
+
+    def _outside_pressed(self, gesture: Gtk.GestureClick, _n: int, x: float, y: float) -> None:
+        if not self._is_open() or not self.get_mapped() or \
+                not self._outside(gesture.get_widget().pick(x, y, Gtk.PickFlags.DEFAULT)):
+            gesture.set_state(Gtk.EventSequenceState.DENIED)
+            return
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+        self._light_dismiss()
+
+    def _outside_key(self, _controller, keyval: int, _code: int, _state) -> bool:
+        if keyval != Gdk.KEY_Escape or not self._is_open() or not self.get_mapped():
+            return False
+        focus = self.get_root().get_focus()
+        if focus is not None and not focus.is_ancestor(self) and not self._outside(focus):
+            return False  # Esc belongs to the layer that has focus
+        self._light_dismiss()
+        return True
+
+    def _light_dismiss(self) -> None:
+        root = self.get_root()
+        focus = root.get_focus() if root is not None else None
+        if focus is not None and focus.is_ancestor(self):
+            root.set_focus(None)  # a field with an edit commits as it loses focus
+        if self._panel_key is not None:
+            self._fold_panel(quiet=True)
+        elif self._state == "editor":
+            self.fold()
+        elif self._panel_only is not None:
+            self._panel_only()
 
     # ── placing it ────────────────────────────────────────────────────────
 

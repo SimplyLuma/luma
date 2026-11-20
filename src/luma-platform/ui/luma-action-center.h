@@ -459,7 +459,11 @@ const char *luma_action_center_get_state(LumaActionCenter *self);
  * labelled primary keeps its size). Grown width: a phone, the width less 16 a
  * side; a window, min(380, width − 24). Tapping the same action again, Esc, or
  * any action in the row folds it; panel rows fold it after they act.
- * luma_action_center_fold() folds a grown panel as it folds the editor. */
+ * luma_action_center_fold() folds a grown panel as it folds the editor.
+ * Light dismiss: a primary press or tap outside a grown bar (panel, ⋯ or the
+ * editor) anywhere in its window, or Esc, folds it; that press is consumed and
+ * reaches nothing under it, and a field in the bar commits its edit first (it
+ * loses focus). A press on another layer over the island is that layer's. */
 
 /**
  * luma_action_center_grow_panel:

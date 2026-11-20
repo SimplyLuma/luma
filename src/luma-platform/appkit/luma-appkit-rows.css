@@ -186,6 +186,10 @@ list.lumaui-content-list > row.luma-navigation-row + row.luma-navigation-row {
 .luma-navigation-sidebar.lumaui-sidebar-people row.lumaui-row.attention label.lumaui-row-title { font-weight: var(--lumaui-nav-people-attention-weight); }
 .luma-navigation-sidebar.lumaui-sidebar-people row.lumaui-row label.lumaui-row-subtitle { font-size: var(--lumaui-nav-people-subtitle-size); }
 
+/* Every variant's heading: its words start on the rows' lead (glyph, face, thumbnail). The kit's sheets reach GTK
+ * as separate providers, so a heading row states its own padding rather than inherit a toolkit row's. */
+.luma-navigation-sidebar.lumaui-sidebar-variant .luma-navigation-list > row.luma-navigation-section { padding: 0; min-height: 0; }
+
 /* destinations: v70 .tki, #p-rail .si (36 tall, a 16 glyph, 13/500). The sidebar pads only top and
  * bottom so a heading with an action can rule the full width (v70 .tkshl: margin 12 -10 4). */
 .luma-navigation-sidebar.lumaui-sidebar-destinations {
@@ -354,7 +358,7 @@ box.lumaui-title-island.grown .luma-navigation-sidebar.lumaui-sidebar-places .lu
 
 /* tree: v70 Notes .trow (32 tall, 16 per level); headings .nside .sh (14 above, 4 for the first) */
 .luma-navigation-sidebar.lumaui-sidebar-tree .luma-navigation-list > row.luma-navigation-section {
-  margin: var(--lumaui-nav-tree-heading-top) var(--lumaui-sidebar-edge) var(--lumaui-nav-tree-heading-bottom);
+  margin: var(--lumaui-nav-tree-heading-top) var(--lumaui-nav-tree-row-padding-end) var(--lumaui-nav-tree-heading-bottom) var(--lumaui-nav-tree-row-padding-start);
 }
 .luma-navigation-sidebar.lumaui-sidebar-tree .luma-navigation-list > row.luma-navigation-section:first-child { margin-top: var(--lumaui-nav-tree-heading-first-top); }
 .luma-navigation-sidebar.lumaui-sidebar-tree row.lumaui-row-section button.lumaui-section-action {

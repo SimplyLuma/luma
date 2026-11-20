@@ -35,12 +35,12 @@
       "well": 32, "well_radius": 10, "well_icon": 16, "face": 34, "face_icon": 16, "heading_top": 6, "heading_bottom": 8
     },
     "nav_files": {
-      "_doc": "v70 Viewer .vwrow: a 42x34 thumbnail (7 round), 12.5/550 over an 11 px size. Memos .merow has no lead: 10/12 padding, 13.5/600 over 12.",
+      "_doc": "v70 Viewer .vwrow: a 42x34 thumbnail (7 round), 12.5/550 over an 11 px size. Memos .merow has no lead: 10/12 padding, 13.5/600 over 12. heading_inset is row_padding: a heading's words start on the thumbnail.",
       "width": 236, "row_padding": 6, "row_gap": 10, "row_radius": 12,
       "title_size": 12.5, "title_weight": 550, "subtitle_size": 11,
       "thumb_width": 42, "thumb_height": 34, "thumb_radius": 7, "thumb_icon": 15, "page_width": 30, "page_padding_x": 8, "page_line": 2, "page_line_gap": 3,
       "plain_padding_y": 10, "plain_padding_x": 12, "plain_radius": 13, "plain_title_size": 13.5, "plain_title_weight": 600, "plain_subtitle_size": 12,
-      "heading_size": 11, "heading_top": 10, "heading_bottom": 4, "heading_inset": 8
+      "heading_size": 11, "heading_top": 10, "heading_bottom": 4, "heading_inset": 6
     },
     "nav_tree": {
       "_doc": "v70 Notes .trow: 32 px rows, 16 px indent per level, an 18 px twisty (13 px chevron, turns 90 when open), a 22 px mark button, a folder's name at 600.",

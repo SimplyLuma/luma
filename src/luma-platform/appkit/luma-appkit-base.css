@@ -2408,7 +2408,8 @@ box.lumaui-dialog.key button.lumaui-dialog-action {
 box.lumaui-dialog.key button.lumaui-dialog-action:hover { filter: brightness(1.05); }
 
 /* ── LumaUI: AudioMeter (drawn; the nodes carry its colours) ── */
-box.lumaui-audio-meter > .lumaui-meter-track { color: @luma_well; }
+/* The empty track reads at rest, on a well or an island, in light and dark: a silent input still shows it. */
+box.lumaui-audio-meter > .lumaui-meter-track { color: alpha(@luma_ink, .14); }
 box.lumaui-audio-meter > .lumaui-meter-low { color: @luma_good; }
 box.lumaui-audio-meter > .lumaui-meter-mid { color: @luma_mark_yellow; }
 box.lumaui-audio-meter > .lumaui-meter-high { color: @luma_destructive; }
@@ -2418,9 +2419,9 @@ box.lumaui-audio-meter > .lumaui-meter-peak { color: @luma_ink_secondary; }
  * track in the state fill, a raised 14 px knob with a state ring) drawn
  * upright or flat, with a meter along it. Muted, the fill and meter go quiet. */
 lumaui-volume-slider { outline: none; }
-lumaui-volume-slider > .lumaui-volume-track { color: @luma_line; }
+lumaui-volume-slider > .lumaui-volume-track { color: alpha(@luma_ink, .16); }
 /* The meter's track matches the slider's, so the pair reads on a well (a Settings card) too. */
-lumaui-volume-slider > box.lumaui-audio-meter > .lumaui-meter-track { color: @luma_line; }
+lumaui-volume-slider > box.lumaui-audio-meter > .lumaui-meter-track { color: alpha(@luma_ink, .14); }
 lumaui-volume-slider > .lumaui-volume-fill { color: @luma_state; }
 lumaui-volume-slider > .lumaui-volume-knob { color: @luma_knob; }
 lumaui-volume-slider > .lumaui-volume-ring { color: @luma_knob_ring; }
@@ -2437,10 +2438,11 @@ overlay.lumaui-dock > box.lumaui-dock-frame { padding: var(--lumaui-dock-gap); }
 /* Under the island's floating action bar: the tiles end above it. */
 overlay.lumaui-dock.under-bar > box.lumaui-dock-frame { padding-bottom: var(--lumaui-dock-bar-clearance); }
 overlay.lumaui-dock.under-bar.phone > box.lumaui-dock-frame { padding-bottom: var(--lumaui-dock-phone-bar-clearance); }
+/* Every tile is the kit's card radius, never sharpened by the island's: the island holding a dock grows to
+ * that radius plus the gap instead (lumaui-toolkit.css, .luma-island.lumaui-docked), so the two stay concentric. */
 box.lumaui-dock-tile {
   min-width: var(--lumaui-dock-min-size); min-height: var(--lumaui-dock-min-size);
-  /* Concentric with the island: its radius less the gap between them. */
-  border-radius: calc(var(--lumaui-window-island-radius) - var(--lumaui-dock-gap)); color: @luma_ink;
+  border-radius: var(--lumaui-dock-tile-radius); color: @luma_ink;
   background: @luma_well; box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 1px 0 @luma_well_lip;
 }
 box.lumaui-dock-tile.moving { opacity: 0.45; }
@@ -2475,11 +2477,12 @@ paned.lumaui-dock-paned.vertical > separator:hover, paned.lumaui-dock-paned.vert
   background-position: center; background-repeat: no-repeat;
 }
 box.lumaui-dock-target {
-  border-radius: calc(var(--lumaui-window-island-radius) - var(--lumaui-dock-gap));
+  border-radius: var(--lumaui-dock-tile-radius);
   background: alpha(@luma_accent, 0.12); box-shadow: inset 0 0 0 2px alpha(@luma_accent, 0.7);
 }
 flowbox.lumaui-dock-keys { padding-bottom: var(--lumaui-dock-gap); }
 flowbox.lumaui-dock-keys > flowboxchild { padding: 0; }
 box.lumaui-dock-drawer box.lumaui-dock-tile { background: none; box-shadow: none; min-height: 320px; }
 box.lumaui-dock-tile.inline { margin-top: var(--lumaui-dock-gap); min-height: 0; }
+box.lumaui-dock-tile scrolledwindow.lumaui-dock-tile-scroll, box.lumaui-dock-tile scrolledwindow.lumaui-dock-tile-scroll > viewport { background: none; }
 box.luma-navigation-pane { min-height: var(--lumaui-dock-min-size); }

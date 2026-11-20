@@ -2571,6 +2571,7 @@
   --lumaui-dial-key-chip-shadow-y: 1px;
   --lumaui-dial-key-chip-shadow-blur: 2px;
   --lumaui-dock-gap: 8px;
+  --lumaui-dock-tile-radius: 10px;
   --lumaui-dock-header-height: 32px;
   --lumaui-dock-header-padding-start: 12px;
   --lumaui-dock-header-padding-end: 6px;
@@ -2579,6 +2580,7 @@
   --lumaui-dock-icon: 16px;
   --lumaui-dock-title-size: 13px;
   --lumaui-dock-min-size: 96px;
+  --lumaui-dock-fit-max-pct: 40;
   --lumaui-dock-seam-mark: 4px;
   --lumaui-dock-seam-mark-length: 36px;
   --lumaui-dock-bar-clearance: 76px;
@@ -3078,7 +3080,7 @@
   --lumaui-nav-files-heading-size: 11px;
   --lumaui-nav-files-heading-top: 10px;
   --lumaui-nav-files-heading-bottom: 4px;
-  --lumaui-nav-files-heading-inset: 8px;
+  --lumaui-nav-files-heading-inset: 6px;
   --lumaui-nav-tree-width: 284px;
   --lumaui-nav-tree-row-height: 32px;
   --lumaui-nav-tree-row-padding-start: 4px;
