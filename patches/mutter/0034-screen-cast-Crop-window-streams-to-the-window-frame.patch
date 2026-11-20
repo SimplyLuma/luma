@@ -1,0 +1,331 @@
+From cec16c708eac3d14888dc5cadb72e6119a82a7c3 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 20 Nov 2026 17:47:09 -0500
+Subject: [PATCH] screen-cast: Crop window streams to the window frame
+
+A window stream's buffer is the window's whole surface and its video crop
+was the buffer bounds, so captures carried whatever the client draws
+outside its frame: the shadow margin of client-side decorations (GTK,
+libadwaita, Chromium and Electron) and the invisible resize borders of
+Mutter's X11 frames. A consumer that takes an opaque format turns those
+translucent pixels black, so a captured window sat in a dark band.
+
+The crop is now the frame rectangle relative to the buffer origin, in
+buffer pixels: the offset of the frame in the buffer rectangle and its
+size, times the texture's buffer pixels per stage unit (buffer scale,
+fractional scale through a viewport, Xwayland scaling). It is computed for
+every recorded frame, so it follows resizes, and it is the whole buffer
+for maximized, tiled and fullscreen windows that draw no margin.
+Window streams already offer BGRA (DRM ARGB8888) ahead of BGRx, so a
+consumer that accepts alpha gets transparent rounded corners.
+
+Memory (SHM) streams drew the window through meta_window_actor_get_image(),
+at the actor's resource scale, which at fractional scales differs from the
+buffer's: at 150% a GTK 4 window was drawn at twice its buffer size and the
+crop, in buffer pixels, cut it short. They now draw through the same blit
+as DMA-BUF streams and read it back, so both paths and the crop share one
+coordinate space.
+
+A frame recorded after a commit that resizes the window but before the
+stage's relayout painted the new buffer into the old allocation. The blit
+now brings the surface actor's allocation up to date first.
+---
+ .../meta-screen-cast-window-stream-src.c      |  11 +-
+ src/backends/meta-screen-cast-window.c        |   8 +
+ src/backends/meta-screen-cast-window.h        |   6 +
+ src/compositor/meta-window-actor.c            | 164 +++++++++++++-----
+ 4 files changed, 148 insertions(+), 41 deletions(-)
+
+diff --git a/src/backends/meta-screen-cast-window-stream-src.c b/src/backends/meta-screen-cast-window-stream-src.c
+index e5b4620..17e1b8c 100644
+--- a/src/backends/meta-screen-cast-window-stream-src.c
++++ b/src/backends/meta-screen-cast-window-stream-src.c
+@@ -383,8 +383,11 @@ meta_screen_cast_window_stream_src_get_videocrop (MetaScreenCastStreamSrc *src,
+     META_SCREEN_CAST_WINDOW_STREAM_SRC (src);
+   MtkRectangle stream_rect;
+ 
+-  meta_screen_cast_window_get_buffer_bounds (window_src->screen_cast_window,
+-                                             crop_rect);
++  /* The buffer is the window's whole surface; crop to its frame, so a
++   * client-side shadow margin or invisible resize borders are not part of
++   * the picture. */
++  meta_screen_cast_window_get_frame_bounds (window_src->screen_cast_window,
++                                            crop_rect);
+ 
+   stream_rect.x = 0;
+   stream_rect.y = 0;
+@@ -393,6 +396,10 @@ meta_screen_cast_window_stream_src_get_videocrop (MetaScreenCastStreamSrc *src,
+ 
+   mtk_rectangle_intersect (crop_rect, &stream_rect, crop_rect);
+ 
++  meta_topic (META_DEBUG_SCREEN_CAST,
++              "Window stream crop is the window frame: %d,%d %dx%d",
++              crop_rect->x, crop_rect->y, crop_rect->width, crop_rect->height);
++
+   return TRUE;
+ }
+ 
+diff --git a/src/backends/meta-screen-cast-window.c b/src/backends/meta-screen-cast-window.c
+index 2639292..e2e0498 100644
+--- a/src/backends/meta-screen-cast-window.c
++++ b/src/backends/meta-screen-cast-window.c
+@@ -35,6 +35,14 @@ meta_screen_cast_window_get_buffer_bounds (MetaScreenCastWindow *screen_cast_win
+                                                                              bounds);
+ }
+ 
++void
++meta_screen_cast_window_get_frame_bounds (MetaScreenCastWindow *screen_cast_window,
++                                          MtkRectangle         *bounds)
++{
++  META_SCREEN_CAST_WINDOW_GET_IFACE (screen_cast_window)->get_frame_bounds (screen_cast_window,
++                                                                            bounds);
++}
++
+ void
+ meta_screen_cast_window_transform_relative_position (MetaScreenCastWindow *screen_cast_window,
+                                                      double                x,
+diff --git a/src/backends/meta-screen-cast-window.h b/src/backends/meta-screen-cast-window.h
+index 5fcd16f..ac76bb4 100644
+--- a/src/backends/meta-screen-cast-window.h
++++ b/src/backends/meta-screen-cast-window.h
+@@ -37,6 +37,9 @@ struct _MetaScreenCastWindowInterface
+   void (*get_buffer_bounds) (MetaScreenCastWindow *screen_cast_window,
+                              MtkRectangle         *bounds);
+ 
++  void (*get_frame_bounds) (MetaScreenCastWindow *screen_cast_window,
++                            MtkRectangle         *bounds);
++
+   void (*transform_relative_position) (MetaScreenCastWindow *screen_cast_window,
+                                        double                x,
+                                        double                y,
+@@ -66,6 +69,9 @@ struct _MetaScreenCastWindowInterface
+ void meta_screen_cast_window_get_buffer_bounds (MetaScreenCastWindow *screen_cast_window,
+                                                 MtkRectangle         *bounds);
+ 
++void meta_screen_cast_window_get_frame_bounds (MetaScreenCastWindow *screen_cast_window,
++                                               MtkRectangle         *bounds);
++
+ void meta_screen_cast_window_transform_relative_position (MetaScreenCastWindow *screen_cast_window,
+                                                           double                x,
+                                                           double                y,
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+index c0a3a8d..87b0f09 100644
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -1333,6 +1333,63 @@ meta_window_actor_get_buffer_bounds (MetaScreenCastWindow *screen_cast_window,
+   };
+ }
+ 
++/* The frame rectangle in buffer pixels, relative to the buffer origin: what
++ * the window shows, without the client's shadow margin or the invisible
++ * borders of a server-side frame. */
++static void
++meta_window_actor_get_frame_bounds (MetaScreenCastWindow *screen_cast_window,
++                                    MtkRectangle         *bounds)
++{
++  MetaWindowActor *window_actor = META_WINDOW_ACTOR (screen_cast_window);
++  MetaWindowActorPrivate *priv =
++    meta_window_actor_get_instance_private (window_actor);
++  MetaShapedTexture *stex;
++  MtkRectangle buffer_bounds;
++  MtkRectangle buffer_rect;
++  MtkRectangle frame_rect;
++  MtkRectangle frame_bounds;
++  float stage_width, stage_height;
++  float scale_x, scale_y;
++  int x1, y1, x2, y2;
++
++  meta_window_actor_get_buffer_bounds (screen_cast_window, &buffer_bounds);
++  *bounds = buffer_bounds;
++
++  if (!priv->window || !priv->surface)
++    return;
++
++  /* Buffer pixels per stage unit: the texture's size in buffer pixels over
++   * its size on the stage (surface size times the geometry scale). This
++   * covers buffer scales, fractional scales through a viewport and
++   * Xwayland scaling. */
++  stex = meta_surface_actor_get_texture (priv->surface);
++  stage_width = meta_shaped_texture_get_width (stex) * priv->geometry_scale;
++  stage_height = meta_shaped_texture_get_height (stex) * priv->geometry_scale;
++  if (stage_width <= 0.0f || stage_height <= 0.0f)
++    return;
++
++  scale_x = buffer_bounds.width / stage_width;
++  scale_y = buffer_bounds.height / stage_height;
++
++  meta_window_get_buffer_rect (priv->window, &buffer_rect);
++  meta_window_get_frame_rect (priv->window, &frame_rect);
++
++  x1 = (int) roundf ((frame_rect.x - buffer_rect.x) * scale_x);
++  y1 = (int) roundf ((frame_rect.y - buffer_rect.y) * scale_y);
++  x2 = (int) roundf ((frame_rect.x + frame_rect.width - buffer_rect.x) * scale_x);
++  y2 = (int) roundf ((frame_rect.y + frame_rect.height - buffer_rect.y) * scale_y);
++
++  frame_bounds = (MtkRectangle) {
++    .x = x1,
++    .y = y1,
++    .width = x2 - x1,
++    .height = y2 - y1,
++  };
++
++  if (!mtk_rectangle_intersect (&buffer_bounds, &frame_bounds, bounds))
++    *bounds = buffer_bounds;
++}
++
+ static void
+ meta_window_actor_transform_relative_position (MetaScreenCastWindow *screen_cast_window,
+                                                double                x,
+@@ -1424,60 +1481,81 @@ meta_window_actor_transform_cursor_position (MetaScreenCastWindow *screen_cast_w
+   return TRUE;
+ }
+ 
++static gboolean meta_window_actor_blit_to_framebuffer (MetaScreenCastWindow *screen_cast_window,
++                                                       MtkRectangle         *bounds,
++                                                       CoglFramebuffer      *framebuffer);
++
++/* Draws the window the way the DMA-BUF path does, through
++ * meta_window_actor_blit_to_framebuffer(), so a memory buffer holds the
++ * window in buffer pixels from the buffer origin, as the stream's crop
++ * assumes. meta_window_actor_get_image() draws at the actor's resource
++ * scale, which differs from the buffer's at fractional scales. */
+ static void
+ meta_window_actor_capture_into (MetaScreenCastWindow *screen_cast_window,
+                                 MtkRectangle         *bounds,
+                                 uint8_t              *data)
+ {
+   MetaWindowActor *window_actor = META_WINDOW_ACTOR (screen_cast_window);
+-  cairo_surface_t *image;
+-  uint8_t *cr_data;
+-  int cr_stride;
+-  int cr_width;
+-  int cr_height;
+-  int bpp = 4;
++  MetaWindowActorPrivate *priv =
++    meta_window_actor_get_instance_private (window_actor);
++  MetaDisplay *display = meta_compositor_get_display (priv->compositor);
++  MetaContext *context = meta_display_get_context (display);
++  MetaBackend *backend = meta_context_get_backend (context);
++  ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
++  CoglContext *cogl_context =
++    clutter_backend_get_cogl_context (clutter_backend);
++  g_autoptr (GError) error = NULL;
++  MtkRectangle buffer_bounds;
++  MtkRectangle capture_rect;
++  CoglTexture *texture;
++  CoglFramebuffer *framebuffer;
++  CoglBitmap *bitmap;
++  int stride = bounds->width * 4;
+ 
+-  if (meta_window_actor_is_destroyed (window_actor))
+-    return;
++  memset (data, 0, (size_t) stride * bounds->height);
+ 
+-  image = meta_window_actor_get_image (window_actor, bounds);
+-  cr_data = cairo_image_surface_get_data (image);
+-  cr_width = cairo_image_surface_get_width (image);
+-  cr_height = cairo_image_surface_get_height (image);
+-  cr_stride = cairo_image_surface_get_stride (image);
++  if (meta_window_actor_is_destroyed (window_actor) || !priv->surface)
++    return;
+ 
+-  if (cr_width == bounds->width && cr_height == bounds->height)
+-    {
+-      memcpy (data, cr_data, cr_height * cr_stride);
+-    }
+-  else
+-    {
+-      int width = MIN (bounds->width, cr_width);
+-      int height = MIN (bounds->height, cr_height);
+-      int stride = width * bpp;
+-      uint8_t *src, *dst;
++  meta_window_actor_get_buffer_bounds (screen_cast_window, &buffer_bounds);
++  if (!mtk_rectangle_intersect (bounds, &buffer_bounds, &capture_rect))
++    return;
+ 
+-      src = cr_data;
+-      dst = data;
++  texture = cogl_texture_2d_new_with_size (cogl_context,
++                                           capture_rect.width,
++                                           capture_rect.height);
++  if (!texture)
++    return;
+ 
+-      for (int i = 0; i < height; i++)
+-        {
+-          memcpy (dst, src, stride);
+-          if (width < bounds->width)
+-            memset (dst + stride, 0, (bounds->width * bpp) - stride);
++  cogl_texture_2d_set_auto_mipmap (COGL_TEXTURE_2D (texture), FALSE);
++  framebuffer = COGL_FRAMEBUFFER (cogl_offscreen_new_with_texture (texture));
++  g_object_unref (texture);
+ 
+-          src += cr_stride;
+-          dst += bounds->width * bpp;
+-        }
++  if (!cogl_framebuffer_allocate (framebuffer, &error))
++    {
++      g_warning ("Failed to allocate a window screencast framebuffer: %s",
++                 error->message);
++      g_object_unref (framebuffer);
++      return;
++    }
+ 
+-      for (int i = height; i < bounds->height; i++)
+-        {
+-          memset (dst, 0, bounds->width * bpp);
+-          dst += bounds->width * bpp;
+-        }
++  if (meta_window_actor_blit_to_framebuffer (screen_cast_window,
++                                             &capture_rect,
++                                             framebuffer))
++    {
++      bitmap = cogl_bitmap_new_for_data (cogl_context,
++                                         capture_rect.width,
++                                         capture_rect.height,
++                                         COGL_PIXEL_FORMAT_CAIRO_ARGB32_COMPAT,
++                                         stride,
++                                         data);
++      cogl_framebuffer_read_pixels_into_bitmap (framebuffer, 0, 0,
++                                                COGL_READ_PIXELS_COLOR_BUFFER,
++                                                bitmap);
++      g_object_unref (bitmap);
+     }
+ 
+-  cairo_surface_destroy (image);
++  g_object_unref (framebuffer);
+ }
+ 
+ static gboolean
+@@ -1490,6 +1568,7 @@ meta_window_actor_blit_to_framebuffer (MetaScreenCastWindow *screen_cast_window,
+     meta_window_actor_get_instance_private (window_actor);
+   ClutterActor *actor = CLUTTER_ACTOR (window_actor);
+   ClutterPaintContext *paint_context;
++  ClutterActorBox allocation;
+   graphene_rect_t scaled_clip;
+   CoglColor clear_color;
+   MetaShapedTexture *stex;
+@@ -1503,6 +1582,12 @@ meta_window_actor_blit_to_framebuffer (MetaScreenCastWindow *screen_cast_window,
+   if (!priv->surface)
+     return FALSE;
+ 
++  /* A commit that resizes the window queues a relayout that the stage runs
++   * on its next update. A frame recorded before that would paint the new
++   * buffer into the old allocation, while the stream's crop already follows
++   * the new frame; bring the allocation up to date first. */
++  clutter_actor_get_allocation_box (CLUTTER_ACTOR (priv->surface), &allocation);
++
+   stex = meta_surface_actor_get_texture (priv->surface);
+ 
+   width = meta_shaped_texture_get_width (stex);
+@@ -1599,6 +1684,7 @@ static void
+ screen_cast_window_iface_init (MetaScreenCastWindowInterface *iface)
+ {
+   iface->get_buffer_bounds = meta_window_actor_get_buffer_bounds;
++  iface->get_frame_bounds = meta_window_actor_get_frame_bounds;
+   iface->transform_relative_position = meta_window_actor_transform_relative_position;
+   iface->transform_cursor_position = meta_window_actor_transform_cursor_position;
+   iface->capture_into = meta_window_actor_capture_into;
+-- 
+2.55.0
+
