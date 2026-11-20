@@ -36,7 +36,9 @@ def main() -> int:
 
     engine = Engine(fake=True, preview=False)
     failed: dict[str, str] = {}
+    waiting: set[str] = set()
     engine.connect("widget-failed", lambda _e, wid, reason: failed.setdefault(wid, reason))
+    engine.connect("widget-waiting", lambda _e, wid: waiting.add(wid))
     gaps = []
     last = [time.monotonic()]
 
@@ -53,7 +55,8 @@ def main() -> int:
     loop.run()
     print("failed", failed, "branches", sorted(engine.branches), "longest stall", round(max(gaps), 3))
     assert missing.id in failed and failed[missing.id] == "missing", failed
-    assert hung.id in failed and failed[hung.id] == "silent", failed
+    # No picture yet is not a failure: the stream stays open, the window hears it is waiting.
+    assert hung.id not in failed and hung.id in waiting and hung.id in engine.branches, (failed, waiting)
     assert good.id in engine.branches and good.id not in failed
     assert max(gaps) < 0.5, f"the main loop stalled for {max(gaps):.2f} s"
     # Let the stuck source go, then stop everything without waiting on it.

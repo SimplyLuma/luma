@@ -43,7 +43,11 @@ class StreamyApplication(Adw.Application):
             from .window import StreamyWindow
 
             portals = None
-            if not int(os.environ.get("STREAMY_FAKE_SOURCES", "0")):
+            if int(os.environ.get("STREAMY_FAKE_SOURCES", "0")):
+                from .fake import FakePortals
+
+                portals = FakePortals()
+            else:
                 from .portals import Portals
 
                 try:

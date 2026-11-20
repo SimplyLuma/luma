@@ -6,7 +6,7 @@
 
 Name:           luma-streamy
 Version:        0.1.0
-Release:        1.luma.4%{?dist}
+Release:        1.luma.6%{?dist}
 Summary:        Stream and record your screen, windows and camera
 # The app: Apache-2.0. gst-lumaframe: MPL-2.0. Vendored crates (Cargo.lock):
 # gstreamer-rs and glib-rs (MIT OR Apache-2.0, MIT), memchr (Unlicense OR
@@ -40,7 +40,7 @@ BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  gtk4 >= 4.22
 BuildRequires:  libadwaita >= 1.9
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.135
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.139
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 
@@ -48,8 +48,8 @@ Requires:       python3
 Requires:       python3-gobject
 Requires:       gtk4 >= 4.22
 Requires:       libadwaita >= 1.9
-# Dock, docked creative panels, ArrangeView and the drawn AudioMeter.
-Requires:       luma-developer-platform >= 0.1.0-1.luma.135
+# Dock (fitted, movable seams), NavigationList, ArrangeView with crop, ColorPicker and the AudioMeter.
+Requires:       luma-developer-platform >= 0.1.0-1.luma.139
 Requires:       google-figtree-fonts
 # The program graph: GL upload, mixing and conversion (base), FLV/MKV/MP4
 # muxers, PulseAudio capture and level meters (good), RTMP(S), VA-API
@@ -120,16 +120,24 @@ export GST_PLUGIN_PATH=%{buildroot}%{_libdir}/gstreamer-1.0 GST_REGISTRY=$PWD/gs
 gst-inspect-1.0 lumaframe | grep -q 'libgstlumavideofx.so'
 # A failing or silent source comes out of the program without stalling it.
 PYTHONPATH=%{buildroot}%{python3_sitelib} timeout 120 python3 -B tests/engine_failure.py
+# A microphone meters at once, also beside a source that failed; a frameless widget draws its Look.
+PYTHONPATH=%{buildroot}%{python3_sitelib} timeout 120 python3 -B tests/engine_levels.py
+PYTHONPATH=%{buildroot}%{python3_sitelib} timeout 120 python3 -B tests/engine_placeholder.py
 # The installed app opens on drawn stand-in sources and renders its window
 # at phone and desktop widths. The first try waits 15 s: on a loaded builder
 # the window can take that long to map while llvmpipe composites the scene.
 mkdir -p check-home
+# Every editor key and menu reaches a method; switching scenes or a relayout never moves a panel.
+HOME=$PWD/check-home XDG_DATA_HOME=$PWD/check-home/data XDG_CONFIG_HOME=$PWD/check-home/config \
+  XDG_CACHE_HOME=$PWD/check-home/cache PYTHONPATH=%{buildroot}%{python3_sitelib} \
+  timeout 150 xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
+  env GDK_BACKEND=x11 GSK_RENDERER=cairo python3 -B tests/window_actions.py
 for width in 360 1280; do
   HOME=$PWD/check-home XDG_DATA_HOME=$PWD/check-home/data XDG_CONFIG_HOME=$PWD/check-home/config \
-    XDG_CACHE_HOME=$PWD/check-home/cache STREAMY_FAKE_SOURCES=1 STREAMY_SHOT_DELAY=15000 \
+    XDG_CACHE_HOME=$PWD/check-home/cache STREAMY_FAKE_SOURCES=1 STREAMY_SHOT_DELAY=15000 STREAMY_SHOT_TRIES=120 \
     STREAMY_SHOT=$PWD/shot-$width.png STREAMY_SHOT_WIDTH=$width \
     PYTHONPATH=%{buildroot}%{python3_sitelib} \
-    timeout 120 xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
+    timeout 240 xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \
     env GDK_BACKEND=x11 GSK_RENDERER=cairo python3 -B %{buildroot}%{_bindir}/streamy
   test -s shot-$width.png
 done
@@ -154,6 +162,17 @@ gtk4-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1
 %{_libdir}/gstreamer-1.0/libgstlumavideofx.so
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.6
+- Source first in every widget's bar: cameras by name with resolution, frame
+  rate and mirror; microphones and outputs; Change… for shares; the pointer
+- Failures name their cause; a window cast that sends nothing yet waits
+- The program runs on past a source that fails, so meters and recordings do
+- Look: presets, one-column sliders, border colour picker and position
+- Arrange: position, crop, order, opacity; canvas crop and size commands
+- Widgets inset beside Audio; Scenes-only sidebar with its + heading
+- Undo and redo for every edit; per-canvas placements linked to the primary
+- Placeholder cards for widgets without a picture; monitoring for sound
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.4
 - lumaframe: stroke-position (inside, center, outside); an outside or centred
   stroke grows past the box with concentric corners and the shadow starts

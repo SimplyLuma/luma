@@ -68,6 +68,36 @@ def _strip_parts(strip: Gtk.Widget, window) -> dict:
     return {"name": _box(name, window) if name is not None else None, "track": track, "meter": meter}
 
 
+def _token(name: str):
+    from luma_appkit.lumaui_tokens import DOCK
+
+    return DOCK.get(name)
+
+
+def corner_radius(path: str, box, inset_color_at=None) -> float | None:
+    """A rounded box's corner radius, read from the picture: how far along the top-left diagonal the
+    box's own colour starts (r·(1 − 1/√2) for a circular corner)."""
+    try:
+        from gi.repository import GdkPixbuf
+
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file(path)
+    except Exception:
+        return None
+    x0, y0 = int(round(box[0])), int(round(box[1]))
+    n, rs, px = pixbuf.get_n_channels(), pixbuf.get_rowstride(), pixbuf.get_pixels()
+
+    def at(x, y):
+        i = y * rs + x * n
+        return px[i], px[i + 1], px[i + 2]
+
+    inside = at(x0 + 24, y0 + 24) if inset_color_at is None else at(*inset_color_at)
+    for d in range(0, 40):
+        c = at(x0 + d, y0 + d)
+        if sum(abs(a - b) for a, b in zip(c, inside)) < 12:
+            return round(d / (1 - 2 ** -0.5), 1)
+    return None
+
+
 def measure(window) -> dict:
     """The boxes that LumaUI's rules are about, in window coordinates."""
     from luma_appkit import SidebarRow
@@ -104,8 +134,31 @@ def measure(window) -> dict:
     chip_labels = [child for chip in _find(window.center, "lumaui-bar-chip")
                    for child in _children(chip) if isinstance(child, Gtk.Label)]
     chip_labels += _find(window.center, "lumaui-bar-subject-label")
+    # The sidebar's heading text and its rows' leads share one left edge (NavigationSidebar).
+    headings = [_box(w, window) for w in _find(window.sidebar, "luma-navigation-heading")]
+    # Every row of an open editor: one height, one pair of edges.
+    editor_rows = [_box(w, window) for w in _find(window.center, "streamy-row") if w.get_mapped()]
+    # Anything of a hidden sidebar still drawn or hit-testable at the window's edge.
+    leak = []
+    if not window.sidebar.get_mapped() or window.sidebar.get_width() < 2:
+        def walk(widget):
+            child = widget.get_first_child()
+            while child is not None:
+                box = _box(child, window)
+                if box and box[2] > 1 and box[3] > 1 and child.get_child_visible() and box[0] + box[2] > 0:
+                    leak.append([type(child).__name__, box])
+                walk(child)
+                child = child.get_next_sibling()
+        if window.sidebar.get_mapped():
+            walk(window.sidebar)
     return {
         "window": [window.get_width(), window.get_height()],
+        "requested_width": int(os.environ.get("STREAMY_SHOT_WIDTH", "1280")),
+        "headings": headings,
+        "editor_rows": editor_rows,
+        "sidebar_leak": leak,
+        "tile_radius_token": _token("tile_radius"),
+        "dock_gap": _token("gap"),
         "island": _box(window.island, window),
         "sidebar": _box(window.sidebar, window) if window.sidebar.get_mapped() else None,
         "sections": [_box(w, window) for w in _find(window.sidebar, "luma-navigation-heading")],
@@ -128,6 +181,19 @@ def schedule(window, path: str) -> None:
     height = int(os.environ.get("STREAMY_SHOT_HEIGHT", "800" if width > 560 else "760"))
     window.set_default_size(width, height)
 
+    def exact() -> bool:
+        # A LumaUI window picks its opening size at present (ADR-042): ask for the check run's again,
+        # so a 360 run is 360 pixels wide, not the shape rule's.
+        w, h = window.get_width(), window.get_height()
+        if (w, h) != (width, height) and w and h:
+            # The default size counts the frame; the widget's own size is what the picture is.
+            dw, dh = window.get_default_size()
+            window.set_default_size(dw + width - w, dh + height - h)
+        return False
+
+    for when in (300, 1200, 2200):
+        GLib.timeout_add(when, exact)
+
     def select() -> bool:
         if os.environ.get("STREAMY_SHOT_EDITOR"):
             window.edit_destination(then_go=True)
@@ -148,13 +214,31 @@ def schedule(window, path: str) -> None:
             if sounds:
                 window._toggle_mute(sounds[0])
         if os.environ.get("STREAMY_SHOT_PROBLEM"):
-            # The display widget as a failed or cancelled share leaves it, selected, its Source open.
+            # A widget (the display by default) failed, waiting or never shared: selected, its Source open.
             scene = window.project.active_scene
-            display = next((w for w in scene.widgets if w.kind == "display"), None)
-            if display is not None:
-                window._widget_failed(None, display.id, os.environ["STREAMY_SHOT_PROBLEM"])
-                window.select(display.id)
+            kind = os.environ.get("STREAMY_SHOT_PROBLEM_KIND", "display")
+            target = next((w for w in scene.widgets if w.kind == kind), None)
+            if target is not None:
+                window.engine._remove_branch(target.id)
+                if os.environ["STREAMY_SHOT_PROBLEM"] == "waiting":
+                    target.source["fake-silent"] = True  # its stream opens and sends nothing
+                    window._show_scene()
+                    window._widget_waiting(None, target.id)
+                else:
+                    window._widget_failed(None, target.id, os.environ["STREAMY_SHOT_PROBLEM"])
+                window.select(target.id)
                 window._grow("source")
+            return False
+        if os.environ.get("STREAMY_SHOT_SIDEBAR") == "hidden":
+            window.sidebar_toggle.set_active(False)
+        if os.environ.get("STREAMY_SHOT_KIND"):
+            # Select the first widget of a kind (a camera, a microphone) and grow an editor.
+            scene = window.project.active_scene
+            target = next((w for w in scene.widgets if w.kind == os.environ["STREAMY_SHOT_KIND"]), None)
+            if target is not None:
+                window.select(target.id)
+                if os.environ.get("STREAMY_SHOT_GROW"):
+                    window._grow(os.environ["STREAMY_SHOT_GROW"])
             return False
         if os.environ.get("STREAMY_SHOT_SELECT"):
             scene = window.project.active_scene
@@ -177,7 +261,18 @@ def schedule(window, path: str) -> None:
                     json.dump(measure(window), out, indent=1)
             except Exception as error:  # a check run: say what broke, keep the picture
                 print(f"measure failed: {error!r}")
-        if render(window, path) or tries[0] > 10:
+        # A slow software GL (an aarch64 builder) can take many seconds to draw the first frame.
+        if render(window, path) or tries[0] > int(os.environ.get("STREAMY_SHOT_TRIES", "60")):
+            import json
+
+            json_path = path.rsplit(".", 1)[0] + ".json"
+            try:
+                data = json.load(open(json_path))
+                data["radii"] = {key: corner_radius(path, t["box"]) for key, t in data["tiles"].items()
+                                 if t["box"] and key != "preview"}
+                json.dump(data, open(json_path, "w"), indent=1)
+            except Exception as error:
+                print(f"radius read failed: {error!r}")
             window.close()
             return False
         return True

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .model import atomic_write
 
-TILES = ("preview", "audio")
+TILES = ("preview", "widgets", "audio")
 
 
 def split(orientation: str, ratio: float, start, end) -> dict:
@@ -20,9 +20,9 @@ def split(orientation: str, ratio: float, start, end) -> dict:
 
 
 PRESETS: dict[str, tuple[str, object]] = {
-    "default": ("Default", split("v", 0.76, "preview", "audio")),
-    "side": ("Audio beside", split("h", 0.76, "preview", "audio")),
-    "compact": ("Compact", split("v", 0.88, "preview", "audio")),
+    "default": ("Default", split("v", 0.72, "preview", split("h", 0.5, "widgets", "audio"))),
+    "side": ("Insets beside", split("h", 0.72, "preview", split("v", 0.5, "widgets", "audio"))),
+    "compact": ("Compact", split("v", 0.88, "preview", split("h", 0.5, "widgets", "audio"))),
 }
 
 
@@ -43,11 +43,23 @@ def valid(layout):
             return start if end is None else end
         ratio = node.get("ratio")
         ratio = min(0.95, max(0.05, float(ratio))) if isinstance(ratio, (int, float)) else 0.5
-        return split(node["split"], ratio, start, end)
+        tidy = split(node["split"], ratio, start, end)
+        if isinstance(node.get("size"), (int, float)) and node["size"] > 0:
+            tidy["size"] = int(node["size"])  # a seam a person moved (LumaUI Dock)
+        return tidy
 
     tree = clean(layout)
     if tree is None:
         return PRESETS["default"][1]
+    if seen == {"preview", "audio"} and isinstance(tree, dict) and "widgets" not in seen:
+        # A layout from before the Widgets inset: Widgets joins Audio, side by side.
+        def join(node):
+            if node == "audio":
+                return split("h", 0.5, "widgets", "audio")
+            if isinstance(node, dict):
+                return {**node, "start": join(node["start"]), "end": join(node["end"])}
+            return node
+        return join(tree)
     for key in TILES:
         if key not in seen:
             tree = split("h", 0.75, tree, key)

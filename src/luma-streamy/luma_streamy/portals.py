@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -32,11 +33,16 @@ REQUEST = "org.freedesktop.portal.Request"
 REGISTRY = "org.freedesktop.host.portal.Registry"
 
 MONITOR, WINDOW = 1, 2
-CURSOR_EMBEDDED = 2
+CURSOR_HIDDEN, CURSOR_EMBEDDED = 1, 2
 PERSIST_UNTIL_REVOKED = 2
 #: An older luma-portal gave up on its picker after D-Bus's default 25 s and answered
 #: "cancelled". A cancel that lands right then is that timeout, not the person.
 _DBUS_DEFAULT_TIMEOUT = 25.0
+
+
+def log(text: str) -> None:
+    """One line for the journal (the app runs as a systemd unit; stderr is its journal)."""
+    print(f"streamy: {text}", file=sys.stderr, flush=True)
 
 
 def register_host_app(app_id: str) -> None:
@@ -70,6 +76,8 @@ class Capture:
     opener: Callable | None = None
     opening: bool = False
     pool: list = field(default_factory=list)
+    watch: int = 0
+    camera: object = None
 
     @property
     def aspect(self) -> float | None:
@@ -152,6 +160,129 @@ def camera_nodes(fd: int) -> list[tuple[str, str, tuple[int, int] | None]]:
         provider.stop()
 
 
+def node_serial(fd: int, node_id: int) -> str | None:
+    """The object.serial of node ``node_id`` on a portal's PipeWire remote (which owns ``fd``), or None.
+
+    A portal older than ScreenCast v6 gives only the node id; pipewiresrc's target-object
+    wants the serial, which the remote's own registry knows."""
+    provider, devices = _devices(fd, "Video/Source")
+    if provider is None:
+        return None
+    try:
+        for device in devices:
+            ids = {_prop(device, "object.id"), _prop(device, "node.id")}
+            if device.find_property("id") is not None:
+                ids.add(str(device.get_property("id")))
+            if str(node_id) in ids:
+                serial = _prop(device, "object.serial")
+                if serial is None and device.find_property("serial") is not None:
+                    serial = str(device.get_property("serial"))
+                return serial
+        return None
+    finally:
+        provider.stop()
+
+
+@dataclass(frozen=True)
+class Camera:
+    """A camera on the camera portal's remote."""
+
+    target: str  # object.serial (what this remote's pipewiresrc connects to)
+    name: str  # node.name, stable across boots: what a widget remembers
+    label: str  # "Built-in Front Camera"
+    modes: tuple = ()  # ((width, height, fps), ...) best first
+
+    @property
+    def size(self) -> tuple[int, int] | None:
+        return self.modes[0][:2] if self.modes else None
+
+
+def _modes(caps) -> tuple:
+    """(width, height, fps) a camera offers, largest first, whole frame rates."""
+    found = set()
+    if caps is None:
+        return ()
+    for i in range(caps.get_size()):
+        st = caps.get_structure(i)
+        ok_w, width = st.get_int("width")
+        ok_h, height = st.get_int("height")
+        if not (ok_w and ok_h):
+            continue
+        rates = []
+        if st.has_field("framerate"):
+            value = st.get_value("framerate")
+            for v in (value if isinstance(value, list) else [value]):
+                try:
+                    rates.append(round(v.num / v.denom) if hasattr(v, "num") else round(float(v)))
+                except (TypeError, ZeroDivisionError, ValueError):
+                    pass
+            ok_f, num, den = st.get_fraction("framerate")
+            if ok_f and den:
+                rates.append(round(num / den))
+        for fps in rates or [30]:
+            if fps > 0:
+                found.add((width, height, fps))
+    return tuple(sorted(found, key=lambda m: (m[0] * m[1], m[2]), reverse=True))
+
+
+def _camera(device) -> Camera | None:
+    target = _prop(device, "object.serial") or _prop(device, "node.name")
+    if target is None:
+        return None
+    return Camera(target, _prop(device, "node.name") or target, device.get_display_name(), _modes(device.get_caps()))
+
+
+class CameraWatch:
+    """The cameras Streamy may use, kept current on a thread of its own (one PipeWire connection on the
+    camera portal's remote); ``on_changed`` runs on the window's thread when one comes or goes."""
+
+    def __init__(self, fd: int, on_changed: Callable[[], None]) -> None:
+        self.cameras: list[Camera] = []
+        self.ready = False
+        self.on_changed = on_changed
+        self._lock = threading.Lock()
+        threading.Thread(target=self._run, args=(fd,), name="streamy-cameras", daemon=True).start()
+
+    def _run(self, fd: int) -> None:
+        import gi
+
+        gi.require_version("Gst", "1.0")
+        from gi.repository import Gst
+
+        provider, _devices_now = _devices(fd, "Video/Source")
+        if provider is None:
+            self._publish([])
+            return
+        self._provider = provider
+        bus = provider.get_bus()
+        self._publish(provider)
+        while True:
+            message = bus.timed_pop(Gst.CLOCK_TIME_NONE)
+            if message is None:
+                break
+            if message.type in (Gst.MessageType.DEVICE_ADDED, Gst.MessageType.DEVICE_REMOVED,
+                                Gst.MessageType.DEVICE_CHANGED):
+                self._publish(provider)
+
+    def _publish(self, provider) -> None:
+        cameras = []
+        if provider:
+            for device in provider.get_devices():
+                if device.get_device_class().startswith("Video/Source"):
+                    camera = _camera(device)
+                    if camera is not None:
+                        cameras.append(camera)
+        with self._lock:
+            self.cameras, self.ready = cameras, True
+        GLib.idle_add(lambda: self.on_changed() and False)
+
+    def find(self, name: str | None) -> Camera | None:
+        with self._lock:
+            if name:
+                return next((c for c in self.cameras if c.name == name), None)
+            return self.cameras[0] if self.cameras else None
+
+
 class Portals:
     def __init__(self) -> None:
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -160,6 +291,10 @@ class Portals:
         self.on_ready: Callable[[str], None] | None = None
         #: A capture the portal ended by itself (widget id).
         self.on_ended: Callable[[str], None] | None = None
+        #: The cameras, once the camera portal said yes (CameraWatch); ``on_cameras()`` follows them.
+        self.cameras: CameraWatch | None = None
+        self.on_cameras: Callable[[], None] | None = None
+        self._camera_waiters: list[Callable[[], None]] = []
 
     # ── Requests ──
 
@@ -220,13 +355,17 @@ class Portals:
     # ── Screen, window and application sound ──
 
     def screencast(self, widget_id: str, *, window: bool, restore_token: str | None,
-                   done: Callable[[Capture], None], failed: Callable[[str], None], parent: str = "") -> None:
-        """Pick (or restore) a display or a window; ``done`` gets the open capture."""
+                   done: Callable[[Capture], None], failed: Callable[[str], None], parent: str = "",
+                   cursor: bool = True) -> None:
+        """Pick (or restore) a display or a window; ``done`` gets the open capture. ``cursor``: the
+        pointer drawn into the picture, or left out."""
         cursor_modes = self._property(SCREENCAST, "AvailableCursorModes") or 0
         options = {"types": GLib.Variant("u", WINDOW if window else MONITOR),
                    "multiple": GLib.Variant("b", False)}
-        if cursor_modes & CURSOR_EMBEDDED:
+        if cursor and cursor_modes & CURSOR_EMBEDDED:
             options["cursor_mode"] = GLib.Variant("u", CURSOR_EMBEDDED)
+        elif not cursor and cursor_modes & CURSOR_HIDDEN:
+            options["cursor_mode"] = GLib.Variant("u", CURSOR_HIDDEN)
         self._share(SCREENCAST, widget_id, options, restore_token, done, failed, parent)
 
     def audio_capture_available(self) -> bool:
@@ -343,12 +482,51 @@ class Portals:
                     return
                 capture.pool.append(fd)
                 self.captures[widget_id] = capture
-                done(capture)
+                self._watch_session(widget_id, capture)
+                if capture.node is not None:
+                    done(capture)
+                    return
+                # No pipewire-serial (a portal before ScreenCast v6): ask the remote's registry
+                # for the node's serial, off the window's thread; the node id is the fallback.
+                def resolved(look_fd: int | None) -> None:
+                    if look_fd is None:
+                        done(capture)
+                        return
+
+                    def look() -> None:
+                        serial = node_serial(look_fd, node_id)
+                        GLib.idle_add(found, serial)
+
+                    def found(serial) -> bool:
+                        if serial is not None:
+                            capture.node, capture.path = serial, None
+                        log(f"portal stream {node_id}: " + (f"object.serial {serial}" if serial is not None
+                                                             else "no serial on the remote, connecting by id"))
+                        done(capture)
+                        return False
+
+                    threading.Thread(target=look, name="streamy-node-serial", daemon=True).start()
+
+                capture.opener(resolved)
 
             capture.opener(first)
 
         self._request(interface, "CreateSession", [], {"session_handle_token": GLib.Variant("s", self._token())},
                       created, failed)
+
+    def _watch_session(self, widget_id: str, capture: "Capture") -> None:
+        """The portal closing a share (the person stopped it in the Shell, the window went) ends the widget."""
+        if not capture.session:
+            return
+
+        def closed(*_args) -> None:
+            self.bus.signal_unsubscribe(capture.watch)
+            capture.watch = 0
+            log(f"portal session for {widget_id} closed")
+            self._ended(widget_id, capture)
+
+        capture.watch = self.bus.signal_subscribe(BUS, "org.freedesktop.portal.Session", "Closed", capture.session,
+                                                  None, Gio.DBusSignalFlags.NONE, closed)
 
     def _close_session(self, session: str | None) -> None:
         if session:
@@ -360,37 +538,60 @@ class Portals:
     def camera_present(self) -> bool:
         return bool(self._property(CAMERA, "IsCameraPresent"))
 
-    def camera(self, widget_id: str, *, done: Callable[[Capture], None], failed: Callable[[str], None]) -> None:
+    def _cameras_changed(self) -> None:
+        waiters, self._camera_waiters = self._camera_waiters, []
+        for then in waiters:
+            then()
+        if self.on_cameras is not None:
+            self.on_cameras()
+
+    def watch_cameras(self, then: Callable[[], None], failed: Callable[[str], None]) -> None:
+        """Ask the camera portal once, then keep the list of cameras current; ``then()`` once it is known."""
+        if self.cameras is not None:
+            if self.cameras.ready:
+                then()
+            else:
+                self._camera_waiters.append(then)
+            return
+
+        def allowed(_results: dict) -> None:
+            def opened(fd: int | None) -> None:
+                if fd is None:
+                    failed("failed")
+                    return
+                self._camera_waiters.append(then)
+                # The remote shows only the cameras Streamy may use; one connection is kept for
+                # watching them, each stream opens its own.
+                self.cameras = CameraWatch(fd, self._cameras_changed)
+
+            self._open_remote_async(CAMERA, [], opened)
+
+        def refused(reason: str) -> None:
+            failed("denied" if reason == "cancelled" else reason)
+
+        self._request(CAMERA, "AccessCamera", [], {}, allowed, refused)
+
+    def camera(self, widget_id: str, *, done: Callable[[Capture], None], failed: Callable[[str], None],
+               name: str | None = None) -> None:
+        """Open camera ``name`` (a node name; None: the first). "no camera" when there is none,
+        "missing" when that one is gone, "denied" when the portal says no."""
         if widget_id in self.captures:
             done(self.captures[widget_id])
             return
 
-        def allowed(_results: dict) -> None:
-            self._open_remote_async(CAMERA, [], lambda fd: look_on(fd) if fd is not None else failed("failed"))
+        def known() -> None:
+            camera = self.cameras.find(name)
+            if camera is None:
+                failed("missing" if name and self.cameras.cameras else "no camera")
+                return
+            capture = Capture(-1, camera.target, camera.size, None)
+            capture.opener = lambda ready: self._open_remote_async(CAMERA, [], ready)
+            capture.name = camera.label
+            capture.camera = camera
+            self.captures[widget_id] = capture
+            done(capture)
 
-        def look_on(fd: int) -> None:
-            # The remote shows only the cameras Streamy may use; its own registry names
-            # them. Asking it takes a moment, so it happens off the window's thread. One
-            # PipeWire connection per remote: this one is for looking, each stream opens its own.
-            def look() -> None:
-                nodes = camera_nodes(fd)
-                GLib.idle_add(found, nodes)
-
-            def found(nodes) -> bool:
-                if not nodes:
-                    failed("no camera")
-                    return False
-                serial, name, size = nodes[0]
-                capture = Capture(-1, serial, size, None)
-                capture.opener = lambda ready: self._open_remote_async(CAMERA, [], ready)
-                capture.name = name
-                self.captures[widget_id] = capture
-                done(capture)
-                return False
-
-            threading.Thread(target=look, name="streamy-camera-nodes", daemon=True).start()
-
-        self._request(CAMERA, "AccessCamera", [], {}, allowed, failed)
+        self.watch_cameras(known, failed)
 
     # ── Closing ──
 
@@ -406,6 +607,9 @@ class Portals:
             capture.owner.on_closed = None
             capture.owner.close()  # ends its session and closes its remote
         else:
+            if capture.watch:
+                self.bus.signal_unsubscribe(capture.watch)
+                capture.watch = 0
             self._close_session(capture.session)
 
     def source_for(self, widget) -> tuple[int | None, str | None]:

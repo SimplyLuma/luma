@@ -60,8 +60,12 @@ def make(spec: Element) -> Gst.Element:
     if element is None:
         raise EngineError(f"GStreamer has no {spec.factory} element")
     for name, value in spec.props.items():
-        if name not in CONSTRUCT_ONLY:
-            _set_prop(element, name, value)
+        if name in CONSTRUCT_ONLY:
+            continue
+        if element.find_property(name) is None:
+            log(f"{spec.factory} has no {name}; left at its default")
+            continue
+        _set_prop(element, name, value)
     return element
 
 
@@ -125,11 +129,13 @@ def choose_encoders(codec: str) -> EncoderChoice | None:
     return graph.choose(working, codec)
 
 
-#: A capture that sends no picture in this long has failed; say so instead of waiting.
+#: A capture that has sent no picture in this long says so ("waiting"). It is not a failure:
+#: a window cast sends nothing until the window redraws, so the stream stays open.
 FIRST_PICTURE_S = 8
 
-#: Why a source failed: "busy", "missing", "denied", "silent" (no picture in time) or "stopped".
-REASONS = ("busy", "missing", "denied", "silent", "stopped")
+#: Why a source failed: "busy", "missing" (the device or node is gone), "denied", "format"
+#: (no picture format both ends take) or "stopped" (any other pipeline error).
+REASONS = ("busy", "missing", "denied", "format", "stopped")
 
 
 def source_problem(message: str, debug: str) -> str:
@@ -137,11 +143,37 @@ def source_problem(message: str, debug: str) -> str:
     text = f"{message} {debug}".lower()
     if "busy" in text or "ebusy" in text or "in use" in text:
         return "busy"
-    if "target not found" in text or "no such" in text or "not found" in text:
+    if "target not found" in text or "no such" in text or "not found" in text or "removed" in text:
         return "missing"
     if "permission" in text or "not allowed" in text or "denied" in text:
         return "denied"
+    if "not-negotiated" in text or "negotiat" in text or "no common format" in text:
+        return "format"
     return "stopped"
+
+
+def crop_meta(buffer: Gst.Buffer) -> tuple[int, int, int, int] | None:
+    """A buffer's GstVideoCropMeta (x, y, width, height), or None. PyGObject hands the meta out as a
+    plain Gst.Meta, so its fields are read where they sit: after GstMeta (flags, info), four guints."""
+    import ctypes
+    import re
+
+    meta = buffer.get_meta("GstVideoCropMetaAPI")
+    if meta is None:
+        return None
+    found = re.search(r"at (0x[0-9a-f]+)\)>?$", repr(meta))
+    if found is None:
+        return None
+    base = int(found.group(1), 16) + 2 * ctypes.sizeof(ctypes.c_void_p)  # flags (padded) and info
+    values = [ctypes.c_uint.from_address(base + 4 * i).value for i in range(4)]
+    return tuple(values) if values[2] and values[3] else None
+
+
+def log(text: str) -> None:
+    """One line for the journal (stderr is the app unit's journal)."""
+    import sys
+
+    print(f"streamy: {text}", file=sys.stderr, flush=True)
 
 
 @dataclass
@@ -153,6 +185,9 @@ class Branch:
     fade: int = 0
     shown: bool = False
     watchdog: int = 0
+    generation: int = 0
+    monitor: list = field(default_factory=list)
+    monitor_device: str | None = None
 
 
 @dataclass
@@ -296,8 +331,18 @@ class Output:
         bus = self.pipeline.get_bus()
         bus.disconnect(self._bus_id)
         bus.remove_signal_watch()
+        sink = self.pipeline.get_by_name("record-sink")
         self.pipeline.set_state(Gst.State.NULL)
         self.pipeline = None
+        if self.kind == "record" and self.stats.frames == 0 and sink is not None:
+            # No picture ever reached it: a header alone is not a recording; say so, leave no file.
+            path = sink.get_property("location")
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            log(f"recording {path}: no picture reached it; removed")
+            self.engine.emit("problem", "Nothing was recorded: no picture reached the recording.")
         if self.on_finished is not None:
             self.on_finished()
         return False
@@ -317,8 +362,12 @@ class Engine(GObject.Object):
         "preview-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         # widget id: its first picture arrived
         "widget-ready": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
-        # widget id, a plain reason: its source failed or never sent a picture; it is out of the program
+        # widget id, a plain reason: its source failed; it is out of the program
         "widget-failed": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
+        # widget id: its stream is open but no picture has come yet (it stays open and may start)
+        "widget-waiting": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        # widget id, width, height: the picture's own size changed (a window cast's crop region)
+        "source-size": (GObject.SignalFlags.RUN_FIRST, None, (str, int, int)),
     }
 
     def __init__(self, *, fake: bool | None = None, preview: bool = True,
@@ -332,6 +381,9 @@ class Engine(GObject.Object):
         self.paintable = None
         self.canvas = (1920, 1080)
         self.branches: dict[str, Branch] = {}
+        #: Picture widgets without a live picture show a card (graph.placeholder_chain) in their place.
+        self.placeholders: dict[str, Branch] = {}
+        self._placeholder_words: dict[str, str] = {}
         self.outputs: dict[str, Output] = {}
         self.stream_retry: dict | None = None
         self._sound = False
@@ -371,11 +423,24 @@ class Engine(GObject.Object):
     def _close(self) -> None:
         if self.pipeline is None:
             return
+        for widget_id in list(self.placeholders):
+            self._remove_placeholder(widget_id)
         for widget_id in list(self.branches):
             self._remove_branch(widget_id)
-        self.pipeline.set_state(Gst.State.NULL)
-        self.pipeline.get_bus().remove_signal_watch()
+        pipeline = self.pipeline
+        pipeline.get_bus().remove_signal_watch()
         self.pipeline = None
+        # The preview's GTK sink stops here, on the thread its paintable belongs to.
+        preview = pipeline.get_by_name("preview")
+        if preview is not None:
+            preview.set_locked_state(True)
+            preview.set_state(Gst.State.NULL)
+        # Off the window's thread: a source still stuck opening holds its state lock, and the
+        # pipeline's own NULL waits on it. Nothing here needs the old pipeline any more.
+        import threading
+
+        threading.Thread(target=pipeline.set_state, args=(Gst.State.NULL,), name="streamy-close",
+                         daemon=True).start()
         self.paintable = None
         self._sound = False
         self._taps.clear()
@@ -409,6 +474,13 @@ class Engine(GObject.Object):
         sink.set_property("sync", False)
         bin_ = Gst.ElementFactory.make("glsinkbin", "preview")
         bin_.set_property("sink", sink)
+        # A live program never waits for the preview to preroll: with an async sink, a branch
+        # added later (a microphone, a camera that never sends) can leave the pipeline PAUSED
+        # waiting for it, and every live source in it paused with it (meters still, PipeWire
+        # nodes suspended).
+        sink.set_property("async", False)
+        if bin_.find_property("async") is not None:
+            bin_.set_property("async", False)
         # The preview is scaled on the GPU to the size it is shown at: no full-size copy for the screen.
         queue = make(Element("queue", "preview-queue", {"max-size-buffers": 1, "leaky": 2}))
         scale = make(Element("glcolorscale", "preview-scale"))
@@ -436,12 +508,20 @@ class Engine(GObject.Object):
 
     # ── Scenes and widgets ──
 
-    def show_scene(self, scene: Scene | None, *, skip: set[str] | frozenset = frozenset()) -> None:
-        """Capture exactly the visible widgets of ``scene`` (less ``skip``: ones that failed); stop the rest."""
+    def show_scene(self, scene: Scene | None, *, skip: set[str] | frozenset = frozenset(),
+                   states: dict[str, str] | None = None) -> None:
+        """Capture exactly the visible widgets of ``scene`` (less ``skip``: ones that failed); stop the rest.
+
+        A visible picture widget with no live picture (connecting, failed, nothing chosen: ``states``
+        says which, "connecting" by default) shows its placeholder card through its own lumaframe, so its
+        Look shows. The card is the preview's only: while recording or live it is transparent (its pad's
+        alpha 0), so viewers never see it, and nothing moves (widgets are placed, never laid out)."""
         if not self.enabled:
             return
-        wanted = {w.id: w for w in (scene.widgets if scene else []) if w.visible and w.id not in skip}
-        if not wanted and not self.outputs:
+        states = states or {}
+        shown = [w for w in (scene.widgets if scene else []) if w.visible]
+        wanted = {w.id: w for w in shown if w.id not in skip}
+        if not shown and not self.outputs:
             self._close()  # nothing to show and nothing sent: no pipeline at all
             return
         self._open()
@@ -454,16 +534,107 @@ class Engine(GObject.Object):
                 self.update_widget(widget, zorder)
             else:
                 self._add_branch(widget, zorder)
+        # Placeholders: every shown picture widget whose capture has no picture yet.
+        cards = {}
+        for zorder, widget in enumerate(scene.widgets if scene else []):
+            if not widget.visible or not widget.has_picture:
+                continue
+            branch = self.branches.get(widget.id)
+            if branch is not None and branch.shown:
+                continue
+            state = states.get(widget.id) or ("failed" if widget.id in skip else "connecting" if branch else "choose")
+            cards[widget.id] = (widget, zorder, graph.placeholder_words(widget, state))
+        for widget_id in [i for i in self.placeholders if i not in cards or
+                          self._placeholder_words.get(i) != cards[i][2]]:
+            self._remove_placeholder(widget_id)
+        for widget_id, (widget, zorder, words) in cards.items():
+            if widget_id in self.placeholders:
+                self._update_placeholder(widget, zorder)
+            else:
+                self._add_placeholder(widget, zorder, words)
         self._sync_sound()
+        self._keep_playing()
         self._idle_check()
 
+    def _keep_playing(self) -> None:
+        """The program runs whenever it exists: anything that left it short of PLAYING is undone.
+
+        A source that fails while it starts (a camera that is gone) fails the pipeline's own state
+        change, which then stays PAUSED with PLAYING still pending, and every live source in it
+        pauses with it: a microphone's meter stops and its PipeWire node suspends. Asking again,
+        once the failed branch is out, completes the change."""
+        if self.pipeline is None:
+            return
+        _ok, state, _pending = self.pipeline.get_state(0)
+        if state != Gst.State.PLAYING:
+            # On GStreamer's pool: a source still opening (a stuck device) never holds the window.
+            self.pipeline.call_async(lambda pipeline, _data: pipeline.set_state(Gst.State.PLAYING), None)
+
     def _idle_check(self) -> None:
-        """Nothing captures and nothing is sent: the program goes, so it costs nothing."""
-        if self.pipeline is not None and not self.branches and not self.outputs:
-            GLib.idle_add(lambda: (self._close() if not self.branches and not self.outputs else None) and False)
+        """Nothing captures, shows or is sent: the program goes, so it costs nothing."""
+        def idle() -> bool:
+            return not self.branches and not self.outputs and not self.placeholders
+
+        if self.pipeline is not None and idle():
+            GLib.idle_add(lambda: (self._close() if idle() else None) and False)
+
+    # ── Placeholders ──
+
+    def _add_placeholder(self, widget: Widget, zorder: int, words: str) -> None:
+        self._generation += 1
+        chain = graph.placeholder_chain(widget, zorder, words, self._generation)
+        try:
+            elements = [make(e) for e in chain.elements]
+        except EngineError as error:
+            log(f"no placeholder for {widget.id}: {error}")
+            return
+        for element in elements:
+            self.pipeline.add(element)
+        link_all(elements)
+        pad = self.pipeline.get_by_name("mixer").request_pad_simple("sink_%u")
+        for name, value in chain.pad.items():
+            pad.set_property(name, value)
+        pad.set_property("alpha", 0.0 if self.outputs else 1.0)
+        elements[-1].get_static_pad("src").link(pad)
+        self.placeholders[widget.id] = Branch(widget.id, elements, pad, True, shown=True,
+                                              generation=self._generation)
+        self._placeholder_words[widget.id] = words
+        self.pipeline.call_async(lambda _p, items: [e.sync_state_with_parent() for e in reversed(items)], elements)
+
+    def _update_placeholder(self, widget: Widget, zorder: int | None = None) -> None:
+        card = self.placeholders.get(widget.id)
+        if card is None:
+            return
+        frame = card.elements[-1]
+        for name, value in graph.frame_props(widget).items():
+            if frame.find_property(name) is None:
+                continue
+            if isinstance(value, str):
+                _set_prop(frame, name, value)
+            elif frame.get_property(name) != value:
+                frame.set_property(name, value)
+        props = graph.mixer_pad_props(widget, zorder if zorder is not None else card.pad.get_property("zorder"))
+        props["alpha"] = 0.0 if self.outputs else 1.0
+        for name, value in props.items():
+            if card.pad.get_property(name) != value:
+                card.pad.set_property(name, value)
+
+    def _remove_placeholder(self, widget_id: str) -> None:
+        card = self.placeholders.pop(widget_id, None)
+        self._placeholder_words.pop(widget_id, None)
+        if card is None:
+            return
+        self.branches[f"placeholder:{widget_id}"] = card
+        self._remove_branch(f"placeholder:{widget_id}")
+
+    def _sync_placeholder_alpha(self) -> None:
+        """Sending or not: the cards are the preview's only."""
+        for card in self.placeholders.values():
+            card.pad.set_property("alpha", 0.0 if self.outputs else 1.0)
 
     def update_widget(self, widget: Widget, zorder: int | None = None) -> None:
         """Move, resize or restyle a widget live (no renegotiation unless its size changed)."""
+        self._update_placeholder(widget, zorder)
         branch = self.branches.get(widget.id)
         if branch is None:
             return
@@ -473,19 +644,32 @@ class Engine(GObject.Object):
             if branch.fade < FADE_MS:
                 props["opacity"] = props["opacity"] * branch.fade / FADE_MS
             for name, value in props.items():
-                if frame.get_property(name) != value:
+                if frame.find_property(name) is None:
+                    continue  # an older lumaframe (no stroke-position): its default
+                if isinstance(value, str):
+                    _set_prop(frame, name, value)
+                elif frame.get_property(name) != value:
                     frame.set_property(name, value)
+            flip = next((e for e in branch.elements if e.get_factory().get_name() == "glvideoflip"), None)
+            if flip is not None:
+                Gst.util_set_object_arg(flip, "method", graph.flip_method(widget))
             pad_props = graph.mixer_pad_props(widget, zorder if zorder is not None else branch.pad.get_property("zorder"))
             for name, value in pad_props.items():
                 if branch.pad.get_property(name) != value:
                     branch.pad.set_property(name, value)
         else:
-            volume = branch.elements[-3]
+            volume = next(e for e in branch.elements if e.get_factory().get_name() == "volume")
             for name, value in graph.volume_props(widget).items():
                 volume.set_property(name, value)
+            if branch.pad is not None:
+                branch.pad.set_property("mute", widget.monitor == "only")
+            self._sync_monitor(branch, widget)
 
     def restack(self, scene: Scene) -> None:
         for zorder, widget in enumerate(scene.widgets):
+            card = self.placeholders.get(widget.id)
+            if card is not None:
+                card.pad.set_property("zorder", zorder)
             branch = self.branches.get(widget.id)
             if branch is not None and branch.pad is not None and branch.picture:
                 branch.pad.set_property("zorder", zorder)
@@ -516,10 +700,13 @@ class Engine(GObject.Object):
             target.release_request_pad(pad)
             for element in elements:
                 self.pipeline.remove(element)
+            log(f"widget {widget.id} failed: its branch does not link to the mixer")
             self.emit("widget-failed", widget.id, "stopped")
             return
-        branch = Branch(widget.id, elements, pad, widget.has_picture)
+        branch = Branch(widget.id, elements, pad, widget.has_picture, generation=self._generation)
         self.branches[widget.id] = branch
+        if not widget.has_picture:
+            self._sync_monitor(branch, widget)
         if widget.has_picture:
             elements[-1].get_static_pad("src").add_probe(
                 Gst.PadProbeType.BUFFER, self._first_picture, (branch, widget))
@@ -529,8 +716,53 @@ class Engine(GObject.Object):
                                  elements)
         if widget.has_picture:
             branch.watchdog = GLib.timeout_add_seconds(FIRST_PICTURE_S, self._no_picture, branch)
+        if not self.fake and widget.kind in ("display", "window", "camera"):
+            elements[0].get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, self._source_buffer,
+                                                        {"branch": branch, "seen": None})
         if os.environ.get("STREAMY_TRACE"):
             self._trace(branch, elements)
+
+    def _source_buffer(self, pad: Gst.Pad, info: Gst.PadProbeInfo, state: dict) -> Gst.PadProbeReturn:
+        """What a capture actually sends: its caps and, for a window cast, the crop region the window
+        is in. The first is logged; a crop that changes (the window resized) is applied and reported."""
+        buffer = info.get_buffer()
+        caps = pad.get_current_caps()
+        if buffer is None or caps is None:
+            return Gst.PadProbeReturn.OK
+        st = caps.get_structure(0)
+        width, height = st.get_value("width"), st.get_value("height")
+        crop = crop_meta(buffer)
+        seen = (width, height, crop)
+        if seen != state["seen"]:
+            state["seen"] = seen
+            branch = state["branch"]
+            if state.get("logged") is None:
+                state["logged"] = True
+                log(f"widget {branch.widget_id}: {caps.to_string()[:160]}; crop meta {crop or 'none'}")
+            GLib.idle_add(self._apply_crop, branch, width, height, crop)
+        return Gst.PadProbeReturn.OK
+
+    def _apply_crop(self, branch: Branch, width: int, height: int, crop) -> bool:
+        """A window cast's buffers are the size of the cast and the window a crop region inside them
+        (GstVideoCropMeta, often on DMABuf the GL upload takes as it is). The region is the picture:
+        lumaframe draws only it (content-x/y/width/height), on the GPU, and it is the widget's shape."""
+        if self.branches.get(branch.widget_id) is not branch:
+            return False
+        frame = branch.elements[-1]
+        if crop is not None:
+            x, y, w, h = crop
+            x, y = min(x, width - 1), min(y, height - 1)
+            w, h = min(w, width - x), min(h, height - y)
+            if frame.find_property("content-width") is not None:
+                for name, value in (("content-x", x), ("content-y", y), ("content-width", w), ("content-height", h)):
+                    if frame.get_property(name) != value:
+                        frame.set_property(name, type(frame.get_property(name))(value))
+            else:
+                log(f"widget {branch.widget_id}: this lumaframe has no content rect; the crop region is not applied")
+            self.emit("source-size", branch.widget_id, w, h)
+        else:
+            self.emit("source-size", branch.widget_id, width, height)
+        return False
 
     def _trace(self, branch: Branch, elements: list) -> None:
         """STREAMY_TRACE=1: count pictures at the source and at the frame, every 2 s, on stderr."""
@@ -558,14 +790,18 @@ class Engine(GObject.Object):
     def _no_picture(self, branch: Branch) -> bool:
         branch.watchdog = 0
         if self.branches.get(branch.widget_id) is branch and not branch.shown:
-            self._fail(branch.widget_id, "silent")
+            log(f"widget {branch.widget_id}: no picture after {FIRST_PICTURE_S} s; the stream stays open")
+            self.emit("widget-waiting", branch.widget_id)
         return False
 
-    def _fail(self, widget_id: str, reason: str) -> None:
+    def _fail(self, widget_id: str, reason: str, detail: str = "") -> None:
         if widget_id in self.branches:
+            log(f"widget {widget_id} failed: {reason}" + (f": {detail}" if detail else ""))
             self._remove_branch(widget_id)
             self.emit("widget-failed", widget_id, reason)
             self._idle_check()
+            # Once its elements are out, the rest of the program runs on (see _keep_playing).
+            GLib.timeout_add(100, lambda: self._keep_playing() and False)
 
     @staticmethod
     def _link_chain(elements: list[Gst.Element]) -> None:
@@ -597,10 +833,51 @@ class Engine(GObject.Object):
             branch.fade = min(FADE_MS, branch.fade + FADE_MS // steps)
             target = widget.effects.clamped().opacity
             branch.elements[-1].set_property("opacity", target * branch.fade / FADE_MS)
+            if branch.fade >= FADE_MS:
+                self._remove_placeholder(widget.id)  # the real picture is in: the card goes
             return branch.fade < FADE_MS
 
         GLib.timeout_add(FADE_MS // steps, step)
         return False
+
+    def _sync_monitor(self, branch: Branch, widget: Widget) -> None:
+        """A sound widget's monitor exists exactly while it is on (and follows its device)."""
+        want = widget.monitor in ("only", "both")
+        device = widget.source.get("monitor-device")
+        if branch.monitor and (not want or device != branch.monitor_device):
+            self._drop_monitor(branch)
+        if not want or branch.monitor or self.pipeline is None:
+            return
+        tee = next((e for e in branch.elements if e.get_factory().get_name() == "tee"), None)
+        if tee is None:
+            return
+        elements = [make(e) for e in graph.monitor_chain(widget, branch.generation)]
+        for element in elements:
+            self.pipeline.add(element)
+        link_all(elements)
+        tee.link(elements[0])
+        branch.monitor, branch.monitor_device = elements, device
+        self.pipeline.call_async(lambda _p, items: [e.sync_state_with_parent() for e in reversed(items)], elements)
+
+    def _drop_monitor(self, branch: Branch) -> None:
+        elements, branch.monitor = branch.monitor, []
+        if not elements or self.pipeline is None:
+            return
+        pipeline = self.pipeline
+        sink_pad = elements[0].get_static_pad("sink")
+        peer = sink_pad.get_peer()
+        if peer is not None:
+            peer.unlink(sink_pad)
+            peer.get_parent_element().release_request_pad(peer)
+        for element in elements:
+            element.set_locked_state(True)
+
+        def stop(_pipeline, items) -> None:
+            for element in items:
+                element.set_state(Gst.State.NULL)
+            GLib.idle_add(lambda: [pipeline.remove(e) for e in items if e.get_parent() is pipeline] and False)
+
+        pipeline.call_async(stop, elements)
 
     def _remove_branch(self, widget_id: str) -> None:
         """Take a widget out without waiting: detach it from the mixer when its pad is idle, then
@@ -608,6 +885,7 @@ class Engine(GObject.Object):
         branch = self.branches.pop(widget_id, None)
         if branch is None or self.pipeline is None:
             return
+        self._drop_monitor(branch)
         if branch.watchdog:
             GLib.source_remove(branch.watchdog)
             branch.watchdog = 0
@@ -721,10 +999,12 @@ class Engine(GObject.Object):
         self._ensure_taps()
         output = Output(self, kind, choice, sink, video_kbps, audio_kbps, with_sound=True)
         self.outputs[kind] = output
+        self._sync_placeholder_alpha()
 
         def finished() -> None:
             if self.outputs.get(kind) is output:
                 del self.outputs[kind]
+            self._sync_placeholder_alpha()
             if not self.outputs and self.pipeline is not None:
                 self._drop_taps()
                 self._sync_sound()
@@ -827,7 +1107,11 @@ class Engine(GObject.Object):
     # ── Bus ──
 
     def _message(self, _bus, message: Gst.Message) -> None:
-        if message.type == Gst.MessageType.ELEMENT:
+        if message.type == Gst.MessageType.STATE_CHANGED and message.src is self.pipeline:
+            old, new, _pending = message.parse_state_changed()
+            if old == Gst.State.PLAYING and new == Gst.State.PAUSED and self.enabled:
+                GLib.idle_add(lambda: self._keep_playing() and False)
+        elif message.type == Gst.MessageType.ELEMENT:
             structure = message.get_structure()
             if structure is not None and structure.get_name() == "level":
                 name = message.src.get_name()
@@ -843,6 +1127,7 @@ class Engine(GObject.Object):
             widget_id = graph.widget_of(source)
             if widget_id is not None and widget_id in self.branches:
                 # One widget failed (a window closed, a camera unplugged or busy): take it out, keep going.
-                self._fail(widget_id, source_problem(error.message, debug or ""))
+                self._fail(widget_id, source_problem(error.message, debug or ""),
+                           f"{error.message} ({(debug or '').splitlines()[0] if debug else ''})")
             else:
                 self.emit("problem", error.message)

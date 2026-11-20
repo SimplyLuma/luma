@@ -44,8 +44,34 @@ _DEFAULT_RECTS = {
 }
 
 
+STROKE_POSITIONS = ("inside", "center", "outside")
+
+
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
+
+
+def fit_box(canvas: tuple[int, int], aspect: float, share: float = 0.5) -> tuple[float, float, float, float]:
+    """A box of ``aspect`` that fits ``share`` of the canvas on both axes, centred (x, y, width, height)."""
+    cw, ch = canvas
+    bw, bh = cw * share, ch * share
+    if bw / bh > aspect:
+        width, height = bh * aspect, bh
+    else:
+        width, height = bw, bw / aspect
+    return (cw - width) / 2, (ch - height) / 2, width, height
+
+
+def derive_placement(rect: tuple[float, float, float, float], source: tuple[int, int],
+                     target: tuple[int, int]) -> tuple[float, float, float, float]:
+    """A placement on another canvas, derived from one on ``source``: the whole source canvas scaled
+    to fit the target (landscape across a vertical canvas, centred) and the widget with it."""
+    sw, sh = source
+    tw, th = target
+    s = min(tw / sw, th / sh)
+    ox, oy = (tw - sw * s) / 2, (th - sh * s) / 2
+    x, y, w, h = rect
+    return ox + x * s, oy + y * s, w * s, h * s
 
 
 @dataclass
@@ -64,6 +90,8 @@ class Effects:
     crop_top: float = 0.0
     crop_right: float = 0.0
     crop_bottom: float = 0.0
+    #: Where the border sits: over the picture's edge ("inside"), across it ("center") or around it.
+    stroke_position: str = "inside"
 
     def clamped(self) -> "Effects":
         c = copy.copy(self)
@@ -76,14 +104,26 @@ class Effects:
             setattr(c, name, _clamp(getattr(c, name), 0.0, 0.49))
         color = "".join(ch for ch in c.stroke_color.upper() if ch in "0123456789ABCDEF")
         c.stroke_color = color if len(color) == 6 else "FFFFFF"
+        if c.stroke_position not in STROKE_POSITIONS:
+            c.stroke_position = "inside"
         return c
 
     @property
+    def stroke_reach(self) -> float:
+        """How far the border reaches past the box (lumaframe's stroke-position)."""
+        return {"inside": 0.0, "center": self.stroke_width / 2, "outside": self.stroke_width}.get(
+            self.stroke_position, 0.0)
+
+    @property
     def margin(self) -> float:
-        """Room around the box the shadow needs (three sigmas, plus the offset)."""
+        """Room around the box for a border outside it and the shadow (three sigmas, plus the offset):
+        lumaframe's ceil(reach + 1.5 blur + max offset)."""
+        import math
+
+        reach = self.stroke_reach
         if self.shadow_blur <= 0 or self.shadow_opacity <= 0:
-            return 0.0
-        return float(int(self.shadow_blur * 1.5 + max(abs(self.shadow_x), abs(self.shadow_y)) + 1))
+            return float(math.ceil(reach))
+        return float(math.ceil(reach + self.shadow_blur * 1.5 + max(abs(self.shadow_x), abs(self.shadow_y))) + 1)
 
 
 @dataclass
@@ -98,11 +138,28 @@ class Widget:
     visible: bool = True
     locked: bool = False
     effects: Effects = field(default_factory=Effects)
-    #: Sound: volume in dB and mute.
+    #: Sound: volume in dB, mute, and the monitor ("off", "only": heard here and not sent, "both").
     volume_db: float = 0.0
     muted: bool = False
-    #: Source settings: the portal's restore token and stream id, an image path, a device.
+    monitor: str = "off"
+    #: Source settings: the portal's restore token and stream id, an image path, a device,
+    #: and "size" ([width, height] in source pixels) once known.
     source: dict = field(default_factory=dict)
+    #: Distorted on purpose (a Shift-drag): its box keeps a shape other than the source's.
+    stretched: bool = False
+    #: The placement (x, y, width, height) on each canvas format it has been shown in; the
+    #: current format's lives in x/y/width/height and is copied here when the format changes.
+    placements: dict = field(default_factory=dict)
+    #: Groups that are this widget's own on the secondary canvas ("placement": True). A group not
+    #: listed is linked: the secondary canvas derives it from the primary one.
+    own: dict = field(default_factory=dict)
+
+    @property
+    def natural_aspect(self) -> float | None:
+        size = self.source.get("size")
+        if isinstance(size, (list, tuple)) and len(size) == 2 and size[0] and size[1]:
+            return size[0] / size[1]
+        return None
 
     @property
     def has_picture(self) -> bool:
@@ -141,6 +198,10 @@ class Project:
     format: str = "landscape"
     scenes: list[Scene] = field(default_factory=list)
     active: str | None = None
+    #: The canvas the other one follows (Landscape unless changed in Settings).
+    primary: str = "landscape"
+    #: The scene Streamy opens on (None: the one last shown).
+    startup: str | None = None
 
     # ── Canvas ──
 
@@ -150,24 +211,107 @@ class Project:
         return width, height
 
     def set_format(self, key: str) -> None:
-        """Change the canvas, keeping every widget where it was relative to the canvas."""
+        """Change the canvas, losslessly both ways. The primary canvas keeps its placements; on the
+        other one a widget's placement is linked (derived from the primary: the whole primary canvas
+        scaled to fit, centred) until it is moved, resized or cropped there, which makes it its own."""
         if key not in FORMATS:
             raise ModelError(f"unknown canvas format {key!r}")
         if key == self.format:
             return
-        old_w, old_h = self.canvas
+        old = self.format
         self.format = key
-        new_w, new_h = self.canvas
-        sx, sy = new_w / old_w, new_h / old_h
         for scene in self.scenes:
             for w in scene.widgets:
                 if not w.has_picture:
                     continue
-                # Keep the picture's proportions: scale by the smaller factor, keep the centre.
-                s = min(sx, sy)
-                cx, cy = (w.x + w.width / 2) * sx, (w.y + w.height / 2) * sy
-                w.width, w.height = w.width * s, w.height * s
-                w.x, w.y = cx - w.width / 2, cy - w.height / 2
+                w.placements[old] = [w.x, w.y, w.width, w.height]
+                self._place(w)
+
+    def _place(self, w: Widget) -> None:
+        """Put ``w`` where the current format has it: kept (primary, or its own), or derived (linked)."""
+        kept = w.placements.get(self.format)
+        own = self.format == self.primary or w.own.get("placement")
+        if own and isinstance(kept, list) and len(kept) == 4:
+            w.x, w.y, w.width, w.height = (float(v) for v in kept)
+            return
+        source = w.placements.get(self.primary)
+        if isinstance(source, list) and len(source) == 4 and self.format != self.primary:
+            _l, pw, ph = FORMATS[self.primary]
+            w.x, w.y, w.width, w.height = derive_placement(tuple(float(v) for v in source), (pw, ph), self.canvas)
+        elif isinstance(kept, list) and len(kept) == 4:
+            w.x, w.y, w.width, w.height = (float(v) for v in kept)
+        else:
+            # First time on this canvas and nothing to follow (added on the other one): derived once.
+            other = next((f for f in FORMATS if f != self.format and isinstance(w.placements.get(f), list)), None)
+            if other is not None:
+                _l, ow, oh = FORMATS[other]
+                w.x, w.y, w.width, w.height = derive_placement(tuple(float(v) for v in w.placements[other]),
+                                                               (ow, oh), self.canvas)
+
+    def placement_on(self, w: Widget, fmt: str) -> tuple[float, float, float, float] | None:
+        """Where ``w`` is on canvas ``fmt`` (the current one, kept, or derived from the primary)."""
+        if fmt == self.format:
+            return w.x, w.y, w.width, w.height
+        kept = w.placements.get(fmt)
+        if fmt == self.primary or w.own.get("placement"):
+            return tuple(float(v) for v in kept) if isinstance(kept, list) and len(kept) == 4 else None
+        source = (w.x, w.y, w.width, w.height) if self.format == self.primary else w.placements.get(self.primary)
+        if source is None:
+            return None
+        _l, pw, ph = FORMATS[self.primary]
+        return derive_placement(tuple(float(v) for v in source), (pw, ph), FORMATS[fmt][1:])
+
+    def match_primary(self, widget_id: str) -> Widget:
+        """Link a widget's placement on the secondary canvas to the primary again."""
+        _scene, w = self.find_widget(widget_id)
+        w.own.pop("placement", None)
+        if self.format != self.primary:
+            self._place(w)
+        return w
+
+    def reset_secondary(self, scene_id: str) -> None:
+        """Every widget of a scene follows the primary canvas again."""
+        for w in self._require_scene(scene_id).widgets:
+            self.match_primary(w.id)
+
+    def reset_aspect(self, widget_id: str) -> Widget:
+        """The source's own shape again, keeping the widget's width and centre."""
+        _scene, w = self.find_widget(widget_id)
+        aspect = w.natural_aspect
+        if aspect is None or not w.has_picture:
+            return w
+        cx, cy = w.x + w.width / 2, w.y + w.height / 2
+        w.height = w.width / aspect
+        w.x, w.y = cx - w.width / 2, cy - w.height / 2
+        w.stretched = False
+        return w
+
+    def place_natural(self, widget_id: str) -> Widget:
+        """A new widget's place once its source's size is known: a display fits the whole canvas,
+        anything else about half of it; centred, in the source's shape."""
+        _scene, w = self.find_widget(widget_id)
+        aspect = w.natural_aspect
+        if aspect is None or not w.has_picture:
+            return w
+        w.x, w.y, w.width, w.height = fit_box(self.canvas, aspect, 1.0 if w.kind == "display" else 0.5)
+        w.stretched = False
+        return w
+
+    def restore_shapes(self) -> list[Widget]:
+        """Widgets squashed by an older Streamy (not stretched by the person) get their source's shape."""
+        fixed = []
+        for scene in self.scenes:
+            for w in scene.widgets:
+                aspect = w.natural_aspect
+                if not w.has_picture or w.stretched or aspect is None or not w.height:
+                    continue
+                if abs(w.width / w.height - aspect) / aspect > 0.01:
+                    cx, cy = w.x + w.width / 2, w.y + w.height / 2
+                    w.height = w.width / aspect
+                    w.x, w.y = cx - w.width / 2, cy - w.height / 2
+                    w.placements.clear()
+                    fixed.append(w)
+        return fixed
 
     # ── Scenes ──
 
@@ -272,6 +416,25 @@ class Project:
             n += 1
         return f"{base} {n}"
 
+    def human_name(self, scene_id: str, kind: str, stem: str | None) -> str:
+        """A file's name when it reads as one ("Logo"), else the kind's ("Image 2"): never an id."""
+        import re
+
+        stem = (stem or "").strip()
+        if stem and not re.search(r"\d{6,}|[0-9a-f]{12,}", stem, re.IGNORECASE):
+            return stem[:40]
+        return self._next_widget_name(self._require_scene(scene_id), kind)
+
+    def tidy_names(self) -> None:
+        """Image widgets named after an id-like file name ("image-1793375857294") get the kind's name."""
+        import re
+
+        for scene in self.scenes:
+            for w in scene.widgets:
+                if w.kind == "image" and not w.source.get("named") and re.search(r"\d{6,}", w.name):
+                    w.name = ""
+                    w.name = self._next_widget_name(scene, w.kind)
+
     def find_widget(self, widget_id: str) -> tuple[Scene, Widget]:
         for scene in self.scenes:
             w = scene.widget(widget_id)
@@ -300,6 +463,8 @@ class Project:
         if width <= 0 or height <= 0:
             raise ModelError("a widget has a size")
         w.x, w.y, w.width, w.height = float(x), float(y), float(width), float(height)
+        if self.format != self.primary and w.has_picture:
+            w.own["placement"] = True  # moved on the secondary canvas: this widget's own there now
         return w
 
     def align(self, widget_id: str, how: str) -> Widget:
@@ -318,8 +483,31 @@ class Project:
             w.y = (ch - w.height) / 2
         elif how == "bottom":
             w.y = ch - w.height
-        elif how == "fill":
-            w.x, w.y, w.width, w.height = 0, 0, cw, ch
+        elif how in ("fill", "fit", "fill-width", "fill-height", "original"):
+            # Sizes keep the widget's shape (a stretched one keeps its own): never a distortion.
+            aspect = w.width / w.height if w.width and w.height else 16 / 9
+            cx, cy = w.x + w.width / 2, w.y + w.height / 2
+            if how in ("fill", "fit"):
+                wider = aspect > cw / ch
+                cover = how == "fill"
+                if wider == cover:  # height decides
+                    w.height, w.width = ch, ch * aspect
+                else:
+                    w.width, w.height = cw, cw / aspect
+                cx, cy = cw / 2, ch / 2
+            elif how == "fill-width":
+                w.width, w.height = cw, cw / aspect
+                cx = cw / 2
+            elif how == "fill-height":
+                w.height, w.width = ch, ch * aspect
+                cy = ch / 2
+            else:
+                size = w.source.get("size")
+                if not (isinstance(size, (list, tuple)) and len(size) == 2 and size[0] and size[1]):
+                    return w
+                w.width, w.height = float(size[0]), float(size[1])
+                w.stretched = False
+            w.x, w.y = cx - w.width / 2, cy - w.height / 2
         else:
             raise ModelError(f"unknown alignment {how!r}")
         return w
@@ -327,14 +515,16 @@ class Project:
     # ── Persistence ──
 
     def to_dict(self) -> dict:
-        return {"schema": SCHEMA, "format": self.format, "active": self.active,
+        return {"schema": SCHEMA, "format": self.format, "primary": self.primary, "startup": self.startup,
+                "active": self.active,
                 "scenes": [asdict(s) for s in self.scenes]}
 
     @classmethod
     def from_dict(cls, data: dict) -> "Project":
         if not isinstance(data, dict) or data.get("schema") != SCHEMA:
             raise ModelError("not a Streamy project this version reads")
-        project = cls(format=data.get("format", "landscape") if data.get("format") in FORMATS else "landscape")
+        project = cls(format=data.get("format", "landscape") if data.get("format") in FORMATS else "landscape",
+                      primary=data.get("primary") if data.get("primary") in FORMATS else "landscape")
         effect_names = {f.name for f in fields(Effects)}
         widget_names = {f.name for f in fields(Widget)} - {"effects"}
         for raw in data.get("scenes", []):
@@ -347,6 +537,7 @@ class Project:
                 scene.widgets.append(w)
             project.scenes.append(scene)
         active = data.get("active")
+        project.startup = data.get("startup") if project.scene(data.get("startup")) else None
         project.active = active if project.scene(active) else (project.scenes[0].id if project.scenes else None)
         return project
 
@@ -385,6 +576,8 @@ class ProjectStore:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             project = Project.from_dict(data)
             if project.scenes:
+                if project.startup:
+                    project.active = project.startup  # opens on its startup scene
                 return project
         except FileNotFoundError:
             pass
