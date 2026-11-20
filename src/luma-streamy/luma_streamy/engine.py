@@ -114,6 +114,21 @@ def choose_encoders(codec: str) -> EncoderChoice | None:
     return graph.choose(working, codec)
 
 
+FIRST_PICTURE_S = 10
+
+
+def source_problem(message: str, debug: str) -> str:
+    """A source's GStreamer error as a short plain reason."""
+    text = f"{message} {debug}".lower()
+    if "busy" in text or "ebusy" in text or "in use" in text:
+        return "It's in use by another app"
+    if "target not found" in text or "no such" in text or "not found" in text:
+        return "It isn't available"
+    if "permission" in text or "not allowed" in text:
+        return "Streamy isn't allowed to use it"
+    return "It stopped"
+
+
 @dataclass
 class Branch:
     widget_id: str
@@ -122,6 +137,7 @@ class Branch:
     picture: bool = True
     fade: int = 0
     shown: bool = False
+    watchdog: int = 0
 
 
 @dataclass
@@ -272,6 +288,8 @@ class Engine(GObject.Object):
         "output-state": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
         # widget id: its first picture arrived
         "widget-ready": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        # widget id, a plain reason: its source failed or never sent a picture; it is out of the program
+        "widget-failed": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
     }
 
     def __init__(self, *, fake: bool | None = None, preview: bool = True,
@@ -373,11 +391,11 @@ class Engine(GObject.Object):
 
     # ── Scenes and widgets ──
 
-    def show_scene(self, scene: Scene | None) -> None:
-        """Capture exactly the visible widgets of ``scene``; stop everything else."""
+    def show_scene(self, scene: Scene | None, *, skip: set[str] | frozenset = frozenset()) -> None:
+        """Capture exactly the visible widgets of ``scene`` (less ``skip``: ones that failed); stop the rest."""
         if self.pipeline is None:
             return
-        wanted = {w.id: w for w in (scene.widgets if scene else []) if w.visible}
+        wanted = {w.id: w for w in (scene.widgets if scene else []) if w.visible and w.id not in skip}
         for widget_id in [i for i in self.branches if i not in wanted]:
             self._remove_branch(widget_id)
         for zorder, widget in enumerate(scene.widgets if scene else []):
@@ -445,8 +463,23 @@ class Engine(GObject.Object):
         if widget.has_picture:
             elements[-1].get_static_pad("src").add_probe(
                 Gst.PadProbeType.BUFFER, self._first_picture, (branch, widget))
-        for element in reversed(elements):
-            element.sync_state_with_parent()
+        # State changes run on GStreamer's thread pool: a source that takes its time
+        # (a camera opening, a portal stream negotiating) never holds up the window.
+        self.pipeline.call_async(lambda _pipeline, items: [e.sync_state_with_parent() for e in reversed(items)],
+                                 elements)
+        if widget.has_picture:
+            branch.watchdog = GLib.timeout_add_seconds(FIRST_PICTURE_S, self._no_picture, branch)
+
+    def _no_picture(self, branch: Branch) -> bool:
+        branch.watchdog = 0
+        if self.branches.get(branch.widget_id) is branch and not branch.shown:
+            self._fail(branch.widget_id, "It didn't send a picture")
+        return False
+
+    def _fail(self, widget_id: str, reason: str) -> None:
+        if widget_id in self.branches:
+            self._remove_branch(widget_id)
+            self.emit("widget-failed", widget_id, reason)
 
     @staticmethod
     def _link_chain(elements: list[Gst.Element]) -> None:
@@ -462,6 +495,7 @@ class Engine(GObject.Object):
 
     def _first_picture(self, _pad, _info, data) -> Gst.PadProbeReturn:
         branch, widget = data
+        branch.shown = True
         GLib.idle_add(self._fade_in, branch, widget)
         return Gst.PadProbeReturn.REMOVE
 
@@ -483,18 +517,37 @@ class Engine(GObject.Object):
         return False
 
     def _remove_branch(self, widget_id: str) -> None:
+        """Take a widget out without waiting: detach it from the mixer when its pad is idle, then
+        stop it on GStreamer's thread pool (a stuck source can take its time) and drop it."""
         branch = self.branches.pop(widget_id, None)
-        if branch is None:
+        if branch is None or self.pipeline is None:
             return
-        # Stop the source first so nothing pushes into a pad that goes away.
+        if branch.watchdog:
+            GLib.source_remove(branch.watchdog)
+            branch.watchdog = 0
+        pipeline = self.pipeline
+        last = branch.elements[-1].get_static_pad("src")
+        mixer_pad = branch.pad
+        if mixer_pad is not None:
+            # An unlinked live source posts not-linked; keep its data out of the way first.
+            last.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM, lambda *_a: Gst.PadProbeReturn.DROP)
+            last.unlink(mixer_pad)
+            mixer_pad.get_parent_element().release_request_pad(mixer_pad)
+
+        def stop(_pipeline, elements) -> None:
+            for element in elements:
+                element.set_state(Gst.State.NULL)
+            GLib.idle_add(drop, elements)
+
+        def drop(elements) -> bool:
+            for element in elements:
+                if element.get_parent() is pipeline:
+                    pipeline.remove(element)
+            return False
+
         for element in branch.elements:
-            element.set_state(Gst.State.NULL)
-        if branch.pad is not None:
-            last = branch.elements[-1].get_static_pad("src")
-            last.unlink(branch.pad)
-            branch.pad.get_parent_element().release_request_pad(branch.pad)
-        for element in branch.elements:
-            self.pipeline.remove(element)
+            element.set_locked_state(True)  # the pipeline's own state changes leave it alone now
+        pipeline.call_async(stop, branch.elements)
         if not branch.picture:
             self._sync_sound()
 
@@ -697,8 +750,7 @@ class Engine(GObject.Object):
             source = message.src.get_name() if message.src else ""
             widget_id = source[2:].rsplit("-", 1)[0] if source.startswith("w-") else None
             if widget_id is not None and widget_id in self.branches:
-                # One widget failed (a window closed, a camera unplugged): take it out, keep going.
-                self._remove_branch(widget_id)
-                self.emit("problem", f"A widget stopped: {error.message}")
+                # One widget failed (a window closed, a camera unplugged or busy): take it out, keep going.
+                self._fail(widget_id, source_problem(error.message, debug or ""))
             else:
                 self.emit("problem", error.message)

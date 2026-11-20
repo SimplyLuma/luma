@@ -66,6 +66,7 @@ class StreamyWindow(AppWindow):
         self._thumbs: dict[str, Gdk.Paintable] = {}
         self._meters: dict[str, object] = {}
         self._building = False
+        self.widget_errors: dict[str, str] = {}
 
         commands = self._commands()
         super().__init__(application=application, app_id=APP_ID, title="Streamy", icon_name=APP_ID,
@@ -91,6 +92,7 @@ class StreamyWindow(AppWindow):
         self.engine.connect("levels", self._levels)
         self.engine.connect("problem", lambda _e, text: Toast.show(self.host, text, kind="warning"))
         self.engine.connect("output-state", self._output_state)
+        self.engine.connect("widget-failed", self._widget_failed)
 
         self._build_sidebar()
         self._build_canvas()
@@ -278,18 +280,74 @@ class StreamyWindow(AppWindow):
                 h = widget.width / capture.aspect
                 self.project.set_rect(widget.id, widget.x, widget.y, widget.width, h)
             self._changed(structure=True)
-            self.engine.show_scene(self.project.active_scene)
+            self._show_scene()
 
         def failed(reason: str) -> None:
-            if reason != "cancelled":
-                Toast.show(self.host, f"{widget.name} isn't available", kind="warning")
+            if reason == "cancelled":
+                return
+            words = {"no camera": "No camera was found", "failed": "It isn't available"}.get(reason, reason)
+            self._widget_failed(None, widget.id, words)
 
         if widget.kind == "camera":
             self.portals.camera(widget.id, done=done, failed=failed)
         else:
             token = widget.source.get("restore-token") if restore else None
-            self.portals.screencast(widget.id, window=widget.kind == "window", restore_token=token,
-                                    done=done, failed=failed)
+            self._with_parent(lambda parent: self.portals.screencast(
+                widget.id, window=widget.kind == "window", restore_token=token, done=done, failed=failed,
+                parent=parent))
+
+    def _show_scene(self) -> None:
+        self.engine.show_scene(self.project.active_scene, skip=set(self.widget_errors))
+
+    def _widget_failed(self, _engine, widget_id: str, reason: str) -> None:
+        """A source failed: say so on the widget, offer Try again, keep everything else running."""
+        try:
+            _scene, w = self.project.find_widget(widget_id)
+        except ModelError:
+            return
+        self.widget_errors[widget_id] = reason
+        if self.portals is not None:
+            self.portals.close(widget_id)
+        Toast.show(self.host, f"{w.name} unavailable", kind="warning")
+        self.refresh_all()
+
+    def retry_widget(self, w: Widget) -> None:
+        self.widget_errors.pop(w.id, None)
+        if self.portals is not None:
+            self.portals.close(w.id)
+        self.refresh_all()
+        if w.kind in ("display", "window", "camera") and not self.fake:
+            self._choose_source(w, restore=True)
+        else:
+            self._show_scene()
+
+    def _with_parent(self, then) -> None:
+        """The window's exported handle for a portal dialog ("wayland:…" or "x11:…"), or ""."""
+        surface = self.get_surface()
+        try:
+            gi.require_version("GdkWayland", "4.0")
+            from gi.repository import GdkWayland
+
+            if isinstance(surface, GdkWayland.WaylandToplevel):
+                def exported(toplevel, handle, *_args) -> None:
+                    then(f"wayland:{handle}")
+                    GLib.timeout_add_seconds(60, lambda: (toplevel.drop_exported_handle(handle)
+                                                          if hasattr(toplevel, "drop_exported_handle")
+                                                          else toplevel.unexport_handle()) and False)
+                if surface.export_handle(exported):
+                    return
+        except (ValueError, ImportError, AttributeError):
+            pass
+        try:
+            gi.require_version("GdkX11", "4.0")
+            from gi.repository import GdkX11
+
+            if isinstance(surface, GdkX11.X11Surface):
+                then(f"x11:{surface.get_xid():x}")
+                return
+        except (ValueError, ImportError, AttributeError):
+            pass
+        then("")
 
     # ── Saving ──
 
@@ -366,7 +424,8 @@ class StreamyWindow(AppWindow):
         self.widget_store.remove_all()
         widgets = list(reversed(scene.widgets)) if scene else []
         for w in widgets:
-            detail = None if w.has_picture else ("Muted" if w.muted else None)
+            detail = "Unavailable" if w.id in self.widget_errors else (
+                None if w.has_picture else ("Muted" if w.muted else None))
             self.widget_store.append(Layer(w.id, w.name, w.icon, visible=w.visible, detail=detail))
         self.widget_tree.set_visible(bool(widgets))
         self.widgets_empty.set_visible(not widgets)
@@ -496,6 +555,11 @@ class StreamyWindow(AppWindow):
             "app-audio": "One app's sound",
         }[w.kind]
         items = [TypeLabel(words, role="body", wrap=True)]
+        problem = self.widget_errors.get(w.id)
+        if problem is not None:
+            items = [TypeLabel(f"Unavailable. {problem}.", role="body", wrap=True),
+                     TextButton("Try again", style="plain", on_click=lambda: self.retry_widget(w))]
+            return PropertySection("Source", *items)
         if w.kind in ("display", "window"):
             button = TextButton("Share another…" if w.kind == "display" else "Choose another window…", style="plain",
                                 on_click=lambda: self._reshare(w))
@@ -536,7 +600,7 @@ class StreamyWindow(AppWindow):
 
     def _restart_widget(self, w: Widget) -> None:
         self.engine._remove_branch(w.id)
-        self.engine.show_scene(self.project.active_scene)
+        self._show_scene()
         self._changed(structure=True)
 
     def _open_inspector(self) -> None:
@@ -789,7 +853,7 @@ class StreamyWindow(AppWindow):
             return
         self.selected = w.id
         self._changed(structure=True)
-        self.engine.show_scene(scene)
+        self._show_scene()
         if kind in ("display", "window", "camera") and not self.fake:
             self._choose_source(w, restore=False)
         Toast.show(self.host, f"{w.name} added", kind="added")
@@ -800,7 +864,8 @@ class StreamyWindow(AppWindow):
             return
         scene, index, removed = self.project.remove_widget(w.id)
         self.selected = None
-        self.engine.show_scene(self.project.active_scene)
+        self.widget_errors.pop(removed.id, None)
+        self._show_scene()
         if self.portals is not None:
             self.portals.close(removed.id)
         self._changed(structure=True)
@@ -809,7 +874,7 @@ class StreamyWindow(AppWindow):
             self.project.restore_widget(scene.id, index, removed)
             self.selected = removed.id
             self._changed(structure=True)
-            self.engine.show_scene(self.project.active_scene)
+            self._show_scene()
             self._ask_missing_sources()
 
         Toast.show(self.host, f"{removed.name} deleted", kind="deleted", undo=undo)
@@ -821,7 +886,7 @@ class StreamyWindow(AppWindow):
 
     def _set_visible(self, w: Widget, visible: bool) -> None:
         w.visible = visible
-        self.engine.show_scene(self.project.active_scene)
+        self._show_scene()
         self._changed(structure=True)
 
     def toggle_lock(self) -> None:
@@ -880,7 +945,7 @@ class StreamyWindow(AppWindow):
     def switch_scene(self, scene_id: str) -> None:
         self.project.activate(scene_id)
         self.selected = None
-        self.engine.show_scene(self.project.active_scene)
+        self._show_scene()
         self._ask_missing_sources()
         self._changed(structure=True)
 

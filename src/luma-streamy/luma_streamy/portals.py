@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
@@ -45,6 +46,52 @@ class Capture:
 
 class PortalError(RuntimeError):
     pass
+
+
+def camera_nodes(fd: int) -> list[tuple[str, str, tuple[int, int] | None]]:
+    """(target, name, size) for each camera on a camera-portal PipeWire remote.
+
+    The target is the node's object.serial (or its node.name), which is what
+    pipewiresrc's target-object wants on that remote; a global node id is not.
+    """
+    import gi
+
+    gi.require_version("Gst", "1.0")
+    from gi.repository import Gst
+
+    Gst.init(None)
+    factory = Gst.DeviceProviderFactory.find("pipewiredeviceprovider")
+    if factory is None:
+        return []
+    provider = factory.get()
+    provider.set_property("fd", os.dup(fd))
+    if not provider.start():
+        return []
+    try:
+        nodes = []
+        for device in provider.get_devices():
+            if not device.get_device_class().startswith("Video/Source"):
+                continue
+            props = device.get_properties()
+            target = None
+            for key in ("object.serial", "node.name"):
+                if props is not None and props.has_field(key):
+                    target = str(props.get_value(key))
+                    break
+            if target is None:
+                continue
+            size = None
+            caps = device.get_caps()
+            if caps is not None and caps.get_size():
+                first = caps.get_structure(0)
+                ok_w, width = first.get_int("width")
+                ok_h, height = first.get_int("height")
+                if ok_w and ok_h:
+                    size = (width, height)
+            nodes.append((target, device.get_display_name(), size))
+        return nodes
+    finally:
+        provider.stop()
 
 
 class Portals:
@@ -107,7 +154,7 @@ class Portals:
     # ── Screen and window capture ──
 
     def screencast(self, widget_id: str, *, window: bool, restore_token: str | None,
-                   done: Callable[[Capture], None], failed: Callable[[str], None]) -> None:
+                   done: Callable[[Capture], None], failed: Callable[[str], None], parent: str = "") -> None:
         """Pick (or restore) a display or a window; ``done`` gets the open capture."""
         if widget_id in self.captures:
             done(self.captures[widget_id])
@@ -129,7 +176,7 @@ class Portals:
                           lambda _r: start(session), failed)
 
         def start(session: str) -> None:
-            self._request(SCREENCAST, "Start", [GLib.Variant("o", session), GLib.Variant("s", "")], {},
+            self._request(SCREENCAST, "Start", [GLib.Variant("o", session), GLib.Variant("s", parent)], {},
                           lambda results: started(session, results), failed)
 
         def started(session: str, results: dict) -> None:
@@ -170,10 +217,26 @@ class Portals:
             except GLib.Error as error:
                 failed(error.message)
                 return
-            # The remote shows only cameras; pipewiresrc picks the default one.
-            capture = Capture(fd, None, None, None)
-            self.captures[widget_id] = capture
-            done(capture)
+
+            # The remote shows only the cameras Streamy may use; its own registry names
+            # them. Asking it takes a moment, so it happens off the window's thread.
+            def look() -> None:
+                nodes = camera_nodes(fd)
+                GLib.idle_add(found, nodes)
+
+            def found(nodes) -> bool:
+                if not nodes:
+                    os.close(fd)
+                    failed("no camera")
+                    return False
+                serial, name, size = nodes[0]
+                capture = Capture(fd, serial, size, None)
+                capture.name = name
+                self.captures[widget_id] = capture
+                done(capture)
+                return False
+
+            threading.Thread(target=look, name="streamy-camera-nodes", daemon=True).start()
 
         self._request(CAMERA, "AccessCamera", [], {}, allowed, failed)
 

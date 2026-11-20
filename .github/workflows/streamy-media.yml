@@ -87,6 +87,8 @@ jobs:
       - name: Build lumaframe
         working-directory: src/luma-streamy/gst-lumaframe
         run: cargo build --release --locked
+      - name: A failing or silent source comes out of the program without stalling it
+        run: GST_PLUGIN_PATH="$PWD/src/luma-streamy/gst-lumaframe/target/release" python3 src/luma-streamy/tests/engine_failure.py
       - name: Record 10 s headless and check the file
         run: |
           export GST_PLUGIN_PATH="$PWD/src/luma-streamy/gst-lumaframe/target/release"
