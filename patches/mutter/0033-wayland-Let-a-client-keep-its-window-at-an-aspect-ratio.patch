@@ -1,0 +1,672 @@
+From 01b947aa92aa937622194942fa598fcafbeaccb3 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Thu, 19 Nov 2026 23:04:26 -0500
+Subject: [PATCH] wayland: Let a client keep its window at an aspect ratio
+
+X11 clients keep their content's shape through the ICCCM aspect hints in
+WM_NORMAL_HINTS, which constrain_aspect_ratio() applies to every size
+Mutter picks, including each step of an interactive resize. xdg-shell has
+no such hint, so a Wayland client (an emulator, a video player) can only
+fit its window after a resize ends, and the window takes any shape while
+it is dragged.
+
+luma_window_shape_v1 adds one. get_window_shape() takes the wl_surface
+rather than the xdg_toplevel, because GTK keeps its xdg_toplevel private;
+the state applies while the surface is an xdg_toplevel. set_aspect_ratio
+(width, height, base_width, base_height) and unset_aspect_ratio are
+double-buffered and reach the window's size hints on the next commit,
+through the xdg_toplevel role. The ratio is kept in min_aspect/max_aspect,
+so constrain_aspect_ratio() applies it while the window floats, but it is
+measured on the frame rectangle (the window geometry) less the base, the
+client's fixed chrome such as a header bar, rather than on the client
+rectangle, which for a Wayland client includes the invisible borders.
+
+A maximized window with a ratio becomes the largest size with that ratio
+inside the area it would otherwise fill (including the shell's maximize
+insets), centred. Windows tiled side by side, or marked tiled by a tiling
+manager, fill their tile: a tile's size belongs to the layout, and the
+client letterboxes. Fullscreen windows are not affected. The work-area
+fit shrinks such a window in proportion instead of one side alone.
+
+A tiling manager's tile now also takes precedence over X11 aspect hints,
+as Mutter's own side-by-side tiles already did.
+---
+ src/core/constraints.c                  |  99 +++++++++-
+ src/core/window-private.h               |  10 +
+ src/meson.build                         |   5 +
+ src/wayland/meta-wayland-versions.h     |   1 +
+ src/wayland/meta-wayland-window-shape.c | 246 ++++++++++++++++++++++++
+ src/wayland/meta-wayland-window-shape.h |  27 +++
+ src/wayland/meta-wayland-xdg-shell.c    |   3 +
+ src/wayland/meta-wayland.c              |   2 +
+ src/wayland/meta-window-wayland.c       |  66 +++++++
+ src/wayland/meta-window-wayland.h       |   6 +
+ 10 files changed, 457 insertions(+), 8 deletions(-)
+ create mode 100644 src/wayland/meta-wayland-window-shape.c
+ create mode 100644 src/wayland/meta-wayland-window-shape.h
+
+diff --git a/src/core/constraints.c b/src/core/constraints.c
+index a3e7c7f..7838c76 100644
+--- a/src/core/constraints.c
++++ b/src/core/constraints.c
+@@ -1335,6 +1335,31 @@ constrain_modal_dialog (MetaWindow         *window,
+                                                      check_only);
+ }
+ 
++/* The largest size inside *width x *height whose content keeps the aspect
++ * ratio a Wayland client set through luma_window_shape_v1. The content is
++ * the frame rectangle less the client's fixed chrome (frame_aspect.base_*).
++ */
++static void
++fit_size_to_frame_aspect (MetaWindow *window,
++                          int        *width,
++                          int        *height)
++{
++  int base_width = window->frame_aspect.base_width;
++  int base_height = window->frame_aspect.base_height;
++  double ratio = window->size_hints.min_aspect.x /
++                 (double) window->size_hints.min_aspect.y;
++  int content_width = MAX (*width - base_width, 1);
++  int content_height = MAX (*height - base_height, 1);
++
++  if (content_width > content_height * ratio)
++    content_width = MAX ((int) (content_height * ratio + 0.5), 1);
++  else
++    content_height = MAX ((int) (content_width / ratio + 0.5), 1);
++
++  *width = content_width + base_width;
++  *height = content_height + base_height;
++}
++
+ static gboolean
+ constrain_maximization (MetaWindow         *window,
+                         ConstraintInfo     *info,
+@@ -1420,6 +1445,24 @@ constrain_maximization (MetaWindow         *window,
+         }
+     }
+ 
++  /* A window that keeps its content at an aspect ratio
++   * (luma_window_shape_v1) maximizes to the largest size with that ratio,
++   * centred in the area it would otherwise fill, rather than stretching its
++   * content or leaving the client to letterbox a screen-sized window. */
++  if (window->frame_aspect.set &&
++      meta_window_is_maximized (window) &&
++      !meta_window_is_fullscreen (window))
++    {
++      int width = target_size.width;
++      int height = target_size.height;
++
++      fit_size_to_frame_aspect (window, &width, &height);
++      target_size.x += (target_size.width - width) / 2;
++      target_size.y += (target_size.height - height) / 2;
++      target_size.width = width;
++      target_size.height = height;
++    }
++
+   /* Check min size constraints; max size constraints are ignored for maximized
+    * windows, as per bug 327543.
+    */
+@@ -1712,6 +1755,7 @@ constrain_aspect_ratio (MetaWindow         *window,
+       meta_window_is_maximized (window) ||
+       meta_window_is_fullscreen (window) ||
+       meta_window_is_tiled_side_by_side (window) ||
++      window->externally_tiled ||
+       info->action_type == ACTION_MOVE)
+     return TRUE;
+ 
+@@ -1751,7 +1795,21 @@ constrain_aspect_ratio (MetaWindow         *window,
+       break;
+     }
+ 
+-  meta_window_frame_rect_to_client_rect (window, &info->current, &client_rect);
++  /* A ratio set through luma_window_shape_v1 is for the frame rectangle less
++   * the client's fixed chrome; ICCCM hints are for the client rectangle. */
++  if (window->frame_aspect.set)
++    {
++      client_rect = info->current;
++      client_rect.width = MAX (client_rect.width -
++                               window->frame_aspect.base_width, 1);
++      client_rect.height = MAX (client_rect.height -
++                                window->frame_aspect.base_height, 1);
++    }
++  else
++    {
++      meta_window_frame_rect_to_client_rect (window, &info->current,
++                                             &client_rect);
++    }
+ 
+   constraint_already_satisfied =
+     client_rect.width - (client_rect.height * minr ) > -minr*fudge &&
+@@ -1807,13 +1865,19 @@ constrain_aspect_ratio (MetaWindow         *window,
+       break;
+     }
+ 
+-  {
+-    client_rect.width = new_width;
+-    client_rect.height = new_height;
+-    meta_window_client_rect_to_frame_rect (window, &client_rect, &client_rect);
+-    new_width = client_rect.width;
+-    new_height = client_rect.height;
+-  }
++  if (window->frame_aspect.set)
++    {
++      new_width += window->frame_aspect.base_width;
++      new_height += window->frame_aspect.base_height;
++    }
++  else
++    {
++      client_rect.width = new_width;
++      client_rect.height = new_height;
++      meta_window_client_rect_to_frame_rect (window, &client_rect, &client_rect);
++      new_width = client_rect.width;
++      new_height = client_rect.height;
++    }
+ 
+   start_rect = get_start_rect_for_resize (window, info);
+ 
+@@ -2277,6 +2341,25 @@ constrain_inside_work_area (MetaWindow         *window,
+    * keeping the top-left corner in the work area if even that does not fit. */
+   target.width = MAX (MIN (rect->width, area.width), min_size.width);
+   target.height = MAX (MIN (rect->height, area.height), min_size.height);
++  /* Shrinking one side alone would undo an aspect ratio a client set through
++   * luma_window_shape_v1; keep it while it still fits the minimum size. */
++  if (window->frame_aspect.set &&
++      (target.width != rect->width || target.height != rect->height) &&
++      !meta_window_is_maximized (window) &&
++      !meta_window_is_fullscreen (window) &&
++      !meta_window_is_tiled_side_by_side (window) &&
++      !window->externally_tiled)
++    {
++      int width = target.width;
++      int height = target.height;
++
++      fit_size_to_frame_aspect (window, &width, &height);
++      if (width >= min_size.width && height >= min_size.height)
++        {
++          target.width = width;
++          target.height = height;
++        }
++    }
+   target.x = target.width >= area.width ?
+     area.x : CLAMP (rect->x, area.x, area.x + area.width - target.width);
+   target.y = target.height >= area.height ?
+diff --git a/src/core/window-private.h b/src/core/window-private.h
+index 2195e83..fac0668 100644
+--- a/src/core/window-private.h
++++ b/src/core/window-private.h
+@@ -288,6 +288,16 @@ struct _MetaWindow
+   /* Placed in a tile by a tiling manager rather than by Mutter itself */
+   gboolean externally_tiled;
+ 
++  /* An aspect ratio a Wayland client set through luma_window_shape_v1. It is
++   * kept in size_hints.min_aspect and max_aspect, like an ICCCM aspect hint,
++   * but applies to the frame rectangle less this fixed size (the client's
++   * header bar, say) rather than to the client rectangle. */
++  struct {
++    gboolean set;
++    int base_width;
++    int base_height;
++  } frame_aspect;
++
+   MetaLogicalMonitorId *preferred_logical_monitor;
+ 
+   /* Area to cover when in fullscreen mode.  If _NET_WM_FULLSCREEN_MONITORS has
+diff --git a/src/meson.build b/src/meson.build
+index 9ca496c..8f207d9 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -679,6 +679,8 @@ mutter_sources += [
+   'wayland/meta-wayland-xdg-dialog.h',
+   'wayland/meta-wayland-xdg-toplevel-tag.c',
+   'wayland/meta-wayland-xdg-toplevel-tag.h',
++  'wayland/meta-wayland-window-shape.c',
++  'wayland/meta-wayland-window-shape.h',
+   'wayland/meta-window-wayland.c',
+   'wayland/meta-window-wayland.h',
+ ]
+@@ -1082,6 +1084,9 @@ wayland_protocols = [
+   ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
+   ['linux-dmabuf', 'stable', 1, ],
+   ['linux-drm-syncobj', 'staging', 1, ],
++  # Luma: the XML is a package source (src/luma-platform/protocols in the
++  # Luma tree), installed into this private protocol directory in %prep.
++  ['luma-window-shape-v1', 'private', ],
+   ['pointer-constraints', 'unstable', 1, ],
+   ['pointer-gestures', 'unstable', 1, ],
+   ['pointer-warp', 'staging', 1, ],
+diff --git a/src/wayland/meta-wayland-versions.h b/src/wayland/meta-wayland-versions.h
+index f17a642..d4d1f96 100644
+--- a/src/wayland/meta-wayland-versions.h
++++ b/src/wayland/meta-wayland-versions.h
+@@ -71,3 +71,4 @@
+ #define META_WL_FIXES_VERSION 1
+ #define META_WP_POINTER_WARP_VERSION 1
+ #define META_EXT_BACKGROUND_EFFECT_V1_VERSION 1
++#define META_LUMA_WINDOW_SHAPE_V1_VERSION 1
+diff --git a/src/wayland/meta-wayland-window-shape.c b/src/wayland/meta-wayland-window-shape.c
+new file mode 100644
+index 0000000..5e759cc
+--- /dev/null
++++ b/src/wayland/meta-wayland-window-shape.c
+@@ -0,0 +1,246 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++/* luma_window_shape_v1: a client keeps its toplevel's content at a fixed
++ * aspect ratio. The ratio is pending state of the wl_surface; the
++ * xdg_toplevel role hands it to its MetaWindow's size hints on commit, and
++ * the constraints apply it the way they apply ICCCM aspect hints. */
++
++#include "config.h"
++
++#include "wayland/meta-wayland-window-shape.h"
++
++#include "core/window-private.h"
++#include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-surface-private.h"
++#include "wayland/meta-wayland-versions.h"
++#include "wayland/meta-window-wayland.h"
++
++#include "luma-window-shape-v1-server-protocol.h"
++
++#define MAX_ASPECT_VALUE 65535
++
++static GQuark quark_window_shape = 0;
++
++typedef struct
++{
++  int width;
++  int height;
++  int base_width;
++  int base_height;
++} AspectRatio;
++
++typedef struct _MetaWaylandWindowShape
++{
++  struct wl_resource *resource;
++  MetaWaylandSurface *surface;
++
++  gboolean has_pending;
++  AspectRatio pending;
++  AspectRatio current;
++} MetaWaylandWindowShape;
++
++static void
++window_shape_surface_destroyed (gpointer data)
++{
++  MetaWaylandWindowShape *shape = data;
++
++  shape->surface = NULL;
++}
++
++static void
++window_shape_destructor (struct wl_resource *resource)
++{
++  MetaWaylandWindowShape *shape = wl_resource_get_user_data (resource);
++
++  if (shape->surface)
++    {
++      MetaWindow *window = meta_wayland_surface_get_window (shape->surface);
++
++      if (window && META_IS_WINDOW_WAYLAND (window) && !window->unmanaging)
++        meta_window_wayland_set_aspect_ratio (window, 0, 0, 0, 0);
++
++      g_object_steal_qdata (G_OBJECT (shape->surface), quark_window_shape);
++    }
++
++  g_free (shape);
++}
++
++static void
++window_shape_destroy (struct wl_client   *client,
++                      struct wl_resource *resource)
++{
++  wl_resource_destroy (resource);
++}
++
++static void
++window_shape_set_aspect_ratio (struct wl_client   *client,
++                               struct wl_resource *resource,
++                               uint32_t            width,
++                               uint32_t            height,
++                               uint32_t            base_width,
++                               uint32_t            base_height)
++{
++  MetaWaylandWindowShape *shape = wl_resource_get_user_data (resource);
++
++  if (width == 0 || height == 0 ||
++      width > MAX_ASPECT_VALUE || height > MAX_ASPECT_VALUE ||
++      base_width > MAX_ASPECT_VALUE || base_height > MAX_ASPECT_VALUE)
++    {
++      wl_resource_post_error (resource,
++                              LUMA_WINDOW_SHAPE_V1_ERROR_INVALID_ASPECT_RATIO,
++                              "invalid aspect ratio %u:%u (base %ux%u)",
++                              width, height, base_width, base_height);
++      return;
++    }
++
++  shape->has_pending = TRUE;
++  shape->pending = (AspectRatio) {
++    .width = (int) width,
++    .height = (int) height,
++    .base_width = (int) base_width,
++    .base_height = (int) base_height,
++  };
++}
++
++static void
++window_shape_unset_aspect_ratio (struct wl_client   *client,
++                                 struct wl_resource *resource)
++{
++  MetaWaylandWindowShape *shape = wl_resource_get_user_data (resource);
++
++  shape->has_pending = TRUE;
++  shape->pending = (AspectRatio) { 0 };
++}
++
++static const struct luma_window_shape_v1_interface window_shape_interface = {
++  window_shape_destroy,
++  window_shape_set_aspect_ratio,
++  window_shape_unset_aspect_ratio,
++};
++
++/**
++ * meta_wayland_window_shape_apply:
++ * @surface: the surface of an xdg_toplevel
++ * @window: its window
++ * @has_new_geometry: whether this commit changed the window geometry
++ *
++ * Called by the xdg_toplevel role after a commit: applies a pending aspect
++ * ratio, and applies the current one again to a window that does not have
++ * it yet (a new window after the role was reset).
++ */
++void
++meta_wayland_window_shape_apply (MetaWaylandSurface *surface,
++                                 MetaWindow         *window,
++                                 gboolean            has_new_geometry)
++{
++  MetaWaylandWindowShape *shape;
++
++  if (!quark_window_shape)
++    return;
++
++  shape = g_object_get_qdata (G_OBJECT (surface), quark_window_shape);
++  if (!shape)
++    return;
++
++  if (shape->has_pending)
++    {
++      shape->has_pending = FALSE;
++      shape->current = shape->pending;
++    }
++  else if (!has_new_geometry)
++    {
++      return;
++    }
++
++  /* Idempotent: nothing is queued when the window already has this ratio. */
++  meta_window_wayland_set_aspect_ratio (window,
++                                        shape->current.width,
++                                        shape->current.height,
++                                        shape->current.base_width,
++                                        shape->current.base_height);
++}
++
++static void
++window_shape_manager_destroy (struct wl_client   *client,
++                              struct wl_resource *resource)
++{
++  wl_resource_destroy (resource);
++}
++
++static void
++window_shape_manager_get_window_shape (struct wl_client   *client,
++                                       struct wl_resource *resource,
++                                       uint32_t            id,
++                                       struct wl_resource *surface_resource)
++{
++  MetaWaylandSurface *surface = wl_resource_get_user_data (surface_resource);
++  MetaWaylandWindowShape *shape;
++
++  if (g_object_get_qdata (G_OBJECT (surface), quark_window_shape))
++    {
++      wl_resource_post_error (resource,
++                              LUMA_WINDOW_SHAPE_MANAGER_V1_ERROR_ALREADY_CONSTRUCTED,
++                              "the wl_surface already has a luma_window_shape_v1");
++      return;
++    }
++
++  shape = g_new0 (MetaWaylandWindowShape, 1);
++  shape->surface = surface;
++  shape->resource = wl_resource_create (client,
++                                        &luma_window_shape_v1_interface,
++                                        wl_resource_get_version (resource),
++                                        id);
++  wl_resource_set_implementation (shape->resource,
++                                  &window_shape_interface,
++                                  shape, window_shape_destructor);
++
++  g_object_set_qdata_full (G_OBJECT (surface), quark_window_shape,
++                           shape, window_shape_surface_destroyed);
++}
++
++static const struct luma_window_shape_manager_v1_interface window_shape_manager_interface = {
++  window_shape_manager_destroy,
++  window_shape_manager_get_window_shape,
++};
++
++static void
++bind_window_shape_manager (struct wl_client *client,
++                           void             *data,
++                           uint32_t          version,
++                           uint32_t          id)
++{
++  struct wl_resource *resource;
++
++  resource = wl_resource_create (client, &luma_window_shape_manager_v1_interface,
++                                 version, id);
++  wl_resource_set_implementation (resource, &window_shape_manager_interface,
++                                  data, NULL);
++}
++
++void
++meta_wayland_init_window_shape (MetaWaylandCompositor *compositor)
++{
++  quark_window_shape =
++    g_quark_from_static_string ("-meta-wayland-luma-window-shape");
++
++  if (wl_global_create (compositor->wayland_display,
++                        &luma_window_shape_manager_v1_interface,
++                        META_LUMA_WINDOW_SHAPE_V1_VERSION,
++                        compositor, bind_window_shape_manager) == NULL)
++    g_error ("Failed to register a global luma_window_shape_manager_v1 object");
++}
+diff --git a/src/wayland/meta-wayland-window-shape.h b/src/wayland/meta-wayland-window-shape.h
+new file mode 100644
+index 0000000..0d1dde2
+--- /dev/null
++++ b/src/wayland/meta-wayland-window-shape.h
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (C) 2026 Project Luma
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "meta/window.h"
++#include "wayland/meta-wayland.h"
++
++void meta_wayland_init_window_shape (MetaWaylandCompositor *compositor);
++
++void meta_wayland_window_shape_apply (MetaWaylandSurface *surface,
++                                      MetaWindow         *window,
++                                      gboolean            has_new_geometry);
+diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
+index 026ae2a..e837585 100644
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -38,6 +38,7 @@
+ #include "wayland/meta-wayland-transaction.h"
+ #include "wayland/meta-wayland-versions.h"
+ #include "wayland/meta-wayland-window-configuration.h"
++#include "wayland/meta-wayland-window-shape.h"
+ #include "wayland/meta-wayland.h"
+ #include "wayland/meta-window-wayland.h"
+ 
+@@ -1100,6 +1101,8 @@ meta_wayland_xdg_toplevel_post_apply_state (MetaWaylandSurfaceRole  *surface_rol
+                                         xdg_toplevel->max_height);
+     }
+ 
++  meta_wayland_window_shape_apply (surface, window, pending->has_new_geometry);
++
+   if (update_min_size || update_max_size)
+     meta_window_recalc_features (window);
+ }
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+index 657466d..5af12eb 100644
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -65,6 +65,7 @@
+ #include "wayland/meta-wayland-system-bell.h"
+ #include "wayland/meta-wayland-tablet-manager.h"
+ #include "wayland/meta-wayland-transaction.h"
++#include "wayland/meta-wayland-window-shape.h"
+ #include "wayland/meta-wayland-xdg-dialog.h"
+ #include "wayland/meta-wayland-xdg-foreign.h"
+ #include "wayland/meta-wayland-xdg-session-manager.h"
+@@ -1043,6 +1044,7 @@ meta_wayland_compositor_new (MetaContext *context)
+   meta_wayland_xdg_session_management_init (compositor);
+   meta_wayland_init_system_bell (compositor);
+   meta_wayland_xdg_toplevel_tag_init (compositor);
++  meta_wayland_init_window_shape (compositor);
+ #ifdef HAVE_NATIVE_BACKEND
+   meta_wayland_drm_lease_manager_init (compositor);
+ #endif
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index f373a24..5c7875f 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -821,6 +821,8 @@ meta_window_wayland_main_monitor_changed (MetaWindow               *window,
+   scale_rect_size (&window->saved_rect, scale_factor);
+   scale_size (&window->size_hints.min_width, &window->size_hints.min_height, scale_factor);
+   scale_size (&window->size_hints.max_width, &window->size_hints.max_height, scale_factor);
++  scale_size (&window->frame_aspect.base_width,
++              &window->frame_aspect.base_height, scale_factor);
+ 
+   /* Window geometry offset (XXX: Need a better place, see
+    * meta_window_wayland_finish_move_resize). */
+@@ -1916,6 +1918,70 @@ meta_window_wayland_set_max_size (MetaWindow *window,
+   window->size_hints.flags |= META_SIZE_HINTS_PROGRAM_MAX_SIZE;
+ }
+ 
++/**
++ * meta_window_wayland_set_aspect_ratio:
++ * @window: a Wayland window
++ * @width: width part of the ratio, 0 to remove it
++ * @height: height part of the ratio, 0 to remove it
++ * @base_width: surface-local width of the geometry outside the content
++ * @base_height: surface-local height of the geometry outside the content
++ *
++ * Keeps the window geometry less the base at @width:@height
++ * (luma_window_shape_v1). Setting the ratio the window already has does
++ * nothing.
++ */
++void
++meta_window_wayland_set_aspect_ratio (MetaWindow *window,
++                                      int         width,
++                                      int         height,
++                                      int         base_width,
++                                      int         base_height)
++{
++  MetaSizeHints *hints = &window->size_hints;
++  float scale;
++
++  if (width <= 0 || height <= 0)
++    {
++      if (!window->frame_aspect.set)
++        return;
++
++      meta_topic (META_DEBUG_GEOMETRY, "Window %s unsets its aspect ratio",
++                  window->desc);
++
++      window->frame_aspect.set = FALSE;
++      window->frame_aspect.base_width = 0;
++      window->frame_aspect.base_height = 0;
++      hints->min_aspect.x = 1;
++      hints->min_aspect.y = G_MAXINT;
++      hints->max_aspect.x = G_MAXINT;
++      hints->max_aspect.y = 1;
++      meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
++      return;
++    }
++
++  scale = (float) meta_window_wayland_get_geometry_scale (window);
++  scale_size (&base_width, &base_height, scale);
++
++  if (window->frame_aspect.set &&
++      hints->min_aspect.x == width && hints->min_aspect.y == height &&
++      hints->max_aspect.x == width && hints->max_aspect.y == height &&
++      window->frame_aspect.base_width == base_width &&
++      window->frame_aspect.base_height == base_height)
++    return;
++
++  meta_topic (META_DEBUG_GEOMETRY,
++              "Window %s keeps its content at %d:%d, base %dx%d",
++              window->desc, width, height, base_width, base_height);
++
++  window->frame_aspect.set = TRUE;
++  window->frame_aspect.base_width = base_width;
++  window->frame_aspect.base_height = base_height;
++  hints->min_aspect.x = hints->max_aspect.x = width;
++  hints->min_aspect.y = hints->max_aspect.y = height;
++  hints->flags |= META_SIZE_HINTS_PROGRAM_ASPECT;
++  meta_window_queue (window, META_QUEUE_MOVE_RESIZE);
++}
++
+ void
+ meta_window_wayland_get_min_size (MetaWindow *window,
+                                   int        *width,
+diff --git a/src/wayland/meta-window-wayland.h b/src/wayland/meta-window-wayland.h
+index 0c3e7fb..d614198 100644
+--- a/src/wayland/meta-window-wayland.h
++++ b/src/wayland/meta-window-wayland.h
+@@ -65,6 +65,12 @@ void meta_window_wayland_set_max_size (MetaWindow *window,
+                                        int         width,
+                                        int         height);
+ 
++void meta_window_wayland_set_aspect_ratio (MetaWindow *window,
++                                           int         width,
++                                           int         height,
++                                           int         base_width,
++                                           int         base_height);
++
+ void meta_window_wayland_get_min_size (MetaWindow *window,
+                                        int        *width,
+                                        int        *height);

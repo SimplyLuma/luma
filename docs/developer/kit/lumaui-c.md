@@ -109,6 +109,35 @@ the playhead, and meter-only `set_lane_state` updates only the meter. LumaUI
 owns the 52 px ruler, 64 px lanes, clip and track controls, loop/marker chrome,
 and 214 px desktop / 116 px phone headers. Controls remain present on phone.
 
+## Windows that keep their shape
+
+A window whose content has a fixed shape, such as a game or a video view,
+asks Luma's compositor to keep it (C API level 10):
+
+```c
+luma_window_set_aspect_content (window, game_view);
+if (!luma_window_set_aspect_ratio (window, 4, 3))
+  /* No compositor support: keep the app's own fit-after-resize. */;
+```
+
+Only the ratio matters (4:3 and 640:480 are the same); `0, 0` removes it.
+`luma_window_set_aspect_content()` names the widget that shows the content, so
+the header bar and other chrome keep their own size and the ratio holds for
+that widget alone; without it the whole window keeps the ratio. Either call
+may come before or after the window is shown.
+
+The compositor applies the ratio to every size it picks while the window
+floats, live while the person drags any edge or corner, and to sizes the app
+asks for. Maximizing makes the window the largest size with that ratio,
+centred. A window in a tile fills its tile and a fullscreen window fills the
+screen, so the content must still letterbox in any size.
+
+`luma_window_set_aspect_ratio()` returns `TRUE` when the compositor keeps
+the ratio; `luma_window_get_aspect_ratio_enforced()` asks without setting
+one. Elsewhere (another compositor, X11, macOS, Windows) the calls do nothing
+and return `FALSE`. Python reaches the same calls through introspection as
+`LumaUI.window_set_aspect_ratio()`.
+
 ## Where C differs from Python
 
 - **Refusals come when a part is shown.** C parts are filled in after they

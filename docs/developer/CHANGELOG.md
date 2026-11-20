@@ -10,6 +10,15 @@ section: Overview
 Changes to these docs that affect what you build, newest first. Platform API
 changes name the platform version they apply to.
 
+## November 19, 2026: windows that keep their shape
+
+**Added**
+
+- [LumaUI in C](kit/lumaui-c.md#windows-that-keep-their-shape):
+  `luma_window_set_aspect_ratio()` keeps a game or video window at a fixed
+  shape, live while it is resized (platform 0.1.0-1.luma.132, C
+  `LUMA_UI_API_LEVEL` 10).
+
 ## October 8, 2026: the alpha
 
 Luma alpha was released on October 7, 2026. The docs describe Luma Developer
