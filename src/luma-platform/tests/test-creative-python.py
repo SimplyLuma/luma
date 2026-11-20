@@ -5,7 +5,7 @@ import time
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, Gtk  # noqa: E402
+from gi.repository import GLib, GObject, Gtk  # noqa: E402
 
 Gtk.init()
 
@@ -369,6 +369,38 @@ def panel_checked_states():
     assert choices.selected == "f"
 
 
+def dock_header_drag():
+    """A header drag shows the drop target as it moves and moves the tile on release (the drag's
+    content can't be read back in PyGObject, so the dock follows its own moving tile)."""
+    from gi.repository import Gdk
+    from luma_appkit import Dock, DockTile
+
+    a = DockTile("a", "A", "layers", Gtk.Box(), main=True)
+    b = DockTile("b", "B", "layers", Gtk.Box())
+    d = Dock([a, b], layout=Dock.split("h", 0.5, "a", "b"))
+    window = Gtk.Window(default_width=900, default_height=600)
+    window.set_child(d)
+    window.present()
+    settle()
+    source = next(c for c in [b.header.observe_controllers().get_item(i)
+                              for i in range(b.header.observe_controllers().get_n_items())]
+                  if isinstance(c, Gtk.DragSource))
+    provider = source.emit("prepare", 4, 4)
+    assert isinstance(provider, Gdk.ContentProvider) and "gchararray" in provider.ref_formats().to_string()
+    target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+    ok, box = a.compute_bounds(d)
+    assert ok
+    x, y = box.get_x() + 6, box.get_y() + box.get_height() / 2  # a's left band
+    assert d._drop_motion(target, x, y) == 0, "no drag under way: no target"
+    b.add_css_class("moving")  # what the header's drag-begin does
+    assert d._drop_motion(target, x, y) == Gdk.DragAction.MOVE and d.target.get_visible()
+    assert d._dropped(target, f"lumaui-dock-tile:b", x, y)
+    b.remove_css_class("moving")
+    layout = d.layout()
+    assert layout["start"] == "b" and layout["end"] == "a", layout
+    window.destroy()
+
+
 def meter_track():
     """A silent meter's empty track reads against the well it sits on."""
     from luma_appkit import VolumeSlider
@@ -398,6 +430,7 @@ if __name__ == "__main__":
     fit_group()
     sidebar_headings()
     meter_track()
+    dock_header_drag()
     dock_equal_split()
     panel_checked_states()
     GLib.MainContext.default().iteration(False)

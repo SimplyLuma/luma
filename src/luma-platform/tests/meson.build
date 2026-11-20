@@ -156,6 +156,12 @@ if python3.found()
     env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
           'GI_TYPELIB_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance',
           'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'])
+  test('lumaui-menus-python', python3,
+    args: [meson.current_source_dir() / 'test-lumaui-menus.py'],
+    depends: [ui_lib, ui_gir[1]],
+    env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
+          'GI_TYPELIB_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance',
+          'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'])
   test('lumaui-tokens', python3, args: [meson.project_source_root() / 'ui/gen-lumaui-tokens.py', '--check'])
   test('lumaui-c-parity', python3,
     args: [meson.current_source_dir() / 'lumaui-c-parity.py'],

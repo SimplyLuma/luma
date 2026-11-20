@@ -24,6 +24,10 @@ typedef enum {
  * edge, kept @inset inside the host's sides. Negative @offset/@edge/@inset
  * take the selection bubble's tokens; @width > 0 fixes the width. Adds or
  * removes class "below". Returns the side it went to. */
+/* Place @widget (a layer of @host) with its top start corner at (@x, @y) in @host's coordinates,
+ * flipped to the point's other side at @host's edges (a context menu); shifted inside only when
+ * neither side fits. */
+void luma_ui_float_at_point(GtkWidget *host, GtkWidget *widget, double x, double y, int edge);
 LumaFloatSide luma_ui_float_at(GtkWidget *host, GtkWidget *widget, const GdkRectangle *rect,
                                LumaFloatSide prefer, LumaFloatAlign align, int offset, int edge, int inset,
                                int width);
@@ -38,6 +42,7 @@ typedef enum {
   LUMA_MENU_ROW_ITEM,
   LUMA_MENU_ROW_HEADING,
   LUMA_MENU_ROW_SEPARATOR,
+  LUMA_MENU_ROW_SUBMENU, /* @rows: the submenu's rows */
 } LumaMenuRowKind;
 
 typedef struct {
@@ -48,6 +53,8 @@ typedef struct {
   char *note;
   char *action;
   gboolean selected;
+  char *shortcut;  /* a leaf's keys ("Ctrl+D"), or NULL */
+  GPtrArray *rows; /* LUMA_MENU_ROW_SUBMENU: LumaMenuRow, shared with the submenu */
 } LumaMenuRow;
 
 LumaMenuRow *luma_menu_row_new(LumaMenuRowKind kind, const char *label, const char *icon, GIcon *gicon,

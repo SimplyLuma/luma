@@ -67,6 +67,42 @@ LumaFloatSide luma_ui_float_at(GtkWidget *host, GtkWidget *widget, const GdkRect
   return side;
 }
 
+void luma_ui_float_at_point(GtkWidget *host, GtkWidget *widget, double x, double y, int edge) {
+  g_return_if_fail(GTK_IS_WIDGET(host) && GTK_IS_WIDGET(widget));
+  gtk_widget_set_halign(widget, GTK_ALIGN_START);
+  gtk_widget_set_valign(widget, GTK_ALIGN_START);
+  gtk_widget_set_margin_start(widget, 0);
+  gtk_widget_set_margin_top(widget, 0);
+  gtk_widget_set_margin_end(widget, 0);
+  gtk_widget_set_margin_bottom(widget, 0);
+  int bw, bh;
+  natural_size(widget, -1, &bw, &bh);
+  int hw = gtk_widget_get_width(host), hh = gtk_widget_get_height(host);
+  gboolean rtl = gtk_widget_get_direction(host) == GTK_TEXT_DIR_RTL;
+  /* In the reading direction: start at the point, else end at it. */
+  double forward = rtl ? x - bw : x, backward = rtl ? x : x - bw;
+  gboolean forward_fits = hw <= 0 || (forward >= edge && forward <= hw - bw - edge);
+  gboolean backward_fits = hw <= 0 || (backward >= edge && backward <= hw - bw - edge);
+  double left = !forward_fits && backward_fits ? backward : forward;
+  if (hw > 0)
+    left = MAX(edge, MIN(left, hw - bw - edge));
+  double top = y;
+  gboolean up = FALSE;
+  if (hh > 0 && y + bh > hh - edge) {
+    if (y - bh >= edge) {
+      top = y - bh;
+      up = TRUE;
+    } else {
+      top = MAX(edge, hh - bh - edge);
+    }
+  }
+  if (rtl && hw > 0)
+    left = hw - left - bw;
+  gtk_widget_set_margin_start(widget, MAX(0, (int)round(left)));
+  gtk_widget_set_margin_top(widget, MAX(0, (int)round(top)));
+  luma_ui_set_css_class(widget, "below", !up);
+}
+
 GdkRectangle luma_ui_rect_in(GtkWidget *host, GtkWidget *widget, const GdkRectangle *rect) {
   GdkRectangle out = {0, 0, 0, 0};
   g_return_val_if_fail(GTK_IS_WIDGET(host) && GTK_IS_WIDGET(widget), out);
@@ -119,6 +155,8 @@ void luma_menu_row_free(LumaMenuRow *row) {
   g_clear_object(&row->gicon);
   g_free(row->note);
   g_free(row->action);
+  g_free(row->shortcut);
+  g_clear_pointer(&row->rows, g_ptr_array_unref);
   g_free(row);
 }
 
@@ -510,17 +548,34 @@ static void item_row_clicked(GtkButton *button, gpointer user_data) {
   drawer_choose(self, choice);
 }
 
-LumaMenuDrawer *luma_menu_drawer_present_items(GtkWidget *where, GPtrArray *rows, const char *title) {
-  g_return_val_if_fail(GTK_IS_WIDGET(where), NULL);
-  g_return_val_if_fail(rows != NULL, NULL);
-  LumaMenuDrawer *self = drawer_new(title);
-  GtkWidget *page = drawer_page(self, title, FALSE);
+static void items_fill(LumaMenuDrawer *self, GtkWidget *page, GPtrArray *rows, GtkWidget *where);
+
+/* A submenu row: its rows as a page pushed in place, with Back. */
+static void items_submenu_clicked(GtkButton *button, gpointer user_data) {
+  LumaMenuDrawer *self = LUMA_MENU_DRAWER(user_data);
+  GPtrArray *rows = g_object_get_data(G_OBJECT(button), "luma-menu-rows");
+  const char *title = g_object_get_data(G_OBJECT(button), "luma-menu-title");
+  if (rows == NULL || self->where == NULL)
+    return;
+  GtkWidget *page = drawer_page(self, title, TRUE);
+  items_fill(self, page, rows, self->where);
+  drawer_push(self, page, FALSE);
+}
+
+static void items_fill(LumaMenuDrawer *self, GtkWidget *page, GPtrArray *rows, GtkWidget *where) {
   for (guint i = 0; i < rows->len; i++) {
     LumaMenuRow *row = g_ptr_array_index(rows, i);
     if (row->kind == LUMA_MENU_ROW_SEPARATOR) {
       gtk_box_append(GTK_BOX(page), menu_separator());
     } else if (row->kind == LUMA_MENU_ROW_HEADING) {
       gtk_box_append(GTK_BOX(page), menu_heading(row->label));
+    } else if (row->kind == LUMA_MENU_ROW_SUBMENU) {
+      GtkWidget *button = menu_row(row->label, row->icon, row->gicon, row->note, FALSE, TRUE, NULL);
+      g_object_set_data_full(G_OBJECT(button), "luma-menu-rows", g_ptr_array_ref(row->rows),
+                             (GDestroyNotify)g_ptr_array_unref);
+      g_object_set_data_full(G_OBJECT(button), "luma-menu-title", g_strdup(row->label), g_free);
+      g_signal_connect_object(button, "clicked", G_CALLBACK(items_submenu_clicked), self, 0);
+      gtk_box_append(GTK_BOX(page), button);
     } else {
       GtkWidget *button = menu_row(row->label, row->icon, row->gicon, row->note, row->selected, FALSE, NULL);
       /* A picker's drawer marks the chosen value too (v70 .cfpop in its phone drawer). */
@@ -536,6 +591,14 @@ LumaMenuDrawer *luma_menu_drawer_present_items(GtkWidget *where, GPtrArray *rows
       gtk_box_append(GTK_BOX(page), button);
     }
   }
+}
+
+LumaMenuDrawer *luma_menu_drawer_present_items(GtkWidget *where, GPtrArray *rows, const char *title) {
+  g_return_val_if_fail(GTK_IS_WIDGET(where), NULL);
+  g_return_val_if_fail(rows != NULL, NULL);
+  LumaMenuDrawer *self = drawer_new(title);
+  GtkWidget *page = drawer_page(self, title, FALSE);
+  items_fill(self, page, rows, where);
   return drawer_present(self, where, page);
 }
 
@@ -567,7 +630,22 @@ struct _LumaFloatingMenu {
   GtkWidget *keys_root; /* weak */
   gboolean held;        /* a reference held while open */
   gboolean picker;      /* v70 .cfpop: the chosen item carries a check; as wide as its anchor, 200 at least */
+  /* Opened at a point (popup_at), in the anchor's coordinates. */
+  gboolean at_point;
+  double point_x, point_y;
+  /* Cascades. */
+  LumaFloatingMenu *parent_menu; /* the menu this one opened from, while open */
+  LumaFloatingMenu *open_submenu; /* strong while open */
+  GtkWidget *submenu_button;     /* the row it opened from */
+  GtkWidget *hovered;            /* the row under the pointer */
+  guint switch_id;
+  double pointer[2][2]; /* the pointer's last two points, host coordinates */
+  guint pointer_n;
 };
+
+#define SUBMENU_GRACE_MS 250
+
+static void submenu_close(LumaFloatingMenu *self);
 
 G_DEFINE_FINAL_TYPE(LumaFloatingMenu, luma_floating_menu, GTK_TYPE_BOX)
 
@@ -595,8 +673,17 @@ static void grown_menu_closed(LumaActionCenter *center, const char *key, gpointe
   menu_release(self);
 }
 
+static void cancel_switch(LumaFloatingMenu *self) {
+  if (self->switch_id != 0) {
+    g_source_remove(self->switch_id);
+    self->switch_id = 0;
+  }
+}
+
 static void luma_floating_menu_dispose(GObject *object) {
   LumaFloatingMenu *self = LUMA_FLOATING_MENU(object);
+  cancel_switch(self);
+  submenu_close(self);
   if (self->keys != NULL && self->keys_root != NULL)
     gtk_widget_remove_controller(self->keys_root, self->keys);
   self->keys = NULL;
@@ -620,6 +707,143 @@ static void luma_floating_menu_class_init(LumaFloatingMenuClass *klass) {
   gtk_widget_class_set_accessible_role(GTK_WIDGET_CLASS(klass), GTK_ACCESSIBLE_ROLE_MENU);
 }
 
+/* ── cascades ── */
+
+static void menu_motion(GtkEventControllerMotion *controller G_GNUC_UNUSED, double x, double y, gpointer data) {
+  LumaFloatingMenu *self = data;
+  graphene_point_t point;
+  if (self->host == NULL ||
+      !gtk_widget_compute_point(GTK_WIDGET(self), self->host, &GRAPHENE_POINT_INIT((float)x, (float)y), &point))
+    return;
+  if (self->pointer_n == 2) {
+    self->pointer[0][0] = self->pointer[1][0];
+    self->pointer[0][1] = self->pointer[1][1];
+    self->pointer_n = 1;
+  }
+  self->pointer[self->pointer_n][0] = point.x;
+  self->pointer[self->pointer_n][1] = point.y;
+  self->pointer_n++;
+}
+
+static double side_of(const double p[2], const double a[2], const double b[2]) {
+  return (p[0] - b[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (p[1] - b[1]);
+}
+
+/* Whether the pointer's last move points into the triangle from where it was to the open submenu's
+ * near edge (menu aim): it is on its way there across other rows. */
+static gboolean heading_to_submenu(LumaFloatingMenu *self) {
+  graphene_rect_t box;
+  if (self->open_submenu == NULL || self->pointer_n < 2 ||
+      !gtk_widget_compute_bounds(GTK_WIDGET(self->open_submenu), self->host, &box))
+    return FALSE;
+  const double *from = self->pointer[0], *at = self->pointer[1];
+  double near = box.origin.x >= from[0] ? box.origin.x : box.origin.x + box.size.width;
+  double b[2] = {near, box.origin.y}, c[2] = {near, box.origin.y + box.size.height};
+  double d1 = side_of(at, from, b), d2 = side_of(at, b, c), d3 = side_of(at, c, from);
+  gboolean negative = d1 < 0 || d2 < 0 || d3 < 0, positive = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(negative && positive);
+}
+
+static void place_submenu(LumaFloatingMenu *self, LumaFloatingMenu *child, GtkWidget *button) {
+  graphene_rect_t menu, row;
+  if (!gtk_widget_compute_bounds(GTK_WIDGET(self), self->host, &menu) ||
+      !gtk_widget_compute_bounds(button, self->host, &row))
+    return;
+  int cw, ch;
+  natural_size(GTK_WIDGET(child), -1, &cw, &ch);
+  int hw = gtk_widget_get_width(self->host), hh = gtk_widget_get_height(self->host);
+  gboolean rtl = gtk_widget_get_direction(self->host) == GTK_TEXT_DIR_RTL;
+  const double gap = 2, edge = 8, pad = 6; /* the card's padding: its first row lines up with the opener */
+  double after = menu.origin.x + menu.size.width + gap, before = menu.origin.x - gap - cw;
+  double first = rtl ? before : after, second = rtl ? after : before;
+  double left = first >= edge && first <= hw - cw - edge ? first : second;
+  left = MAX(edge, MIN(left, hw - cw - edge));
+  double top = MAX(edge, MIN(row.origin.y - pad, hh - ch - edge));
+  gtk_widget_set_halign(GTK_WIDGET(child), GTK_ALIGN_START);
+  gtk_widget_set_valign(GTK_WIDGET(child), GTK_ALIGN_START);
+  gtk_widget_set_margin_start(GTK_WIDGET(child), MAX(0, (int)round(rtl ? hw - left - cw : left)));
+  gtk_widget_set_margin_top(GTK_WIDGET(child), MAX(0, (int)round(top)));
+  luma_ui_set_css_class(GTK_WIDGET(child), "flipped", (left < menu.origin.x) != rtl);
+}
+
+static gboolean menu_shown(gpointer user_data);
+
+static LumaFloatingMenu *submenu_open(LumaFloatingMenu *self, GtkWidget *button, gboolean focus) {
+  LumaFloatingMenu *child = g_object_get_data(G_OBJECT(button), "luma-menu-submenu");
+  if (child == NULL || self->host == NULL)
+    return NULL;
+  cancel_switch(self);
+  if (self->open_submenu != child) {
+    submenu_close(self);
+    child->parent_menu = self;
+    g_set_weak_pointer(&child->host, self->host);
+    gtk_widget_add_css_class(GTK_WIDGET(child), "submenu");
+    luma_layer_host_add_layer(self->host, GTK_WIDGET(child));
+    self->open_submenu = g_object_ref(child);
+    self->submenu_button = button;
+    gtk_widget_add_css_class(button, "open");
+    place_submenu(self, child, button);
+    luma_ui_on_next_frame(GTK_WIDGET(child), menu_shown, child);
+  }
+  if (focus && child->buttons->len > 0)
+    gtk_widget_grab_focus(g_ptr_array_index(child->buttons, 0));
+  return child;
+}
+
+static void submenu_close(LumaFloatingMenu *self) {
+  LumaFloatingMenu *child = self->open_submenu;
+  if (child == NULL)
+    return;
+  self->open_submenu = NULL;
+  if (self->submenu_button != NULL)
+    gtk_widget_remove_css_class(self->submenu_button, "open");
+  self->submenu_button = NULL;
+  submenu_close(child);
+  cancel_switch(child);
+  gtk_widget_remove_css_class(GTK_WIDGET(child), "shown");
+  GtkWidget *host = child->host;
+  if (host != NULL && gtk_widget_get_parent(GTK_WIDGET(child)) == host)
+    luma_layer_host_remove_layer(host, GTK_WIDGET(child));
+  g_clear_weak_pointer(&child->host);
+  child->parent_menu = NULL;
+  child->pointer_n = 0;
+  g_object_unref(child);
+}
+
+static gboolean switch_now(gpointer data) {
+  LumaFloatingMenu *self = data;
+  self->switch_id = 0;
+  if (self->hovered == NULL || self->host == NULL)
+    return G_SOURCE_REMOVE;
+  if (g_object_get_data(G_OBJECT(self->hovered), "luma-menu-submenu") != NULL)
+    submenu_open(self, self->hovered, FALSE);
+  else
+    submenu_close(self);
+  return G_SOURCE_REMOVE;
+}
+
+/* The pointer came onto a row: open its submenu, or close another, unless the pointer is on its way
+ * to the open submenu (then wait SUBMENU_GRACE_MS and look again). */
+static void row_entered(GtkEventControllerMotion *controller, double x G_GNUC_UNUSED, double y G_GNUC_UNUSED,
+                        gpointer data) {
+  LumaFloatingMenu *self = data;
+  GtkWidget *button = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
+  self->hovered = button;
+  if (self->open_submenu != NULL && self->submenu_button != button && heading_to_submenu(self)) {
+    cancel_switch(self);
+    self->switch_id = g_timeout_add(SUBMENU_GRACE_MS, switch_now, self);
+    return;
+  }
+  cancel_switch(self);
+  switch_now(self);
+}
+
+static void watch_row(LumaFloatingMenu *self, GtkWidget *button) {
+  GtkEventController *hover = gtk_event_controller_motion_new();
+  g_signal_connect(hover, "enter", G_CALLBACK(row_entered), self);
+  gtk_widget_add_controller(button, hover);
+}
+
 static void luma_floating_menu_init(LumaFloatingMenu *self) {
   self->align = LUMA_FLOAT_ALIGN_END;
   luma_ui_install();
@@ -632,6 +856,9 @@ static void luma_floating_menu_init(LumaFloatingMenu *self) {
   gtk_widget_set_visible(self->handle_bar, FALSE);
   gtk_widget_add_css_class(self->handle_bar, "lumaui-drawer-handle");
   gtk_box_append(GTK_BOX(self), self->handle_bar);
+  GtkEventController *motion = gtk_event_controller_motion_new();
+  g_signal_connect(motion, "motion", G_CALLBACK(menu_motion), self);
+  gtk_widget_add_controller(GTK_WIDGET(self), motion);
 }
 
 GtkWidget *luma_floating_menu_new(const char *label) {
@@ -642,7 +869,13 @@ GtkWidget *luma_floating_menu_new(const char *label) {
 
 static void item_activated(GtkButton *button, gpointer user_data) {
   LumaFloatingMenu *self = LUMA_FLOATING_MENU(user_data);
+  if (g_object_get_data(G_OBJECT(button), "luma-menu-submenu") != NULL) {
+    submenu_open(self, GTK_WIDGET(button), TRUE);
+    return;
+  }
   LumaMenuRow *row = g_object_get_data(G_OBJECT(button), "luma-menu-row");
+  while (self->parent_menu != NULL) /* a submenu's row closes every level, its action on the first anchor */
+    self = self->parent_menu;
   GtkWidget *anchor = self->anchor != NULL ? g_object_ref(self->anchor) : NULL;
   g_autofree char *action = row != NULL ? g_strdup(row->action) : NULL;
   luma_floating_menu_close(self);
@@ -708,8 +941,55 @@ void luma_floating_menu_add_rich_item(LumaFloatingMenu *self, const char *label,
   luma_ui_set_accessible_label(button, name);
   g_object_set_data(G_OBJECT(button), "luma-menu-row", row);
   g_signal_connect(button, "clicked", G_CALLBACK(item_activated), self);
+  watch_row(self, button);
   g_ptr_array_add(self->buttons, button);
   gtk_box_append(GTK_BOX(self), button);
+}
+
+/* The last item's line (its row of glyph, words, note), for what a variant appends. */
+static GtkWidget *last_line(LumaFloatingMenu *self, GtkWidget **button) {
+  *button = g_ptr_array_index(self->buttons, self->buttons->len - 1);
+  return gtk_button_get_child(GTK_BUTTON(*button));
+}
+
+void luma_floating_menu_add_shortcut_item(LumaFloatingMenu *self, const char *label, const char *icon,
+                                          const char *shortcut, const char *action_name) {
+  g_return_if_fail(LUMA_IS_FLOATING_MENU(self));
+  g_return_if_fail(label != NULL && shortcut != NULL);
+  luma_floating_menu_add_rich_item(self, label, icon, NULL, NULL, NULL, action_name, FALSE);
+  LumaMenuRow *row = g_ptr_array_index(self->rows, self->rows->len - 1);
+  row->shortcut = g_strdup(shortcut);
+  GtkWidget *button, *line = last_line(self, &button);
+  GtkWidget *caps = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+  gtk_widget_add_css_class(caps, "lumaui-menu-shortcut");
+  g_auto(GStrv) parts = g_strsplit(shortcut, "+", -1);
+  for (guint i = 0; parts[i] != NULL; i++) {
+    g_strstrip(parts[i]);
+    if (*parts[i] == '\0')
+      continue;
+    GtkWidget *cap = gtk_label_new(parts[i]);
+    gtk_widget_add_css_class(cap, "lumaui-menu-keycap");
+    gtk_box_append(GTK_BOX(caps), cap);
+  }
+  gtk_box_append(GTK_BOX(line), caps);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_PROPERTY_KEY_SHORTCUTS, shortcut, -1);
+}
+
+void luma_floating_menu_add_submenu(LumaFloatingMenu *self, const char *label, const char *icon,
+                                    LumaFloatingMenu *submenu) {
+  g_return_if_fail(LUMA_IS_FLOATING_MENU(self));
+  g_return_if_fail(label != NULL && LUMA_IS_FLOATING_MENU(submenu) && submenu != self);
+  luma_floating_menu_add_rich_item(self, label, icon, NULL, NULL, NULL, NULL, FALSE);
+  LumaMenuRow *row = g_ptr_array_index(self->rows, self->rows->len - 1);
+  row->kind = LUMA_MENU_ROW_SUBMENU;
+  row->rows = g_ptr_array_ref(submenu->rows);
+  GtkWidget *button, *line = last_line(self, &button);
+  gtk_widget_add_css_class(button, "submenu");
+  GtkWidget *chevron = luma_ui_icon_image("chevron-right", 0);
+  gtk_widget_add_css_class(chevron, "lumaui-menu-chevron");
+  gtk_box_append(GTK_BOX(line), chevron);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_PROPERTY_HAS_POPUP, TRUE, -1);
+  g_object_set_data_full(G_OBJECT(button), "luma-menu-submenu", g_object_ref_sink(submenu), g_object_unref);
 }
 
 /* A picker's chosen item ends in a check (v70 .cfpop .crmi svg.i, 15 in ink-2). */
@@ -763,24 +1043,44 @@ static void catcher_released(GtkGestureClick *gesture G_GNUC_UNUSED, int n G_GNU
 static gboolean menu_key(GtkEventControllerKey *controller G_GNUC_UNUSED, guint keyval, guint code G_GNUC_UNUSED,
                          GdkModifierType state G_GNUC_UNUSED, gpointer user_data) {
   LumaFloatingMenu *self = LUMA_FLOATING_MENU(user_data);
-  if (keyval == GDK_KEY_Escape) {
-    luma_floating_menu_close(self);
+  LumaFloatingMenu *menu = self; /* the keys belong to the deepest open level */
+  while (menu->open_submenu != NULL)
+    menu = menu->open_submenu;
+  gboolean rtl = gtk_widget_get_direction(GTK_WIDGET(self)) == GTK_TEXT_DIR_RTL;
+  guint deeper = rtl ? GDK_KEY_Left : GDK_KEY_Right, back = rtl ? GDK_KEY_Right : GDK_KEY_Left;
+  GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(self));
+  GtkWidget *focus = root != NULL ? gtk_root_get_focus(root) : NULL;
+  int index = -1;
+  for (guint i = 0; i < menu->buttons->len && focus != NULL; i++) {
+    GtkWidget *button = g_ptr_array_index(menu->buttons, i);
+    if (focus == button || gtk_widget_is_ancestor(focus, button)) {
+      index = (int)i;
+      break;
+    }
+  }
+  if (keyval == GDK_KEY_Escape || (keyval == back && menu->parent_menu != NULL)) {
+    if (menu->parent_menu == NULL) {
+      luma_floating_menu_close(self);
+    } else {
+      LumaFloatingMenu *parent = menu->parent_menu;
+      GtkWidget *opener = parent->submenu_button;
+      submenu_close(parent);
+      if (opener != NULL)
+        gtk_widget_grab_focus(opener);
+    }
     return TRUE;
   }
-  if ((keyval == GDK_KEY_Up || keyval == GDK_KEY_Down) && self->buttons->len > 0) {
-    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(self));
-    GtkWidget *focus = root != NULL ? gtk_root_get_focus(root) : NULL;
-    int index = -1;
-    for (guint i = 0; i < self->buttons->len && focus != NULL; i++) {
-      GtkWidget *button = g_ptr_array_index(self->buttons, i);
-      if (focus == button || gtk_widget_is_ancestor(focus, button)) {
-        index = (int)i;
-        break;
-      }
+  if (keyval == deeper && index >= 0) {
+    GtkWidget *current = g_ptr_array_index(menu->buttons, (guint)index);
+    if (g_object_get_data(G_OBJECT(current), "luma-menu-submenu") != NULL) {
+      submenu_open(menu, current, TRUE);
+      return TRUE;
     }
-    int n = (int)self->buttons->len;
+  }
+  if ((keyval == GDK_KEY_Up || keyval == GDK_KEY_Down) && menu->buttons->len > 0) {
+    int n = (int)menu->buttons->len;
     int step = keyval == GDK_KEY_Down ? 1 : -1;
-    gtk_widget_grab_focus(g_ptr_array_index(self->buttons, (guint)(((index + step) % n + n) % n)));
+    gtk_widget_grab_focus(g_ptr_array_index(menu->buttons, (guint)(((index + step) % n + n) % n)));
     return TRUE;
   }
   return FALSE;
@@ -797,9 +1097,32 @@ static void menu_drawer_closed(LumaMenuDrawer *drawer G_GNUC_UNUSED, gpointer us
   menu_release(self);
 }
 
+static void popup_from(LumaFloatingMenu *self, GtkWidget *anchor);
+
 void luma_floating_menu_popup(LumaFloatingMenu *self, GtkWidget *anchor) {
   g_return_if_fail(LUMA_IS_FLOATING_MENU(self));
   g_return_if_fail(GTK_IS_WIDGET(anchor));
+  self->at_point = FALSE;
+  popup_from(self, anchor);
+}
+
+void luma_floating_menu_popup_at(LumaFloatingMenu *self, GtkWidget *anchor, double x, double y) {
+  g_return_if_fail(LUMA_IS_FLOATING_MENU(self));
+  g_return_if_fail(GTK_IS_WIDGET(anchor));
+  self->at_point = TRUE;
+  self->point_x = x;
+  self->point_y = y;
+  popup_from(self, anchor);
+}
+
+static gboolean has_submenus(LumaFloatingMenu *self) {
+  for (guint i = 0; i < self->rows->len; i++)
+    if (((LumaMenuRow *)g_ptr_array_index(self->rows, i))->kind == LUMA_MENU_ROW_SUBMENU)
+      return TRUE;
+  return FALSE;
+}
+
+static void popup_from(LumaFloatingMenu *self, GtkWidget *anchor) {
   if (luma_floating_menu_get_is_open(self))
     luma_floating_menu_close(self);
   LumaLayerHost *layer_host = luma_layer_host_window_host(anchor);
@@ -816,7 +1139,7 @@ void luma_floating_menu_popup(LumaFloatingMenu *self, GtkWidget *anchor) {
   if (luma_ui_mobile_form_factor() || luma_ui_is_phone(host)) {
     /* v71: on a phone every menu rises from the bar, as its grown panel, when a bar is showing;
      * otherwise it is the drawer in the bar's frame (16 gutter, 34 up, 26 corners). */
-    LumaActionCenter *center = luma_action_center_find(anchor);
+    LumaActionCenter *center = has_submenus(self) ? NULL : luma_action_center_find(anchor); /* submenus drill in the drawer */
     if (center != NULL && gtk_widget_get_mapped(GTK_WIDGET(center)) &&
         (g_str_equal(luma_action_center_get_state(center), "bar") ||
          g_str_equal(luma_action_center_get_state(center), "double"))) {
@@ -841,6 +1164,7 @@ void luma_floating_menu_popup(LumaFloatingMenu *self, GtkWidget *anchor) {
   gtk_widget_set_hexpand(self->catcher, TRUE);
   gtk_widget_set_vexpand(self->catcher, TRUE);
   GtkGesture *click = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), 0); /* any button: a right click elsewhere too */
   g_signal_connect_object(click, "released", G_CALLBACK(catcher_released), self, 0);
   gtk_widget_add_controller(self->catcher, GTK_EVENT_CONTROLLER(click));
   luma_layer_host_add_layer(host, self->catcher);
@@ -857,6 +1181,13 @@ void luma_floating_menu_popup(LumaFloatingMenu *self, GtkWidget *anchor) {
     double u = luma_ui_tv_unit(gtk_widget_get_width(host), gtk_widget_get_height(host));
     luma_ui_float_at(host, GTK_WIDGET(self), &rect, LUMA_FLOAT_BELOW, LUMA_FLOAT_ALIGN_END, (int)round(10 * u),
                      (int)round(40 * u), -1, MAX((int)round(400 * u), rect.width));
+  } else if (self->at_point) {
+    /* A context menu: its corner on the pointer (or the touch), flipped at the window's edges. */
+    graphene_point_t point;
+    if (!gtk_widget_compute_point(anchor, host, &GRAPHENE_POINT_INIT((float)self->point_x, (float)self->point_y),
+                                  &point))
+      point = GRAPHENE_POINT_INIT((float)self->point_x, (float)self->point_y);
+    luma_ui_float_at_point(host, GTK_WIDGET(self), point.x, point.y, 8);
   } else {
   LumaFloatSide prefer = rect.y > gtk_widget_get_height(host) * 0.5 ? LUMA_FLOAT_ABOVE : LUMA_FLOAT_BELOW;
   /* A picker is at least as wide as what it picks for (200 at least) and sits 6 from it (v70 cfPop). */
@@ -877,6 +1208,8 @@ void luma_floating_menu_popup(LumaFloatingMenu *self, GtkWidget *anchor) {
 
 void luma_floating_menu_close(LumaFloatingMenu *self) {
   g_return_if_fail(LUMA_IS_FLOATING_MENU(self));
+  cancel_switch(self);
+  submenu_close(self);
   if (self->grown_center != NULL) {
     g_object_ref(self);
     luma_action_center_fold(self->grown_center);
