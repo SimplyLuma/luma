@@ -293,6 +293,8 @@ class Engine(GObject.Object):
         "problem": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         # "record" | "stream", "starting" | "on" | "reconnecting" | "off"
         "output-state": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
+        # the preview's paintable came or went (the pipeline exists only while needed)
+        "preview-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
         # widget id: its first picture arrived
         "widget-ready": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         # widget id, a plain reason: its source failed or never sent a picture; it is out of the program
@@ -316,14 +318,23 @@ class Engine(GObject.Object):
         self._taps: dict[str, list[Gst.Element]] = {}
         self._zorder = 0
         self.preview_size: tuple[int, int] | None = None
+        self.enabled = False
         self._generation = 0
 
     # ── The program pipeline ──
 
     def start(self, project: Project) -> None:
+        """Show ``project``'s active scene. The pipeline itself exists only while something
+        captures or is sent; an empty scene costs nothing."""
+        if self.enabled:
+            return
+        self.enabled = True
+        self.canvas = project.canvas
+        self.show_scene(project.active_scene)
+
+    def _open(self) -> None:
         if self.pipeline is not None:
             return
-        self.canvas = project.canvas
         self.pipeline = Gst.Pipeline.new("streamy-program")
         for spec in graph.program(self.canvas):
             self.pipeline.add(make(spec))
@@ -335,12 +346,9 @@ class Engine(GObject.Object):
         bus.connect("message", self._message)
         if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             raise EngineError("the preview could not start")
-        self.show_scene(project.active_scene)
+        self.emit("preview-changed")
 
-    def stop(self) -> None:
-        """Everything off: outputs finish, captures stop, the pipeline goes."""
-        for output in list(self.outputs.values()):
-            output.stop()
+    def _close(self) -> None:
         if self.pipeline is None:
             return
         for widget_id in list(self.branches):
@@ -348,12 +356,21 @@ class Engine(GObject.Object):
         self.pipeline.set_state(Gst.State.NULL)
         self.pipeline.get_bus().remove_signal_watch()
         self.pipeline = None
+        self.paintable = None
         self._sound = False
         self._taps.clear()
+        self.emit("preview-changed")
+
+    def stop(self) -> None:
+        """Everything off: outputs finish, captures stop, the pipeline goes."""
+        for output in list(self.outputs.values()):
+            output.stop()
+        self.enabled = False
+        self._close()
 
     @property
     def running(self) -> bool:
-        return self.pipeline is not None
+        return self.enabled
 
     def set_canvas(self, project: Project) -> None:
         """A new canvas size means a new program (refused while an output runs)."""
@@ -401,9 +418,13 @@ class Engine(GObject.Object):
 
     def show_scene(self, scene: Scene | None, *, skip: set[str] | frozenset = frozenset()) -> None:
         """Capture exactly the visible widgets of ``scene`` (less ``skip``: ones that failed); stop the rest."""
-        if self.pipeline is None:
+        if not self.enabled:
             return
         wanted = {w.id: w for w in (scene.widgets if scene else []) if w.visible and w.id not in skip}
+        if not wanted and not self.outputs:
+            self._close()  # nothing to show and nothing sent: no pipeline at all
+            return
+        self._open()
         for widget_id in [i for i in self.branches if i not in wanted]:
             self._remove_branch(widget_id)
         for zorder, widget in enumerate(scene.widgets if scene else []):
@@ -417,13 +438,9 @@ class Engine(GObject.Object):
         self._idle_check()
 
     def _idle_check(self) -> None:
-        """Nothing to show and nothing sent: the program rests (PAUSED), so it costs nothing."""
-        if self.pipeline is None:
-            return
-        resting = not self.branches and not self.outputs
-        target = Gst.State.PAUSED if resting else Gst.State.PLAYING
-        if self.pipeline.get_state(0)[2] != target or self.pipeline.get_state(0)[1] != target:
-            self.pipeline.call_async(lambda pipeline, state: pipeline.set_state(state), target)
+        """Nothing captures and nothing is sent: the program goes, so it costs nothing."""
+        if self.pipeline is not None and not self.branches and not self.outputs:
+            GLib.idle_add(lambda: (self._close() if not self.branches and not self.outputs else None) and False)
 
     def update_widget(self, widget: Widget, zorder: int | None = None) -> None:
         """Move, resize or restyle a widget live (no renegotiation unless its size changed)."""
@@ -492,6 +509,31 @@ class Engine(GObject.Object):
                                  elements)
         if widget.has_picture:
             branch.watchdog = GLib.timeout_add_seconds(FIRST_PICTURE_S, self._no_picture, branch)
+        if os.environ.get("STREAMY_TRACE"):
+            self._trace(branch, elements)
+
+    def _trace(self, branch: Branch, elements: list) -> None:
+        """STREAMY_TRACE=1: count pictures at the source and at the frame, every 2 s, on stderr."""
+        import sys
+
+        counts = {}
+        for element in (elements[0], elements[-1]):
+            pad = element.get_static_pad("src")
+            if pad is None:
+                continue
+            counts[element.get_name()] = [0, None]
+
+            def seen(p, info, name=element.get_name()):
+                counts[name][0] += 1
+                buffer = info.get_buffer()
+                counts[name][1] = (buffer.pts, p.get_current_caps().to_string()[:120] if p.get_current_caps() else None)
+                return Gst.PadProbeReturn.OK
+            pad.add_probe(Gst.PadProbeType.BUFFER, seen)
+
+        def report() -> bool:
+            print("streamy-trace", branch.widget_id, counts, file=sys.stderr, flush=True)
+            return self.branches.get(branch.widget_id) is branch
+        GLib.timeout_add_seconds(2, report)
 
     def _no_picture(self, branch: Branch) -> bool:
         branch.watchdog = 0
@@ -649,13 +691,11 @@ class Engine(GObject.Object):
 
     def start_output(self, kind: str, choice: EncoderChoice, sink: list[Element], *, video_kbps: int,
                      audio_kbps: int = 160) -> Output:
-        if self.pipeline is None:
+        if not self.enabled:
             raise EngineError("nothing to send: the program isn't running")
+        self._open()
         if kind in self.outputs:
             raise EngineError(f"already {kind}ing")
-        if self.pipeline.get_state(0)[1] != Gst.State.PLAYING:
-            self.pipeline.set_state(Gst.State.PLAYING)
-            self.pipeline.get_state(Gst.SECOND)  # the base time is the playing one
         self._ensure_sound()
         self._ensure_taps()
         output = Output(self, kind, choice, sink, video_kbps, audio_kbps, with_sound=True)

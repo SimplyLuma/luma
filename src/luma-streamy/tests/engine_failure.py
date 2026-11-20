@@ -63,16 +63,34 @@ def main() -> int:
     assert time.monotonic() - t < 1.0
     os.close(fd)
 
-    # Nothing to show and nothing sent: the program rests.
+    # Nothing to show and nothing sent: no pipeline at all. A widget added later starts a fresh
+    # program, and its pictures reach the mixer (the timing of a program opened late is right).
     empty = Project.starter()
     idle = Engine(fake=True, preview=False)
     idle.start(empty)
+    assert idle.pipeline is None, "an empty scene has no pipeline"
+    late = empty.add_widget(empty.active_scene.id, "display")
+    frames = [0]
+
+    def add() -> bool:
+        idle.show_scene(empty.active_scene)
+        frame = idle.branches[late.id].elements[-1]
+        frame.get_static_pad("src").add_probe(
+            Gst.PadProbeType.BUFFER, lambda *_a: (frames.__setitem__(0, frames[0] + 1), Gst.PadProbeReturn.OK)[1])
+        return False
+
     loop = GLib.MainLoop()
-    GLib.timeout_add(800, loop.quit)
+    GLib.timeout_add(1000, add)
+    GLib.timeout_add(3500, loop.quit)
     loop.run()
-    state = idle.pipeline.get_state(Gst.SECOND)[1]
-    print("empty scene", state.value_nick)
-    assert state == Gst.State.PAUSED, state
+    print("late widget frames", frames[0])
+    assert frames[0] > 30, f"only {frames[0]} pictures reached the mixer"
+    empty.remove_widget(late.id)
+    idle.show_scene(empty.active_scene)
+    loop = GLib.MainLoop()
+    GLib.timeout_add(500, loop.quit)
+    loop.run()
+    assert idle.pipeline is None, "the last widget gone, the pipeline goes"
     idle.stop()
     return 0
 

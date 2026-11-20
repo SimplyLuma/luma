@@ -20,17 +20,17 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(valid(None), PRESETS["default"][1])
         self.assertEqual(valid("junk"), PRESETS["default"][1])
         tree = valid(split("v", 7, "audio", split("h", 0.3, "audio", "ghost")))
-        self.assertEqual(tree, split("h", 0.75, split("h", 0.75, "audio", "preview"), "inspector"))
-        self.assertEqual(valid(split("x", 0.5, "audio", "preview"))["split"], "h")
+        self.assertEqual(tree, split("h", 0.75, "audio", "preview"))
+        self.assertEqual(valid(split("x", 0.5, "audio", "preview")), PRESETS["default"][1])
 
     def test_store(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "layouts.json"
             store = LayoutStore(path)
             self.assertEqual(store.current, PRESETS["default"][1])
-            mine = split("h", 0.6, "inspector", split("v", 0.5, "preview", "audio"))
+            mine = split("h", 0.6, "audio", "preview")
             store.remember(mine)
-            key = store.save_as("Talk show", split("v", 0.8, "preview", split("h", 0.5, "audio", "inspector")))
+            key = store.save_as("Talk show", split("v", 0.8, "preview", "audio"))
             self.assertEqual(key, "saved:Talk show")
             with self.assertRaises(ValueError):
                 store.save_as("compact", mine)
@@ -39,10 +39,11 @@ class LayoutTest(unittest.TestCase):
             again = LayoutStore(path)
             self.assertEqual(again.current, mine)
             self.assertEqual(again.get(key)["ratio"], 0.8)
-            self.assertEqual([label for _k, label in again.names()], ["Default", "Compact", "Studio", "Talk show"])
-            preset = again.get("studio")
+            self.assertEqual([label for _k, label in again.names()],
+                             ["Default", "Audio beside", "Compact", "Talk show"])
+            preset = again.get("side")
             preset["ratio"] = 0.1
-            self.assertEqual(again.get("studio")["ratio"], 0.7)  # presets are copied, never changed
+            self.assertEqual(again.get("side")["ratio"], 0.76)  # presets are copied, never changed
             again.forget("Talk show")
             self.assertEqual(len(LayoutStore(path).names()), 3)
             with self.assertRaises(KeyError):

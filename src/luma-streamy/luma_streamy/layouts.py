@@ -2,8 +2,8 @@
 """Inset layouts: the built-in presets, the person's saved ones, and the last used.
 
 A layout is LumaUI's Dock arrangement: a tree of ``{"split": "h"|"v",
-"ratio", "start", "end"}`` with the tile keys (preview, audio, inspector) at
-its leaves. Pure Python; the window hands them to ``Dock.set_layout``.
+"ratio", "start", "end"}`` with the tile keys (preview, audio) at
+its leaves (preview, audio). Pure Python; the window hands them to ``Dock.set_layout``.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .model import atomic_write
 
-TILES = ("preview", "audio", "inspector")
+TILES = ("preview", "audio")
 
 
 def split(orientation: str, ratio: float, start, end) -> dict:
@@ -20,9 +20,9 @@ def split(orientation: str, ratio: float, start, end) -> dict:
 
 
 PRESETS: dict[str, tuple[str, object]] = {
-    "default": ("Default", split("h", 0.74, split("v", 0.72, "preview", "audio"), "inspector")),
-    "compact": ("Compact", split("h", 0.78, "preview", split("v", 0.6, "inspector", "audio"))),
-    "studio": ("Studio", split("v", 0.7, split("h", 0.72, "preview", "inspector"), "audio")),
+    "default": ("Default", split("v", 0.76, "preview", "audio")),
+    "side": ("Audio beside", split("h", 0.76, "preview", "audio")),
+    "compact": ("Compact", split("v", 0.88, "preview", "audio")),
 }
 
 

@@ -6,4 +6,4 @@ box.streamy-strip-body { border-spacing: 6px; padding-top: 4px; }
 box.streamy-strip-head { border-spacing: 8px; }
 .streamy-strip-db, .streamy-canvas-facts { font-feature-settings: "tnum"; }
 button.streamy-muted { color: @luma_destructive; }
-box.streamy-inspector { padding: 0 6px 6px; }
+box.streamy-editor { min-width: 300px; }

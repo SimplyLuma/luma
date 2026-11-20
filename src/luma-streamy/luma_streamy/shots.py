@@ -39,7 +39,8 @@ def schedule(window, path: str) -> None:
             pictures = [w for w in scene.widgets if w.has_picture] if scene else []
             if pictures:
                 window.select(pictures[-1].id)
-                window._open_inspector()
+                if os.environ.get("STREAMY_SHOT_GROW"):
+                    window._grow(os.environ["STREAMY_SHOT_GROW"])
         return False
 
     tries = [0]
