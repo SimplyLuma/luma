@@ -384,6 +384,8 @@ done
 - Cascading submenus: MenuItem(submenu=[...]) / add_submenu(); hover with a
   250 ms aim grace, Right opens, Left and Esc close one level; drilled in
   place with Back on a phone. MenuItem(shortcut=) / add_shortcut_item().
+- FloatingMenu: a menu opened in a window whose layer host is made by that
+  popup is no longer wrapped in a scroller a few rows tall.
 - Dock: header drags show their drop target again (the drag's content isn't
   readable from PyGObject; the dock follows its own moving tile).
 - Lucide: ratio, save, unlink, headphone-off, maximize, shrink,
