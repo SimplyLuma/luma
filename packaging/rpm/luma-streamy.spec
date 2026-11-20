@@ -6,7 +6,7 @@
 
 Name:           luma-streamy
 Version:        0.1.0
-Release:        1.luma.1%{?dist}
+Release:        1.luma.2%{?dist}
 Summary:        Stream and record your screen, windows and camera
 # The app: Apache-2.0. gst-lumaframe: MPL-2.0. Vendored crates (Cargo.lock):
 # gstreamer-rs and glib-rs (MIT OR Apache-2.0, MIT), memchr (Unlicense OR
@@ -40,7 +40,7 @@ BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  gtk4 >= 4.22
 BuildRequires:  libadwaita >= 1.9
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.131
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.134
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 
@@ -49,7 +49,7 @@ Requires:       python3-gobject
 Requires:       gtk4 >= 4.22
 Requires:       libadwaita >= 1.9
 # Dock, docked creative panels, ArrangeView and the drawn AudioMeter.
-Requires:       luma-developer-platform >= 0.1.0-1.luma.131
+Requires:       luma-developer-platform >= 0.1.0-1.luma.134
 Requires:       google-figtree-fonts
 # The program graph: GL upload, mixing and conversion (base), FLV/MKV/MP4
 # muxers, PulseAudio capture and level meters (good), RTMP(S), VA-API
@@ -154,6 +154,19 @@ gtk4-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1
 %{_libdir}/gstreamer-1.0/libgstlumavideofx.so
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.2
+- App audio widgets through luma_appkit.audio_capture (the Share sound
+  picker, restore tokens); a capture lives while its scene is shown.
+- A refused or failed restore token falls back to the picker once; a
+  cancelled, timed-out or failed share leaves the widget saying so with
+  its fix in the bar and the Source editor.
+- Registers its app id with xdg-desktop-portal, so the picker and the
+  sharing pill name Streamy and keep its restore tokens.
+- The Audio inset is as tall as its strips; on a phone it stays under the
+  preview. Widget rows end in their eye or speaker; hidden and muted show.
+- An open editor keeps the selection's name in the bar.
+- SVT-AV1 (svtav1enc) as the software AV1 encoder after VA AV1:
+  preset 10, bitrate-targeted, a key frame every 2 s.
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - First package: scenes of displays, windows, cameras, images and sound;
   rounded corners, a stroke and a shadow per picture through lumaframe;

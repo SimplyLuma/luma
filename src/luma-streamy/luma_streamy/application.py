@@ -60,5 +60,10 @@ class StreamyApplication(Adw.Application):
 
 
 def main(argv: list[str] | None = None) -> int:
+    if not int(os.environ.get("STREAMY_FAKE_SOURCES", "0")):
+        # First, before GTK's own portal calls: the portal then knows this is Streamy.
+        from .portals import register_host_app
+
+        register_host_app(APP_ID)
     Gst.init(None)
     return StreamyApplication().run(argv if argv is not None else sys.argv)

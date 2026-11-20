@@ -31,8 +31,8 @@ KINDS = {
     "image": ("Image", "image", True, False),
     "microphone": ("Microphone", "mic", False, True),
     "desktop-audio": ("Desktop audio", "volume-2", False, True),
-    # Fed by the per-app audio portal when it lands (pipewiresrc on its fd).
-    "app-audio": ("Application audio", "volume-2", False, True),
+    # The apps the person picks in the AudioCapture portal (pipewiresrc on its remote).
+    "app-audio": ("App audio", "audio-lines", False, True),
 }
 
 #: What a new widget of each kind starts as, in canvas pixels of a 1920 × 1080 canvas.

@@ -231,8 +231,13 @@ def preview_chain() -> Chain:
 
 # ── Encoders ──
 
+#: Each codec's encoders, best first: VA hardware (low-power, then full), then software.
 H264 = ("vah264lpenc", "vah264enc", "openh264enc")
-AV1 = ("vaav1lpenc", "vaav1enc")
+#: SVT-AV1 is the software AV1, for machines without hardware AV1 encode.
+AV1 = ("vaav1lpenc", "vaav1enc", "svtav1enc")
+
+#: SVT-AV1's fastest preset in Fedora's build (it maps 11-13 to 10): real-time 1080p30 on a few cores.
+SVTAV1_PRESET = 10
 AAC = ("fdkaacenc", "avenc_aac", "voaacenc")
 
 
@@ -254,8 +259,10 @@ def choose(available: set[str], codec: str) -> EncoderChoice | None:
 
 
 def tap_video() -> list[Element]:
-    """Program pictures for the encoders: converted to NV12 on the GPU, read back once."""
-    return [Element("queue", "tap-vqueue", {"max-size-buffers": 3, "leaky": 2}),
+    """Program pictures for the encoders: converted to NV12 on the GPU, read back once. The valve
+    closes while nothing is sent, so an idle tap converts and reads back nothing."""
+    return [Element("valve", "tap-vvalve", {"drop": False}),
+            Element("queue", "tap-vqueue", {"max-size-buffers": 3, "leaky": 2}),
             Element("glcolorconvert", "tap-glconvert"),
             Element("capsfilter", "tap-glnv12", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
             Element("gldownload", "tap-download"),
@@ -265,7 +272,8 @@ def tap_video() -> list[Element]:
 
 
 def tap_sound() -> list[Element]:
-    return [Element("queue", "tap-aqueue", {"max-size-time": 500_000_000, "leaky": 2}),
+    return [Element("valve", "tap-avalve", {"drop": False}),
+            Element("queue", "tap-aqueue", {"max-size-time": 500_000_000, "leaky": 2}),
             Element("audioconvert", "tap-aconvert"),
             Element("capsfilter", "tap-s16", {"caps": f"audio/x-raw,format=S16LE,rate={AUDIO_RATE},channels=2"}),
             Element("appsink", "tap-sound", {"emit-signals": True, "drop": True, "max-buffers": 16,
@@ -281,6 +289,14 @@ def video_encoder_chain(choice: EncoderChoice, bitrate_kbps: int, prefix: str) -
         props = {"rate-control": "cbr", "bitrate": bitrate_kbps, "key-int-max": gop}
         if "h26" in f:
             props["b-frames"] = 0
+    elif f == "svtav1enc":
+        head = [Element("videoconvert", f"{prefix}-convert"),
+                Element("capsfilter", f"{prefix}-i420", {"caps": "video/x-raw,format=I420"})]
+        # Real-time: the fastest preset, rate-controlled to the bitrate (crf off), a key frame every
+        # 2 s. SVT-AV1's CBR needs its low-delay structure, which stalls in GStreamer 1.28, so this
+        # is its bitrate-targeted VBR, which AV1 destinations (enhanced RTMP, files) take.
+        props = {"preset": SVTAV1_PRESET, "target-bitrate": bitrate_kbps, "crf": -1,
+                 "intra-period-length": gop - 1}
     else:
         head = [Element("videoconvert", f"{prefix}-convert"),
                 Element("capsfilter", f"{prefix}-i420", {"caps": "video/x-raw,format=I420"})]
