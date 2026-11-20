@@ -45,6 +45,13 @@ __all__ = ["PanelRow", "PanelHeading", "PanelField", "PanelConfirm", "panel_list
            "PanelSwitch", "PanelChoices", "PanelKey"]
 
 
+def _checked(on: bool):
+    """CHECKED is a tristate (an int), not a boolean: a bool there is a GLib critical."""
+    from gi.repository import GObject
+
+    return GObject.Value(GObject.TYPE_INT, int(bool(on)))
+
+
 def _fold_from(widget: Gtk.Widget) -> None:
     """Fold the action center (or bar frame) `widget` sits in, after an action in its panel."""
     node = widget.get_parent()
@@ -149,7 +156,7 @@ class PanelRow(Gtk.Button):
             self.switch.add_css_class("lumaui-panel-row-switch")
             line.append(self.switch)
             self.add_css_class("switch")
-            self.update_state([Gtk.AccessibleState.CHECKED], [bool(toggle)])
+            self.update_state([Gtk.AccessibleState.CHECKED], [_checked(bool(toggle))])
             closes = False
         self.on_toggle = on_toggle
         if selected and not note:
@@ -165,7 +172,7 @@ class PanelRow(Gtk.Button):
         if self.switch is not None:
             active = not self.switch.get_active()
             self.switch.set_active(active)
-            self.update_state([Gtk.AccessibleState.CHECKED], [active])
+            self.update_state([Gtk.AccessibleState.CHECKED], [_checked(active)])
             if self.on_toggle is not None:
                 self.on_toggle(active)
             return
@@ -402,7 +409,7 @@ class PanelChoices(Gtk.Box):
         self.selected = key
         for name, button in self.buttons.items():
             (button.add_css_class if name == key else button.remove_css_class)("on")
-            button.update_state([Gtk.AccessibleState.CHECKED], [name == key])
+            button.update_state([Gtk.AccessibleState.CHECKED], [_checked(name == key)])
 
     def _pick(self, key: str) -> None:
         self.set_selected(key)

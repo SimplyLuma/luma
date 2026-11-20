@@ -42,27 +42,6 @@ def picker():
 
     changes, commits = [], []
     p = ColorPicker("1F6FE0", palette=["FF0000"], on_change=changes.append, on_commit=commits.append)
-    assert p.get_rgba().to_string() == Gdk.RGBA(red=0x1F / 255, green=0x6F / 255, blue=0xE0 / 255, alpha=1).to_string()
-    assert isinstance(recent_colors(), list)
-    # A field hosts its picker where the app says: here a stand-in for an ActionCenter's grow().
-    grown = []
-
-    class Bar:
-        def grow(self, key, widget):
-            grown.append((key, widget))
-
-    field = PropertyColor("Fill", "1F6FE0", bar=Bar(), on_commit=commits.append)
-    swatch = field.get_first_child()
-    swatch.emit("clicked")
-    assert grown and grown[0][0] == "lumaui-color-Fill" and type(grown[0][1]).__name__ == "ColorPicker", grown
-
-
-def picker():
-    from gi.repository import Gdk
-    from luma_appkit import ColorPicker, PropertyColor, recent_colors
-
-    changes, commits = [], []
-    p = ColorPicker("1F6FE0", palette=["FF0000"], on_change=changes.append, on_commit=commits.append)
     blue = Gdk.RGBA()
     blue.parse("#1F6FE0")
     assert p.get_rgba().equal(blue), p.get_rgba().to_string()
@@ -346,6 +325,50 @@ def _first(widget, css):
     return None
 
 
+def dock_equal_split():
+    """A split's ratio is a share of the two tiles' own length: 0.5 is two equal tiles."""
+    from luma_appkit import Dock, DockTile
+
+    a = DockTile("a", "A", "layers", Gtk.Box(), main=True)
+    b = DockTile("b", "B", "layers", Gtk.Box())
+    d = Dock([a, b], layout=Dock.split("h", 0.5, "a", "b"))
+    window = Gtk.Window(default_width=900, default_height=600)
+    window.set_child(d)
+    window.present()
+    settle()
+    assert abs(a.get_width() - b.get_width()) <= 1, (a.get_width(), b.get_width())
+    assert abs(d.layout()["ratio"] - 0.5) < 0.01, d.layout()
+    # A person's drag sets the share; a relayout or a resize afterwards keeps it.
+    paned = d._panes[0][0]
+    paned.held = True
+    paned.set_position(300)
+    settle()
+    paned.held = False
+    assert abs(a.get_width() - 300) <= 1, a.get_width()
+    ratio = d.layout()["ratio"]
+    d.queue_resize()
+    settle()
+    assert abs(a.get_width() - 300) <= 1 and d.layout()["ratio"] == ratio, (a.get_width(), d.layout())
+    window.set_default_size(1200, 600)
+    settle()
+    share = a.get_width() / (a.get_width() + b.get_width())
+    assert abs(share - ratio) < 0.01 and d.layout()["ratio"] == ratio, (share, ratio, d.layout())
+    window.destroy()
+
+
+def panel_checked_states():
+    """Switch rows and choice chips state CHECKED as a tristate (a bool is a GLib critical, fatal here)."""
+    from luma_appkit import PanelChoices, PanelSwitch
+
+    toggled = []
+    row = PanelSwitch("mic", "Reduce background noise", active=True, on_toggle=toggled.append)
+    row.emit("clicked")
+    assert toggled == [False]
+    choices = PanelChoices([("f", "°F"), ("c", "°C")], selected="c")
+    choices.set_selected("f")
+    assert choices.selected == "f"
+
+
 def meter_track():
     """A silent meter's empty track reads against the well it sits on."""
     from luma_appkit import VolumeSlider
@@ -368,7 +391,6 @@ if __name__ == "__main__":
     docks()
     arrange()
     picker()
-    picker()
     meter()
     live_chip()
     dock()
@@ -376,5 +398,7 @@ if __name__ == "__main__":
     fit_group()
     sidebar_headings()
     meter_track()
+    dock_equal_split()
+    panel_checked_states()
     GLib.MainContext.default().iteration(False)
     print("ok")

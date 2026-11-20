@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.138%{?dist}
+Release:        1.luma.139%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,13 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.139
+- Dock: a split's ratio is a share of its own length (both tiles and the
+  seam, as drawn), so 0.5 gives two equal tiles. Only a person's move of a
+  seam changes the share; a move GTK makes while laying out goes back to it.
+- PanelRow (switch), PanelSwitch, PanelChoices: the CHECKED accessible state
+  is set as a tristate int, no longer a bool (a GLib critical).
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.138
 - LumaColorPicker (ColorPicker in luma_appkit): saturation/brightness area,
   hue and opacity strips, Luma's palette, the document's colours and the
