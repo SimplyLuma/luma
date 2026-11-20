@@ -2,7 +2,7 @@
 
 Name:           luma-portal
 Version:        0.1.0
-Release:        1.luma.10%{?dist}
+Release:        1.luma.11%{?dist}
 Summary:        Project Luma's desktop portal backend
 License:        Apache-2.0
 URL:            https://projectluma.org/platform/portal
@@ -101,6 +101,11 @@ grep -Fq 'is-recording' luma_portal/mutter.py
 %config(noreplace) %{_sysconfdir}/xdg-desktop-portal/gnome-portals.conf
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.11
+- Restore a shared screen or window through xdg-desktop-portal's restore
+  data, so an application's restore token skips the picker; a choice that
+  no longer applies shows the picker instead of failing
+- Wait for the person at the picker without a D-Bus timeout
 * Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.10
 - AudioCapture backend: the Share sound picker lists the apps playing with
   live levels and "All sound except" the caller; the chosen sound becomes one

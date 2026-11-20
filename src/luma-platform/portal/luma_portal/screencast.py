@@ -17,15 +17,18 @@ Three rules this file exists to keep:
 - The caller is always answered. An unanswered portal method leaves the
   application waiting on this process for ever, which is indistinguishable
   from the feature not existing, so every method answers even when it fails.
+
+Restoring a share: xdg-desktop-portal owns restore tokens (it keeps them in
+its permission store, per application) and never shows them to a backend.
+What it keeps for us is our ``restore_data``, ``("luma", 1, choice)``,
+returned from Start and handed back in SelectSources when the application
+presents its token. A choice that no longer applies (a screen unplugged, a
+window closed) falls back to the picker rather than failing the share.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import pathlib
-import secrets
 
 import gi
 
@@ -120,67 +123,44 @@ def unpack(options: dict) -> dict:
     return out
 
 
-class TokenStore:
-    """Restore tokens, bound to the application they were issued to.
+#: Our restore data's vendor and version, as xdg-desktop-portal keeps it.
+RESTORE_VENDOR = "luma"
+RESTORE_VERSION = 1
 
-    A token is a name for a choice the person already made, and it is honoured
-    only for the same application: another application presenting someone
-    else's token gets nothing and is asked afresh. Transient tokens live in
-    this process; persistent ones live in the user's data directory.
-    """
 
-    def __init__(self) -> None:
-        self._transient: dict[str, dict] = {}
-        base = os.environ.get("XDG_DATA_HOME") or \
-            os.path.expanduser("~/.local/share")
-        self._path = pathlib.Path(base) / "luma-portal" / "screencast-tokens.json"
-        self._persistent = self._read()
+def restore_data(choice: dict) -> GLib.Variant:
+    """The ``(suv)`` xdg-desktop-portal keeps for a persisted share: what was chosen."""
+    data = {
+        "monitors": GLib.Variant("as", [str(m) for m in choice.get("monitors") or []]),
+        "windows": GLib.Variant("at", [int(w) for w in choice.get("windows") or []]),
+        "cursor-mode": GLib.Variant("u", int(choice.get("cursor-mode") or mutter.PORTAL_CURSOR_HIDDEN)),
+        "hide-notifications": GLib.Variant("b", bool(choice.get("hide-notifications"))),
+    }
+    return GLib.Variant("(suv)", (RESTORE_VENDOR, RESTORE_VERSION, GLib.Variant("a{sv}", data)))
 
-    def _read(self) -> dict:
-        try:
-            return json.loads(self._path.read_text())
-        except (OSError, ValueError):
-            return {}
 
-    def _write(self) -> None:
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            # 0600: a token names what someone chose to share.
-            temporary = self._path.with_suffix(".json.new")
-            temporary.write_text(json.dumps(self._persistent))
-            temporary.chmod(0o600)
-            temporary.replace(self._path)
-        except OSError as error:
-            LOGGER.warning("could not save restore tokens: %s", error)
-
-    def issue(self, app_id: str, choice: dict, persist_mode: int) -> str | None:
-        if persist_mode == PERSIST_NONE:
-            return None
-        token = secrets.token_hex(16)
-        entry = {"app-id": app_id, "choice": choice}
-        if persist_mode == PERSIST_TRANSIENT:
-            self._transient[token] = entry
-        else:
-            self._persistent[token] = entry
-            self._write()
-        return token
-
-    def take(self, app_id: str, token: str) -> dict | None:
-        for store in (self._transient, self._persistent):
-            entry = store.get(token)
-            if entry is None:
-                continue
-            if entry.get("app-id") != app_id:
-                LOGGER.warning("a restore token was offered by %r, not %r",
-                               app_id, entry.get("app-id"))
-                return None
-            return entry.get("choice")
+def restored_choice(value) -> dict | None:
+    """The choice in restore data we wrote, or None for anything else (another backend's, an old version)."""
+    if isinstance(value, GLib.Variant):
+        value = value.unpack()
+    try:
+        vendor, version, data = value
+    except (TypeError, ValueError):
         return None
-
-    def drop(self, token: str) -> None:
-        self._transient.pop(token, None)
-        if self._persistent.pop(token, None) is not None:
-            self._write()
+    if isinstance(data, GLib.Variant):
+        data = data.unpack()
+    if vendor != RESTORE_VENDOR or version != RESTORE_VERSION or not isinstance(data, dict):
+        return None
+    choice = {
+        "monitors": [str(m) for m in data.get("monitors") or []],
+        "windows": [int(w) for w in data.get("windows") or []],
+        "cursor-mode": int(data.get("cursor-mode") or mutter.PORTAL_CURSOR_HIDDEN),
+        "hide-notifications": bool(data.get("hide-notifications")),
+        "allow-control": False,
+    }
+    if not choice["monitors"] and not choice["windows"]:
+        return None
+    return choice
 
 
 class Session:
@@ -194,7 +174,9 @@ class Session:
         self.multiple = False
         self.cursor_modes = mutter.PORTAL_CURSOR_HIDDEN
         self.persist_mode = PERSIST_NONE
-        self.restore_token: str | None = None
+        #: The choice came from restore data, not from the picker this time.
+        self.restored = False
+        self.parent_window = ""
         self.choice: dict | None = None
         self.cast: mutter.ScreenCastSession | None = None
         self.closed = False
@@ -234,7 +216,6 @@ class ScreenCastPortal:
         self._sessions: dict[str, Session] = {}
         self._registrations: dict[str, int] = {}
         self._requests: dict[str, int] = {}
-        self._tokens = TokenStore()
         connection.register_object(
             object_path, self._node.interfaces[0], self._call, self._get, None)
         # The Shell asks for a session to end when the person presses Stop on
@@ -310,37 +291,37 @@ class ScreenCastPortal:
         session.cursor_modes = int(options.get("cursor_mode") or
                                    mutter.PORTAL_CURSOR_HIDDEN)
         session.persist_mode = int(options.get("persist_mode") or PERSIST_NONE)
-        token = options.get("restore_token")
-        if token:
-            restored = self._tokens.take(session.app_id, str(token))
-            if restored:
-                # A restored session shares again without the picker. The old
-                # token is spent; Start issues a fresh one.
-                session.choice = restored
-                session.restore_token = str(token)
-                LOGGER.info("session %s restored a previous choice",
-                            session_handle)
+        restored = restored_choice(options.get("restore_data"))
+        if restored is not None:
+            # The application presented a token xdg-desktop-portal knew: share
+            # the same thing again without the picker.
+            session.choice = restored
+            session.restored = True
+            LOGGER.info("session %s restored a previous choice", session_handle)
         self._answer_request(handle, invocation, PORTAL_SUCCESS)
 
     # -- Start ------------------------------------------------------------
 
     def _start(self, parameters, invocation) -> None:
-        handle, session_handle, app_id, parent_window, _options = \
+        handle, session_handle, _app_id, parent_window, _options = \
             parameters.unpack()
         session = self._sessions.get(session_handle)
         if session is None:
             answer(invocation, PORTAL_CANCELLED)
             return
 
+        session.parent_window = parent_window or ""
         if session.choice is not None:
             # Restored: no picker, straight to the stream.
             self._begin(session, invocation, handle)
             return
+        self._pick(session, invocation, handle)
 
+    def _pick(self, session, invocation, handle) -> None:
         self._watch_request(handle, lambda: self._cancel_picker(session))
         options = {
-            "app-id": GLib.Variant("s", app_id or ""),
-            "parent-window": GLib.Variant("s", parent_window or ""),
+            "app-id": GLib.Variant("s", session.app_id or ""),
+            "parent-window": GLib.Variant("s", session.parent_window),
             "types": GLib.Variant("u", session.types),
             "multiple": GLib.Variant("b", session.multiple),
             "cursor-modes": GLib.Variant("u", session.cursor_modes),
@@ -349,7 +330,9 @@ class ScreenCastPortal:
         self._connection.call(
             SHELL_NAME, SHELL_PATH, SHELL_IFACE, "Choose",
             GLib.Variant("(a{sv})", (options,)), GLib.VariantType("(ua{sv})"),
-            Gio.DBusCallFlags.NONE, -1, None,
+            # A person is choosing: no D-Bus timeout (the default 25 s gave up
+            # on anyone who took longer). Cancel and Close still end it.
+            Gio.DBusCallFlags.NONE, GLib.MAXINT, None,
             lambda source, result, _data: self._chosen(
                 session, invocation, handle, source, result), None)
 
@@ -401,10 +384,13 @@ class ScreenCastPortal:
                     session, invocation, handle)
             cast.start()
         except GLib.Error as error:
-            LOGGER.error("Mutter would not start the stream: %s", error.message)
             if session.cast:
                 session.cast.stop()
                 session.cast = None
+            if session.restored:
+                self._restore_failed(session, invocation, handle, error.message)
+                return
+            LOGGER.error("Mutter would not start the stream: %s", error.message)
             self._answer_request(handle, invocation, PORTAL_CANCELLED)
             return
 
@@ -416,6 +402,14 @@ class ScreenCastPortal:
         session.timeout_id = GLib.timeout_add_seconds(
             NODE_TIMEOUT_SECONDS, lambda: self._nodes_timed_out(session))
         self._maybe_ready(session, invocation, handle)
+
+    def _restore_failed(self, session, invocation, handle, why: str) -> None:
+        """A restored choice no longer applies (a screen unplugged, a window closed): ask afresh."""
+        LOGGER.info("session %s: the restored choice no longer applies (%s); showing the picker",
+                    session.handle, why)
+        session.choice = None
+        session.restored = False
+        self._pick(session, invocation, handle)
 
     def _maybe_ready(self, session, invocation, handle) -> None:
         if session.pending is None or not session.cast or not session.cast.ready:
@@ -450,13 +444,9 @@ class ScreenCastPortal:
             ]),
         }
         if session.persist_mode != PERSIST_NONE:
-            if session.restore_token:
-                self._tokens.drop(session.restore_token)
-            token = self._tokens.issue(session.app_id, choice,
-                                       session.persist_mode)
-            if token:
-                results["restore_token"] = GLib.Variant("s", token)
-                results["persist_mode"] = GLib.Variant("u", session.persist_mode)
+            # xdg-desktop-portal turns this into the application's token.
+            results["restore_data"] = restore_data(choice)
+            results["persist_mode"] = GLib.Variant("u", session.persist_mode)
 
         # The Shell needs to know what is being shared and with whom, for the
         # violet edge and the Stop pill. It is told only what was chosen.

@@ -3,12 +3,11 @@
 
 What is worth testing here is what the backend decides on its own: which
 cursor mode Mutter is asked for, what an application is told about a stream,
-and above all that a restore token is never honoured for an application it was
-not issued to.
+and what restoring a share does: xdg-desktop-portal owns the tokens and gives
+the backend back only its own restore data, which must restore the same choice
+or fall back to the picker, never fail the share.
 """
 
-import os
-import tempfile
 import unittest
 
 import gi
@@ -100,68 +99,146 @@ class UnpackTests(unittest.TestCase):
         self.assertEqual(screencast.unpack(None), {})
 
 
-class TokenStoreTests(unittest.TestCase):
+class RestoreDataTests(unittest.TestCase):
+    """xdg-desktop-portal keeps our restore data and hands it back; tokens are its business."""
+
+    CHOICE = {"monitors": ["eDP-1"], "windows": [], "cursor-mode": 2,
+              "hide-notifications": True, "allow-control": False}
+
+    def through_the_bus(self, value):
+        # As the frontend stores and returns it: serialised, then parsed again.
+        return GLib.Variant.new_from_bytes(value.get_type(), value.get_data_as_bytes(), False)
+
+    def test_a_choice_comes_back(self):
+        data = self.through_the_bus(screencast.restore_data(self.CHOICE))
+        self.assertEqual(data.get_type_string(), "(suv)")
+        self.assertEqual(screencast.restored_choice(data), self.CHOICE)
+        self.assertEqual(screencast.restored_choice(data.unpack()), self.CHOICE)
+
+    def test_another_backends_data_is_ignored(self):
+        other = GLib.Variant("(suv)", ("gnome", 1, GLib.Variant("a{sv}", {})))
+        self.assertIsNone(screencast.restored_choice(other))
+        newer = GLib.Variant("(suv)", ("luma", 99, GLib.Variant("a{sv}", {
+            "monitors": GLib.Variant("as", ["eDP-1"])})))
+        self.assertIsNone(screencast.restored_choice(newer))
+
+    def test_an_empty_choice_is_nothing(self):
+        self.assertIsNone(screencast.restored_choice(
+            screencast.restore_data({"monitors": [], "windows": []})))
+        self.assertIsNone(screencast.restored_choice(None))
+        self.assertIsNone(screencast.restored_choice("not restore data"))
+
+
+class FakeInvocation:
+    def __init__(self):
+        self.answers = []
+
+    def return_value(self, value):
+        self.answers.append(value.unpack() if value is not None else None)
+
+
+class FakeBus:
+    """The backend's connection: objects it registers and the calls it makes."""
+
+    def __init__(self):
+        self.calls = []
+        self._next = 1
+
+    def register_object(self, *_args):
+        self._next += 1
+        return self._next
+
+    def unregister_object(self, _registration):
+        pass
+
+    def signal_subscribe(self, *_args):
+        return 1
+
+    def emit_signal(self, *_args):
+        pass
+
+    def call(self, name, path, iface, method, params, reply_type, flags, timeout, cancellable, callback, *data):
+        self.calls.append({"method": method, "timeout": timeout, "callback": callback})
+
+
+class FakeCast:
+    """Mutter's session: a monitor that is gone cannot be recorded."""
+
+    gone = {"HDMI-1"}
+
+    def __init__(self, _connection):
+        self.streams = []
+        self.on_closed = None
+        self.ready = False
+
+    def record_monitor(self, connector, _cursor_mode):
+        if connector in self.gone:
+            raise GLib.Error.new_literal(GLib.quark_from_string("test"), "Unknown monitor", 0)
+
+    def record_window(self, _window_id, _cursor_mode):
+        raise GLib.Error.new_literal(GLib.quark_from_string("test"), "Unknown window", 0)
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+
+class BackendTests(unittest.TestCase):
     def setUp(self):
-        self._home = tempfile.TemporaryDirectory()
-        self._saved = os.environ.get("XDG_DATA_HOME")
-        os.environ["XDG_DATA_HOME"] = self._home.name
-        self.store = screencast.TokenStore()
+        self._real = mutter.ScreenCastSession
+        mutter.ScreenCastSession = FakeCast
+        self.fresh()
+
+    def fresh(self):
+        self.bus = FakeBus()
+        self.portal = screencast.ScreenCastPortal(self.bus, "/org/freedesktop/portal/desktop")
+        self.session = "/org/freedesktop/portal/desktop/session/1_1/s"
+        self.portal._create_session(GLib.Variant("(oosa{sv})", ("/r/1", self.session, "", {})), FakeInvocation())
 
     def tearDown(self):
-        if self._saved is None:
-            os.environ.pop("XDG_DATA_HOME", None)
-        else:
-            os.environ["XDG_DATA_HOME"] = self._saved
-        self._home.cleanup()
+        mutter.ScreenCastSession = self._real
 
-    def test_no_token_is_issued_without_persistence(self):
-        self.assertIsNone(self.store.issue(
-            "org.example.App", {"windows": [1]}, screencast.PERSIST_NONE))
+    def select(self, options):
+        self.portal._select_sources(GLib.Variant("(oosa{sv})", ("/r/2", self.session, "", options)),
+                                    FakeInvocation())
 
-    def test_a_transient_token_comes_back_for_the_same_app(self):
-        token = self.store.issue("org.example.App", {"windows": [1]},
-                                 screencast.PERSIST_TRANSIENT)
-        self.assertEqual(self.store.take("org.example.App", token),
-                         {"windows": [1]})
+    def start(self):
+        invocation = FakeInvocation()
+        self.portal._start(GLib.Variant("(oossa{sv})", ("/r/3", self.session, "", "x11:1", {})), invocation)
+        return invocation
 
-    def test_a_token_is_never_honoured_for_another_app(self):
-        token = self.store.issue("org.example.App", {"windows": [1]},
-                                 screencast.PERSIST_PERSISTENT)
-        self.assertIsNone(self.store.take("org.example.Other", token))
-        # And the real owner is unaffected by someone else's attempt.
-        self.assertEqual(self.store.take("org.example.App", token),
-                         {"windows": [1]})
+    def shell_calls(self, method):
+        return [c for c in self.bus.calls if c["method"] == method]
 
-    def test_an_unknown_token_is_nothing(self):
-        self.assertIsNone(self.store.take("org.example.App", "not-a-token"))
+    def test_the_picker_never_times_out(self):
+        self.select({"types": GLib.Variant("u", 1)})
+        self.start()
+        (choose,) = self.shell_calls("Choose")
+        self.assertEqual(choose["timeout"], GLib.MAXINT)
 
-    def test_a_persistent_token_survives_a_restart(self):
-        token = self.store.issue("org.example.App", {"monitors": ["eDP-1"]},
-                                 screencast.PERSIST_PERSISTENT)
-        self.assertEqual(
-            screencast.TokenStore().take("org.example.App", token),
-            {"monitors": ["eDP-1"]})
+    def test_restore_data_skips_the_picker(self):
+        data = screencast.restore_data({"monitors": ["eDP-1"]})
+        self.select({"restore_data": data, "persist_mode": GLib.Variant("u", 2)})
+        self.start()
+        self.assertEqual(self.shell_calls("Choose"), [])
 
-    def test_a_transient_token_does_not(self):
-        token = self.store.issue("org.example.App", {"monitors": ["eDP-1"]},
-                                 screencast.PERSIST_TRANSIENT)
-        self.assertIsNone(screencast.TokenStore().take("org.example.App", token))
+    def test_a_choice_that_no_longer_applies_asks_again(self):
+        for choice in ({"monitors": ["HDMI-1"]}, {"windows": [42]}):
+            with self.subTest(choice=choice):
+                self.fresh()
+                self.select({"restore_data": screencast.restore_data(choice),
+                             "persist_mode": GLib.Variant("u", 2)})
+                invocation = self.start()
+                self.assertEqual(len(self.shell_calls("Choose")), 1)
+                self.assertEqual(invocation.answers, [], "the application waits for the picker")
 
-    def test_a_dropped_token_is_gone(self):
-        token = self.store.issue("org.example.App", {"windows": [1]},
-                                 screencast.PERSIST_PERSISTENT)
-        self.store.drop(token)
-        self.assertIsNone(self.store.take("org.example.App", token))
-        self.assertIsNone(
-            screencast.TokenStore().take("org.example.App", token))
-
-    def test_tokens_are_not_guessable(self):
-        first = self.store.issue("org.example.App", {},
-                                 screencast.PERSIST_TRANSIENT)
-        second = self.store.issue("org.example.App", {},
-                                  screencast.PERSIST_TRANSIENT)
-        self.assertNotEqual(first, second)
-        self.assertGreaterEqual(len(first), 32)
+    def test_a_restore_token_of_its_own_is_not_trusted(self):
+        # xdg-desktop-portal never forwards a token; one that arrives anyway is not a choice.
+        self.select({"restore_token": GLib.Variant("s", "0123456789abcdef")})
+        self.start()
+        self.assertEqual(len(self.shell_calls("Choose")), 1)
 
 
 class OfferedCapabilityTests(unittest.TestCase):
