@@ -82,7 +82,7 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/$package.spec" \
     for patch in SOURCES/0[0-9][0-9][0-9]-*.patch; do
       rpm -qpl "$srpm" | grep -qxF "$(basename "$patch")"
     done
-    test -n "$(find "RPMS/${LUMA_RPM_BUILDER_ARCHITECTURE}" -name "*.luma.*.rpm" -print -quit)"
+    test -n "$(find "RPMS/'"$architecture"'" -name "*.luma.*.rpm" -print -quit)"
   '
 
 rm -rf "$output_dir/RPMS" "$output_dir/SRPMS"
