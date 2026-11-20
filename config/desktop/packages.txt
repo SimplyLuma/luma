@@ -49,6 +49,11 @@ fwupd-plugin-modem-manager-2.1.7-1.luma.1.fc44.x86_64
 fwupd-plugin-uefi-capsule-data-2.1.7-1.luma.1.fc44.x86_64
 iio-sensor-proxy-3.8-2.luma.1.fc44.x86_64
 xdg-desktop-portal-1.22.1-1.luma.4.fc44.x86_64
+
+# Camera stack (replace Fedora base packages)
+libcamera-0.7.2-2.luma.1.fc44.x86_64
+libcamera-ipa-0.7.2-2.luma.1.fc44.x86_64
+
 NetworkManager-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-adsl-1:1.56.1-2.luma.1.fc44.x86_64
 NetworkManager-bluetooth-1:1.56.1-2.luma.1.fc44.x86_64
@@ -113,7 +118,7 @@ python3-authlib-1.7.2-0.1.luma.experiment.fc44.noarch
 python3-joserfc-1.7.5-0.1.luma.experiment.fc44.noarch
 
 # Compatibility (Android and Windows applications)
-luma-android-runtime-0.1.0-1.luma.115.fc44.noarch
+luma-android-runtime-0.1.0-1.luma.116.fc44.noarch
 luma-android-images-20.0-1.luma.18.fc44.x86_64
 luma-apk-metadata-0.1.0-1.luma.2.android20261030.1.fc44.x86_64
 luma-application-installer-0.1.0-1.luma.99.fc44.noarch
