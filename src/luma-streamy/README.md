@@ -25,18 +25,21 @@ MKV or fragmented MP4 file.
   `vaav1enc` for AV1; `fdkaacenc` for AAC.
 - `gst-lumaframe/`: the GL element that draws one layer in one pass
   (shadow, rounded mask, stroke, crop, opacity).
-- `luma_streamy/portals.py`: ScreenCast and AudioCapture (restore tokens
-  with a single fallback to the picker, `pipewire-serial`) and Camera
-  portals; the host app id is registered with the portal at startup.
+- `luma_streamy/portals.py`: ScreenCast (restore tokens with a single
+  fallback to the picker, `pipewire-serial`), Camera, and app sound through
+  `luma_appkit.audio_capture`; the host app id is registered with the portal
+  at startup.
 - The window is LumaUI: `NavigationSidebar` for scenes with the scene's
   widgets in its pane, a `Dock` with the preview as its bare stage and Audio
   as an inset that fits its strips, `ArrangeView` for direct manipulation,
   `AudioMeter`s, and the `ActionCenter` (Add widget, Record, Go live; a live
   chip; a selection's editors grow from the bar).
 
-Stream keys are stored with libsecret. App audio widgets carry the apps the
-person picks in the AudioCapture portal (`pipewiresrc` on its remote); the
-Add menu offers them only where that portal is present.
+Stream keys are stored with libsecret. App audio widgets carry the apps (or
+all sound but Streamy's own) the person picks in the Share sound picker,
+through `luma_appkit.audio_capture`. A widget keeps one capture while its
+scene is shown and closes it off-scene; its restore token brings it back
+without the picker. The Add menu offers App audio only where the portal is.
 
 ## Development
 

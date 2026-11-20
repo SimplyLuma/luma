@@ -40,7 +40,7 @@ BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  gtk4 >= 4.22
 BuildRequires:  libadwaita >= 1.9
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.133
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.134
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 
@@ -49,7 +49,7 @@ Requires:       python3-gobject
 Requires:       gtk4 >= 4.22
 Requires:       libadwaita >= 1.9
 # Dock, docked creative panels, ArrangeView and the drawn AudioMeter.
-Requires:       luma-developer-platform >= 0.1.0-1.luma.133
+Requires:       luma-developer-platform >= 0.1.0-1.luma.134
 Requires:       google-figtree-fonts
 # The program graph: GL upload, mixing and conversion (base), FLV/MKV/MP4
 # muxers, PulseAudio capture and level meters (good), RTMP(S), VA-API
@@ -155,7 +155,8 @@ gtk4-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1
 
 %changelog
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.2
-- App audio widgets through the AudioCapture portal, when Luma offers it.
+- App audio widgets through luma_appkit.audio_capture (the Share sound
+  picker, restore tokens); a capture lives while its scene is shown.
 - A refused or failed restore token falls back to the picker once; a
   cancelled, timed-out or failed share leaves the widget saying so with
   its fix in the bar and the Source editor.

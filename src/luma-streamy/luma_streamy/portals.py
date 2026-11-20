@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The ScreenCast, AudioCapture and Camera portals, asynchronously, with restore tokens.
+"""The ScreenCast and Camera portals, and app sound through luma_appkit.audio_capture.
 
-A display, window or app-audio widget owns one portal session. The session stays
-open while the widget exists, even when its scene isn't shown, so showing it again
-needs no picker: only its PipeWire node is stopped. Restore tokens are single-use:
-every Start returns a new one, which the widget keeps.
+A display or window widget owns one ScreenCast session. The session stays open while
+the widget exists, even when its scene isn't shown, so showing it again needs no
+picker: only its PipeWire node is stopped. An app-audio widget owns one capture
+(luma_appkit's AudioCapture) while its scene is shown; off-scene it is closed and
+comes back from its restore token. Restore tokens are single-use: every share
+returns a new one, which the widget keeps.
 
 Restoring never strands a widget: a token the portal refuses (malformed, forgotten,
 from an older portal) or a restore that fails is retried once as a fresh pick, and
@@ -25,7 +27,6 @@ from gi.repository import Gio, GLib
 BUS = "org.freedesktop.portal.Desktop"
 PATH = "/org/freedesktop/portal/desktop"
 SCREENCAST = "org.freedesktop.portal.ScreenCast"
-AUDIOCAPTURE = "org.freedesktop.portal.AudioCapture"
 CAMERA = "org.freedesktop.portal.Camera"
 REQUEST = "org.freedesktop.portal.Request"
 REGISTRY = "org.freedesktop.host.portal.Registry"
@@ -33,9 +34,6 @@ REGISTRY = "org.freedesktop.host.portal.Registry"
 MONITOR, WINDOW = 1, 2
 CURSOR_EMBEDDED = 2
 PERSIST_UNTIL_REVOKED = 2
-#: AudioCapture: the person picks applications; Streamy's own sound is left out.
-APPLICATIONS, EXCLUDE_SELF = 1, 2
-
 #: An older luma-portal gave up on its picker after D-Bus's default 25 s and answered
 #: "cancelled". A cancel that lands right then is that timeout, not the person.
 _DBUS_DEFAULT_TIMEOUT = 25.0
@@ -65,8 +63,10 @@ class Capture:
     session: str | None = None
     path: str | None = None
     name: str | None = None
-    #: AudioCapture: the applications the person chose, by name.
-    applications: list = field(default_factory=list)
+    #: App audio: what is heard, in words ("Spotify, Firefox", "All sound"), and the
+    #: luma_appkit capture that owns the session and the remote.
+    description: str | None = None
+    owner: object = None
     opener: Callable | None = None
     opening: bool = False
     pool: list = field(default_factory=list)
@@ -158,6 +158,8 @@ class Portals:
         self.sender = self.bus.get_unique_name()[1:].replace(".", "_")
         self.captures: dict[str, Capture] = {}  # widget id -> open capture
         self.on_ready: Callable[[str], None] | None = None
+        #: A capture the portal ended by itself (widget id).
+        self.on_ended: Callable[[str], None] | None = None
 
     # ── Requests ──
 
@@ -228,19 +230,54 @@ class Portals:
         self._share(SCREENCAST, widget_id, options, restore_token, done, failed, parent)
 
     def audio_capture_available(self) -> bool:
-        """Whether Luma's AudioCapture portal is here (its backend chooses which apps are heard)."""
-        types = self._property(AUDIOCAPTURE, "AvailableSourceTypes")
-        return bool(types and types & APPLICATIONS)
+        """Whether Luma's Audio Capture portal is here (the Share sound picker chooses what is heard)."""
+        from luma_appkit import audio_capture
+
+        return audio_capture.is_available(self.bus)
 
     def app_audio(self, widget_id: str, *, restore_token: str | None, done: Callable[[Capture], None],
-                  failed: Callable[[str], None], parent: str = "") -> None:
-        """Pick (or restore) the applications whose sound a widget carries, never Streamy's own."""
+                  failed: Callable[[str], None], parent: str = "", retried: bool = False) -> None:
+        """Pick (or restore) the sound a widget carries: chosen apps, or all sound but Streamy's own.
+        A token the portal no longer honours falls back to the picker once, as screen shares do."""
+        from luma_appkit import audio_capture
+
+        if widget_id in self.captures:
+            done(self.captures[widget_id])
+            return
         if not self.audio_capture_available():
             failed("unavailable")
             return
-        options = {"types": GLib.Variant("u", APPLICATIONS), "multiple": GLib.Variant("b", True),
-                   "audio_mode": GLib.Variant("u", EXCLUDE_SELF)}
-        self._share(AUDIOCAPTURE, widget_id, options, restore_token, done, failed, parent)
+
+        def ready(granted, error) -> None:
+            if error is not None:
+                if error.cancelled:
+                    failed("cancelled")
+                elif restore_token and not retried:
+                    self.app_audio(widget_id, restore_token=None, done=done, failed=failed, parent=parent,
+                                   retried=True)
+                else:
+                    failed("failed")
+                return
+            capture = Capture(-1, granted.target, None, granted.restore_token, granted.session_handle)
+            capture.description = granted.description
+            capture.owner = granted
+            # The capture owns its remote; each pipewiresrc gets a duplicate of it to own and close.
+            capture.opener = lambda give: give(os.dup(granted.fd) if granted.fd >= 0 else None)
+            granted.on_closed = lambda _c: self._ended(widget_id, capture)
+            capture.pool.append(os.dup(granted.fd))
+            self.captures[widget_id] = capture
+            done(capture)
+
+        audio_capture.request_audio_capture(parent or None, ready, types=audio_capture.APPLICATIONS |
+                                            audio_capture.ALL_SOUND, multiple=True, include_self=False,
+                                            persist=True, restore_token=restore_token, connection=self.bus)
+
+    def _ended(self, widget_id: str, capture: "Capture") -> None:
+        """The portal ended a capture (the person stopped sharing): the widget hears so."""
+        if self.captures.get(widget_id) is capture:
+            self.close(widget_id)
+            if self.on_ended is not None:
+                self.on_ended(widget_id)
 
     def _share(self, interface: str, widget_id: str, options: dict, restore_token: str | None,
                done: Callable[[Capture], None], failed: Callable[[str], None], parent: str,
@@ -253,9 +290,9 @@ class Portals:
             done(self.captures[widget_id])
             return
         version = self._property(interface, "version") or 1
-        token = restore_token if (version >= 4 or interface != SCREENCAST) and not retried else None
+        token = restore_token if version >= 4 and not retried else None
         state = {"session": None, "started": 0.0}
-        reasons = ("cancelled", "failed", "timeout", "unavailable")
+        reasons = ("cancelled", "failed", "timeout")
         given_up = failed
         failed = lambda reason: given_up(reason if reason in reasons else "failed")  # noqa: E731
 
@@ -272,7 +309,7 @@ class Portals:
         def created(results: dict) -> None:
             session = state["session"] = results["session_handle"]
             select = dict(options)
-            if version >= 4 or interface != SCREENCAST:
+            if version >= 4:
                 select["persist_mode"] = GLib.Variant("u", PERSIST_UNTIL_REVOKED)
                 if token:
                     select["restore_token"] = GLib.Variant("s", token)
@@ -298,7 +335,6 @@ class Portals:
             capture = Capture(-1, str(serial) if serial is not None else None, size,
                               results.get("restore_token"), session)
             capture.path = None if serial is not None else str(node_id)
-            capture.applications = [str(a) for a in props.get("applications") or []]
             capture.opener = lambda ready: self._open_remote_async(interface, [GLib.Variant("o", session)], ready)
 
             def first(fd: int | None) -> None:
@@ -366,7 +402,11 @@ class Portals:
         for fd in capture.pool:
             os.close(fd)
         capture.pool.clear()
-        self._close_session(capture.session)
+        if capture.owner is not None:
+            capture.owner.on_closed = None
+            capture.owner.close()  # ends its session and closes its remote
+        else:
+            self._close_session(capture.session)
 
     def source_for(self, widget) -> tuple[int | None, str | None]:
         """The engine's question: a PipeWire connection of its own (pipewiresrc owns it) and the node

@@ -74,7 +74,7 @@ class FakeBus:
         return GLib.Variant("(v)", (GLib.Variant("u", self.props[(interface, name)]),))
 
 
-SC, AC = portals.SCREENCAST, portals.AUDIOCAPTURE
+SC = portals.SCREENCAST
 SESSION = (0, {"session_handle": GLib.Variant("s", "/org/freedesktop/portal/desktop/session/sender/s")})
 SELECTED = (0, {})
 
@@ -90,6 +90,7 @@ def make(answers, props=None):
     p.sender = "sender"
     p.captures = {}
     p.on_ready = None
+    p.on_ended = None
     return p
 
 
@@ -151,26 +152,96 @@ class ShareTests(unittest.TestCase):
         self.assertEqual(self.run_share(p, restore_token=None), {"failed": "failed"})
 
 
-class AppAudioTests(unittest.TestCase):
-    def test_without_the_portal_it_is_unavailable(self):
-        p = make({})
-        out = {}
-        p.app_audio("a", restore_token=None, done=out.setdefault, failed=lambda r: out.setdefault("failed", r))
-        self.assertEqual(out, {"failed": "unavailable"})
+class FakeGranted:
+    """luma_appkit.audio_capture.AudioCapture, as much as Streamy uses."""
 
-    def test_the_chosen_apps_come_with_the_capture(self):
-        p = make({(AC, "CreateSession"): [SESSION], (AC, "SelectSources"): [SELECTED],
-                  (AC, "Start"): [started(applications=GLib.Variant("as", ["Firefox", "Spotify"]),
-                                          source_type=GLib.Variant("u", 1))]},
-                 {(AC, "AvailableSourceTypes"): 3, (AC, "version"): 1})
-        out = {}
-        p.app_audio("a", restore_token=None, done=lambda c: out.setdefault("done", c),
+    def __init__(self, fd):
+        self.fd, self.target, self.session_handle = fd, "4100", "/session/a"
+        self.restore_token, self.description, self.on_closed, self.closed = "tok-2", "Spotify, Firefox", None, False
+
+    def close(self):
+        self.closed = True
+
+
+class AppAudioTests(unittest.TestCase):
+    """App audio goes through luma_appkit.audio_capture: Streamy keeps one capture per widget."""
+
+    def setUp(self):
+        import os
+
+        from luma_appkit import audio_capture
+
+        self.module, self.saved = audio_capture, (audio_capture.is_available, audio_capture.request_audio_capture)
+        self.available, self.asked, self.answers = True, [], []
+        audio_capture.is_available = lambda _bus=None: self.available
+        audio_capture.request_audio_capture = self.request
+        self.read, self.write = os.pipe()
+
+    def tearDown(self):
+        import os
+
+        self.module.is_available, self.module.request_audio_capture = self.saved
+        for fd in (self.read, self.write):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+    def request(self, parent, callback, **options):
+        self.asked.append(options)
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            callback(None, answer)
+        else:
+            callback(answer, None)
+
+    def share(self, token=None):
+        p, out = make({}), {}
+        p.app_audio("a", restore_token=token, done=lambda c: out.setdefault("done", c),
                     failed=lambda r: out.setdefault("failed", r))
-        self.assertEqual(out["done"].applications, ["Firefox", "Spotify"])
-        (select,) = [o for i, m, o in p.bus.calls if m == "SelectSources"]
-        self.assertEqual(select["types"].unpack(), portals.APPLICATIONS)
-        self.assertEqual(select["audio_mode"].unpack(), portals.EXCLUDE_SELF)
-        self.assertTrue(select["multiple"].unpack())
+        return p, out
+
+    def test_without_the_portal_it_is_unavailable(self):
+        self.available = False
+        self.assertEqual(self.share()[1], {"failed": "unavailable"})
+        self.assertEqual(self.asked, [])
+
+    def test_a_capture_carries_what_is_heard(self):
+        granted = FakeGranted(self.read)
+        self.answers = [granted]
+        p, out = self.share()
+        capture = out["done"]
+        self.assertEqual((capture.node, capture.description, capture.restore_token), ("4100", "Spotify, Firefox", "tok-2"))
+        self.assertEqual(len(capture.pool), 1)
+        self.assertNotEqual(capture.pool[0], self.read)  # each source owns a duplicate
+        options = self.asked[0]
+        self.assertEqual(options["types"], self.module.APPLICATIONS | self.module.ALL_SOUND)
+        self.assertFalse(options["include_self"])
+        self.assertTrue(options["multiple"] and options["persist"])
+        p.close("a")
+        self.assertTrue(granted.closed)
+        self.assertNotIn("a", p.captures)
+
+    def test_a_refused_token_falls_back_to_the_picker_once(self):
+        self.answers = [self.module.AudioCaptureError("bad token"), FakeGranted(self.read)]
+        _p, out = self.share(token="old")
+        self.assertIn("done", out)
+        self.assertEqual([o["restore_token"] for o in self.asked], ["old", None])
+
+    def test_cancel_is_not_retried(self):
+        self.answers = [self.module.AudioCaptureError("no", cancelled=True)]
+        self.assertEqual(self.share(token="old")[1], {"failed": "cancelled"})
+        self.assertEqual(len(self.asked), 1)
+
+    def test_the_portal_ending_it_is_heard(self):
+        granted = FakeGranted(self.read)
+        self.answers = [granted]
+        p, _out = self.share()
+        ended = []
+        p.on_ended = ended.append
+        granted.on_closed(granted)
+        self.assertEqual(ended, ["a"])
+        self.assertNotIn("a", p.captures)
 
 
 if __name__ == "__main__":

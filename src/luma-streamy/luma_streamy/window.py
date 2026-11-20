@@ -94,6 +94,7 @@ class StreamyWindow(AppWindow):
         self.engine = engine or Engine(sources=self._source_for)
         if self.portals is not None:
             self.portals.on_ready = lambda _widget_id: self._show_scene()
+            self.portals.on_ended = lambda widget_id: self._widget_failed(None, widget_id, "ended")
         self.engine.connect("levels", self._levels)
         self.engine.connect("problem", lambda _e, text: Toast.show(self.host, text, kind="warning"))
         self.engine.connect("output-state", self._output_state)
@@ -290,10 +291,10 @@ class StreamyWindow(AppWindow):
             self.widget_errors.pop(widget.id, None)
             if capture.restore_token:
                 widget.source["restore-token"] = capture.restore_token  # single-use: keep the new one
-            if widget.kind == "app-audio" and capture.applications:
-                widget.source["applications"] = capture.applications
+            if widget.kind == "app-audio" and capture.description:
+                widget.source["heard"] = capture.description
                 if not widget.source.get("named"):
-                    widget.name = self.app_audio_name(capture.applications)
+                    widget.name = capture.description[:40]
             if capture.aspect and not widget.source.get("sized"):
                 widget.source["sized"] = True
                 h = widget.width / capture.aspect
@@ -308,7 +309,7 @@ class StreamyWindow(AppWindow):
                 reason = "nocamera"
             elif reason == "cancelled":
                 reason = "unshared"
-            elif reason not in ("timeout", "unavailable"):
+            elif reason not in ("timeout", "unavailable", "ended"):
                 reason = "missing"
             widget.source.pop("restore-token", None)  # spent or refused: the next share picks afresh
             self._widget_failed(None, widget.id, reason)
@@ -325,17 +326,20 @@ class StreamyWindow(AppWindow):
             widget.id, window=widget.kind == "window", restore_token=token, done=done, failed=failed,
             parent=parent))
 
-    @staticmethod
-    def app_audio_name(applications: list) -> str:
-        """An app-audio widget is named for what it carries: "Firefox", "Firefox and Spotify", "3 apps"."""
-        if len(applications) == 1:
-            return applications[0][:40]
-        if len(applications) == 2:
-            return f"{applications[0]} and {applications[1]}"[:40]
-        return f"{len(applications)} apps"
-
     def _show_scene(self) -> None:
         self.engine.show_scene(self.project.active_scene, skip=set(self.widget_errors))
+        self._close_offscene_sound()
+
+    def _close_offscene_sound(self) -> None:
+        """An app-audio capture lives only while its scene is shown; its restore token brings it back."""
+        if self.portals is None:
+            return
+        scene = self.project.active_scene
+        shown = {w.id for w in scene.widgets} if scene else set()
+        for other in self.project.scenes:
+            for w in other.widgets:
+                if w.kind == "app-audio" and w.id not in shown and w.id in self.portals.captures:
+                    self.portals.close(w.id)
 
     @staticmethod
     def problem_words(w: Widget, reason: str) -> str:
@@ -346,6 +350,8 @@ class StreamyWindow(AppWindow):
         if reason == "unshared":
             what = {"display": "a display", "window": "a window", "app-audio": "the apps to hear"}.get(w.kind, "it")
             return f"Nothing is shared yet. Choose {what} to show it here."
+        if reason == "ended":
+            return "Sharing this sound was stopped. Choose apps to hear them again."
         if reason == "timeout":
             return "The picker stopped waiting before anything was chosen. Share again when you're ready."
         if reason == "unavailable":
@@ -679,7 +685,7 @@ class StreamyWindow(AppWindow):
             "image": Path(w.source.get("path", "")).name or "No image",
             "microphone": "The default microphone",
             "desktop-audio": "Everything this computer plays",
-            "app-audio": ", ".join(w.source.get("applications") or []) or "The sound of the apps you choose",
+            "app-audio": w.source.get("heard") or "The sound of the apps you choose",
         }[w.kind]
         items = [TypeLabel(words, role="body", wrap=True)]
         problem = self.widget_errors.get(w.id)
