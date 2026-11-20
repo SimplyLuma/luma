@@ -75,10 +75,50 @@ class StreamTests(unittest.TestCase):
             mutter.Stream(connection, "/s/2", mutter.SOURCE_WINDOW, None),
         ]
         self.assertFalse(session.ready)
-        session.streams[0].node_id = 41
+        session.streams[0].announced = True
         self.assertFalse(session.ready)
-        session.streams[1].node_id = 42
+        session.streams[1].announced = True
         self.assertTrue(session.ready)
+
+    def settle(self):
+        context = GLib.MainContext.default()
+        while context.pending():
+            context.iteration(False)
+
+    def test_the_serial_from_v2_is_what_the_application_targets(self):
+        stream = mutter.Stream(FakeConnection(), "/s/3", mutter.SOURCE_MONITOR, None)
+        heard = []
+        stream.on_node = heard.append
+        stream._on_node(None, None, None, None, "PipeWireStreamAdded", GLib.Variant("(u)", (83,)), None)
+        stream._on_node_v2(None, None, None, None, "PipeWireStreamAddedV2", GLib.Variant(
+            "(a{sv})", ({"node-id": GLib.Variant("u", 83), "node-serial": GLib.Variant("t", 4127)},)), None)
+        self.assertEqual(heard, [])  # announced once both have been read
+        self.settle()
+        self.assertEqual(heard, [stream])
+        self.assertTrue(stream.announced)
+        self.assertEqual(stream.portal_properties()["pipewire-serial"].unpack(), 4127)
+
+    def test_a_mutter_without_v2_reads_the_serial_from_pipewire(self):
+        stream = mutter.Stream(FakeConnection(), "/s/4", mutter.SOURCE_MONITOR, None)
+        heard, asked = [], []
+
+        def read():
+            asked.append(stream.node_id)
+            stream.node_serial = 5150
+            stream._done()
+
+        stream._read_serial = read
+        stream.on_node = heard.append
+        stream._on_node(None, None, None, None, "PipeWireStreamAdded", GLib.Variant("(u)", (90,)), None)
+        self.settle()
+        self.assertEqual((asked, heard), ([90], [stream]))
+        self.assertEqual(stream.portal_properties()["pipewire-serial"].unpack(), 5150)
+
+    def test_the_serial_in_a_pw_dump(self):
+        dump = '[{"id": 89, "info": {"props": {"object.serial": 300}}}, {"id": 90, "info": {"props": {"object.serial": 4127}}}]'
+        self.assertEqual(mutter.serial_of(dump, 90), 4127)
+        self.assertIsNone(mutter.serial_of(dump, 91))
+        self.assertIsNone(mutter.serial_of("not json", 90))
 
     def test_a_session_with_no_stream_is_not_ready(self):
         session = mutter.ScreenCastSession.__new__(mutter.ScreenCastSession)
