@@ -231,8 +231,13 @@ def preview_chain() -> Chain:
 
 # ── Encoders ──
 
+#: Each codec's encoders, best first: VA hardware (low-power, then full), then software.
 H264 = ("vah264lpenc", "vah264enc", "openh264enc")
-AV1 = ("vaav1lpenc", "vaav1enc")
+#: SVT-AV1 is the software AV1, for machines without hardware AV1 encode.
+AV1 = ("vaav1lpenc", "vaav1enc", "svtav1enc")
+
+#: SVT-AV1's fastest preset in Fedora's build (it maps 11-13 to 10): real-time 1080p30 on a few cores.
+SVTAV1_PRESET = 10
 AAC = ("fdkaacenc", "avenc_aac", "voaacenc")
 
 
@@ -281,6 +286,14 @@ def video_encoder_chain(choice: EncoderChoice, bitrate_kbps: int, prefix: str) -
         props = {"rate-control": "cbr", "bitrate": bitrate_kbps, "key-int-max": gop}
         if "h26" in f:
             props["b-frames"] = 0
+    elif f == "svtav1enc":
+        head = [Element("videoconvert", f"{prefix}-convert"),
+                Element("capsfilter", f"{prefix}-i420", {"caps": "video/x-raw,format=I420"})]
+        # Real-time: the fastest preset, rate-controlled to the bitrate (crf off), a key frame every
+        # 2 s. SVT-AV1's CBR needs its low-delay structure, which stalls in GStreamer 1.28, so this
+        # is its bitrate-targeted VBR, which AV1 destinations (enhanced RTMP, files) take.
+        props = {"preset": SVTAV1_PRESET, "target-bitrate": bitrate_kbps, "crf": -1,
+                 "intra-period-length": gop - 1}
     else:
         head = [Element("videoconvert", f"{prefix}-convert"),
                 Element("capsfilter", f"{prefix}-i420", {"caps": "video/x-raw,format=I420"})]

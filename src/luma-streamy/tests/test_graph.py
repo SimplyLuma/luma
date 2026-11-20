@@ -61,6 +61,19 @@ class GraphTest(unittest.TestCase):
         self.assertIsNone(graph.choose({"openh264enc"}, "av1"))
         self.assertEqual(graph.choose({"vaav1enc", "fdkaacenc"}, "av1").video, "vaav1enc")
 
+    def test_encoder_order(self):
+        """VA H.264, then openh264; hardware AV1, then SVT-AV1; each codec falls back within itself."""
+        self.assertEqual(graph.H264 + graph.AV1, ("vah264lpenc", "vah264enc", "openh264enc",
+                                                  "vaav1lpenc", "vaav1enc", "svtav1enc"))
+        everything = set(graph.H264 + graph.AV1)
+        self.assertEqual(graph.choose(everything, "h264").video, "vah264lpenc")
+        self.assertEqual(graph.choose(everything - {"vah264lpenc"}, "h264").video, "vah264enc")
+        self.assertEqual(graph.choose({"openh264enc", "svtav1enc"}, "h264").video, "openh264enc")
+        self.assertEqual(graph.choose(everything, "av1").video, "vaav1lpenc")
+        self.assertEqual(graph.choose(everything - {"vaav1lpenc"}, "av1").video, "vaav1enc")
+        self.assertEqual(graph.choose({"openh264enc", "svtav1enc"}, "av1").video, "svtav1enc")
+        self.assertIsNone(graph.choose({"svtav1enc"}, "h264"))
+
     def test_encoder_chains(self):
         va = graph.video_encoder_chain(graph.EncoderChoice("vah264lpenc", "fdkaacenc", "h264"), 6000, "stream")
         enc = next(e for e in va if e.name == "stream-encoder")
@@ -73,6 +86,10 @@ class GraphTest(unittest.TestCase):
         av1 = graph.video_encoder_chain(graph.EncoderChoice("vaav1enc", None, "av1"), 8000, "record")
         self.assertEqual(av1[-1].factory, "av1parse")
         self.assertNotIn("b-frames", av1[-2].props)
+        svt = graph.video_encoder_chain(graph.EncoderChoice("svtav1enc", None, "av1"), 8000, "record")
+        self.assertEqual([e.factory for e in svt[1:]], ["videoconvert", "capsfilter", "svtav1enc", "av1parse"])
+        self.assertEqual(svt[-2].props, {"preset": graph.SVTAV1_PRESET, "target-bitrate": 8000, "crf": -1,
+                                         "intra-period-length": 59})
         self.assertEqual(graph.audio_encoder_chain(graph.EncoderChoice("x", None, "h264"), 160, "s"), [])
 
     def test_sinks_and_urls(self):

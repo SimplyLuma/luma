@@ -164,6 +164,8 @@ gtk4-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1
 - The Audio inset is as tall as its strips; on a phone it stays under the
   preview. Widget rows end in their eye or speaker; hidden and muted show.
 - An open editor keeps the selection's name in the bar.
+- SVT-AV1 (svtav1enc) as the software AV1 encoder after VA AV1:
+  preset 10, bitrate-targeted, a key frame every 2 s.
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.1
 - First package: scenes of displays, windows, cameras, images and sound;
   rounded corners, a stroke and a shadow per picture through lumaframe;

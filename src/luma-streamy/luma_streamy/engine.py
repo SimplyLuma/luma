@@ -797,8 +797,11 @@ class Engine(GObject.Object):
             return
         encoder = output.pipeline.get_by_name("stream-encoder")
         if encoder is not None:
-            factor = 1000 if encoder.get_factory().get_name() == "openh264enc" else 1
-            encoder.set_property("bitrate", kbps * factor)
+            name = encoder.get_factory().get_name()
+            if name == "svtav1enc":
+                encoder.set_property("target-bitrate", kbps)  # read at the next key frame
+            else:
+                encoder.set_property("bitrate", kbps * (1000 if name == "openh264enc" else 1))
 
     # ── Bus ──
 
