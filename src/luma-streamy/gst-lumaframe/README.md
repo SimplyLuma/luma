@@ -26,7 +26,9 @@ pixels.
 | --- | --- | --- |
 | `box-width`, `box-height` | ≥ 0, 0 | Content box size; 0 = input size on that axis |
 | `margin` | ≥ 0, 0 | Transparent room on every side for the shadow and an outside stroke |
-| `crop-left`, `-top`, `-right`, `-bottom` | 0–0.49, 0 | Fraction of the source cut on that side; the rest fills the box |
+| `content-x`, `content-y` | ≥ 0, 0 | Origin of the source region the box shows, source pixels |
+| `content-width`, `content-height` | ≥ 0, 0 | Size of that region, source pixels; 0 = to the input's edge. With `content-width` 0, a buffer's `GstVideoCropMeta` gives the region |
+| `crop-left`, `-top`, `-right`, `-bottom` | 0–0.49, 0 | Fraction of the content region cut on that side; the rest fills the box |
 | `corner-radius` | ≥ 0, 0 | Clamped to half the box's shorter side |
 | `stroke-width` | ≥ 0, 0 | Outline along the box edge; 0 = none |
 | `stroke-color` | uint 0xAARRGGBB, 0xFFFFFFFF | Outline colour |
@@ -40,6 +42,14 @@ Output size is `round(box-width + 2·margin) × round(box-height + 2·margin)`.
 A change that alters it renegotiates before the next buffer; any other change
 only updates uniforms. If downstream fixes another size, the layer is scaled
 to it. Place a layer in `glvideomixer` at its canvas position minus `margin`.
+
+`content-*` pick the part of the source the box shows, before `crop-*`:
+for a window cast inside a larger buffer, the window's rect. With
+`content-width` 0, a `GstVideoCropMeta` on the input buffer gives that rect
+per buffer, so a window resize follows; `glupload` and `glcolorconvert` pass
+the meta through. The region is clamped to the input. Changing it only
+updates uniforms: the box size (and so the output size) stays `box-width` ×
+`box-height`, or the input size where those are 0.
 
 `stroke-position` moves the stroke without moving the box: `inside` covers
 the content's edge, `center` straddles it (±`stroke-width`/2) and `outside`

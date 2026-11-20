@@ -53,6 +53,8 @@ pub struct LumaFrame {
     /// The negotiated input size, for deciding whether a property change
     /// alters the output size.
     input_size: Mutex<Option<(i32, i32)>>,
+    /// The current input buffer's crop meta, if it has one.
+    crop_meta: Mutex<Option<geometry::CropMeta>>,
     shader: Mutex<Option<gst_gl::GLShader>>,
 }
 
@@ -139,10 +141,69 @@ impl ObjectImpl for LumaFrame {
                     0.0,
                 ),
                 /*
+                 * GstLumaFrame:content-x:
+                 *
+                 * Left edge of the part of the source the box shows, in
+                 * source pixels. crop-* then cut fractions of that part.
+                 */
+                double(
+                    "content-x",
+                    "Content X",
+                    "Left edge of the source region the box shows, source pixels",
+                    0.0,
+                    MAX_PX,
+                    0.0,
+                ),
+                /*
+                 * GstLumaFrame:content-y:
+                 *
+                 * Top edge of the part of the source the box shows, in source
+                 * pixels.
+                 */
+                double(
+                    "content-y",
+                    "Content Y",
+                    "Top edge of the source region the box shows, source pixels",
+                    0.0,
+                    MAX_PX,
+                    0.0,
+                ),
+                /*
+                 * GstLumaFrame:content-width:
+                 *
+                 * Width of the part of the source the box shows, in source
+                 * pixels; 0 runs to the input's right edge. While it is 0, a
+                 * GstVideoCropMeta on the input buffer, if any, gives the
+                 * whole region instead (per buffer).
+                 */
+                double(
+                    "content-width",
+                    "Content width",
+                    "Width of the source region the box shows, source pixels (0 = to the edge, or the buffer's crop meta)",
+                    0.0,
+                    MAX_PX,
+                    0.0,
+                ),
+                /*
+                 * GstLumaFrame:content-height:
+                 *
+                 * Height of the part of the source the box shows, in source
+                 * pixels; 0 runs to the input's bottom edge.
+                 */
+                double(
+                    "content-height",
+                    "Content height",
+                    "Height of the source region the box shows, source pixels (0 = to the edge)",
+                    0.0,
+                    MAX_PX,
+                    0.0,
+                ),
+                /*
                  * GstLumaFrame:crop-left:
                  *
-                 * Fraction of the source width cut from the left. The visible
-                 * part of the source is stretched to fill the box.
+                 * Fraction of the content (content-*, a crop meta, or the
+                 * whole source) cut from the left. The rest is stretched to
+                 * fill the box.
                  */
                 double(
                     "crop-left",
@@ -331,6 +392,10 @@ impl ObjectImpl for LumaFrame {
             "box-width" => s.box_width = f(),
             "box-height" => s.box_height = f(),
             "margin" => s.margin = f(),
+            "content-x" => s.content_x = f(),
+            "content-y" => s.content_y = f(),
+            "content-width" => s.content_width = f(),
+            "content-height" => s.content_height = f(),
             "crop-left" => s.crop_left = f(),
             "crop-top" => s.crop_top = f(),
             "crop-right" => s.crop_right = f(),
@@ -365,6 +430,10 @@ impl ObjectImpl for LumaFrame {
             "box-width" => s.box_width.to_value(),
             "box-height" => s.box_height.to_value(),
             "margin" => s.margin.to_value(),
+            "content-x" => s.content_x.to_value(),
+            "content-y" => s.content_y.to_value(),
+            "content-width" => s.content_width.to_value(),
+            "content-height" => s.content_height.to_value(),
             "crop-left" => s.crop_left.to_value(),
             "crop-top" => s.crop_top.to_value(),
             "crop-right" => s.crop_right.to_value(),
@@ -405,6 +474,23 @@ impl BaseTransformImpl for LumaFrame {
     const MODE: gst_base::subclass::BaseTransformMode = gst_base::subclass::BaseTransformMode::NeverInPlace;
     const PASSTHROUGH_ON_SAME_CAPS: bool = false;
     const TRANSFORM_IP_ON_PASSTHROUGH: bool = false;
+
+    fn propose_allocation(
+        &self,
+        decide_query: Option<&gst::query::Allocation>,
+        query: &mut gst::query::Allocation,
+    ) -> Result<(), gst::LoggableError> {
+        self.parent_propose_allocation(decide_query, query)?;
+        // A crop meta on the input selects the content (content-width 0).
+        query.add_allocation_meta::<gst_video::VideoCropMeta>(None);
+        Ok(())
+    }
+
+    fn before_transform(&self, inbuf: &gst::BufferRef) {
+        let meta = inbuf.meta::<gst_video::VideoCropMeta>().map(|m| m.rect());
+        *self.crop_meta.lock().unwrap() = meta;
+        self.parent_before_transform(inbuf);
+    }
 
     fn fixate_caps(&self, direction: gst::PadDirection, caps: &gst::Caps, othercaps: gst::Caps) -> gst::Caps {
         // Fixating the source caps from fixed sink caps: ask for the canvas
@@ -533,10 +619,12 @@ impl GLFilterImpl for LumaFrame {
             .clone()
             .ok_or_else(|| gst::loggable_error!(CAT, "no shader"))?;
         let settings = self.settings.lock().unwrap().clone();
-        let l = Layout::new(
+        let meta = *self.crop_meta.lock().unwrap();
+        let l = Layout::for_frame(
             &settings,
             (input.texture_width(), input.texture_height()),
             (output.texture_width(), output.texture_height()),
+            meta,
         );
         let context =
             GLBaseFilterExt::context(&*self.obj()).ok_or_else(|| gst::loggable_error!(CAT, "no GL context"))?;
