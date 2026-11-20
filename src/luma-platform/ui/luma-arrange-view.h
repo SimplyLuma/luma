@@ -24,11 +24,22 @@ G_BEGIN_DECLS
  *
  * - Press a box to select it (the topmost under the pointer); press empty
  *   canvas to clear the selection. Double-click activates a box.
- * - Drag a selected box to move it; drag one of its eight handles to resize
- *   it. Shift while resizing keeps the proportions (or frees them, for a box
- *   that keeps its aspect by default). Alt turns snapping off for the drag.
+ * - Drag a selected box to move it (Alt: without snapping); drag one of its
+ *   eight handles to resize it. A box that keeps its aspect scales,
+ *   anchored at the opposite corner or edge (an edge's box stays centred
+ *   across it); Shift stretches it freely (or, for a box that doesn't keep
+ *   its aspect, keeps the proportions). Alt resizes from the centre: the
+ *   opposite side moves as much. Ctrl crops that edge or corner instead of
+ *   resizing, for a box that can be cropped, the cut-away part drawn dim
+ *   outside the box. Pressing or letting go of a modifier mid-drag changes
+ *   the drag at once; #LumaArrangeView:drag-mode says what it does now.
+ * - Crop mode (#LumaArrangeView:cropping): double-click a box that can be
+ *   cropped, press Enter on it, or set it from the app. Its handles crop
+ *   (Alt: both opposite edges), a drag inside slides the source under the
+ *   box, and Enter or Esc leaves it.
  * - Edges and centres snap to the canvas's edges, centre lines and thirds,
- *   and to the other boxes' edges and centres; a guide shows each snap.
+ *   and to the other boxes' edges and centres, a resize's and a crop's
+ *   pulled edges too; a guide shows each snap.
  * - Keyboard: the arrow keys move the selected box one unit (Shift: ten),
  *   Tab and Shift+Tab choose the next and previous box, Esc clears the
  *   selection.
@@ -41,9 +52,16 @@ G_BEGIN_DECLS
  * the view changes its own copy while a person drags, and the app may
  * correct it with luma_arrange_view_set_item_rect().
  *
+ * A crop is four fractions of the source cut away (left, top, right,
+ * bottom, each 0 to 0.49); the box's rectangle is what shows, so the whole
+ * source is the rectangle grown by them. #LumaArrangeView::crop-changed
+ * and #LumaArrangeView::crop-committed report them as
+ * #LumaArrangeView::item-changed and ::item-committed report rectangles,
+ * and the app keeps them with luma_arrange_view_set_item_crop().
+ *
  * Tree: widget.lumaui-arrange-view
  *   ├ content
- *   └ (style nodes: .lumaui-arrange-frame, -hover, -handle, -knob, -guide, -locked)
+ *   └ (style nodes: .lumaui-arrange-frame, -hover, -handle, -knob, -guide, -locked, -ghost)
  */
 #define LUMA_TYPE_ARRANGE_VIEW (luma_arrange_view_get_type())
 G_DECLARE_FINAL_TYPE(LumaArrangeView, luma_arrange_view, LUMA, ARRANGE_VIEW, GtkWidget)
@@ -125,6 +143,70 @@ void luma_arrange_view_set_item_visible(LumaArrangeView *self, const char *id, g
  *   camera); Shift then frees them
  */
 void luma_arrange_view_set_item_keeps_aspect(LumaArrangeView *self, const char *id, gboolean keeps);
+/**
+ * luma_arrange_view_set_item_croppable:
+ * @self: a view
+ * @id: a box's id
+ * @croppable: whether a person can crop it (Ctrl on a handle, crop mode);
+ *   %FALSE by default, and a double click then activates it instead
+ */
+void luma_arrange_view_set_item_croppable(LumaArrangeView *self, const char *id, gboolean croppable);
+/**
+ * luma_arrange_view_set_item_crop:
+ * @self: a view
+ * @id: a box's id
+ * @left: the fraction of the source cut from its left, 0 to 0.49
+ * @top: from its top
+ * @right: from its right
+ * @bottom: from its bottom
+ *
+ * The box's crop, the app's own record of it; its rectangle stays what
+ * shows (set it with luma_arrange_view_set_item_rect()).
+ */
+void luma_arrange_view_set_item_crop(LumaArrangeView *self, const char *id, double left, double top, double right,
+                                     double bottom);
+/**
+ * luma_arrange_view_get_item_crop:
+ * @self: a view
+ * @id: a box's id
+ * @left: (out) (optional): the fraction cut from the left
+ * @top: (out) (optional): top
+ * @right: (out) (optional): right
+ * @bottom: (out) (optional): bottom
+ *
+ * Returns: whether the view has the box
+ */
+gboolean luma_arrange_view_get_item_crop(LumaArrangeView *self, const char *id, double *left, double *top,
+                                         double *right, double *bottom);
+/**
+ * luma_arrange_view_set_item_ghost:
+ * @self: a view
+ * @id: a box's id
+ * @source: (nullable): the uncropped source, drawn dim where a crop cuts it
+ *   away; without one, a scrim shows the cut-away part
+ */
+void luma_arrange_view_set_item_ghost(LumaArrangeView *self, const char *id, GdkPaintable *source);
+/**
+ * luma_arrange_view_set_cropping:
+ * @self: a view
+ * @id: (nullable): the box to crop (one that can be cropped, not locked,
+ *   selected too); %NULL leaves crop mode
+ */
+void luma_arrange_view_set_cropping(LumaArrangeView *self, const char *id);
+/**
+ * luma_arrange_view_get_cropping:
+ * @self: a view
+ *
+ * Returns: (nullable): the box in crop mode
+ */
+const char *luma_arrange_view_get_cropping(LumaArrangeView *self);
+/**
+ * luma_arrange_view_get_drag_mode:
+ * @self: a view
+ *
+ * Returns: what the drag under way does (#LumaArrangeView:drag-mode)
+ */
+const char *luma_arrange_view_get_drag_mode(LumaArrangeView *self);
 /**
  * luma_arrange_view_set_order:
  * @self: a view

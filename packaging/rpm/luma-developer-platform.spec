@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.137%{?dist}
+Release:        1.luma.138%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,23 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.138
+- LumaColorPicker (ColorPicker in luma_appkit): saturation/brightness area,
+  hue and opacity strips, Luma's palette, the document's colours and the
+  app's recent ones (kept in its config), an eyedropper through the
+  Screenshot portal's PickColor, and a hex code; color-changed live,
+  color-committed once per finished change.
+- LumaPropertyColor: the swatch opens the picker in an opaque popover, in an
+  action center's grown panel (set_action_center), or where an open-picker
+  handler puts it; new color-committed signal.
+- LumaArrangeView: handle drags scale a box that keeps its aspect from the
+  opposite edge or corner; Alt resizes from the centre, Shift stretches,
+  Ctrl crops a croppable box, live as modifiers change. Crop mode (double
+  click, Enter, set_cropping) crops with plain drags and pans inside.
+  Crops are per-edge source fractions (0-0.49): set_item_crop, crop-changed,
+  crop-committed; set_item_ghost draws the cut-away source dim; drag-mode
+  says what a drag does for a hint. Alt on a move still turns snapping off.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.137
 - Dock: a fitted side's seam moves anywhere between the tiles' minimums; a
   person's drag (pointer or F8 and keys) keeps that size as "size" on the

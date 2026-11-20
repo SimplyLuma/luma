@@ -64,6 +64,237 @@ static void drag(GtkWidget *view, double x, double y, double dx, double dy) {
   g_signal_emit_by_name(gesture, "drag-end", dx, dy);
 }
 
+static void modifier(GtkWidget *view, guint keyval, gboolean down, GdkModifierType state) {
+  GtkEventController *keys = controller_of(view, GTK_TYPE_EVENT_CONTROLLER_KEY);
+  gboolean handled = FALSE;
+  if (down)
+    g_signal_emit_by_name(keys, "key-pressed", keyval, 0, state, &handled);
+  else
+    g_signal_emit_by_name(keys, "key-released", keyval, 0, state);
+}
+
+typedef struct {
+  int changes, commits;
+  double c[4];
+} Crops;
+
+static void on_crop(LumaArrangeView *view G_GNUC_UNUSED, const char *id G_GNUC_UNUSED, double l, double t, double r,
+                    double b, Crops *crops) {
+  crops->changes++;
+  crops->c[0] = l, crops->c[1] = t, crops->c[2] = r, crops->c[3] = b;
+}
+
+static void on_crop_committed(LumaArrangeView *view G_GNUC_UNUSED, const char *id G_GNUC_UNUSED,
+                              double l G_GNUC_UNUSED, double t G_GNUC_UNUSED, double r G_GNUC_UNUSED,
+                              double b G_GNUC_UNUSED, Crops *crops) {
+  crops->commits++;
+}
+
+static void on_activated(LumaArrangeView *view G_GNUC_UNUSED, const char *id, char **activated) {
+  g_free(*activated);
+  *activated = g_strdup(id);
+}
+
+/* The wide box (32:9, keeps its aspect, croppable) back where it starts, uncropped. */
+static void reset(LumaArrangeView *arrange) {
+  luma_arrange_view_set_item_rect(arrange, "wide", 320, 440, 1280, 360);
+  luma_arrange_view_set_item_crop(arrange, "wide", 0, 0, 0, 0);
+  luma_arrange_view_set_selected(arrange, "wide");
+}
+
+static void assert_rect(LumaArrangeView *arrange, double ex, double ey, double ew, double eh) {
+  double x, y, w, h;
+  g_assert_true(luma_arrange_view_get_item_rect(arrange, "wide", &x, &y, &w, &h));
+  if (fabs(x - ex) > 0.01 || fabs(y - ey) > 0.01 || fabs(w - ew) > 0.01 || fabs(h - eh) > 0.01)
+    g_error("rect %.2f %.2f %.2f %.2f, expected %.2f %.2f %.2f %.2f", x, y, w, h, ex, ey, ew, eh);
+}
+
+static void assert_crop(LumaArrangeView *arrange, double el, double et, double er, double eb) {
+  double l, t, r, b;
+  g_assert_true(luma_arrange_view_get_item_crop(arrange, "wide", &l, &t, &r, &b));
+  if (fabs(l - el) > 1e-6 || fabs(t - et) > 1e-6 || fabs(r - er) > 1e-6 || fabs(b - eb) > 1e-6)
+    g_error("crop %.4f %.4f %.4f %.4f, expected %.4f %.4f %.4f %.4f", l, t, r, b, el, et, er, eb);
+}
+
+/* Drag a handle at canvas (hx, hy) by (dx, dy) canvas units with @keyval held throughout (0: none);
+ * @mask is every modifier down while it is, the ones pressed before it too. */
+static void pull(GtkWidget *view, double hx, double hy, double dx, double dy, guint keyval, GdkModifierType mask) {
+  LumaArrangeView *arrange = LUMA_ARRANGE_VIEW(view);
+  double vx, vy, ox, oy;
+  luma_arrange_view_canvas_to_view(arrange, hx, hy, &vx, &vy);
+  luma_arrange_view_canvas_to_view(arrange, 0, 0, &ox, &oy);
+  double ex, ey;
+  luma_arrange_view_canvas_to_view(arrange, 1, 1, &ex, &ey);
+  double scale = ex - ox;
+  GdkModifierType own = keyval == GDK_KEY_Shift_L ? GDK_SHIFT_MASK
+                        : keyval == GDK_KEY_Control_L ? GDK_CONTROL_MASK
+                        : keyval == GDK_KEY_Alt_L ? GDK_ALT_MASK : 0;
+  if (keyval != 0)
+    modifier(view, keyval, TRUE, mask & ~own); /* the others already held */
+  GtkEventController *gesture = controller_of(view, GTK_TYPE_GESTURE_DRAG);
+  g_signal_emit_by_name(gesture, "drag-begin", vx, vy);
+  g_signal_emit_by_name(gesture, "drag-update", dx * scale / 2, dy * scale / 2);
+  g_signal_emit_by_name(gesture, "drag-update", dx * scale, dy * scale);
+  g_signal_emit_by_name(gesture, "drag-end", dx * scale, dy * scale);
+  if (keyval != 0)
+    modifier(view, keyval, FALSE, mask);
+}
+
+static void test_modifiers(void) {
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_default_size(GTK_WINDOW(window), 960, 540);
+  GtkWidget *view = luma_arrange_view_new(gtk_label_new("picture"));
+  LumaArrangeView *arrange = LUMA_ARRANGE_VIEW(view);
+  luma_arrange_view_add_item(arrange, "text", "Text", 100, 100, 200, 100);
+  luma_arrange_view_add_item(arrange, "wide", "Wide camera", 320, 440, 1280, 360);
+  luma_arrange_view_set_item_keeps_aspect(arrange, "wide", TRUE);
+  luma_arrange_view_set_item_croppable(arrange, "wide", TRUE);
+  Crops crops = {0};
+  Record record = {0};
+  char *activated = NULL;
+  g_signal_connect(view, "crop-changed", G_CALLBACK(on_crop), &crops);
+  g_signal_connect(view, "crop-committed", G_CALLBACK(on_crop_committed), &crops);
+  g_signal_connect(view, "item-committed", G_CALLBACK(on_committed), &record);
+  g_signal_connect(view, "item-activated", G_CALLBACK(on_activated), &activated);
+  gtk_window_set_child(GTK_WINDOW(window), view);
+  gtk_window_present(GTK_WINDOW(window));
+  settle();
+  luma_arrange_view_set_snapping(arrange, FALSE);
+  g_assert_cmpstr(luma_arrange_view_get_drag_mode(arrange), ==, "none");
+
+  /* The right edge (1600, 620): plain scales from the left edge, centred across it. */
+  reset(arrange);
+  pull(view, 1600, 620, 320, 0, 0, 0);
+  assert_rect(arrange, 320, 395, 1600, 450);
+  /* Alt: from the centre, the 32:9 kept: 1280 + 2 x 320 wide, centred on (960, 620). */
+  reset(arrange);
+  pull(view, 1600, 620, 320, 0, GDK_KEY_Alt_L, GDK_ALT_MASK);
+  assert_rect(arrange, 0, 350, 1920, 540);
+  /* Shift stretches; Alt+Shift stretches from the centre. */
+  reset(arrange);
+  pull(view, 1600, 620, 320, 0, GDK_KEY_Shift_L, GDK_SHIFT_MASK);
+  assert_rect(arrange, 320, 440, 1600, 360);
+  reset(arrange);
+  modifier(view, GDK_KEY_Shift_L, TRUE, 0);
+  pull(view, 1600, 620, 320, 0, GDK_KEY_Alt_L, GDK_ALT_MASK | GDK_SHIFT_MASK);
+  modifier(view, GDK_KEY_Shift_L, FALSE, GDK_SHIFT_MASK);
+  assert_rect(arrange, 0, 440, 1920, 360);
+  /* Corners: the opposite corner stays; Alt keeps the centre. */
+  reset(arrange);
+  pull(view, 1600, 800, 320, 0, 0, 0);
+  assert_rect(arrange, 320, 440, 1600, 450);
+  reset(arrange);
+  pull(view, 320, 440, -320, -90, GDK_KEY_Alt_L, GDK_ALT_MASK);
+  assert_rect(arrange, 0, 350, 1920, 540);
+  /* The bottom edge, Alt: the top moves as much, the 32:9 kept across it. */
+  reset(arrange);
+  pull(view, 960, 800, 0, 90, GDK_KEY_Alt_L, GDK_ALT_MASK);
+  assert_rect(arrange, 0, 350, 1920, 540);
+
+  /* Modifiers switch the drag live, with no pointer motion. */
+  reset(arrange);
+  double vx, vy, scale = 0;
+  luma_arrange_view_canvas_to_view(arrange, 1600, 620, &vx, &vy);
+  {
+    double ox, oy, ex, ey;
+    luma_arrange_view_canvas_to_view(arrange, 0, 0, &ox, &oy);
+    luma_arrange_view_canvas_to_view(arrange, 1, 1, &ex, &ey);
+    scale = ex - ox;
+  }
+  GtkEventController *gesture = controller_of(view, GTK_TYPE_GESTURE_DRAG);
+  g_signal_emit_by_name(gesture, "drag-begin", vx, vy);
+  g_assert_cmpstr(luma_arrange_view_get_drag_mode(arrange), ==, "resize");
+  g_signal_emit_by_name(gesture, "drag-update", 320 * scale, 0.0);
+  assert_rect(arrange, 320, 395, 1600, 450);
+  modifier(view, GDK_KEY_Shift_L, TRUE, 0);
+  g_assert_cmpstr(luma_arrange_view_get_drag_mode(arrange), ==, "stretch");
+  assert_rect(arrange, 320, 440, 1600, 360);
+  modifier(view, GDK_KEY_Alt_L, TRUE, GDK_SHIFT_MASK);
+  g_assert_cmpstr(luma_arrange_view_get_drag_mode(arrange), ==, "stretch-centre");
+  assert_rect(arrange, 0, 440, 1920, 360);
+  modifier(view, GDK_KEY_Shift_L, FALSE, GDK_SHIFT_MASK | GDK_ALT_MASK);
+  g_assert_cmpstr(luma_arrange_view_get_drag_mode(arrange), ==, "resize-centre");
+  assert_rect(arrange, 0, 350, 1920, 540);
+  modifier(view, GDK_KEY_Alt_L, FALSE, GDK_ALT_MASK);
+  modifier(view, GDK_KEY_Control_L, TRUE, 0);
+  g_assert_cmpstr(luma_arrange_view_get_drag_mode(arrange), ==, "crop");
+  assert_rect(arrange, 320, 440, 1280, 360); /* pulled out past the source: nothing to give back */
+  modifier(view, GDK_KEY_Control_L, FALSE, GDK_CONTROL_MASK);
+  g_signal_emit_by_name(gesture, "drag-end", 320 * scale, 0.0);
+  g_assert_cmpstr(luma_arrange_view_get_drag_mode(arrange), ==, "none");
+  assert_rect(arrange, 320, 395, 1600, 450);
+
+  /* Ctrl crops that edge: a tenth off the right, then as much as may go off the left, then back. */
+  reset(arrange);
+  crops.changes = crops.commits = 0;
+  int commits = record.commits;
+  pull(view, 1600, 620, -128, 0, GDK_KEY_Control_L, GDK_CONTROL_MASK);
+  assert_crop(arrange, 0, 0, 0.1, 0);
+  assert_rect(arrange, 320, 440, 1152, 360);
+  g_assert_cmpint(crops.changes, >=, 2);
+  g_assert_cmpint(crops.commits, ==, 1);
+  g_assert_cmpint(record.commits, ==, commits + 1);
+  g_assert_cmpfloat(fabs(crops.c[2] - 0.1), <, 1e-6);
+  pull(view, 320, 620, 5000, 0, GDK_KEY_Control_L, GDK_CONTROL_MASK);
+  assert_crop(arrange, 0.49, 0, 0.1, 0);
+  assert_rect(arrange, 320 + 0.49 * 1280, 440, 1280 * (1 - 0.59), 360);
+  pull(view, 320 + 0.49 * 1280, 620, -5000, 0, GDK_KEY_Control_L, GDK_CONTROL_MASK);
+  assert_crop(arrange, 0, 0, 0.1, 0);
+  assert_rect(arrange, 320, 440, 1152, 360);
+  /* Ctrl+Alt crops both opposite edges by as much; a corner crops both of its edges. */
+  reset(arrange);
+  modifier(view, GDK_KEY_Control_L, TRUE, 0);
+  pull(view, 1600, 620, -128, 0, GDK_KEY_Alt_L, GDK_ALT_MASK | GDK_CONTROL_MASK);
+  modifier(view, GDK_KEY_Control_L, FALSE, GDK_CONTROL_MASK);
+  assert_crop(arrange, 0.1, 0, 0.1, 0);
+  assert_rect(arrange, 448, 440, 1024, 360);
+  reset(arrange);
+  pull(view, 1600, 800, -128, -36, GDK_KEY_Control_L, GDK_CONTROL_MASK);
+  assert_crop(arrange, 0, 0, 0.1, 0.1);
+  /* A crop's edge snaps to the guides: the canvas's two thirds (1280). */
+  reset(arrange);
+  luma_arrange_view_set_snapping(arrange, TRUE);
+  pull(view, 1600, 620, -316, 0, GDK_KEY_Control_L, GDK_CONTROL_MASK);
+  assert_crop(arrange, 0, 0, 0.25, 0);
+  luma_arrange_view_set_snapping(arrange, FALSE);
+
+  /* Crop mode: Enter, plain handles crop, a drag inside slides the source, Esc leaves. */
+  reset(arrange);
+  g_assert_true(key(view, GDK_KEY_Return, 0));
+  g_assert_cmpstr(luma_arrange_view_get_cropping(arrange), ==, "wide");
+  pull(view, 1600, 620, -128, 0, 0, 0);
+  assert_crop(arrange, 0, 0, 0.1, 0);
+  pull(view, 320, 620, 128, 0, 0, 0);
+  assert_crop(arrange, 0.1, 0, 0.1, 0);
+  assert_rect(arrange, 448, 440, 1024, 360);
+  pull(view, 960, 620, 64, 0, 0, 0); /* the source moves right: less cut on the left */
+  assert_crop(arrange, 0.05, 0, 0.15, 0);
+  assert_rect(arrange, 448, 440, 1024, 360);
+  g_assert_true(key(view, GDK_KEY_Escape, 0));
+  g_assert_null(luma_arrange_view_get_cropping(arrange));
+  g_assert_cmpstr(luma_arrange_view_get_selected(arrange), ==, "wide");
+  /* Out of crop mode a plain drag resizes again, the crop kept. */
+  pull(view, 448 + 1024, 620, 256, 0, 0, 0);
+  assert_crop(arrange, 0.05, 0, 0.15, 0);
+  /* A double click crops a croppable box and activates any other. */
+  GtkEventController *click = controller_of(view, GTK_TYPE_GESTURE_CLICK);
+  luma_arrange_view_canvas_to_view(arrange, 960, 620, &vx, &vy);
+  g_signal_emit_by_name(click, "pressed", 2, vx, vy);
+  g_assert_cmpstr(luma_arrange_view_get_cropping(arrange), ==, "wide");
+  g_assert_null(activated);
+  luma_arrange_view_canvas_to_view(arrange, 150, 150, &vx, &vy);
+  g_signal_emit_by_name(click, "pressed", 2, vx, vy);
+  g_assert_cmpstr(activated, ==, "text");
+  luma_arrange_view_set_selected(arrange, "text"); /* another selection leaves crop mode */
+  g_assert_null(luma_arrange_view_get_cropping(arrange));
+  /* The app's crop is clamped to 0..0.49 a side. */
+  luma_arrange_view_set_item_crop(arrange, "wide", 0.7, -1, 0.2, 0.3);
+  assert_crop(arrange, 0.49, 0, 0.2, 0.3);
+  g_free(activated);
+  g_free(record.selected);
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 static void test_snap_rule(void) {
   double lines[] = {0, 640, 960, 1920};
   double snapped;
@@ -197,5 +428,6 @@ int main(int argc, char **argv) {
   gtk_init();
   g_test_add_func("/lumaui/creative/arrange/snap", test_snap_rule);
   g_test_add_func("/lumaui/creative/arrange/view", test_view);
+  g_test_add_func("/lumaui/creative/arrange/modifiers", test_modifiers);
   return g_test_run();
 }

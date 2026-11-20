@@ -12,7 +12,8 @@ adds the kit's keyword style on top; every function returns the C object:
     ToolBar([Tool(...), Flyout(...), TOOL_SEPARATOR], current=, on_tool=)
     LayerTree([Layer(...)], selected=, on_select=, on_visibility=, on_rename=, on_reorder=)
     PropertySection(title, *fields, action=(icon, label, "win.action"))
-    PropertyNumber(label, value, unit=), PropertyColor(label, "1F6FE0"),
+    PropertyNumber(label, value, unit=), PropertyColor(label, "1F6FE0", on_commit=, bar=),
+    ColorPicker("1F6FE0", on_change=, on_commit=), recent_colors(),
     PropertyChoice(label, [(key, label, icon)], segments=), AlignmentActions()
     ArrangeView(content, canvas=(w, h), items=[ArrangeItem(...)], on_select=, on_change=, on_commit=)
 
@@ -34,6 +35,8 @@ __all__ = [
     "PropertySection",
     "PropertyNumber",
     "PropertyColor",
+    "ColorPicker",
+    "recent_colors",
     "PropertyChoice",
     "AlignmentActions",
     "ArrangeItem",
@@ -227,8 +230,15 @@ def _rgba(value):
 
 
 def PropertyColor(label: str, color=None, *, word: str | None = None, palette: Iterable = (),
-                  on_change: Callable | None = None):
-    """A colour field; ``color`` and ``palette`` take codes ("1F6FE0") or Gdk.RGBA."""
+                  on_change: Callable | None = None, on_commit: Callable | None = None, bar=None):
+    """A colour field; ``color`` and ``palette`` take codes ("1F6FE0") or Gdk.RGBA.
+
+    The swatch opens the ColorPicker (Luma's palette, ``palette``, recent
+    colours, the eyedropper, a code) in a popover, or with ``bar=`` (an
+    ActionCenter, Python or C) as that bar's grown panel. ``on_change(rgba)``
+    follows every change, live while dragging; ``on_commit(rgba)`` fires once
+    when the person finishes one (one undo step).
+    """
     L = lumaui_module()
     field = L.PropertyColor.new(label)
     if color is not None:
@@ -238,7 +248,40 @@ def PropertyColor(label: str, color=None, *, word: str | None = None, palette: I
         field.set_palette(colors)
     if word is not None:
         field.set_word(word)
+    if bar is not None:
+        if isinstance(bar, L.ActionCenter):
+            field.set_action_center(bar)
+        else:
+            field.connect("open-picker", lambda _field, picker: (bar.grow(f"lumaui-color-{label}", picker), True)[1])
+    _connect(field, "color-committed", on_commit)
     return _connect(field, "color-changed", on_change)
+
+
+def ColorPicker(color=None, *, palette: Iterable = (), with_alpha: bool = True,
+                on_change: Callable | None = None, on_commit: Callable | None = None):
+    """The kit's colour picker, to put in an app's own panel (``center.grow("colour", ColorPicker(...))``).
+
+    Saturation/brightness, hue and opacity, Luma's palette, ``palette`` (the
+    document's colours), this app's recent colours, the eyedropper (the
+    Screenshot portal's PickColor, ``pick_from_screen()``) and a hex code.
+    ``on_change(rgba)`` follows every change live; ``on_commit(rgba)`` fires once
+    per finished change. ``set_rgba()``/``get_rgba()`` set and read the colour.
+    """
+    L = lumaui_module()
+    picker = L.ColorPicker.new()
+    picker.set_with_alpha(with_alpha)
+    if color is not None:
+        picker.set_rgba(_rgba(color))
+    colors = [_rgba(c) for c in palette]
+    if colors:
+        picker.set_palette(colors)
+    _connect(picker, "color-committed", on_commit)
+    return _connect(picker, "color-changed", on_change)
+
+
+def recent_colors() -> list:
+    """The colours recently committed in this app (any picker), newest first, as Gdk.RGBA."""
+    return list(lumaui_module().ColorPicker.get_recent_colors())
 
 
 def PropertyChoice(label: str, choices: Iterable[tuple], *, current: str | None = None, segments: bool = False,
@@ -272,6 +315,11 @@ class ArrangeItem(NamedTuple):
     locked: bool = False
     visible: bool = True
     keeps_aspect: bool = False
+    #: A person may crop it (Ctrl on a handle, crop mode); a double click then crops instead of activating.
+    croppable: bool = False
+    #: Fractions of the source cut from the left, top, right and bottom (0 to 0.49 each); the rectangle
+    #: above is what shows.
+    crop: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
 
 def ArrangeView(content=None, *, canvas: tuple[float, float] = (1920, 1080), items: Iterable[ArrangeItem] = (),
@@ -279,12 +327,24 @@ def ArrangeView(content=None, *, canvas: tuple[float, float] = (1920, 1080), ite
                 on_select: Callable[[str | None], None] | None = None,
                 on_change: Callable[[str, float, float, float, float], None] | None = None,
                 on_commit: Callable[[str, float, float, float, float], None] | None = None,
-                on_activate: Callable[[str], None] | None = None):
-    """Boxes on a canvas, moved and resized by hand, with snapping guides.
+                on_activate: Callable[[str], None] | None = None,
+                on_crop: Callable[[str, float, float, float, float], None] | None = None,
+                on_crop_commit: Callable[[str, float, float, float, float], None] | None = None,
+                on_drag_mode: Callable[[str], None] | None = None):
+    """Boxes on a canvas, moved, resized and cropped by hand, with snapping guides.
 
     ``content`` is the picture of the canvas (it covers the fitted canvas).
     ``on_change`` follows every step of a drag or nudge; ``on_commit`` is the
     end of one (an undo step). Update boxes with ``set_item_rect(id, x, y, w, h)``.
+
+    A handle drag scales a box that keeps its aspect (anchored at the opposite
+    corner or edge); Shift stretches, Alt resizes from the centre, Ctrl crops
+    a croppable box's edge. ``on_crop(id, left, top, right, bottom)`` follows a
+    crop (fractions of the source), ``on_crop_commit`` ends one; keep them with
+    ``set_item_crop(id, l, t, r, b)``. ``set_cropping(id)`` / ``get_cropping()``
+    is crop mode (also a double click or Enter). ``on_drag_mode(mode)`` follows
+    ``get_drag_mode()`` ("move", "resize", "stretch", "resize-centre",
+    "stretch-centre", "crop", "crop-centre", "pan", "none") for a hint.
     """
     L = lumaui_module()
     view = L.ArrangeView.new(content)
@@ -303,6 +363,10 @@ def ArrangeView(content=None, *, canvas: tuple[float, float] = (1920, 1080), ite
     _connect(view, "item-changed", on_change)
     _connect(view, "item-committed", on_commit)
     _connect(view, "item-activated", on_activate)
+    _connect(view, "crop-changed", on_crop)
+    _connect(view, "crop-committed", on_crop_commit)
+    if on_drag_mode is not None:
+        view.connect("notify::drag-mode", lambda v, _s: on_drag_mode(v.get_drag_mode()))
     return view
 
 
@@ -316,3 +380,7 @@ def add_arrange_item(view, item: ArrangeItem) -> None:
     view.set_item_locked(item.id, item.locked)
     view.set_item_visible(item.id, item.visible)
     view.set_item_keeps_aspect(item.id, item.keeps_aspect)
+    view.set_item_croppable(item.id, item.croppable)
+    if len(item.crop) != 4:
+        raise ValueError(f"a crop is (left, top, right, bottom): {item.crop!r}")
+    view.set_item_crop(item.id, *item.crop)

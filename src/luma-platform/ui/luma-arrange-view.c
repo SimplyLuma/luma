@@ -4,6 +4,7 @@
 #include "luma-creative-private.h"
 
 #include <math.h>
+#include <string.h>
 
 typedef struct {
   char *id;
@@ -12,6 +13,9 @@ typedef struct {
   gboolean locked;
   gboolean visible;
   gboolean keeps_aspect;
+  gboolean croppable;
+  double crop[4]; /* left, top, right, bottom: fractions of the source cut away */
+  GdkPaintable *ghost;
 } Item;
 
 /* What a drag does: move the box, or pull one of its edges or corners. */
@@ -24,15 +28,29 @@ typedef enum {
   GRAB_BOTTOM = 1 << 4,
 } Grab;
 
-enum { SIG_SELECTION_CHANGED, SIG_ITEM_CHANGED, SIG_ITEM_COMMITTED, SIG_ITEM_ACTIVATED, N_SIGNALS };
+enum {
+  SIG_SELECTION_CHANGED,
+  SIG_ITEM_CHANGED,
+  SIG_ITEM_COMMITTED,
+  SIG_ITEM_ACTIVATED,
+  SIG_CROP_CHANGED,
+  SIG_CROP_COMMITTED,
+  N_SIGNALS
+};
 static guint signals[N_SIGNALS];
+
+enum { PROP_0, PROP_CROPPING, PROP_DRAG_MODE, N_PROPS };
+static GParamSpec *props[N_PROPS];
+
+#define CROP_MAX 0.49
+#define DRAG_MODS (GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_ALT_MASK)
 
 #define N_GUIDES 4
 
 struct _LumaArrangeView {
   GtkWidget parent_instance;
   GtkWidget *content;
-  GtkWidget *nodes[6];
+  GtkWidget *nodes[7];
   GPtrArray *items; /* bottom to top */
   char *selected;
   char *hovered;
@@ -43,13 +61,19 @@ struct _LumaArrangeView {
   Grab grab;
   Item start;
   gboolean moved;
+  gboolean crop_moved;
+  double drag_dx, drag_dy;   /* the drag's offset so far, in view pixels */
+  GdkModifierType mods;      /* Shift, Ctrl and Alt as last seen */
+  const char *drag_mode;     /* static string */
+  char *cropping;            /* the box in crop mode */
   /* Guides shown during a drag, in canvas units (NAN: none). */
   double guide_x[2], guide_y[2];
 };
 
-enum { NODE_FRAME, NODE_HOVER, NODE_HANDLE, NODE_KNOB, NODE_GUIDE, NODE_LOCKED };
+enum { NODE_FRAME, NODE_HOVER, NODE_HANDLE, NODE_KNOB, NODE_GUIDE, NODE_LOCKED, NODE_GHOST };
 static const char *node_names[] = {"lumaui-arrange-frame", "lumaui-arrange-hover", "lumaui-arrange-handle",
-                                   "lumaui-arrange-knob",  "lumaui-arrange-guide", "lumaui-arrange-locked"};
+                                   "lumaui-arrange-knob",  "lumaui-arrange-guide", "lumaui-arrange-locked",
+                                   "lumaui-arrange-ghost"};
 
 G_DEFINE_FINAL_TYPE(LumaArrangeView, luma_arrange_view, GTK_TYPE_WIDGET)
 
@@ -57,6 +81,7 @@ static void item_free(gpointer data) {
   Item *item = data;
   g_free(item->id);
   g_free(item->label);
+  g_clear_object(&item->ghost);
   g_free(item);
 }
 
@@ -136,14 +161,18 @@ static void announce(LumaArrangeView *self) {
     gtk_accessible_reset_property(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION);
     return;
   }
-  g_autofree char *words = g_strdup_printf("%s selected%s, %.0f by %.0f at %.0f, %.0f", item->label,
-                                           item->locked ? ", locked" : "", item->w, item->h, item->x, item->y);
+  g_autofree char *words = g_strdup_printf("%s selected%s%s, %.0f by %.0f at %.0f, %.0f", item->label,
+                                           item->locked ? ", locked" : "",
+                                           g_strcmp0(self->cropping, item->id) == 0 ? ", cropping" : "", item->w,
+                                           item->h, item->x, item->y);
   gtk_accessible_update_property(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, words, -1);
 }
 
 static void select_item(LumaArrangeView *self, const char *id, gboolean emit) {
   if (g_strcmp0(self->selected, id) == 0)
     return;
+  if (self->cropping != NULL && g_strcmp0(self->cropping, id) != 0)
+    luma_arrange_view_set_cropping(self, NULL);
   g_free(self->selected);
   self->selected = g_strdup(id);
   announce(self);
@@ -267,12 +296,225 @@ static void emit_rect(LumaArrangeView *self, guint signal, Item *item) {
   g_signal_emit(self, signals[signal], 0, item->id, item->x, item->y, item->w, item->h);
 }
 
+static void emit_crop(LumaArrangeView *self, guint signal, Item *item) {
+  g_signal_emit(self, signals[signal], 0, item->id, item->crop[0], item->crop[1], item->crop[2], item->crop[3]);
+}
+
+static void set_drag_mode(LumaArrangeView *self, const char *mode) {
+  if (g_strcmp0(self->drag_mode, mode) == 0)
+    return;
+  self->drag_mode = mode;
+  g_object_notify_by_pspec(G_OBJECT(self), props[PROP_DRAG_MODE]);
+}
+
+/* The source's whole extent in canvas units: the box grown by what its crop cuts away. */
+static void source_rect(const Item *item, double *x, double *y, double *w, double *h) {
+  *w = item->w / MAX(1 - item->crop[0] - item->crop[2], 0.02);
+  *h = item->h / MAX(1 - item->crop[1] - item->crop[3], 0.02);
+  *x = item->x - item->crop[0] * *w;
+  *y = item->y - item->crop[1] * *h;
+}
+
+static gboolean in_crop_mode(LumaArrangeView *self, const Item *item) {
+  return item->croppable && g_strcmp0(self->cropping, item->id) == 0;
+}
+
+/* What a drag with @grab does to @item while @mods are held. */
+static const char *mode_for(LumaArrangeView *self, const Item *item, Grab grab, GdkModifierType mods) {
+  gboolean alt = (mods & GDK_ALT_MASK) != 0;
+  if (grab == GRAB_NONE)
+    return "none";
+  if (grab == GRAB_MOVE)
+    return in_crop_mode(self, item) ? "pan" : "move";
+  if (item->croppable && ((mods & GDK_CONTROL_MASK) || in_crop_mode(self, item)))
+    return alt ? "crop-centre" : "crop";
+  gboolean keep = item->keeps_aspect != ((mods & GDK_SHIFT_MASK) != 0);
+  return keep ? (alt ? "resize-centre" : "resize") : (alt ? "stretch-centre" : "stretch");
+}
+
+/* Snap a moving edge (canvas units) and say where it went. */
+static double snapped_edge(LumaArrangeView *self, Item *item, gboolean vertical, double edge, gboolean snap,
+                           double threshold, double *guide) {
+  if (!snap)
+    return edge;
+  return edge + snap_edge(self, item, vertical, edge, threshold, guide);
+}
+
+/* Resize: the pulled edges follow the pointer (Alt: the opposite ones mirror them about the centre).
+ * With @keep the box scales instead: anchored at the opposite corner or edge, an edge's box centred
+ * across it, Alt centred on both axes. */
+static void resize(LumaArrangeView *self, Item *item, double cdx, double cdy, gboolean keep, gboolean centre,
+                   gboolean snap, double threshold, double min) {
+  const Item *s = &self->start;
+  Grab g = self->grab;
+  double cx = s->x + s->w / 2, cy = s->y + s->h / 2, k = centre ? 2 : 1;
+  double w = s->w, h = s->h;
+  if (g & GRAB_LEFT) {
+    double e = snapped_edge(self, item, TRUE, centre ? cx - (s->w - k * cdx) / 2 : s->x + cdx, snap, threshold,
+                            &self->guide_x[0]);
+    w = centre ? 2 * (cx - e) : s->x + s->w - e;
+  } else if (g & GRAB_RIGHT) {
+    double e = snapped_edge(self, item, TRUE, centre ? cx + (s->w + k * cdx) / 2 : s->x + s->w + cdx, snap,
+                            threshold, &self->guide_x[1]);
+    w = centre ? 2 * (e - cx) : e - s->x;
+  }
+  if (g & GRAB_TOP) {
+    double e = snapped_edge(self, item, FALSE, centre ? cy - (s->h - k * cdy) / 2 : s->y + cdy, snap, threshold,
+                            &self->guide_y[0]);
+    h = centre ? 2 * (cy - e) : s->y + s->h - e;
+  } else if (g & GRAB_BOTTOM) {
+    double e = snapped_edge(self, item, FALSE, centre ? cy + (s->h + k * cdy) / 2 : s->y + s->h + cdy, snap,
+                            threshold, &self->guide_y[1]);
+    h = centre ? 2 * (e - cy) : e - s->y;
+  }
+  gboolean gx = (g & (GRAB_LEFT | GRAB_RIGHT)) != 0, gy = (g & (GRAB_TOP | GRAB_BOTTOM)) != 0;
+  if (keep) {
+    gboolean by_width = gx && (!gy || fabs(w / s->w) >= fabs(h / s->h));
+    double scale = by_width ? w / s->w : h / s->h;
+    if (by_width)
+      self->guide_y[0] = self->guide_y[1] = NAN;
+    else
+      self->guide_x[0] = self->guide_x[1] = NAN;
+    double least = MAX(min / s->w, min / s->h);
+    if (scale < least) {
+      scale = least;
+      clear_guides(self);
+    }
+    w = s->w * scale;
+    h = s->h * scale;
+  } else {
+    if (w < min) {
+      w = min;
+      self->guide_x[0] = self->guide_x[1] = NAN;
+    }
+    if (h < min) {
+      h = min;
+      self->guide_y[0] = self->guide_y[1] = NAN;
+    }
+  }
+  /* A pulled axis keeps its opposite edge (Alt: its centre); one that isn't stays centred. */
+  item->x = gx && !centre ? ((g & GRAB_LEFT) ? s->x + s->w - w : s->x) : cx - w / 2;
+  item->y = gy && !centre ? ((g & GRAB_TOP) ? s->y + s->h - h : s->y) : cy - h / 2;
+  item->w = w;
+  item->h = h;
+}
+
+/* One axis of a crop: @a and @b are the start's cut at the near and far edge, @near/@far the
+ * proposed ones (NAN: that edge isn't pulled). Each stays within 0 and CROP_MAX and leaves at least
+ * @least of the source showing; Alt (@centre) cuts the opposite edge by as much. */
+static void crop_axis(double a, double b, double near, double far, gboolean centre, double least, double *out_a,
+                      double *out_b) {
+  double room = 1 - least;
+  if (centre && (!isnan(near) || !isnan(far))) {
+    double d = !isnan(near) ? near - a : far - b;
+    d = CLAMP(d, MAX(-a, -b), MIN(MIN(CROP_MAX - a, CROP_MAX - b), (room - a - b) / 2));
+    *out_a = a + d;
+    *out_b = b + d;
+    return;
+  }
+  *out_a = isnan(near) ? a : CLAMP(near, 0, MAX(0, MIN(CROP_MAX, room - b)));
+  *out_b = isnan(far) ? b : CLAMP(far, 0, MAX(0, MIN(CROP_MAX, room - *out_a)));
+}
+
+/* Crop: the pulled edges cut into the source (or give it back, up to its edge); the box is what shows. */
+static void crop(LumaArrangeView *self, Item *item, double cdx, double cdy, gboolean centre, gboolean snap,
+                 double threshold, double min) {
+  const Item *s = &self->start;
+  Grab g = self->grab;
+  double fx, fy, fw, fh;
+  source_rect(s, &fx, &fy, &fw, &fh);
+  double l = NAN, t = NAN, r = NAN, b = NAN;
+  if (g & GRAB_LEFT)
+    l = (snapped_edge(self, item, TRUE, s->x + cdx, snap, threshold, &self->guide_x[0]) - fx) / fw;
+  if (g & GRAB_RIGHT)
+    r = (fx + fw - snapped_edge(self, item, TRUE, s->x + s->w + cdx, snap, threshold, &self->guide_x[1])) / fw;
+  if (g & GRAB_TOP)
+    t = (snapped_edge(self, item, FALSE, s->y + cdy, snap, threshold, &self->guide_y[0]) - fy) / fh;
+  if (g & GRAB_BOTTOM)
+    b = (fy + fh - snapped_edge(self, item, FALSE, s->y + s->h + cdy, snap, threshold, &self->guide_y[1])) / fh;
+  crop_axis(s->crop[0], s->crop[2], l, r, centre, MIN(min / fw, 1), &item->crop[0], &item->crop[2]);
+  crop_axis(s->crop[1], s->crop[3], t, b, centre, MIN(min / fh, 1), &item->crop[1], &item->crop[3]);
+  /* A guide shows only where the edge landed on it. */
+  if (!isnan(l) && fabs(item->crop[0] - l) > 1e-9)
+    self->guide_x[0] = NAN;
+  if (!isnan(r) && fabs(item->crop[2] - r) > 1e-9)
+    self->guide_x[1] = NAN;
+  if (!isnan(t) && fabs(item->crop[1] - t) > 1e-9)
+    self->guide_y[0] = NAN;
+  if (!isnan(b) && fabs(item->crop[3] - b) > 1e-9)
+    self->guide_y[1] = NAN;
+  item->x = fx + item->crop[0] * fw;
+  item->y = fy + item->crop[1] * fh;
+  item->w = fw * (1 - item->crop[0] - item->crop[2]);
+  item->h = fh * (1 - item->crop[1] - item->crop[3]);
+}
+
+/* Pan, in crop mode: the source slides under the box, which stays put. */
+static void pan(LumaArrangeView *self, Item *item, double cdx, double cdy) {
+  const Item *s = &self->start;
+  double fx, fy, fw, fh;
+  source_rect(s, &fx, &fy, &fw, &fh);
+  double dx = CLAMP(-cdx / fw, MAX(-s->crop[0], s->crop[2] - CROP_MAX), MIN(CROP_MAX - s->crop[0], s->crop[2]));
+  double dy = CLAMP(-cdy / fh, MAX(-s->crop[1], s->crop[3] - CROP_MAX), MIN(CROP_MAX - s->crop[1], s->crop[3]));
+  item->crop[0] = s->crop[0] + dx;
+  item->crop[2] = s->crop[2] - dx;
+  item->crop[1] = s->crop[1] + dy;
+  item->crop[3] = s->crop[3] - dy;
+}
+
+/* Lay the drag so far over the box it started from, with the modifiers held now. */
+static void apply_drag(LumaArrangeView *self) {
+  Item *item = find_item(self, self->selected);
+  if (item == NULL || self->grab == GRAB_NONE)
+    return;
+  double scale = fit(self, NULL, NULL);
+  double cdx = self->drag_dx / scale, cdy = self->drag_dy / scale;
+  double threshold = LUMA_UI_CREATIVE_ARRANGE_SNAP / scale, min = 2 * LUMA_UI_CREATIVE_ARRANGE_HANDLE / scale;
+  gboolean alt = (self->mods & GDK_ALT_MASK) != 0;
+  Item *start = &self->start;
+  const char *mode = mode_for(self, start, self->grab, self->mods);
+  item->x = start->x, item->y = start->y, item->w = start->w, item->h = start->h;
+  memcpy(item->crop, start->crop, sizeof item->crop);
+  clear_guides(self);
+  if (g_str_equal(mode, "move")) {
+    /* Alt moves without snapping. */
+    item->x = start->x + cdx;
+    item->y = start->y + cdy;
+    if (self->snapping && !alt) {
+      item->x += snap_move(self, item, TRUE, threshold, &self->guide_x[0]);
+      item->y += snap_move(self, item, FALSE, threshold, &self->guide_y[0]);
+    }
+  } else if (g_str_equal(mode, "pan")) {
+    pan(self, item, cdx, cdy);
+  } else if (g_str_has_prefix(mode, "crop")) {
+    crop(self, item, cdx, cdy, alt, self->snapping, threshold, min);
+  } else {
+    resize(self, item, cdx, cdy, g_str_has_prefix(mode, "resize"), alt, self->snapping, threshold, min);
+  }
+  set_drag_mode(self, mode);
+  gboolean same_rect = item->x == start->x && item->y == start->y && item->w == start->w && item->h == start->h;
+  gboolean same_crop = memcmp(item->crop, start->crop, sizeof item->crop) == 0;
+  if (!same_crop || self->crop_moved) {
+    self->crop_moved = TRUE;
+    emit_crop(self, SIG_CROP_CHANGED, item);
+  }
+  if (!same_rect || self->moved) {
+    self->moved = TRUE;
+    emit_rect(self, SIG_ITEM_CHANGED, item);
+  }
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
 static void drag_begin(GtkGestureDrag *gesture, double x, double y, gpointer user_data) {
   LumaArrangeView *self = user_data;
   double ox, oy, scale = fit(self, &ox, &oy);
   double cx = (x - ox) / scale, cy = (y - oy) / scale;
   gtk_widget_grab_focus(GTK_WIDGET(self));
-  self->moved = FALSE;
+  self->moved = self->crop_moved = FALSE;
+  self->drag_dx = self->drag_dy = 0;
+  GdkEvent *event = gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(gesture));
+  if (event != NULL)
+    self->mods = gdk_event_get_modifier_state(event) & DRAG_MODS;
   clear_guides(self);
   Grab grab = handle_at(self, x, y);
   Item *item = NULL;
@@ -286,6 +528,7 @@ static void drag_begin(GtkGestureDrag *gesture, double x, double y, gpointer use
   self->grab = grab;
   if (item != NULL) {
     self->start = *item;
+    set_drag_mode(self, mode_for(self, item, grab, self->mods));
     gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
   } else {
     gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_DENIED);
@@ -294,98 +537,12 @@ static void drag_begin(GtkGestureDrag *gesture, double x, double y, gpointer use
 
 static void drag_update(GtkGestureDrag *gesture, double dx, double dy, gpointer user_data) {
   LumaArrangeView *self = user_data;
-  Item *item = find_item(self, self->selected);
-  if (item == NULL || self->grab == GRAB_NONE)
-    return;
-  double scale = fit(self, NULL, NULL);
-  double cdx = dx / scale, cdy = dy / scale;
-  GdkModifierType mods = gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(gesture));
-  gboolean snap = self->snapping && !(mods & GDK_ALT_MASK);
-  double threshold = LUMA_UI_CREATIVE_ARRANGE_SNAP / scale;
-  Item *start = &self->start;
-  clear_guides(self);
-  if (self->grab == GRAB_MOVE) {
-    item->x = start->x + cdx;
-    item->y = start->y + cdy;
-    if (snap) {
-      item->x += snap_move(self, item, TRUE, threshold, &self->guide_x[0]);
-      item->y += snap_move(self, item, FALSE, threshold, &self->guide_y[0]);
-    }
-  } else {
-    double x0 = start->x, y0 = start->y, x1 = start->x + start->w, y1 = start->y + start->h;
-    if (self->grab & GRAB_LEFT)
-      x0 += cdx;
-    if (self->grab & GRAB_RIGHT)
-      x1 += cdx;
-    if (self->grab & GRAB_TOP)
-      y0 += cdy;
-    if (self->grab & GRAB_BOTTOM)
-      y1 += cdy;
-    if (snap) {
-      if (self->grab & GRAB_LEFT)
-        x0 += snap_edge(self, item, TRUE, x0, threshold, &self->guide_x[0]);
-      if (self->grab & GRAB_RIGHT)
-        x1 += snap_edge(self, item, TRUE, x1, threshold, &self->guide_x[1]);
-      if (self->grab & GRAB_TOP)
-        y0 += snap_edge(self, item, FALSE, y0, threshold, &self->guide_y[0]);
-      if (self->grab & GRAB_BOTTOM)
-        y1 += snap_edge(self, item, FALSE, y1, threshold, &self->guide_y[1]);
-    }
-    double min = 2 * LUMA_UI_CREATIVE_ARRANGE_HANDLE / scale;
-    if (x1 - x0 < min) {
-      if (self->grab & GRAB_LEFT)
-        x0 = x1 - min;
-      else
-        x1 = x0 + min;
-    }
-    if (y1 - y0 < min) {
-      if (self->grab & GRAB_TOP)
-        y0 = y1 - min;
-      else
-        y1 = y0 + min;
-    }
-    gboolean shift = (mods & GDK_SHIFT_MASK) != 0;
-    gboolean keep = start->keeps_aspect != shift;
-    gboolean corner = (self->grab & (GRAB_LEFT | GRAB_RIGHT)) && (self->grab & (GRAB_TOP | GRAB_BOTTOM));
-    if (keep && start->w > 0 && start->h > 0) {
-      double aspect = start->w / start->h;
-      double w = x1 - x0, h = y1 - y0;
-      if (corner ? fabs(w / start->w) >= fabs(h / start->h) : (self->grab & (GRAB_LEFT | GRAB_RIGHT)) != 0) {
-        double nh = w / aspect;
-        if (self->grab & GRAB_TOP)
-          y0 = y1 - nh;
-        else if (self->grab & GRAB_BOTTOM)
-          y1 = y0 + nh;
-        else {
-          double c = start->y + start->h / 2;
-          y0 = c - nh / 2;
-          y1 = c + nh / 2;
-        }
-        self->guide_y[0] = self->guide_y[1] = NAN;
-      } else {
-        double nw = h * aspect;
-        if (self->grab & GRAB_LEFT)
-          x0 = x1 - nw;
-        else if (self->grab & GRAB_RIGHT)
-          x1 = x0 + nw;
-        else {
-          double c = start->x + start->w / 2;
-          x0 = c - nw / 2;
-          x1 = c + nw / 2;
-        }
-        self->guide_x[0] = self->guide_x[1] = NAN;
-      }
-    }
-    item->x = x0;
-    item->y = y0;
-    item->w = x1 - x0;
-    item->h = y1 - y0;
-  }
-  if (item->x == start->x && item->y == start->y && item->w == start->w && item->h == start->h && !self->moved)
-    return;
-  self->moved = TRUE;
-  emit_rect(self, SIG_ITEM_CHANGED, item);
-  gtk_widget_queue_draw(GTK_WIDGET(self));
+  GdkEvent *event = gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(gesture));
+  if (event != NULL)
+    self->mods = gdk_event_get_modifier_state(event) & DRAG_MODS;
+  self->drag_dx = dx;
+  self->drag_dy = dy;
+  apply_drag(self);
 }
 
 static void drag_end(GtkGestureDrag *gesture G_GNUC_UNUSED, double dx G_GNUC_UNUSED, double dy G_GNUC_UNUSED,
@@ -393,12 +550,15 @@ static void drag_end(GtkGestureDrag *gesture G_GNUC_UNUSED, double dx G_GNUC_UNU
   LumaArrangeView *self = user_data;
   Item *item = find_item(self, self->selected);
   clear_guides(self);
+  if (item != NULL && self->crop_moved)
+    emit_crop(self, SIG_CROP_COMMITTED, item);
   if (item != NULL && self->moved) {
     announce(self);
     emit_rect(self, SIG_ITEM_COMMITTED, item);
   }
   self->grab = GRAB_NONE;
-  self->moved = FALSE;
+  self->moved = self->crop_moved = FALSE;
+  set_drag_mode(self, "none");
   gtk_widget_queue_draw(GTK_WIDGET(self));
 }
 
@@ -408,8 +568,14 @@ static void pressed(GtkGestureClick *click, int n_press, double x, double y, gpo
     return;
   double ox, oy, scale = fit(self, &ox, &oy);
   Item *item = item_at(self, (x - ox) / scale, (y - oy) / scale);
-  if (item != NULL) {
-    gtk_gesture_set_state(GTK_GESTURE(click), GTK_EVENT_SEQUENCE_CLAIMED);
+  if (item == NULL)
+    return;
+  gtk_gesture_set_state(GTK_GESTURE(click), GTK_EVENT_SEQUENCE_CLAIMED);
+  /* A box that can be cropped goes into crop mode; any other is activated. */
+  if (item->croppable && !item->locked) {
+    select_item(self, item->id, TRUE);
+    luma_arrange_view_set_cropping(self, item->id);
+  } else {
     g_signal_emit(self, signals[SIG_ITEM_ACTIVATED], 0, item->id);
   }
 }
@@ -423,7 +589,9 @@ static void motion(GtkEventControllerMotion *controller G_GNUC_UNUSED, double x,
   Item *item = item_at(self, (x - ox) / scale, (y - oy) / scale);
   if (grab == GRAB_NONE && item != NULL && !item->locked && g_strcmp0(item->id, self->selected) == 0)
     grab = GRAB_MOVE;
-  gtk_widget_set_cursor_from_name(GTK_WIDGET(self), cursor_for(grab));
+  gtk_widget_set_cursor_from_name(GTK_WIDGET(self), grab == GRAB_MOVE && item != NULL && in_crop_mode(self, item)
+                                                        ? "grab"
+                                                        : cursor_for(grab));
   const char *id = item != NULL ? item->id : NULL;
   if (g_strcmp0(id, self->hovered) != 0) {
     g_free(self->hovered);
@@ -439,6 +607,25 @@ static void left(GtkEventControllerMotion *controller G_GNUC_UNUSED, gpointer us
 }
 
 /* ── Keyboard ── */
+
+static GdkModifierType modifier_of(guint keyval) {
+  switch (keyval) {
+  case GDK_KEY_Shift_L: case GDK_KEY_Shift_R: return GDK_SHIFT_MASK;
+  case GDK_KEY_Control_L: case GDK_KEY_Control_R: return GDK_CONTROL_MASK;
+  case GDK_KEY_Alt_L: case GDK_KEY_Alt_R: case GDK_KEY_Meta_L: case GDK_KEY_Meta_R: return GDK_ALT_MASK;
+  default: return 0;
+  }
+}
+
+/* A modifier pressed or let go mid-drag changes what the drag does at once. */
+static void modifiers_now(LumaArrangeView *self, GdkModifierType mods) {
+  mods &= DRAG_MODS;
+  if (mods == self->mods)
+    return;
+  self->mods = mods;
+  if (self->grab != GRAB_NONE)
+    apply_drag(self);
+}
 
 static gboolean cycle(LumaArrangeView *self, int direction) {
   int n = (int)self->items->len, at = -1;
@@ -462,6 +649,11 @@ static gboolean cycle(LumaArrangeView *self, int direction) {
 static gboolean key_pressed(GtkEventControllerKey *keys G_GNUC_UNUSED, guint keyval, guint code G_GNUC_UNUSED,
                             GdkModifierType state, gpointer user_data) {
   LumaArrangeView *self = user_data;
+  GdkModifierType modifier = modifier_of(keyval);
+  if (modifier != 0) {
+    modifiers_now(self, state | modifier);
+    return FALSE;
+  }
   Item *item = find_item(self, self->selected);
   double step = (state & GDK_SHIFT_MASK) ? LUMA_UI_CREATIVE_ARRANGE_NUDGE_LARGE : 1;
   double dx = 0, dy = 0;
@@ -470,7 +662,20 @@ static gboolean key_pressed(GtkEventControllerKey *keys G_GNUC_UNUSED, guint key
   case GDK_KEY_Right: case GDK_KEY_KP_Right: dx = step; break;
   case GDK_KEY_Up: case GDK_KEY_KP_Up: dy = -step; break;
   case GDK_KEY_Down: case GDK_KEY_KP_Down: dy = step; break;
+  case GDK_KEY_Return: case GDK_KEY_KP_Enter: case GDK_KEY_ISO_Enter:
+    if (self->cropping != NULL) {
+      luma_arrange_view_set_cropping(self, NULL);
+      return TRUE;
+    }
+    if (item == NULL || !item->croppable || item->locked || !item->visible)
+      return FALSE;
+    luma_arrange_view_set_cropping(self, item->id);
+    return TRUE;
   case GDK_KEY_Escape:
+    if (self->cropping != NULL) {
+      luma_arrange_view_set_cropping(self, NULL);
+      return TRUE;
+    }
     if (item == NULL)
       return FALSE;
     select_item(self, NULL, TRUE);
@@ -488,6 +693,13 @@ static gboolean key_pressed(GtkEventControllerKey *keys G_GNUC_UNUSED, guint key
   emit_rect(self, SIG_ITEM_COMMITTED, item);
   gtk_widget_queue_draw(GTK_WIDGET(self));
   return TRUE;
+}
+
+static void key_released(GtkEventControllerKey *keys G_GNUC_UNUSED, guint keyval, guint code G_GNUC_UNUSED,
+                         GdkModifierType state, gpointer user_data) {
+  GdkModifierType modifier = modifier_of(keyval);
+  if (modifier != 0)
+    modifiers_now(user_data, state & ~modifier);
 }
 
 /* ── Layout and drawing ── */
@@ -538,11 +750,45 @@ static void draw_handle(GtkSnapshot *snapshot, double x, double y, const GdkRGBA
   gtk_snapshot_append_border(snapshot, &rounded, widths, colors);
 }
 
+/* What a crop cuts away, dim outside the box: the source itself when the app gave one, else a scrim. */
+static void draw_ghost(GtkSnapshot *snapshot, const Item *item, double ox, double oy, double scale,
+                       const graphene_rect_t *box, const GdkRGBA *color) {
+  double fx, fy, fw, fh;
+  source_rect(item, &fx, &fy, &fw, &fh);
+  graphene_rect_t full = GRAPHENE_RECT_INIT((float)(ox + fx * scale), (float)(oy + fy * scale), (float)(fw * scale),
+                                            (float)(fh * scale));
+  float right = box->origin.x + box->size.width, bottom = box->origin.y + box->size.height;
+  float full_right = full.origin.x + full.size.width, full_bottom = full.origin.y + full.size.height;
+  graphene_rect_t strips[4] = {
+    GRAPHENE_RECT_INIT(full.origin.x, full.origin.y, full.size.width, box->origin.y - full.origin.y),
+    GRAPHENE_RECT_INIT(full.origin.x, bottom, full.size.width, full_bottom - bottom),
+    GRAPHENE_RECT_INIT(full.origin.x, box->origin.y, box->origin.x - full.origin.x, box->size.height),
+    GRAPHENE_RECT_INIT(right, box->origin.y, full_right - right, box->size.height),
+  };
+  for (guint i = 0; i < G_N_ELEMENTS(strips); i++) {
+    if (strips[i].size.width < 0.5f || strips[i].size.height < 0.5f)
+      continue;
+    if (item->ghost != NULL) {
+      gtk_snapshot_push_clip(snapshot, &strips[i]);
+      gtk_snapshot_push_opacity(snapshot, color->alpha);
+      gtk_snapshot_save(snapshot);
+      gtk_snapshot_translate(snapshot, &full.origin);
+      gdk_paintable_snapshot(item->ghost, snapshot, full.size.width, full.size.height);
+      gtk_snapshot_restore(snapshot);
+      gtk_snapshot_pop(snapshot);
+      gtk_snapshot_pop(snapshot);
+    } else {
+      gtk_snapshot_append_color(snapshot, color, &strips[i]);
+    }
+  }
+  stroke_rect(snapshot, &full, 1, color);
+}
+
 static void luma_arrange_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   LumaArrangeView *self = LUMA_ARRANGE_VIEW(widget);
   if (self->content != NULL)
     gtk_widget_snapshot_child(widget, self->content, snapshot);
-  GdkRGBA colors[6];
+  GdkRGBA colors[7];
   for (guint i = 0; i < G_N_ELEMENTS(self->nodes); i++)
     gtk_widget_get_color(self->nodes[i], &colors[i]);
   double ox, oy, scale = fit(self, &ox, &oy);
@@ -573,6 +819,9 @@ static void luma_arrange_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
   double x0 = ox + item->x * scale, y0 = oy + item->y * scale;
   double x1 = x0 + item->w * scale, y1 = y0 + item->h * scale;
   graphene_rect_t frame = GRAPHENE_RECT_INIT((float)x0, (float)y0, (float)(x1 - x0), (float)(y1 - y0));
+  if (in_crop_mode(self, item) || (self->drag_mode != NULL && (g_str_has_prefix(self->drag_mode, "crop") ||
+                                                               g_str_equal(self->drag_mode, "pan"))))
+    draw_ghost(snapshot, item, ox, oy, scale, &frame, &colors[NODE_GHOST]);
   const GdkRGBA *ring = item->locked ? &colors[NODE_LOCKED] : &colors[NODE_FRAME];
   stroke_rect(snapshot, &frame, LUMA_UI_CREATIVE_ARRANGE_FRAME, ring);
   if (item->locked)
@@ -598,12 +847,32 @@ static void luma_arrange_view_finalize(GObject *object) {
   g_clear_pointer(&self->items, g_ptr_array_unref);
   g_clear_pointer(&self->selected, g_free);
   g_clear_pointer(&self->hovered, g_free);
+  g_clear_pointer(&self->cropping, g_free);
   G_OBJECT_CLASS(luma_arrange_view_parent_class)->finalize(object);
+}
+
+static void luma_arrange_view_get_property(GObject *object, guint id, GValue *value, GParamSpec *spec) {
+  LumaArrangeView *self = LUMA_ARRANGE_VIEW(object);
+  switch (id) {
+  case PROP_CROPPING: g_value_set_string(value, self->cropping); break;
+  case PROP_DRAG_MODE: g_value_set_string(value, self->drag_mode); break;
+  default: G_OBJECT_WARN_INVALID_PROPERTY_ID(object, id, spec);
+  }
+}
+
+static void luma_arrange_view_set_property(GObject *object, guint id, const GValue *value, GParamSpec *spec) {
+  LumaArrangeView *self = LUMA_ARRANGE_VIEW(object);
+  switch (id) {
+  case PROP_CROPPING: luma_arrange_view_set_cropping(self, g_value_get_string(value)); break;
+  default: G_OBJECT_WARN_INVALID_PROPERTY_ID(object, id, spec);
+  }
 }
 
 static void luma_arrange_view_class_init(LumaArrangeViewClass *klass) {
   GObjectClass *object_class = G_OBJECT_CLASS(klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
+  object_class->get_property = luma_arrange_view_get_property;
+  object_class->set_property = luma_arrange_view_set_property;
   object_class->dispose = luma_arrange_view_dispose;
   object_class->finalize = luma_arrange_view_finalize;
   widget_class->measure = luma_arrange_view_measure;
@@ -653,6 +922,54 @@ static void luma_arrange_view_class_init(LumaArrangeViewClass *klass) {
    */
   signals[SIG_ITEM_ACTIVATED] = g_signal_new("item-activated", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0,
                                              NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_STRING);
+  /**
+   * LumaArrangeView::crop-changed:
+   * @self: the view
+   * @id: the box
+   * @left: the fraction of the source cut from its left (0 to 0.49)
+   * @top: from its top
+   * @right: from its right
+   * @bottom: from its bottom
+   *
+   * Every step of a crop or a pan in crop mode. The box's rectangle (what
+   * shows) follows in #LumaArrangeView::item-changed.
+   */
+  signals[SIG_CROP_CHANGED] = g_signal_new("crop-changed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0, NULL,
+                                           NULL, NULL, G_TYPE_NONE, 5, G_TYPE_STRING, G_TYPE_DOUBLE, G_TYPE_DOUBLE,
+                                           G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  /**
+   * LumaArrangeView::crop-committed:
+   * @self: the view
+   * @id: the box
+   * @left: the final fraction cut from the source's left
+   * @top: top
+   * @right: right
+   * @bottom: bottom
+   *
+   * The end of a crop or pan: one undoable change (with the box's
+   * #LumaArrangeView::item-committed when its rectangle changed too).
+   */
+  signals[SIG_CROP_COMMITTED] = g_signal_new("crop-committed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0,
+                                             NULL, NULL, NULL, G_TYPE_NONE, 5, G_TYPE_STRING, G_TYPE_DOUBLE,
+                                             G_TYPE_DOUBLE, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  /**
+   * LumaArrangeView:cropping:
+   *
+   * The box in crop mode, or %NULL.
+   */
+  props[PROP_CROPPING] = g_param_spec_string("cropping", NULL, NULL, NULL,
+                                             G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+  /**
+   * LumaArrangeView:drag-mode:
+   *
+   * What the drag under way does: "none", "move", "resize" (proportions
+   * kept), "stretch" (free), "resize-centre", "stretch-centre", "crop",
+   * "crop-centre" or "pan". It follows the modifiers as they change, for a
+   * hint ("Alt from centre · Shift stretch · Ctrl crop").
+   */
+  props[PROP_DRAG_MODE] = g_param_spec_string("drag-mode", NULL, NULL, "none",
+                                              G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+  g_object_class_install_properties(object_class, N_PROPS, props);
 }
 
 static void luma_arrange_view_init(LumaArrangeView *self) {
@@ -662,6 +979,7 @@ static void luma_arrange_view_init(LumaArrangeView *self) {
   self->canvas_h = 1080;
   self->snapping = TRUE;
   self->grab = GRAB_NONE;
+  self->drag_mode = "none";
   clear_guides(self);
   gtk_widget_add_css_class(GTK_WIDGET(self), "lumaui-arrange-view");
   gtk_widget_set_focusable(GTK_WIDGET(self), TRUE);
@@ -694,6 +1012,7 @@ static void luma_arrange_view_init(LumaArrangeView *self) {
   gtk_widget_add_controller(GTK_WIDGET(self), hover);
   GtkEventController *keys = gtk_event_controller_key_new();
   g_signal_connect(keys, "key-pressed", G_CALLBACK(key_pressed), self);
+  g_signal_connect(keys, "key-released", G_CALLBACK(key_released), self);
   gtk_widget_add_controller(GTK_WIDGET(self), keys);
 }
 
@@ -758,6 +1077,8 @@ void luma_arrange_view_remove_item(LumaArrangeView *self, const char *id) {
   Item *item = find_item(self, id);
   if (item == NULL)
     return;
+  if (g_strcmp0(self->cropping, id) == 0)
+    luma_arrange_view_set_cropping(self, NULL);
   if (g_strcmp0(self->selected, id) == 0)
     select_item(self, NULL, FALSE);
   if (g_strcmp0(self->hovered, id) == 0)
@@ -768,6 +1089,7 @@ void luma_arrange_view_remove_item(LumaArrangeView *self, const char *id) {
 
 void luma_arrange_view_clear(LumaArrangeView *self) {
   g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  luma_arrange_view_set_cropping(self, NULL);
   select_item(self, NULL, FALSE);
   g_clear_pointer(&self->hovered, g_free);
   g_ptr_array_set_size(self->items, 0);
@@ -877,4 +1199,77 @@ void luma_arrange_view_set_snapping(LumaArrangeView *self, gboolean snapping) {
 gboolean luma_arrange_view_get_snapping(LumaArrangeView *self) {
   g_return_val_if_fail(LUMA_IS_ARRANGE_VIEW(self), FALSE);
   return self->snapping;
+}
+
+void luma_arrange_view_set_item_croppable(LumaArrangeView *self, const char *id, gboolean croppable) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  Item *item = find_item(self, id);
+  g_return_if_fail(item != NULL);
+  item->croppable = !!croppable;
+  if (!croppable && g_strcmp0(self->cropping, id) == 0)
+    luma_arrange_view_set_cropping(self, NULL);
+}
+
+void luma_arrange_view_set_item_crop(LumaArrangeView *self, const char *id, double left, double top, double right,
+                                     double bottom) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  Item *item = find_item(self, id);
+  g_return_if_fail(item != NULL);
+  double values[4] = {left, top, right, bottom};
+  for (guint i = 0; i < 4; i++)
+    item->crop[i] = isnan(values[i]) ? 0 : CLAMP(values[i], 0, CROP_MAX);
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+gboolean luma_arrange_view_get_item_crop(LumaArrangeView *self, const char *id, double *left, double *top,
+                                         double *right, double *bottom) {
+  g_return_val_if_fail(LUMA_IS_ARRANGE_VIEW(self), FALSE);
+  Item *item = find_item(self, id);
+  if (item == NULL)
+    return FALSE;
+  double *out[4] = {left, top, right, bottom};
+  for (guint i = 0; i < 4; i++)
+    if (out[i] != NULL)
+      *out[i] = item->crop[i];
+  return TRUE;
+}
+
+void luma_arrange_view_set_item_ghost(LumaArrangeView *self, const char *id, GdkPaintable *source) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  g_return_if_fail(source == NULL || GDK_IS_PAINTABLE(source));
+  Item *item = find_item(self, id);
+  g_return_if_fail(item != NULL);
+  g_set_object(&item->ghost, source);
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void luma_arrange_view_set_cropping(LumaArrangeView *self, const char *id) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  Item *item = find_item(self, id);
+  if (id != NULL && (item == NULL || !item->croppable || item->locked)) {
+    g_critical("an arrange view crops only a box it has that can be cropped and isn't locked: %s", id);
+    return;
+  }
+  if (g_strcmp0(self->cropping, id) == 0)
+    return;
+  g_free(self->cropping);
+  self->cropping = g_strdup(id);
+  if (id != NULL && g_strcmp0(self->selected, id) != 0) {
+    /* Selected without selection-changed, as luma_arrange_view_set_selected(). */
+    g_free(self->selected);
+    self->selected = g_strdup(id);
+  }
+  announce(self);
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+  g_object_notify_by_pspec(G_OBJECT(self), props[PROP_CROPPING]);
+}
+
+const char *luma_arrange_view_get_cropping(LumaArrangeView *self) {
+  g_return_val_if_fail(LUMA_IS_ARRANGE_VIEW(self), NULL);
+  return self->cropping;
+}
+
+const char *luma_arrange_view_get_drag_mode(LumaArrangeView *self) {
+  g_return_val_if_fail(LUMA_IS_ARRANGE_VIEW(self), NULL);
+  return self->drag_mode;
 }

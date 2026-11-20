@@ -62,6 +62,7 @@ ui_part_headers = files(
   'luma-creative-layers.h',
   'luma-creative-properties.h',
   'luma-arrange-view.h',
+  'luma-color-picker.h',
   'luma-timeline.h',
 )
 

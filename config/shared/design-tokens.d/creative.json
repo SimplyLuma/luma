@@ -80,7 +80,19 @@
       "arrange_snap": 6,
       "arrange_frame": 1.5,
       "arrange_guide": 1,
-      "arrange_nudge_large": 10
+      "arrange_nudge_large": 10,
+      "picker_width": 248,
+      "picker_padding": 12,
+      "picker_radius": 18,
+      "picker_gap": 10,
+      "picker_area_height": 156,
+      "picker_area_radius": 10,
+      "picker_strip": 14,
+      "picker_knob": 16,
+      "picker_swatch": 22,
+      "picker_swatch_gap": 6,
+      "picker_swatch_radius": 7,
+      "picker_recent_max": 8
     },
     "motion": {
       "creative_panel_move_ms": 380,

@@ -291,13 +291,28 @@ entry.lumaui-creative-hex {
 entry.lumaui-creative-hex:focus-within {
   box-shadow: inset 0 0 0 1px @luma_well_ring, inset 0 1px 2px @luma_well_shade, 0 0 0 1.5px @luma_creative_selection;
 }
-grid.lumaui-creative-palette { padding: 4px; border-spacing: 6px; }
-button.lumaui-creative-palette-swatch {
-  min-width: 28px; min-height: 28px; padding: 0; margin: 0; border: none; border-radius: 8px;
-  background: none; box-shadow: inset 0 0 0 1px @luma_line; outline: 0 solid transparent;
+/* ColorPicker: the planes, the swatch rows and the foot (eyedropper, code). */
+box.lumaui-color-picker { min-width: calc(var(--lumaui-creative-picker-width) - 2 * var(--lumaui-creative-picker-padding)); }
+box.lumaui-color-picker > drawingarea { outline: 0 solid transparent; }
+box.lumaui-color-picker > drawingarea:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 2px; border-radius: var(--lumaui-creative-picker-area-radius); }
+box.lumaui-color-picker > drawingarea.lumaui-color-picker-hue:focus-visible,
+box.lumaui-color-picker > drawingarea.lumaui-color-picker-alpha:focus-visible { border-radius: calc(var(--lumaui-creative-picker-knob) / 2); }
+label.lumaui-color-picker-heading { color: @luma_muted; margin-bottom: calc(var(--lumaui-creative-picker-swatch-gap) - var(--lumaui-creative-picker-gap)); }
+flowbox.lumaui-color-picker-swatches > flowboxchild { padding: 0; min-width: 0; min-height: 0; background: none; outline: 0 solid transparent; }
+button.lumaui-color-picker-swatch {
+  min-width: var(--lumaui-creative-picker-swatch); min-height: var(--lumaui-creative-picker-swatch); padding: 0; margin: 0; border: none;
+  border-radius: var(--lumaui-creative-picker-swatch-radius); background: none; box-shadow: none; outline: 0 solid transparent;
 }
-button.lumaui-creative-palette-swatch:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
-popover.lumaui-creative-palette-popover > contents { padding: 6px; border-radius: 16px; background: @luma_float_surface; }
+button.lumaui-color-picker-swatch:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+box.lumaui-color-picker-foot > button.lumaui-color-picker-eyedropper {
+  min-width: var(--lumaui-creative-field-height); min-height: var(--lumaui-creative-field-height); padding: 0;
+  border-radius: var(--lumaui-creative-field-radius);
+}
+box.lumaui-color-picker-foot > button.lumaui-color-picker-eyedropper.unavailable { color: @luma_faint; }
+/* The picker's popover from a colour field's swatch: an opaque LumaUI surface. */
+popover.lumaui-color-picker-popover > contents {
+  padding: var(--lumaui-creative-picker-padding); border-radius: var(--lumaui-creative-picker-radius); background: @luma_float_surface;
+}
 
 /* PropertyChoice: a menu well (.suselect) or segments (.seg). */
 button.lumaui-creative-select {
@@ -333,3 +348,5 @@ widget.lumaui-arrange-view > .lumaui-arrange-handle { color: @luma_creative_sele
 widget.lumaui-arrange-view > .lumaui-arrange-knob { color: @luma_key; }
 widget.lumaui-arrange-view > .lumaui-arrange-guide { color: @luma_mark_pink; }
 widget.lumaui-arrange-view > .lumaui-arrange-locked { color: @luma_muted; }
+/* What a crop cuts away: the source at this opacity (its alpha), or this scrim without one. */
+widget.lumaui-arrange-view > .lumaui-arrange-ghost { color: rgba(0, 0, 0, 0.38); }
