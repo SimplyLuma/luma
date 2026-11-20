@@ -121,11 +121,12 @@ gst-inspect-1.0 lumaframe | grep -q 'libgstlumavideofx.so'
 # A failing or silent source comes out of the program without stalling it.
 PYTHONPATH=%{buildroot}%{python3_sitelib} timeout 120 python3 -B tests/engine_failure.py
 # The installed app opens on drawn stand-in sources and renders its window
-# at phone and desktop widths.
+# at phone and desktop widths. The first try waits 15 s: on a loaded builder
+# the window can take that long to map while llvmpipe composites the scene.
 mkdir -p check-home
 for width in 360 1280; do
   HOME=$PWD/check-home XDG_DATA_HOME=$PWD/check-home/data XDG_CONFIG_HOME=$PWD/check-home/config \
-    XDG_CACHE_HOME=$PWD/check-home/cache STREAMY_FAKE_SOURCES=1 \
+    XDG_CACHE_HOME=$PWD/check-home/cache STREAMY_FAKE_SOURCES=1 STREAMY_SHOT_DELAY=15000 \
     STREAMY_SHOT=$PWD/shot-$width.png STREAMY_SHOT_WIDTH=$width \
     PYTHONPATH=%{buildroot}%{python3_sitelib} \
     timeout 120 xvfb-run -a -s "-screen 0 1920x1080x24" dbus-run-session -- \

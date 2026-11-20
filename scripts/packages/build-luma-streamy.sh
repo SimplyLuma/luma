@@ -59,7 +59,8 @@ test "$(rpm -qp --qf '%{VERSION}-%{RELEASE}.%{ARCH}' "$rpm")" = "$expected" || {
   printf 'error: Streamy RPM header differs from its spec\n' >&2; exit 1;
 }
 # The plugin is the app's renderer: an RPM without it is not Streamy.
-rpm -qlp "$rpm" | grep -qx '/usr/lib64/gstreamer-1.0/libgstlumavideofx.so' || {
+files=$(rpm -qlp "$rpm")
+grep -qx '/usr/lib64/gstreamer-1.0/libgstlumavideofx.so' <<<"$files" || {
   printf 'error: the Streamy RPM does not ship the lumaframe plugin\n' >&2; exit 1;
 }
 rm -rf "$output_dir/RPMS" "$output_dir/SRPMS" "$output_dir/SHA256SUMS"
