@@ -15,12 +15,15 @@ G_BEGIN_DECLS
  * LumaPanelSide:
  * @LUMA_PANEL_SIDE_LEFT: the left panel (layers, outline, sheets; 244 px)
  * @LUMA_PANEL_SIDE_RIGHT: the right panel (the inspector; 268 px)
+ * @LUMA_PANEL_SIDE_BOTTOM: the bottom dock, a row above the tools between
+ *   the side docks (mixers, meters, timelines)
  *
  * Which side of a #LumaCreativeWorkspace a #LumaFloatingPanel floats on.
  */
 typedef enum {
   LUMA_PANEL_SIDE_LEFT,
   LUMA_PANEL_SIDE_RIGHT,
+  LUMA_PANEL_SIDE_BOTTOM,
 } LumaPanelSide;
 
 GType luma_panel_side_get_type(void) G_GNUC_CONST;
@@ -203,10 +206,24 @@ gboolean luma_floating_panel_get_is_drawer(LumaFloatingPanel *self);
  *
  * The dot grid follows the content's camera: luma_creative_workspace_set_camera().
  *
+ * Docks: besides the one left and right panel, an app can dock any number
+ * of keyed panels (luma_creative_workspace_add_panel()) on the left, the
+ * right or the bottom. Side docks stack their panels top to bottom; open
+ * ones share the height, folded ones are pills. The bottom dock is a row
+ * between the side docks, above the tools, at most 40 % of the height. A
+ * person moves a docked panel by dragging its header to another dock (a
+ * strip shows where it lands), or from its More menu (Move up/down, Dock on
+ * the left/right/at the bottom), which is also the keyboard's way. The
+ * arrangement is a layout: luma_creative_workspace_get_layout() and
+ * luma_creative_workspace_set_layout() save and restore it, and
+ * #LumaCreativeWorkspace::layout-changed says when a person changed it, so
+ * an app keeps named layouts (presets) by storing the variants.
+ *
  * Tree: widget.lumaui-creative-workspace(.phone)(.focused)
  *   ├ widget.lumaui-creative-grid   (the dot colour; painted by the workspace)
  *   ├ content
- *   ├ box.lumaui-creative-panel.left, box.lumaui-creative-panel.right
+ *   ├ box.lumaui-creative-panel(.left|.right|.bottom) … (dock order)
+ *   ├ box.lumaui-creative-dock-target(.left|.right|.bottom)  (while a panel is dragged)
  *   ├ zoom (.lumaui-creative-zoom)
  *   └ box.lumaui-creative-tools
  */
@@ -254,6 +271,77 @@ void luma_creative_workspace_set_right(LumaCreativeWorkspace *self, LumaFloating
  * Returns: (transfer none) (nullable): the right panel
  */
 LumaFloatingPanel *luma_creative_workspace_get_right(LumaCreativeWorkspace *self);
+/**
+ * luma_creative_workspace_add_panel:
+ * @self: a workspace
+ * @key: the panel's stable key in layouts ("widgets", "inspector", "audio")
+ * @panel: an unparented panel
+ * @side: the dock it starts in; it goes last there
+ *
+ * Dock a panel. It becomes movable: its header drags it to another dock,
+ * and its More menu lists where it can go. luma_creative_workspace_set_left()
+ * and _set_right() are this with the keys "left" and "right".
+ */
+void luma_creative_workspace_add_panel(LumaCreativeWorkspace *self, const char *key, LumaFloatingPanel *panel,
+                                       LumaPanelSide side);
+/**
+ * luma_creative_workspace_remove_panel:
+ * @self: a workspace
+ * @key: a docked panel's key; an unknown key does nothing
+ */
+void luma_creative_workspace_remove_panel(LumaCreativeWorkspace *self, const char *key);
+/**
+ * luma_creative_workspace_get_panel:
+ * @self: a workspace
+ * @key: a docked panel's key
+ *
+ * Returns: (transfer none) (nullable): the panel
+ */
+LumaFloatingPanel *luma_creative_workspace_get_panel(LumaCreativeWorkspace *self, const char *key);
+/**
+ * luma_creative_workspace_move_panel:
+ * @self: a workspace
+ * @key: a docked panel's key
+ * @side: the dock to move it to
+ * @index: its place there (0 first); -1 or past the end puts it last
+ *
+ * Emits #LumaCreativeWorkspace::layout-changed.
+ */
+void luma_creative_workspace_move_panel(LumaCreativeWorkspace *self, const char *key, LumaPanelSide side,
+                                        int index);
+/**
+ * luma_creative_workspace_get_layout:
+ * @self: a workspace
+ *
+ * The docked panels as `a(ssb)`: (key, "left" | "right" | "bottom",
+ * folded) in dock order. At phone width, the folding is the computer's.
+ *
+ * Returns: (transfer full): the layout
+ */
+GVariant *luma_creative_workspace_get_layout(LumaCreativeWorkspace *self);
+/**
+ * luma_creative_workspace_set_layout:
+ * @self: a workspace
+ * @layout: an `a(ssb)` from luma_creative_workspace_get_layout()
+ *
+ * Restore a layout. Keys the workspace doesn't have are skipped, and its
+ * panels the layout doesn't name stay where they are, after the named ones.
+ *
+ * Returns: %FALSE when @layout is not an `a(ssb)`
+ */
+gboolean luma_creative_workspace_set_layout(LumaCreativeWorkspace *self, GVariant *layout);
+/**
+ * luma_creative_workspace_get_work_area:
+ * @self: a workspace
+ * @x: (out) (optional): left
+ * @y: (out) (optional): top
+ * @width: (out) (optional): width
+ * @height: (out) (optional): height
+ *
+ * The part of the work no open docked panel or the tools cover, as of the
+ * last allocation. See #LumaCreativeWorkspace::work-area-changed.
+ */
+void luma_creative_workspace_get_work_area(LumaCreativeWorkspace *self, int *x, int *y, int *width, int *height);
 
 /**
  * luma_creative_workspace_set_tools:

@@ -2406,3 +2406,10 @@ box.lumaui-dialog.key button.lumaui-dialog-action {
   box-shadow: inset 0 1px 0 @luma_key_highlight, 0 0 0 1px @luma_key_ring, 0 1px 3px @luma_key_shadow;
 }
 box.lumaui-dialog.key button.lumaui-dialog-action:hover { filter: brightness(1.05); }
+
+/* ── LumaUI: AudioMeter (drawn; the nodes carry its colours) ── */
+box.lumaui-audio-meter > .lumaui-meter-track { color: @luma_well; }
+box.lumaui-audio-meter > .lumaui-meter-low { color: @luma_good; }
+box.lumaui-audio-meter > .lumaui-meter-mid { color: @luma_mark_yellow; }
+box.lumaui-audio-meter > .lumaui-meter-high { color: @luma_destructive; }
+box.lumaui-audio-meter > .lumaui-meter-peak { color: @luma_ink_secondary; }

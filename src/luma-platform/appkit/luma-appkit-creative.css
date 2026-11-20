@@ -42,6 +42,14 @@ box.lumaui-creative-panel-card {
 }
 box.lumaui-creative-panel.left box.lumaui-creative-panel-card { min-width: var(--lumaui-creative-panel-left-width); }
 box.lumaui-creative-panel.right box.lumaui-creative-panel-card { min-width: var(--lumaui-creative-panel-right-width); }
+box.lumaui-creative-panel.bottom.gone { transform: translateY(var(--lumaui-creative-gone-shift)); }
+box.lumaui-creative-panel.moving { opacity: 0.4; }
+/* Docks: where a dragged panel lands. */
+box.lumaui-creative-dock-target {
+  border-radius: var(--lumaui-creative-panel-radius);
+  background: alpha(@luma_creative_selection, 0.12);
+  box-shadow: inset 0 0 0 1.5px alpha(@luma_creative_selection, 0.7);
+}
 /* A phone: the open panel is a bottom drawer (the kit's drawer shape). */
 box.lumaui-creative-panel.drawer { margin: 0; }
 box.lumaui-creative-panel.drawer box.lumaui-creative-panel-card {
@@ -316,3 +324,12 @@ button.lumaui-creative-align-button:focus-visible { outline: 2px solid @luma_foc
   box.lumaui-creative-panel, .lumaui-creative-workspace > .lumaui-creative-zoom { transition: opacity var(--lumaui-duration-reduced-fade) ease; }
   box.lumaui-creative-panel.left.gone, box.lumaui-creative-panel.right.gone { transform: none; }
 }
+
+/* ── LumaUI: ArrangeView (direct manipulation over a picture) ── */
+widget.lumaui-arrange-view:focus-visible { outline: 0 solid transparent; }
+widget.lumaui-arrange-view > .lumaui-arrange-frame { color: @luma_creative_selection; }
+widget.lumaui-arrange-view > .lumaui-arrange-hover { color: alpha(@luma_creative_selection, 0.55); }
+widget.lumaui-arrange-view > .lumaui-arrange-handle { color: @luma_creative_selection; }
+widget.lumaui-arrange-view > .lumaui-arrange-knob { color: @luma_key; }
+widget.lumaui-arrange-view > .lumaui-arrange-guide { color: @luma_mark_pink; }
+widget.lumaui-arrange-view > .lumaui-arrange-locked { color: @luma_muted; }

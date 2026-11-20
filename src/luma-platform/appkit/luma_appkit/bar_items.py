@@ -15,7 +15,10 @@ metrics; the app says what they are and hears what happens.
 - **BarReadout** (`.mpeta`, `.pager`): grouped text that is not a control:
   an ETA ("12 min" over "3.4 mi · arrive 4:12"), or a pager ("3 of 120")
   between Previous and Next when the app passes them (`tone="media"` over a
-  photo or video, as v70's viewer).
+  photo or video, as v70's viewer). `state="live" | "recording" |
+  "connecting"` makes it a live readout: a mark before the time, tabular
+  figures, and `set()` updates that don't speak each tick (only `set_state()`
+  and its word are announced).
 - **SplitAction** (`.lsplit`): the key with a chevron half for the other
   ways to do it (Save · Save as…). **BarMenu** (`.nstyle`): a word and a
   chevron on a well that picks one of several (a text style).
@@ -444,12 +447,21 @@ class BarReadout:
     """Text that reads, not acts: `primary` over `secondary` (an ETA), or a pager with Previous and Next."""
 
     TONES = ("bar", "media")
+    STATES = ("live", "recording", "connecting")
 
     def __init__(self, primary: str, secondary: str | None = None, *, label: str | None = None,
                  on_previous: Callable[[], None] | None = None, on_next: Callable[[], None] | None = None,
-                 tone: str = "bar", note: str | None = None, fill: bool = False) -> None:
+                 tone: str = "bar", note: str | None = None, fill: bool = False,
+                 state: str | None = None) -> None:
         if tone not in self.TONES:
             raise ValueError(f"a readout's tone is one of {self.TONES}: {tone!r}")
+        if state is not None and state not in self.STATES:
+            raise ValueError(f"a live readout's state is one of {self.STATES}: {state!r}")
+        if state is not None and on_previous is not None:
+            raise ValueError("a pager is not a live readout")
+        self.state = state
+        self._mark: Gtk.Widget | None = None
+        self._note: Gtk.Label | None = None
         self.tone = tone
         self.note = note
         self.fill = fill
@@ -474,7 +486,23 @@ class BarReadout:
             if self._labels[1] is not None:
                 self._labels[1].set_label(secondary or "")
                 self._labels[1].set_visible(bool(secondary))
-            self._announce()
+            if self.state is None:
+                self._announce()
+
+    def set_state(self, state: str, note: str | None = None) -> None:
+        """A live readout's state and its word ("Live", "Reconnecting"), announced once."""
+        if state not in self.STATES:
+            raise ValueError(f"a live readout's state is one of {self.STATES}: {state!r}")
+        if self.state is None:
+            raise ValueError("only a readout made with state= changes state")
+        self.state, self.note = state, note
+        if self._mark is not None:
+            for name in self.STATES:
+                lumaui.set_css_class(self._mark, name, name == state)
+        if self._note is not None:
+            self._note.set_label(note or "")
+            self._note.set_visible(bool(note))
+        self._announce()
 
     def set_bounds(self, has_previous: bool, has_next: bool) -> None:
         """A pager at its first or last item turns that key off."""
@@ -508,16 +536,26 @@ class BarReadout:
             box.add_css_class(self.tone)
             first = Gtk.Label(label=self.primary, xalign=0)
             first.add_css_class("lumaui-bar-readout-primary")
+            if self.state is not None:
+                box.add_css_class("live")
+                first.add_css_class("numeric")
             second = Gtk.Label(label=self.secondary or "", xalign=0, visible=bool(self.secondary), ellipsize=Pango.EllipsizeMode.END)
             second.add_css_class("lumaui-bar-readout-secondary")
             line = Gtk.Box()
             line.add_css_class("lumaui-bar-readout-first")
             first.set_valign(Gtk.Align.BASELINE_FILL)
+            if self.state is not None:
+                mark = Gtk.Box(valign=Gtk.Align.CENTER)
+                mark.add_css_class("lumaui-bar-readout-mark")
+                mark.add_css_class(self.state)
+                line.append(mark)
+                self._mark = mark
             line.append(first)
-            if self.note:
-                note = Gtk.Label(label=self.note, valign=Gtk.Align.BASELINE_FILL)
+            if self.note or self.state is not None:
+                note = Gtk.Label(label=self.note or "", valign=Gtk.Align.BASELINE_FILL, visible=bool(self.note))
                 note.add_css_class("lumaui-bar-readout-note")
                 line.append(note)
+                self._note = note
             box.append(line)
             box.append(second)
             self._labels = (first, second)

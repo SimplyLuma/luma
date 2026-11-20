@@ -2531,6 +2531,15 @@
   --lumaui-creative-grid-min-spacing: 32px;
   --lumaui-creative-grid-dot: 0.9px;
   --lumaui-creative-gone-shift: 24px;
+  --lumaui-creative-dock-bottom-max-height-pct: 40;
+  --lumaui-creative-dock-target: 6px;
+  --lumaui-creative-arrange-handle: 8px;
+  --lumaui-creative-arrange-handle-hit: 24px;
+  --lumaui-creative-arrange-handle-hit-touch: 44px;
+  --lumaui-creative-arrange-snap: 6px;
+  --lumaui-creative-arrange-frame: 1.5px;
+  --lumaui-creative-arrange-guide: 1px;
+  --lumaui-creative-arrange-nudge-large: 10px;
   --lumaui-dial-key-size: 76px;
   --lumaui-dial-key-phone-size: 80px;
   --lumaui-dial-key-tone-size: 56px;
@@ -2913,6 +2922,12 @@
   --lumaui-media-strip-radius: 4px;
   --lumaui-media-strip-current-radius: 8px;
   --lumaui-media-strip-ring: 2px;
+  --lumaui-meter-bar: 4px;
+  --lumaui-meter-gap: 2px;
+  --lumaui-meter-min-length: 24px;
+  --lumaui-meter-length: 120px;
+  --lumaui-meter-mid-db: -18px;
+  --lumaui-meter-high-db: -6px;
   --lumaui-monitor-chart-radius: 16px;
   --lumaui-monitor-core-radius: 9px;
   --lumaui-monitor-content-gutter: 30px;
