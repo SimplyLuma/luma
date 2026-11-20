@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Mesa drivers for org.projectluma.Platform, built exactly as Fedora builds
-# org.fedoraproject.Platform.GL.default: Fedora 44's Mesa RPMs, moved into the
-# extension prefix that the runtime's GL extension point mounts at lib64/GL/default.
-# On x86_64 it also carries Luma's Intel VA-API driver (iHD), so VA decode and
-# encode work inside Flatpaks on Intel GPUs.
+# org.fedoraproject.Platform.GL.default, from Luma's Mesa RPMs (patches/mesa:
+# Fedora 44's Mesa with H.264/H.265 hardware encode, MESA_NEVRA in
+# config/desktop/inputs.env), which the luma repository supplies in place of
+# Fedora's; moved into the extension prefix that the runtime's GL extension
+# point mounts at lib64/GL/default. On x86_64 it also carries Luma's Intel
+# VA-API driver (iHD), so VA decode and encode work inside Flatpaks on Intel
+# GPUs, as radeonsi's does on AMD.
 base: fedora-f44/gl-default.container.yaml
 upstream:
   repository: https://src.fedoraproject.org/flatpaks/mesa

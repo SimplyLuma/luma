@@ -5,7 +5,7 @@
 #
 # The packages are the ones scripts/packages/build-*.sh produce from this
 # repository (GTK 4, libadwaita, the developer platform, the Prairie icon
-# theme, Luma's fonts and, on x86_64, the Intel VA-API driver), plus flatpak-runtime-config from
+# theme, Luma's fonts, Mesa and, on x86_64, the Intel VA-API driver), plus flatpak-runtime-config from
 # build-flatpak-runtime-config.sh. Their NEVRAs are checked against
 # config/desktop/inputs.env so the runtime can only carry what the operating
 # system pins, and the resulting manifest records every file hash.
@@ -34,6 +34,13 @@ required=("$gtk" "${gtk/gtk4-/gtk4-devel-}" "${gtk/gtk4-/gtk4-devel-tools-}"
   "$platform" "${platform/luma-developer-platform-/luma-developer-platform-devel-}"
   "$LUMA_DEVELOPER_PLATFORM_SDK_NEVRA" "$FIGTREE_NEVRA" "$CAVEAT_NEVRA"
   "$PRAIRIE_ICON_THEME_NEVRA" "flatpak-runtime-config-${DEPOT_FEDORA_RELEASE}-1.luma.2.fc${DEPOT_FEDORA_RELEASE}.${DEPOT_ARCH}")
+# Luma's Mesa (H.264/H.265 hardware encode) for every runtime component: the
+# luma repository shadows Fedora's, so the whole family the Platform, GL.default
+# and the SDK install must be present at the one release.
+mesa=${MESA_NEVRA%.*}.$DEPOT_ARCH
+for subpackage in dri-drivers filesystem libEGL libEGL-devel libGL libGL-devel libgbm libgbm-devel vulkan-drivers; do
+  required+=("${mesa/mesa-dri-drivers-/mesa-$subpackage-}")
+done
 # The x86_64 GL extension carries Luma's Intel VA-API driver (iHD).
 [ "$DEPOT_ARCH" != x86_64 ] || required+=("$INTEL_MEDIA_DRIVER_NEVRA")
 
