@@ -82,6 +82,7 @@ def frame_props(widget: Widget) -> dict:
         "crop-top": fx.crop_top,
         "crop-right": fx.crop_right,
         "crop-bottom": fx.crop_bottom,
+        "stroke-position": fx.stroke_position,
     }
 
 
@@ -100,6 +101,11 @@ def mixer_pad_props(widget: Widget, zorder: int) -> dict:
 def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node: str | None) -> list[Element]:
     kind = widget.kind
     if fake:
+        if widget.source.get("fake-silent"):
+            # A check run's stream that opens and never sends a picture (a window that never redraws).
+            return [Element("appsrc", f"{prefix}-src", {"is-live": True, "format": "time", "caps":
+                                                         f"video/x-raw,format=RGBA,width=1280,height=720,"
+                                                         f"framerate={FPS}/1"})]
         # A still picture stands in for a capture (STREAMY_FAKE_SOURCES=1).
         path = widget.source.get("fake-image")
         if path:
@@ -134,9 +140,21 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
     if kind in ("display", "window") and os.environ.get("STREAMY_CAPTURE_MEMORY") == "system":
         head.append(Element("capsfilter", f"{prefix}-sysmem", {"caps": "video/x-raw"}))
     if kind == "camera":
+        mode = widget.source.get("mode")
+        if isinstance(mode, (list, tuple)) and len(mode) == 3:
+            # The chosen resolution and frame rate, raw or MJPEG, whichever the camera sends.
+            w, h, fps = (int(v) for v in mode)
+            head.append(Element("capsfilter", f"{prefix}-mode", {
+                "caps": f"video/x-raw,width={w},height={h},framerate={fps}/1;"
+                        f"image/jpeg,width={w},height={h},framerate={fps}/1"}))
         # Cameras may send MJPEG; decodebin passes raw pictures through.
         head += [Element("decodebin", f"{prefix}-decode"), Element("videoconvert", f"{prefix}-convert")]
     return head
+
+
+def flip_method(widget: Widget) -> str:
+    """A camera shown as a mirror (the way people see themselves) or as others see it."""
+    return "horizontal-flip" if widget.source.get("mirror") else "none"
 
 
 def branch_prefix(widget: Widget, generation: int) -> str:
@@ -162,9 +180,56 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
         Element("glupload", f"{prefix}-upload"),
         Element("glcolorconvert", f"{prefix}-glconvert"),
         Element("capsfilter", f"{prefix}-rgba", {"caps": "video/x-raw(memory:GLMemory),format=RGBA"}),
+    ]
+    if widget.kind == "camera":
+        elements.append(Element("glvideoflip", f"{prefix}-flip", {"method": flip_method(widget)}))
+    elements += [
         Element("lumaframe", f"{prefix}-frame", frame_props(widget)),
     ]
     return Chain(elements, "mixer", mixer_pad_props(widget, zorder))
+
+
+# ── Placeholders ──
+
+#: A frameless picture widget's card: a quiet neutral grey (ARGB for videotestsrc) and its word.
+PLACEHOLDER_COLOR = 0xFF3A3E46
+PLACEHOLDER_FPS = FPS  # at the canvas rate: a resize shows every frame
+
+
+def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int = 0) -> Chain:
+    """What a picture widget shows while it has no live picture (connecting, failed, nothing chosen):
+    a neutral card with one word, drawn through the widget's own lumaframe, so its Look shows live.
+    Named "p-…", so its errors never fail the widget."""
+    prefix = f"p-{widget.id}-g{generation}"
+    width = max(2, int(round(widget.width)) // 2 * 2)
+    height = max(2, int(round(widget.height)) // 2 * 2)
+    scale = min(1.0, 1280 / max(width, height))  # a card, not a full-size picture: the box scales it
+    cw, ch = max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2)
+    font = max(10, round(min(cw, ch) / 9))
+    elements = [
+        Element("videotestsrc", f"{prefix}-src", {"is-live": True, "pattern": "solid-color",
+                                                   "foreground-color": PLACEHOLDER_COLOR}),
+        Element("capsfilter", f"{prefix}-caps", {"caps": f"video/x-raw,format=BGRA,width={cw},height={ch},"
+                                                          f"framerate={PLACEHOLDER_FPS}/1"}),
+        Element("textoverlay", f"{prefix}-words", {"text": words, "valignment": "center", "halignment": "center",
+                                                    "font-desc": f"Figtree Semi-Bold {font}px",
+                                                    "shaded-background": False, "draw-shadow": False,
+                                                    "draw-outline": False, "color": 0xC8FFFFFF}),
+        Element("videoconvert", f"{prefix}-convert"),
+        Element("glupload", f"{prefix}-upload"),
+        Element("glcolorconvert", f"{prefix}-glconvert"),
+        Element("capsfilter", f"{prefix}-rgba", {"caps": "video/x-raw(memory:GLMemory),format=RGBA"}),
+        Element("lumaframe", f"{prefix}-frame", frame_props(widget)),
+    ]
+    return Chain(elements, "mixer", mixer_pad_props(widget, zorder))
+
+
+def placeholder_words(widget: Widget, state: str) -> str:
+    """The card's word: "Connecting", "No picture", or what to choose."""
+    if state == "choose":
+        return {"camera": "Choose a camera", "display": "Choose a display", "window": "Choose a window",
+                "image": "Choose an image"}.get(widget.kind, "Choose a source")
+    return {"connecting": "Connecting", "failed": "No picture", "waiting": "No picture yet"}.get(state, state)
 
 
 # ── Sound ──
@@ -176,7 +241,9 @@ def sound_chain(widget: Widget, *, fake: bool = False, fd: int | None = None, no
         wave = 9 if widget.kind == "microphone" else 0  # pink noise, a sine
         head = [Element("audiotestsrc", f"{prefix}-src", {"is-live": True, "wave": wave, "volume": 0.25})]
     elif widget.kind == "desktop-audio":
-        head = [Element("pulsesrc", f"{prefix}-src", {"device": widget.source.get("device", "@DEFAULT_MONITOR@"),
+        # Its device is an output (a sink's node name); what it plays is that sink's monitor.
+        sink = widget.source.get("device")
+        head = [Element("pulsesrc", f"{prefix}-src", {"device": f"{sink}.monitor" if sink else "@DEFAULT_MONITOR@",
                                                        "client-name": "Streamy"})]
     elif widget.kind == "app-audio":
         props = {}
@@ -195,8 +262,28 @@ def sound_chain(widget: Widget, *, fake: bool = False, fd: int | None = None, no
         Element("audioresample", f"{prefix}-resample"),
         Element("volume", f"{prefix}-volume", volume_props(widget)),
         Element("level", f"{prefix}-level", {"interval": 50_000_000, "post-messages": True}),
+        # The monitor (headphones) hangs off this tee only while it is on.
+        Element("tee", f"{prefix}-atee", {"allow-not-linked": True}),
         Element("queue", f"{prefix}-aqueue", {"max-size-time": 200_000_000, "leaky": 2}),
-    ], "audiomixer", {})
+    ], "audiomixer", {"mute": widget.monitor == "only"})
+
+
+#: A sound widget's monitor: off, heard here only (not in what is sent), or heard here and sent.
+MONITOR_MODES = ("off", "only", "both")
+
+
+def monitor_chain(widget: Widget, generation: int = 0) -> list[Element]:
+    """Low-latency local playback of a sound widget (after its volume), for headphones."""
+    prefix = branch_prefix(widget, generation)
+    props = {"client-name": "Streamy monitor", "sync": False, "async": False,
+             "buffer-time": 40_000, "latency-time": 10_000}
+    if widget.source.get("monitor-device"):
+        props["device"] = widget.source["monitor-device"]
+    return [Element("queue", f"{prefix}-mqueue", {"max-size-time": 60_000_000, "max-size-buffers": 0,
+                                                    "max-size-bytes": 0, "leaky": 2}),
+            Element("audioconvert", f"{prefix}-mconvert"),
+            Element("audioresample", f"{prefix}-mresample"),
+            Element("pulsesink", f"{prefix}-monitor", props)]
 
 
 def volume_props(widget: Widget) -> dict:
@@ -208,7 +295,9 @@ def volume_props(widget: Widget) -> dict:
 def program(canvas: tuple[int, int]) -> list[Element]:
     width, height = canvas
     return [
-        Element("glvideomixer", "mixer", {"background": 1, "latency": 66_000_000, "force-live": True,
+        # No added latency: a move or resize shows on the next program frame; a source that is slower
+        # than the canvas has its last picture reused.
+        Element("glvideomixer", "mixer", {"background": 1, "latency": 0, "force-live": True,
                                           "start-time-selection": 1}),
         Element("capsfilter", "program-caps", {"caps": f"video/x-raw(memory:GLMemory),width={width},height={height},"
                                                         f"framerate={FPS}/1,format=RGBA"}),

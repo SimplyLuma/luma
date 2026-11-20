@@ -163,3 +163,40 @@ def seed(project, pictures: dict[str, str]) -> None:
     window.effects.shadow_y = 10
     project.add_widget(chat.id, "microphone")
     project.add_scene("Be right back")
+
+
+class FakeCameras:
+    """Check runs' cameras (STREAMY_FAKE_CAMERAS: labels joined by "|"; "" for none)."""
+
+    def __init__(self, labels: list[str]) -> None:
+        from .portals import Camera
+
+        modes = ((1920, 1080, 30), (1280, 720, 30), (1280, 720, 60), (640, 480, 30))
+        self.cameras = [Camera(f"fake-{i}", f"fake_camera_{i}", label, modes) for i, label in enumerate(labels)]
+        self.ready = True
+
+    def find(self, name):
+        if name:
+            return next((c for c in self.cameras if c.name == name), None)
+        return self.cameras[0] if self.cameras else None
+
+
+class FakePortals:
+    """What the window asks of Portals, for check runs with STREAMY_FAKE_SOURCES=1: no D-Bus."""
+
+    def __init__(self) -> None:
+        import os
+
+        labels = os.environ.get("STREAMY_FAKE_CAMERAS", "Built-in Front Camera|USB Camera")
+        self.cameras = FakeCameras([label for label in labels.split("|") if label])
+        self.captures: dict = {}
+        self.on_ready = self.on_ended = self.on_cameras = None
+
+    def audio_capture_available(self) -> bool:
+        return True
+
+    def close(self, widget_id: str) -> None:
+        self.captures.pop(widget_id, None)
+
+    def source_for(self, _widget):
+        return None, None

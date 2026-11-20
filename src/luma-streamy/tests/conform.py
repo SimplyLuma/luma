@@ -28,31 +28,59 @@ def check(path: str) -> list[str]:
             fails.append(words)
 
     phone = m["window"][0] < 560
-    # Sidebar: scenes and widgets share one column of leads and one of titles, and every
-    # row's glyph sits on its title's centre line.
-    rows = [r for r in m["scenes"] + m["widgets"] if r["lead"] and r["label"]]
-    if m["sidebar"] and rows:
-        scene_rows = [r for r in m["scenes"] if r["lead"]]
-        widget_rows = [r for r in m["widgets"] if r["lead"]]
-        if scene_rows and widget_rows:
-            rule(abs(scene_rows[0]["row"][0] - widget_rows[0]["row"][0]) <= TOL and
-                 abs(scene_rows[0]["row"][2] - widget_rows[0]["row"][2]) <= TOL,
-                 f"scene and widget rows have different insets: {scene_rows[0]['row']} vs {widget_rows[0]['row']}")
-            rule(abs(scene_rows[0]["lead"][0] - widget_rows[0]["lead"][0]) <= TOL + 6,
-                 f"lead columns differ: {scene_rows[0]['lead'][0]} vs {widget_rows[0]['lead'][0]}")
-        for r in m["widgets"]:  # one-line rows (a scene's two lines centre on its thumbnail)
-            if r["lead"] and r["label"]:
-                rule(abs(centre_y(r["lead"]) - centre_y(r["label"])) <= TOL,
-                     f"{r['title']}: glyph centre {centre_y(r['lead'])} vs label centre {centre_y(r['label'])}")
+    # A check run is the size it says: a 360 run is 360 pixels wide.
+    if "requested_width" in m:
+        rule(m["window"][0] == m["requested_width"],
+             f"window is {m['window'][0]} wide, the run asked for {m['requested_width']}")
+    # Sidebar (scenes): a heading's text starts on its rows' lead column (NavigationSidebar), and
+    # every row's glyph sits on its title's centre line with equal insets either side.
+    scene_rows = [r for r in m["scenes"] if r["lead"] and r["label"]]
+    if m["sidebar"] and scene_rows:
+        for heading in m.get("headings", []):
+            if heading:
+                rule(abs(heading[0] - scene_rows[0]["lead"][0]) <= TOL,
+                     f"section heading at x={heading[0]}, its rows' leads at x={scene_rows[0]['lead'][0]}")
         side = m["sidebar"]
-        for r in rows:
+        for r in scene_rows:
             right_inset = side[0] + side[2] - (r["row"][0] + r["row"][2])
             left_inset = r["row"][0] - side[0]
             rule(abs(left_inset - right_inset) <= TOL + 1,
                  f"{r['title']}: row insets left {left_inset} right {right_inset}")
-        if len(m["sections"]) >= 2:
-            rule(abs(m["sections"][0][0] - m["sections"][1][0]) <= TOL,
-                 f"section titles not aligned: {m['sections']}")
+    for r in m["widgets"]:  # one-line rows
+        if r["lead"] and r["label"]:
+            rule(abs(centre_y(r["lead"]) - centre_y(r["label"])) <= TOL,
+                 f"{r['title']}: glyph centre {centre_y(r['lead'])} vs label centre {centre_y(r['label'])}")
+    # A hidden sidebar is gone: nothing of it drawn or hit-testable at the window's edge.
+    rule(not m.get("sidebar_leak"), f"hidden sidebar still shows {m.get('sidebar_leak')}")
+    # Widgets and Audio under the preview: equal widths, one top edge, the dock's gap between them
+    # and between them and the preview.
+    tiles = m["tiles"]
+    wt, at, pt = (tiles.get(k, {}).get("box") for k in ("widgets", "audio", "preview"))
+    gap = m.get("dock_gap") or 8
+    if wt and at and not phone and abs(wt[1] - at[1]) < 40:
+        rule(abs(wt[2] - at[2]) <= TOL, f"widgets {wt[2]} and audio {at[2]} insets differ in width")
+        rule(abs(wt[1] - at[1]) <= TOL, f"widgets top {wt[1]} vs audio top {at[1]}")
+        between = at[0] - (wt[0] + wt[2])
+        rule(abs(between - gap) <= TOL, f"gap between widgets and audio is {between} (the dock's {gap})")
+        if pt:
+            under = wt[1] - (pt[1] + pt[3])
+            rule(abs(under - gap) <= TOL, f"gap under the preview is {under} (the dock's {gap})")
+    # Inset radii: never under LumaUI's tile token; the island holding them is concentric with them.
+    token = m.get("tile_radius_token")
+    for key, radius in (m.get("radii") or {}).items():
+        if radius is None or token is None:
+            continue
+        if key == "island":
+            rule(abs(radius - (token + gap)) <= 2.5, f"island radius {radius}, tiles {token} + gap {gap}")
+        else:
+            rule(radius >= token - 2, f"{key} inset radius {radius} under the token {token}")
+    # An open editor: every row one height, one pair of edges.
+    rows = [r for r in m.get("editor_rows", []) if r]
+    if len(rows) > 1:
+        rule(len({round(r[3]) for r in rows}) == 1, f"editor rows differ in height: {sorted({r[3] for r in rows})}")
+        rule(len({round(r[0]) for r in rows}) == 1, f"editor rows start at {sorted({r[0] for r in rows})}")
+        rule(len({round(r[0] + r[2]) for r in rows}) == 1,
+             f"editor rows end at {sorted({r[0] + r[2] for r in rows})}")
     heights = {round(r["row"][3]) for r in m["widgets"] if r["row"]}
     rule(len(heights) <= 1, f"widget rows differ in height: {sorted(heights)}")
     # Visibility reads correctly: an eye-off is only ever on a hidden widget.
@@ -75,7 +103,10 @@ def check(path: str) -> list[str]:
         rule(t["header"][3] <= 32 + TOL, f"{key} header is {t['header'][3]} tall (32)")
     # Audio: the inset holds its strips, not empty well.
     audio = m["tiles"].get("audio")
-    if audio and audio["box"] and m["strips"]:
+    beside = m["tiles"].get("widgets", {}).get("box")
+    shared = beside and audio and audio["box"] and abs(beside[1] - audio["box"][1]) <= TOL
+    if audio and audio["box"] and m["strips"] and not shared:
+        # Alone, the mixer is as tall as its strips (beside Widgets, both take the taller one's height).
         bottom = max(s[1] + s[3] for s in m["strips"])
         slack = audio["box"][1] + audio["box"][3] - bottom
         rule(slack <= 24, f"audio inset has {slack:.0f} px of empty well under its strips")
