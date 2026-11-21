@@ -10,13 +10,11 @@
 // MODE=full   light, every scenario below
 // MODE=look   the picker only (windows, screens, resolved requester), for the
 //             dark and 200% passes
-// MODE=perf   what the Shell spends with the picker open and while a window
-//             is recorded, next to the same desktop with neither: CPU time,
-//             frames painted on each monitor, frames a window stream
-//             delivers (castrate.py) and the scrim blur's texture
-//             allocations. With
-//             ORACLE_SCALES (e.g. 1,1.25,1) the monitors get those scales.
-//             Writes perf.json.
+// MODE=perf   what the Shell spends with the picker open (Windows, then
+//             Screens) next to the same desktop without it: CPU time,
+//             frames painted on each monitor and the scrim blur's texture
+//             allocations. With ORACLE_SCALES (e.g. 1,1,1.25) the monitors
+//             get those scales. Writes perf.json.
 // Writes screenshots, state-*.json and checks.json to $ORACLE_OUT.
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -554,18 +552,6 @@ async function perf() {
     await until('picker closed', () => !picker(), 3000);
     await settle();
 
-    // A window recorded the way luma-portal records it, while it plays and
-    // while it is still. A still window should cost nothing and send nothing.
-    for (const title of ['Prairie 0.1, launch film', 'Library']) {
-        const file = `${OUT}/cast-${windowByTitle(title).get_id()}.json`;
-        spawn(['python3', `${HERE}/castrate.py`, String(windowByTitle(title).get_id()), '9', file], 'castrate');
-        await wait(2500);
-        const result = await cost(`recording the window "${title}"`);
-        await until(`${title} recorded`, () => GLib.file_test(file, GLib.FileTest.EXISTS), 20000);
-        const [, bytes] = GLib.file_get_contents(file);
-        result.stream = JSON.parse(new TextDecoder().decode(bytes));
-        results.push(result);
-    }
     write('perf', results);
 }
 
