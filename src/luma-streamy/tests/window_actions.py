@@ -168,7 +168,7 @@ def check(app) -> None:
         win.switch_scene(other.id)
         pump(0.5)
         assert boxes() == sized, ("the seam moved back", other.name, boxes(), sized)
-    assert sized["preview"][1] < before["preview"][1], (sized, before)
+    assert sized["landscape"][1] < before["landscape"][1], (sized, before)
     print("a dragged seam holds", sized)
     win.close()  # the engine stops with the window, before the interpreter goes
     pump(1.0)

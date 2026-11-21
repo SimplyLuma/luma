@@ -535,8 +535,9 @@ class Engine(GObject.Object):
         self.programs[fmt] = program
         if self.want_preview:
             self._add_preview(program)
-        for element in reversed(elements + program.preview):
-            element.sync_state_with_parent()
+        # On GStreamer's pool: the preview sink makes its GL context, which can take a while.
+        self.pipeline.call_async(lambda _p, items: [e.sync_state_with_parent() for e in items],
+                                 list(reversed(elements + program.preview)))
         # Every widget already captured gets its layer here.
         for branch in list(self.branches.values()) + list(self.placeholders.values()):
             if branch.picture and branch.view is not None:
@@ -549,6 +550,9 @@ class Engine(GObject.Object):
             return
         for branch in list(self.branches.values()) + list(self.placeholders.values()):
             self._remove_layer(branch, fmt)
+        if program.probe and program.sink_pad is not None:
+            program.sink_pad.remove_probe(program.probe)
+            program.probe = 0
         if program.handler:
             program.mixer.set_property("emit-signals", False)
             program.mixer.disconnect(program.handler)
@@ -604,7 +608,13 @@ class Engine(GObject.Object):
         pipeline = self.pipeline
         pipeline.get_bus().remove_signal_watch()
         programs, self.programs = self.programs, {}
+        if self._watch_timer:
+            GLib.source_remove(self._watch_timer)
+            self._watch_timer = 0
         for program in programs.values():
+            if program.probe and program.sink_pad is not None:
+                program.sink_pad.remove_probe(program.probe)
+                program.probe = 0
             if program.handler:
                 program.mixer.set_property("emit-signals", False)
                 program.mixer.disconnect(program.handler)

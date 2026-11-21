@@ -356,6 +356,7 @@ class StreamyWindow(AppWindow):
                                           )
         audio_scroll.set_child(self.audio_box)
         self.audio_empty = ListEmptyState("No microphone or desktop audio")
+        self._wrap_labels(self.audio_empty)  # its words never widen the panel (panels keep their sizes)
         audio = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         audio.append(self.audio_empty)
         audio.append(audio_scroll)
@@ -430,6 +431,16 @@ class StreamyWindow(AppWindow):
 
     def _is_open(self, key: str) -> bool:
         return self.dock.is_open(key) if hasattr(self.dock, "is_open") else True
+
+    @staticmethod
+    def _wrap_labels(widget: Gtk.Widget) -> None:
+        child = widget.get_first_child()
+        while child is not None:
+            if isinstance(child, Gtk.Label):
+                child.set_wrap(True)
+                child.set_justify(Gtk.Justification.CENTER)
+            StreamyWindow._wrap_labels(child)
+            child = child.get_next_sibling()
 
     def _size_preview(self, fmt: str = "landscape") -> bool:
         arrange = self.arranges[fmt]
@@ -815,7 +826,8 @@ class StreamyWindow(AppWindow):
             "denied": f"Streamy isn't allowed to use {name[0].lower() + name[1:] if name.startswith('The ') else name}",
             "nocamera": "No camera found",
             "missing": f"{name} stopped responding" if w.kind == "camera" else f"{name} is gone",
-            "format": f"{name} sends a picture Streamy can't read",
+            "format": f"{name} sends a picture Streamy can't read" if w.has_picture else
+                      f"{name} sends sound Streamy can't read",
             "stopped": f"{name} stopped with an error",
         }.get(reason, f"{name} stopped")
 

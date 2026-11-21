@@ -270,7 +270,7 @@ def schedule(window, path: str) -> None:
             try:
                 data = json.load(open(json_path))
                 data["radii"] = {key: corner_radius(path, t["box"]) for key, t in data["tiles"].items()
-                                 if t["box"] and key != "preview"}
+                                 if t["box"] and key not in ("preview", "landscape", "vertical")}
                 json.dump(data, open(json_path, "w"), indent=1)
             except Exception as error:
                 print(f"radius read failed: {error!r}")
