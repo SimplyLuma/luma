@@ -2,20 +2,20 @@
   "schema": "org.projectluma.os-app-baseline-lock/v1",
   "baselines": {
     "aarch64": {
-      "manifest_sha256": "ef90f81ed767b3c79c728bfc9d0e68a256e2a5b5f9b57f0f7e877ed24fa94a62"
+      "manifest_sha256": "16736a9f359958a1348529fc44f8ec2bb641dff1cdd6264306197dd9b755304c"
     },
     "x86_64": {
-      "manifest_sha256": "a7803a55c6727183164450ae8b903e247b51202acd9c42f019581da56a20e40e"
+      "manifest_sha256": "559e6290e23a295a77f94abef1b9d1abc994f30a116391852dac56093aebb608"
     }
   },
   "applications": {
     "com.rhyme.viola": {
       "commits": {
-        "aarch64": "0b8cec2accb3103ea89d4a37854b824ce6ab8f085b3d24a6d4ed59ac0a7f6c7c",
-        "x86_64": "7f770b8250fe728259dd2ed6041b9dc25145bcf643ca39f9cb4edc2b22c3a3da"
+        "aarch64": "65f6036aef9999caa20074a96ed5e50a0afa396c871618fb4c389aeeddc27bf2",
+        "x86_64": "10a1ce55aa0f909f3c2f37f80256d93363ce66acd32277917eecfe6f28276e87"
       },
-      "source_sha256": "f8d6f0448ca3b4c3001c969b40a666de65f1360f92db465e414045eee68553ae",
-      "version": "0.2.10.36"
+      "source_sha256": "74eaedfe507556ef91b7bae210d87bfa15b7258d26b424253dff4e5fd47ee25b",
+      "version": "0.2.10.37"
     },
     "io.luma.Monitor": {
       "commits": {
