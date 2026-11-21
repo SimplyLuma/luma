@@ -493,7 +493,10 @@ static gboolean key_pressed(GtkEventControllerKey *controller G_GNUC_UNUSED, gui
     toggle_mute(self);
     return GDK_EVENT_STOP;
   }
-  if ((keyval == GDK_KEY_space || keyval == GDK_KEY_KP_Space) && (self->transport & LUMA_MEDIA_ROW_PLAY_PAUSE)) {
+  /* Space, and OK on a remote: the keys' own buttons take theirs first. */
+  if ((keyval == GDK_KEY_space || keyval == GDK_KEY_KP_Space || keyval == GDK_KEY_Return ||
+       keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_ISO_Enter) &&
+      (self->transport & LUMA_MEDIA_ROW_PLAY_PAUSE)) {
     g_signal_emit(self, signals[PLAY_PAUSE], 0);
     return GDK_EVENT_STOP;
   }
@@ -716,6 +719,18 @@ static void luma_media_row_init(LumaMediaRow *self) {
 }
 
 GtkWidget *luma_media_row_new(void) { return g_object_new(LUMA_TYPE_MEDIA_ROW, NULL); }
+
+gboolean luma_media_row_focus_sibling(LumaMediaRow *self, GtkDirectionType direction) {
+  g_return_val_if_fail(LUMA_IS_MEDIA_ROW(self), FALSE);
+  gboolean forward = direction == GTK_DIR_DOWN || direction == GTK_DIR_TAB_FORWARD;
+  GtkWidget *sibling = GTK_WIDGET(self);
+  /* Rows of one list are siblings, with hairlines or nothing between them. */
+  while ((sibling = forward ? gtk_widget_get_next_sibling(sibling) : gtk_widget_get_prev_sibling(sibling))) {
+    if (LUMA_IS_MEDIA_ROW(sibling) && gtk_widget_get_visible(sibling))
+      return gtk_widget_grab_focus(sibling);
+  }
+  return FALSE;
+}
 
 void luma_media_row_set_density(LumaMediaRow *self, LumaMediaRowDensity density) {
   g_return_if_fail(LUMA_IS_MEDIA_ROW(self));

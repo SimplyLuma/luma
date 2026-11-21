@@ -50,8 +50,8 @@ typedef enum {
  * same tokens (`--lumaui-media-row-*`).
  *
  * A press on the artwork emits ::raise; a second press on it, or a press on
- * the badge, emits ::mute-toggled. Space plays or pauses, M mutes, and Left
- * and Right on the slider move it by 5 %. Only the person's actions emit
+ * the badge, emits ::mute-toggled. Space (and OK on a remote) plays or
+ * pauses, M mutes, and Left and Right on the slider move it by 5 %. Only the person's actions emit
  * signals; the setters are silent. The row never talks to a player or a
  * mixer itself.
  *
@@ -69,6 +69,18 @@ typedef enum {
 G_DECLARE_FINAL_TYPE(LumaMediaRow, luma_media_row, LUMA, MEDIA_ROW, GtkWidget)
 
 GtkWidget *luma_media_row_new(void);
+/**
+ * luma_media_row_focus_sibling:
+ * @self: a row
+ * @direction: GTK_DIR_UP or GTK_DIR_DOWN
+ *
+ * Moves focus to the slider of the row before or after this one in its
+ * list (rows are siblings), so Up and Down step row by row whatever sits
+ * beside the sliders.
+ *
+ * Returns: TRUE when there was such a row
+ */
+gboolean luma_media_row_focus_sibling(LumaMediaRow *self, GtkDirectionType direction);
 void luma_media_row_set_density(LumaMediaRow *self, LumaMediaRowDensity density);
 LumaMediaRowDensity luma_media_row_get_density(LumaMediaRow *self);
 /**

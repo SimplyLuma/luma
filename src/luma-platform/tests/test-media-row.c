@@ -247,6 +247,10 @@ static void test_person(void) {
   g_assert_cmpint(heard.mutes, ==, 3);
   g_assert_true(press(widget, GDK_KEY_space));
   g_assert_cmpint(heard.play, ==, 1);
+  /* OK on a remote is Return. */
+  g_assert_true(press(widget, GDK_KEY_Return));
+  g_assert_cmpint(heard.play, ==, 2);
+  heard.play = 1;
   GtkWidget *slider = GTK_WIDGET(luma_media_row_get_slider(row));
   g_assert_true(press(slider, GDK_KEY_Right));
   g_assert_cmpfloat(luma_media_row_get_volume(row), ==, 65);
@@ -447,6 +451,36 @@ static void test_rtl(void) {
   gtk_window_destroy(GTK_WINDOW(window));
 }
 
+/* Up and Down step row by row, past whatever sits between the rows. */
+static void test_siblings(void) {
+  GtkWidget *window = gtk_window_new();
+  GtkWidget *list = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  GtkWidget *rows[3];
+  for (guint i = 0; i < 3; i++) {
+    rows[i] = luma_media_row_new();
+    luma_media_row_set_title(LUMA_MEDIA_ROW(rows[i]), "A song");
+    luma_media_row_set_transport(LUMA_MEDIA_ROW(rows[i]), LUMA_MEDIA_ROW_PLAY_PAUSE);
+    luma_media_row_set_trailing(LUMA_MEDIA_ROW(rows[i]), luma_media_row_chip_new("lumaui-volume-2-symbolic", "Speakers"));
+    gtk_box_append(GTK_BOX(list), rows[i]);
+    if (i < 2)
+      gtk_box_append(GTK_BOX(list), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+  }
+  gtk_window_set_default_size(GTK_WINDOW(window), 720, 500);
+  gtk_window_set_child(GTK_WINDOW(window), list);
+  gtk_window_present(GTK_WINDOW(window));
+  wait_ms(150);
+  g_assert_true(gtk_widget_grab_focus(rows[0]));
+  g_assert_true(luma_media_row_focus_sibling(LUMA_MEDIA_ROW(rows[0]), GTK_DIR_DOWN));
+  g_assert_true(gtk_widget_has_focus(GTK_WIDGET(luma_media_row_get_slider(LUMA_MEDIA_ROW(rows[1])))));
+  g_assert_true(luma_media_row_focus_sibling(LUMA_MEDIA_ROW(rows[1]), GTK_DIR_DOWN));
+  g_assert_true(gtk_widget_has_focus(GTK_WIDGET(luma_media_row_get_slider(LUMA_MEDIA_ROW(rows[2])))));
+  g_assert_false(luma_media_row_focus_sibling(LUMA_MEDIA_ROW(rows[2]), GTK_DIR_DOWN));
+  g_assert_true(luma_media_row_focus_sibling(LUMA_MEDIA_ROW(rows[2]), GTK_DIR_UP));
+  g_assert_true(gtk_widget_has_focus(GTK_WIDGET(luma_media_row_get_slider(LUMA_MEDIA_ROW(rows[1])))));
+  g_assert_false(luma_media_row_focus_sibling(LUMA_MEDIA_ROW(rows[0]), GTK_DIR_UP));
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 int main(int argc, char **argv) {
   gtk_test_init(&argc, &argv, NULL);
   g_test_add_func("/lumaui/media-row/regular", test_regular);
@@ -455,5 +489,6 @@ int main(int argc, char **argv) {
   g_test_add_func("/lumaui/media-row/compact-and-touch", test_compact_and_touch);
   g_test_add_func("/lumaui/media-row/stacked", test_stacked);
   g_test_add_func("/lumaui/media-row/rtl", test_rtl);
+  g_test_add_func("/lumaui/media-row/siblings", test_siblings);
   return g_test_run();
 }

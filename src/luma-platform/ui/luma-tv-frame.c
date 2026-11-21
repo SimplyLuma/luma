@@ -26,6 +26,7 @@
  * Nothing here applies outside TV posture: the window's widgets, sizes and styles are restored
  * exactly when the posture ends. */
 #include "luma-tv-frame-private.h"
+#include "luma-media-row.h"
 #include "luma-ui-kit.h"
 #include "luma-ui-private.h"
 #include "luma-ui-tokens-private.h"
@@ -2864,6 +2865,23 @@ static gboolean key_handled(GtkEventControllerKey *controller, guint key, guint 
   case GDK_KEY_Left: case GDK_KEY_KP_Left: dir = GTK_DIR_LEFT; break;
   case GDK_KEY_Right: case GDK_KEY_KP_Right: dir = GTK_DIR_RIGHT; break;
   default: return GDK_EVENT_PROPAGATE;
+  }
+  /* A list of media rows is stepped row by row; a row's volume takes Left and
+   * Right as a slider does, and Left at its lowest returns to the island. */
+  GtkWidget *media_row = focus ? gtk_widget_get_ancestor(focus, LUMA_TYPE_MEDIA_ROW) : NULL;
+  if (media_row != NULL && (dir == GTK_DIR_UP || dir == GTK_DIR_DOWN) &&
+      luma_media_row_focus_sibling(LUMA_MEDIA_ROW(media_row), dir))
+    return GDK_EVENT_STOP;
+  if (focus != NULL && LUMA_IS_VOLUME_SLIDER(focus) && (dir == GTK_DIR_LEFT || dir == GTK_DIR_RIGHT) &&
+      gtk_orientable_get_orientation(GTK_ORIENTABLE(focus)) == GTK_ORIENTATION_HORIZONTAL) {
+    double lower, upper;
+    luma_volume_slider_get_range(LUMA_VOLUME_SLIDER(focus), &lower, &upper);
+    gboolean toward_start = (dir == GTK_DIR_LEFT) != (gtk_widget_get_direction(focus) == GTK_TEXT_DIR_RTL);
+    if (toward_start && dir == GTK_DIR_LEFT && luma_volume_slider_get_value(LUMA_VOLUME_SLIDER(focus)) <= lower + 1e-6) {
+      to_island(f);
+      return GDK_EVENT_STOP;
+    }
+    return GDK_EVENT_PROPAGATE;
   }
   GtkWidget *range = focus ? (GTK_IS_RANGE(focus) ? focus : gtk_widget_get_ancestor(focus, GTK_TYPE_RANGE)) : NULL;
   if (range != NULL && (dir == GTK_DIR_LEFT || dir == GTK_DIR_RIGHT)) {

@@ -388,6 +388,9 @@ done
   regular row narrower than media_row.regular.stack_below stacks. The
   Shell's St row reads the same tokens (mediaRowTokens.js).
 - VolumeSlider: set_compact(), a 12 px knob in a 16 px slot.
+- TV: Up and Down step a list of MediaRows row by row
+  (luma_media_row_focus_sibling), a focused horizontal VolumeSlider takes
+  Left and Right as a GtkRange does, and OK on a row plays or pauses.
 - Prairie: lumaui-airplay, lumaui-play-filled, lumaui-pause-filled.
 
 * Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.148
