@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.146%{?dist}
+Release:        1.luma.147%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,16 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.147
+- ArrangeView: several boxes. Shift+click adds or removes, a rubber band
+  from empty canvas selects what it touches (Shift adds), Ctrl+A selects
+  all; set_selection()/get_selection()/select_all(),
+  selection-ids-changed. Two or more share one box: dragging moves all,
+  its handles scale all in proportion (Shift stretches, Alt from the
+  centre), arrows nudge all; group-changed/group-committed a{s(dddd)}.
+- luma_appkit: ArrangeView(on_selection=, on_group_change=,
+  on_group_commit=); align_rects() and distribute_rects().
+
 * Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.146
 - Dock: a closed tile reopens where and how it was. Its record keeps its tab
   group and index, or the tiles it was split from, the split, its side,

@@ -438,11 +438,111 @@ static void test_view(void) {
   gtk_window_destroy(GTK_WINDOW(window));
 }
 
+typedef struct {
+  int ids_changes, group_changes, group_commits;
+  char **last_ids;
+  GVariant *last_group;
+} Multi;
+
+static void on_ids(LumaArrangeView *view G_GNUC_UNUSED, char **ids, Multi *m) {
+  m->ids_changes++;
+  g_strfreev(m->last_ids);
+  m->last_ids = g_strdupv(ids);
+}
+
+static void on_group(LumaArrangeView *view G_GNUC_UNUSED, GVariant *rects, Multi *m) {
+  m->group_changes++;
+  g_clear_pointer(&m->last_group, g_variant_unref);
+  m->last_group = g_variant_ref(rects);
+}
+
+static void on_group_commit(LumaArrangeView *view G_GNUC_UNUSED, GVariant *rects G_GNUC_UNUSED, Multi *m) {
+  m->group_commits++;
+}
+
+static void group_rect(Multi *m, const char *id, double *x, double *y, double *w, double *h) {
+  g_assert_true(g_variant_lookup(m->last_group, id, "(dddd)", x, y, w, h));
+}
+
+static void test_multi(void) {
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_default_size(GTK_WINDOW(window), 960, 540);
+  GtkWidget *view = luma_arrange_view_new(gtk_label_new("picture"));
+  LumaArrangeView *arrange = LUMA_ARRANGE_VIEW(view);
+  luma_arrange_view_add_item(arrange, "a", "A", 100, 100, 200, 100);
+  luma_arrange_view_add_item(arrange, "b", "B", 500, 300, 100, 100);
+  luma_arrange_view_add_item(arrange, "c", "C", 1500, 800, 100, 100);
+  luma_arrange_view_set_snapping(arrange, FALSE);
+  Multi m = {0};
+  g_signal_connect(view, "selection-ids-changed", G_CALLBACK(on_ids), &m);
+  g_signal_connect(view, "group-changed", G_CALLBACK(on_group), &m);
+  g_signal_connect(view, "group-committed", G_CALLBACK(on_group_commit), &m);
+  gtk_window_set_child(GTK_WINDOW(window), view);
+  gtk_window_present(GTK_WINDOW(window));
+  settle();
+  /* A click selects one; Shift+click adds and removes. */
+  pull(view, 200, 150, 0, 0, 0, 0);
+  g_assert_cmpstr(luma_arrange_view_get_selected(arrange), ==, "a");
+  pull(view, 550, 350, 0, 0, GDK_KEY_Shift_L, GDK_SHIFT_MASK);
+  g_auto(GStrv) two = luma_arrange_view_get_selection(arrange);
+  g_assert_cmpuint(g_strv_length(two), ==, 2);
+  g_assert_cmpstr(two[0], ==, "a");
+  g_assert_cmpstr(two[1], ==, "b");
+  g_assert_cmpstr(luma_arrange_view_get_selected(arrange), ==, "b");
+  g_assert_cmpstr(m.last_ids[1], ==, "b");
+  /* Dragging one of them moves both. */
+  pull(view, 200, 150, 50, 20, 0, 0);
+  g_assert_cmpint(m.group_commits, ==, 1);
+  double x, y, w, h;
+  group_rect(&m, "a", &x, &y, &w, &h);
+  g_assert_cmpfloat(fabs(x - 150), <, 0.01);
+  g_assert_cmpfloat(fabs(y - 120), <, 0.01);
+  luma_arrange_view_get_item_rect(arrange, "b", &x, &y, NULL, NULL);
+  g_assert_cmpfloat(fabs(x - 550), <, 0.01);
+  /* The group's right handle scales both inside the box, in proportion (box 150..650 x 120..420). */
+  pull(view, 650, 270, 500, 0, 0, 0);
+  luma_arrange_view_get_item_rect(arrange, "a", &x, &y, &w, &h);
+  g_assert_cmpfloat(fabs(x - 150), <, 0.01);
+  g_assert_cmpfloat(fabs(w - 400), <, 0.01);
+  g_assert_cmpfloat(fabs(h - 200), <, 0.01);
+  luma_arrange_view_get_item_rect(arrange, "b", &x, &y, &w, &h);
+  g_assert_cmpfloat(fabs(x - 950), <, 0.01);
+  g_assert_cmpfloat(fabs(w - 200), <, 0.01);
+  g_assert_cmpint(m.group_commits, ==, 2);
+  /* Shift on the handle stretches instead. */
+  pull(view, 1150, 270, 100, 0, GDK_KEY_Shift_L, GDK_SHIFT_MASK);
+  luma_arrange_view_get_item_rect(arrange, "a", NULL, NULL, &w, &h);
+  g_assert_cmpfloat(fabs(h - 200), <, 0.01);
+  /* Arrows nudge the group: one commit each. */
+  int commits = m.group_commits;
+  g_assert_true(key(view, GDK_KEY_Right, GDK_SHIFT_MASK));
+  g_assert_cmpint(m.group_commits, ==, commits + 1);
+  /* A rubber band from empty canvas chooses what it touches; Ctrl+A chooses everything; Esc clears. */
+  luma_arrange_view_set_selected(arrange, NULL);
+  pull(view, 1400, 700, 150, 150, 0, 0);
+  g_auto(GStrv) band = luma_arrange_view_get_selection(arrange);
+  g_assert_cmpuint(g_strv_length(band), ==, 1);
+  g_assert_cmpstr(band[0], ==, "c");
+  g_assert_true(key(view, GDK_KEY_a, GDK_CONTROL_MASK));
+  g_auto(GStrv) all = luma_arrange_view_get_selection(arrange);
+  g_assert_cmpuint(g_strv_length(all), ==, 3);
+  g_assert_true(key(view, GDK_KEY_Escape, 0));
+  g_auto(GStrv) none = luma_arrange_view_get_selection(arrange);
+  g_assert_cmpuint(g_strv_length(none), ==, 0);
+  const char *set[] = {"c", "a", NULL};
+  luma_arrange_view_set_selection(arrange, set);
+  g_assert_cmpstr(luma_arrange_view_get_selected(arrange), ==, "a");
+  g_strfreev(m.last_ids);
+  g_clear_pointer(&m.last_group, g_variant_unref);
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
   gtk_init();
   g_test_add_func("/lumaui/creative/arrange/snap", test_snap_rule);
   g_test_add_func("/lumaui/creative/arrange/view", test_view);
   g_test_add_func("/lumaui/creative/arrange/modifiers", test_modifiers);
+  g_test_add_func("/lumaui/creative/arrange/multi", test_multi);
   return g_test_run();
 }
