@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.144%{?dist}
+Release:        1.luma.145%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,12 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.145
+- Popovers are opaque in every treatment: the dark treatment's menus were
+  alpha(@luma_window, .78) and frost/glass popovers the veil, so the window
+  under a menu showed through (nothing blurs behind a popover surface).
+- AppWindow: F10 and win.show-app-menu open the app menu.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.144
 - ChatLine and ChatFeed (luma_appkit): a live chat's lines (lead, badges,
   the author's colour made readable, selectable text; action and notice

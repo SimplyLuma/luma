@@ -1400,11 +1400,18 @@ window.luma-treatment-frost .luma-card,
 window.luma-treatment-glass .luma-card {
   background-color: var(--luma-paper-raised);
 }
+/* Popovers are surfaces of their own over other windows: opaque in every treatment, never the veil
+ * (nothing blurs behind them, so a veil let the window underneath show through). */
 window.luma-treatment-frost popover > contents,
 window.luma-treatment-glass popover > contents,
 window.luma-treatment-frost popover > arrow,
 window.luma-treatment-glass popover > arrow {
-  background-color: var(--luma-veil);
+  background-color: @luma_float_surface;
+}
+window.luma-treatment-frost popover.menu > contents,
+window.luma-treatment-glass popover.menu > contents {
+  background-color: @luma_bar_surface;
+  background-image: linear-gradient(to bottom, @luma_bar_top, @luma_bar_end);
 }
 window.luma-treatment-frost,
 window.luma-treatment-glass,
