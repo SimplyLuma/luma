@@ -53,6 +53,13 @@ def build(spec: Element) -> Gst.Element:
     return element
 
 
+def fresh(buffer: Gst.Buffer) -> Gst.Buffer:
+    """A new buffer on the same memory whose times can be set. Buffer.copy() in Python is the boxed
+    copy, a ref: setting its pts would change what every other row or encode receives."""
+    return buffer.copy_region(Gst.BufferCopyFlags.FLAGS | Gst.BufferCopyFlags.TIMESTAMPS |
+                              Gst.BufferCopyFlags.META | Gst.BufferCopyFlags.MEMORY, 0, buffer.get_size())
+
+
 def link_all(elements: list[Gst.Element]) -> None:
     for a, b in zip(elements, elements[1:]):
         if not a.link(b):
@@ -158,7 +165,7 @@ class Row:
             self.sound_src.emit("push-buffer", self._shift(buffer))
 
     def _shift(self, buffer: Gst.Buffer) -> Gst.Buffer:
-        out = buffer.copy()
+        out = fresh(buffer)
         out.pts = buffer.pts - self.t0
         if buffer.dts != Gst.CLOCK_TIME_NONE:
             out.dts = max(0, buffer.dts - self.t0) if buffer.dts >= self.t0 else Gst.CLOCK_TIME_NONE
@@ -407,7 +414,7 @@ class Encode:
             if src.get_property("current-level-buffers") >= src.get_property("max-buffers"):
                 self.dropped += 1  # the encoder is behind
                 return
-            out = buffer.copy()
+            out = fresh(buffer)
             out.pts, out.dts = buffer.pts - self.t0, Gst.CLOCK_TIME_NONE
             src.emit("push-buffer", out)
 
@@ -418,7 +425,7 @@ class Encode:
                 return
             if buffer.pts < self.t0:
                 return
-            out = buffer.copy()
+            out = fresh(buffer)
             out.pts, out.dts = buffer.pts - self.t0, Gst.CLOCK_TIME_NONE
             self.sound_src.emit("push-buffer", out)
 
