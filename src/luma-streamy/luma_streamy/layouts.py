@@ -12,9 +12,13 @@ from pathlib import Path
 
 from .model import atomic_write
 
-TILES = ("landscape", "vertical", "widgets", "audio")
+TILES = ("landscape", "vertical", "widgets", "audio", "destinations", "stats", "chat")
 #: Tiles a person may close (they then sit in the layout's "closed" record, LumaUI Dock).
-CLOSABLE = ("landscape", "vertical")
+CLOSABLE = ("landscape", "vertical", "destinations", "stats", "chat")
+#: The previews: one of them always stays open.
+PREVIEWS = ("landscape", "vertical")
+#: Panels closed until opened from the app menu (a layout from before them has them closed).
+CLOSED_AT_FIRST = ("stats", "chat")
 
 
 def split(orientation: str, ratio: float, start, end) -> dict:
@@ -24,27 +28,31 @@ def split(orientation: str, ratio: float, start, end) -> dict:
 PRESETS: dict[str, tuple[str, object]] = {
     # Both canvases side by side, Vertical at about 9:16 of the preview's height.
     "default": ("Default", split("v", 0.72, split("h", 0.7, "landscape", "vertical"),
-                                 split("h", 0.5, "widgets", "audio"))),
+                                 split("h", 0.36, "widgets", split("h", 0.5, "audio", "destinations")))),
     "side": ("Insets beside", split("h", 0.72, split("h", 0.7, "landscape", "vertical"),
-                                     split("v", 0.5, "widgets", "audio"))),
+                                     split("v", 0.36, "widgets", split("v", 0.5, "audio", "destinations")))),
     "compact": ("Compact", split("v", 0.88, split("h", 0.7, "landscape", "vertical"),
-                                 split("h", 0.5, "widgets", "audio"))),
+                                 split("h", 0.36, "widgets", split("h", 0.5, "audio", "destinations")))),
 }
 
 
 def valid(layout):
     """A dock layout holding every open tile once: unknown or repeated keys dropped, missing tiles added.
     A layout with closed tiles is ``{"layout": tree, "closed": {key: place}}`` (LumaUI Dock); kept so."""
+    closed = {}
     if isinstance(layout, dict) and "layout" in layout and "split" not in layout and "tabs" not in layout:
         closed = layout.get("closed")
         closed = {k: v for k, v in closed.items() if k in CLOSABLE} if isinstance(closed, dict) else {}
-        for key in [k for k in closed if _names(layout.get("layout"), k)]:
-            closed.pop(key)  # an open tile is never also closed
-        if len(closed) >= len(CLOSABLE):
-            closed.pop(CLOSABLE[0], None)  # a preview stays open
-        tree = _valid_tree(layout.get("layout"), set(closed))
-        return {"layout": tree, "closed": closed} if closed else tree
-    return _valid_tree(layout, set())
+        layout = layout.get("layout")
+    for key in [k for k in closed if _names(layout, k)]:
+        closed.pop(key)  # an open tile is never also closed
+    for key in CLOSED_AT_FIRST:
+        if not _names(layout, key):
+            closed.setdefault(key, {})
+    if all(k in closed for k in PREVIEWS):
+        closed.pop(PREVIEWS[0], None)  # a preview stays open
+    tree = _valid_tree(layout, set(closed))
+    return {"layout": tree, "closed": closed} if closed else tree
 
 
 def _names(node, key: str) -> bool:
@@ -101,11 +109,21 @@ def _valid_tree(layout, closed: set[str]):
         # A layout from before the Widgets inset: Widgets joins Audio, side by side.
         def join(node):
             if node == "audio":
-                return split("h", 0.5, "widgets", "audio")
+                return split("h", 0.36, "widgets", split("h", 0.5, "audio", "destinations"))
             if isinstance(node, dict):
                 return {**node, "start": join(node["start"]), "end": join(node["end"])}
             return node
         return join(tree)
+    if "destinations" not in seen and "destinations" not in closed and "audio" in seen:
+        # A layout from before Destinations: it joins Audio, side by side.
+        def join(node):
+            if node == "audio":
+                return split("h", 0.5, "audio", "destinations")
+            if isinstance(node, dict) and "split" in node:
+                return {**node, "start": join(node["start"]), "end": join(node["end"])}
+            return node
+        tree = join(tree)
+        seen.add("destinations")
     for key in TILES:
         if key not in seen and key not in closed:
             tree = split("h", 0.75, tree, key)

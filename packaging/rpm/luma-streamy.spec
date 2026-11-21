@@ -40,7 +40,7 @@ BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  gtk4 >= 4.22
 BuildRequires:  libadwaita >= 1.9
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.139
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.144
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 
@@ -49,7 +49,7 @@ Requires:       python3-gobject
 Requires:       gtk4 >= 4.22
 Requires:       libadwaita >= 1.9
 # Dock (fitted, movable seams), NavigationList, ArrangeView with crop, ColorPicker and the AudioMeter.
-Requires:       luma-developer-platform >= 0.1.0-1.luma.139
+Requires:       luma-developer-platform >= 0.1.0-1.luma.144
 Requires:       google-figtree-fonts
 # The program graph: GL upload, mixing and conversion (base), FLV/MKV/MP4
 # muxers, PulseAudio capture and level meters (good), RTMP(S), VA-API

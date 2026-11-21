@@ -176,6 +176,7 @@ class StreamyWindow(AppWindow):
         self._build_canvas()
         self._build_insets()
         self.set_body(self._body())
+        self._build_outputs()
         self.refresh_all()
         self.connect("close-request", self._closing)
         self.connect("notify::is-active", lambda *_a: self._update_preview_running())
@@ -237,7 +238,8 @@ class StreamyWindow(AppWindow):
                 Command("output.live", "Go live", self.go_live, icon="radio-tower", shortcut=("Ctrl", "L")),
                 Command("output.end", "End stream…", self.ask_end_stream, icon="square",
                         enabled=lambda: self.stream_state != "off"),
-                Command("app.destinations", "Destinations…", self.edit_destination, icon="radio-tower"),
+                Command("app.destinations", "Destinations", lambda: self._toggle_panel("destinations"),
+                        icon="radio-tower", checked=lambda: self._is_open("destinations")),
                 Command("app.recordings", "Show recordings", self.show_recordings, icon="folder-open"),
             )),
             CommandGroup("Canvases", tuple(
@@ -245,6 +247,10 @@ class StreamyWindow(AppWindow):
                         icon="rectangle-horizontal" if key == "landscape" else "smartphone",
                         checked=lambda k=key: k in getattr(self, "canvas_on", ()))
                 for key, (label, _w, _h) in FORMATS.items())),
+            CommandGroup("Panels", tuple(
+                Command(f"panel.{key}", label, lambda k=key: self._toggle_panel(k), icon=icon,
+                        checked=lambda k=key: hasattr(self, "dock") and self._is_open(k))
+                for key, label, icon in (("stats", "Stats", "activity"), ("chat", "Chat", "message-circle")))),
             CommandGroup("Layouts", layouts + (
                 Command("layout.save", "Save layout…", self.save_layout, icon="download"),)),
             CommandGroup(None, (
@@ -421,7 +427,14 @@ class StreamyWindow(AppWindow):
                                          vscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True, vexpand=True)
         audio_frame.set_child(audio)
         self.audio_tile = DockTile("audio", "Audio", "volume-2", audio_frame, phone="drawer")
-        self.dock = Dock([*self.preview_tiles.values(), self.widgets_tile, self.audio_tile],
+        # Destinations, Stats and Chat: their content comes once the bar exists (their editors grow it).
+        self.panel_boxes = {key: Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True, hexpand=True)
+                            for key in ("destinations", "stats", "chat")}
+        self.panel_tiles = {key: DockTile(key, title, icon, self.panel_boxes[key], phone="drawer", **self._closable())
+                            for key, title, icon in (("destinations", "Destinations", "radio-tower"),
+                                                     ("stats", "Stats", "activity"),
+                                                     ("chat", "Chat", "message-circle"))}
+        self.dock = Dock([*self.preview_tiles.values(), self.widgets_tile, self.audio_tile, *self.panel_tiles.values()],
                          layout=self.layouts.current, under_bar=True, on_layout=self.layouts.remember)
         self.dock.on_rearrange = self._panels_moved
         if hasattr(self.dock, "on_close"):
@@ -463,6 +476,70 @@ class StreamyWindow(AppWindow):
             self.engine.set_preview_size(round((x1 - x0) * (scale or self.get_scale_factor())), 0, fmt=fmt)
         return False
 
+    # ── Destinations, Stats, Chat ──
+
+    def _build_outputs(self) -> None:
+        """The outputs fan-out (one encode per canvas and preset, a pipeline per destination row) and its
+        panels; the engine feeds it from the canvases' taps while a row is live."""
+        from .chat_panel import ChatPanel
+        from .destinations import DestinationStore
+        from .destinations_panel import DestinationsPanel
+        from .outputs import Outputs
+        from .stats_panel import StatsPanel
+
+        self.outputs = Outputs()
+        self.dest_store = DestinationStore.load(data_dir() / "destinations.json")
+        self.dest_panel = DestinationsPanel(self.dest_store, center=self.center, host=self.host, outputs=self.outputs,
+                                            on_changed=self._sync_canvas_chips)
+        self.stats_panel = StatsPanel(outputs=self.outputs, store=self.dest_store)
+        self.chat_panel = ChatPanel(center=self.center, host=self.host, path=data_dir() / "chat.json",
+                                    outputs=self.outputs)
+        for key, panel in (("destinations", self.dest_panel), ("stats", self.stats_panel), ("chat", self.chat_panel)):
+            self.panel_boxes[key].append(panel)
+            for action in getattr(panel, "actions", []):
+                self.panel_tiles[key].actions.append(action)
+        self.engine.fanout = self.outputs
+        self.outputs.connect("row-state", self._row_state)
+        self._sync_stats_canvases()
+
+    def _row_state(self, _outputs, _row_id: str, _state: str, _words: str) -> None:
+        """A destination row changed: taps open or close, chips show what is live, the bar follows."""
+        self.engine.sync_taps()
+        self._sync_canvas_chips()
+        live = self.outputs.live()
+        self.stats_panel.set_live(live)
+        self.chat_panel.set_live(live)
+        states = {r.id: (self.outputs.stats(r.id).state if self.outputs.stats(r.id) else "off")
+                  for r in self.dest_store.rows}
+        streams = [states[r.id] for r in self.dest_store.rows if r.is_stream and r.id in self.outputs.rows]
+        stream = "on" if "live" in streams else "reconnecting" if "reconnecting" in streams else \
+            "starting" if "connecting" in streams else "off"
+        if stream != self.stream_state:
+            if stream != "off" and self.live_since is None:
+                self.live_since = time.monotonic()
+            self._output_state(None, "stream", stream)
+        recording = any(r.id in self.outputs.rows for r in self.dest_store.rows if not r.is_stream)
+        if recording != (self.recording_since is not None):
+            self._output_state(None, "record", "on" if recording else "off")
+
+    def _sync_stats_canvases(self) -> None:
+        panel = getattr(self, "stats_panel", None)
+        if panel is None:
+            return
+        for fmt in FORMATS:
+            on = fmt in self.engine.programs
+            panel.set_canvas(fmt, fps=float(graph.FPS) if on else None, frame_ms=None)
+
+    def _toggle_panel(self, key: str) -> None:
+        """App menu › Panels: show a closed panel (where it was), or close an open one."""
+        if not hasattr(self.dock, "open_tile"):
+            return
+        if self._is_open(key):
+            self.dock.close_tile(key)
+        else:
+            self.dock.open_tile(key)
+        self.layouts.remember(self.dock.layout())
+
     # ── Canvases on and off ──
 
     def _shown_canvases(self) -> list[str]:
@@ -473,6 +550,7 @@ class StreamyWindow(AppWindow):
 
     def _sync_canvases(self) -> None:
         self.engine.set_canvases(self._shown_canvases())
+        self._sync_stats_canvases()
         if self.project.format not in self.canvas_on or not self._is_open(self.project.format):
             other = next((f for f in self._shown_canvases()), None)
             if other is not None:
@@ -486,8 +564,8 @@ class StreamyWindow(AppWindow):
             if output.fmt == fmt:
                 names.append("the recording" if kind == "record" else "the stream")
         fanout = getattr(self, "outputs", None)
-        if fanout is not None and hasattr(fanout, "live_rows"):
-            names += [row for row in fanout.live_rows(fmt)]
+        if fanout is not None:
+            names += [r.label for r in self.dest_store.rows if r.canvas == fmt and r.id in fanout.rows]
         return names
 
     def _canvas_chip(self, key: str, on: bool) -> bool:
@@ -527,6 +605,9 @@ class StreamyWindow(AppWindow):
             for kind, output in list(self.engine.outputs.items()):
                 if output.fmt == key:
                     (self.engine.stop_stream if kind == "stream" else self.engine.stop_record)()
+            for row in self.dest_store.rows:
+                if row.canvas == key and row.id in self.outputs.rows:
+                    self.outputs.stop(row.id)
         self.canvas_on.discard(key)
         if self._is_open(key) and hasattr(self.dock, "close_tile"):
             self.dock.close_tile(key)
@@ -2022,6 +2103,12 @@ class StreamyWindow(AppWindow):
         return {"reconnecting": "Reconnecting", "starting": "Connecting"}.get(self.stream_state, "Live")
 
     def _stream_words(self) -> str:
+        live = [self.outputs.stats(r.id) for r in self.dest_store.rows if r.is_stream and r.id in self.outputs.rows]
+        live = [st for st in live if st is not None and st.state == "live"]
+        if live:
+            kbps = f"{round(sum(st.bitrate_kbps for st in live)):,} kbps"
+            dropped = sum(st.dropped_network + st.dropped_encoder for st in live)
+            return f"{kbps} · " + ("no dropped frames" if not dropped else f"{dropped:,} dropped")
         stats = self.engine.stats("stream")
         if stats is None:
             return "Connecting"
@@ -2629,6 +2716,12 @@ class StreamyWindow(AppWindow):
     # ── Recording ──
 
     def toggle_record(self) -> None:
+        if any(not r.is_stream for r in self.dest_store.rows):
+            # The recording is a destination row (its canvas, container and folder are the row's).
+            problem = self.dest_panel.record(self.recording_since is None)
+            if problem:
+                Toast.show(self.host, problem, kind="error")
+            return
         if self.recording_since is not None:
             self.engine.stop_record()
             return
@@ -2668,6 +2761,14 @@ class StreamyWindow(AppWindow):
     def go_live(self) -> None:
         if self.stream_state != "off":
             return
+        if any(r.is_stream and r.enabled for r in self.dest_store.rows):
+            self.dest_panel.go_live(record=False)
+            return
+        # No destination yet: the Destinations panel opens to add one.
+        if not self._is_open("destinations") and hasattr(self.dock, "open_tile"):
+            self.dock.open_tile("destinations")
+        self.dock.show_tile("destinations")
+        self.dest_panel.add_menu(self.panel_tiles["destinations"].actions)
         server, key = self._destination()
         if not key and self.destination != "custom":
             self.edit_destination(then_go=True)
@@ -2743,6 +2844,7 @@ class StreamyWindow(AppWindow):
                                  action="End stream", on_confirm=self._end_stream)
 
     def _end_stream(self) -> None:
+        self.dest_panel.end()
         self.engine.stop_stream()
 
     def _output_state(self, _engine, kind: str, state: str) -> None:
