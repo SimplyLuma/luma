@@ -115,9 +115,14 @@ export const SoundPage = GObject.registerClass({
             x_expand: true, y_expand: true, y_align: Clutter.ActorAlign.FILL});
         bin.set_accessible(slider.get_accessible());
         bin.connect('event', (actor, event) => slider.event(event, false));
+        // The page's own glyph, 16 px from the Lucide set: sound, or none.
         const icon = new St.Icon({style_class: 'lumaui-sound-master-icon', y_align: Clutter.ActorAlign.CENTER});
-        for (const property of ['gicon', 'icon-name'])
-            masterIcon.bind_property(property, icon, property, GObject.BindingFlags.SYNC_CREATE);
+        const glyph = () => {
+            icon.icon_name = /muted/.test(masterIcon.icon_name ?? masterIcon.gicon?.to_string() ?? '')
+                ? 'lumaui-volume-x-symbolic' : 'lumaui-volume-2-symbolic';
+        };
+        masterIcon.connectObject('notify::icon-name', glyph, 'notify::gicon', glyph, icon);
+        glyph();
         const value = new St.Label({style_class: 'luma-quick-level-value', y_align: Clutter.ActorAlign.CENTER});
         masterValue.bind_property('text', value, 'text', GObject.BindingFlags.SYNC_CREATE);
         const foreground = new St.BoxLayout({style_class: 'lumaui-level-foreground', reactive: false,

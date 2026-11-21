@@ -61,7 +61,7 @@ index 5278282..f70a91f 100644
                  return Clutter.EVENT_STOP;
              }
 diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
-index 1138f79..c409e8d 100644
+index 1138f79..7297673 100644
 --- a/js/ui/quickSettings.js
 +++ b/js/ui/quickSettings.js
 @@ -1364,10 +1364,17 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
@@ -93,7 +93,7 @@ index 1138f79..c409e8d 100644
      }
  
      _showStudioPage(item, open) {
-@@ -1633,11 +1641,28 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+@@ -1633,11 +1641,31 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
              // Use usable work area, not the full display behind the Shelf.
              const workArea = monitor ? Main.layoutManager.getWorkAreaForMonitor(monitor.index) : null;
              const foot = this._pageFoot.visible ? this._pageFoot.get_preferred_height(-1)[1] / scale : 0;
@@ -109,10 +109,13 @@ index 1138f79..c409e8d 100644
 -                ? null : `max-height: ${maxHeight}px;`);
 +            this._pageScroll.set_style(compact ? null : `max-height: ${maxHeight}px;`);
 +            const setPlain = plain => {
-+                if (plain)
-+                    this._pageScroll.add_style_class_name('lumaui-plain-page');
-+                else
-+                    this._pageScroll.remove_style_class_name('lumaui-plain-page');
++                for (const [actor, name] of [[this._pageScroll, 'lumaui-plain-page'],
++                    [this._pageHost, 'lumaui-plain'], [this.box, 'lumaui-plain-open']]) {
++                    if (plain)
++                        actor.add_style_class_name(name);
++                    else
++                        actor.remove_style_class_name(name);
++                }
 +            };
 +            setPlain(!!menu._lumaPlainPage);
 +            this._pageMeta.hide();
@@ -125,17 +128,19 @@ index 1138f79..c409e8d 100644
              const radio = menu._studioRadio;
              this._pageSwitch.accessible_name = this._pageHeading.text;
              this._pageSwitch.visible = !!radio;
-@@ -1652,6 +1677,9 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+@@ -1652,6 +1680,11 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
          } else if (this._activeMenu === menu) {
              this._activeMenu = null;
              this._pinPageLink(null);
 +            this._pageMeta.hide();
 +            this._pageScroll.remove_style_class_name('lumaui-plain-page');
++            this._pageHost.remove_style_class_name('lumaui-plain');
++            this.box.remove_style_class_name('lumaui-plain-open');
 +            menu._lumaPageClosed?.();
              this.box.remove_style_class_name('lumaui-mode-detail');
              this._pageRadioBinding?.unbind(); this._pageRadioBinding = null;
              this._pageHost.hide(); this._mainPage?.show();
-@@ -1665,6 +1693,18 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+@@ -1665,6 +1698,18 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
          }
      }
  
