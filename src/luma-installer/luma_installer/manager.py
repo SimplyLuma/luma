@@ -238,6 +238,8 @@ def remove(application_id: str, delete_data: bool = False) -> str:
                 except Exception:  # noqa: BLE001 - never a reason to keep the application
                     pass
     remove_record(application_id)
+    # The lock its updates were taken under is the application's too.
+    (records_root() / f".refresh-{safe_id(application_id)}.lock").unlink(missing_ok=True)
     if kind == "snap":
         return "Removed. snapd manages the retained snapshot according to system policy."
     return "Removed. Private application data was deleted." if delete_data else "Removed. Private application data was retained."
