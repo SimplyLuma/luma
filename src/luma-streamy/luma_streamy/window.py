@@ -2262,7 +2262,22 @@ class StreamyWindow(AppWindow):
         live = self.stream_state != "off"
         w = self._selected_widget()
         more = None
-        if w is not None:
+        several = self._targets() if len(self._selected_ids()) > 1 else []
+        if several:
+            # Several: what applies to all of them; Look and Arrange open in the Inspector.
+            pictures = [x for x in several if x.has_picture]
+            items.append(BarChip(f"{len(several)} widgets", on_dismiss=self.deselect))
+            if pictures:
+                items += [BarAction("squircle", "Look", on_activate=lambda: self._grow("look")),
+                          BarAction("align-center-horizontal", "Arrange", on_activate=lambda: self._grow("arrange"))]
+                shown = any(x.visible for x in pictures)
+                more = [BarAction("eye-off" if shown else "eye", "Hide all" if shown else "Show all",
+                                  on_activate=self.toggle_hidden)]
+            more = (more or []) + [BarAction("copy", "Duplicate", on_activate=self.duplicate_selected),
+                                   BarAction("trash-2", f"Delete {len(several)}", danger=True,
+                                             on_activate=self.delete_selected)]
+            items.append(SEPARATOR)
+        elif w is not None:
             cause = self.cause_line(w, self.widget_errors.get(w.id))
             items.append(BarChip(w.name, detail=cause, on_dismiss=self.deselect) if cause else
                          BarChip(w.name, on_dismiss=self.deselect))
