@@ -854,3 +854,15 @@ luma-portal 1.luma.13) or when the portal backend's bus name vanishes or
 changes owner, not only on `SessionClosed`. Test:
 `tests/gnome-shell/lock-screen-sharing` MODE=lifecycle (application killed,
 backend killed, backend stopped, Mutter session stopped). Shell .191.
+
+`0358-notification-pill-breathes-once-per-notification.patch`: the pill's
+glow breathed six times (7.8 s at the refresh rate on the primary monitor)
+every time `_breathe()` ran: on each `_render()`, on mapping the glow and on
+session mode changes. With an unread notification, closing Quick Settings, a
+menu or the overview mapped it again and started over (headless, three
+monitors: 130 dispatches/s and 280 main-thread wakeups/s for eight seconds
+after each, 0 after the fix). The breaths now belong to the notification
+that arrived (`receive()`); a breath in flight is not restarted and an
+interrupted series finishes the breaths left. Tests:
+`tests/gnome-shell/notification-breaths-policy.js` (in `%check`),
+`tests/gnome-shell/idle-cost`. Shell .193.

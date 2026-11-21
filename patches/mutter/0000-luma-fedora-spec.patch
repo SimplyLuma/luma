@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,52 @@
+@@ -29,13 +29,53 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.25%{?dist}
++Release:       1.luma.26%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -51,6 +51,7 @@
 +Patch1033:     0034-screen-cast-Crop-window-streams-to-the-window-frame.patch
 +Patch1034:     0035-screen-cast-Pause-screen-casts-while-the-session-is-locked.patch
 +Patch1035:     0036-clutter-stage-Mark-capture-paints-let-captures-be-made-to-paint.patch
++Patch1036:     0037-clutter-Update-only-the-views-a-redraw-lands-on.patch
  
  
  BuildRequires: cvt

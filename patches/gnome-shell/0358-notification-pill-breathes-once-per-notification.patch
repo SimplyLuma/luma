@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 21 Nov 2026 03:00:00 -0600
+Subject: [PATCH] Notification pill: breathes once per notification
+
+The pill's glow eased in and out six times (7.8 s) whenever _breathe()
+ran: on every _render(), on mapping the glow and on session mode changes.
+With an unread notification, closing Quick Settings, a menu or the
+overview maps the pill again and started the breaths over, so the primary
+monitor repainted at its refresh rate for eight seconds after each.
+
+The breaths now belong to the notification that arrived (receive()); a
+breath in flight is not restarted, an interrupted series carries on with
+the breaths left, and once they are spent the glow stays at its steady
+level.
+---
+diff --git a/js/ui/lumaNotificationBeacon.js b/js/ui/lumaNotificationBeacon.js
+index a598528..416ee79 100644
+--- a/js/ui/lumaNotificationBeacon.js
++++ b/js/ui/lumaNotificationBeacon.js
+@@ -22,6 +22,8 @@ import {displayExclusions, statusInsets, surfaceInsets} from './lumaPresentation
+ const MORPH_TIME = 460;
+ const RETRACT_TIME = 6500;
+ const PILL_MAX_WIDTH = 392;
++// Glow eases (in and out) after a notification arrives, before the steady glow.
++const BREATHS = 6;
+ 
+ function mobileLock() {
+     return Main.presentation?.mode === 'mobile' && Main.sessionMode.isLocked && !Main.sessionMode.isGreeter;
+@@ -226,6 +228,7 @@ export const NotificationLip = GObject.registerClass(class NotificationLip exten
+     receive(notification, quiet = false) {
+         if (mobileLock() && (!notificationsAvailable() || !notification.source.policy.showInLockScreen)) return;
+         this._fresh = true;
++        this._breaths = BREATHS;
+         this._queueSync();
+         if (this.isOpen || quiet || !notification.source.policy.showBanners || this.dnd) {
+             notification.lifecycleState = MessageTray.NotificationLifecycleState.WAITING;
+@@ -623,23 +626,30 @@ export const NotificationLip = GObject.registerClass(class NotificationLip exten
+             onComplete: () => { if (step + 1 < values.length) this._buzz(step + 1); }});
+     }
+     _breathe() {
+-        this._glow.remove_all_transitions();
+-        this._glow.opacity = 0;
+         const eligible = () => !this._destroying && !Main.sessionMode.isLocked &&
+             !Main.sessionMode.isGreeter && this.mapped && this._glow.mapped &&
+             this._state === 'pill' && this._fresh && !this.dnd;
++        // A breath in flight carries on: _render() and remapping call this
++        // far more often than notifications arrive.
++        if (this._glow.get_transition('opacity') && eligible()) return;
++        this._glow.remove_all_transitions();
++        this._glow.opacity = 0;
+         // Signal briefly, then retain a steady unread indicator without
+-        // keeping an otherwise idle display repainting.
+-        let remaining = 6;
++        // keeping an otherwise idle display repainting. The breaths belong to
++        // the notification that arrived (receive()), not to each time the
++        // pill is shown: closing a menu or the overview maps it again, and
++        // starting over then kept the display repainting for eight seconds
++        // after every one.
+         const pulse = up => {
+             if (!eligible()) return;
+             // Re-check every completion: animation settings or actor mapping may
+             // change while a pulse is in flight. An unmapped ease can complete
+             // synchronously, so unconditional recursion is unsafe.
+-            if (!St.Settings.get().enable_animations || remaining-- === 0) {
++            if (!St.Settings.get().enable_animations || !(this._breaths > 0)) {
+                 this._glow.opacity = 128;
+                 return;
+             }
++            this._breaths--;
+             this._glow.ease({opacity: up ? 230 : 0, duration: 1300,
+                 mode: Clutter.AnimationMode.EASE_IN_OUT_SINE, onComplete: () => pulse(!up)});
+         };
