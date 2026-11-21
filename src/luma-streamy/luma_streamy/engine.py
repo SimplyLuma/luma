@@ -828,26 +828,9 @@ class Engine(GObject.Object):
         layer = branch.layers.pop(fmt, None)
         if layer is None or self.pipeline is None:
             return
-        pipeline = self.pipeline
         self._forget_pad(layer.pad)
-        tee = branch.elements[-1]
-        if layer.tee_pad is not None:
-            layer.tee_pad.unlink(layer.elements[0].get_static_pad("sink"))
-            tee.release_request_pad(layer.tee_pad)
-        src = layer.frame.get_static_pad("src")
-        if layer.pad is not None:
-            src.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM, lambda *_a: Gst.PadProbeReturn.DROP)
-            src.unlink(layer.pad)
-            layer.pad.get_parent_element().release_request_pad(layer.pad)
-        for element in layer.elements:
-            element.set_locked_state(True)
-
-        def stop(_pipeline, elements) -> None:
-            for element in elements:
-                element.set_state(Gst.State.NULL)
-            GLib.idle_add(lambda: [pipeline.remove(e) for e in elements if e.get_parent() is pipeline] and False)
-
-        pipeline.call_async(stop, layer.elements)
+        self._stop_then_unlink(layer.elements, layer.elements[0].get_static_pad("sink"),
+                               layer.frame.get_static_pad("src") if layer.pad is not None else None)
 
     def _style_layer(self, layer: Layer, view: Widget, zorder: int, *, fade: int = FADE_MS,
                      alpha: float | None = None) -> None:
@@ -1365,19 +1348,41 @@ class Engine(GObject.Object):
         elements, branch.monitor = branch.monitor, []
         if not elements or self.pipeline is None:
             return
+        self._stop_then_unlink(elements, elements[0].get_static_pad("sink"))
+
+    def _stop_then_unlink(self, elements: list, sink: Gst.Pad, src: Gst.Pad | None = None) -> None:
+        """Take a chain out in the order GStreamer needs: its data dropped at once (at the request pad
+        it hangs from, and at its own ``src`` into a mixer), its elements NULL on the pool, then, on the
+        main loop, its request pads released and its elements removed."""
         pipeline = self.pipeline
-        sink_pad = elements[0].get_static_pad("sink")
-        peer = sink_pad.get_peer()
-        if peer is not None:
-            peer.unlink(sink_pad)
-            peer.get_parent_element().release_request_pad(peer)
+        upstream = sink.get_peer()
+        downstream = src.get_peer() if src is not None else None
+        for pad in (upstream, src):
+            if pad is not None:
+                pad.add_probe(Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST | Gst.PadProbeType.EVENT_DOWNSTREAM,
+                              lambda *_a: Gst.PadProbeReturn.DROP)
         for element in elements:
             element.set_locked_state(True)
+
+        def drop() -> bool:
+            for peer, pad in ((upstream, sink), (src, downstream)):
+                if peer is None or pad is None:
+                    continue
+                if peer.get_peer() is pad:
+                    peer.unlink(pad)
+                request = peer if peer is upstream else pad  # the tee's or the mixer's request pad
+                owner = request.get_parent_element()
+                if owner is not None:
+                    owner.release_request_pad(request)
+            for element in elements:
+                if element.get_parent() is pipeline:
+                    pipeline.remove(element)
+            return False
 
         def stop(_pipeline, items) -> None:
             for element in items:
                 element.set_state(Gst.State.NULL)
-            GLib.idle_add(lambda: [pipeline.remove(e) for e in items if e.get_parent() is pipeline] and False)
+            GLib.idle_add(drop)
 
         pipeline.call_async(stop, elements)
 
