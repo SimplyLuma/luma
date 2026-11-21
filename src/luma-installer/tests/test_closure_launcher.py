@@ -97,6 +97,17 @@ class Sandbox(unittest.TestCase):
         self.assertIn((str(self.instance / "tmp"), "/tmp"), pairs(arguments, "--bind"))
         self.assertIn((str(self.instance), "/run/luma"), pairs(arguments, "--ro-bind"))
 
+    def test_only_the_displays_own_x11_socket_is_shared(self):
+        with tempfile.TemporaryDirectory() as folder:
+            sockets = Path(folder)
+            (sockets / "X0").touch()
+            (sockets / "X1").touch()
+            self.assertEqual(launcher.x11_socket(":0", sockets), sockets / "X0")
+            self.assertEqual(launcher.x11_socket(":1.0", sockets), sockets / "X1")
+            self.assertIsNone(launcher.x11_socket(":7", sockets))
+            self.assertIsNone(launcher.x11_socket("remote:0", sockets))
+            self.assertIsNone(launcher.x11_socket("", sockets))
+
     def test_a_console_application_keeps_its_terminal(self):
         windowed, _env = self.build()
         self.assertIn("--new-session", windowed)

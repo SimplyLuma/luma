@@ -121,6 +121,15 @@ BASELINE = {
             "alsa-plugins-pulseaudio", "libsecret", "ca-certificates", "glib2"),
 }
 
+# A toolkit's Wayland support is a separate package its applications only
+# recommend; without it a Qt application falls back to X11. Added when the
+# toolkit is in the tree: (package that shows the toolkit, package to add).
+TOOLKIT_BASELINE = {
+    "deb": (("libqt5gui5", "qtwayland5"), ("libqt5gui5t64", "qtwayland5"), ("libqt6gui6", "qt6-wayland"),
+            ("libqt6gui6t64", "qt6-wayland")),
+    "rpm": (("qt5-qtbase-gui", "qt5-qtwayland"), ("qt6-qtbase-gui", "qt6-qtwayland")),
+}
+
 DEB_ARCHITECTURES = {"x86_64": "amd64", "aarch64": "arm64"}
 
 
@@ -256,7 +265,7 @@ def sandbox_in_tree(root: Path, command: list[str], *, binds: list[tuple[str, st
     """Run inside the new root: the root is / and nothing of the host is visible."""
     arguments = [*userns_prefix(), "bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
                  "--unshare-cgroup-try", "--hostname", "luma-build", "--bind", str(root), "/",
-                 "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp"]
+                 "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--perms", "1777", "--tmpfs", "/tmp"]
     if not network:
         arguments.append("--unshare-net")
     else:
@@ -287,7 +296,7 @@ def sandbox_on_host(command: list[str], *, binds: list[tuple[str, str, bool]], t
             arguments.extend(("--symlink", os.readlink(path), f"/{name}"))
         elif path.is_dir():
             arguments.extend(("--ro-bind", str(path), f"/{name}"))
-    arguments.extend(("--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", "/run"))
+    arguments.extend(("--dev", "/dev", "--proc", "/proc", "--perms", "1777", "--tmpfs", "/tmp", "--tmpfs", "/run"))
     # Homes stay out; the tools' own scratch folders are empty and writable.
     for hidden in ("/var/home", "/var/roothome", "/var/tmp", "/var/cache", "/var/log"):
         if (host / hidden.lstrip("/")).is_dir() and not (host / hidden.lstrip("/")).is_symlink():
@@ -718,6 +727,13 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
             for name in baseline:
                 log.run(f"baseline {name}", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", name], binds=common),
                         check=False)
+    if spec.windowed:
+        present = {row[0] for row in parse_lock(log.run("lock", sandbox_in_tree(root, DEB_LOCK, network=False)).stdout)}
+        toolkit = sorted({extra for shown, extra in TOOLKIT_BASELINE["deb"] if shown in present and extra not in present})
+        if toolkit:
+            log.run("toolkit baseline", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", *toolkit], binds=common),
+                    check=False)
+            baseline += toolkit
     language = _language(spec)
     if language:
         log.run("locale", sandbox_in_tree(root, ["sh", "-c", runtime_policy.DEBIAN_LOCALE_SCRIPT, "sh", language],
@@ -799,6 +815,13 @@ def _build_rpm(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
         baseline = list(BASELINE["rpm"])
         log.run("baseline", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", "--skip-unavailable", *baseline]),
                                             binds=binds, target="/target"), check=False)
+    if spec.windowed:
+        present = {row[0] for row in parse_lock(log.run("lock", sandbox_on_host(RPM_LOCK, binds=[(str(root), "/target", True)])).stdout)}
+        toolkit = sorted({extra for shown, extra in TOOLKIT_BASELINE["rpm"] if shown in present and extra not in present})
+        if toolkit:
+            log.run("toolkit baseline", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", *toolkit]),
+                                                        binds=binds, target="/target"), check=False)
+            baseline += toolkit
     if payload is not None:
         destination = root / "opt" / spec.app_id
         _run([*userns_prefix(), "sh", "-c", 'mkdir -p "$2" && cp -a "$1"/. "$2"/', "sh", str(payload), str(destination)],

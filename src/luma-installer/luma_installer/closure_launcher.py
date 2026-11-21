@@ -222,6 +222,15 @@ def set_zone(instance: Path, zone: str) -> None:
     partial.replace(link)
 
 
+def x11_socket(display: str, folder: Path = Path("/tmp/.X11-unix")) -> Path | None:
+    """The socket of a local X display (":0", ":1.0"), or None."""
+    name = display.split(".", 1)[0]
+    if not name.startswith(":") or not name[1:].isdigit():
+        return None
+    socket_path = folder / f"X{name[1:]}"
+    return socket_path if socket_path.exists() else None
+
+
 def exec_label(level: str) -> str:
     return f"system_u:system_r:{APPLICATION_TYPE}:{level}"
 
@@ -292,8 +301,10 @@ def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, 
     if bus_socket is not None:
         arguments.extend(("--bind", str(bus_socket), str(inside / "bus")))
         env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={inside / 'bus'}"
-    if Path("/tmp/.X11-unix").exists() and host.get("DISPLAY"):
-        arguments.extend(("--ro-bind", "/tmp/.X11-unix", "/tmp/.X11-unix"))
+    display_socket = x11_socket(host.get("DISPLAY", ""))
+    if display_socket is not None:
+        # The display's own socket, not the folder of every display's.
+        arguments.extend(("--ro-bind", str(display_socket), str(display_socket)))
         env["DISPLAY"] = host["DISPLAY"]
         authority = capsule_launcher._runtime_authority(runtime)
         if authority is not None:
