@@ -7,9 +7,11 @@ engine instantiates them; the tests check them without GStreamer.
 
 Shape (one pipeline; branches come and go while it runs):
 
-    picture widget:  source ! … ! glupload ! glcolorconvert ! lumaframe ! queue ! mixer.sink_N
+    picture widget:  source ! … ! glupload ! glcolorconvert ! tee        (captured once)
+                       └ per canvas on: queue ! lumaframe ! mixer-<canvas>.sink_N
     sound widget:    source ! audioconvert ! audioresample ! volume ! level ! queue ! audiomixer.sink_N
-    program:         glvideomixer ! video/x-raw(memory:GLMemory),WxH,fps ! tee
+    program, per canvas (landscape, vertical), only while shown or sent:
+                     glvideomixer ! video/x-raw(memory:GLMemory),WxH,fps ! tee
                        ├ queue ! gtk4paintablesink                 (the preview, while shown)
                        ├ queue ! <video encoder> ! parse ! tee      (only while live or recording)
                      audiomixer ! audio/x-raw,48 kHz,stereo ! tee
@@ -20,11 +22,14 @@ Shape (one pipeline; branches come and go while it runs):
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 from .model import Effects, Widget
 
 FPS = 30
+#: The compositors' rate: a drag shows within a screen frame. What is sent is FPS.
+PREVIEW_FPS = 60
 AUDIO_RATE = 48000
 
 
@@ -59,6 +64,51 @@ def argb(rgb: str, alpha: float) -> int:
     """'1F6FE0' and 0.5 -> 0x801F6FE0, lumaframe's colour property."""
     a = max(0, min(255, round(alpha * 255)))
     return (a << 24) | int(rgb, 16)
+
+
+# ── Formats ──
+
+ALPHA_FORMATS = ("BGRA", "RGBA", "ARGB", "ABGR")
+ALPHA_FOURCCS = ("AR24", "AB24", "RA24", "BA24")
+
+
+def prefer_alpha(caps: str) -> str:
+    """``caps`` with every format list ordered alpha first, so a window cast with transparent
+    (rounded) corners is offered and taken with its alpha rather than as an opaque XR24/BGRx."""
+    import re
+
+    def order(found: re.Match) -> str:
+        items = [v.strip() for v in found.group(2).split(",")]
+        alpha = [v for v in items if v in ALPHA_FORMATS or v.split(":")[0] in ALPHA_FOURCCS]
+        return f"{found.group(1)}{{ {', '.join(alpha + [v for v in items if v not in alpha])} }}"
+
+    return re.sub(r"(\b(?:drm-)?format=\(string\))\{([^}]*)\}", order, caps)
+
+
+def only_alpha(caps: str) -> str:
+    """``caps`` cut to the formats with alpha (DMABuf AR24/AB24… with their modifiers, system-memory
+    BGRA/RGBA…); "" when none is left. A PipeWire producer picks the first format of its own list that
+    the consumer takes, so ordering alone never wins over a producer that lists XR24 first."""
+    import re
+
+    kept = []
+    for part in caps.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        key = "drm-format" if "drm-format=" in part else "format"
+        found = re.search(rf"\b{key}=\(string\)(\{{[^}}]*\}}|[^,;]+)", part)
+        if found is None:
+            continue
+        value = found.group(1)
+        items = [v.strip() for v in value.strip("{} ").split(",")] if value.startswith("{") else [value.strip()]
+        alpha = [v for v in items if v in ALPHA_FORMATS or v.split(":")[0] in ALPHA_FOURCCS]
+        if not alpha:
+            continue
+        text = alpha[0] if len(alpha) == 1 else "{ " + ", ".join(alpha) + " }"
+        kept.append(part[:found.start(1)] + text + part[found.end(1):])
+    return "; ".join(kept)
+
 
 
 # ── Pictures ──
@@ -98,7 +148,22 @@ def mixer_pad_props(widget: Widget, zorder: int) -> dict:
     }
 
 
-def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node: str | None) -> list[Element]:
+def hardware_decode() -> bool:
+    """VA decoding is there (vajpegdec and vapostproc) and not turned off (STREAMY_DECODE=software)."""
+    global _HW
+    if _HW is None:
+        from gi.repository import Gst
+
+        _HW = os.environ.get("STREAMY_DECODE") != "software" and all(
+            Gst.ElementFactory.find(name) is not None for name in ("vajpegdec", "vapostproc"))
+    return _HW
+
+
+_HW: bool | None = None
+
+
+def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node: str | None,
+                  hw_decode: bool = False) -> list[Element]:
     kind = widget.kind
     if fake:
         if widget.source.get("fake-silent"):
@@ -111,9 +176,7 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
         if path:
             return [Element("filesrc", f"{prefix}-src", {"location": path}),
                     Element("decodebin", f"{prefix}-decode"),
-                    Element("videoconvert", f"{prefix}-convert"),
-                    Element("imagefreeze", f"{prefix}-freeze", {"is-live": True}),
-                    Element("capsfilter", f"{prefix}-rate", {"caps": f"video/x-raw,framerate={FPS}/1"})]
+                    Element("videoconvert", f"{prefix}-convert")]  # a still: frozen once uploaded
         pattern = {"display": "smpte100", "window": "bar", "camera": "ball"}.get(kind, "smpte")
         return [Element("videotestsrc", f"{prefix}-src", {"is-live": True, "pattern": pattern}),
                 Element("capsfilter", f"{prefix}-caps",
@@ -121,9 +184,7 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
     if kind == "image":
         return [Element("filesrc", f"{prefix}-src", {"location": widget.source.get("path", "")}),
                 Element("decodebin", f"{prefix}-decode"),
-                Element("videoconvert", f"{prefix}-convert"),
-                Element("imagefreeze", f"{prefix}-freeze", {"is-live": True}),
-                Element("capsfilter", f"{prefix}-rate", {"caps": f"video/x-raw,framerate={FPS}/1"})]
+                Element("videoconvert", f"{prefix}-convert")]  # a still: frozen once uploaded
     # do-timestamp: PipeWire's own times aren't the pipeline's; stamping on arrival keeps the mixer in step.
     # resend-last + keepalive: a still screen (no damage, no new frames) keeps its picture.
     props = {"always-copy": False, "keepalive-time": 1000, "resend-last": True, "do-timestamp": True}
@@ -137,6 +198,10 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
         # WirePlumber links a camera-portal client's stream only when it says it is a camera.
         props["stream-properties"] = "props,media.role=Camera"
     head = [Element("pipewiresrc", f"{prefix}-src", props)]
+    if kind == "window":
+        # Its caps are set to what downstream takes, alpha formats first (Engine._alpha_first): a
+        # window's rounded corners stay transparent.
+        head.append(Element("capsfilter", f"{prefix}-alpha", {}))
     if kind in ("display", "window") and os.environ.get("STREAMY_CAPTURE_MEMORY") == "system":
         head.append(Element("capsfilter", f"{prefix}-sysmem", {"caps": "video/x-raw"}))
     if kind == "camera":
@@ -148,8 +213,32 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
                 "caps": f"video/x-raw,width={w},height={h},framerate={fps}/1;"
                         f"image/jpeg,width={w},height={h},framerate={fps}/1"}))
         # Cameras may send MJPEG; decodebin passes raw pictures through.
-        head += [Element("decodebin", f"{prefix}-decode"), Element("videoconvert", f"{prefix}-convert")]
+        if hw_decode:
+            # The GPU decodes (vajpegdec) and vapostproc hands GL a DMABuf: no picture crosses the CPU.
+            # A raw camera's frames are uploaded by vapostproc the same way.
+            head += [Element("decodebin", f"{prefix}-decode"),
+                     Element("vapostproc", f"{prefix}-vapp"),
+                     Element("capsfilter", f"{prefix}-dmabuf", {"caps": "video/x-raw(memory:DMABuf)"})]
+        else:
+            # Software: a VA decoder's VA memory is something videoconvert can't take.
+            head += [Element("decodebin", f"{prefix}-decode", {"force-sw-decoders": True}),
+                     Element("videoconvert", f"{prefix}-convert")]
     return head
+
+
+def is_still(widget: Widget, fake: bool) -> bool:
+    """A picture decoded once (an image, or a fake source's stand-in picture)."""
+    if fake:
+        return bool(widget.source.get("fake-image")) and not widget.source.get("fake-silent")
+    return widget.kind == "image"
+
+
+def freeze(prefix: str) -> list[Element]:
+    """A still picture repeated at the canvas rate on the GPU: uploaded and converted once, then the
+    same texture every frame (the mixer needs a picture per frame from every layer)."""
+    return [Element("imagefreeze", f"{prefix}-freeze", {"is-live": True}),
+            Element("capsfilter", f"{prefix}-rate", {"caps": f"video/x-raw(memory:GLMemory),format=RGBA,"
+                                                              f"framerate={FPS}/1"})]
 
 
 def flip_method(widget: Widget) -> str:
@@ -163,37 +252,62 @@ def branch_prefix(widget: Widget, generation: int) -> str:
     return f"w-{widget.id}-g{generation}"
 
 
+_BRANCH_NAME = re.compile(r"^w-(.+?)-g(\d+)(?:-|$)")
+
+
 def widget_of(element_name: str) -> str | None:
-    """The widget id in a branch element's name, or None."""
-    if not element_name.startswith("w-") or "-g" not in element_name:
-        return None
-    return element_name[2:].rsplit("-g", 1)[0]
+    """The widget id in a branch element's name ("w-<id>-g<n>-<part>"), or None."""
+    match = _BRANCH_NAME.match(element_name)
+    return match.group(1) if match else None
+
+
+def generation_of(element_name: str) -> int | None:
+    """The branch generation in a branch element's name, or None."""
+    match = _BRANCH_NAME.match(element_name)
+    return int(match.group(2)) if match else None
 
 
 def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | None = None,
-                  node: str | None = None, generation: int = 0) -> Chain:
-    """A picture widget from its source to its glvideomixer pad."""
+                  node: str | None = None, generation: int = 0, hw_decode: bool = False) -> Chain:
+    """A picture widget from its source to its glvideomixer pad (a camera decoded on the GPU with
+    ``hw_decode``)."""
     prefix = branch_prefix(widget, generation)
-    elements = _capture_head(widget, prefix, fake, fd, node)
+    elements = _capture_head(widget, prefix, fake, fd, node, hw_decode)
     elements += [
         Element("queue", f"{prefix}-queue", {"max-size-buffers": 2, "leaky": 2}),
         Element("glupload", f"{prefix}-upload"),
         Element("glcolorconvert", f"{prefix}-glconvert"),
         Element("capsfilter", f"{prefix}-rgba", {"caps": "video/x-raw(memory:GLMemory),format=RGBA"}),
     ]
+    if is_still(widget, fake):
+        elements += freeze(prefix)
+    scaled = widget.source.get("scaled") if widget.kind == "camera" else None
+    if isinstance(scaled, (list, tuple)) and len(scaled) == 2:
+        # A size the camera lacks: made on the GPU right after capture, so everything after is smaller.
+        elements += [Element("glcolorscale", f"{prefix}-scale"),
+                     Element("capsfilter", f"{prefix}-scaled", {"caps": f"video/x-raw(memory:GLMemory),format=RGBA,"
+                                                                          f"width={int(scaled[0])},height={int(scaled[1])}"})]
     if widget.kind == "camera":
         elements.append(Element("glvideoflip", f"{prefix}-flip", {"method": flip_method(widget)}))
-    elements += [
-        Element("lumaframe", f"{prefix}-frame", frame_props(widget)),
-    ]
-    return Chain(elements, "mixer", mixer_pad_props(widget, zorder))
+    # Captured once; each canvas on takes its own layer from this tee (layer_chain).
+    elements.append(Element("tee", f"{prefix}-vtee", {"allow-not-linked": True}))
+    return Chain(elements)
+
+
+def layer_chain(widget: Widget, zorder: int, prefix: str, fmt: str) -> Chain:
+    """A picture widget drawn on canvas ``fmt``: ``widget`` is placed and styled as that canvas has it.
+    The queue lets one canvas's mixer never hold up another's."""
+    return Chain([Element("queue", f"{prefix}-{fmt}-lqueue", {"max-size-buffers": 1, "max-size-bytes": 0,
+                                                               "max-size-time": 0, "leaky": 2}),
+                  Element("lumaframe", f"{prefix}-{fmt}-frame", frame_props(widget))],
+                 f"mixer-{fmt}", mixer_pad_props(widget, zorder))
 
 
 # ── Placeholders ──
 
 #: A frameless picture widget's card: a quiet neutral grey (ARGB for videotestsrc) and its word.
 PLACEHOLDER_COLOR = 0xFF3A3E46
-PLACEHOLDER_FPS = FPS  # at the canvas rate: a resize shows every frame
+PLACEHOLDER_FPS = FPS
 
 
 def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int = 0) -> Chain:
@@ -206,8 +320,9 @@ def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int =
     scale = min(1.0, 1280 / max(width, height))  # a card, not a full-size picture: the box scales it
     cw, ch = max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2)
     font = max(10, round(min(cw, ch) / 9))
+    # Drawn once (one buffer, the text rendered and uploaded once), then frozen on the GPU.
     elements = [
-        Element("videotestsrc", f"{prefix}-src", {"is-live": True, "pattern": "solid-color",
+        Element("videotestsrc", f"{prefix}-src", {"num-buffers": 1, "pattern": "solid-color",
                                                    "foreground-color": PLACEHOLDER_COLOR}),
         Element("capsfilter", f"{prefix}-caps", {"caps": f"video/x-raw,format=BGRA,width={cw},height={ch},"
                                                           f"framerate={PLACEHOLDER_FPS}/1"}),
@@ -219,9 +334,10 @@ def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int =
         Element("glupload", f"{prefix}-upload"),
         Element("glcolorconvert", f"{prefix}-glconvert"),
         Element("capsfilter", f"{prefix}-rgba", {"caps": "video/x-raw(memory:GLMemory),format=RGBA"}),
-        Element("lumaframe", f"{prefix}-frame", frame_props(widget)),
+        *freeze(prefix),
+        Element("tee", f"{prefix}-vtee", {"allow-not-linked": True}),
     ]
-    return Chain(elements, "mixer", mixer_pad_props(widget, zorder))
+    return Chain(elements)
 
 
 def placeholder_words(widget: Widget, state: str) -> str:
@@ -261,7 +377,7 @@ def sound_chain(widget: Widget, *, fake: bool = False, fd: int | None = None, no
         Element("audioconvert", f"{prefix}-aconvert"),
         Element("audioresample", f"{prefix}-resample"),
         Element("volume", f"{prefix}-volume", volume_props(widget)),
-        Element("level", f"{prefix}-level", {"interval": 50_000_000, "post-messages": True}),
+        Element("level", f"{prefix}-level", {"interval": 100_000_000, "post-messages": True}),
         # The monitor (headphones) hangs off this tee only while it is on.
         Element("tee", f"{prefix}-atee", {"allow-not-linked": True}),
         Element("queue", f"{prefix}-aqueue", {"max-size-time": 200_000_000, "leaky": 2}),
@@ -292,16 +408,18 @@ def volume_props(widget: Widget) -> dict:
 
 # ── Program ──
 
-def program(canvas: tuple[int, int]) -> list[Element]:
+def program(canvas: tuple[int, int], fmt: str = "landscape") -> list[Element]:
+    """One canvas's compositor: mixer-<fmt> ! caps ! tee program-<fmt>."""
     width, height = canvas
     return [
         # No added latency: a move or resize shows on the next program frame; a source that is slower
         # than the canvas has its last picture reused.
-        Element("glvideomixer", "mixer", {"background": 1, "latency": 0, "force-live": True,
-                                          "start-time-selection": 1}),
-        Element("capsfilter", "program-caps", {"caps": f"video/x-raw(memory:GLMemory),width={width},height={height},"
-                                                        f"framerate={FPS}/1,format=RGBA"}),
-        Element("tee", "program", {"allow-not-linked": True}),
+        Element("glvideomixerelement", f"mixer-{fmt}", {"background": 1, "latency": 0, "force-live": True,
+                                                        "start-time-selection": 1}),
+        # Composited at the screen's rate, so a move shows on the next 16 ms frame; outputs take FPS (tap_video).
+        Element("capsfilter", f"program-caps-{fmt}", {"caps": f"video/x-raw(memory:GLMemory),width={width},"
+                                                               f"height={height},framerate={PREVIEW_FPS}/1,format=RGBA"}),
+        Element("tee", f"program-{fmt}", {"allow-not-linked": True}),
     ]
 
 
@@ -347,16 +465,18 @@ def choose(available: set[str], codec: str) -> EncoderChoice | None:
     return EncoderChoice(video, audio, codec)
 
 
-def tap_video() -> list[Element]:
+def tap_video(fmt: str = "landscape") -> list[Element]:
     """Program pictures for the encoders: converted to NV12 on the GPU, read back once. The valve
     closes while nothing is sent, so an idle tap converts and reads back nothing."""
-    return [Element("valve", "tap-vvalve", {"drop": False}),
-            Element("queue", "tap-vqueue", {"max-size-buffers": 3, "leaky": 2}),
-            Element("glcolorconvert", "tap-glconvert"),
-            Element("capsfilter", "tap-glnv12", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
-            Element("gldownload", "tap-download"),
-            Element("capsfilter", "tap-nv12", {"caps": "video/x-raw,format=NV12"}),
-            Element("appsink", "tap-video", {"emit-signals": True, "drop": True, "max-buffers": 4,
+    return [Element("valve", f"tap-vvalve-{fmt}", {"drop": False}),
+            Element("queue", f"tap-vqueue-{fmt}", {"max-size-buffers": 3, "leaky": 2}),
+            Element("videorate", f"tap-rate-{fmt}", {"drop-only": True}),
+            Element("capsfilter", f"tap-fps-{fmt}", {"caps": f"video/x-raw(memory:GLMemory),framerate={FPS}/1"}),
+            Element("glcolorconvert", f"tap-glconvert-{fmt}"),
+            Element("capsfilter", f"tap-glnv12-{fmt}", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
+            Element("gldownload", f"tap-download-{fmt}"),
+            Element("capsfilter", f"tap-nv12-{fmt}", {"caps": "video/x-raw,format=NV12"}),
+            Element("appsink", f"tap-video-{fmt}", {"emit-signals": True, "drop": True, "max-buffers": 4,
                                              "sync": False, "async": False})]
 
 

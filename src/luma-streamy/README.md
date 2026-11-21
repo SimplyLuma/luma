@@ -41,6 +41,45 @@ through `luma_appkit.audio_capture`. A widget keeps one capture while its
 scene is shown and closes it off-scene; its restore token brings it back
 without the picker. The Add menu offers App audio only where the portal is.
 
+## Destinations, Stats and Chat
+
+- `luma_streamy/outputs.py` (shapes in `output_graph.py`): one encode per
+  canvas and preset, teed to every destination row that shares it. Each row
+  is its own pipeline fed by appsrc (`flvmux`/`eflvmux ! rtmp2sink`,
+  `mpegtsmux ! srtsink`, `whipclientsink`, `matroskamux`/`mp4mux ! filesink`),
+  so one dropped connection reconnects alone and joins on the next key frame.
+  A recording drains its encoder before its muxer finishes the file.
+  Recordings pick hardware AV1, then hardware H.264, then SVT-AV1, then
+  OpenH264.
+- `luma_streamy/destinations_panel.py`: the rows (official logos in
+  `data/logos`), their editors in the action bar, and Go live. Keys and
+  sign-ins are in the keyring (Secret schema
+  `org.projectluma.Streamy.Destination`, attributes `account` = row id and
+  `kind`).
+- `luma_streamy/accounts.py`: Twitch sign-in by device code, YouTube by the
+  installed-app loopback flow with PKCE; both then read the account's name,
+  ingest and stream key. Client ids come from `$STREAMY_TWITCH_CLIENT_ID`,
+  `$STREAMY_YOUTUBE_CLIENT_ID` and `$STREAMY_YOUTUBE_CLIENT_SECRET`, or
+  `oauth.json` in `$XDG_CONFIG_HOME/streamy/` or `/etc/luma-streamy/`:
+
+  ```json
+  {"twitch": {"client_id": "…"}, "youtube": {"client_id": "…", "client_secret": "…"},
+   "kick": {"pusher_key": "…", "pusher_cluster": "us2"}}
+  ```
+
+  Twitch needs an application of client type Public (scopes
+  `channel:read:stream_key user:read:chat user:write:chat`); YouTube needs a
+  Google Cloud OAuth client of type Desktop app with the YouTube Data API v3
+  enabled. Without ids the flows run against a placeholder, the platform
+  refuses it, and the editor says so; a pasted stream key still works.
+- `luma_streamy/stats.py`, `stats_panel.py`: CPU from `/proc/stat`, GPU and
+  video engine busy from DRM fdinfo (i915, xe, amdgpu), memory, and the
+  recording disk's write rate and free space; sampled at most once a second,
+  only while the panel is shown or something is live.
+- `luma_streamy/chat.py`, `chat_panel.py`: a merged feed from pasted links,
+  read-only: Twitch anonymous IRC over WebSocket, Kick's public Pusher socket.
+  Sockets are open only while the panel is shown or something is live.
+
 ## Development
 
 ```sh
@@ -55,6 +94,11 @@ streams 10 s to an RTMP server headless:
 STREAMY_FAKE_SOURCES=1 GST_PLUGIN_PATH=<lumaframe build> \
   python3 src/luma-streamy/tests/engine_smoke.py /tmp rtmp://127.0.0.1/live/test
 ```
+
+`tests/outputs_smoke.py` sends one encode to several RTMP and SRT rows and two
+recordings (run it against a local mediamtx). `tests/panels_shot.py` renders
+the three panels with fixture rows (`PANELS_SHOT`, `PANELS_WIDTH`,
+`PANELS_OPEN`) and `tests/panels_conform.py` checks its boxes.
 
 `STREAMY_SHOT=out.png STREAMY_SHOT_WIDTH=360` renders the window to a PNG and
 quits, writing the measured boxes to `out.json`. `tests/conform.py out.json`

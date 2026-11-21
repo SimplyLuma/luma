@@ -140,6 +140,20 @@ class ModelTest(unittest.TestCase):
         project.reset_secondary(scene.id)
         self.assertFalse(any(w.own.get("placement") for w in scene.widgets))
 
+    def test_view_on_each_canvas(self):
+        cam = self.project.add_widget(self.scene.id, "camera", aspect=16 / 9)
+        self.project.set_rect(cam.id, 960, 0, 960, 540)
+        self.assertIs(self.project.view_on(cam, "landscape"), cam)
+        v = self.project.view_on(cam, "vertical")  # linked: landscape scaled to the width, centred
+        self.assertEqual((v.x, v.width), (540, 540))
+        self.assertAlmostEqual(v.y, (1920 - 1080 * 1080 / 1920) / 2)
+        self.assertEqual((cam.x, cam.width), (960, 960))  # the widget itself never changes
+        cam.look["vertical"] = {"corner_radius": 3}
+        self.assertEqual(self.project.view_on(cam, "vertical").effects.corner_radius, 3)
+        self.project.set_format("vertical")
+        self.assertEqual(self.project.view_on(cam, "landscape").x, 960)
+        self.assertEqual(self.project.view_on(cam, "vertical").x, 540)
+
     def test_sizes_keep_shape(self):
         for fmt in ("landscape", "vertical"):
             project = Project.starter(); project.set_format(fmt)
@@ -235,3 +249,104 @@ class ModelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LookPerCanvasTest(unittest.TestCase):
+    def _views(self, project):
+        """Every widget as each canvas draws it: (rect, Look, visible) per canvas."""
+        out = {}
+        for scene in project.scenes:
+            for w in scene.widgets:
+                for fmt in ("landscape", "vertical"):
+                    v = project.view_on(w, fmt)
+                    out[(w.id, fmt)] = (tuple(round(n, 6) for n in (v.x, v.y, v.width, v.height)),
+                                        tuple(sorted(vars(v.effects).items())), v.visible,
+                                        bool(w.own.get("placement")), tuple(sorted(project.own_look(w, "vertical"))))
+        return out
+
+    def test_canvases_round_trip(self):
+        """Each canvas edited differently (placement, Look, visibility, sync keys) survives save and load,
+        from either canvas, across format changes, and through an older schema-1 file."""
+        project = Project.starter()
+        self.scene = project.active_scene
+        cam = project.add_widget(self.scene.id, "camera", aspect=16 / 9)
+        cam.source["size"] = [1920, 1080]
+        disp = project.add_widget(self.scene.id, "display", aspect=16 / 9)
+        img = project.add_widget(self.scene.id, "image", aspect=1.0)
+        project.set_rect(cam.id, 1300, 700, 560, 315)
+        project.set_effect(cam, "corner_radius", 24)
+        project.set_format("vertical")
+        project.set_rect(cam.id, 40, 1400, 1000, 562.5)         # its own on Vertical
+        project.set_effect(cam, "stroke_width", 0)              # an override (sync key off)
+        project.set_effect(cam, "corner_radius", 0)
+        project.sync_look(cam, "vertical", "corner_radius")      # synced again: follows the base
+        img.visible = False
+        project.set_rect(disp.id, 0, 0, 1080, 607.5)
+        project.match_primary(disp.id)                           # linked again
+        for start in ("vertical", "landscape", "vertical"):
+            project.set_format(start)
+            before = self._views(project)
+            with tempfile.TemporaryDirectory() as tmp:
+                store = ProjectStore(Path(tmp) / "project.json")
+                store.save(project)
+                again = store.load()
+            self.assertEqual(self._views(again), before, f"saved on {start}")
+            for fmt in ("landscape", "vertical", "landscape"):
+                again.set_format(fmt)
+                self.assertEqual(self._views(again), before, f"saved on {start}, then {fmt}")
+        # The landscape camera never takes Vertical's geometry (the relaunch bug).
+        again.set_format("landscape")
+        c = again.find_widget(cam.id)[1]
+        self.assertEqual((c.x, c.y, c.width, c.height), (1300, 700, 560, 315))
+        # A source shape change reshapes every canvas's own placement and keeps the other canvas's records.
+        project.set_format("landscape")
+        cam.source["size"] = [1080, 1920]
+        project.reshape(cam, fit=True)
+        self.assertIn("vertical", cam.placements)
+        v = project.view_on(cam, "vertical")
+        self.assertAlmostEqual(v.width / v.height, 1080 / 1920)
+        self.assertAlmostEqual(cam.width / cam.height, 1080 / 1920)
+        # Schema 1 (x/y belong to the saved format; its placements entry may be stale).
+        old = {"schema": 1, "format": "vertical", "primary": "landscape", "active": "s", "scenes": [
+            {"id": "s", "name": "S", "widgets": [{"id": "c", "kind": "camera", "name": "Camera",
+                                                  "x": 40, "y": 1400, "width": 1000, "height": 562.5,
+                                                  "placements": {"landscape": [1300, 700, 560, 315],
+                                                                 "vertical": [1, 2, 3, 4]},
+                                                  "own": {"placement": True},
+                                                  "look": {"vertical": {"stroke_width": 0}}}]}]}
+        loaded = Project.from_dict(old)
+        w = loaded.find_widget("c")[1]
+        self.assertEqual((w.x, w.y, w.width, w.height), (40, 1400, 1000, 562.5))
+        self.assertEqual(loaded.view_on(w, "landscape").width, 560)
+        self.assertEqual(loaded.effects_on(w, "vertical").stroke_width, 0)
+        loaded.set_format("landscape")
+        self.assertEqual((w.x, w.y, w.width, w.height), (1300, 700, 560, 315))
+        # Records carry their canvas's size: a rect saved on another size is scaled to this one.
+        data = loaded.to_dict()
+        rec = data["scenes"][0]["widgets"][0]["canvases"]["landscape"]
+        self.assertEqual(rec["size"], [1920, 1080])
+        rec["size"], rec["rect"] = [3840, 2160], [2600, 1400, 1120, 630]
+        self.assertEqual(Project.from_dict(data).find_widget("c")[1].width, 560)
+
+    def test_overrides(self):
+        project = Project.starter()
+        scene = project.active_scene
+        cam = project.add_widget(scene.id, "camera")
+        project.set_effect(cam, "stroke_width", 4)
+        project.set_format("vertical")
+        self.assertEqual(project.effects_on(cam).stroke_width, 4)  # follows landscape
+        project.set_effect(cam, "stroke_width", 12)  # on vertical: its own stroke only
+        self.assertEqual(project.effects_on(cam).stroke_width, 12)
+        self.assertEqual(project.effects_on(cam, "landscape").stroke_width, 4)
+        project.set_format("landscape")
+        project.set_effect(cam, "stroke_width", 6)
+        project.set_effect(cam, "corner_radius", 30)
+        self.assertEqual(project.effects_on(cam, "vertical").stroke_width, 12)  # its own blocks it
+        self.assertEqual(project.effects_on(cam, "vertical").corner_radius, 30)  # the rest follows
+        self.assertEqual(project.own_look(cam), {"stroke_width": 12})
+        again = Project.from_dict(json.loads(json.dumps(project.to_dict())))
+        twin = again.active_scene.widget(cam.id)
+        self.assertEqual(again.effects_on(twin, "vertical").stroke_width, 12)
+        project.sync_look(cam)
+        self.assertEqual(project.effects_on(cam, "vertical").stroke_width, 6)
+        self.assertEqual(project.own_look(cam), {})

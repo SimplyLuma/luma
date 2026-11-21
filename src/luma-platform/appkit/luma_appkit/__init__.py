@@ -356,6 +356,8 @@ __all__ = [
     "ArrangeView", "ArrangeItem", "align_rects", "distribute_rects",
     "Dock", "DockTile",
     "AudioMeter",
+    "LevelMeter",
+    "LevelTap",
     "VolumeSlider",
     "MixerStrip",
     "MixerRow",
@@ -698,9 +700,12 @@ def __getattr__(name: str):
     if name in {"SyncKey", "OverrideDot", "ToggleChip"}:
         from . import editor_sync
         return getattr(editor_sync, name)
-    if name in {"AudioMeter", "VolumeSlider", "MixerStrip", "MixerRow"}:
+    if name in {"AudioMeter", "LevelMeter", "VolumeSlider", "MixerStrip", "MixerRow"}:
         from . import media_meter
         return getattr(media_meter, name)
+    if name == "LevelTap":
+        from .level_tap import LevelTap
+        return LevelTap
     if name in {"ToolBar", "Tool", "Flyout", "TOOL_SEPARATOR", "Layer", "LayerTree", "PropertySection", "PropertyNumber", "PropertyColor", "ColorPicker", "recent_colors", "PropertyChoice", "AlignmentActions", "ArrangeView", "ArrangeItem", "align_rects", "distribute_rects"}:
         from . import creative_parts
         return getattr(creative_parts, name)

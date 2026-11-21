@@ -10,15 +10,37 @@ import os
 from gi.repository import GLib, Graphene, Gtk
 
 
-def render(window: Gtk.Window, path: str) -> bool:
+def render(window: Gtk.Window, path: str, quiet: bool = False) -> bool:
     width, height = window.get_width(), window.get_height()
     snapshot = Gtk.Snapshot()
     Gtk.WidgetPaintable.new(window).snapshot(snapshot, width, height)
     node = snapshot.to_node()
     if node is None or window.get_renderer() is None:
+        if not quiet:
+            print(f"render: node {node} renderer {window.get_renderer()} mapped {window.get_mapped()} {width}x{height}", flush=True)
         return False  # not drawn yet: try again in a moment
     texture = window.get_renderer().render_texture(node, Graphene.Rect().init(0, 0, width, height))
     texture.save_to_png(path)
+    return True
+
+
+def render_after_paint(window: Gtk.Window, path: str, then=None, frames: int = 600) -> bool:
+    """Render the window into ``path`` right after its next paint: its render node exists only between
+    a paint and the next queued draw, and a live preview queues one per frame. ``then()`` follows."""
+    clock = window.get_frame_clock()
+    if clock is None:
+        return False
+    left = [frames]
+
+    def painted(clock_) -> None:
+        left[0] -= 1
+        if render(window, path, quiet=left[0] > 0) or left[0] <= 0:
+            clock_.disconnect(handler)
+            if then is not None:
+                then()
+
+    handler = clock.connect("after-paint", painted)
+    window.queue_draw()
     return True
 
 
@@ -250,8 +272,35 @@ def schedule(window, path: str) -> None:
         return False
 
     tries = [0]
+    painted = [None]
+    done = [False]
+
+    def finish() -> None:
+        import json
+
+        json_path = path.rsplit(".", 1)[0] + ".json"
+        try:
+            data = json.load(open(json_path))
+            data["radii"] = {key: corner_radius(path, t["box"]) for key, t in data["tiles"].items()
+                             if t["box"] and key not in ("preview", "landscape", "vertical")}
+            json.dump(data, open(json_path, "w"), indent=1)
+        except Exception as error:
+            print(f"radius read failed: {error!r}")
+        window.close()
+
+    def after_paint(clock) -> None:
+        # The window's render node exists only between its paint and the next queued draw; a live
+        # preview queues one per frame, so a timer almost never lands in that gap. Right after the
+        # paint it always holds the frame just drawn.
+        if render(window, path, quiet=True):
+            clock.disconnect(painted[0])
+            painted[0] = None
+            done[0] = True
+            GLib.idle_add(lambda: finish() and False)
 
     def shoot() -> bool:
+        if done[0]:
+            return False
         tries[0] += 1
         if tries[0] == 1:
             import json
@@ -261,22 +310,34 @@ def schedule(window, path: str) -> None:
                     json.dump(measure(window), out, indent=1)
             except Exception as error:  # a check run: say what broke, keep the picture
                 print(f"measure failed: {error!r}")
+        clock = window.get_frame_clock()
+        if painted[0] is None and clock is not None:
+            painted[0] = clock.connect("after-paint", after_paint)
+        window.queue_draw()
         # A slow software GL (an aarch64 builder) can take many seconds to draw the first frame.
-        if render(window, path) or tries[0] > int(os.environ.get("STREAMY_SHOT_TRIES", "60")):
-            import json
-
-            json_path = path.rsplit(".", 1)[0] + ".json"
-            try:
-                data = json.load(open(json_path))
-                data["radii"] = {key: corner_radius(path, t["box"]) for key, t in data["tiles"].items()
-                                 if t["box"] and key != "preview"}
-                json.dump(data, open(json_path, "w"), indent=1)
-            except Exception as error:
-                print(f"radius read failed: {error!r}")
+        if tries[0] > int(os.environ.get("STREAMY_SHOT_TRIES", "60")):
+            print(f"render: no frame painted after {tries[0]} tries", flush=True)
+            if painted[0] is not None:
+                window.get_frame_clock().disconnect(painted[0])
             window.close()
             return False
         return True
 
+    if os.environ.get("STREAMY_SHOT_FRAMES"):
+        frames = [0, None]
+
+        def count() -> bool:
+            clock = window.get_frame_clock()  # None until the window is realized
+            if frames[1] is None and clock is not None:
+                frames[1] = clock.connect("after-paint", lambda *_a: frames.__setitem__(0, frames[0] + 1))
+            print(f"frames painted {frames[0]}", flush=True)
+            return True
+
+        GLib.timeout_add(1000, count)
+    if os.environ.get("STREAMY_SHOT_LAYOUT"):  # a dock layout (JSON) to shoot, e.g. Vertical docked small
+        import json
+
+        window.dock.set_layout(json.loads(os.environ["STREAMY_SHOT_LAYOUT"]))
     GLib.timeout_add(2500, select)
     GLib.timeout_add(int(os.environ.get("STREAMY_SHOT_DELAY", "5000")),
                      lambda: GLib.timeout_add(500, shoot) and False)

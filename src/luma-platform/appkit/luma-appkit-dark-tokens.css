@@ -2960,6 +2960,8 @@
   --lumaui-meter-length: 120px;
   --lumaui-meter-mid-db: -18px;
   --lumaui-meter-high-db: -6px;
+  --lumaui-meter-segment-gap: 1px;
+  --lumaui-meter-segment-min: 2px;
   --lumaui-volume-slider-track: 4px;
   --lumaui-volume-slider-knob: 14px;
   --lumaui-volume-slider-hit: 24px;

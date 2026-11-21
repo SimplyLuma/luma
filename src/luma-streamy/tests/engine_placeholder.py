@@ -32,7 +32,7 @@ def frame(engine: Engine):
                                          "appsink name=probe emit-signals=false max-buffers=1 drop=true sync=false",
                                          True)
     pipeline.add(tap)
-    pipeline.get_by_name("program").link(tap)
+    pipeline.get_by_name("program-landscape").link(tap)
     tap.sync_state_with_parent()
     sink = tap.get_by_name("probe")
     sample = None

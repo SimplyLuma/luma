@@ -15,7 +15,10 @@ import uuid
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
-SCHEMA = 1
+#: 2: each widget's canvases as explicit records ({"landscape": {"size": [1920, 1080], "rect": [...]},
+#: "vertical": {"size": [1080, 1920], "rect": [...], "own": {...}, "look": {...}}}); 1 is still read.
+SCHEMA = 2
+READS = (1, 2)
 
 #: Canvas formats: key -> (label, width, height).
 FORMATS = {
@@ -153,6 +156,9 @@ class Widget:
     #: Groups that are this widget's own on the secondary canvas ("placement": True). A group not
     #: listed is linked: the secondary canvas derives it from the primary one.
     own: dict = field(default_factory=dict)
+    #: The secondary canvas's own Look values ({"vertical": {"stroke_width": 12}}): a property listed
+    #: there is its own; any other follows the primary canvas's Look (``effects``).
+    look: dict = field(default_factory=dict)
 
     @property
     def natural_aspect(self) -> float | None:
@@ -261,6 +267,22 @@ class Project:
         _l, pw, ph = FORMATS[self.primary]
         return derive_placement(tuple(float(v) for v in source), (pw, ph), FORMATS[fmt][1:])
 
+    def view_on(self, w: Widget, fmt: str) -> Widget:
+        """``w`` as canvas ``fmt`` draws it: its placement and Look there (``w`` itself on the canvas
+        edited when its Look there is the base one). Never changes ``w``."""
+        effects = self.effects_on(w, fmt)
+        if fmt == self.format and effects is w.effects:
+            return w
+        view = copy.copy(w)
+        view.effects = effects
+        if fmt != self.format and w.has_picture:
+            rect = self.placement_on(w, fmt)
+            if rect is None:
+                _l, cw, ch = FORMATS[self.format]
+                rect = derive_placement((w.x, w.y, w.width, w.height), (cw, ch), FORMATS[fmt][1:])
+            view.x, view.y, view.width, view.height = (float(v) for v in rect)
+        return view
+
     def match_primary(self, widget_id: str) -> Widget:
         """Link a widget's placement on the secondary canvas to the primary again."""
         _scene, w = self.find_widget(widget_id)
@@ -268,6 +290,57 @@ class Project:
         if self.format != self.primary:
             self._place(w)
         return w
+
+    # ── Look per canvas ──
+
+    def effects_on(self, w: Widget, fmt: str | None = None) -> Effects:
+        """The Look ``w`` has on canvas ``fmt`` (default: the current one): the primary's, with the
+        secondary canvas's own values over it."""
+        fmt = fmt or self.format
+        own = w.look.get(fmt) if fmt != self.primary else None
+        if not own:
+            return w.effects
+        fx = copy.copy(w.effects)
+        names = {f.name for f in fields(Effects)}
+        for name, value in own.items():
+            if name in names:
+                setattr(fx, name, value)
+        return fx.clamped()
+
+    def set_effect(self, w: Widget, name: str, value) -> None:
+        """Change one Look property where the person is: on the primary canvas the base value (which the
+        other canvas follows unless it has its own), on the secondary its own value for that property only."""
+        if self.format == self.primary:
+            setattr(w.effects, name, value)
+        else:
+            w.look.setdefault(self.format, {})[name] = value
+
+    def own_look(self, w: Widget, fmt: str | None = None) -> dict:
+        fmt = fmt or (self.format if self.format != self.primary else next(f for f in FORMATS if f != self.primary))
+        return dict(w.look.get(fmt) or {})
+
+    def sync_look(self, w: Widget, fmt: str | None = None, name: str | None = None) -> None:
+        """The secondary canvas follows the primary's Look again (every property, or ``name``)."""
+        fmt = fmt or (self.format if self.format != self.primary else next(f for f in FORMATS if f != self.primary))
+        own = w.look.get(fmt)
+        if not own:
+            return
+        if name is None:
+            w.look.pop(fmt, None)
+        else:
+            own.pop(name, None)
+            if not own:
+                w.look.pop(fmt, None)
+
+    #: The Look's properties (the crop is Arrange's).
+    LOOK = ("corner_radius", "stroke_width", "stroke_color", "stroke_position", "shadow_blur", "shadow_x",
+            "shadow_y", "shadow_opacity", "opacity")
+
+    def unsync_look(self, w: Widget, fmt: str | None = None) -> None:
+        """The secondary canvas keeps the Look it has now as its own: later primary edits stop there."""
+        fmt = fmt or (self.format if self.format != self.primary else next(f for f in FORMATS if f != self.primary))
+        fx = self.effects_on(w, fmt)
+        w.look[fmt] = {name: getattr(fx, name) for name in self.LOOK}
 
     def reset_secondary(self, scene_id: str) -> None:
         """Every widget of a scene follows the primary canvas again."""
@@ -284,6 +357,7 @@ class Project:
         w.height = w.width / aspect
         w.x, w.y = cx - w.width / 2, cy - w.height / 2
         w.stretched = False
+        self._own_here(w)
         return w
 
     def place_natural(self, widget_id: str) -> Widget:
@@ -298,20 +372,49 @@ class Project:
         return w
 
     def restore_shapes(self) -> list[Widget]:
-        """Widgets squashed by an older Streamy (not stretched by the person) get their source's shape."""
+        """Widgets squashed by an older Streamy (not stretched by the person) get their source's shape,
+        on every canvas that keeps a placement of its own."""
         fixed = []
         for scene in self.scenes:
             for w in scene.widgets:
-                aspect = w.natural_aspect
-                if not w.has_picture or w.stretched or aspect is None or not w.height:
-                    continue
-                if abs(w.width / w.height - aspect) / aspect > 0.01:
-                    cx, cy = w.x + w.width / 2, w.y + w.height / 2
-                    w.height = w.width / aspect
-                    w.x, w.y = cx - w.width / 2, cy - w.height / 2
-                    w.placements.clear()
+                if self.reshape(w):
                     fixed.append(w)
         return fixed
+
+    def reshape(self, w: Widget, fit: bool = False) -> bool:
+        """``w`` in its source's shape on every canvas it has a placement on (the current one and each
+        kept record), each about its own centre: with ``fit`` inside the box it had (a new picture size
+        never grows it), else keeping its width. A stretched widget keeps its shape. True if any moved."""
+        aspect = w.natural_aspect
+        if not w.has_picture or w.stretched or aspect is None:
+            return False
+
+        def shaped(rect):
+            x, y, width, height = (float(v) for v in rect)
+            if not height or abs(width / height - aspect) / aspect <= 0.01:
+                return None
+            if fit and width / height >= aspect:
+                bw, bh = height * aspect, height
+            else:
+                bw, bh = width, width / aspect
+            cx, cy = x + width / 2, y + height / 2
+            return [cx - bw / 2, cy - bh / 2, bw, bh]
+
+        moved = False
+        current = shaped((w.x, w.y, w.width, w.height)) if w.height else None
+        if current is not None:
+            w.x, w.y, w.width, w.height = current
+            moved = True
+        for fmt, rect in list(w.placements.items()):
+            if fmt == self.format or not (isinstance(rect, list) and len(rect) == 4):
+                continue
+            again = shaped(rect)
+            if again is not None:
+                w.placements[fmt] = again
+                moved = True
+        if w.has_picture and w.height:
+            w.placements[self.format] = [w.x, w.y, w.width, w.height]
+        return moved
 
     # ── Scenes ──
 
@@ -463,9 +566,13 @@ class Project:
         if width <= 0 or height <= 0:
             raise ModelError("a widget has a size")
         w.x, w.y, w.width, w.height = float(x), float(y), float(width), float(height)
-        if self.format != self.primary and w.has_picture:
-            w.own["placement"] = True  # moved on the secondary canvas: this widget's own there now
+        self._own_here(w)
         return w
+
+    def _own_here(self, w: Widget) -> None:
+        """Placed by the person on the secondary canvas: its placement there is its own now."""
+        if self.format != self.primary and w.has_picture:
+            w.own["placement"] = True
 
     def align(self, widget_id: str, how: str) -> Widget:
         """Align to the canvas: left, center, right, top, middle, bottom, or fill."""
@@ -510,23 +617,53 @@ class Project:
             w.x, w.y = cx - w.width / 2, cy - w.height / 2
         else:
             raise ModelError(f"unknown alignment {how!r}")
+        self._own_here(w)
         return w
 
     # ── Persistence ──
 
     def to_dict(self) -> dict:
+        """Each widget's canvases as explicit records: the canvas's size, the widget's rect there (the
+        primary's always, the secondary's when it is its own), and the secondary's overrides (``own``,
+        ``look``) under that canvas. The base Look is ``effects``."""
+        scenes = []
+        for scene in self.scenes:
+            widgets = []
+            for w in scene.widgets:
+                raw = asdict(w)
+                for key in ("x", "y", "width", "height", "placements", "own", "look"):
+                    raw.pop(key)
+                raw["canvases"] = self._canvas_records(w)
+                widgets.append(raw)
+            scenes.append({"id": scene.id, "name": scene.name, "widgets": widgets})
         return {"schema": SCHEMA, "format": self.format, "primary": self.primary, "startup": self.startup,
-                "active": self.active,
-                "scenes": [asdict(s) for s in self.scenes]}
+                "active": self.active, "scenes": scenes}
+
+    def _canvas_records(self, w: Widget) -> dict:
+        records = {}
+        for fmt, (_label, cw, ch) in FORMATS.items():
+            record: dict = {"size": [cw, ch]}
+            if fmt != self.primary:
+                if w.own:
+                    record["own"] = copy.deepcopy(w.own)
+                if w.look.get(fmt):
+                    record["look"] = copy.deepcopy(w.look[fmt])
+            keeps = fmt == self.primary or w.own.get("placement") or not w.has_picture
+            rect = [w.x, w.y, w.width, w.height] if fmt == self.format else w.placements.get(fmt)
+            if keeps and isinstance(rect, (list, tuple)) and len(rect) == 4:
+                record["rect"] = [float(v) for v in rect]
+            records[fmt] = record
+        return records
 
     @classmethod
     def from_dict(cls, data: dict) -> "Project":
-        if not isinstance(data, dict) or data.get("schema") != SCHEMA:
+        if not isinstance(data, dict) or data.get("schema") not in READS:
             raise ModelError("not a Streamy project this version reads")
         project = cls(format=data.get("format", "landscape") if data.get("format") in FORMATS else "landscape",
                       primary=data.get("primary") if data.get("primary") in FORMATS else "landscape")
         effect_names = {f.name for f in fields(Effects)}
-        widget_names = {f.name for f in fields(Widget)} - {"effects"}
+        widget_names = {f.name for f in fields(Widget)} - {"effects", "x", "y", "width", "height", "placements",
+                                                          "own", "look"}
         for raw in data.get("scenes", []):
             scene = Scene(str(raw["id"]), str(raw.get("name") or "Scene"))
             for rw in raw.get("widgets", []):
@@ -534,12 +671,47 @@ class Project:
                     continue  # a kind from a newer version
                 effects = Effects(**{k: v for k, v in (rw.get("effects") or {}).items() if k in effect_names})
                 w = Widget(**{k: v for k, v in rw.items() if k in widget_names}, effects=effects.clamped())
+                if isinstance(rw.get("canvases"), dict):
+                    project._read_records(w, rw["canvases"])
+                else:
+                    project._read_schema1(w, rw)
+                project._place(w)
                 scene.widgets.append(w)
             project.scenes.append(scene)
         active = data.get("active")
         project.startup = data.get("startup") if project.scene(data.get("startup")) else None
         project.active = active if project.scene(active) else (project.scenes[0].id if project.scenes else None)
         return project
+
+    def _read_records(self, w: Widget, records: dict) -> None:
+        for fmt, record in records.items():
+            if fmt not in FORMATS or not isinstance(record, dict):
+                continue
+            rect = record.get("rect")
+            if isinstance(rect, list) and len(rect) == 4:
+                rect = [float(v) for v in rect]
+                size = record.get("size")
+                _label, cw, ch = FORMATS[fmt]
+                if isinstance(size, list) and len(size) == 2 and size[0] and size[1] and list(size) != [cw, ch]:
+                    # Saved on a canvas of another size: the same place, scaled to this one.
+                    rect = list(derive_placement(tuple(rect), (int(size[0]), int(size[1])), (cw, ch)))
+                w.placements[fmt] = rect
+            if fmt != self.primary:
+                if isinstance(record.get("own"), dict):
+                    w.own = dict(record["own"])
+                if isinstance(record.get("look"), dict) and record["look"]:
+                    w.look[fmt] = dict(record["look"])
+
+    def _read_schema1(self, w: Widget, raw: dict) -> None:
+        """A schema-1 widget: x/y/width/height are the saved format's (its ``placements`` entry for that
+        format may be stale), ``own`` and ``look`` the secondary's."""
+        for fmt, rect in (raw.get("placements") or {}).items():
+            if fmt in FORMATS and isinstance(rect, list) and len(rect) == 4:
+                w.placements[fmt] = [float(v) for v in rect]
+        if all(isinstance(raw.get(k), (int, float)) for k in ("x", "y", "width", "height")):
+            w.placements[self.format] = [float(raw[k]) for k in ("x", "y", "width", "height")]
+        w.own = dict(raw.get("own") or {})
+        w.look = {fmt: dict(v) for fmt, v in (raw.get("look") or {}).items() if fmt in FORMATS and isinstance(v, dict)}
 
     @classmethod
     def starter(cls) -> "Project":

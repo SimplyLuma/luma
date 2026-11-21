@@ -9,3 +9,7 @@ box.streamy-strip-head { border-spacing: 8px; padding: 0 5px; } /* on the volume
 button.streamy-muted { color: @luma_destructive; }
 button.streamy-monitoring { color: @accent_color; }
 box.streamy-editor { min-width: 300px; }
+box.lumaui-details.raised box.streamy-editor { min-width: 0; }
+/* Canvas panel header: "Live" after the title while an output takes the canvas (until DockTile.set_status). */
+box.streamy-live-mark { margin-left: 8px; }
+box.streamy-live-mark label { font-weight: 600; }

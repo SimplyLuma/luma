@@ -30,9 +30,18 @@ class GraphTest(unittest.TestCase):
         live = graph.picture_chain(self.camera, 1, fd=7, node="42")
         src = live.first
         self.assertEqual((src.factory, src.props["fd"], src.props["target-object"]), ("pipewiresrc", 7, "42"))
-        self.assertEqual(live.last.factory, "lumaframe")
-        self.assertEqual(live.target, "mixer")
+        self.assertEqual(live.last.factory, "tee")
+        layer = graph.layer_chain(self.camera, 1, "w-x-g1", "vertical")
+        self.assertEqual(layer.last.factory, "lumaframe")
+        self.assertEqual(layer.target, "mixer-vertical")
+        self.assertEqual(graph.widget_of(layer.last.name), "x")
         self.assertIsNotNone(live.element("decodebin"))  # cameras may send MJPEG
+        self.assertIsNotNone(live.element("videoconvert"))  # software decode unless asked for the GPU
+        gpu = graph.picture_chain(self.camera, 1, fd=7, node="42", hw_decode=True)
+        self.assertIsNone(gpu.element("videoconvert"))
+        at = gpu.elements.index(gpu.element("decodebin"))
+        self.assertEqual([e.factory for e in gpu.elements[at:at + 3]], ["decodebin", "vapostproc", "capsfilter"])
+        self.assertEqual(gpu.elements[at + 2].props["caps"], "video/x-raw(memory:DMABuf)")
         display = self.project.add_widget(self.scene.id, "display")
         self.assertIsNone(graph.picture_chain(display, 0, fd=7).element("decodebin"))
         fake = graph.picture_chain(display, 0, fake=True)

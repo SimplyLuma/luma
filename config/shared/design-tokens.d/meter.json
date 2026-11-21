@@ -1,5 +1,5 @@
 {
-  "_doc": "LumaUI audio meter, volume slider and mixer strip: bar metrics, the dBFS where the meter's zones change colour, the slider's track, knob and meter spacing, and the mixer strip's fixed width, scale and keys. Merged into lumaui by the generator: --lumaui-meter-*, --lumaui-volume-slider-*, --lumaui-mixer-strip-*, LUMA_UI_METER_*, LUMA_UI_VOLUME_SLIDER_*, LUMA_UI_MIXER_STRIP_*. row_padding keeps a row's strips off its container's edges (a dock tile's well). icon is the channel's app or device icon over its name.",
+  "_doc": "LumaUI audio meter, volume slider and mixer strip: bar metrics, the dBFS where the meter's zones change colour, a segmented meter's gap between segments and shortest segment, the slider's track, knob and meter spacing, and the mixer strip's fixed width, scale and keys. Merged into lumaui by the generator: --lumaui-meter-*, --lumaui-volume-slider-*, --lumaui-mixer-strip-*, LUMA_UI_METER_*, LUMA_UI_VOLUME_SLIDER_*, LUMA_UI_MIXER_STRIP_*. row_padding keeps a row's strips off its container's edges (a dock tile's well). icon is the channel's app or device icon over its name.",
   "lumaui": {
     "meter": {
       "bar": 4,
@@ -7,7 +7,9 @@
       "min_length": 24,
       "length": 120,
       "mid_db": -18,
-      "high_db": -6
+      "high_db": -6,
+      "segment_gap": 1,
+      "segment_min": 2
     },
     "volume_slider": {
       "track": 4,
