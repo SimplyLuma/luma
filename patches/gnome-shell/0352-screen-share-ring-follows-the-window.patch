@@ -222,13 +222,13 @@ index 9669a21..22f02ac 100644
              !this._window.minimized;
      }
 diff --git a/js/ui/lumaWindowCorners.js b/js/ui/lumaWindowCorners.js
-index b010cc5..3cda27e 100644
 --- a/js/ui/lumaWindowCorners.js
 +++ b/js/ui/lumaWindowCorners.js
-@@ -205,6 +205,28 @@ function flatpakInstance(pid) {
-         .map(Number).filter(other => other > 0);
+@@ -343,3 +343,25 @@ export class WindowCorners {
+         effect.queue_repaint();
+     }
  }
- 
++
 +/**
 + * The corner radius a window shows on screen, in logical pixels: what a
 + * frame drawn around it (the screen sharing ring) must follow. Luma's radius
@@ -250,7 +250,3 @@ index b010cc5..3cda27e 100644
 +    const frame = window.get_frame_rect();
 +    return Math.max(0, Math.min(RADIUS, frame.width / 2, frame.height / 2));
 +}
-+
- function wantsMask(window) {
-     if (window.is_override_redirect() || !MASKED_TYPES.has(window.get_window_type()))
-         return false;

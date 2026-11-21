@@ -36,7 +36,12 @@ has('no choose-on-screen mode', 'OFFER_CHOOSE_ON_SCREEN = false');
 // The picker must not be able to start, stop or read a stream: the backend
 // does that, after Share. Any Mutter ScreenCast call in here would mean the
 // Shell could stream on its own.
-hasnt('the picker never calls Mutter ScreenCast', 'org.gnome.Mutter.ScreenCast');
+// The one Mutter ScreenCast reference allowed is listening for a share's
+// session to end (its ring and pill go with it): a signal, never a call.
+check('the picker never calls Mutter ScreenCast',
+    source.split("'org.gnome.Mutter.ScreenCast'").length - 1 === 1 &&
+    source.includes("signal_subscribe('org.gnome.Mutter.ScreenCast',\n            'org.gnome.Mutter.ScreenCast.Session', 'Closed'"),
+    'org.gnome.Mutter.ScreenCast');
 hasnt('the picker never records a monitor itself', 'RecordMonitor');
 hasnt('the picker never records a window itself', 'RecordWindow');
 
