@@ -36,6 +36,10 @@ BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  xorg-x11-xauth
 BuildRequires:  xdotool
 BuildRequires:  weston
+# LevelTap's %check pipeline: audiotestsrc and audioconvert (base), level (good).
+BuildRequires:  gstreamer1
+BuildRequires:  gstreamer1-plugins-base
+BuildRequires:  gstreamer1-plugins-good
 Requires:       glib2 >= 2.80
 Requires:       gobject-introspection
 Requires:       gtk4 >= 4.18
