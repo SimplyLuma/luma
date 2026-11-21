@@ -17,6 +17,7 @@ the live previews come from; see ADR-041.
 from __future__ import annotations
 
 import logging
+import signal
 import sys
 
 import gi
@@ -26,6 +27,7 @@ from gi.repository import Gio, GLib  # noqa: E402
 
 from . import apps  # noqa: E402
 from .audiocapture import AudioCapturePortal  # noqa: E402
+from .lock import SessionLock  # noqa: E402
 from .screencast import ScreenCastPortal  # noqa: E402
 
 # Gtk, Adw, the app kit and the dialog are deliberately NOT imported here.
@@ -294,14 +296,25 @@ def main(argv: list[str] | None = None) -> int:
     # The screen sharing backend never touches GTK: the picker is drawn by the
     # Shell, so nothing here can repeat the Adw-before-the-name deadlock that
     # ensure_toolkit() exists to avoid.
-    ScreenCastPortal(connection, OBJECT_PATH)
+    # One view of the session lock for both pickers.
+    lock = SessionLock(connection)
+    screencast = ScreenCastPortal(connection, OBJECT_PATH, lock)
     # Audio capture draws its picker here, so it goes through ensure_toolkit()
     # like the chooser: nothing touches Gdk before the name is owned.
-    AudioCapturePortal(connection, OBJECT_PATH, show_capture_picker)
+    AudioCapturePortal(connection, OBJECT_PATH, show_capture_picker, lock)
     Gio.bus_own_name_on_connection(
         connection, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
         lambda *_a: LOGGER.info("owning %s", BUS_NAME),
         lambda *_a: (LOGGER.error("another app chooser owns the name"), loop.quit()))
+    # Stopping (systemd, logout) ends every share first, so the Shell never
+    # keeps a ring or a pill for a share no process is serving.
+    def stop(*_args):
+        LOGGER.info("stopping")
+        screencast.shutdown()
+        loop.quit()
+        return GLib.SOURCE_REMOVE
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        GLib.unix_signal_add(GLib.PRIORITY_HIGH, signum, stop)
     loop.run()
     return 0
 

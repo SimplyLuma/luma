@@ -1,0 +1,166 @@
+From 19f52fb5a41be3ab2ce80ed2918a9dedbcdeb8e7 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 21 Nov 2026 04:00:00 -0500
+Subject: [PATCH] clutter/stage: Mark capture paints; let captures be made
+ to paint
+
+The compositor's own overlays that must stay out of what is shared (the
+screen sharing pill and edges, a recording's controls) can only skip a
+paint they can tell is a capture. A capture paint was indistinguishable
+from the screen's: both are an ordinary ClutterPaintContext, and the
+framebuffer it targets says nothing reliable, since the screen's paint
+lands in an offscreen whenever an ancestor is redirected. A monitor
+stream also mostly does not paint at all: it copies the screen, a blit of
+the view's framebuffer or of the scanout buffer, overlays included.
+
+CLUTTER_PAINT_FLAG_CAPTURE marks a paint of the stage made anywhere but
+its views: clutter_stage_paint_to_framebuffer() sets it, so every paint to
+a buffer, a content or a stream framebuffer carries it, and no view paint
+does.
+
+clutter_stage_inhibit_capture_copy() and _uninhibit_capture_copy() count
+reasons not to copy the screen. While inhibited, monitor streams skip the
+scanout copy and the view blit and paint the stage for the stream (with
+the flag); the fast copies return when the last inhibition ends.
+---
+ clutter/clutter/clutter-paint-context.h       |  3 ++
+ clutter/clutter/clutter-stage.c               | 53 +++++++++++++++++++
+ clutter/clutter/clutter-stage.h               |  9 ++++
+ .../meta-screen-cast-monitor-stream-src.c     |  9 ++++
+ 4 files changed, 74 insertions(+)
+
+diff --git a/clutter/clutter/clutter-paint-context.h b/clutter/clutter/clutter-paint-context.h
+index 321c86e..0a3f32e 100644
+--- a/clutter/clutter/clutter-paint-context.h
++++ b/clutter/clutter/clutter-paint-context.h
+@@ -34,6 +34,9 @@ typedef enum _ClutterPaintFlag
+   CLUTTER_PAINT_FLAG_NO_CURSORS = 1 << 0,
+   CLUTTER_PAINT_FLAG_FORCE_CURSORS = 1 << 1,
+   CLUTTER_PAINT_FLAG_CLEAR = 1 << 2,
++  /* This paint is a capture of the stage (a screen cast or a screenshot),
++   * not the screen: actors that must stay out of captures skip it. */
++  CLUTTER_PAINT_FLAG_CAPTURE = 1 << 3,
+ } ClutterPaintFlag;
+ 
+ #define CLUTTER_TYPE_PAINT_CONTEXT (clutter_paint_context_get_type ())
+diff --git a/clutter/clutter/clutter-stage.c b/clutter/clutter/clutter-stage.c
+index aedab6a..e28d5e7 100644
+--- a/clutter/clutter/clutter-stage.c
++++ b/clutter/clutter/clutter-stage.c
+@@ -103,6 +103,8 @@ typedef struct _ClutterStagePrivate
+ 
+   ClutterGrab *topmost_grab;
+ 
++  int capture_copy_inhibitors;
++
+   GQueue *event_queue;
+ 
+   GSList *pending_relayouts;
+@@ -2668,6 +2670,53 @@ clutter_stage_get_capture_final_size (ClutterStage *stage,
+   return TRUE;
+ }
+ 
++/**
++ * clutter_stage_inhibit_capture_copy:
++ * @stage: a #ClutterStage
++ *
++ * While inhibited, a capture of the stage (a screen cast) must paint the
++ * stage itself with %CLUTTER_PAINT_FLAG_CAPTURE instead of copying what is
++ * on the screen, because something on the screen must stay out of
++ * captures: an actor that skips paints carrying that flag.
++ */
++void
++clutter_stage_inhibit_capture_copy (ClutterStage *stage)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  priv->capture_copy_inhibitors++;
++}
++
++/**
++ * clutter_stage_uninhibit_capture_copy:
++ * @stage: a #ClutterStage
++ *
++ * Ends one clutter_stage_inhibit_capture_copy().
++ */
++void
++clutter_stage_uninhibit_capture_copy (ClutterStage *stage)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  g_return_if_fail (priv->capture_copy_inhibitors > 0);
++
++  priv->capture_copy_inhibitors--;
++}
++
++/**
++ * clutter_stage_is_capture_copy_inhibited:
++ * @stage: a #ClutterStage
++ *
++ * Returns: %TRUE if captures must paint the stage rather than copy the screen
++ */
++gboolean
++clutter_stage_is_capture_copy_inhibited (ClutterStage *stage)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  return priv->capture_copy_inhibitors > 0;
++}
++
+ void
+ clutter_stage_paint_to_framebuffer (ClutterStage       *stage,
+                                     CoglFramebuffer    *framebuffer,
+@@ -2686,6 +2735,10 @@ clutter_stage_paint_to_framebuffer (ClutterStage       *stage,
+   COGL_TRACE_BEGIN_SCOPED (PaintToFramebuffer,
+                            "Clutter::Stage::paint_to_framebuffer()");
+ 
++  /* Painting the stage anywhere but its views is a capture of it: a screen
++   * cast, a screenshot. */
++  paint_flags |= CLUTTER_PAINT_FLAG_CAPTURE;
++
+   if (paint_flags & CLUTTER_PAINT_FLAG_CLEAR)
+     {
+       CoglColor clear_color;
+diff --git a/clutter/clutter/clutter-stage.h b/clutter/clutter/clutter-stage.h
+index b5275ae..707475c 100644
+--- a/clutter/clutter/clutter-stage.h
++++ b/clutter/clutter/clutter-stage.h
+@@ -173,6 +173,15 @@ gboolean clutter_stage_get_capture_final_size (ClutterStage *stage,
+                                                int          *out_height,
+                                                float        *out_scale);
+ 
++CLUTTER_EXPORT
++void clutter_stage_inhibit_capture_copy (ClutterStage *stage);
++
++CLUTTER_EXPORT
++void clutter_stage_uninhibit_capture_copy (ClutterStage *stage);
++
++CLUTTER_EXPORT
++gboolean clutter_stage_is_capture_copy_inhibited (ClutterStage *stage);
++
+ CLUTTER_EXPORT
+ void clutter_stage_paint_to_framebuffer (ClutterStage       *stage,
+                                          CoglFramebuffer    *framebuffer,
+diff --git a/src/backends/meta-screen-cast-monitor-stream-src.c b/src/backends/meta-screen-cast-monitor-stream-src.c
+index a92a300..65ec1bb 100644
+--- a/src/backends/meta-screen-cast-monitor-stream-src.c
++++ b/src/backends/meta-screen-cast-monitor-stream-src.c
+@@ -727,6 +727,15 @@ meta_screen_cast_monitor_stream_src_record_to_framebuffer (MetaScreenCastStreamS
+   if (paint_phase == META_SCREEN_CAST_PAINT_PHASE_DETACHED)
+     goto stage_paint;
+ 
++  /* Something on the screen stays out of captures: the stream paints the
++   * stage itself (CLUTTER_PAINT_FLAG_CAPTURE) rather than copy the screen. */
++  if (clutter_stage_is_capture_copy_inhibited (stage))
++    {
++      meta_topic (META_DEBUG_SCREEN_CAST,
++                  "Painting the monitor stream: capture copies are inhibited");
++      goto stage_paint;
++    }
++
+   outputs = meta_monitor_get_outputs (monitor);
+   if (outputs->next)
+     goto stage_paint;
+-- 
+2.55.0
+

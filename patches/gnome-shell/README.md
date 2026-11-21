@@ -805,3 +805,52 @@ second (`SnapshotEffect`), and the picker holds the backgrounds outside its
 card while it is open, so the scrim keeps the blur it opened with. Live
 clones redrew every tile, and re-blurred the scrim over the whole desktop,
 on every frame a window under it changed. Shell .190.
+
+`0351-screen-share-waits-for-unlock.patch`: Luma Share's picker is never
+shown over, under or during the lock screen. `Choose` while the session is
+locked, or while the screen shield is up or going away, is held unanswered
+and shown after unlock, where the person can still deny it; a picker on
+screen when the session locks releases its grab and hides, unanswered, and
+comes back after unlock; `Cancel` answers a held request. The lock screen
+shows its pointer on any pointer motion (`position-invalidated`), so a dialog
+over the lock screen that takes the grab no longer leaves the pointer
+hidden. With Mutter 0035 (shares pause instead of ending at the lock) and
+luma-portal 1.luma.13 (requests wait for unlock, one picker at a time).
+Test: `tests/gnome-shell/lock-screen-sharing/run.sh OUT lock`. Shell .191.
+
+`0352-screen-share-ring-follows-the-window.patch`: the shared window's ring
+follows the window's outline: `windowCornerRadius()` (lumaWindowCorners: 15
+for application windows, maximized and tiled included; 0 for fullscreen,
+Android and Mutter-framed X11 windows), a 2.5 violet line from the window's
+edge out and a halo that falls to zero 11 beyond it, inside the actor. Drawn
+as a function of the distance from the window, so it is concentric at every
+offset. Eight pieces (corners and edges) whose images depend only on radius
+and display resolution; moves and resizes draw nothing. Test:
+`tests/gnome-shell/lock-screen-sharing/run.sh OUT ring` and `measure.py`.
+Shell .191.
+
+`0353-screen-share-tiles-show-their-screen.patch`: a Screens tile shows its
+own monitor: the background, the windows on that monitor and the Shell's
+chrome there, each cloned where it is less the monitor's origin, clipped and
+scaled at the monitor's aspect (the old single clone of `window_group` was
+allocated at the stage origin, so every tile showed the whole stage). The
+tile takes the display whose layout index is its monitor's (the display list
+is sorted for naming, so tiles had other monitors' names, connectors and
+sizes) and shows the display's current mode. Test:
+`tests/gnome-shell/lock-screen-sharing` MODE=screens. Shell .191.
+
+`0354-screen-share-pill-out-of-streams-and-dismiss.patch`: `CaptureHidden`
+skips paints carrying `CLUTTER_PAINT_FLAG_CAPTURE` (Mutter 0036 marks every
+`clutter_stage_paint_to_framebuffer`) instead of guessing from the
+framebuffer, which hid the pill on screen whenever an ancestor was redirected
+(flicker); while mapped it inhibits capture copies so monitor streams paint
+the stage rather than copy the screen (the pill was in shared screens). The
+pill gains Dismiss: the pill goes away for the running shares, the status
+cluster's sharing mark stays and brings it back. Shell .191.
+
+`0355-screen-share-ends-with-the-share.patch`: a share's ring and pill end
+when its Mutter screen cast session closes (`mutter-session` from
+luma-portal 1.luma.13) or when the portal backend's bus name vanishes or
+changes owner, not only on `SessionClosed`. Test:
+`tests/gnome-shell/lock-screen-sharing` MODE=lifecycle (application killed,
+backend killed, backend stopped, Mutter session stopped). Shell .191.
