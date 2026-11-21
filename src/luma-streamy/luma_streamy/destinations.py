@@ -19,11 +19,14 @@ from .model import FORMATS, atomic_write
 PLATFORMS: dict[str, tuple[str, str, str, str, int, int]] = {
     "twitch": ("Twitch", "rtmps://live.twitch.tv/app", "key", "twitch", 6000, 160),
     "youtube": ("YouTube", "rtmps://a.rtmps.youtube.com/live2", "key", "youtube", 8000, 160),
-    "kick": ("Kick", "", "key", "radio-tower", 6000, 160),
-    "tiktok": ("TikTok", "", "key", "smartphone", 6000, 128),
+    "kick": ("Kick", "", "key", "kick", 6000, 160),
+    "tiktok": ("TikTok", "", "key", "tiktok", 6000, 128),
     "custom": ("Custom", "", "key", "server", 6000, 160),
     "record": ("Recording", "", "file", "circle", 12000, 192),
 }
+
+#: Platforms that sign in (OAuth) instead of taking a pasted key; the key then comes from the platform.
+SIGN_IN = ("twitch", "youtube")
 
 #: Server schemes a custom destination may use.
 SCHEMES = ("rtmp://", "rtmps://", "srt://", "http://", "https://")
@@ -39,6 +42,15 @@ class Destination:
     server: str = ""
     #: A recording's container ("mkv" | "mp4").
     container: str = "mkv"
+    #: "" = the default: H.264 for a stream; for a recording, output_graph.RECORD_ORDER.
+    codec: str = ""
+    #: Per-row overrides (0 = the platform's default).
+    video_kbps: int = 0
+    audio_kbps: int = 0
+    #: The signed-in account's display name (OAuth platforms), shown on the row.
+    account: str = ""
+    #: A recording's folder ("" = Videos/Streamy).
+    folder: str = ""
 
     @property
     def label(self) -> str:
@@ -62,10 +74,20 @@ class Destination:
             return f"{server}/{key}"
         return server
 
-    def preset(self) -> tuple[str, int, int]:
-        """What an encode for this row is: (canvas, video kbps, audio kbps). Rows with one preset share it."""
+    @property
+    def signs_in(self) -> bool:
+        return self.platform in SIGN_IN
+
+    @property
+    def icon(self) -> str:
+        return PLATFORMS[self.platform][3]
+
+    def preset(self) -> tuple[str, str, int, int]:
+        """What an encode for this row is: (canvas, codec, video kbps, audio kbps). Rows with one preset
+        share it. A recording's codec "" is resolved when its encoder is chosen."""
         _label, _ingest, _how, _icon, video, audio = PLATFORMS[self.platform]
-        return self.canvas, video, audio
+        codec = self.codec or ("h264" if self.is_stream else "")
+        return self.canvas, codec, self.video_kbps or video, self.audio_kbps or audio
 
 
 def new(platform: str, canvas: str = "landscape") -> Destination:
@@ -75,13 +97,19 @@ def new(platform: str, canvas: str = "landscape") -> Destination:
                        enabled=platform != "record")
 
 
-def shared_encodes(rows: list[Destination]) -> dict[tuple, list[Destination]]:
-    """The enabled stream rows grouped by preset: one encode each, teed to its rows."""
+def shared_encodes(rows: list[Destination], *, record: bool = False) -> dict[tuple, list[Destination]]:
+    """The enabled stream rows (and the recording, with ``record``) grouped by preset: one encode
+    each, teed to its rows."""
     groups: dict[tuple, list[Destination]] = {}
     for row in rows:
-        if row.enabled and row.is_stream:
+        if row.enabled and (row.is_stream or record):
             groups.setdefault(row.preset(), []).append(row)
     return groups
+
+
+def canvases_in_use(rows: list[Destination]) -> set[str]:
+    """The canvases enabled rows take (their chips carry a red dot while live)."""
+    return {row.canvas for row in rows if row.enabled}
 
 
 @dataclass
@@ -117,6 +145,24 @@ class DestinationStore:
         self.rows.insert(at, row)
         self.save()
         return row
+
+    def update(self, row: Destination) -> None:
+        for i, old in enumerate(self.rows):
+            if old.id == row.id:
+                self.rows[i] = row
+        self.save()
+
+    def move(self, row_id: str, to: int) -> None:
+        row = self.get(row_id)
+        if row is None or not row.is_stream:
+            return
+        self.rows.remove(row)
+        streams = [r for r in self.rows if r.is_stream]
+        to = max(0, min(to, len(streams)))
+        at = self.rows.index(streams[to]) if to < len(streams) else \
+            next((i for i, r in enumerate(self.rows) if not r.is_stream), len(self.rows))
+        self.rows.insert(at, row)
+        self.save()
 
     def remove(self, row_id: str) -> None:
         self.rows = [r for r in self.rows if r.id != row_id or not r.is_stream]
