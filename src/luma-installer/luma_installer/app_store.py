@@ -15,6 +15,10 @@ privilege is involved.
 * Each application is allocated its own pair of SELinux categories here, once,
   so two applications can never share a pair.
 
+A ``bare-user-only`` repository keeps each file's mode in the stored file's own
+mode bits. Nothing else may change them: a recursive ``chmod`` or an ACL change
+over the store alters what every tree in it means. ``verify`` checks for that.
+
 Nothing in the shipped install path uses this module.
 """
 from __future__ import annotations
@@ -161,8 +165,11 @@ class Store:
         self.ensure()
         wanted = refs or closure._run(["ostree", f"--repo={source}", "refs"]).stdout.split()
         with self._locked():
-            self._ostree("pull-local", f"--depth={ROLLBACK_DEPTH}", *([] if self.fsync else ["--disable-fsync"]),
-                         str(source), *wanted, timeout=7200)
+            # Every object is checked against its name on the way in: a repository of this
+            # kind keeps a file's mode in the file itself, and a source whose modes were
+            # changed behind its back must not be copied as it stands.
+            self._ostree("pull-local", "--untrusted", f"--depth={ROLLBACK_DEPTH}",
+                         *([] if self.fsync else ["--disable-fsync"]), str(source), *wanted, timeout=7200)
         return wanted
 
     def export(self, ref: str, destination: Path) -> None:
@@ -294,6 +301,10 @@ class Store:
             # Nothing installed: the store itself goes, so removal leaves no file.
             shutil.rmtree(self.root, ignore_errors=True)
         return {"checkouts": removed, "freed_bytes": max(freed, 0)}
+
+    def verify(self) -> bool:
+        """Whether every object still matches its checksum (content and mode)."""
+        return self._ostree("fsck", "--quiet", check=False, timeout=7200).returncode == 0
 
     # -- identity ----------------------------------------------------------------------
 

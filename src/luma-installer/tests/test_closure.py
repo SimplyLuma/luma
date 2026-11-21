@@ -49,6 +49,19 @@ class UserlandSelection(unittest.TestCase):
         self.assertTrue(all("check-valid-until=no" in line for line in sources))
 
 
+class Specs(unittest.TestCase):
+    def test_a_name_with_an_architecture_adds_that_architecture(self):
+        spec = closure.spec_for_name("zsnes:i386", "debian-12")
+        self.assertEqual((spec.app_id, spec.package, spec.foreign_architectures), ("zsnes", "zsnes:i386", ("i386",)))
+        plain = closure.spec_for_name("mousepad", "debian-12")
+        self.assertEqual((plain.app_id, plain.foreign_architectures), ("mousepad", ()))
+        for bad in ("../x", "a b", "x:../y", "-rf"):
+            with self.assertRaises(closure.InstallerError):
+                closure.spec_for_name(bad, "debian-12")
+        with self.assertRaises(closure.InstallerError):
+            closure.spec_for_name("mousepad", "debian-99")
+
+
 class BuildSandbox(unittest.TestCase):
     def test_package_code_sees_the_new_root_and_nothing_of_the_host(self):
         with patch.object(closure, "userns_prefix", return_value=[]), patch.object(closure, "_resolver", return_value=[]):

@@ -111,6 +111,19 @@ class StoreBehaviour(unittest.TestCase):
         with self.assertRaises(InstallerError):
             self.store.remove("two")
 
+    def test_a_mode_changed_behind_the_stores_back_is_detected_and_not_pulled(self):
+        self.commit("one", {"usr/bin/one": "payload"})
+        self.assertTrue(self.store.verify())
+        other = Store(self.base / "other", fsync=False)
+        self.assertEqual(other.pull(self.store.repo), ["app/one/x86_64"])
+        self.assertEqual(other.read_record("app/one/x86_64")["id"], "one")
+        for path in (self.store.repo / "objects").rglob("*.file"):
+            path.chmod(0o775)
+        self.assertFalse(self.store.verify())
+        third = Store(self.base / "third", fsync=False)
+        with self.assertRaises(InstallerError):
+            third.pull(self.store.repo)
+
     def test_every_application_gets_its_own_category_pair(self):
         self.store.ensure()
         levels = {self.store.categories(f"app-{number}") for number in range(40)}

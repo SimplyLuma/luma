@@ -2,7 +2,8 @@
 """``luma-app-closure``: the ADR-052 application store prototype from a terminal.
 
   build FILE | --name PACKAGE --userland NAME    build a closure and commit it
-  list | info ID | history ID | sharing           what the store holds
+  list | info ID | history ID | sharing | verify  what the store holds; whether it is intact
+  prepare ID                                      make the checkout it runs from (otherwise made at first start)
   run ID [ARGUMENT ...]                           start it
   shell ID -- COMMAND ...                         run a command in its sandbox
   refresh ID [--check]                            re-resolve; a changed set is a new commit
@@ -185,9 +186,9 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--extra", action="append", default=[], help="another package for the same tree")
     build.add_argument("--add-architecture", action="append", default=[], help="foreign architecture, e.g. i386")
     build.add_argument("--console", action="store_true", help="no window: skip the desktop baseline")
-    for name in ("info", "history", "rollback"):
+    for name in ("info", "history", "rollback", "prepare"):
         commands.add_parser(name).add_argument("id")
-    for name in ("list", "sharing", "gc"):
+    for name in ("list", "sharing", "gc", "verify"):
         commands.add_parser(name)
     run = commands.add_parser("run")
     run.add_argument("id")
@@ -227,6 +228,13 @@ def main(argv: list[str] | None = None) -> int:
             record["packages"] = len(record["packages"])  # type: ignore[arg-type]
             record.pop("build", None)
             _print(record)
+        elif arguments.command == "prepare":
+            started = time.monotonic()
+            checkout, _record = closure_launcher.deployment(store, arguments.id)
+            description = json.loads((checkout / ".luma-deployment.json").read_text())
+            _print({"id": arguments.id, "checkout": str(checkout), "seconds": round(time.monotonic() - started, 2),
+                    "graphics": [{key: layer.get(key) for key in ("route", "mesa", "version", "glibc_replaced")}
+                                 for layer in description.get("graphics") or []]})
         elif arguments.command == "history":
             _print(store.history(store.app_ref(arguments.id)))
         elif arguments.command == "sharing":
@@ -235,6 +243,10 @@ def main(argv: list[str] | None = None) -> int:
             _print({"id": arguments.id, "commit": store.rollback(store.app_ref(arguments.id))})
         elif arguments.command == "pull":
             _print({"pulled": store.pull(Path(arguments.repository), list(arguments.refs))})
+        elif arguments.command == "verify":
+            intact = store.verify()
+            _print({"intact": intact})
+            return 0 if intact else 1
         elif arguments.command == "gc":
             _print(store.collect())
         elif arguments.command == "remove":

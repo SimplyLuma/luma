@@ -451,7 +451,11 @@ gpgkey=file:///.luma-build/keys/RPM-GPG-KEY-fedora-$releasever-$basearch
 skip_if_unavailable=False
 """
 
-RPM_BASE = ("filesystem", "setup", "fedora-release", "fedora-repos", "glibc-minimal-langpack", "bash", "coreutils")
+# RPM dependencies are complete, so there is no "required" set to start from: the
+# release's identity, a shell and the text tools package scripts and the
+# library check below take for granted.
+RPM_BASE = ("filesystem", "setup", "fedora-release", "fedora-repos", "glibc-minimal-langpack", "bash", "coreutils",
+            "grep", "gawk", "sed", "findutils")
 
 RPM_LOCK = ["rpm", "--root", "/target", "-qa", "--qf", "%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n"]
 
@@ -791,7 +795,7 @@ def _build_rpm(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
 
 def _record(spec: Spec, userland: Userland, lock: list[list[str]], added: list[dict[str, str]], baseline: list[str],
             undeclared: list[str], language: str, exports: dict[str, object], log: BuildLog) -> dict[str, object]:
-    version = next((row[1] for row in lock if row[0] == spec.package), "")
+    version = next((row[1] for row in lock if row[0] == spec.package.partition(":")[0]), "")
     return {
         "schema": SCHEMA, "kind": "application", "id": spec.app_id, "format": spec.kind,
         "origin": {"package": spec.package, "version": version, "sha256": spec.sha256,
@@ -831,9 +835,13 @@ def spec_for_file(path: Path, app_id: str = "", userland: str = "", **options) -
 def spec_for_name(name: str, userland: str, app_id: str = "", **options) -> Spec:
     if userland not in USERLANDS:
         raise InstallerError(f"Unknown userland {userland}.")
-    if not _SAFE.fullmatch(name):
+    base, _colon, architecture = name.partition(":")
+    if not _SAFE.fullmatch(base) or (architecture and not re.fullmatch(r"[a-z0-9]+", architecture)):
         raise InstallerError("Not a package name.")
-    return Spec(app_id=app_id or name, kind=USERLANDS[userland].family, userland=userland, package=name, **options)
+    if architecture and architecture not in options.get("foreign_architectures", ()):
+        # zsnes:i386, wine32:i386: the package names its architecture.
+        options["foreign_architectures"] = (*options.get("foreign_architectures", ()), architecture)
+    return Spec(app_id=app_id or base, kind=USERLANDS[userland].family, userland=userland, package=name, **options)
 
 
 def spec_from_record(record: dict[str, object], package_file: str = "") -> Spec:
@@ -900,9 +908,10 @@ def resolve_changes(record: dict[str, object], root: Path, cache: Path, log: Bui
     Returns {"changes": [[name, old, new], ...], "download_bytes": n}."""
     userland = USERLANDS[str(record["userland"])]
     if userland.family == "deb":
+        # An empty archive folder: the sizes are what a device with nothing cached would fetch.
         result = log.run("resolve", sandbox_in_tree(
             root, ["env", "LUMA_SOURCES=" + "\n".join(userland.sources), "sh", "-c", DEB_RESOLVE_SCRIPT],
-            binds=[_lists_bind(cache, userland, ""), _archives_bind(cache, userland)]))
+            binds=[_lists_bind(cache, userland, "")]))
         simulated, _marker, uris = result.stdout.partition("LUMA-URIS")
         size = sum(int(parts[2]) for parts in (line.split() for line in uris.splitlines())
                    if len(parts) >= 3 and parts[2].isdigit())
