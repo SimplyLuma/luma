@@ -85,20 +85,15 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - name: Admit matching current toolkit packages
-        if: inputs.toolkit_run != ''
+      - name: Admit the checked toolkit packages
         env:
           GH_TOKEN: ${{ github.token }}
           TOOLKIT_RUN: ${{ inputs.toolkit_run }}
-        run: python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" --run-id "$TOOLKIT_RUN" --output build/browser-inputs/toolkit
-      - name: Reuse checked toolkit packages
-        if: inputs.toolkit_run == ''
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: desktop-toolkit-${{ matrix.architecture }}
-          run-id: 44415627684
-          github-token: ${{ github.token }}
-          path: build/browser-inputs/toolkit
+        run: |
+          # Without an explicit run, admit the cohort pinned in admit-desktop-toolkit.py,
+          # which follows LUMA_DEVELOPER_PLATFORM_* in config/desktop/inputs.env.
+          python3 scripts/os/admit-desktop-toolkit.py --architecture "$LUMA_TARGET_ARCHITECTURE" \
+            ${TOOLKIT_RUN:+--run-id "$TOOLKIT_RUN"} --output build/browser-inputs/toolkit
       - name: Reuse checked apk-metadata packages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
