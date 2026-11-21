@@ -323,6 +323,11 @@ def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> in
                  "--env", "BROWSER=/usr/bin/xdg-open",
                  "--env", "GTK_USE_PORTAL=1",
                  "--env", f"LUMA_CAPSULE_DESKTOP_ID={_desktop_id(record)}"]
+    schemas = session_boundary.desktop_schemas()
+    if schemas is not None:
+        # The desktop's settings schemas, for an application that asks for them (session_boundary.py).
+        arguments.extend(("--volume", f"{schemas}:{session_boundary.SCHEMAS_INSIDE}:ro",
+                          "--env", f"XDG_DATA_DIRS={session_boundary.SCHEMA_DATA_DIRS}"))
     # A console payload needs a terminal on both sides of the capsule boundary:
     # without one it reads EOF immediately and exits before drawing anything.
     if record.get("terminal") and sys.stdin.isatty() and sys.stdout.isatty():

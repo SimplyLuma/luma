@@ -24,6 +24,10 @@ them into mounts and environment.
 """
 from __future__ import annotations
 
+import hashlib
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -111,3 +115,78 @@ def view(runtime: Path, inside: Path, environment: dict[str, str], *, accessibil
 def cleaned(environment: dict[str, str]) -> dict[str, str]:
     """The launcher's environment without what `view` decides."""
     return {name: value for name, value in environment.items() if name not in WITHHELD}
+
+
+# -- The desktop's settings schemas ---------------------------------------------------
+#
+# An application is told which desktop it runs on (XDG_CURRENT_DESKTOP), because
+# Chromium picks its keyring by it. One that believes it may then open that
+# desktop's settings: Zoom reads org.gnome.settings-daemon.plugins.media-keys on
+# GNOME and GLib ends the process when the schema is not installed. No
+# distribution's tree carries the device's settings daemon, so its schemas are
+# compiled from the device's own files and shown at SCHEMAS_INSIDE, where
+# XDG_DATA_DIRS (.../run/host/share) makes GSettings look. Schemas only: every
+# value is the default, the person's own settings stay outside.
+#
+# org.gnome.settings-daemon.plugins.xsettings is left out. GTK 3's Wayland
+# backend and Chromium read font settings from it when it exists; current
+# releases of the daemon no longer define those keys, and with the schema
+# present and the keys absent GTK fails to open its display (Discord then dies
+# on its first window: "Can't create a GtkStyleContext without a display
+# connection"). Absent, both use their defaults or the settings portal.
+SCHEMAS_INSIDE = Path("/run/host/share/glib-2.0/schemas")
+SCHEMA_SOURCE = Path("/usr/share/glib-2.0/schemas")
+SCHEMA_DATA_DIRS = "/usr/local/share:/usr/share:/run/host/share"
+
+
+def _desktop_schema_files(source: Path) -> list[Path]:
+    try:
+        return sorted(path for path in source.glob("org.gnome.settings-daemon.*.xml") if "xsettings" not in path.name)
+    except OSError:
+        return []
+
+
+def desktop_schemas(holder: Path | None = None, source: Path = SCHEMA_SOURCE) -> Path | None:
+    """A folder with the device's settings-daemon schemas, compiled; None when there are none.
+
+    Kept beside the application store, whose file type every application may
+    read; made once and again when the device's schema files change.
+    """
+    files = _desktop_schema_files(source)
+    compiler = shutil.which("glib-compile-schemas")
+    if not files or not compiler:
+        return None
+    if holder is None:
+        from .app_store import default_root
+        holder = default_root() / "desktop-schemas"
+    digest = hashlib.sha256()
+    try:
+        for path in files:
+            status = path.stat()
+            digest.update(f"{path.name}\0{status.st_size}\0{status.st_mtime_ns}\n".encode())
+        final = holder / digest.hexdigest()[:24]
+        if (final / "gschemas.compiled").is_file():
+            return final
+        holder.mkdir(mode=0o755, parents=True, exist_ok=True)
+        partial = Path(tempfile.mkdtemp(prefix=".partial-", dir=holder))
+        try:
+            for path in files:
+                shutil.copyfile(path, partial / path.name)
+            result = subprocess.run([compiler, str(partial)], capture_output=True, check=False, timeout=60)
+            if result.returncode != 0 or not (partial / "gschemas.compiled").is_file():
+                return None
+            partial.chmod(0o755)
+            try:
+                partial.rename(final)
+            except OSError:
+                if not (final / "gschemas.compiled").is_file():
+                    return None
+        finally:
+            shutil.rmtree(partial, ignore_errors=True)
+        for stale in holder.iterdir():
+            if stale != final:
+                shutil.rmtree(stale, ignore_errors=True)
+        return final
+    except (OSError, subprocess.SubprocessError):
+        return None
+

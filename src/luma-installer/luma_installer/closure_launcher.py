@@ -295,7 +295,7 @@ def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, 
            # The person's dconf database stays outside, and the tree has no service to write one of
            # its own: GSettings keeps the application's settings in a file in its data folder.
            "GSETTINGS_BACKEND": "keyfile",
-           "XDG_DATA_DIRS": "/usr/local/share:/usr/share:/run/host/share",
+           "XDG_DATA_DIRS": session_boundary.SCHEMA_DATA_DIRS,
            "XCURSOR_PATH": f"{home}/.icons:/usr/share/icons:/run/host/share/icons",
            "LUMA_CAPSULE_DESKTOP_ID": capsule_launcher._desktop_id(record)}
     # The session: the same sockets and variables a capsule gets, and nothing else of the runtime folder.
@@ -309,6 +309,10 @@ def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, 
                                 ("/usr/share/icons", "/run/host/share/icons"), ("/usr/share/themes", "/run/host/share/themes")):
         if Path(source).is_dir():
             arguments.extend(("--ro-bind", source, destination))
+    schemas = session_boundary.desktop_schemas()
+    if schemas is not None:
+        # The desktop's settings schemas, for an application that asks for them (session_boundary.py).
+        arguments.extend(("--ro-bind", str(schemas), str(session_boundary.SCHEMAS_INSIDE)))
     if capsule_launcher.ZONEINFO.is_dir() and (checkout / "usr/share/zoneinfo").is_dir():
         arguments.extend(("--ro-bind", str(capsule_launcher.ZONEINFO), "/usr/share/zoneinfo"))
     if Path("/usr/libexec/luma-capsule-open").is_file() and (checkout / "usr/bin/xdg-open").exists():

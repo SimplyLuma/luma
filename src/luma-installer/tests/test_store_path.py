@@ -489,6 +489,26 @@ class HiddenDisplay(unittest.TestCase):
             self.assertIsNone(capsule_refresh.hidden_x11(runtime, "luma-smoke-1"))
 
 
+class DesktopSchemas(unittest.TestCase):
+    SCHEMA = """<schemalist><schema id="org.gnome.settings-daemon.plugins.%s" path="/org/gnome/settings-daemon/plugins/%s/">
+<key name="x" type="b"><default>true</default></key></schema></schemalist>"""
+
+    @unittest.skipUnless(__import__("shutil").which("glib-compile-schemas"), "needs glib-compile-schemas")
+    def test_the_devices_schemas_are_compiled_once_without_xsettings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, holder = Path(directory) / "schemas", Path(directory) / "holder"
+            source.mkdir()
+            self.assertIsNone(session_boundary.desktop_schemas(holder, source))
+            for name in ("media-keys", "xsettings"):
+                (source / f"org.gnome.settings-daemon.plugins.{name}.gschema.xml").write_text(self.SCHEMA % (name, name))
+            (source / "org.gnome.desktop.interface.gschema.xml").write_text("<schemalist/>")
+            made = session_boundary.desktop_schemas(holder, source)
+            self.assertEqual(sorted(path.name for path in made.iterdir()),
+                             ["gschemas.compiled", "org.gnome.settings-daemon.plugins.media-keys.gschema.xml"])
+            self.assertEqual(session_boundary.desktop_schemas(holder, source), made)
+            self.assertEqual([path.name for path in holder.iterdir()], [made.name])
+
+
 class RefFolders(unittest.TestCase):
     def test_a_deleted_ref_leaves_no_folder_named_for_its_application(self):
         from luma_installer.app_store import Store
