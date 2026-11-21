@@ -785,3 +785,23 @@ The service's level probes (`org.projectluma.AudioDevices`) are skipped by
 the microphone indicator, strip and status well, as pavucontrol is. Without
 the service or before version 2 the page is unchanged. Test:
 `app-mixer-policy.js` in %check. Shell .188.
+
+`0356-blur-one-target-per-framebuffer.patch`: `ShellBlurEffect` keeps its
+textures, pipelines and cache state per framebuffer (each stage view, and
+off-stage captures), at most four, dropping one unpainted for 5 s. A
+background blur copies and blurs only the part of the actor inside that
+framebuffer and draws it over that part; the corner mask takes the covered
+rectangle. One set of textures for every view reallocated them on each
+paint of an actor seen on views of different scale or size: a full-screen
+scrim over monitors at 1, 1 and 1.25 turned over about 9 GB of GPU memory a
+second. The stale-background test compares the redraw clip with the part of
+the actor on that view, so an actor across monitors no longer asks for a
+frame on every view every frame. `shell_blur_effect_get_framebuffer_allocations()`
+is for tests. Test: `tests/gnome-shell/screen-sharing` `MODE=perf`. Shell .190.
+
+`0357-share-previews-snapshot.patch`: Share previews draw into their own
+framebuffer at the tile's size and take the source again at most once a
+second (`SnapshotEffect`), and the picker holds the backgrounds outside its
+card while it is open, so the scrim keeps the blur it opened with. Live
+clones redrew every tile, and re-blurred the scrim over the whole desktop,
+on every frame a window under it changed. Shell .190.

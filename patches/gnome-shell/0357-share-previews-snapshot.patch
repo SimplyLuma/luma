@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 20 Nov 2026 22:00:00 -0600
+Subject: [PATCH] Share: previews redraw once a second; the scrim keeps its blur
+
+A preview cloned the live window, or for a screen every window, and
+redrew it at full resolution on every frame the source changed, and the
+scrim under the card copied and blurred the whole desktop again each time.
+
+- Each preview is drawn into its own framebuffer at the tile's size by an
+  offscreen effect that takes the source again at most once a second.
+- The scrim lies outside the card, so the picker holds backgrounds outside
+  the card (shell_blur_effect_hold_backgrounds) while it is open; blurred
+  surfaces under the modal keep the blur they had when it opened.
+---
+diff --git a/js/ui/lumaShare.js b/js/ui/lumaShare.js
+--- a/js/ui/lumaShare.js
++++ b/js/ui/lumaShare.js
+@@ -167,6 +167,58 @@
+ 
+ // ── One preview tile ───────────────────────────────────────────────────────
+ 
++// A preview is drawn into its own framebuffer at the tile's size and redrawn
++// from the source at most once a second. A preview cloned the live window
++// (or, for a screen, every window) and redrew it at full resolution on every
++// frame the source changed: a video, a terminal or a browser behind the
++// picker made every tile, and the blurred scrim over the whole desktop, paint
++// again at the display's refresh rate. A tile outside the visible part of the
++// list is not painted at all, so it costs nothing.
++const PREVIEW_REFRESH_MS = 1000;
++
++const SnapshotEffect = GObject.registerClass(
++class SnapshotEffect extends Clutter.OffscreenEffect {
++    _init() {
++        super._init();
++        this._paintedAt = 0;
++        this._due = false;
++        this._refreshId = 0;
++    }
++
++    vfunc_paint(node, paintContext, flags) {
++        const dirty = (flags & Clutter.EffectPaintFlags.ACTOR_DIRTY) !== 0;
++        const now = GLib.get_monotonic_time();
++        const wait = this._paintedAt + PREVIEW_REFRESH_MS * 1000 - now;
++        if (dirty && this._paintedAt && !this._due && wait > 0) {
++            flags &= ~Clutter.EffectPaintFlags.ACTOR_DIRTY;
++            this._scheduleRefresh(Math.ceil(wait / 1000));
++        } else if (dirty || !this._paintedAt) {
++            this._paintedAt = now;
++            this._due = false;
++        }
++        super.vfunc_paint(node, paintContext, flags);
++    }
++
++    _scheduleRefresh(delay) {
++        if (this._refreshId)
++            return;
++        this._refreshId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
++            this._refreshId = 0;
++            this._due = true;
++            this.actor?.queue_redraw();
++            return GLib.SOURCE_REMOVE;
++        });
++    }
++
++    vfunc_set_actor(actor) {
++        if (!actor && this._refreshId) {
++            GLib.source_remove(this._refreshId);
++            this._refreshId = 0;
++        }
++        super.vfunc_set_actor(actor);
++    }
++});
++
+ const PreviewTile = GObject.registerClass({
+     Signals: {'chosen': {}},
+ }, class PreviewTile extends St.Button {
+@@ -203,6 +255,7 @@
+             : new ScreenPreview(source.monitor);
+         this._content.add_style_class_name('luma-share-preview');
+         this._frame.add_child(this._content);
++        this._content.add_effect_with_name('luma-share-snapshot', new SnapshotEffect());
+ 
+         this._check = new St.Bin({
+             style_class: 'luma-share-check',
+@@ -968,6 +1021,11 @@
+             this._answer(PORTAL_CANCELLED, {});
+             return;
+         }
++        // The scrim is outside the card, so it keeps the blur of what was
++        // behind it when it opened instead of copying and blurring the whole
++        // desktop again whenever a window under it, or a preview, changes.
++        // The hold ends in close(), or when the holder is disposed.
++        Shell.BlurEffect.hold_backgrounds(this._holder);
+         this._place();
+         this._tiles[0]?.grab_key_focus();
+         this._scrim.ease({
+@@ -1050,6 +1108,7 @@
+             return;
+         }
+         this._closing = true;
++        Shell.BlurEffect.release_backgrounds(this._holder);
+         if (this.state === ModalDialog.State.CLOSED) {
+             super.close(timestamp);
+             return;
