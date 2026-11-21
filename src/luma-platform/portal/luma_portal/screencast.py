@@ -17,6 +17,13 @@ Three rules this file exists to keep:
 - The caller is always answered. An unanswered portal method leaves the
   application waiting on this process for ever, which is indistinguishable
   from the feature not existing, so every method answers even when it fails.
+- Nothing is asked and nothing starts while the session is locked. A Start
+  that arrives then waits (lock.py) and goes on after unlock, in the normal
+  session; pickers are shown one at a time, in the order they were asked
+  for, so several requests become several questions in turn, never a stack.
+  Mutter pauses the shares already running while it is locked (no frames
+  leave it) and resumes the same streams after unlock, so an application
+  never has to ask again because the screen locked.
 
 Restoring a share: xdg-desktop-portal owns restore tokens (it keeps them in
 its permission store, per application) and never shows them to a backend.
@@ -28,6 +35,7 @@ window closed) falls back to the picker rather than failing the share.
 
 from __future__ import annotations
 
+import collections
 import logging
 
 import gi
@@ -36,6 +44,7 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
 from . import mutter  # noqa: E402
+from .lock import SessionLock  # noqa: E402
 
 LOGGER = logging.getLogger("luma-portal")
 
@@ -61,6 +70,14 @@ PERSIST_PERSISTENT = 2
 #: How long to wait for Mutter to announce a stream's PipeWire node before
 #: giving up and telling the application the share did not happen.
 NODE_TIMEOUT_SECONDS = 10
+
+#: Mutter refuses new shares while the session is locked. The screen shield
+#: announces the lock a moment after Mutter applies it, so a restored share
+#: refused for that reason is tried again every second, after unlock, and only
+#: falls back to the picker if Mutter still refuses after this many tries
+#: with the session open.
+INHIBITED_RETRIES = 30
+INHIBITED_MESSAGE = "inhibited"
 
 SCREEN_CAST_INTERFACE = """
 <node>
@@ -184,11 +201,14 @@ class Session:
         #: answered, or None.
         self.pending = None
         self.timeout_id = 0
+        #: Mutter refused to start this restored share as locked, this often.
+        self.inhibited_tries = 0
 
-    def close(self, notify: bool = True) -> None:
+    def close(self, notify: bool = True, why: str = "") -> None:
         if self.closed:
             return
         self.closed = True
+        LOGGER.info("screen sharing session %s closed%s", self.handle, f" ({why})" if why else "")
         if self.timeout_id:
             GLib.source_remove(self.timeout_id)
             self.timeout_id = 0
@@ -196,6 +216,7 @@ class Session:
             invocation, _handle = self.pending
             self.pending = None
             answer(invocation, PORTAL_CANCELLED)
+        self.backend.withdraw(self)
         if self.cast:
             self.cast.stop()
             self.cast = None
@@ -207,9 +228,14 @@ class Session:
 class ScreenCastPortal:
     """org.freedesktop.impl.portal.ScreenCast."""
 
-    def __init__(self, connection, object_path: str) -> None:
+    def __init__(self, connection, object_path: str, lock: SessionLock | None = None) -> None:
         self._connection = connection
         self._object_path = object_path
+        self._lock = lock or SessionLock(connection)
+        #: Starts waiting for their turn: (session, invocation, request handle).
+        self._queue: collections.deque = collections.deque()
+        #: The session whose picker is on screen, or None.
+        self._asking: Session | None = None
         self._node = Gio.DBusNodeInfo.new_for_xml(SCREEN_CAST_INTERFACE)
         self._session_node = Gio.DBusNodeInfo.new_for_xml(SESSION_INTERFACE)
         self._request_node = Gio.DBusNodeInfo.new_for_xml(REQUEST_INTERFACE)
@@ -271,7 +297,9 @@ class ScreenCastPortal:
 
     def _session_call(self, session: Session, invocation) -> None:
         if invocation.get_method_name() == "Close":
-            session.close(notify=False)
+            # xdg-desktop-portal closes the session when the application asks
+            # and when the application leaves the bus (exit, crash).
+            session.close(notify=False, why="closed by xdg-desktop-portal")
         invocation.return_value(None)
 
     # -- SelectSources ----------------------------------------------------
@@ -311,14 +339,38 @@ class ScreenCastPortal:
             return
 
         session.parent_window = parent_window or ""
-        if session.choice is not None:
-            # Restored: no picker, straight to the stream.
-            self._begin(session, invocation, handle)
-            return
-        self._pick(session, invocation, handle)
+        self._watch_request(handle, lambda: self._withdraw_request(session))
+        self._queue.append((session, invocation, handle))
+        self._pump()
+
+    def _pump(self) -> None:
+        """Start what waits, in order: nothing while locked, one picker at a time."""
+        while self._queue:
+            if self._lock.locked:
+                LOGGER.info("the session is locked; %d request(s) wait for unlock",
+                            len(self._queue))
+                self._lock.when_unlocked(self._pump)
+                return
+            session, invocation, handle = self._queue[0]
+            if session.choice is None and self._asking is not None:
+                return  # the next picker comes when this one is answered
+            self._queue.popleft()
+            if session.choice is not None:
+                # Restored: no picker, straight to the stream.
+                self._begin(session, invocation, handle)
+            else:
+                self._pick(session, invocation, handle)
+
+    def withdraw(self, session) -> None:
+        """A closed session's Start, still waiting, is answered and forgotten."""
+        for entry in [e for e in self._queue if e[0] is session]:
+            self._queue.remove(entry)
+            self._answer_request(entry[2], entry[1], PORTAL_CANCELLED)
+        if self._asking is session:
+            self._call_shell("Cancel", None)
 
     def _pick(self, session, invocation, handle) -> None:
-        self._watch_request(handle, lambda: self._cancel_picker(session))
+        self._asking = session
         options = {
             "app-id": GLib.Variant("s", session.app_id or ""),
             "parent-window": GLib.Variant("s", session.parent_window),
@@ -337,6 +389,10 @@ class ScreenCastPortal:
                 session, invocation, handle, source, result), None)
 
     def _chosen(self, session, invocation, handle, source, result) -> None:
+        if self._asking is session:
+            self._asking = None
+        # The next waiting request goes on once this one has been answered.
+        GLib.idle_add(lambda: (self._pump(), GLib.SOURCE_REMOVE)[1])
         try:
             reply = source.call_finish(result)
         except GLib.Error as error:
@@ -374,7 +430,7 @@ class ScreenCastPortal:
         try:
             cast = mutter.ScreenCastSession(self._connection)
             session.cast = cast
-            cast.on_closed = lambda: session.close()
+            cast.on_closed = lambda: session.close(why="Mutter ended it")
             for connector in monitors:
                 cast.record_monitor(connector, cursor_mode)
             for window_id in windows:
@@ -387,6 +443,10 @@ class ScreenCastPortal:
             if session.cast:
                 session.cast.stop()
                 session.cast = None
+            if session.restored and INHIBITED_MESSAGE in error.message and \
+                    session.inhibited_tries < INHIBITED_RETRIES:
+                self._wait_for_unlock(session, invocation, handle)
+                return
             if session.restored:
                 self._restore_failed(session, invocation, handle, error.message)
                 return
@@ -403,13 +463,27 @@ class ScreenCastPortal:
             NODE_TIMEOUT_SECONDS, lambda: self._nodes_timed_out(session))
         self._maybe_ready(session, invocation, handle)
 
+    def _wait_for_unlock(self, session, invocation, handle) -> None:
+        """Mutter refused a restored share because the session is locked: it starts after unlock."""
+        session.inhibited_tries += 1
+        LOGGER.info("session %s waits for unlock to restore its share", session.handle)
+
+        def retry():
+            if not session.closed:
+                self._queue.appendleft((session, invocation, handle))
+                self._lock.refresh()
+                self._pump()
+            return GLib.SOURCE_REMOVE
+        GLib.timeout_add_seconds(1, retry)
+
     def _restore_failed(self, session, invocation, handle, why: str) -> None:
         """A restored choice no longer applies (a screen unplugged, a window closed): ask afresh."""
         LOGGER.info("session %s: the restored choice no longer applies (%s); showing the picker",
                     session.handle, why)
         session.choice = None
         session.restored = False
-        self._pick(session, invocation, handle)
+        self._queue.appendleft((session, invocation, handle))
+        self._pump()
 
     def _maybe_ready(self, session, invocation, handle) -> None:
         if session.pending is None or not session.cast or not session.cast.ready:
@@ -463,14 +537,23 @@ class ScreenCastPortal:
             "hide-notifications": GLib.Variant(
                 "b", bool(choice.get("hide-notifications"))),
         }
+        if session.cast is not None and getattr(session.cast, "path", None):
+            # The Shell drops the share's ring and pill when this Mutter
+            # session ends, whatever happens to this process.
+            info["mutter-session"] = GLib.Variant("o", session.cast.path)
         self._call_shell("SessionStarted",
                          GLib.Variant("(sa{sv})", (session.handle, info)))
 
-    def _cancel_picker(self, session) -> None:
-        """The application gave up: take the picker off the screen."""
+    def _withdraw_request(self, session) -> None:
+        """The application gave up: its picker comes off the screen, or never shows."""
         LOGGER.info("the application closed its request for %s", session.handle)
-        self._call_shell("Cancel", None)
-        session.close()
+        session.close(why="the request was closed")
+
+    def shutdown(self) -> None:
+        """The backend is stopping: every share ends, and the Shell is told so."""
+        for session in list(self._sessions.values()):
+            session.close(why="the backend is stopping")
+        self._connection.flush_sync(None)
 
     def _call_shell(self, method: str, parameters) -> None:
         self._connection.call(
@@ -484,7 +567,7 @@ class ScreenCastPortal:
         if session is None:
             return
         LOGGER.info("Stop was pressed for %s", handle)
-        session.close()
+        session.close(why="Stop")
 
     # -- Bookkeeping ------------------------------------------------------
 

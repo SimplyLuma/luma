@@ -63,8 +63,13 @@ class Connection:
     def emit_signal(self, *_args):
         pass
 
+    def signal_subscribe(self, *_args):
+        return 1
+
     def call(self, name, path, iface, method, parameters, reply_type, flags, timeout,
              cancellable, callback, user_data):
+        if method == "GetActive":
+            return  # the session lock (lock.py): no screen shield answers here
         self.calls.append((method, parameters.unpack() if parameters else None))
         if callback is not None and method == "CreateCapture":
             value = self.capture_error or GLib.Variant("(sut)", ("cap1", 77, 1077))
@@ -139,6 +144,26 @@ class Flow(unittest.TestCase):
         self.assertNotIn("restore_data", results)
         created = [c for c in self.connection.calls if c[0] == "CreateCapture"][0][1]
         self.assertEqual(created, ("org.example.Rec", "apps", ["org.example.Player"], False, "Player"))
+
+    def test_no_picker_while_locked(self):
+        class Locked:
+            locked = True
+            waiting = []
+
+            def when_unlocked(self, callback):
+                self.waiting.append(callback)
+        lock = Locked()
+        self.portal._lock = lock
+        self.start_session()
+        invocation = Invocation("Start")
+        self.portal._call(None, ":1.5", "/", "", "Start",
+                          GLib.Variant("(oossa{sv})", (REQUEST, SESSION, "org.example.Rec", "", {})), invocation)
+        self.assertEqual(self.pickers, [], "nothing is asked while locked")
+        self.assertIsNone(invocation.value)
+        lock.locked = False
+        for callback in lock.waiting:
+            callback()
+        self.assertEqual(len(self.pickers), 1, "asked once the session is open")
 
     def test_cancel_answers_and_captures_nothing(self):
         self.start_session()

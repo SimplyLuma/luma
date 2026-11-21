@@ -74,8 +74,15 @@ has('the pill uses the one shelf placement helper',
 has('monitors are named once, with Cast',
     "import {listDisplays} from './lumaCast.js'");
 has('notifications follow Cast’s own setting', "'org.projectluma.cast'");
-has('a screen preview clones the window group',
-    'source: global.window_group');
+has('a screen tile clones only what is on its monitor', '_onMonitor(actor)');
+has('a screen tile takes its own display', 'displays?.find(d => d.index === index)');
+has('a screen tile shows the display mode', "display?.mode ?? [monitor.width, monitor.height]");
+// The pill: Dismiss keeps sharing visible in the status cluster.
+has('the pill can be dismissed', "label: _('Dismiss')");
+has('the mark brings a dismissed pill back', 'get pillDismissed()');
+// A share ends with its Mutter session and with the portal backend.
+has('a share ends with its Mutter session', "'org.gnome.Mutter.ScreenCast.Session', 'Closed'");
+has('a share ends with the portal backend', 'Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME');
 
 // ── Keyboard and screen reader ────────────────────────────────────────────
 has('previews are radios, or checkboxes for several',
@@ -104,7 +111,11 @@ has('Space selects', `case Clutter.KEY_KP_Space:
 // background or border is painted in its paint node and reaches every
 // screen stream; only children are held back.
 has('the edges draw their violet in a child', "this.add_child(edgeFace('luma-share-screen-edge'))");
-has('the window ring is a child too', "this.add_child(edgeFace('luma-share-window-edge'))");
+has('the window ring is drawn in children too', 'this.add_child(piece);');
+// The ring follows the window's own outline: Luma's radius for that window,
+// concentric at every offset, and its halo fades out inside the ring's actor.
+has('the ring follows the window radius', 'windowCornerRadius(this._window)');
+has('the halo ends inside the actor', 'RING_MARGIN = Math.ceil(RING_LINE + HALO_FADE + 1)');
 hasnt('no edge is styled on the CaptureHidden actor itself',
     "super._init({style_class: 'luma-share-screen-edge'");
 // layout.js rejects unknown chrome parameters; this one threw in
@@ -122,8 +133,8 @@ has('violet is the sharing colour', '#7d5cf0', css);
 hasnt('sharing is never Capture’s red', '#d4595c', css);
 has('the card follows the appearance mode',
     '.luma-share-card.luma-surface-dark', css);
-has('the window edge is 2.5 violet with a 7 halo',
-    'inset 0 0 0 2.5px #7d5cf0', css);
+has('the window ring is a 2.5 violet line', 'const RING_LINE = 2.5;');
+has('the ring is the sharing violet', 'const RING_VIOLET = [125, 92, 240];');
 has('the screen edge is 3 violet inside the monitor', 'border: 3px solid #7d5cf0', css);
 has('the chosen ring is violet',
     '.luma-share-tile-frame.luma-share-tile-chosen', css);

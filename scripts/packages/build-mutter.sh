@@ -144,6 +144,10 @@ luma_assert_spec_release "$rpmbuild_dir/SPECS/mutter.spec" \
         ./usr/lib64/libmutter-18.so.0.0.0
       grep -aFq "Window stream crop is the window frame" \
         ./usr/lib64/libmutter-18.so.0.0.0
+      grep -aFq "Pausing screen cast session %s" \
+        ./usr/lib64/libmutter-18.so.0.0.0
+      grep -aFq "capture copies are inhibited" \
+        ./usr/lib64/libmutter-18.so.0.0.0
       if grep -aFq "Dropped %u key event" ./usr/lib64/libmutter-18.so.0.0.0; then
         echo "error: this Mutter still drops keys typed during a focus handover" >&2
         exit 1

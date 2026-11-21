@@ -1,0 +1,260 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] lumaShare, lumaCapture: the pill stays out of streams; Dismiss
+
+The sharing pill, the edges and Capture's own overlays are CaptureHidden:
+they skip a paint whose framebuffer is not a stage view's. A monitor
+stream, though, mostly does not paint the stage: it copies what is on the
+screen (a blit of the view, or of the scanout buffer), pill included, so
+the pill reached the shared screen. And the screen's own paint lands in an
+offscreen whenever an ancestor is redirected (an effect, an animation), so
+the pill was skipped on screen for those frames and flickered.
+
+CaptureHidden now asks the paint itself: Mutter 0036 marks every capture
+paint (clutter_stage_paint_to_framebuffer and what uses it: screen casts,
+screenshots) with CLUTTER_PAINT_FLAG_CAPTURE, and an on-screen paint never
+carries it, whatever framebuffer it is in. While a CaptureHidden actor (or
+an on-screen-only shelf surface) is mapped, it inhibits capture copies
+(clutter_stage_inhibit_capture_copy), so monitor streams paint the stage
+with that flag instead of copying the screen. Without the flag (an older
+Mutter) the framebuffer test stays.
+
+The pill gains Dismiss beside Stop: Stop ends the share, Dismiss puts the
+pill away for the shares running now. Sharing stays visible: with the pill
+away, the status cluster's sharing mark is shown, and clicking it brings
+the pill back (otherwise it stops sharing, as before). A new share brings
+the pill back.
+
+diff --git a/data/theme/luma-share.css b/data/theme/luma-share.css
+index b521a24..08ff7e3 100644
+--- a/data/theme/luma-share.css
++++ b/data/theme/luma-share.css
+@@ -333,6 +333,23 @@
+ 
+ .luma-surface-dark .luma-share-pill-stop:focus { box-shadow: inset 0 0 0 2px rgba(33, 37, 43, 0.8) !important; }
+ 
++/* Dismiss: the quiet key beside Stop. */
++.luma-share-pill-dismiss {
++  height: 28px;
++  padding: 0 12px;
++  border-radius: 14px;
++  font-family: 'Figtree', system-ui, sans-serif;
++  font-size: 12.5px;
++  font-weight: 650;
++  background-color: rgba(35, 44, 52, 0.072);
++  color: #30343a;
++  transition-duration: 140ms; }
++.luma-share-pill-dismiss:hover { background-color: rgba(35, 44, 52, 0.12); }
++.luma-share-pill-dismiss:focus { box-shadow: inset 0 0 0 2px rgba(48, 52, 58, 0.6) !important; }
++.luma-surface-dark .luma-share-pill-dismiss { background-color: rgba(255, 255, 255, 0.072); color: #e9ebec; }
++.luma-surface-dark .luma-share-pill-dismiss:hover { background-color: rgba(255, 255, 255, 0.12); }
++.luma-surface-dark .luma-share-pill-dismiss:focus { box-shadow: inset 0 0 0 2px rgba(233, 235, 236, 0.6) !important; }
++
+ /* Frost and glass are one light material (0170): a light veil over the
+  * blurred wallpaper, carrying the light family's dark ink. Frost is the
+  * denser, strongly blurred veil; glass lets more wallpaper through, with less
+diff --git a/js/ui/lumaCapture.js b/js/ui/lumaCapture.js
+index ae8e12e..5a71d7e 100644
+--- a/js/ui/lumaCapture.js
++++ b/js/ui/lumaCapture.js
+@@ -100,11 +100,21 @@ export function setPaintInCaptures(paint) {
+ }
+ 
+ // Whether this paint is the screen itself rather than a screenshot or
+-// recording of it (see the comment at the top). Only for actors with no
+-// offscreen-redirected ancestor, whose paint goes straight to a view.
++// recording of it (see the comment at the top). A capture marks its own
++// paint (CLUTTER_PAINT_FLAG_CAPTURE: Mutter's screen casts and
++// Shell.Screenshot), so the answer no longer depends on which framebuffer a
++// paint lands in: the screen's paint went to an offscreen whenever an
++// ancestor was redirected (an effect, an animation), and the actor vanished
++// from the screen for those frames.
++const CAPTURE_FLAG = Clutter.PaintFlag.CAPTURE;
++
+ export function paintsOnScreen(paintContext) {
+     if (paintInCaptures)
+         return true;
++    if (CAPTURE_FLAG !== undefined)
++        return !(paintContext.get_paint_flags() & CAPTURE_FLAG);
++    // A Mutter without the flag: only actors with no offscreen-redirected
++    // ancestor, whose paint goes straight to a view, can tell.
+     const framebuffer = paintContext.get_framebuffer();
+     return global.stage.peek_stage_views().some(view =>
+         view.get_framebuffer() === framebuffer || view.get_onscreen() === framebuffer);
+@@ -113,8 +123,34 @@ export function paintsOnScreen(paintContext) {
+ // Only an actor's children and content are held back: its own background,
+ // border and effects are painted around paint(), so everything a
+ // CaptureHidden shows is drawn by a child, never styled on itself.
++//
++// A monitor stream normally copies what is on the screen (a blit of the
++// view, or of the scanout buffer), which would carry these actors with it.
++// While one of them is on the screen, captures paint the stage themselves
++// instead (clutter_stage_inhibit_capture_copy, Mutter 0036), and the paint
++// carries the capture flag they skip.
++function holdCaptureCopies(actor, hold) {
++    if (!global.stage.inhibit_capture_copy || actor._lumaHoldsCaptureCopies === hold)
++        return;
++    actor._lumaHoldsCaptureCopies = hold;
++    if (hold)
++        global.stage.inhibit_capture_copy();
++    else
++        global.stage.uninhibit_capture_copy();
++}
++
+ export const CaptureHidden = GObject.registerClass(
+ class CaptureHidden extends St.Widget {
++    vfunc_map() {
++        super.vfunc_map();
++        holdCaptureCopies(this, true);
++    }
++
++    vfunc_unmap() {
++        holdCaptureCopies(this, false);
++        super.vfunc_unmap();
++    }
++
+     vfunc_paint(paintContext) {
+         if (paintsOnScreen(paintContext))
+             super.vfunc_paint(paintContext);
+@@ -433,6 +469,17 @@ class ShelfSurface extends St.Widget {
+         });
+     }
+ 
++    vfunc_map() {
++        super.vfunc_map();
++        if (this._onScreenOnly)
++            holdCaptureCopies(this, true);
++    }
++
++    vfunc_unmap() {
++        holdCaptureCopies(this, false);
++        super.vfunc_unmap();
++    }
++
+     vfunc_paint(paintContext) {
+         if (!this._onScreenOnly || paintsOnScreen(paintContext))
+             super.vfunc_paint(paintContext);
+diff --git a/js/ui/lumaShare.js b/js/ui/lumaShare.js
+index 8d4d664..2a84f44 100644
+--- a/js/ui/lumaShare.js
++++ b/js/ui/lumaShare.js
+@@ -1382,7 +1382,7 @@ class ScreenEdge extends CaptureHidden {
+ // ── The Stop pill ──────────────────────────────────────────────────────────
+ 
+ const SharePill = GObject.registerClass({
+-    Signals: {'stop': {}},
++    Signals: {'stop': {}, 'dismiss': {}},
+ }, class SharePill extends ShelfSurface {
+     _init() {
+         super._init('pill', 20, {
+@@ -1416,6 +1416,17 @@ const SharePill = GObject.registerClass({
+             y_align: Clutter.ActorAlign.CENTER,
+             accessible_name: _('Stop sharing your screen'),
+         });
++        // Dismiss puts the pill away for this share; the sharing mark in the
++        // status cluster stays, and brings the pill back.
++        this.dismissButton = new St.Button({
++            style_class: 'luma-share-pill-dismiss',
++            can_focus: true,
++            label: _('Dismiss'),
++            y_align: Clutter.ActorAlign.CENTER,
++            accessible_name: _('Hide this, keep sharing'),
++        });
++        this.dismissButton.connect('clicked', () => this.emit('dismiss'));
++        row.add_child(this.dismissButton);
+         this.stopButton.connect('clicked', () => this.emit('stop'));
+         row.add_child(this.stopButton);
+         this.connect('notify::height', () => this.setRadius(this.height / 2));
+@@ -1465,6 +1476,9 @@ export const ShareManager = GObject.registerClass({
+ 
+         this._pill = new SharePill();
+         this._pill.connect('stop', () => this.stopSharing());
++        this._pill.connect('dismiss', () => this.dismissPill());
++        // Dismissed for the shares running now; a new share brings it back.
++        this._pillDismissed = false;
+         Main.layoutManager.addTopChrome(this._pill);
+ 
+         const controller = global.backend.get_remote_access_controller();
+@@ -1497,7 +1511,27 @@ export const ShareManager = GObject.registerClass({
+ 
+     /** @returns {boolean} true while the pill stands in for the Well's mark. */
+     get pillReplacesWellMark() {
+-        return !KEEP_WELL_MARK_WHILE_SHARING && this.sharing;
++        return !KEEP_WELL_MARK_WHILE_SHARING && this.sharing && !this._pillDismissed;
++    }
++
++    /** @returns {boolean} true while the pill is put away and the mark stands in. */
++    get pillDismissed() {
++        return this.sharing && this._pillDismissed;
++    }
++
++    /**
++     * Puts the pill away for the shares running now. Sharing is always
++     * shown somewhere: the status cluster's sharing mark takes its place.
++     */
++    dismissPill() {
++        this._pillDismissed = true;
++        this._sync();
++    }
++
++    /** Brings the pill back (the sharing mark was clicked). */
++    showPill() {
++        this._pillDismissed = false;
++        this._sync();
+     }
+ 
+     // ── The private interface ────────────────────────────────────────────
+@@ -1617,6 +1651,7 @@ export const ShareManager = GObject.registerClass({
+         };
+         const windows = choice?.windows ?? this._windowsById(data.windows ?? []);
+         const monitors = choice?.monitors ?? this._monitorsByConnector(data.monitors ?? []);
++        this._pillDismissed = false;
+         this._sessions.set(handle, {
+             requester,
+             windows,
+@@ -1777,10 +1812,15 @@ export const ShareManager = GObject.registerClass({
+             this._hideId = 0;
+         }
+         if (!this.sharing) {
++            this._pillDismissed = false;
+             this._pill.hide();
+             this._releaseHeld();
+             return;
+         }
++        if (this._pillDismissed) {
++            this._pill.hide();
++            return;
++        }
+         this._pill.setText(this._pillText());
+         this._pill.show();
+         this._pill.opacity = 0;
+diff --git a/js/ui/status/remoteAccess.js b/js/ui/status/remoteAccess.js
+index 3ef1085..dc76863 100644
+--- a/js/ui/status/remoteAccess.js
++++ b/js/ui/status/remoteAccess.js
+@@ -167,7 +167,7 @@ export const ScreenSharingIndicator = GObject.registerClass({
+ 
+         this._clickGesture = new Clutter.ClickGesture();
+         this._clickGesture.set_recognize_on_press(true);
+-        this._clickGesture.connect('recognize', () => this._stopSharing());
++        this._clickGesture.connect('recognize', () => this._activate());
+         this.add_action(this._clickGesture);
+     }
+ 
+@@ -197,6 +197,17 @@ export const ScreenSharingIndicator = GObject.registerClass({
+         this._sync();
+     }
+ 
++    // With Luma Share's pill dismissed this mark stands for it: a click brings
++    // the pill (and its Stop) back. Otherwise it stops sharing, as upstream.
++    _activate() {
++        const share = peekShare();
++        if (share?.pillDismissed) {
++            share.showPill();
++            return;
++        }
++        this._stopSharing();
++    }
++
+     _stopSharing() {
+         for (const handle of this._handles)
+             handle.stop();
