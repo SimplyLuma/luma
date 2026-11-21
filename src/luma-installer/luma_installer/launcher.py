@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-import hashlib
 import os
 import re
 import shlex
@@ -13,6 +12,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from . import capsule_identity
 from . import capsule_runtime as runtime_policy
 from . import launch_guard
 from .desktop import read_record, safe_id
@@ -195,21 +195,6 @@ def _running_capsule(name: str) -> bool:
     return False
 
 
-def _capsule_level(identity: str) -> str:
-    """The same private SELinux categories for an application on every launch.
-
-    Podman otherwise picks new categories each run, and relabelling the
-    application's whole private home to match (tens of thousands of files for
-    an Electron app) cost a quarter to half a second of every launch. Two
-    applications still never share a pair.
-    """
-    digest = int.from_bytes(hashlib.sha256(identity.encode()).digest()[:8], "big")
-    first, second = digest % 1024, (digest >> 10) % 1023
-    second += second >= first
-    low, high = sorted((first, second))
-    return f"s0:c{low},c{high}"
-
-
 def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> int:
     # One running capsule per application. A second launch — a link the
     # browser hands back after sign-in, a file opened from Filer, a click on
@@ -233,7 +218,10 @@ def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> in
     arguments = ["podman", "run", "--rm", "--name", instance, "--network=host", "--userns=keep-id", *runtime_policy.launch_arguments(record),
                  *_time_zone_arguments(zone),
                  "--security-opt", "label=type:luma_application.process",
-                 "--security-opt", f"label=level:{_capsule_level(str(record['sha256']))}",
+                 # Its own category pair, allocated once and kept in its record:
+                 # Podman otherwise picks new categories each run and relabels
+                 # the whole private home to match on every launch.
+                 "--security-opt", f"label=level:{capsule_identity.level(record)}",
                  # A fresh proc can only be mounted where proc isn't partly hidden;
                  # without this, nested sandboxes (bubblewrap) cannot start.
                  "--security-opt", "unmask=/proc/*",
@@ -489,6 +477,9 @@ def main(argv: list[str] | None = None) -> int:
     record: dict[str, object] = {}
     try:
         record = read_record(identity)
+        if record.get("format") in {"deb", "rpm"} or record.get("image"):
+            # Its category pair is settled once, before anything else rewrites the record.
+            record = capsule_identity.ensure_level(record)
         if record.get("format") == "portable" and record.get("image"):
             record = _upgrade_unless_running(record)
         if record.get("format") in {"deb", "rpm"}:
