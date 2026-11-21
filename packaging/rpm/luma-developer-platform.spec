@@ -388,9 +388,14 @@ done
   and a line, the transport its player offers and its volume on
   LumaVolumeSlider. Regular is a card's block with a trailing picker
   (MediaRowChip) and a segmented level meter under the slider; compact is a
-  row in a panel's well; touch is that row at 56 px with a 44 px key. A
+  row in a panel's well; touch is that row in a 64 px box (44 px artwork,
+  10 px above and below) with a 44 px key. A
   regular row narrower than media_row.regular.stack_below stacks. The
   Shell's St row reads the same tokens (mediaRowTokens.js).
+- AudioMeter: set_segment_shape(thickness, gap, radius) for a segmented bar
+  and set_zones(FALSE) for an output's level (one green over the control
+  fill, no loud or hot zone, no peak hold). MediaRow's meter is one: 28
+  segments, 3 px, 2 px apart, 1.5 px round.
 - VolumeSlider: set_compact(), a 12 px knob in a 16 px slot.
 - TV: Up and Down step a list of MediaRows row by row
   (luma_media_row_focus_sibling), a focused horizontal VolumeSlider takes

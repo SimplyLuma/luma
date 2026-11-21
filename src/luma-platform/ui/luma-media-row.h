@@ -15,8 +15,8 @@ G_BEGIN_DECLS
  *   picker and a level meter under the slider
  * @LUMA_MEDIA_ROW_COMPACT: a row in a panel's well: 40 px artwork, the slider
  *   under the words, one round play key
- * @LUMA_MEDIA_ROW_TOUCH: the compact row on a phone or tablet: at least
- *   56 px tall with a 44 px play key
+ * @LUMA_MEDIA_ROW_TOUCH: the compact row on a phone or tablet: a 64 px box
+ *   (44 px artwork, 10 px above and below) with a 44 px play key
  */
 typedef enum {
   LUMA_MEDIA_ROW_REGULAR,

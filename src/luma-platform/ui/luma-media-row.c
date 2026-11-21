@@ -176,19 +176,19 @@ static Metrics metrics(LumaMediaRow *self) {
                      LUMA_UI_MEDIA_ROW_REGULAR_PLAY,
                      0};
   gboolean touch = self->density == LUMA_MEDIA_ROW_TOUCH;
-  return (Metrics){LUMA_UI_MEDIA_ROW_COMPACT_ART,
+  return (Metrics){touch ? LUMA_UI_MEDIA_ROW_TOUCH_ART : LUMA_UI_MEDIA_ROW_COMPACT_ART,
                    LUMA_UI_MEDIA_ROW_COMPACT_ART_TOP,
                    LUMA_UI_MEDIA_ROW_COMPACT_TILE_PADDING,
                    LUMA_UI_MEDIA_ROW_COMPACT_BADGE,
                    LUMA_UI_MEDIA_ROW_COMPACT_BADGE_OFFSET,
                    LUMA_UI_MEDIA_ROW_COMPACT_COLUMN_GAP,
                    LUMA_UI_MEDIA_ROW_COMPACT_ROW_GAP,
-                   LUMA_UI_MEDIA_ROW_COMPACT_PADDING_TOP,
+                   touch ? LUMA_UI_MEDIA_ROW_TOUCH_PADDING_Y : LUMA_UI_MEDIA_ROW_COMPACT_PADDING_TOP,
                    LUMA_UI_MEDIA_ROW_COMPACT_PADDING_END,
-                   LUMA_UI_MEDIA_ROW_COMPACT_PADDING_BOTTOM,
+                   touch ? LUMA_UI_MEDIA_ROW_TOUCH_PADDING_Y : LUMA_UI_MEDIA_ROW_COMPACT_PADDING_BOTTOM,
                    LUMA_UI_MEDIA_ROW_COMPACT_PADDING_START,
                    touch ? LUMA_UI_MEDIA_ROW_TOUCH_PLAY : LUMA_UI_MEDIA_ROW_COMPACT_PLAY,
-                   touch ? LUMA_UI_MEDIA_ROW_TOUCH_ROW : 0};
+                   touch ? LUMA_UI_MEDIA_ROW_TOUCH_ROW : LUMA_UI_MEDIA_ROW_COMPACT_ROW};
 }
 
 static void nat(GtkWidget *widget, int for_width, int *width, int *height) {
@@ -269,7 +269,9 @@ static int compact_height(LumaMediaRow *self) {
   nat(self->text, -1, &w, &text_h);
   nat(self->slider, -1, &w, &slider_h);
   int content = text_h + m.row_gap + slider_h;
-  return MAX(m.min_height, m.padding_top + MAX(MAX(m.art, content), play_h) + m.padding_bottom);
+  /* The box is the row token (60 px in a panel, 64 under a finger), never less than the artwork or the
+   * key with their padding; the words and the slider sit inside it. */
+  return MAX(MAX(m.min_height, content), m.padding_top + MAX(m.art, play_h) + m.padding_bottom);
 }
 
 static gboolean would_stack(LumaMediaRow *self, int width) {
@@ -912,8 +914,12 @@ void luma_media_row_set_meter_segments(LumaMediaRow *self, guint segments) {
     g_clear_pointer(&self->meter, gtk_widget_unparent);
   } else {
     if (!self->meter) {
+      /* An output's level: thin rounded segments in one green, no zones. */
       self->meter = luma_audio_meter_new(1);
       luma_audio_meter_set_horizontal(LUMA_AUDIO_METER(self->meter), TRUE);
+      luma_audio_meter_set_zones(LUMA_AUDIO_METER(self->meter), FALSE);
+      luma_audio_meter_set_segment_shape(LUMA_AUDIO_METER(self->meter), LUMA_UI_MEDIA_ROW_REGULAR_METER_THICKNESS,
+                                         LUMA_UI_MEDIA_ROW_REGULAR_METER_GAP, LUMA_UI_MEDIA_ROW_REGULAR_METER_RADIUS);
       gtk_widget_insert_before(self->meter, GTK_WIDGET(self), self->badge);
       gtk_widget_set_visible(self->meter, regular(self));
     }

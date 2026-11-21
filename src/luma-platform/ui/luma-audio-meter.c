@@ -18,6 +18,9 @@ struct _LumaAudioMeter {
   gboolean clipped;
   gboolean horizontal;
   guint segments;
+  /* A segmented bar's own shape, or negative for the tokens'; zones off is an output's meter. */
+  double segment_thickness, segment_gap, segment_radius;
+  gboolean zones;
   /* What a segmented bar shows now: it redraws only when one of these changes. */
   guint drawn_lit[2];
   int drawn_peak[2];
@@ -45,6 +48,14 @@ static int peak_segment_at(guint segments, double peak) {
   return (int)luma_audio_meter_segments_lit_at(segments, peak) - 1;
 }
 
+static double bar_thickness(LumaAudioMeter *self) {
+  return self->segments > 0 && self->segment_thickness > 0 ? self->segment_thickness : LUMA_UI_METER_BAR;
+}
+
+static double segment_gap(LumaAudioMeter *self) {
+  return self->segment_gap >= 0 ? self->segment_gap : LUMA_UI_METER_SEGMENT_GAP;
+}
+
 /* A continuous bar redraws on every change; a segmented one when a segment
  * lights, goes out, or the peak segment moves. */
 static void queue_redraw(LumaAudioMeter *self) {
@@ -55,7 +66,7 @@ static void queue_redraw(LumaAudioMeter *self) {
   gboolean changed = FALSE;
   for (guint i = 0; i < 2; i++) {
     guint lit = luma_audio_meter_segments_lit_at(self->segments, self->shown[i]);
-    int peak = peak_segment_at(self->segments, self->peak[i]);
+    int peak = self->zones ? peak_segment_at(self->segments, self->peak[i]) : -1;
     if (lit != self->drawn_lit[i] || peak != self->drawn_peak[i]) {
       self->drawn_lit[i] = lit;
       self->drawn_peak[i] = peak;
@@ -99,10 +110,10 @@ static void luma_audio_meter_measure(GtkWidget *widget, GtkOrientation orientati
   LumaAudioMeter *self = LUMA_AUDIO_METER(widget);
   gboolean across = (orientation == GTK_ORIENTATION_VERTICAL) == self->horizontal;
   if (across) {
-    *minimum = *natural = (int)(self->channels * LUMA_UI_METER_BAR + (self->channels - 1) * LUMA_UI_METER_GAP);
+    *minimum = *natural = (int)ceil(self->channels * bar_thickness(self) + (self->channels - 1) * LUMA_UI_METER_GAP);
   } else if (self->segments > 0) {
     /* Every segment keeps its shortest length and every gap. */
-    int fit = (int)(self->segments * LUMA_UI_METER_SEGMENT_MIN + (self->segments - 1) * LUMA_UI_METER_SEGMENT_GAP);
+    int fit = (int)ceil(self->segments * LUMA_UI_METER_SEGMENT_MIN + (self->segments - 1) * segment_gap(self));
     *minimum = MAX(LUMA_UI_METER_MIN_LENGTH, fit);
     *natural = MAX(LUMA_UI_METER_LENGTH, fit);
   } else {
@@ -142,47 +153,60 @@ static void draw_bar(LumaAudioMeter *self, GtkSnapshot *snapshot, const GdkRGBA 
     graphene_rect_t part = self->horizontal
                                ? GRAPHENE_RECT_INIT((float)(a * along), offset, (float)((b - a) * along), across)
                                : GRAPHENE_RECT_INIT(offset, (float)((1 - b) * along), across, (float)((b - a) * along));
-    gtk_snapshot_append_color(snapshot, &colors[NODE_LOW + z], &part);
+    gtk_snapshot_append_color(snapshot, &colors[self->zones ? NODE_LOW + z : NODE_LOW], &part);
   }
   double tick = luma_audio_meter_db_to_fraction(peak);
   if (peak > FLOOR_DB + 0.5) {
     float t = 2;
     graphene_rect_t mark = self->horizontal ? GRAPHENE_RECT_INIT((float)(tick * along) - t, offset, t, across)
                                             : GRAPHENE_RECT_INIT(offset, (float)((1 - tick) * along), across, t);
-    gtk_snapshot_append_color(snapshot, &colors[peak >= LUMA_UI_METER_HIGH_DB ? NODE_HIGH : NODE_PEAK], &mark);
+    gtk_snapshot_append_color(snapshot, &colors[self->zones && peak >= LUMA_UI_METER_HIGH_DB ? NODE_HIGH : NODE_PEAK], &mark);
   }
   gtk_snapshot_pop(snapshot);
 }
 
 /* A segmented bar: N whole-pixel segments a gap apart, lit to the level in
- * the zone colour of each segment's middle, and the peak's segment lit. */
+ * the zone colour of each segment's middle, and the peak's segment lit.
+ * Without zones every lit segment is the quiet colour and no peak is held.
+ * With a segment radius each segment is rounded; else the bar's ends are. */
 static void draw_segments(LumaAudioMeter *self, GtkSnapshot *snapshot, const GdkRGBA *colors, float along,
                           float across, float offset, double level, double peak) {
-  float radius = MIN(across / 2, 2);
-  graphene_rect_t whole = self->horizontal ? GRAPHENE_RECT_INIT(0, offset, along, across)
-                                           : GRAPHENE_RECT_INIT(offset, 0, across, along);
+  gboolean each = self->segment_radius >= 0;
+  float gap = (float)segment_gap(self);
   GskRoundedRect rounded;
-  gsk_rounded_rect_init_from_rect(&rounded, &whole, radius);
-  gtk_snapshot_push_rounded_clip(snapshot, &rounded);
+  if (!each) {
+    graphene_rect_t whole = self->horizontal ? GRAPHENE_RECT_INIT(0, offset, along, across)
+                                             : GRAPHENE_RECT_INIT(offset, 0, across, along);
+    gsk_rounded_rect_init_from_rect(&rounded, &whole, MIN(across / 2, 2));
+    gtk_snapshot_push_rounded_clip(snapshot, &rounded);
+  }
   guint n = self->segments;
   guint lit = luma_audio_meter_segments_lit_at(n, level);
-  int peak_index = peak_segment_at(n, peak);
-  double pitch = (along + LUMA_UI_METER_SEGMENT_GAP) / n;
+  int peak_index = self->zones ? peak_segment_at(n, peak) : -1;
+  double pitch = (along + gap) / n;
   for (guint i = 0; i < n; i++) {
     float start = (float)round(i * pitch);
-    float end = (float)round((i + 1) * pitch) - LUMA_UI_METER_SEGMENT_GAP;
+    float end = (float)round((i + 1) * pitch - gap);
     if (end <= start)
       continue;
     guint node = NODE_TRACK;
     if (i < lit || (int)i == peak_index) {
       double middle = FLOOR_DB + (i + 0.5) / n * 72.0;
-      node = middle >= LUMA_UI_METER_HIGH_DB ? NODE_HIGH : middle >= LUMA_UI_METER_MID_DB ? NODE_MID : NODE_LOW;
+      node = !self->zones ? NODE_LOW
+             : middle >= LUMA_UI_METER_HIGH_DB ? NODE_HIGH : middle >= LUMA_UI_METER_MID_DB ? NODE_MID : NODE_LOW;
     }
     graphene_rect_t part = self->horizontal ? GRAPHENE_RECT_INIT(start, offset, end - start, across)
                                             : GRAPHENE_RECT_INIT(offset, along - end, across, end - start);
+    if (each) {
+      gsk_rounded_rect_init_from_rect(&rounded, &part, (float)MIN(self->segment_radius, MIN(end - start, across) / 2));
+      gtk_snapshot_push_rounded_clip(snapshot, &rounded);
+    }
     gtk_snapshot_append_color(snapshot, &colors[node], &part);
+    if (each)
+      gtk_snapshot_pop(snapshot);
   }
-  gtk_snapshot_pop(snapshot);
+  if (!each)
+    gtk_snapshot_pop(snapshot);
 }
 
 static void luma_audio_meter_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
@@ -273,6 +297,8 @@ static void luma_audio_meter_init(LumaAudioMeter *self) {
     gtk_widget_set_parent(self->nodes[i], GTK_WIDGET(self));
   }
   self->channels = 2;
+  self->segment_thickness = self->segment_gap = self->segment_radius = -1;
+  self->zones = TRUE;
   self->accessible_bucket = G_MININT;
   for (guint i = 0; i < 2; i++) {
     self->target[i] = self->shown[i] = self->peak[i] = FLOOR_DB;
@@ -325,6 +351,47 @@ guint luma_audio_meter_get_segments(LumaAudioMeter *self) {
   return self->segments;
 }
 
+void luma_audio_meter_set_segment_shape(LumaAudioMeter *self, double thickness, double gap, double radius) {
+  g_return_if_fail(LUMA_IS_AUDIO_METER(self));
+  thickness = thickness > 0 ? thickness : -1;
+  gap = gap >= 0 ? gap : -1;
+  radius = radius >= 0 ? radius : -1;
+  if (self->segment_thickness == thickness && self->segment_gap == gap && self->segment_radius == radius)
+    return;
+  self->segment_thickness = thickness;
+  self->segment_gap = gap;
+  self->segment_radius = radius;
+  gtk_widget_queue_resize(GTK_WIDGET(self));
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void luma_audio_meter_get_segment_shape(LumaAudioMeter *self, double *thickness, double *gap, double *radius) {
+  g_return_if_fail(LUMA_IS_AUDIO_METER(self));
+  if (thickness)
+    *thickness = bar_thickness(self);
+  if (gap)
+    *gap = segment_gap(self);
+  if (radius)
+    *radius = self->segment_radius;
+}
+
+void luma_audio_meter_set_zones(LumaAudioMeter *self, gboolean zones) {
+  g_return_if_fail(LUMA_IS_AUDIO_METER(self));
+  zones = !!zones;
+  if (self->zones == zones)
+    return;
+  self->zones = zones;
+  luma_ui_set_css_class(GTK_WIDGET(self), "plain", !zones);
+  for (guint i = 0; i < 2; i++)
+    self->drawn_peak[i] = zones ? peak_segment_at(self->segments, self->peak[i]) : -1;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+gboolean luma_audio_meter_get_zones(LumaAudioMeter *self) {
+  g_return_val_if_fail(LUMA_IS_AUDIO_METER(self), TRUE);
+  return self->zones;
+}
+
 guint luma_audio_meter_segments_lit_at(guint segments, double db) {
   if (segments == 0 || isnan(db))
     return 0;
@@ -340,7 +407,7 @@ guint luma_audio_meter_get_lit_segments(LumaAudioMeter *self, guint channel) {
 int luma_audio_meter_get_peak_segment(LumaAudioMeter *self, guint channel) {
   g_return_val_if_fail(LUMA_IS_AUDIO_METER(self), -1);
   g_return_val_if_fail(channel < 2, -1);
-  return peak_segment_at(self->segments, self->peak[channel]);
+  return self->zones ? peak_segment_at(self->segments, self->peak[channel]) : -1;
 }
 
 double luma_audio_meter_get_level_db(LumaAudioMeter *self, guint channel) {

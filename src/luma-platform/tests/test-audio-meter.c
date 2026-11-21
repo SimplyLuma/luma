@@ -126,6 +126,42 @@ static void test_segments(void) {
     g_assert_cmpuint(luma_audio_meter_get_lit_segments(m, 0), ==, 10);
     g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 0), ==, 9);
   }
+  /* A segmented bar's own shape: its thickness is the bar's, and unset values are the tokens'. */
+  GtkWidget *shaped = luma_audio_meter_new(1);
+  LumaAudioMeter *s = LUMA_AUDIO_METER(shaped);
+  luma_audio_meter_set_horizontal(s, TRUE);
+  luma_audio_meter_set_segments(s, 32);
+  double thickness, gap, radius;
+  luma_audio_meter_get_segment_shape(s, &thickness, &gap, &radius);
+  g_assert_cmpfloat(thickness, ==, 4);
+  g_assert_cmpfloat(gap, ==, 1);
+  g_assert_cmpfloat(radius, <, 0);
+  int minimum, natural;
+  gtk_widget_measure(shaped, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural, NULL, NULL);
+  g_assert_cmpint(natural, ==, 4);
+  luma_audio_meter_set_segment_shape(s, 5, 3, 2);
+  luma_audio_meter_get_segment_shape(s, &thickness, &gap, &radius);
+  g_assert_cmpfloat(thickness, ==, 5);
+  g_assert_cmpfloat(gap, ==, 3);
+  g_assert_cmpfloat(radius, ==, 2);
+  gtk_widget_measure(shaped, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural, NULL, NULL);
+  g_assert_cmpint(natural, ==, 5);
+  /* Every segment keeps its shortest length and its gap. */
+  gtk_widget_measure(shaped, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, NULL, NULL);
+  g_assert_cmpint(minimum, ==, 32 * 2 + 31 * 3);
+  /* An output's meter has no zones and holds no peak. */
+  g_assert_true(luma_audio_meter_get_zones(s));
+  g_assert_false(gtk_widget_has_css_class(shaped, "plain"));
+  luma_audio_meter_set_levels_db(s, 0, 0);
+  g_assert_cmpint(luma_audio_meter_get_peak_segment(s, 0), ==, 26);
+  luma_audio_meter_set_zones(s, FALSE);
+  g_assert_false(luma_audio_meter_get_zones(s));
+  g_assert_true(gtk_widget_has_css_class(shaped, "plain"));
+  g_assert_cmpuint(luma_audio_meter_get_lit_segments(s, 0), ==, 27);
+  g_assert_cmpint(luma_audio_meter_get_peak_segment(s, 0), ==, -1);
+  g_object_ref_sink(shaped);
+  g_object_unref(shaped);
+
   /* Silence, and a level that is not a number, light nothing on a fresh meter. */
   GtkWidget *quiet = luma_audio_meter_new(1);
   luma_audio_meter_set_segments(LUMA_AUDIO_METER(quiet), 32);

@@ -26,7 +26,11 @@ G_BEGIN_DECLS
  * the one segment it reaches, lit. A segmented bar redraws only when a
  * segment changes. `LevelMeter` in Python is this part.
  *
- * Tree: box.lumaui-audio-meter(.horizontal)(.segmented)(.clipping) with style
+ * luma_audio_meter_set_zones(FALSE) is an output's meter, one colour with
+ * no zones; luma_audio_meter_set_segment_shape() gives a segmented bar its
+ * own thickness, gap and segment radius.
+ *
+ * Tree: box.lumaui-audio-meter(.horizontal)(.segmented)(.plain)(.clipping) with style
  * nodes .lumaui-meter-track, -low, -mid, -high, -peak.
  */
 #define LUMA_TYPE_AUDIO_METER (luma_audio_meter_get_type())
@@ -53,6 +57,35 @@ gboolean luma_audio_meter_get_horizontal(LumaAudioMeter *self);
 void luma_audio_meter_set_segments(LumaAudioMeter *self, guint segments);
 guint luma_audio_meter_get_segments(LumaAudioMeter *self);
 /**
+ * luma_audio_meter_set_segment_shape:
+ * @self: a meter
+ * @thickness: a segmented bar's thickness in px, or 0 for the bar token's
+ * @gap: px between segments, or a negative number for the token's
+ * @radius: each segment's corner radius, or a negative number to round
+ *   only the bar's ends
+ *
+ * A segmented bar's own shape (a 5 px bar of 2 px rounded segments 3 px
+ * apart). A continuous bar keeps the tokens' shape.
+ */
+void luma_audio_meter_set_segment_shape(LumaAudioMeter *self, double thickness, double gap, double radius);
+/**
+ * luma_audio_meter_get_segment_shape:
+ * @self: a meter
+ * @thickness: (out) (optional): the thickness in use
+ * @gap: (out) (optional): the gap in use
+ * @radius: (out) (optional): the segment radius, negative when unset
+ */
+void luma_audio_meter_get_segment_shape(LumaAudioMeter *self, double *thickness, double *gap, double *radius);
+/**
+ * luma_audio_meter_set_zones:
+ * @self: a meter
+ * @zones: FALSE for an output's meter: every lit segment or fill is the
+ *   quiet colour, the track is the control fill, and a segmented bar holds
+ *   no peak. TRUE (the default) is a recording meter with loud and hot zones.
+ */
+void luma_audio_meter_set_zones(LumaAudioMeter *self, gboolean zones);
+gboolean luma_audio_meter_get_zones(LumaAudioMeter *self);
+/**
  * luma_audio_meter_get_lit_segments:
  * @self: a meter
  * @channel: 0 (left or mono) or 1 (right)
@@ -67,7 +100,7 @@ guint luma_audio_meter_get_lit_segments(LumaAudioMeter *self, guint channel);
  * @channel: 0 or 1
  *
  * Returns: the index from the floor of the segment the peak hold lights, or
- *   -1 when no peak shows or the meter is continuous
+ *   -1 when no peak shows, the meter is continuous or it has no zones
  */
 int luma_audio_meter_get_peak_segment(LumaAudioMeter *self, guint channel);
 /**
