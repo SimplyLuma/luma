@@ -9,6 +9,8 @@ flat for a row, with the meter laid along the track over the track's length.
 
     AudioMeter(channels=2, horizontal=True)   # .set_levels_db(l, r), .set_levels(l, r)
     AudioMeter(2, segments=28)                # LED style: 28 segments per bar
+    AudioMeter(1, horizontal=True, segments=32, thickness=5, gap=3, radius=2, zones=False)
+                                              # an output's level: one green, no zones
 
 ``LevelMeter`` is the same part under the name a level display goes by;
 ``segments=0`` is the continuous bar, N > 0 draws N segments with the peak
@@ -40,10 +42,15 @@ __all__ = ["AudioMeter", "LevelMeter", "MixerRow", "MixerStrip", "VolumeSlider"]
 MAX_SEGMENTS = 128
 
 
-def AudioMeter(channels: int = 2, *, horizontal: bool = False, segments: int = 0, label: str | None = None):
+def AudioMeter(channels: int = 2, *, horizontal: bool = False, segments: int = 0, label: str | None = None,
+               thickness: float | None = None, gap: float | None = None, radius: float | None = None,
+               zones: bool = True):
     """A mono or stereo level meter; ``horizontal`` runs its bars left to right.
 
     ``segments`` 0 is a continuous bar; N (1 to 128) draws N segments per bar.
+    ``thickness``, ``gap`` and ``radius`` (px) shape a segmented bar's
+    segments; unset, the tokens' shape. ``zones=False`` is an output's meter:
+    every lit segment the quiet green, no loud or hot zone, no peak hold.
     """
     if channels not in (1, 2):
         raise ValueError(f"a meter has 1 or 2 channels, not {channels!r}")
@@ -53,6 +60,12 @@ def AudioMeter(channels: int = 2, *, horizontal: bool = False, segments: int = 0
     meter = L.AudioMeter.new(channels)
     meter.set_horizontal(horizontal)
     meter.set_segments(segments)
+    for name, value in (("thickness", thickness), ("gap", gap), ("radius", radius)):
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
+            raise ValueError(f"a meter's segment {name} is a length in px, not {value!r}")
+    if thickness is not None or gap is not None or radius is not None:
+        meter.set_segment_shape(thickness or 0, -1 if gap is None else gap, -1 if radius is None else radius)
+    meter.set_zones(bool(zones))
     if label is not None:
         from gi.repository import Gtk
 

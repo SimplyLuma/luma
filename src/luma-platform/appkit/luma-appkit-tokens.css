@@ -3024,6 +3024,9 @@
   --lumaui-media-row-regular-slider-gap: 10px;
   --lumaui-media-row-regular-readout-width: 38px;
   --lumaui-media-row-regular-meter-segments: 28px;
+  --lumaui-media-row-regular-meter-thickness: 3px;
+  --lumaui-media-row-regular-meter-gap: 2px;
+  --lumaui-media-row-regular-meter-radius: 1.5px;
   --lumaui-media-row-regular-meter-top: 6px;
   --lumaui-media-row-regular-stack-below: 440px;
   --lumaui-media-row-compact-art: 40px;

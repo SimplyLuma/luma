@@ -1,5 +1,5 @@
 {
-  "_doc": "LumaUI media row: one playing app as its content (artwork badged with the app), a title and a line, its transport and its volume. Regular is a card's block (Settings' Volume mixer), compact a row in a panel's well (Quick Options' Sound page), touch the compact row on a phone or tablet. The level glyph is the three bars before the line while sound is coming out; the chip is the row's trailing picker. Merged into lumaui by the generator: --lumaui-media-row-*, LUMA_UI_MEDIA_ROW_*, and src/luma-shell-presentation/mediaRowTokens.js for the Shell's St row. volume_slider.compact_* is LumaVolumeSlider's compact size, the knob and slot of a compact row.",
+  "_doc": "LumaUI media row: one playing app as its content (artwork badged with the app), a title and a line, its transport and its volume. Regular is a card's block (Settings' Volume mixer), compact a row in a panel's well (Quick Options' Sound page), touch the compact row on a phone or tablet. regular.meter_* is the block's level meter under the slider: its segments, their thickness, gap and corner radius. The level glyph is the three bars before the line while sound is coming out; the chip is the row's trailing picker. Merged into lumaui by the generator: --lumaui-media-row-*, LUMA_UI_MEDIA_ROW_*, and src/luma-shell-presentation/mediaRowTokens.js for the Shell's St row. volume_slider.compact_* is LumaVolumeSlider's compact size, the knob and slot of a compact row.",
   "lumaui": {
     "media_row": {
       "regular": {
@@ -26,6 +26,9 @@
         "slider_gap": 10,
         "readout_width": 38,
         "meter_segments": 28,
+        "meter_thickness": 3,
+        "meter_gap": 2,
+        "meter_radius": 1.5,
         "meter_top": 6,
         "stack_below": 440
       },

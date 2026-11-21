@@ -347,6 +347,19 @@ accessible value and description are updated in 6 dB steps rather than on
 every frame, so screen readers are not flooded.
 
 ```c
+void       luma_audio_meter_set_segment_shape (LumaAudioMeter *self, double thickness, double gap, double radius);
+void       luma_audio_meter_get_segment_shape (LumaAudioMeter *self, double *thickness, double *gap, double *radius);
+void       luma_audio_meter_set_zones         (LumaAudioMeter *self, gboolean zones);
+gboolean   luma_audio_meter_get_zones         (LumaAudioMeter *self);
+```
+
+A segmented bar takes its own shape: the bar's thickness, the gap between
+segments and each segment's corner radius, in px (0, or a negative number,
+keeps the token's). `_set_zones(FALSE)` is an output's meter (`.plain`): every
+lit segment is the quiet green over the control fill, with no loud or hot zone
+and no peak hold. A recording meter keeps its zones.
+
+```c
 void       luma_audio_meter_set_horizontal  (LumaAudioMeter *self, gboolean horizontal);
 double     luma_audio_meter_get_level_db    (LumaAudioMeter *self, guint channel);
 double     luma_audio_meter_get_peak_db     (LumaAudioMeter *self, guint channel);

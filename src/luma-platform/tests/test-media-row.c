@@ -169,6 +169,14 @@ static void test_regular(void) {
   g_assert_nonnull(meter);
   g_assert_cmpuint(luma_audio_meter_get_segments(meter), ==, 28);
   g_assert_true(luma_audio_meter_get_horizontal(meter));
+  /* An output's level: 3 px segments 2 px apart, 1.5 px round, one colour. */
+  double thickness, gap, radius;
+  luma_audio_meter_get_segment_shape(meter, &thickness, &gap, &radius);
+  g_assert_cmpfloat(thickness, ==, 3);
+  g_assert_cmpfloat(gap, ==, 2);
+  g_assert_cmpfloat(radius, ==, 1.5);
+  g_assert_false(luma_audio_meter_get_zones(meter));
+  g_assert_cmpint(gtk_widget_get_height(GTK_WIDGET(meter)), ==, 3);
   graphene_rect_t meter_box = bounds(GTK_WIDGET(meter), widget);
   g_assert_cmpfloat(meter_box.origin.x, ==, slider.origin.x + track.origin.x);
   g_assert_cmpfloat(meter_box.size.width, ==, track.size.width);
@@ -314,7 +322,7 @@ static void test_without_player(void) {
 }
 
 /* A row in a panel's well: 40 px artwork, the slider under the words, one
- * 32 px round key; under a finger at least 56 px with a 44 px key. */
+ * 32 px round key; under a finger a 64 px box of 44 px artwork with a 44 px key. */
 static void test_compact_and_touch(void) {
   GtkWidget *window, *widget = row_in_window(&window, 340);
   LumaMediaRow *row = LUMA_MEDIA_ROW(widget);
@@ -334,6 +342,8 @@ static void test_compact_and_touch(void) {
   g_assert_true(gtk_widget_has_css_class(widget, "paused"));
   int width = gtk_widget_get_width(widget), height = gtk_widget_get_height(widget);
   g_assert_cmpint(width, ==, 340);
+  /* The row token: a 60 px box. */
+  g_assert_cmpint(height, ==, 60);
 
   graphene_rect_t art_box = bounds(luma_media_row_get_art_widget(row), widget);
   g_assert_cmpfloat(art_box.origin.x, ==, 6);
@@ -378,10 +388,14 @@ static void test_compact_and_touch(void) {
   luma_media_row_set_density(row, LUMA_MEDIA_ROW_TOUCH);
   wait_ms(100);
   g_assert_true(gtk_widget_has_css_class(widget, "touch"));
-  g_assert_cmpint(gtk_widget_get_height(widget), >=, 56);
+  g_assert_cmpint(gtk_widget_get_height(widget), ==, 64);
   play_box = bounds(play, widget);
   g_assert_cmpfloat(play_box.size.width, ==, 44);
   g_assert_cmpfloat(play_box.size.height, ==, 44);
+  graphene_rect_t touch_art = bounds(luma_media_row_get_art_widget(row), widget);
+  g_assert_cmpfloat(touch_art.size.width, ==, 44);
+  g_assert_cmpfloat(touch_art.size.height, ==, 44);
+  g_assert_cmpfloat(touch_art.origin.y, ==, 10);
 
   /* Back to a card's block: everything it has returns. */
   luma_media_row_set_density(row, LUMA_MEDIA_ROW_REGULAR);

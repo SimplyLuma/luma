@@ -2466,6 +2466,9 @@ box.lumaui-audio-meter > .lumaui-meter-low { color: @luma_good; }
 box.lumaui-audio-meter > .lumaui-meter-mid { color: @luma_mark_yellow; }
 box.lumaui-audio-meter > .lumaui-meter-high { color: @luma_destructive; }
 box.lumaui-audio-meter > .lumaui-meter-peak { color: @luma_ink_secondary; }
+/* An output's meter (set_zones(FALSE)): one green over the control fill, no zones. */
+box.lumaui-audio-meter.plain > .lumaui-meter-track { color: @luma_control_fill; }
+box.lumaui-audio-meter.plain > .lumaui-meter-low { color: @luma_good; }
 
 /* LumaVolumeSlider (luma-volume-slider.c): the kit's slider (a recessed 4 px
  * track in the state fill, a raised 14 px knob with a state ring) drawn
@@ -2570,12 +2573,6 @@ lumaui-media-row.compact.paused label.lumaui-media-row-title,
 lumaui-media-row.compact.paused box.lumaui-media-row-line,
 lumaui-media-row.compact.paused > box.lumaui-media-row-art { opacity: var(--lumaui-media-row-compact-paused-opacity); }
 lumaui-media-row.muted > image.lumaui-media-row-volume { color: @luma_faint; }
-/* The row's meter under the slider: quiet segments on the card, the good
- * colour up to the level and only the loudest ones marked. */
-lumaui-media-row > box.lumaui-audio-meter.segmented > .lumaui-meter-track { color: alpha(@luma_ink, .1); }
-lumaui-media-row > box.lumaui-audio-meter.segmented > .lumaui-meter-mid { color: @luma_good; }
-lumaui-media-row > box.lumaui-audio-meter.segmented > .lumaui-meter-high,
-lumaui-media-row > box.lumaui-audio-meter.segmented > .lumaui-meter-peak { color: @luma_mark_yellow; }
 
 /* The row's trailing picker (luma_media_row_chip_new): a plain fill while
  * the choice is the default, raised when it is not. */
