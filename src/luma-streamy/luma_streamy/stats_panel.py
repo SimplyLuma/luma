@@ -34,7 +34,7 @@ WARN, DANGER = 0.75, 0.9
 def tone(value: float | None) -> str:
     if value is None or value < WARN:
         return "accent"
-    return "warning" if value < DANGER else "danger"
+    return "chart" if value < DANGER else "danger"  # no amber ProgressLine tone yet
 
 
 class _Section:
@@ -181,7 +181,7 @@ class StatsPanel(Gtk.Box):
                 widget.set_subtitle(destination_words(stats))
                 spark.set_values(stats.history[-og.HISTORY:])
                 spark.set_tone("danger" if stats.state in ("reconnecting", "error") else
-                               "warning" if stats.dropped_network or stats.dropped_encoder else "accent")
+                               "danger" if stats.dropped_network or stats.dropped_encoder else "accent")
         self.destinations.keep(keys)
         self.destinations.set_visible(bool(keys))
 
