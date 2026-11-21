@@ -17,6 +17,7 @@ can be tested anywhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 import logging
 import re
 from urllib.parse import urlsplit
@@ -52,6 +53,8 @@ class Player:
     can_go_previous: bool = False
     can_raise: bool = False
     changed: int = 0                 # order of the last change, newest highest
+    started: int = 0                 # order of the last time it began playing
+    starts: ClassVar[int] = 0        # the counter behind started
 
     @property
     def short_name(self) -> str:
@@ -69,12 +72,19 @@ def _stem(desktop_id: str) -> str:
 
 
 def match(players, *, key: str, desktop_id: str = "", binary: str = "", pids=()) -> Player | None:
-    """The player that belongs to an app, or None.
+    """The player that belongs to an app, or None: the first of matches()."""
+    found = matches(players, key=key, desktop_id=desktop_id, binary=binary, pids=pids)
+    return found[0] if found else None
+
+
+def matches(players, *, key: str, desktop_id: str = "", binary: str = "", pids=()) -> list[Player]:
+    """The players that belong to an app, the one to show first.
 
     Desktop entry first (the player says which app it is), then the bus name
     against the app's key, desktop entry and binary, then the process that
-    owns the name. Of several players of one app (a browser publishes one per
-    window) the one playing wins, then the one that changed last.
+    owns the name. Of several players of one app (a browser may publish one
+    per window or tab) the ones playing come first, then the one that
+    changed last.
     """
     stem = _stem(desktop_id)
     names = {n for n in (stem, stem.rsplit(".", 1)[-1], (key or "").casefold(),
@@ -93,9 +103,9 @@ def match(players, *, key: str, desktop_id: str = "", binary: str = "", pids=())
             continue
         ranked.append((rank, player.status != "Playing", -player.changed, player.bus_name, player))
     if not ranked:
-        return None
+        return []
     best_rank = min(r[0] for r in ranked)
-    return min(r for r in ranked if r[0] == best_rank)[-1]
+    return [r[-1] for r in sorted((r for r in ranked if r[0] == best_rank), key=lambda r: r[:-1])]
 
 
 def site_host(url: str) -> str:
@@ -111,17 +121,32 @@ def site_host(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
-def describe(player: Player | None, *, browser: bool = False) -> dict:
+def describe(player: Player | None, *, browser: bool = False, others=()) -> dict:
     """The row fields a player gives its app. Without a player the row keeps
-    the app's own name and icon and has no transport."""
+    the app's own name and icon and has no transport.
+
+    A browser playing in several tabs (others: its other playing players) is
+    one row: "2 tabs playing" over the tabs' sites, with the transport of the
+    tab that began playing last."""
     if player is None:
-        return {"player": "", "title": "", "artist": "", "art": "", "status": "",
+        return {"player": "", "title": "", "artist": "", "art": "", "status": "", "tabs": 0,
                 "position": -1, "can_play": False, "can_pause": False,
                 "can_go_next": False, "can_go_previous": False}
+    if browser and others:
+        playing = sorted([player, *others], key=lambda p: (-p.started, p.bus_name))
+        hosts = []
+        for tab in sorted(playing, key=lambda p: (p.started, p.bus_name)):
+            host = site_host(tab.url)
+            if host and host not in hosts:
+                hosts.append(host)
+        row = describe(playing[0], browser=True)
+        row.update(title=f"{len(playing)} tabs playing", artist=", ".join(hosts), tabs=len(playing))
+        return row
     control = player.can_control
     artist = player.artist or (site_host(player.url) if browser else "")
     return {
         "player": player.bus_name, "title": player.title, "artist": artist, "art": player.art_url,
+        "tabs": 1 if browser else 0,
         "status": player.status.lower(),
         "position": player.position if player.status == "Paused" else -1,
         "can_play": control and player.can_play, "can_pause": control and player.can_pause,
@@ -154,7 +179,11 @@ def apply_properties(player: Player, interface: str, changed: dict) -> bool:
     elif interface == PLAYER_INTERFACE:
         if "PlaybackStatus" in changed:
             status = _text(changed["PlaybackStatus"])
-            player.status = status if status in ("Playing", "Paused") else "Stopped"
+            status = status if status in ("Playing", "Paused") else "Stopped"
+            if status == "Playing" and player.status != "Playing":
+                Player.starts += 1
+                player.started = Player.starts
+            player.status = status
         metadata = changed.get("Metadata")
         if isinstance(metadata, dict):
             player.title = _text(metadata.get("xesam:title"))

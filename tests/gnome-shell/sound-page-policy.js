@@ -39,6 +39,19 @@ const packed = M.outputChips(six);
 assert(packed.more && same(packed.chips.map(o => o.name), ['B', 'C', 'D']),
     'more than four: the current output and the two used last, in list order, then More');
 assert(M.MAX_OUTPUT_CHIPS === tokens.output.max_count, 'the chip limit is the token');
+// An AirPlay speaker found nearby is an output like any other.
+const nearby = [{id: 'r1', name: 'Kitchen', state: 'idle', supported: true},
+    {id: 'r2', name: 'Living room', state: 'connected', supported: true, node_name: 'Living room'},
+    {id: 'r3', name: 'Far', state: 'unavailable', supported: true},
+    {id: 'r4', name: 'Old', state: 'idle', supported: false}];
+const three = four.slice(0, 3);
+const withAirPlay = M.outputChips(three, nearby.filter(r => r.id !== 'r2'));
+assert(!withAirPlay.more && same(withAirPlay.chips.map(o => o.label ?? o.name),
+    ['Speakers', 'WH-1000XM5', 'Studio monitors', 'Kitchen']) &&
+    withAirPlay.chips[3].receiver === 'r1' && withAirPlay.chips[3].kind === 'airplay',
+    'up to four: a nearby AirPlay speaker is a chip; one out of reach or unsupported is not');
+assert(same(M.outputChips(four, nearby).chips.map(o => o.name), ['Speakers', 'WH-1000XM5', 'Studio monitors']) &&
+    M.outputChips(four, nearby).more, 'a connected speaker is listed once, and a fifth entry brings More');
 assert(M.outputGlyph({kind: 'headphones'}) === 'lumaui-headphones-symbolic' &&
     M.outputGlyph({kind: 'usb'}) === 'lumaui-speaker-symbolic' &&
     M.outputGlyph({kind: 'airplay'}) === 'lumaui-airplay-symbolic' &&
@@ -81,6 +94,12 @@ assert(M.rowLine({...rows[1], output: 'Unplugged'}, outputs, words) === 'YouTube
     'an output that is not there is not named');
 assert(M.rowLine({...rows[0], muted: true}, outputs, words) === 'Muted', 'muted says only that');
 assert(M.rowLine(rows[2], outputs, words) === '', 'an app without a player repeats nothing under its name');
+const tabs = {name: 'Viola', player: 'p', title: '2 tabs playing', artist: 'simplyluma.com, video.example',
+    tabs: 2, playing: true};
+assert(M.rowTitle(tabs) === '2 tabs playing' &&
+    M.rowLine(tabs, outputs, words) === 'Viola · simplyluma.com, video.example' &&
+    M.rowLine({...tabs, tabs: 1, title: 'Film', artist: 'simplyluma.com'}, outputs, words) === 'Viola',
+    'a browser playing in several tabs names their sites under the count');
 assert(M.rowLine(rows[3], outputs, words) === 'Paused', 'and says Paused when it is');
 
 // Left and Right: 5 % at a time, on the grid, inside the range.
@@ -124,7 +143,8 @@ assert(/canPlayPause: !!\(app\.can_play \|\| app\.can_pause\)/.test(page), 'no p
 // The St row reads the LumaUI media row's tokens and answers the keys.
 assert(/import \{mediaRow as tokens\} from '\.\/mediaRowTokens\.js';/.test(row), 'the St row is drawn from the tokens');
 assert(tokens.compact.art === 40 && tokens.compact.badge === 17 && tokens.compact.play === 32 &&
-    tokens.touch.row === 56 && tokens.touch.play === 44, 'compact and touch metrics');
+    tokens.compact.row === 60 && tokens.touch.row === 64 && tokens.touch.art === 44 &&
+    tokens.touch.play === 44, 'compact and touch metrics');
 assert(/case Clutter\.KEY_space:[\s\S]*?this\.emit\('play-pause'\)/.test(row), 'Space plays or pauses the focused row');
 assert(/case Clutter\.KEY_m:\s*case Clutter\.KEY_M:\s*this\.emit\('mute-toggled', !this\._state\.muted\)/.test(row),
     'M mutes the focused row');

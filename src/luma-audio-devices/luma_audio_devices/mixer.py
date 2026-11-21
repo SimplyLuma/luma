@@ -214,9 +214,11 @@ class Mixer:
                 self._order += 1
                 row.order = self._order
             if row.listed and row.kind == "app":
-                player = mpris.match(players, key=row.key, desktop_id=row.desktop_id,
-                                     binary=row.binary, pids=row.pids)
-                row.media = mpris.describe(player, browser=row.browser)
+                found = mpris.matches(players, key=row.key, desktop_id=row.desktop_id,
+                                      binary=row.binary, pids=row.pids)
+                playing = [p for p in found if p.status == "Playing"] if row.browser else []
+                row.media = mpris.describe(found[0] if found else None, browser=row.browser,
+                                           others=playing[1:] if len(playing) > 1 else ())
                 # A player that says it is paused is paused, whatever its
                 # stream does (a browser keeps a silent stream running).
                 if row.media["status"] == "paused":

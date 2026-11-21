@@ -35,15 +35,34 @@ export function outputLabel(output) {
 }
 
 /**
- * The chips of the output grid. Up to four outputs are all shown, in the
- * service's order. With more, the three most recently used (the current one
- * always among them) in that same order, and `more` asks for a "More…" chip.
+ * AirPlay speakers found nearby that are not outputs yet: each is an output
+ * like any other (its own name, the AirPlay glyph); choosing one connects it.
  *
  * @param {object[]} outputs - GetOutputs entries
+ * @param {object[]} receivers - GetAirPlayReceivers entries
+ * @returns {object[]} entries shaped like outputs, with `receiver` (its id)
+ */
+export function airPlayOutputs(outputs, receivers) {
+    const names = new Set((outputs ?? []).map(output => output.name));
+    return (receivers ?? [])
+        .filter(r => r.state !== 'unavailable' && r.supported !== false &&
+            !(r.node_name && names.has(r.node_name)))
+        .map(r => ({name: `airplay:${r.id}`, kind: 'airplay', label: r.name, receiver: r.id,
+            busy: !!r.busy || r.state === 'connecting'}));
+}
+
+/**
+ * The chips of the output grid. Up to four outputs are all shown, in the
+ * service's order, AirPlay speakers found nearby after them. With more, the
+ * three most recently used (the current one always among them) in that same
+ * order, and `more` asks for a "More…" chip.
+ *
+ * @param {object[]} outputs - GetOutputs entries
+ * @param {object[]} [receivers] - GetAirPlayReceivers entries
  * @returns {{chips: object[], more: boolean}}
  */
-export function outputChips(outputs) {
-    const list = outputs ?? [];
+export function outputChips(outputs, receivers = []) {
+    const list = [...outputs ?? [], ...airPlayOutputs(outputs, receivers)];
     if (list.length <= MAX_OUTPUT_CHIPS)
         return {chips: [...list], more: false};
     const recent = [...list].sort((a, b) =>
@@ -84,7 +103,8 @@ export function rowTitle(app, windowTitle = '') {
 
 /**
  * The words under a row's title: the app, then where it plays when that is
- * not the main output, else that it is paused. Muted says only that.
+ * not the main output, else that it is paused. Muted says only that. A
+ * browser playing in several tabs ("2 tabs playing") names their sites.
  *
  * @param {object} app - a playing row
  * @param {object[]} outputs - GetOutputs entries
@@ -106,7 +126,8 @@ export function rowLine(app, outputs, words) {
         state = words.on(outputLabel(away));
     else if (!app.playing)
         state = words.paused;
-    return [lead, state].filter(Boolean).join(' · ');
+    const sites = Number(app.tabs ?? 0) >= 2 ? app.artist || '' : '';
+    return [lead, sites, state].filter(Boolean).join(' · ');
 }
 
 /**

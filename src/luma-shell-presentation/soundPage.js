@@ -22,6 +22,7 @@ export const SoundPage = GObject.registerClass({
         // The header's "N playing"; '' hides it.
         'summary-changed': {param_types: [GObject.TYPE_STRING]},
         'more-outputs': {},
+        'choose-receiver': {param_types: [GObject.TYPE_STRING]},
         'open-mixer': {},
     },
 }, class LumaSoundPage extends St.BoxLayout {
@@ -47,6 +48,7 @@ export const SoundPage = GObject.registerClass({
         this._chips = [];
         this._shown = false;
         this._touch = false;
+        this._receivers = [];
         this._maxHeight = 0;
 
         this._master = this._buildMaster(master, masterIcon, masterValue);
@@ -149,6 +151,14 @@ export const SoundPage = GObject.registerClass({
         const box = new St.BoxLayout({style_class: 'lumaui-filled-level lumaui-sound-master', x_expand: true});
         box.add_child(track);
         return box;
+    }
+
+    // AirPlay speakers found nearby (GetAirPlayReceivers entries): chips
+    // among the outputs.
+    setReceivers(receivers) {
+        this._receivers = receivers ?? [];
+        if (this._shown)
+            this._renderOutputs();
     }
 
     // The full output list in place of the page ("More…"), or the page again.
@@ -306,13 +316,13 @@ export const SoundPage = GObject.registerClass({
 
     _renderOutputs() {
         const outputs = this._mixer.available ? this._mixer.outputs : [];
-        const {chips, more} = Model.outputChips(outputs);
+        const {chips, more} = Model.outputChips(outputs, this._mixer.available ? this._receivers : []);
         const wanted = chips.map(output => ({key: output.name, output}));
         if (more)
             wanted.push({key: '\0more'});
         const layout = this._outputs.layout_manager;
         const signature = wanted.map(w => `${w.key}|${w.output ? Model.outputLabel(w.output) : ''}|` +
-            `${w.output?.kind ?? ''}|${w.output?.default ? 1 : 0}`).join('\n');
+            `${w.output?.kind ?? ''}|${w.output?.default ? 1 : 0}|${w.output?.busy ? 1 : 0}`).join('\n');
         if (signature === this._chipSignature)
             return;
         this._chipSignature = signature;
@@ -338,8 +348,15 @@ export const SoundPage = GObject.registerClass({
                 chip.add_style_class_name('on');
                 chip.add_accessible_state(Atk.StateType.CHECKED);
             }
+            // A speaker being connected waits: dimmed, not pressable.
+            if (output?.busy) {
+                chip.reactive = false;
+                chip.opacity = 150;
+            }
             chip.connect('clicked', () => {
-                if (output)
+                if (output?.receiver)
+                    this.emit('choose-receiver', output.receiver);
+                else if (output)
                     this._mixer.setDefaultOutput(output.name);
                 else
                     this.emit('more-outputs');

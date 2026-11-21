@@ -157,9 +157,13 @@
                         other sound)
         other (b)       one of the other sounds
         player (s)      bus name of the app's MPRIS player, or ""
-        title (s)       what is playing, or "": show the app's name
+        title (s)       what is playing, or "": show the app's name. A browser
+                        playing in several tabs: "2 tabs playing"
         artist (s)      the artist; for a browser without one, the site
-                        ("simplyluma.com"); or ""
+                        ("simplyluma.com"), or the sites of its playing
+                        tabs; or ""
+        tabs (x)        a browser's playing tabs (one player each), 0 for
+                        other apps; the transport is the tab that began last
         art (s)         artwork URL, or "": show the app's icon
         status (s)      "playing", "paused", "stopped", or "" without a player
         position (x)    microseconds into the track while paused, or -1

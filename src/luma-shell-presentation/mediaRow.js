@@ -115,9 +115,14 @@ export const MediaRow = GObject.registerClass({
         this.setTouch(touch);
     }
 
-    // Under a finger: at least 56 px tall with a 44 px key.
+    // Under a finger: a 64 px row, 44 px artwork and a 44 px key.
     setTouch(touch) {
         this._touch = !!touch;
+        const art = this._touch ? tokens.touch.art : C.art;
+        this._artBox.set_size(art, art);
+        this._art.set_size(art, art);
+        const at = art + C.badge_offset - C.badge - C.badge_ring;
+        this._badge.set_position(at, at);
         if (this._touch)
             this.add_style_class_name('touch');
         else

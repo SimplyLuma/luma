@@ -255,6 +255,42 @@ class Players(unittest.TestCase):
         tide.title = "Sloop John B"
         self.assertTrue(mixer.update(graph, 1.0, [tide, viola]))
 
+    def test_a_browser_playing_in_several_tabs_is_one_row(self):
+        graph = Graph()
+        graph.apply([stream(44, {"application.process.binary": "viola"}),
+                     stream(45, {"application.process.binary": "viola"})])
+        film = mpris.Player("org.mpris.MediaPlayer2.viola.instance7", title="Luma launch film",
+                            url="https://www.simplyluma.com/film", can_pause=True)
+        synth = mpris.Player("org.mpris.MediaPlayer2.viola.instance8", title="Restoring a 1978 studio synth",
+                             url="https://video.example/watch", can_pause=True, can_go_next=True)
+        mixer = Mixer(_Index(), _Control())
+        # One tab playing: the row is that tab.
+        mpris.apply_properties(film, mpris.PLAYER_INTERFACE, {"PlaybackStatus": "Playing"})
+        mixer.update(graph, 0.0, [film, synth])
+        (row,) = listed(mixer)
+        self.assertEqual((row["title"], row["artist"], row["tabs"]), ("Luma launch film", "simplyluma.com", 1))
+        # Two: the count over the sites in the order they began, and the
+        # transport of the tab that began last.
+        mpris.apply_properties(synth, mpris.PLAYER_INTERFACE, {"PlaybackStatus": "Playing"})
+        self.assertTrue(mixer.update(graph, 1.0, [film, synth]))
+        (row,) = listed(mixer)
+        self.assertEqual((row["title"], row["artist"], row["tabs"]),
+                         ("2 tabs playing", "simplyluma.com, video.example", 2))
+        self.assertEqual(row["player"], "org.mpris.MediaPlayer2.viola.instance8")
+        self.assertTrue(row["playing"] and row["can_go_next"])
+        self.assertEqual(mixer.player_of("viola"), "org.mpris.MediaPlayer2.viola.instance8")
+        # Pausing one leaves the other tab as the row.
+        mpris.apply_properties(synth, mpris.PLAYER_INTERFACE, {"PlaybackStatus": "Paused"})
+        mixer.update(graph, 2.0, [film, synth])
+        (row,) = listed(mixer)
+        self.assertEqual((row["title"], row["tabs"]), ("Luma launch film", 1))
+        # An app that is not a browser never counts tabs.
+        tide = [mpris.Player(f"org.mpris.MediaPlayer2.tide.instance{n}", desktop_entry="org.projectluma.Tide",
+                             status="Playing", title=f"Song {n}") for n in (1, 2)]
+        graph.apply([stream(40, {"application.id": "org.projectluma.Tide"})])
+        mixer.update(graph, 3.0, tide)
+        self.assertEqual([r["tabs"] for r in listed(mixer) if r["id"] == "org.projectluma.Tide"], [0])
+
     def test_site_host(self):
         self.assertEqual(mpris.site_host("https://www.simplyluma.com/a?b"), "simplyluma.com")
         self.assertEqual(mpris.site_host("file:///home/a.mp3"), "")
