@@ -846,6 +846,26 @@ class StreamyWindow(AppWindow):
 
         bus.call("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver", "org.gnome.ScreenSaver", "GetActive", None,
                  GLib.VariantType.new("(b)"), Gio.DBusCallFlags.NONE, 2000, None, answered)
+        # logind's LockedHint too, for a session without the screen saver's interface.
+        try:
+            system = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        except GLib.Error:
+            return
+        self._logind_bus = system
+
+        def changed(*args) -> None:
+            props = args[5].unpack()[1] if args[5] is not None else {}
+            if "LockedHint" in props:
+                self._lock_changed(bool(props["LockedHint"]))
+
+        try:
+            session = system.call_sync("org.freedesktop.login1", "/org/freedesktop/login1",
+                                       "org.freedesktop.login1.Manager", "GetSession", GLib.Variant("(s)", ("auto",)),
+                                       GLib.VariantType.new("(o)"), Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+        except GLib.Error:
+            return
+        system.signal_subscribe("org.freedesktop.login1", "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                                session, None, Gio.DBusSignalFlags.NONE, changed)
 
     def _lock_changed(self, locked: bool) -> None:
         if locked == self.locked:
