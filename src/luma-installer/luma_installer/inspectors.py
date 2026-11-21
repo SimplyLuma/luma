@@ -304,7 +304,18 @@ def architecture_is_compatible(report: PackageReport) -> bool:
     if value in {"unknown", "runtime-selected", "bundle-declared", "package-declared", "all", "noarch", "any"}:
         return True
     aliases = {"x86_64": {"x86_64", "amd64"}, "aarch64": {"aarch64", "arm64"}}
-    return any(token in value for token in aliases.get(host, {host}))
+    if any(token in value for token in aliases.get(host, {host})):
+        return True
+    if needs_two_architectures(report):
+        # Only the application store builds a tree with both architectures (closure.py).
+        from . import store_install
+        return store_install.enabled() and not store_install.missing_tools("deb")
+    return False
+
+
+def needs_two_architectures(report: PackageReport) -> bool:
+    """A 32-bit x86 Debian package on a 64-bit x86 device: it runs from a tree that holds both."""
+    return report.kind == "deb" and report.architecture.lower() == "i386" and host_architecture() == "x86_64"
 
 
 def architecture_name(value: str) -> str:

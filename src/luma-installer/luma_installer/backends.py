@@ -851,6 +851,10 @@ def install(report: PackageReport) -> str:
             try:
                 return store_install.install(report, stage_user_copy(report.path, report.sha256))
             except store_install.Fallback as failure:
+                from .inspectors import architecture_mismatch_message, needs_two_architectures
+                if needs_two_architectures(report):
+                    # A capsule holds one architecture: there is no earlier way to install this one.
+                    raise InstallerError(f"{architecture_mismatch_message(report)} ({failure.reason})") from failure
                 fallback = failure
         name = _install_earlier(report)
         if fallback is not None:

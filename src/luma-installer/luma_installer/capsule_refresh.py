@@ -283,12 +283,15 @@ def _exec(container: str, command: list[str], *, timeout: int = 600, check: bool
 
 
 @contextmanager
-def hidden_display(runtime: Path | None = None) -> Iterator[tuple[Path, str] | None]:
+def hidden_display(runtime: Path | None = None, x11: bool = False) -> Iterator[tuple[Path, str] | None]:
     """A Wayland display nobody sees, for one start; None when there cannot be one.
 
     The session's own compositor runs a second time, headless, with one
     virtual monitor. It reaches the session bus through a filter that grants
     nothing, so it cannot answer for the real shell.
+
+    With ``x11`` the hidden compositor also keeps an X server of its own, for
+    an application that still needs one; `hidden_x11` says where it is.
     """
     runtime = runtime or Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
     address = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
@@ -309,13 +312,17 @@ def hidden_display(runtime: Path | None = None) -> Iterator[tuple[Path, str] | N
         environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": f"unix:path={bus}", "XDG_RUNTIME_DIR": str(runtime)}
         for variable in ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY"):
             environment.pop(variable, None)
+        report = runtime / f"{name}.x11"
+        # The compositor tells what it starts where its X server is; that is how it is learned here.
+        tell = ["--", "sh", "-c", 'printf "%s\\n%s\\n" "$DISPLAY" "$XAUTHORITY" > "$1.partial" && mv "$1.partial" "$1"; '
+                'exec sleep infinity', "sh", str(report)] if x11 else []
         processes.append(subprocess.Popen(
-            [compositor, "--headless", "--wayland", "--no-x11", "--wayland-display", name,
-             "--virtual-monitor", "1280x800"], env=environment,
+            [compositor, "--headless", "--wayland", *([] if x11 else ["--no-x11"]), "--wayland-display", name,
+             "--virtual-monitor", "1280x800", *tell], env=environment,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         socket = runtime / name
         for _attempt in range(1500):  # half a second when idle; a busy device takes longer
-            if socket.exists() or processes[-1].poll() is not None:
+            if (socket.exists() and (not x11 or report.exists())) or processes[-1].poll() is not None:
                 break
             time.sleep(0.02)
         yield (socket, name) if socket.exists() and processes[-1].poll() is None else None
@@ -327,8 +334,18 @@ def hidden_display(runtime: Path | None = None) -> Iterator[tuple[Path, str] | N
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-        for leftover in (bus, runtime / name, runtime / f"{name}.lock"):
+        for leftover in (bus, runtime / name, runtime / f"{name}.lock", runtime / f"{name}.x11",
+                         runtime / f"{name}.x11.partial"):
             leftover.unlink(missing_ok=True)
+
+
+def hidden_x11(runtime: Path, name: str) -> tuple[str, str] | None:
+    """(DISPLAY, XAUTHORITY) of the hidden compositor's X server, or None when it has none."""
+    try:
+        display, authority = (runtime / f"{name}.x11").read_text().split("\n")[:2]
+    except (OSError, ValueError):
+        return None
+    return (display, authority) if display else None
 
 
 def smoke_arguments(record: dict[str, object], image: str, home: Path, display: tuple[Path, str] | None,

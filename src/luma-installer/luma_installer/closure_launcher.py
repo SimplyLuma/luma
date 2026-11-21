@@ -462,8 +462,9 @@ def hidden_start(store: Store, app_id: str, record: dict[str, object] | None = N
     described = guard_record(app_id, tree, record)
     uid = os.getuid()
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
+    relay = None
     with tempfile.TemporaryDirectory(prefix="luma-smoke-", dir=capsule_refresh._scratch_root()) as directory, \
-            capsule_refresh.hidden_display(runtime) as display:
+            capsule_refresh.hidden_display(runtime, x11=not console) as display:
         if display is None and not console:
             return True, "no hidden display on this system; libraries checked only"
         home, instance = Path(directory) / "home", Path(directory) / "run"
@@ -477,40 +478,56 @@ def hidden_start(store: Store, app_id: str, record: dict[str, object] | None = N
         environment = session_boundary.cleaned(dict(os.environ))
         if display is not None and not console:
             environment.update({"WAYLAND_DISPLAY": display[1], "XDG_SESSION_TYPE": "wayland"})
-        session = session_boundary.view(runtime, Path(f"/run/user/{uid}"), environment, sound=False)
-        arguments, env = sandbox_arguments(checkout, described, data=home, instance=instance, session=session, level=level,
-                                           folders=[], environment=environment, network=False)
-        front, filter_options = capsule_launcher._confinement(described)
-        command = str(exports.get("command") or "")
-        if console:
-            # A console program needs a terminal to stay up; finding it proves the tree is whole.
-            program = ["sh", "-c", 'command -v "$1" >/dev/null', "sh", (shlex.split(command) or ["sh"])[0]]
-        else:
-            program = payload(tree, session.wayland, [])
-        started = time.monotonic()
+            # An application that still needs X finds the hidden compositor's server, through the
+            # same kind of socket of its own a real start gives it.
+            server = capsule_refresh.hidden_x11(runtime, display[1])
+            if server is not None:
+                try:
+                    sockets = runtime / "luma-installer-bus"
+                    sockets.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    relay = capsule_display.relay_for_session(sockets / f"smoke-{os.getpid()}.x11", runtime, *server)
+                    if relay is not None:
+                        relay.start()
+                except OSError:
+                    relay = None
         try:
-            process = subprocess.Popen([*front, *arguments, *filter_options, "--", *program], env=env,
-                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        except OSError as error:
-            return False, str(error)
-        try:
-            _out, errors = process.communicate(timeout=120 if console else seconds)
-        except subprocess.TimeoutExpired:
-            # Still up after the wait: that is the pass.
-            process.terminate()
+            session = session_boundary.view(runtime, Path(f"/run/user/{uid}"), environment, sound=False, display=relay)
+            arguments, env = sandbox_arguments(checkout, described, data=home, instance=instance, session=session, level=level,
+                                               folders=[], environment=environment, network=False)
+            front, filter_options = capsule_launcher._confinement(described)
+            command = str(exports.get("command") or "")
+            if console:
+                # A console program needs a terminal to stay up; finding it proves the tree is whole.
+                program = ["sh", "-c", 'command -v "$1" >/dev/null', "sh", (shlex.split(command) or ["sh"])[0]]
+            else:
+                program = payload(tree, session.wayland, [])
+            started = time.monotonic()
             try:
-                process.communicate(timeout=20)
+                process = subprocess.Popen([*front, *arguments, *filter_options, "--", *program], env=env,
+                                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            except OSError as error:
+                return False, str(error)
+            try:
+                _out, errors = process.communicate(timeout=120 if console else seconds)
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.communicate()
-            return (True, f"stayed up for {seconds:g} s") if not console else (False, "did not answer")
-        elapsed = time.monotonic() - started
-        tail = [line for line in errors.decode("utf-8", "replace").splitlines() if line.strip()][-launch_guard.STDERR_LINES:]
-        failure = launch_guard.classify(process.returncode, elapsed, tail)
-        if failure is None and process.returncode == 0:
-            return True, f"exited cleanly after {elapsed:.1f} s"
-        return False, (tail[-1] if tail else f"exited with status {process.returncode} after {elapsed:.1f} s")[:300]
+                # Still up after the wait: that is the pass.
+                process.terminate()
+                try:
+                    process.communicate(timeout=20)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
+                return (True, f"stayed up for {seconds:g} s") if not console else (False, "did not answer")
+            elapsed = time.monotonic() - started
+            tail = [line for line in errors.decode("utf-8", "replace").splitlines() if line.strip()][-launch_guard.STDERR_LINES:]
+            failure = launch_guard.classify(process.returncode, elapsed, tail)
+            if failure is None and process.returncode == 0:
+                return True, f"exited cleanly after {elapsed:.1f} s"
+            return False, (tail[-1] if tail else f"exited with status {process.returncode} after {elapsed:.1f} s")[:300]
 
+        finally:
+            if relay is not None:
+                relay.stop()
 
 def launch_record(record: dict[str, object], extra: list[str] | None = None) -> int:
     """Start an installed application whose record names a tree in the store."""
