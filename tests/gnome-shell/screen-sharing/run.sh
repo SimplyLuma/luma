@@ -3,7 +3,8 @@
 # One headless Luma session with the real portal stack, then probe.js.
 # Inside a Fedora container with the Shell, luma-portal, PipeWire,
 # xdg-desktop-portal and GStreamer installed; this directory is /oracle/t.
-# ORACLE_OUT, MODE (full|look), SUFFIX, ORACLE_KEYFILE, ORACLE_W, ORACLE_H.
+# ORACLE_OUT, MODE (full|look|exp|perf), SUFFIX, ORACLE_KEYFILE, ORACLE_W, ORACLE_H,
+# ORACLE_MONITORS (more monitors, e.g. "2560x1440 1920x1200").
 set -u
 T=${SHARE_HARNESS:-/oracle/t}
 export XDG_RUNTIME_DIR=/tmp/share-run; rm -rf $XDG_RUNTIME_DIR; mkdir -m 700 -p $XDG_RUNTIME_DIR
@@ -29,5 +30,6 @@ timeout ${ORACLE_TIMEOUT:-420} dbus-run-session -- bash -c '
   sleep 1
   gnome-shell --headless --no-x11 --force-animations \
     --virtual-monitor ${ORACLE_W:-1920}x${ORACLE_H:-1200} \
+    $(for m in ${ORACLE_MONITORS:-}; do printf -- "--virtual-monitor %s " $m; done) \
     --automation-script=$SHARE_HARNESS/probe.js' > "$ORACLE_OUT/shell${SUFFIX:-}.log" 2>&1
 echo "exit $?"

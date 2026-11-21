@@ -10,11 +10,17 @@
 // MODE=full   light, every scenario below
 // MODE=look   the picker only (windows, screens, resolved requester), for the
 //             dark and 200% passes
+// MODE=perf   what the Shell spends with the picker open (Windows, then
+//             Screens) next to the same desktop without it: CPU time,
+//             frames painted on each monitor and the scrim blur's texture
+//             allocations. With ORACLE_SCALES (e.g. 1,1,1.25) the monitors
+//             get those scales. Writes perf.json.
 // Writes screenshots, state-*.json and checks.json to $ORACLE_OUT.
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
+import Mtk from 'gi://Mtk';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -205,7 +211,8 @@ async function keyboardShare() {
     await wait(1200);
     await shot('02-picker-windows-a');
     write('state-02-picker-windows', pickerState());
-    await wait(700);
+    // Previews take their source again at most once a second.
+    await wait(1200);
     await shot('02-picker-windows-b');
     const state = pickerState();
     check('S1 opens on Windows with both tabs', state.tabsVisible && state.mode === 'windows', state.tabs);
@@ -455,6 +462,99 @@ async function lookOnly(suffix) {
     await resolvedRequester(suffix);
 }
 
+// ── Cost ──────────────────────────────────────────────────────────────────
+
+const CLOCK_TICKS = 100;
+function cpuMs() {
+    const [, bytes] = GLib.file_get_contents('/proc/self/stat');
+    const stat = new TextDecoder().decode(bytes);
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    return (Number(fields[11]) + Number(fields[12])) * 1000 / CLOCK_TICKS;
+}
+
+function scrimAllocations() {
+    const effect = picker()?._scrim?.get_effect('luma-share-blur');
+    return effect?.get_framebuffer_allocations?.() ?? null;
+}
+
+// CPU time and frames painted on each monitor over `ms`.
+async function cost(label, ms = 5000) {
+    const frames = new Map();
+    const id = global.stage.connect('after-paint', (_stage, view) =>
+        frames.set(view, (frames.get(view) ?? 0) + 1));
+    const allocationsBefore = scrimAllocations();
+    const cpu0 = cpuMs(), t0 = now();
+    await wait(ms);
+    const cpu = cpuMs() - cpu0, seconds = (now() - t0) / 1e6;
+    global.stage.disconnect(id);
+    const allocationsAfter = scrimAllocations();
+    const views = global.stage.peek_stage_views().map(v => {
+        const layout = new Mtk.Rectangle();
+        v.get_layout(layout);
+        return {layout: [layout.x, layout.y, layout.width, layout.height], scale: v.get_scale(),
+            fps: Math.round(10 * (frames.get(v) ?? 0) / seconds) / 10};
+    });
+    const result = {label, cpuPercent: Math.round(1000 * cpu / (seconds * 1000)) / 10, views,
+        scrimAllocationsPerSecond: allocationsBefore === null || allocationsAfter === null
+            ? null : Math.round(10 * (allocationsAfter - allocationsBefore) / seconds) / 10};
+    log(`cost ${JSON.stringify(result)}`);
+    return result;
+}
+
+// Monitor scales from ORACLE_SCALES, through the same D-Bus call Settings
+// makes, side by side left to right.
+async function applyScales() {
+    const wanted = (GLib.getenv('ORACLE_SCALES') ?? '').split(',').filter(Boolean).map(Number);
+    if (!wanted.length)
+        return true;
+    const call = (method, params) => new Promise((resolve, reject) =>
+        Gio.DBus.session.call('org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
+            'org.gnome.Mutter.DisplayConfig', method, params, null, Gio.DBusCallFlags.NONE, -1, null,
+            (bus, res) => {
+                try {
+                    resolve(bus.call_finish(res).deepUnpack());
+                } catch (e) {
+                    reject(e);
+                }
+            }));
+    const [serial, monitors] = await call('GetCurrentState', null);
+    let x = 0;
+    const logical = monitors.map(([[connector], modes], i) => {
+        const mode = modes.find(m => m[6]['is-current']?.deepUnpack?.() ?? m[6]['is-current']) ?? modes[0];
+        const supported = mode[5];
+        const scale = supported.reduce((best, s) =>
+            Math.abs(s - (wanted[i] ?? 1)) < Math.abs(best - (wanted[i] ?? 1)) ? s : best, 1);
+        const entry = [x, 0, scale, 0, i === 0, [[connector, mode[0], {}]]];
+        x += Math.round(mode[1] / scale);
+        return entry;
+    });
+    await call('ApplyMonitorsConfig', new GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})',
+        [serial, 1, logical, {}]));
+    await wait(1500);
+    log(`scales ${JSON.stringify(global.stage.peek_stage_views().map(v => v.get_scale()))}`);
+    return true;
+}
+
+async function perf() {
+    const results = [];
+    await applyScales();
+    // Every window on the first monitor, the playing one in front.
+    await wait(1500);
+    results.push(await cost('desktop, one window playing'));
+
+    check('P picker opened', await ask('p1', 3));
+    await wait(1500);
+    results.push(await cost('picker open, windows'));
+    await key(Clutter.KEY_Tab, [Clutter.KEY_Control_L]);
+    await wait(1500);
+    results.push(await cost('picker open, screens'));
+    await key(Clutter.KEY_Escape);
+    await until('picker closed', () => !picker(), 3000);
+    await settle();
+
+    write('perf', results);
+}
+
 function St_scale() {
     return St.ThemeContext.get_for_stage(global.stage).scale_factor;
 }
@@ -473,7 +573,9 @@ async function work() {
     }
     await wait(1500);
     const suffix = GLib.getenv('SUFFIX') ?? '';
-    if (MODE === 'exp') {
+    if (MODE === 'perf') {
+        await perf();
+    } else if (MODE === 'exp') {
         await streamExperiment();
     } else if (MODE === 'look') {
         await lookOnly(suffix);
