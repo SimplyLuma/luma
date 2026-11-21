@@ -8,6 +8,12 @@ returns the C object. A volume with its level is a ``VolumeSlider``
 flat for a row, with the meter laid along the track over the track's length.
 
     AudioMeter(channels=2, horizontal=True)   # .set_levels_db(l, r), .set_levels(l, r)
+    AudioMeter(2, segments=28)                # LED style: 28 segments per bar
+
+``LevelMeter`` is the same part under the name a level display goes by;
+``segments=0`` is the continuous bar, N > 0 draws N segments with the peak
+hold as a lit segment. ``LevelTap`` (``level_tap.py``) feeds either from a
+PipeWire node while it is on screen.
     VolumeSlider(-60, 6, value=0, unity=0, unit="dB", meter=2, horizontal=True,
                  label="Mic volume", on_move=fn)  # .get_meter().set_levels_db(l, r)
 
@@ -20,29 +26,42 @@ out left to right in a row that scrolls sideways; it fits ``DockTile(fit=True)``
         # .set_levels(l, r), .set_levels_db(l, r), .set_db(db), .set_muted(b), .set_monitoring(b)
     MixerRow([strip, ...])  # .append(strip), .remove(strip)
 
-A meter animates only while a level falls, so a silent row costs nothing.
-Feed it from GStreamer's ``level`` element (``rms`` or ``peak`` per channel,
-in dB) at 10 to 20 updates a second.
+A meter animates only while a level falls, so a silent row costs nothing; a
+segmented one redraws only when a segment changes. Feed it from GStreamer's
+``level`` element (``rms`` or ``peak`` per channel, in dB) at 10 to 20
+updates a second; ``LevelTap`` does that.
 """
 from __future__ import annotations
 
 from .creative_parts import lumaui_module
 
-__all__ = ["AudioMeter", "MixerRow", "MixerStrip", "VolumeSlider"]
+__all__ = ["AudioMeter", "LevelMeter", "MixerRow", "MixerStrip", "VolumeSlider"]
+
+MAX_SEGMENTS = 128
 
 
-def AudioMeter(channels: int = 2, *, horizontal: bool = False, label: str | None = None):
-    """A mono or stereo level meter; ``horizontal`` runs its bars left to right."""
+def AudioMeter(channels: int = 2, *, horizontal: bool = False, segments: int = 0, label: str | None = None):
+    """A mono or stereo level meter; ``horizontal`` runs its bars left to right.
+
+    ``segments`` 0 is a continuous bar; N (1 to 128) draws N segments per bar.
+    """
     if channels not in (1, 2):
         raise ValueError(f"a meter has 1 or 2 channels, not {channels!r}")
+    if isinstance(segments, bool) or not isinstance(segments, int) or not 0 <= segments <= MAX_SEGMENTS:
+        raise ValueError(f"a meter has 0 to {MAX_SEGMENTS} segments, not {segments!r}")
     L = lumaui_module()
     meter = L.AudioMeter.new(channels)
     meter.set_horizontal(horizontal)
+    meter.set_segments(segments)
     if label is not None:
         from gi.repository import Gtk
 
         meter.update_property([Gtk.AccessibleProperty.LABEL], [label])
     return meter
+
+
+#: The same part as ``AudioMeter``: ``LevelMeter(channels=2, horizontal=, segments=, label=)``.
+LevelMeter = AudioMeter
 
 
 def VolumeSlider(lower: float = 0, upper: float = 100, *, value: float | None = None,

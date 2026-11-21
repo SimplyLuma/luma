@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* LumaAudioMeter: levels, ballistics, clipping and the quiet accessible updates. */
+/* LumaAudioMeter: levels, ballistics, clipping, segments and the quiet accessible updates. */
 #include "luma-ui.h"
+#include "luma-ui-tokens-private.h"
 
 #include <math.h>
 
@@ -67,9 +68,117 @@ static void test_meter(void) {
   gtk_window_destroy(GTK_WINDOW(window));
 }
 
+static void measure(GtkWidget *widget, GtkOrientation orientation, int *min, int *nat) {
+  gtk_widget_measure(widget, orientation, -1, min, nat, NULL, NULL);
+}
+
+static void test_segments(void) {
+  GtkWidget *window = gtk_window_new();
+  GtkWidget *meter = luma_audio_meter_new(2);
+  LumaAudioMeter *m = LUMA_AUDIO_METER(meter);
+  gtk_window_set_child(GTK_WINDOW(window), meter);
+  gtk_window_present(GTK_WINDOW(window));
+  wait_ms(100);
+  /* Continuous by default: no segments, none lit, no peak segment. */
+  g_assert_cmpuint(luma_audio_meter_get_segments(m), ==, 0);
+  g_assert_false(gtk_widget_has_css_class(meter, "segmented"));
+  luma_audio_meter_set_levels_db(m, -6, -40);
+  g_assert_cmpuint(luma_audio_meter_get_lit_segments(m, 0), ==, 0);
+  g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 0), ==, -1);
+
+  /* 24 segments: 3 dB each from -60 to +12; one lights half way into it. */
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, -100), ==, 0);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, -59), ==, 0);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, -57), ==, 1);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, -18), ==, 14);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, -6), ==, 18);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, 0), ==, 20);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, 12), ==, 24);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, 40), ==, 24);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(24, NAN), ==, 0);
+  g_assert_cmpuint(luma_audio_meter_segments_lit_at(0, 0), ==, 0);
+
+  g_object_set(meter, "segments", 24, NULL);
+  guint segments = 0;
+  g_object_get(meter, "segments", &segments, NULL);
+  g_assert_cmpuint(segments, ==, 24);
+  g_assert_true(gtk_widget_has_css_class(meter, "segmented"));
+  /* The level already shown now reads in segments. */
+  g_assert_cmpuint(luma_audio_meter_get_lit_segments(m, 0), ==, 18);
+  g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 0), ==, 17);
+  luma_audio_meter_set_levels_db(m, 0, -18);
+  g_assert_cmpuint(luma_audio_meter_get_lit_segments(m, 0), ==, 20);
+  g_assert_cmpuint(luma_audio_meter_get_lit_segments(m, 1), ==, 14);
+  g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 0), ==, 19);
+  g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 1), ==, 13);
+  luma_audio_meter_set_levels_db(m, -30, -30);
+  if (!luma_ui_reduced_motion()) {
+    /* The bar falls; the peak's segment holds above it, lit on its own. */
+    wait_ms(300);
+    guint lit = luma_audio_meter_get_lit_segments(m, 0);
+    g_assert_cmpuint(lit, <, 20);
+    g_assert_cmpuint(lit, >, 10);
+    g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 0), ==, 19);
+    wait_ms(3500);
+    g_assert_cmpuint(luma_audio_meter_get_lit_segments(m, 0), ==, 10);
+    g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 0), ==, 9);
+  } else {
+    g_assert_cmpuint(luma_audio_meter_get_lit_segments(m, 0), ==, 10);
+    g_assert_cmpint(luma_audio_meter_get_peak_segment(m, 0), ==, 9);
+  }
+  /* Silence, and a level that is not a number, light nothing on a fresh meter. */
+  GtkWidget *quiet = luma_audio_meter_new(1);
+  luma_audio_meter_set_segments(LUMA_AUDIO_METER(quiet), 32);
+  luma_audio_meter_set_levels_db(LUMA_AUDIO_METER(quiet), -INFINITY, -INFINITY);
+  g_assert_cmpuint(luma_audio_meter_get_lit_segments(LUMA_AUDIO_METER(quiet), 0), ==, 0);
+  g_assert_cmpint(luma_audio_meter_get_peak_segment(LUMA_AUDIO_METER(quiet), 0), ==, -1);
+  luma_audio_meter_set_levels_db(LUMA_AUDIO_METER(quiet), NAN, NAN);
+  g_assert_cmpfloat(luma_audio_meter_get_level_db(LUMA_AUDIO_METER(quiet), 0), ==, -60);
+  g_object_ref_sink(quiet);
+  g_object_unref(quiet);
+
+  /* Sizes: across stays the bars; along fits every segment at its shortest. */
+  int min, nat;
+  const int fit28 = 28 * LUMA_UI_METER_SEGMENT_MIN + 27 * LUMA_UI_METER_SEGMENT_GAP;
+  const int fit64 = 64 * LUMA_UI_METER_SEGMENT_MIN + 63 * LUMA_UI_METER_SEGMENT_GAP;
+  const int across = 2 * LUMA_UI_METER_BAR + LUMA_UI_METER_GAP;
+  luma_audio_meter_set_segments(m, 28);
+  measure(meter, GTK_ORIENTATION_HORIZONTAL, &min, &nat);
+  g_assert_cmpint(nat, ==, across);
+  g_assert_cmpint(across, ==, 10);
+  measure(meter, GTK_ORIENTATION_VERTICAL, &min, &nat);
+  g_assert_cmpint(min, ==, MAX(LUMA_UI_METER_MIN_LENGTH, fit28));
+  g_assert_cmpint(min, ==, 83);
+  g_assert_cmpint(nat, ==, LUMA_UI_METER_LENGTH);
+  luma_audio_meter_set_horizontal(m, TRUE);
+  measure(meter, GTK_ORIENTATION_VERTICAL, &min, &nat);
+  g_assert_cmpint(nat, ==, across);
+  measure(meter, GTK_ORIENTATION_HORIZONTAL, &min, &nat);
+  g_assert_cmpint(min, ==, 83);
+  g_assert_cmpint(nat, ==, LUMA_UI_METER_LENGTH);
+  luma_audio_meter_set_segments(m, 64);
+  measure(meter, GTK_ORIENTATION_HORIZONTAL, &min, &nat);
+  g_assert_cmpint(min, ==, fit64);
+  g_assert_cmpint(nat, ==, fit64);
+  luma_audio_meter_set_segments(m, 0);
+  g_assert_false(gtk_widget_has_css_class(meter, "segmented"));
+  measure(meter, GTK_ORIENTATION_HORIZONTAL, &min, &nat);
+  g_assert_cmpint(min, ==, LUMA_UI_METER_MIN_LENGTH);
+  g_assert_cmpint(nat, ==, LUMA_UI_METER_LENGTH);
+  /* Drawn segmented, both ways, at a size between its minimum and natural. */
+  luma_audio_meter_set_segments(m, 32);
+  luma_audio_meter_set_levels_db(m, -3, -40);
+  gtk_window_set_default_size(GTK_WINDOW(window), 100, 40);
+  wait_ms(100);
+  luma_audio_meter_set_horizontal(m, FALSE);
+  wait_ms(100);
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
   gtk_init();
   g_test_add_func("/lumaui/audio-meter", test_meter);
+  g_test_add_func("/lumaui/audio-meter/segments", test_segments);
   return g_test_run();
 }

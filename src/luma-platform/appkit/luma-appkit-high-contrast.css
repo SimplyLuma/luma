@@ -12,3 +12,5 @@ box.lumaui-lit-wash { background-image: none; }
 /* Mixer strips: an outline, no tint; a key that is on is outlined too, not only coloured. */
 lumaui-mixer-strip { background: none; box-shadow: inset 0 0 0 1px @luma_ink; }
 lumaui-mixer-strip button.lumaui-mixer-key:checked { box-shadow: inset 0 0 0 2px @luma_ink; }
+/* Segmented audio meters: unlit segments stay readable against any surface. */
+box.lumaui-audio-meter.segmented > .lumaui-meter-track { color: alpha(@luma_ink, .32); }
