@@ -182,8 +182,6 @@ def check(app) -> None:
 def several(win) -> None:
     """Several widgets: the list and the canvas agree, Mixed where their Look differs, every command acts on
     all of them as one undo step."""
-    from luma_appkit import TypeLabel
-
     scene = next(sc for sc in win.project.scenes if sum(w.has_picture for w in sc.widgets) >= 2)
     win.switch_scene(scene.id)
     pump(0.2)
@@ -197,8 +195,10 @@ def several(win) -> None:
     pump(0.2)
     assert set(win.selection) == {a.id, b.id}, win.selection
     assert win.inspector_tile.title == "2 widgets", win.inspector_tile.title
-    words = [w.label.get_label() for w in walk(win.inspector) if isinstance(w, TypeLabel)]
-    assert "Mixed" in words, words
+    from luma_appkit import ValueSlider
+
+    mixed = [w for w in walk(win.inspector) if isinstance(w, ValueSlider) and w.mixed]
+    assert mixed, "their corners differ: that slider says Mixed"
     steps = len(win.history.undos)
 
     def now():  # undo restores a copy of the project: look them up again

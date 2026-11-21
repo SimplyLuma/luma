@@ -1451,8 +1451,8 @@ class StreamyWindow(AppWindow):
             GLib.idle_add(lambda: scroll.get_vadjustment().set_value(offset) and False)
 
     def _group_look_panel(self, ws: list[Widget]) -> Gtk.Widget:
-        """Several pictures' Look: a value they share shows; where they differ the row says Mixed, and a
-        change applies to all (one undo step per drag)."""
+        """Several pictures' Look: a value they share shows; where they differ the slider says Mixed
+        (ValueSlider.set_mixed), and a change applies to all (one undo step per drag)."""
         current = self._shared_look(ws)
         tiles = BarTiles([BarTile(icon, label, lambda k=key: self.apply_look_all(k), on=key == current)
                           for key, (label, icon, _v) in self.LOOKS.items()], columns=5, size="compact")
@@ -1460,13 +1460,6 @@ class StreamyWindow(AppWindow):
         rows.add_css_class("streamy-rows")
         effects = [self.project.effects_on(w) for w in ws]
         ids = tuple(w.id for w in ws)
-
-        def mixed(values) -> Gtk.Widget | None:
-            if len({round(v, 2) for v in values}) <= 1:
-                return None
-            word = TypeLabel("Mixed", role="caption")
-            word.set_tooltip_text("Their values differ; a change applies to all")
-            return word
 
         def setter(name: str, label: str):
             def apply(v: float) -> None:
@@ -1484,7 +1477,10 @@ class StreamyWindow(AppWindow):
                 ("corner_radius", "Corners", 0, 200, "px", [fx.corner_radius for fx in effects]),
                 ("stroke_width", "Border", 0, 40, "px", [fx.stroke_width for fx in effects]),
                 ("shadow", "Shadow", 0, 100, "%", [self.shadow_strength(fx) for fx in effects])):
-            rows.append(self._slider(label, values[-1], low, high, setter(name, label), unit=unit, trail=mixed(values)))
+            row = self._slider(label, values[-1], low, high, setter(name, label), unit=unit)
+            if len({round(v, 2) for v in values}) > 1:
+                row.slider.set_mixed(values[-1])  # "Mixed" until a move applies one value to all
+            rows.append(row)
         return self._panel(tiles, rows)
 
     def _group_panel(self, ids: list[str]) -> Gtk.Widget:
@@ -2163,7 +2159,7 @@ class StreamyWindow(AppWindow):
         self.audio_empty.set_visible(not sounds)
         self.mixer_row.set_visible(bool(sounds))
         for w in sounds:
-            strip = MixerStrip(w.name, self.source_summary(w), db=w.volume_db, min_db=-60, max_db=12,
+            strip = MixerStrip(w.name, self.source_summary(w), db=w.volume_db, min_db=-60, max_db=12, icon=w.icon,
                                muted=w.muted, monitoring=w.monitor != "off",
                                on_change=lambda value, wid=w: self._volume_moved(wid, value),
                                on_mute=lambda muted, wid=w: muted != wid.muted and self._toggle_mute(wid),
