@@ -1,0 +1,1350 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Fri, 20 Nov 2026 22:00:00 -0600
+Subject: [PATCH] blur: keep textures per framebuffer; copy only the part on it
+
+A background blur kept one set of textures. Each stage view is its own
+framebuffer at its own scale, and the box the effect copied was the whole
+actor in that view's pixels, so an actor painted on two views of a
+different scale or size reallocated every texture on every paint. Under a
+full-screen scrim over three monitors (scale 1, 1 and 1.25, 100-120 Hz) the
+Shell's GPU memory swung between 4 and 12 GB in a 1.2 s cycle, about 9 GB a
+second allocated and cleared, with the kernel's workers busy clearing pages.
+The copy and both passes also covered the whole actor on every view, though
+only the part inside the framebuffer is defined.
+
+- One target per framebuffer (stage view, or NULL for an off-stage
+  capture): its textures, pipelines and cache state. An actor blur keeps a
+  single target. Targets unpainted for 5 s are dropped; at most 4 are kept.
+- A background blur copies and blurs only the part of the actor inside the
+  framebuffer, and draws it over that part of the actor; the brightness
+  shader's corner mask takes the covered rectangle as its origin and extent.
+  An actor with nothing inside the framebuffer draws no blur there.
+- background_was_painted() compares the redraw clip with the part of the
+  actor on that view. The clip of one view never contains an actor that
+  reaches another monitor, so such an actor kept a stale blur and queued a
+  repaint every frame on every view.
+- shell_blur_effect_get_framebuffer_allocations() counts allocations for
+  tests.
+
+Headless, three virtual monitors at 1, 1 and 1.25 with the Share picker
+open: 2 frames a second before, 56 after, with no texture allocations while
+the picker is up.
+---
+diff --git a/src/shell-blur-effect.h b/src/shell-blur-effect.h
+--- a/src/shell-blur-effect.h
++++ b/src/shell-blur-effect.h
+@@ -54,6 +54,8 @@
+                                                     int             *stale,
+                                                     int             *reused);
+ 
++int shell_blur_effect_get_framebuffer_allocations (ShellBlurEffect *self);
++
+ ShellBlurMode shell_blur_effect_get_mode (ShellBlurEffect *self);
+ void shell_blur_effect_set_mode (ShellBlurEffect *self,
+                                  ShellBlurMode    mode);
+diff --git a/src/shell-blur-effect.c b/src/shell-blur-effect.c
+--- a/src/shell-blur-effect.c
++++ b/src/shell-blur-effect.c
+@@ -48,7 +48,9 @@
+ "uniform float brightness;                                                 \n"
+ "uniform float luma_saturation;                                            \n"
+ "uniform vec2 luma_size;                                                   \n"
+-"uniform vec4 luma_corners;                                                \n";
++"uniform vec4 luma_corners;                                                \n"
++"uniform vec2 luma_origin;                                                 \n"
++"uniform vec2 luma_extent;                                                 \n";
+ 
+ static const gchar *brightness_glsl =
+ "  float luma = dot(cogl_color_out.rgb, vec3(0.2126, 0.7152, 0.0722));        \n"
+@@ -57,7 +59,7 @@
+ "  cogl_color_out.rgb *= brightness;                                       \n"
+ "  if (dot(luma_corners, vec4(1.0)) > 0.0) {                               \n"
+ "    vec2 half_size = luma_size * 0.5;                                     \n"
+-"    vec2 point = cogl_tex_coord_in[0].st * luma_size;                      \n"
++"    vec2 point = luma_origin + cogl_tex_coord_in[0].st * luma_extent;      \n"
+ "    float r = point.x < half_size.x                                        \n"
+ "      ? (point.y < half_size.y ? luma_corners.x : luma_corners.w)          \n"
+ "      : (point.y < half_size.y ? luma_corners.y : luma_corners.z);         \n"
+@@ -110,9 +112,17 @@
+ "                                                                          \n"
+ "  cogl_texel = ret / gauss_coefficient_total;                             \n";
+ 
++
+ #define MIN_DOWNSCALED_SIZE 16.f
+ #define MAX_RADIUS 12.f
+ 
++/* Luma: how many framebuffers (stage views, or an off-stage capture) one
++ * background blur keeps textures for, and how long a framebuffer's textures
++ * live without being painted.
++ */
++#define MAX_TARGETS 4
++#define TARGET_IDLE_US (5 * G_USEC_PER_SEC)
++
+ typedef enum
+ {
+   ACTOR_PAINTED = 1 << 0,
+@@ -126,44 +136,80 @@
+   CoglTexture *texture;
+ } FramebufferData;
+ 
+-struct _ShellBlurEffect
++/* Luma: what the effect keeps for one framebuffer it paints into.
++ *
++ * A stage view is its own framebuffer, at its own scale and offset. With one
++ * set of textures for the whole effect, an actor painted on two views of a
++ * different scale or size (a full-screen modal's scrim over a scale-1 and a
++ * scale-1.25 monitor, or an actor across two monitors) had a different box
++ * on each, so every paint reallocated every texture: three monitors at
++ * 100-120 Hz under one scrim turned over about 9 GB of GPU memory a second,
++ * with the kernel clearing each new allocation. Each target keeps its own
++ * textures, pipelines and cache state; a background blur's textures cover
++ * only the part of the actor inside that framebuffer.
++ */
++typedef struct
+ {
+-  ClutterEffect parent_instance;
++  /* The ClutterStageView, or NULL for an off-stage paint (a screenshot or a
++   * screen recording). Compared, never dereferenced.
++   */
++  gconstpointer key;
++  int64_t last_used_us;
+ 
+-  ClutterActor *actor;
++  FramebufferData actor_fb;
++  FramebufferData background_fb;
++  FramebufferData vblur_fb;
++  FramebufferData hblur_fb;
++  /* Draws the horizontal pass to the target with brightness, saturation
++   * and corners.
++   */
++  CoglPipeline *brightness_pipeline;
+ 
+   unsigned int tex_width;
+   unsigned int tex_height;
+-
+-  /* The cached contents */
+-  FramebufferData actor_fb;
++  float downscale_factor;
++  float blur_sigma;
+   CacheFlags cache_flags;
+ 
+-  FramebufferData background_fb;
+-  /* Luma: the vertical and horizontal pass results, kept between frames.
+-   * brightness_fb only holds the pipeline that draws the result.
++  /* Background mode: the framebuffer box the background was last copied
++   * from (the part of the actor inside the framebuffer), and the actor-local
++   * rectangle that box covers.
+    */
+-  FramebufferData vblur_fb;
+-  FramebufferData hblur_fb;
+-  FramebufferData brightness_fb;
++  ClutterActorBox background_box;
++  graphene_rect_t covered;
++
++  /* How many frames in a row the background could have been stale. */
++  int stale_frames;
++} BlurTarget;
++
++struct _ShellBlurEffect
++{
++  ClutterEffect parent_instance;
++
++  ClutterActor *actor;
++
++  GPtrArray *targets;
++
++  /* Templates the targets copy; the brightness template also gives the
++   * uniform locations, which every copy shares.
++   */
++  CoglPipeline *base_pipeline;
++  CoglPipeline *vblur_pipeline;
++  CoglPipeline *hblur_pipeline;
++  CoglPipeline *brightness_pipeline;
+   int brightness_uniform;
+   int saturation_uniform, size_uniform, corners_uniform;
++  int origin_uniform, extent_uniform;
+   float saturation, corner_radii[4];
+ 
+   ShellBlurMode mode;
+-  float downscale_factor;
+   float brightness;
+   int radius;
+-  float blur_sigma;
+ 
+-  /* Luma: the box the background was last copied from. */
+-  ClutterActorBox background_box;
+-
+-  /* Luma: how many frames in a row the background could have been stale. */
+-  int stale_frames;
+   /* Luma: counters a test reads, to see the case happen and stop happening. */
+   int stale_background_paints;
+   int reused_background_paints;
++  int framebuffer_allocations;
+ };
+ 
+ G_DEFINE_TYPE (ShellBlurEffect, shell_blur_effect, CLUTTER_TYPE_EFFECT)
+@@ -280,32 +326,161 @@
+                                 pixel_step);
+ }
+ 
++static void
++clear_framebuffer_data (FramebufferData *fb_data)
++{
++  g_clear_object (&fb_data->texture);
++  g_clear_object (&fb_data->framebuffer);
++}
+ 
++static BlurTarget *
++blur_target_new (ShellBlurEffect *self,
++                 gconstpointer    key)
++{
++  BlurTarget *target = g_new0 (BlurTarget, 1);
++
++  target->key = key;
++  target->actor_fb.pipeline = cogl_pipeline_copy (self->base_pipeline);
++  target->background_fb.pipeline = cogl_pipeline_copy (self->base_pipeline);
++  target->vblur_fb.pipeline = cogl_pipeline_copy (self->vblur_pipeline);
++  target->hblur_fb.pipeline = cogl_pipeline_copy (self->hblur_pipeline);
++  target->brightness_pipeline = cogl_pipeline_copy (self->brightness_pipeline);
++
++  return target;
++}
++
+ static void
++blur_target_clear (BlurTarget *target)
++{
++  clear_framebuffer_data (&target->actor_fb);
++  clear_framebuffer_data (&target->background_fb);
++  clear_framebuffer_data (&target->vblur_fb);
++  clear_framebuffer_data (&target->hblur_fb);
++  target->tex_width = target->tex_height = 0;
++  target->cache_flags = 0;
++  target->stale_frames = 0;
++}
++
++static void
++blur_target_free (gpointer data)
++{
++  BlurTarget *target = data;
++
++  blur_target_clear (target);
++  g_clear_object (&target->actor_fb.pipeline);
++  g_clear_object (&target->background_fb.pipeline);
++  g_clear_object (&target->vblur_fb.pipeline);
++  g_clear_object (&target->hblur_fb.pipeline);
++  g_clear_object (&target->brightness_pipeline);
++  g_free (target);
++}
++
++/* Forget every cached blur (radius, brightness, corners or mode changed). */
++static void
++invalidate_blur (ShellBlurEffect *self)
++{
++  unsigned int i;
++
++  for (i = 0; i < self->targets->len; i++)
++    {
++      BlurTarget *target = g_ptr_array_index (self->targets, i);
++
++      target->cache_flags &= ~BLUR_APPLIED;
++    }
++}
++
++/*
++ * Luma: the target for the framebuffer being painted. An actor blur paints
++ * into its own offscreen at the actor's size whatever the view, so it keeps
++ * one target; a background blur keeps one per framebuffer. Targets that went
++ * unpainted for TARGET_IDLE_US (the actor left that monitor, or the monitor
++ * went away) are dropped, and beyond MAX_TARGETS the least recently painted
++ * one is reused.
++ */
++static BlurTarget *
++get_target (ShellBlurEffect     *self,
++            ClutterPaintContext *paint_context)
++{
++  gconstpointer key = NULL;
++  BlurTarget *found = NULL;
++  BlurTarget *oldest = NULL;
++  int64_t now = g_get_monotonic_time ();
++  unsigned int i;
++
++  if (self->mode == SHELL_BLUR_MODE_BACKGROUND)
++    key = clutter_paint_context_get_stage_view (paint_context);
++
++  for (i = 0; i < self->targets->len; )
++    {
++      BlurTarget *target = g_ptr_array_index (self->targets, i);
++
++      if (target->key == key)
++        {
++          found = target;
++          i++;
++          continue;
++        }
++
++      if (now - target->last_used_us > TARGET_IDLE_US)
++        {
++          g_ptr_array_remove_index_fast (self->targets, i);
++          continue;
++        }
++
++      if (!oldest || target->last_used_us < oldest->last_used_us)
++        oldest = target;
++      i++;
++    }
++
++  if (!found)
++    {
++      if (self->targets->len >= MAX_TARGETS && oldest)
++        {
++          blur_target_clear (oldest);
++          oldest->key = key;
++          found = oldest;
++        }
++      else
++        {
++          found = blur_target_new (self, key);
++          g_ptr_array_add (self->targets, found);
++        }
++    }
++
++  found->last_used_us = now;
++  return found;
++}
++
++static void
+ update_brightness (ShellBlurEffect *self,
++                   BlurTarget      *target,
+                    uint8_t          paint_opacity)
+ {
++  CoglPipeline *pipeline = target->brightness_pipeline;
+   CoglColor color;
++  float width, height;
+ 
+   cogl_color_init_from_4f (&color,
+                            paint_opacity / 255.0, paint_opacity / 255.0,
+                            paint_opacity / 255.0, paint_opacity / 255.0);
+-  cogl_pipeline_set_color (self->brightness_fb.pipeline, &color);
++  cogl_pipeline_set_color (pipeline, &color);
+ 
+-  float width, height;
+   clutter_actor_get_size (self->actor, &width, &height);
+   const float size[] = { width, height };
+-  cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
++  const float origin[] = { target->covered.origin.x, target->covered.origin.y };
++  const float extent[] = { target->covered.size.width,
++                           target->covered.size.height };
++  cogl_pipeline_set_uniform_1f (pipeline,
+                                 self->saturation_uniform, self->saturation);
+-  cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+-                                   self->size_uniform, 2, 1, size);
+-  cogl_pipeline_set_uniform_float (self->brightness_fb.pipeline,
+-                                   self->corners_uniform, 4, 1,
++  cogl_pipeline_set_uniform_float (pipeline, self->size_uniform, 2, 1, size);
++  cogl_pipeline_set_uniform_float (pipeline, self->origin_uniform, 2, 1, origin);
++  cogl_pipeline_set_uniform_float (pipeline, self->extent_uniform, 2, 1, extent);
++  cogl_pipeline_set_uniform_float (pipeline, self->corners_uniform, 4, 1,
+                                    self->corner_radii);
+ 
+   if (self->brightness_uniform > -1)
+     {
+-      cogl_pipeline_set_uniform_1f (self->brightness_fb.pipeline,
++      cogl_pipeline_set_uniform_1f (pipeline,
+                                     self->brightness_uniform,
+                                     self->brightness);
+     }
+@@ -328,7 +503,8 @@
+ }
+ 
+ static gboolean
+-update_fbo (FramebufferData *data,
++update_fbo (ShellBlurEffect *self,
++            FramebufferData *data,
+             unsigned int     width,
+             unsigned int     height,
+             float            downscale_factor)
+@@ -344,9 +520,11 @@
+   g_clear_object (&data->texture);
+   g_clear_object (&data->framebuffer);
+ 
+-  float new_width = floorf (width / downscale_factor);
+-  float new_height = floorf (height / downscale_factor);
++  float new_width = MAX (1.f, floorf (width / downscale_factor));
++  float new_height = MAX (1.f, floorf (height / downscale_factor));
+ 
++  self->framebuffer_allocations++;
++
+   data->texture = cogl_texture_2d_new_with_size (ctx, new_width, new_height);
+   if (!data->texture)
+     return FALSE;
+@@ -364,66 +542,6 @@
+   return TRUE;
+ }
+ 
+-static gboolean
+-update_actor_fbo (ShellBlurEffect *self,
+-                  unsigned int     width,
+-                  unsigned int     height,
+-                  float            downscale_factor)
+-{
+-  if (self->tex_width == width &&
+-      self->tex_height == height &&
+-      self->downscale_factor == downscale_factor &&
+-      self->actor_fb.framebuffer)
+-    {
+-      return TRUE;
+-    }
+-
+-  self->cache_flags &= ~ACTOR_PAINTED;
+-
+-  return update_fbo (&self->actor_fb, width, height, downscale_factor);
+-}
+-
+-static gboolean
+-update_blur_fbos (ShellBlurEffect *self,
+-                  unsigned int     width,
+-                  unsigned int     height,
+-                  float            downscale_factor)
+-{
+-  if (self->tex_width == width &&
+-      self->tex_height == height &&
+-      self->downscale_factor == downscale_factor &&
+-      self->vblur_fb.framebuffer &&
+-      self->hblur_fb.framebuffer)
+-    {
+-      return TRUE;
+-    }
+-
+-  return update_fbo (&self->vblur_fb, width, height, downscale_factor) &&
+-         update_fbo (&self->hblur_fb, width, height, downscale_factor);
+-}
+-
+-static gboolean
+-update_background_fbo (ShellBlurEffect *self,
+-                       unsigned int     width,
+-                       unsigned int     height)
+-{
+-  if (self->tex_width == width &&
+-      self->tex_height == height &&
+-      self->background_fb.framebuffer)
+-    {
+-      return TRUE;
+-    }
+-
+-  return update_fbo (&self->background_fb, width, height, 1.0);
+-}
+-
+-static void
+-clear_framebuffer_data (FramebufferData *fb_data)
+-{
+-  g_clear_object (&fb_data->texture);
+-  g_clear_object (&fb_data->framebuffer);
+-}
+-
+ static float
+ calculate_downscale_factor (float width,
+                             float height,
+@@ -468,183 +586,229 @@
+   meta_class->set_actor (meta, actor);
+ 
+   /* clear out the previous state */
+-  clear_framebuffer_data (&self->actor_fb);
+-  clear_framebuffer_data (&self->background_fb);
+-  clear_framebuffer_data (&self->vblur_fb);
+-  clear_framebuffer_data (&self->hblur_fb);
++  g_ptr_array_set_size (self->targets, 0);
+ 
+   /* we keep a back pointer here, to avoid going through the ActorMeta */
+   self->actor = clutter_actor_meta_get_actor (meta);
+ }
+ 
+-static void
++/*
++ * The box the effect copies or renders, in the target framebuffer's pixels,
++ * and the actor-local rectangle it covers.
++ *
++ * Luma: a background blur copies only the part of the actor inside the
++ * framebuffer. Its box was the whole actor, so a full-screen scrim over three
++ * monitors allocated, copied and blurred the whole desktop for each monitor
++ * it was painted on, though the copy outside that monitor was never defined.
++ * Returns FALSE when nothing of the actor is inside the framebuffer.
++ */
++static gboolean
+ update_actor_box (ShellBlurEffect     *self,
+                   ClutterPaintContext *paint_context,
+-                  ClutterActorBox     *source_actor_box)
++                  ClutterActorBox     *source_actor_box,
++                  graphene_rect_t     *covered)
+ {
+   ClutterStageView *stage_view;
+   float box_scale_factor = 1.0f;
+   float origin_x, origin_y;
+   float width, height;
++  float actor_width, actor_height;
++  ClutterActorBox full;
+ 
++  clutter_actor_get_size (self->actor, &actor_width, &actor_height);
++  graphene_rect_init (covered, 0.f, 0.f, actor_width, actor_height);
++
+   switch (self->mode)
+     {
+     case SHELL_BLUR_MODE_ACTOR:
+       clutter_actor_get_allocation_box (self->actor, source_actor_box);
+-      break;
++      clutter_actor_box_clamp_to_pixel (source_actor_box);
++      return TRUE;
+ 
+     case SHELL_BLUR_MODE_BACKGROUND:
+-      stage_view = clutter_paint_context_get_stage_view (paint_context);
++      break;
++    }
+ 
+-      clutter_actor_get_transformed_position (self->actor, &origin_x, &origin_y);
+-      clutter_actor_get_transformed_size (self->actor, &width, &height);
++  stage_view = clutter_paint_context_get_stage_view (paint_context);
+ 
+-      if (stage_view)
+-        {
+-          MtkRectangle stage_view_layout;
++  clutter_actor_get_transformed_position (self->actor, &origin_x, &origin_y);
++  clutter_actor_get_transformed_size (self->actor, &width, &height);
+ 
+-          box_scale_factor = clutter_stage_view_get_scale (stage_view);
+-          clutter_stage_view_get_layout (stage_view, &stage_view_layout);
++  if (stage_view)
++    {
++      MtkRectangle stage_view_layout;
+ 
+-          origin_x -= stage_view_layout.x;
+-          origin_y -= stage_view_layout.y;
+-        }
+-      else
+-        {
+-          /* Luma: drawing off stage (a screenshot or a screen recording).
+-           * The stage is painted into its own framebuffer at the capture's
+-           * scale, offset by the captured rectangle's origin: both are in the
+-           * viewport clutter_stage_paint_to_framebuffer() sets. Reading the
+-           * backdrop at the actor's unscaled stage position blurred another
+-           * part of the screen (a white window above a glass island left the
+-           * island a white slab with its white ink gone), and anything but a
+-           * full-stage capture at scale 1 was off.
+-           */
+-          CoglFramebuffer *framebuffer =
+-            clutter_paint_context_get_framebuffer (paint_context);
+-          ClutterActor *stage = clutter_actor_get_stage (self->actor);
+-          float viewport[4];
+-          float stage_width = stage ? clutter_actor_get_width (stage) : 0.f;
++      box_scale_factor = clutter_stage_view_get_scale (stage_view);
++      clutter_stage_view_get_layout (stage_view, &stage_view_layout);
+ 
+-          cogl_framebuffer_get_viewport4fv (framebuffer, viewport);
+-          if (stage_width > 0.f && viewport[2] > 0.f)
+-            {
+-              box_scale_factor = viewport[2] / stage_width;
+-              origin_x += viewport[0] / box_scale_factor;
+-              origin_y += viewport[1] / box_scale_factor;
+-            }
++      origin_x -= stage_view_layout.x;
++      origin_y -= stage_view_layout.y;
++    }
++  else
++    {
++      /* Luma: drawing off stage (a screenshot or a screen recording).
++       * The stage is painted into its own framebuffer at the capture's
++       * scale, offset by the captured rectangle's origin: both are in the
++       * viewport clutter_stage_paint_to_framebuffer() sets. Reading the
++       * backdrop at the actor's unscaled stage position blurred another
++       * part of the screen (a white window above a glass island left the
++       * island a white slab with its white ink gone), and anything but a
++       * full-stage capture at scale 1 was off.
++       */
++      CoglFramebuffer *framebuffer =
++        clutter_paint_context_get_framebuffer (paint_context);
++      ClutterActor *stage = clutter_actor_get_stage (self->actor);
++      float viewport[4];
++      float stage_width = stage ? clutter_actor_get_width (stage) : 0.f;
++
++      cogl_framebuffer_get_viewport4fv (framebuffer, viewport);
++      if (stage_width > 0.f && viewport[2] > 0.f)
++        {
++          box_scale_factor = viewport[2] / stage_width;
++          origin_x += viewport[0] / box_scale_factor;
++          origin_y += viewport[1] / box_scale_factor;
+         }
++    }
+ 
+-      clutter_actor_box_set_origin (source_actor_box, origin_x, origin_y);
+-      clutter_actor_box_set_size (source_actor_box, width, height);
++  clutter_actor_box_set_origin (&full, origin_x, origin_y);
++  clutter_actor_box_set_size (&full, width, height);
++  clutter_actor_box_scale (&full, box_scale_factor);
++  clutter_actor_box_clamp_to_pixel (&full);
+ 
+-      clutter_actor_box_scale (source_actor_box, box_scale_factor);
+-      break;
+-    }
++  {
++    CoglFramebuffer *framebuffer =
++      clutter_paint_context_get_framebuffer (paint_context);
++    float fb_width = cogl_framebuffer_get_width (framebuffer);
++    float fb_height = cogl_framebuffer_get_height (framebuffer);
++    float full_width = clutter_actor_box_get_width (&full);
++    float full_height = clutter_actor_box_get_height (&full);
+ 
+-  clutter_actor_box_clamp_to_pixel (source_actor_box);
++    *source_actor_box = (ClutterActorBox) {
++      MAX (full.x1, 0.f),
++      MAX (full.y1, 0.f),
++      MIN (full.x2, fb_width),
++      MIN (full.y2, fb_height),
++    };
++
++    if (source_actor_box->x2 <= source_actor_box->x1 ||
++        source_actor_box->y2 <= source_actor_box->y1 ||
++        full_width <= 0.f || full_height <= 0.f)
++      return FALSE;
++
++    graphene_rect_init (covered,
++                        (source_actor_box->x1 - full.x1) / full_width * actor_width,
++                        (source_actor_box->y1 - full.y1) / full_height * actor_height,
++                        clutter_actor_box_get_width (source_actor_box) / full_width * actor_width,
++                        clutter_actor_box_get_height (source_actor_box) / full_height * actor_height);
++  }
++
++  return TRUE;
++}
++
++/* The covered rectangle, textured with the whole of the result. */
++static void
++add_covered_rectangle (BlurTarget       *target,
++                       ClutterPaintNode *node)
++{
++  const graphene_rect_t *r = &target->covered;
++
++  clutter_paint_node_add_texture_rectangle (node,
++                                            &(ClutterActorBox) {
++                                              r->origin.x,
++                                              r->origin.y,
++                                              r->origin.x + r->size.width,
++                                              r->origin.y + r->size.height,
++                                            },
++                                            0.f, 0.f, 1.f, 1.f);
+ }
+ 
+ static void
+ add_blurred_pipeline (ShellBlurEffect  *self,
++                      BlurTarget       *target,
+                       ClutterPaintNode *node,
+                       uint8_t           paint_opacity)
+ {
+   g_autoptr (ClutterPaintNode) pipeline_node = NULL;
+-  float width, height;
+ 
+-  /* Use the untransformed actor size here, since the framebuffer itself already
+-   * has the actor transform matrix applied.
+-   */
+-  clutter_actor_get_size (self->actor, &width, &height);
++  update_brightness (self, target, paint_opacity);
+ 
+-  update_brightness (self, paint_opacity);
+-
+-  pipeline_node = clutter_pipeline_node_new (self->brightness_fb.pipeline);
++  /* The covered rectangle is in untransformed actor units, since the
++   * framebuffer itself already has the actor transform matrix applied.
++   */
++  pipeline_node = clutter_pipeline_node_new (target->brightness_pipeline);
+   clutter_paint_node_set_static_name (pipeline_node, "ShellBlurEffect (final)");
+   clutter_paint_node_add_child (node, pipeline_node);
+-
+-  clutter_paint_node_add_rectangle (pipeline_node,
+-                                    &(ClutterActorBox) {
+-                                      0.f, 0.f,
+-                                      width,
+-                                      height,
+-                                    });
++  add_covered_rectangle (target, pipeline_node);
+ }
+ 
+-/* Luma: the blur draws into textures it keeps while the actor's size and
+- * downscale stay the same. A ClutterBlurNode allocated three new textures
+- * and pipelines on every paint (a background blur paints every frame), and
+- * its result went through a further copy into brightness_fb before reaching
+- * the stage: per blurred surface, two more GPU passes and three texture
+- * allocations each frame. Here the source is drawn straight into the
+- * vertical pass (downscaling as it samples), the horizontal pass reads that,
+- * and the brightness pipeline draws the horizontal result to the stage.
++/* Luma: the blur draws into textures it keeps while the box and downscale
++ * stay the same. A ClutterBlurNode allocated three new textures and
++ * pipelines on every paint (a background blur paints every frame), and its
++ * result went through a further copy before reaching the stage. Here the
++ * source is drawn straight into the vertical pass (downscaling as it
++ * samples), the horizontal pass reads that, and the brightness pipeline
++ * draws the horizontal result to the stage.
+  *
+  * Returns the node the source (actor offscreen or background copy) is
+  * painted under; add_vertical_pass() then closes it.
+  */
+ static ClutterPaintNode *
+ create_blur_nodes (ShellBlurEffect  *self,
++                   BlurTarget       *target,
+                    ClutterPaintNode *node,
+                    uint8_t           paint_opacity)
+ {
+   g_autoptr (ClutterPaintNode) result_node = NULL;
+   g_autoptr (ClutterPaintNode) blur_node = NULL;
+-  float width;
+-  float height;
+ 
+-  clutter_actor_get_size (self->actor, &width, &height);
++  update_brightness (self, target, paint_opacity);
+ 
+-  update_brightness (self, paint_opacity);
+-
+   /* Holds the horizontal pass; draws it to the stage with brightness. */
+-  result_node = clutter_layer_node_new_to_framebuffer (self->hblur_fb.framebuffer,
+-                                                       self->brightness_fb.pipeline);
++  result_node = clutter_layer_node_new_to_framebuffer (target->hblur_fb.framebuffer,
++                                                       target->brightness_pipeline);
+   clutter_paint_node_set_static_name (result_node, "ShellBlurEffect (brightness)");
+   clutter_paint_node_add_child (node, result_node);
+-  clutter_paint_node_add_rectangle (result_node,
+-                                    &(ClutterActorBox) {
+-                                      0.f, 0.f,
+-                                      width, height,
+-                                    });
++  add_covered_rectangle (target, result_node);
+ 
+   /* Holds the vertical pass; draws the horizontal pass from it. */
+-  blur_node = clutter_layer_node_new_to_framebuffer (self->vblur_fb.framebuffer,
+-                                                     self->hblur_fb.pipeline);
++  blur_node = clutter_layer_node_new_to_framebuffer (target->vblur_fb.framebuffer,
++                                                     target->hblur_fb.pipeline);
+   clutter_paint_node_set_static_name (blur_node, "ShellBlurEffect (blur)");
+   clutter_paint_node_add_child (result_node, blur_node);
+   clutter_paint_node_add_rectangle (blur_node,
+                                     &(ClutterActorBox) {
+                                       0.f, 0.f,
+-                                      cogl_texture_get_width (self->hblur_fb.texture),
+-                                      cogl_texture_get_height (self->hblur_fb.texture),
++                                      cogl_texture_get_width (target->hblur_fb.texture),
++                                      cogl_texture_get_height (target->hblur_fb.texture),
+                                     });
+ 
+-  self->cache_flags |= BLUR_APPLIED;
++  target->cache_flags |= BLUR_APPLIED;
+ 
+   return g_steal_pointer (&blur_node);
+ }
+ 
+ static void
+-add_vertical_pass (ShellBlurEffect  *self,
++add_vertical_pass (BlurTarget       *target,
+                    ClutterPaintNode *blur_node)
+ {
+   g_autoptr (ClutterPaintNode) pass_node = NULL;
+ 
+-  pass_node = clutter_pipeline_node_new (self->vblur_fb.pipeline);
++  pass_node = clutter_pipeline_node_new (target->vblur_fb.pipeline);
+   clutter_paint_node_set_static_name (pass_node, "ShellBlurEffect (vertical)");
+   clutter_paint_node_add_child (blur_node, pass_node);
+   clutter_paint_node_add_rectangle (pass_node,
+                                     &(ClutterActorBox) {
+                                       0.f, 0.f,
+-                                      cogl_texture_get_width (self->vblur_fb.texture),
+-                                      cogl_texture_get_height (self->vblur_fb.texture),
++                                      cogl_texture_get_width (target->vblur_fb.texture),
++                                      cogl_texture_get_height (target->vblur_fb.texture),
+                                     });
+ }
+ 
++/* Copies the framebuffer under the actor (already clipped to the
++ * framebuffer by update_actor_box()) into the target's background texture.
++ */
+ static void
+-paint_background (ShellBlurEffect     *self,
++paint_background (BlurTarget          *target,
+                   ClutterPaintNode    *node,
+                   ClutterPaintContext *paint_context,
+                   ClutterActorBox     *source_actor_box)
+@@ -652,128 +816,129 @@
+   g_autoptr (ClutterPaintNode) background_node = NULL;
+   g_autoptr (ClutterPaintNode) blit_node = NULL;
+   CoglFramebuffer *src;
+-  float transformed_x;
+-  float transformed_y;
+-  float transformed_width;
+-  float transformed_height;
+ 
+-  clutter_actor_box_get_origin (source_actor_box,
+-                                &transformed_x,
+-                                &transformed_y);
+-  clutter_actor_box_get_size (source_actor_box,
+-                              &transformed_width,
+-                              &transformed_height);
+-
+-  /* Background layer node */
+   background_node =
+-    clutter_layer_node_new_to_framebuffer (self->background_fb.framebuffer,
+-                                           self->background_fb.pipeline);
++    clutter_layer_node_new_to_framebuffer (target->background_fb.framebuffer,
++                                           target->background_fb.pipeline);
+   clutter_paint_node_set_static_name (background_node, "ShellBlurEffect (background)");
+   clutter_paint_node_add_child (node, background_node);
+ 
+-  /* Blit node */
+   src = clutter_paint_context_get_framebuffer (paint_context);
+-
+-  /* Luma: only what lies inside the framebuffer is copied. An actor partly
+-   * outside it (a capture of part of the screen, or an island at a monitor's
+-   * edge) blitted from outside the framebuffer, which is undefined and came
+-   * out as a grey smear.
+-   */
+-  {
+-    float src_width = cogl_framebuffer_get_width (src);
+-    float src_height = cogl_framebuffer_get_height (src);
+-    float x1 = MAX (transformed_x, 0.f);
+-    float y1 = MAX (transformed_y, 0.f);
+-    float x2 = MIN (transformed_x + transformed_width, src_width);
+-    float y2 = MIN (transformed_y + transformed_height, src_height);
+-
+-    if (x2 <= x1 || y2 <= y1)
+-      return;
+-
+-    blit_node = clutter_blit_node_new (src);
+-    clutter_paint_node_set_static_name (blit_node, "ShellBlurEffect (blit)");
+-    clutter_paint_node_add_child (background_node, blit_node);
+-    clutter_blit_node_add_blit_rectangle (CLUTTER_BLIT_NODE (blit_node),
+-                                          x1,
+-                                          y1,
+-                                          x1 - transformed_x,
+-                                          y1 - transformed_y,
+-                                          x2 - x1,
+-                                          y2 - y1);
+-  }
++  blit_node = clutter_blit_node_new (src);
++  clutter_paint_node_set_static_name (blit_node, "ShellBlurEffect (blit)");
++  clutter_paint_node_add_child (background_node, blit_node);
++  clutter_blit_node_add_blit_rectangle (CLUTTER_BLIT_NODE (blit_node),
++                                        source_actor_box->x1,
++                                        source_actor_box->y1,
++                                        0, 0,
++                                        clutter_actor_box_get_width (source_actor_box),
++                                        clutter_actor_box_get_height (source_actor_box));
+ }
+ 
+ static void
+-wire_blur_pipelines (ShellBlurEffect *self)
++wire_blur_pipelines (ShellBlurEffect *self,
++                     BlurTarget      *target)
+ {
+   CoglTexture *source;
+   gboolean resized;
+   float sigma;
+ 
+-  source = self->mode == SHELL_BLUR_MODE_ACTOR ? self->actor_fb.texture
+-                                               : self->background_fb.texture;
+-  if (cogl_pipeline_get_layer_texture (self->vblur_fb.pipeline, 0) != source)
+-    cogl_pipeline_set_layer_texture (self->vblur_fb.pipeline, 0, source);
++  source = self->mode == SHELL_BLUR_MODE_ACTOR ? target->actor_fb.texture
++                                               : target->background_fb.texture;
++  if (cogl_pipeline_get_layer_texture (target->vblur_fb.pipeline, 0) != source)
++    cogl_pipeline_set_layer_texture (target->vblur_fb.pipeline, 0, source);
+ 
+   /* The pipelines hold the textures they sample, so a reallocated texture
+    * never has the address of the one it replaced.
+    */
+-  resized = cogl_pipeline_get_layer_texture (self->hblur_fb.pipeline, 0) !=
+-            self->vblur_fb.texture;
++  resized = cogl_pipeline_get_layer_texture (target->hblur_fb.pipeline, 0) !=
++            target->vblur_fb.texture;
+   if (resized)
+     {
+-      cogl_pipeline_set_layer_texture (self->hblur_fb.pipeline, 0,
+-                                       self->vblur_fb.texture);
+-      cogl_pipeline_set_layer_texture (self->brightness_fb.pipeline, 0,
+-                                       self->hblur_fb.texture);
++      cogl_pipeline_set_layer_texture (target->hblur_fb.pipeline, 0,
++                                       target->vblur_fb.texture);
++      cogl_pipeline_set_layer_texture (target->brightness_pipeline, 0,
++                                       target->hblur_fb.texture);
+     }
+ 
+-  sigma = self->radius / self->downscale_factor / 2.f;
+-  if (resized || sigma != self->blur_sigma)
++  sigma = self->radius / target->downscale_factor / 2.f;
++  if (resized || sigma != target->blur_sigma)
+     {
+-      update_blur_uniforms (self->vblur_fb.pipeline, sigma,
+-                            1.f / cogl_texture_get_height (self->vblur_fb.texture));
+-      update_blur_uniforms (self->hblur_fb.pipeline, sigma,
+-                            1.f / cogl_texture_get_width (self->hblur_fb.texture));
+-      self->blur_sigma = sigma;
++      update_blur_uniforms (target->vblur_fb.pipeline, sigma,
++                            1.f / cogl_texture_get_height (target->vblur_fb.texture));
++      update_blur_uniforms (target->hblur_fb.pipeline, sigma,
++                            1.f / cogl_texture_get_width (target->hblur_fb.texture));
++      target->blur_sigma = sigma;
+     }
+ }
+ 
++/* Allocates the target's textures, only when the box size or downscale
++ * changed.
++ */
+ static gboolean
+-update_framebuffers (ShellBlurEffect     *self,
+-                     ClutterPaintContext *paint_context,
+-                     ClutterActorBox     *source_actor_box)
++update_framebuffers (ShellBlurEffect *self,
++                     BlurTarget      *target,
++                     ClutterActorBox *source_actor_box)
+ {
+-  gboolean updated = FALSE;
+   float downscale_factor;
+   float height = -1;
+   float width = -1;
++  gboolean same;
+ 
+   clutter_actor_box_get_size (source_actor_box, &width, &height);
+ 
+   downscale_factor = calculate_downscale_factor (width, height, self->radius);
+ 
+-  updated = update_blur_fbos (self, width, height, downscale_factor);
++  same = target->tex_width == (unsigned int) width &&
++         target->tex_height == (unsigned int) height &&
++         target->downscale_factor == downscale_factor &&
++         target->vblur_fb.framebuffer &&
++         target->hblur_fb.framebuffer;
+ 
+   switch (self->mode)
+     {
+     case SHELL_BLUR_MODE_ACTOR:
+-      updated = updated && update_actor_fbo (self, width, height, downscale_factor);
++      same = same && target->actor_fb.framebuffer;
+       break;
+ 
+     case SHELL_BLUR_MODE_BACKGROUND:
+-      updated = updated && update_background_fbo (self, width, height);
++      same = same && target->background_fb.framebuffer;
+       break;
+     }
+ 
+-  self->tex_width = width;
+-  self->tex_height = height;
+-  self->downscale_factor = downscale_factor;
++  if (same)
++    return TRUE;
+ 
+-  if (updated)
+-    wire_blur_pipelines (self);
++  target->cache_flags &= ~(ACTOR_PAINTED | BLUR_APPLIED);
++  target->tex_width = width;
++  target->tex_height = height;
++  target->downscale_factor = downscale_factor;
+ 
+-  return updated;
++  if (!update_fbo (self, &target->vblur_fb, width, height, downscale_factor) ||
++      !update_fbo (self, &target->hblur_fb, width, height, downscale_factor))
++    goto fail;
++
++  switch (self->mode)
++    {
++    case SHELL_BLUR_MODE_ACTOR:
++      clear_framebuffer_data (&target->background_fb);
++      if (!update_fbo (self, &target->actor_fb, width, height, downscale_factor))
++        goto fail;
++      break;
++
++    case SHELL_BLUR_MODE_BACKGROUND:
++      clear_framebuffer_data (&target->actor_fb);
++      if (!update_fbo (self, &target->background_fb, width, height, 1.0))
++        goto fail;
++      break;
++    }
++
++  wire_blur_pipelines (self, target);
++  return TRUE;
++
++fail:
++  blur_target_clear (target);
++  return FALSE;
+ }
+ 
+ static void
+@@ -789,6 +954,7 @@
+ 
+ static void
+ paint_actor_offscreen (ShellBlurEffect         *self,
++                       BlurTarget              *target,
+                        ClutterPaintNode        *node,
+                        ClutterEffectPaintFlags  flags)
+ {
+@@ -797,22 +963,22 @@
+   actor_dirty = (flags & CLUTTER_EFFECT_PAINT_ACTOR_DIRTY) != 0;
+ 
+   /* The vertical pass samples actor_fb; repaint it only when stale. */
+-  if (actor_dirty || !(self->cache_flags & ACTOR_PAINTED))
++  if (actor_dirty || !(target->cache_flags & ACTOR_PAINTED))
+     {
+       g_autoptr (ClutterPaintNode) transform_node = NULL;
+       g_autoptr (ClutterPaintNode) layer_node = NULL;
+       graphene_matrix_t transform;
+ 
+       /* Layer node */
+-      layer_node = clutter_layer_node_new_to_framebuffer (self->actor_fb.framebuffer,
+-                                                          self->actor_fb.pipeline);
++      layer_node = clutter_layer_node_new_to_framebuffer (target->actor_fb.framebuffer,
++                                                          target->actor_fb.pipeline);
+       clutter_paint_node_set_static_name (layer_node, "ShellBlurEffect (actor offscreen)");
+       clutter_paint_node_add_child (node, layer_node);
+ 
+       /* Transform node */
+       graphene_matrix_init_scale (&transform,
+-                                  1.f / self->downscale_factor,
+-                                  1.f / self->downscale_factor,
++                                  1.f / target->downscale_factor,
++                                  1.f / target->downscale_factor,
+                                   1.f);
+       transform_node = clutter_transform_node_new (&transform);
+       clutter_paint_node_set_static_name (transform_node, "ShellBlurEffect (downscale)");
+@@ -821,7 +987,7 @@
+       /* Actor node */
+       add_actor_node (self, transform_node, 255);
+ 
+-      self->cache_flags |= ACTOR_PAINTED;
++      target->cache_flags |= ACTOR_PAINTED;
+     }
+ }
+ 
+@@ -895,7 +1061,11 @@
+  *
+  * The clip is in stage coordinates (clutter_stage_add_redraw_clip()
+  * intersects it with the view layout), so the actor's transformed box is
+- * compared in the same space, not in framebuffer pixels.
++ * compared in the same space, not in framebuffer pixels, and only the part
++ * of it on this view: the clip of one view can never contain an actor that
++ * reaches onto another monitor, so a full-screen scrim over several
++ * monitors was never "painted", kept its stale blur and asked for another
++ * frame on every view, every frame.
+  */
+ /* A test turns the fix off -- the case is still counted -- to watch the
+  * smears come back.
+@@ -916,6 +1086,7 @@
+                         ClutterPaintContext *paint_context)
+ {
+   const MtkRegion *redraw_clip;
++  ClutterStageView *stage_view;
+   MtkRectangle rect;
+   float x, y, width, height;
+ 
+@@ -933,6 +1104,16 @@
+     .height = (int) ceilf (y + height) - (int) floorf (y),
+   };
+ 
++  stage_view = clutter_paint_context_get_stage_view (paint_context);
++  if (stage_view)
++    {
++      MtkRectangle layout;
++
++      clutter_stage_view_get_layout (stage_view, &layout);
++      if (!mtk_rectangle_intersect (&rect, &layout, &rect))
++        return TRUE;
++    }
++
+   if (rect.width <= 0 || rect.height <= 0)
+     return TRUE;
+ 
+@@ -961,6 +1142,24 @@
+     *stale = self->stale_background_paints;
+   if (reused)
+     *reused = self->reused_background_paints;
++}
++
++/**
++ * shell_blur_effect_get_framebuffer_allocations:
++ * @self: a #ShellBlurEffect
++ *
++ * Luma: how many textures and framebuffers the effect has allocated. A test
++ * reads it to check that a steady blur allocates nothing per frame, on one
++ * monitor or several.
++ *
++ * Returns: the number of allocations since the effect was created
++ */
++int
++shell_blur_effect_get_framebuffer_allocations (ShellBlurEffect *self)
++{
++  g_return_val_if_fail (SHELL_IS_BLUR_EFFECT (self), 0);
++
++  return self->framebuffer_allocations;
+ }
+ 
+ static gboolean
+@@ -983,6 +1182,7 @@
+ 
+ static gboolean
+ needs_repaint (ShellBlurEffect         *self,
++               BlurTarget              *target,
+                ClutterEffectPaintFlags  flags)
+ {
+   gboolean actor_cached;
+@@ -990,8 +1190,8 @@
+   gboolean actor_dirty;
+ 
+   actor_dirty = (flags & CLUTTER_EFFECT_PAINT_ACTOR_DIRTY) != 0;
+-  blur_cached = (self->cache_flags & BLUR_APPLIED) != 0;
+-  actor_cached = (self->cache_flags & ACTOR_PAINTED) != 0;
++  blur_cached = (target->cache_flags & BLUR_APPLIED) != 0;
++  actor_cached = (target->cache_flags & ACTOR_PAINTED) != 0;
+ 
+   switch (self->mode)
+     {
+@@ -1019,6 +1219,9 @@
+   if (self->radius > 0)
+     {
+       g_autoptr (ClutterPaintNode) blur_node = NULL;
++      ClutterActorBox source_actor_box;
++      graphene_rect_t covered;
++      BlurTarget *target;
+ 
+       switch (self->mode)
+         {
+@@ -1035,39 +1238,46 @@
+           break;
+         }
+ 
++      target = get_target (self, paint_context);
++
++      /* Luma: nothing of the actor is inside this framebuffer: nothing to
++       * blur behind it.
++       */
++      if (!update_actor_box (self, paint_context, &source_actor_box, &covered))
++        {
++          add_actor_node (self, node, -1);
++          return;
++        }
++
+       /* Luma: a held background keeps the last blur while the actor stays
+        * where it was copied from.
+        */
+       if (self->mode == SHELL_BLUR_MODE_BACKGROUND &&
+-          (self->cache_flags & BLUR_APPLIED) &&
+-          background_held (self))
++          (target->cache_flags & BLUR_APPLIED) &&
++          background_held (self) &&
++          clutter_actor_box_equal (&source_actor_box, &target->background_box))
+         {
+-          ClutterActorBox box;
+-
+-          update_actor_box (self, paint_context, &box);
+-          if (clutter_actor_box_equal (&box, &self->background_box))
+-            {
+-              add_blurred_pipeline (self, node, paint_opacity);
+-              add_actor_node (self, node, -1);
+-              return;
+-            }
++          add_blurred_pipeline (self, target, node, paint_opacity);
++          add_actor_node (self, node, -1);
++          return;
+         }
+ 
+       /* Luma: the background copy would be this surface's own last output,
+        * so keep the blur we have and ask for a frame that repaints what is
+-       * behind us. Without a blur to keep, or after MAX_STALE_FRAMES, take
+-       * the copy rather than show nothing.
++       * behind us. Without a blur to keep, after MAX_STALE_FRAMES, or once
++       * the actor moved, take the copy rather than show nothing.
+        */
+       if (self->mode == SHELL_BLUR_MODE_BACKGROUND &&
+           !background_was_painted (self, paint_context))
+         {
+           if (!keep_stale_background () &&
+-              (self->cache_flags & BLUR_APPLIED) &&
+-              self->stale_frames < MAX_STALE_FRAMES)
++              (target->cache_flags & BLUR_APPLIED) &&
++              clutter_actor_box_equal (&source_actor_box, &target->background_box) &&
++              target->stale_frames < MAX_STALE_FRAMES)
+             {
+-              self->stale_frames++;
++              target->stale_frames++;
+               self->reused_background_paints++;
+-              add_blurred_pipeline (self, node, paint_opacity);
++              add_blurred_pipeline (self, target, node, paint_opacity);
+               add_actor_node (self, node, -1);
+               clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
+               return;
+@@ -1077,45 +1287,42 @@
+         }
+       else
+         {
+-          self->stale_frames = 0;
++          target->stale_frames = 0;
+         }
+ 
+-      if (needs_repaint (self, flags))
++      if (needs_repaint (self, target, flags))
+         {
+-          ClutterActorBox source_actor_box;
+-
+           if (self->mode == SHELL_BLUR_MODE_BACKGROUND)
+             node = add_paint_box_clip (self, node);
+ 
+-          update_actor_box (self, paint_context, &source_actor_box);
+-
+           /* Failing to create or update the offscreen framebuffers prevents
+            * the entire effect to be applied.
+            */
+-          if (!update_framebuffers (self, paint_context, &source_actor_box))
++          if (!update_framebuffers (self, target, &source_actor_box))
+             goto fail;
+ 
+-          self->background_box = source_actor_box;
++          target->background_box = source_actor_box;
++          target->covered = covered;
+ 
+-          blur_node = create_blur_nodes (self, node, paint_opacity);
++          blur_node = create_blur_nodes (self, target, node, paint_opacity);
+ 
+           switch (self->mode)
+             {
+             case SHELL_BLUR_MODE_ACTOR:
+-              paint_actor_offscreen (self, blur_node, flags);
++              paint_actor_offscreen (self, target, blur_node, flags);
+               break;
+ 
+             case SHELL_BLUR_MODE_BACKGROUND:
+-              paint_background (self, blur_node, paint_context, &source_actor_box);
++              paint_background (target, blur_node, paint_context, &source_actor_box);
+               break;
+             }
+ 
+-          add_vertical_pass (self, blur_node);
++          add_vertical_pass (target, blur_node);
+         }
+       else
+         {
+           /* Use the cached pipeline if no repaint is needed */
+-          add_blurred_pipeline (self, node, paint_opacity);
++          add_blurred_pipeline (self, target, node, paint_opacity);
+         }
+ 
+       /* Background blur needs to paint the actor after painting the blurred
+@@ -1146,16 +1353,12 @@
+ {
+   ShellBlurEffect *self = (ShellBlurEffect *)object;
+ 
+-  clear_framebuffer_data (&self->actor_fb);
+-  clear_framebuffer_data (&self->background_fb);
+-  clear_framebuffer_data (&self->vblur_fb);
+-  clear_framebuffer_data (&self->hblur_fb);
++  g_clear_pointer (&self->targets, g_ptr_array_unref);
+ 
+-  g_clear_object (&self->actor_fb.pipeline);
+-  g_clear_object (&self->background_fb.pipeline);
+-  g_clear_object (&self->vblur_fb.pipeline);
+-  g_clear_object (&self->hblur_fb.pipeline);
+-  g_clear_object (&self->brightness_fb.pipeline);
++  g_clear_object (&self->base_pipeline);
++  g_clear_object (&self->vblur_pipeline);
++  g_clear_object (&self->hblur_pipeline);
++  g_clear_object (&self->brightness_pipeline);
+ 
+   G_OBJECT_CLASS (shell_blur_effect_parent_class)->finalize (object);
+ }
+@@ -1229,7 +1432,7 @@
+         if (*field != next)
+           {
+             *field = next;
+-            self->cache_flags &= ~BLUR_APPLIED;
++            invalidate_blur (self);
+             if (self->actor)
+               clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
+             g_object_notify_by_pspec (object, properties[prop_id]);
+@@ -1296,6 +1499,7 @@
+   g_object_class_install_properties (object_class, N_PROPS, properties);
+ }
+ 
++
+ static void
+ shell_blur_effect_init (ShellBlurEffect *self)
+ {
+@@ -1304,16 +1508,19 @@
+   self->brightness = 1.f;
+   self->saturation = 1.f;
+ 
+-  self->actor_fb.pipeline = create_base_pipeline ();
+-  self->background_fb.pipeline = create_base_pipeline ();
+-  self->vblur_fb.pipeline = create_blur_pipeline (TRUE);
+-  self->hblur_fb.pipeline = create_blur_pipeline (FALSE);
+-  self->brightness_fb.pipeline = create_brightness_pipeline ();
++  self->targets = g_ptr_array_new_with_free_func (blur_target_free);
++
++  self->base_pipeline = create_base_pipeline ();
++  self->vblur_pipeline = create_blur_pipeline (TRUE);
++  self->hblur_pipeline = create_blur_pipeline (FALSE);
++  self->brightness_pipeline = create_brightness_pipeline ();
+   self->brightness_uniform =
+-    cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "brightness");
+-  self->saturation_uniform = cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "luma_saturation");
+-  self->size_uniform = cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "luma_size");
+-  self->corners_uniform = cogl_pipeline_get_uniform_location (self->brightness_fb.pipeline, "luma_corners");
++    cogl_pipeline_get_uniform_location (self->brightness_pipeline, "brightness");
++  self->saturation_uniform = cogl_pipeline_get_uniform_location (self->brightness_pipeline, "luma_saturation");
++  self->size_uniform = cogl_pipeline_get_uniform_location (self->brightness_pipeline, "luma_size");
++  self->corners_uniform = cogl_pipeline_get_uniform_location (self->brightness_pipeline, "luma_corners");
++  self->origin_uniform = cogl_pipeline_get_uniform_location (self->brightness_pipeline, "luma_origin");
++  self->extent_uniform = cogl_pipeline_get_uniform_location (self->brightness_pipeline, "luma_extent");
+ }
+ 
+ ShellBlurEffect *
+@@ -1340,7 +1547,7 @@
+     return;
+ 
+   self->radius = radius;
+-  self->cache_flags &= ~BLUR_APPLIED;
++  invalidate_blur (self);
+ 
+   if (self->actor)
+     clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
+@@ -1366,7 +1573,7 @@
+     return;
+ 
+   self->brightness = brightness;
+-  self->cache_flags &= ~BLUR_APPLIED;
++  invalidate_blur (self);
+ 
+   if (self->actor)
+     clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
+@@ -1392,27 +1599,20 @@
+     return;
+ 
+   self->mode = mode;
+-  self->cache_flags &= ~BLUR_APPLIED;
++  invalidate_blur (self);
+ 
+-  switch (mode)
+-    {
+-    case SHELL_BLUR_MODE_ACTOR:
+-      clear_framebuffer_data (&self->background_fb);
+-      break;
++  /* Luma: an actor blur keeps one target, a background blur one per
++   * framebuffer; neither keeps the other's textures.
++   */
++  g_ptr_array_set_size (self->targets, 0);
+ 
+-    case SHELL_BLUR_MODE_BACKGROUND:
+-    default:
+-      /* Luma: the background blur samples its copy, not actor_fb. */
+-      clear_framebuffer_data (&self->actor_fb);
+-      break;
+-    }
+-
+   if (self->actor)
+     clutter_effect_queue_repaint (CLUTTER_EFFECT (self));
+ 
+   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_MODE]);
+ }
+ 
++
+ static void
+ hold_owner_disposed (gpointer  data,
+                      GObject  *owner)
