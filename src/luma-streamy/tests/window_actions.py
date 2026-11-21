@@ -184,7 +184,8 @@ def inspector(win) -> None:
     pane.close()
     pump(0.1)
     assert not pane.shown and win.settings.get("inspector") == "closed"
-    scene = win.project.active_scene
+    scene = next(sc for sc in win.project.scenes if any(w.has_picture for w in sc.widgets))
+    win.switch_scene(scene.id)
     for w in scene.widgets:
         win.select(w.id)
         pump(0.05)
@@ -249,7 +250,8 @@ def outputs(win) -> None:
     else:
         print("record: started and stopped 3 times; the bar followed each")
     # A selection never takes the outputs away.
-    scene = win.project.active_scene
+    scene = next(sc for sc in win.project.scenes if any(w.has_picture for w in sc.widgets))
+    win.switch_scene(scene.id)
     picture = next(w for w in scene.widgets if w.has_picture)
     win.select(picture.id)
     pump(0.1)

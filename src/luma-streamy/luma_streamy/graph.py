@@ -147,7 +147,22 @@ def mixer_pad_props(widget: Widget, zorder: int) -> dict:
     }
 
 
-def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node: str | None) -> list[Element]:
+def hardware_decode() -> bool:
+    """VA decoding is there (vajpegdec and vapostproc) and not turned off (STREAMY_DECODE=software)."""
+    global _HW
+    if _HW is None:
+        from gi.repository import Gst
+
+        _HW = os.environ.get("STREAMY_DECODE") != "software" and all(
+            Gst.ElementFactory.find(name) is not None for name in ("vajpegdec", "vapostproc"))
+    return _HW
+
+
+_HW: bool | None = None
+
+
+def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node: str | None,
+                  hw_decode: bool = False) -> list[Element]:
     kind = widget.kind
     if fake:
         if widget.source.get("fake-silent"):
@@ -197,10 +212,16 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
                 "caps": f"video/x-raw,width={w},height={h},framerate={fps}/1;"
                         f"image/jpeg,width={w},height={h},framerate={fps}/1"}))
         # Cameras may send MJPEG; decodebin passes raw pictures through.
-        # Software decoders: a VA decoder picked before decodebin's pad is linked outputs VA memory, which
-        # the converter after it can't take (not-negotiated: "Internal data stream error").
-        head += [Element("decodebin", f"{prefix}-decode", {"force-sw-decoders": True}),
-                 Element("videoconvert", f"{prefix}-convert")]
+        if hw_decode:
+            # The GPU decodes (vajpegdec) and vapostproc hands GL a DMABuf: no picture crosses the CPU.
+            # A raw camera's frames are uploaded by vapostproc the same way.
+            head += [Element("decodebin", f"{prefix}-decode"),
+                     Element("vapostproc", f"{prefix}-vapp"),
+                     Element("capsfilter", f"{prefix}-dmabuf", {"caps": "video/x-raw(memory:DMABuf)"})]
+        else:
+            # Software: a VA decoder's VA memory is something videoconvert can't take.
+            head += [Element("decodebin", f"{prefix}-decode", {"force-sw-decoders": True}),
+                     Element("videoconvert", f"{prefix}-convert")]
     return head
 
 
@@ -238,10 +259,11 @@ def widget_of(element_name: str) -> str | None:
 
 
 def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | None = None,
-                  node: str | None = None, generation: int = 0) -> Chain:
-    """A picture widget from its source to its glvideomixer pad."""
+                  node: str | None = None, generation: int = 0, hw_decode: bool = False) -> Chain:
+    """A picture widget from its source to its glvideomixer pad (a camera decoded on the GPU with
+    ``hw_decode``)."""
     prefix = branch_prefix(widget, generation)
-    elements = _capture_head(widget, prefix, fake, fd, node)
+    elements = _capture_head(widget, prefix, fake, fd, node, hw_decode)
     elements += [
         Element("queue", f"{prefix}-queue", {"max-size-buffers": 2, "leaky": 2}),
         Element("glupload", f"{prefix}-upload"),

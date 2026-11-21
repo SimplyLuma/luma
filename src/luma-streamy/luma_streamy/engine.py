@@ -481,6 +481,8 @@ class Engine(GObject.Object):
         self._pad_widget: dict[Gst.Pad, str] = {}
         #: Window casts that offered no alpha format: taken opaque (alpha first, not alpha only).
         self._no_alpha: set[str] = set()
+        #: Cameras the GPU couldn't decode (VA failed to negotiate): decoded in software from then on.
+        self._sw_decode: set[str] = set()
         #: Enum properties last set by nick, per (element name, property): a move never re-sets them.
         self._strings: dict[tuple[str, str], str] = {}
 
@@ -847,26 +849,9 @@ class Engine(GObject.Object):
         layer = branch.layers.pop(fmt, None)
         if layer is None or self.pipeline is None:
             return
-        pipeline = self.pipeline
         self._forget_pad(layer.pad)
-        tee = branch.elements[-1]
-        if layer.tee_pad is not None:
-            layer.tee_pad.unlink(layer.elements[0].get_static_pad("sink"))
-            tee.release_request_pad(layer.tee_pad)
-        src = layer.frame.get_static_pad("src")
-        if layer.pad is not None:
-            src.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM, lambda *_a: Gst.PadProbeReturn.DROP)
-            src.unlink(layer.pad)
-            layer.pad.get_parent_element().release_request_pad(layer.pad)
-        for element in layer.elements:
-            element.set_locked_state(True)
-
-        def stop(_pipeline, elements) -> None:
-            for element in elements:
-                element.set_state(Gst.State.NULL)
-            GLib.idle_add(lambda: [pipeline.remove(e) for e in elements if e.get_parent() is pipeline] and False)
-
-        pipeline.call_async(stop, layer.elements)
+        self._stop_then_unlink(layer.elements, layer.elements[0].get_static_pad("sink"),
+                               layer.frame.get_static_pad("src") if layer.pad is not None else None)
 
     def _style_layer(self, layer: Layer, view: Widget, zorder: int, *, fade: int = FADE_MS,
                      alpha: float | None = None) -> None:
@@ -993,7 +978,9 @@ class Engine(GObject.Object):
                 return  # not chosen yet: the window asks the portal first
         self._generation += 1
         if widget.has_picture:
-            chain = graph.picture_chain(widget, zorder, fake=self.fake, fd=fd, node=node, generation=self._generation)
+            hw = widget.kind == "camera" and not self.fake and widget.id not in self._sw_decode and graph.hardware_decode()
+            chain = graph.picture_chain(widget, zorder, fake=self.fake, fd=fd, node=node, generation=self._generation,
+                                        hw_decode=hw)
         else:
             chain = graph.sound_chain(widget, fake=self.fake, fd=fd, node=node, generation=self._generation)
             self._ensure_sound()
@@ -1354,6 +1341,13 @@ class Engine(GObject.Object):
             self._remove_branch(widget_id)
             GLib.idle_add(lambda: self.show_scene(self._scene, skip=self._skip, states=self._states) and False)
             return
+        if branch is not None and reason in ("format", "stopped") and widget_id not in self._sw_decode and \
+                any(e.get_name().endswith("-vapp") for e in branch.elements):
+            log(f"widget {widget_id}: GPU decoding failed ({detail[:160]}); decoding in software")
+            self._sw_decode.add(widget_id)
+            self._remove_branch(widget_id)
+            GLib.idle_add(lambda: self.show_scene(self._scene, skip=self._skip, states=self._states) and False)
+            return
         if widget_id in self.branches:
             log(f"widget {widget_id} failed: {reason}" + (f": {detail}" if detail else ""))
             self._remove_branch(widget_id)
@@ -1384,7 +1378,9 @@ class Engine(GObject.Object):
         if self.branches.get(branch.widget_id) is not branch:
             return False
         if branch.device:
-            log(f"widget {branch.widget_id}: first picture after {(time.monotonic() - branch.started) * 1000:.0f} ms")
+            how = "GPU" if any(e.get_name().endswith("-vapp") for e in branch.elements) else "software"
+            log(f"widget {branch.widget_id}: first picture after {(time.monotonic() - branch.started) * 1000:.0f} ms"
+                f" ({how} decode)")
         self.emit("widget-ready", widget.id)
         steps = 10
 
@@ -1426,19 +1422,41 @@ class Engine(GObject.Object):
         elements, branch.monitor = branch.monitor, []
         if not elements or self.pipeline is None:
             return
+        self._stop_then_unlink(elements, elements[0].get_static_pad("sink"))
+
+    def _stop_then_unlink(self, elements: list, sink: Gst.Pad, src: Gst.Pad | None = None) -> None:
+        """Take a chain out in the order GStreamer needs: its data dropped at once (at the request pad
+        it hangs from, and at its own ``src`` into a mixer), its elements NULL on the pool, then, on the
+        main loop, its request pads released and its elements removed."""
         pipeline = self.pipeline
-        sink_pad = elements[0].get_static_pad("sink")
-        peer = sink_pad.get_peer()
-        if peer is not None:
-            peer.unlink(sink_pad)
-            peer.get_parent_element().release_request_pad(peer)
+        upstream = sink.get_peer()
+        downstream = src.get_peer() if src is not None else None
+        for pad in (upstream, src):
+            if pad is not None:
+                pad.add_probe(Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST | Gst.PadProbeType.EVENT_DOWNSTREAM,
+                              lambda *_a: Gst.PadProbeReturn.DROP)
         for element in elements:
             element.set_locked_state(True)
+
+        def drop() -> bool:
+            for peer, pad in ((upstream, sink), (src, downstream)):
+                if peer is None or pad is None:
+                    continue
+                if peer.get_peer() is pad:
+                    peer.unlink(pad)
+                request = peer if peer is upstream else pad  # the tee's or the mixer's request pad
+                owner = request.get_parent_element()
+                if owner is not None:
+                    owner.release_request_pad(request)
+            for element in elements:
+                if element.get_parent() is pipeline:
+                    pipeline.remove(element)
+            return False
 
         def stop(_pipeline, items) -> None:
             for element in items:
                 element.set_state(Gst.State.NULL)
-            GLib.idle_add(lambda: [pipeline.remove(e) for e in items if e.get_parent() is pipeline] and False)
+            GLib.idle_add(drop)
 
         pipeline.call_async(stop, elements)
 

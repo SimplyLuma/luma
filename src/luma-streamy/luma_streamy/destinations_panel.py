@@ -289,7 +289,7 @@ class DestinationsPanel(Gtk.Box):
         else:
             target = self.outputs.rows[row.id].target if self.outputs is not None and row.id in self.outputs.rows else None
             if target:
-                rows.append(MenuItem("Show file", icon="file", on_activate=lambda: _show_file(target, self)))
+                rows.append(MenuItem("Show file", icon="folder-open", on_activate=lambda: _show_file(target, self)))
             rows += [MenuItem("Record whenever I go live", icon="circle-dot", selected=row.enabled,
                               on_activate=lambda: self._set_record_with_live(row)),
                      MenuItem("Open folder", icon="folder", on_activate=lambda: self._open_folder(row))]
