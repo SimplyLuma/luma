@@ -142,6 +142,8 @@ class Payload(unittest.TestCase):
         self.assertEqual(arguments[:2], ["/opt/vendor/app", "--flag"])
         self.assertIn("--ozone-platform=wayland", arguments)
         self.assertIn("--enable-wayland-ime", arguments)
+        # A file to open follows a switch with a value, never a bare one an application's own parser would give it to.
+        self.assertIn("=", arguments[-2])
         self.assertEqual(arguments[-1], "https://example.org")
         plain = launcher.payload({"id": "x", "exports": {"command": "mousepad"}}, True, [])
         self.assertEqual(plain, ["mousepad"])

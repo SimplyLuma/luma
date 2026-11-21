@@ -346,8 +346,11 @@ def payload(record: dict[str, object], wayland: bool, extra: list[str]) -> list[
         raise InstallerError("The application's package did not declare a launcher.")
     flags = runtime_policy.payload_arguments({"chromium": exports.get("chromium"), "application_id": record.get("id")}, wayland)
     if flags:
-        # Text input (the on-screen keyboard and input methods) for Chromium on Wayland.
-        flags = [*flags, "--enable-wayland-ime"]
+        # Text input (the on-screen keyboard and input methods) for Chromium on Wayland. In front of
+        # the others: an Electron application's own parser takes the word after a switch it does not
+        # know as that switch's value, and the word after the last switch is the file to open
+        # (VS Code opened nothing when this one stood last).
+        flags = ["--enable-wayland-ime", *flags]
     return [*shlex.split(command), *flags, *extra]
 
 
