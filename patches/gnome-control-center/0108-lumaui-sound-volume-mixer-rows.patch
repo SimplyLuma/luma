@@ -171,7 +171,7 @@ index f18d48c..fda09ff 100644
    for (guint i = 0; i < G_N_ELEMENTS (numbers); i++) {
      JsonNode *n = cc_luma_fixture_get (model, numbers[i]);
 diff --git a/shell/cc-luma-view-mixer.c b/shell/cc-luma-view-mixer.c
-index 8d56a82..229c2a1 100644
+index 8d56a82..af788f5 100644
 --- a/shell/cc-luma-view-mixer.c
 +++ b/shell/cc-luma-view-mixer.c
 @@ -1,18 +1,21 @@
@@ -362,7 +362,7 @@ index 8d56a82..229c2a1 100644
  }
  
  static void
-@@ -142,122 +106,177 @@ set_label (GtkWidget *label, const char *text)
+@@ -142,122 +106,175 @@ set_label (GtkWidget *label, const char *text)
      gtk_label_set_text (GTK_LABEL (label), text);
  }
  
@@ -521,12 +521,10 @@ index 8d56a82..229c2a1 100644
 -      if (g_strcmp0 (s->id, id) == 0) return s;
 +      if (!*out.name) continue;
 +      GtkWidget *tile = cc_luma_dev_choice_card (out.glyph, out.label, out.detail, out.is_default);
-+      /* Four tiles fit a narrow window: a long name or detail ends in …, the whole of it on hover. */
++      /* Four tiles fit a narrow window: a long name or detail ends in …. */
 +      GtkWidget *words = gtk_widget_get_next_sibling (gtk_widget_get_first_child (gtk_button_get_child (GTK_BUTTON (tile))));
 +      gtk_label_set_ellipsize (GTK_LABEL (words), PANGO_ELLIPSIZE_END);
 +      gtk_label_set_ellipsize (GTK_LABEL (gtk_widget_get_next_sibling (words)), PANGO_ELLIPSIZE_END);
-+      g_autofree char *whole = *out.detail ? g_strdup_printf ("%s · %s", out.label, out.detail) : g_strdup (out.label);
-+      gtk_widget_set_tooltip_text (tile, whole);
 +      g_object_set_data_full (G_OBJECT (tile), "cf-mix-node", g_strdup (out.name), g_free);
 +      gtk_accessible_update_property (GTK_ACCESSIBLE (tile), GTK_ACCESSIBLE_PROPERTY_LABEL, out.label, -1);
 +      g_signal_connect (tile, "clicked", G_CALLBACK (tile_clicked), m);
@@ -619,7 +617,7 @@ index 8d56a82..229c2a1 100644
  static void
  logged (GObject *proxy, GAsyncResult *result, gpointer data)
  {
-@@ -268,48 +287,83 @@ logged (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -268,48 +285,83 @@ logged (GObject *proxy, GAsyncResult *result, gpointer data)
  }
  
  static void
@@ -729,7 +727,7 @@ index 8d56a82..229c2a1 100644
  static void
  choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
  {
-@@ -320,321 +374,406 @@ choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
+@@ -320,321 +372,403 @@ choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
                         G_DBUS_CALL_FLAGS_NONE, -1, NULL, logged, "output");
  }
  
@@ -827,10 +825,7 @@ index 8d56a82..229c2a1 100644
 +  gtk_widget_set_visible (c->chip, known);
 +  if (!known) return;
 +  g_autofree char *glyph = g_strdup_printf ("lumaui-%s-symbolic", out.glyph);
-+  g_autofree char *tip = moved ? g_strdup_printf ("%s plays on %s", c->name, out.label) :
-+                                 g_strdup_printf ("%s plays on the main output", c->name);
 +  luma_media_row_chip_set (c->chip, glyph, out.label, moved);
-+  gtk_widget_set_tooltip_text (c->chip, tip);
  }
  
  static void
@@ -1388,7 +1383,7 @@ index 8d56a82..229c2a1 100644
    GVariantIter iter;
    GVariant *entry;
    g_variant_iter_init (&iter, apps);
-@@ -642,88 +781,79 @@ apply_applications (Mixer *m, GVariant *apps)
+@@ -642,88 +776,79 @@ apply_applications (Mixer *m, GVariant *apps)
      {
        g_autoptr (GVariantDict) dict = g_variant_dict_new (entry);
        g_variant_unref (entry);
@@ -1536,7 +1531,7 @@ index 8d56a82..229c2a1 100644
  }
  
  static void
-@@ -735,7 +865,7 @@ applications_read (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -735,7 +860,7 @@ applications_read (GObject *proxy, GAsyncResult *result, gpointer data)
    Mixer *m = data;
    if (error) { g_warning ("Volume mixer: %s", error->message); return; }
    g_autoptr (GVariant) apps = g_variant_get_child_value (reply, 0);
@@ -1545,7 +1540,7 @@ index 8d56a82..229c2a1 100644
  }
  
  static void
-@@ -748,7 +878,11 @@ outputs_read (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -748,7 +873,11 @@ outputs_read (GObject *proxy, GAsyncResult *result, gpointer data)
    if (error) { g_warning ("Volume mixer: %s", error->message); return; }
    g_clear_pointer (&m->outputs, g_variant_unref);
    m->outputs = g_variant_get_child_value (reply, 0);
@@ -1558,7 +1553,7 @@ index 8d56a82..229c2a1 100644
  }
  
  static void
-@@ -758,24 +892,19 @@ read_outputs (Mixer *m)
+@@ -758,24 +887,19 @@ read_outputs (Mixer *m)
  }
  
  static void
@@ -1593,7 +1588,7 @@ index 8d56a82..229c2a1 100644
  }
  
  static void
-@@ -785,35 +914,50 @@ proxy_signal (GDBusProxy *proxy, const char *sender, const char *signal, GVarian
+@@ -785,35 +909,50 @@ proxy_signal (GDBusProxy *proxy, const char *sender, const char *signal, GVarian
      {
        guint32 watch;
        g_autoptr (GVariant) values = NULL;
@@ -1658,7 +1653,7 @@ index 8d56a82..229c2a1 100644
  }
  
  static void
-@@ -825,18 +969,21 @@ proxy_ready (GObject *source, GAsyncResult *result, gpointer data)
+@@ -825,18 +964,21 @@ proxy_ready (GObject *source, GAsyncResult *result, gpointer data)
    Mixer *m = data;
    if (!proxy)
      {
@@ -1685,7 +1680,7 @@ index 8d56a82..229c2a1 100644
  
  static void
  watched (GObject *proxy, GAsyncResult *result, gpointer data)
-@@ -844,17 +991,17 @@ watched (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -844,17 +986,17 @@ watched (GObject *proxy, GAsyncResult *result, gpointer data)
    WatchCall *c = data;
    g_autoptr (GError) error = NULL;
    g_autoptr (GVariant) reply = g_dbus_proxy_call_finish (G_DBUS_PROXY (proxy), result, &error);
@@ -1707,7 +1702,7 @@ index 8d56a82..229c2a1 100644
    g_object_unref (c->proxy);
    g_free (c);
  }
-@@ -873,29 +1020,39 @@ unwatch (Mixer *m)
+@@ -873,29 +1015,39 @@ unwatch (Mixer *m)
  static gboolean
  on_screen (Mixer *m)
  {
@@ -1755,7 +1750,7 @@ index 8d56a82..229c2a1 100644
    c->proxy = g_object_ref (m->proxy);
    c->serial = m->watch_serial;
    g_dbus_proxy_call (m->proxy, "WatchLevels", g_variant_new ("(^as)", targets), G_DBUS_CALL_FLAGS_NONE, -1, NULL, watched, c);
-@@ -908,9 +1065,9 @@ suspended_changed (GtkWindow *window, GParamSpec *pspec, Mixer *m)
+@@ -908,9 +1060,9 @@ suspended_changed (GtkWindow *window, GParamSpec *pspec, Mixer *m)
  }
  
  static void
@@ -1767,7 +1762,7 @@ index 8d56a82..229c2a1 100644
    if (m->window != GTK_WIDGET (root))
      {
        if (m->window) g_clear_signal_handler (&m->suspended, m->window);
-@@ -921,7 +1078,7 @@ page_mapped (GtkWidget *page, Mixer *m)
+@@ -921,7 +1073,7 @@ page_mapped (GtkWidget *page, Mixer *m)
  }
  
  static void
@@ -1776,7 +1771,7 @@ index 8d56a82..229c2a1 100644
  {
    sync_watch (m);
  }
-@@ -937,30 +1094,40 @@ mixer_free (Mixer *m)
+@@ -937,30 +1089,40 @@ mixer_free (Mixer *m)
    if (m->window) g_clear_signal_handler (&m->suspended, m->window);
    g_clear_weak_pointer (&m->window);
    g_clear_pointer (&m->outputs, g_variant_unref);
@@ -1837,7 +1832,7 @@ index 8d56a82..229c2a1 100644
  }
  
  void
-@@ -968,94 +1135,110 @@ cc_luma_view_sound_mixer_render (View *v)
+@@ -968,94 +1130,110 @@ cc_luma_view_sound_mixer_render (View *v)
  {
    Mixer *m = g_new0 (Mixer, 1);
    m->v = v;

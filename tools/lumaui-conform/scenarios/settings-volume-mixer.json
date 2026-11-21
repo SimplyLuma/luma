@@ -1,7 +1,7 @@
 {
   "app": "settings-volume-mixer",
   "title": "Settings: Volume mixer",
-  "about": "Settings › Sound › Volume mixer (gnome-control-center 0108, the whole patch series) against the published reference (Design Center mockups/sound-mixer/settings.html), drawn from the fixture's CFMIX. The reference is the page alone: its stage takes the Settings window's size with the page where the main island puts it, and the sidebar is left out of the GTK side.",
+  "about": "Settings › Sound › Volume mixer (gnome-control-center 0108, the active patch series) against the published reference (Design Center mockups/sound-mixer/settings.html), drawn from the fixture's CFMIX. The reference is the page alone: its stage takes the Settings window's size with the page, 680 px wide as in the simulator, where the main island puts it; its transport keys are given the names the row's keys have; the sidebar and the title row are left out of the GTK side.",
   "spec": {
     "root": "design-center",
     "url": "mockups/sound-mixer/settings.html",
@@ -14,7 +14,7 @@
     },
     "before": [
       {
-        "eval": "(() => { const s = document.querySelector('#stage'); s.style.boxSizing = 'border-box'; s.style.width = '1180px'; s.style.margin = '0'; s.style.padding = '36px 0 0 228px'; })()",
+        "eval": "(() => { const s = document.querySelector('#stage'); s.style.boxSizing = 'border-box'; s.style.width = '1180px'; s.style.margin = '0'; s.style.padding = '46px 0 0 228px'; const page = s.querySelector('.cfpage'); page.style.boxSizing = 'border-box'; page.style.width = '680px'; for (const keys of s.querySelectorAll('.mxctl')) { const b = [...keys.querySelectorAll('button')]; if (b.length === 3) { b[0].setAttribute('aria-label', 'Previous'); b[2].setAttribute('aria-label', 'Next'); } } const play = [...s.querySelectorAll('.mxctl .pp')]; ['Pause', 'Play', 'Pause'].forEach((l, i) => play[i] && play[i].setAttribute('aria-label', l)); })()",
         "wait": 300
       }
     ]
@@ -184,7 +184,8 @@
       "cf-sidebar",
       "cf-account",
       "cf-foot",
-      "cf-search"
+      "cf-search",
+      "lumaui-title-row"
     ]
   },
   "states": [
@@ -216,5 +217,8 @@
       "spec": "#stage .cfgrp"
     }
   ],
-  "pairs": []
+  "pairs": [],
+  "app_icon": {
+    "gtk": "^luma-v3-"
+  }
 }
