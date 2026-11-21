@@ -17,6 +17,11 @@ every capsule rather than to whichever application exposed them:
   packaged launch scripts force X11 outright. Under Xwayland inside a capsule
   the GPU process crashes or every resize stutters. Chromium-based payloads are
   detected once and started with Ozone on Wayland, overriding the wrapper.
+* **Sound.** Applications reach the session's sound server through the
+  PulseAudio client library, which most of them open at run time and none of
+  them declare. A base image does not carry it, so a browser in a capsule
+  played nothing and offered no microphone. Capsules get the library; the
+  launcher gives them the socket.
 * **Undeclared libraries.** Third-party packages often bundle their own
   Electron, CEF or Qt and declare none of what it links against, relying on a
   full desktop system to already have NSS, GTK, ALSA and the X libraries. In a
@@ -34,10 +39,10 @@ every capsule rather than to whichever application exposed them:
   switch when the application's own arguments land there anyway.
 * **The keyring.** Applications keep sign-ins encrypted through the Secret
   Service; without it they store secrets in plain text or forget them on every
-  restart. The capsule's session-bus boundary lets the Secret Service through,
-  as it is for the same application installed natively, and the desktop's
-  identity is passed in: Chromium chooses its keyring from XDG_CURRENT_DESKTOP
-  and, with none, silently keeps nothing.
+  restart. The capsule reaches a broker that answers to the Secret Service's
+  name and keeps the application to its own entries (capsule_secrets.py), and
+  the desktop's identity is passed in: Chromium chooses its keyring from
+  XDG_CURRENT_DESKTOP and, with none, silently keeps nothing.
 
 Capsules installed before these rules are brought up to date once, the first
 time they are opened (`RUNTIME_VERSION`).
@@ -49,23 +54,27 @@ import re
 import subprocess
 from pathlib import Path
 
-RUNTIME_VERSION = 4
+RUNTIME_VERSION = 5
 
 # Which capsule kinds each runtime version changed, so a capsule is only
 # rebuilt when something it would receive is new.
-RUNTIME_CHANGES = {1: {"deb", "rpm"}, 2: {"deb", "rpm"}, 3: {"rpm", "portable"}, 4: {"deb"}}
+RUNTIME_CHANGES = {1: {"deb", "rpm"}, 2: {"deb", "rpm"}, 3: {"rpm", "portable"}, 4: {"deb"},
+                   5: {"deb", "rpm", "portable"}}
 
 
 def upgrade_needed(kind: str, version: int) -> bool:
     return any(changed > version and kind in kinds for changed, kinds in RUNTIME_CHANGES.items())
 
 GRAPHICS_PACKAGES = {
+    # The PulseAudio client library is opened at run time by Chromium, Electron,
+    # Firefox, SDL and Qt, and declared by none of them: without it Chromium
+    # falls back to ALSA, finds no device in a capsule, and plays nothing.
     "deb": ("libgl1", "libegl1", "libgles2", "libgbm1", "libgl1-mesa-dri", "libvulkan1", "mesa-vulkan-drivers",
-            "libsecret-1-0", "fonts-dejavu-core"),
+            "libsecret-1-0", "fonts-dejavu-core", "libpulse0"),
     # libGLESv2 is opened at run time by Flutter, Chromium's ANGLE and SDL, so no
     # loader check ever reports it missing.
     "rpm": ("mesa-libGL", "mesa-libEGL", "mesa-libgbm", "mesa-dri-drivers", "mesa-vulkan-drivers", "vulkan-loader",
-            "libglvnd-gles", "libsecret", "dejavu-sans-fonts"),
+            "libglvnd-gles", "libsecret", "dejavu-sans-fonts", "pulseaudio-libs"),
 }
 
 # Files only a Chromium/Electron/CEF payload ships.
@@ -124,8 +133,6 @@ def login_environment(user: str) -> list[tuple[str, str]]:
     if user and all(c.isalnum() or c in "._-" for c in user):
         values += [("USER", user), ("LOGNAME", user)]
     return values
-
-SECRET_SERVICE = "--talk=org.freedesktop.secrets"
 
 _BUS_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)+")
 # Names the session's own services answer to. An application whose launcher

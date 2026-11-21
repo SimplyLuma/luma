@@ -18,6 +18,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import re
+import time
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 
@@ -110,3 +111,48 @@ def level(record: dict[str, object]) -> str:
     """The level to run this application at; allocated on first use."""
     return str(ensure_level(record)["mcs_level"])
 
+
+# -- Keyring entries ---------------------------------------------------------
+
+ADOPTION_SECONDS = 90 * 24 * 3600
+
+
+def keyring_tag(record: dict[str, object]) -> str:
+    """What marks a keyring entry as this application's (capsule_secrets).
+
+    The same identity as its private home, so its saved passwords and its
+    data are kept, found again and deleted together.
+    """
+    return str(record.get("sha256") or record.get("application_id") or "")
+
+
+def new_keyring_state() -> dict[str, object]:
+    """For an application installed now: it has no older entries to find."""
+    return {"adopt_until": 0}
+
+
+def keyring_adoption(record: dict[str, object], now: float | None = None) -> tuple[dict[str, object], bool]:
+    """Whether the application may still take over entries it saved before
+    entries were marked, and the record with that decision written down.
+
+    A record without the field was installed before the broker existed: its
+    sign-ins sit in the keyring unmarked. It gets ninety days from the first
+    start under the broker to ask for each of them once.
+    """
+    now = time.time() if now is None else now
+    state = record.get("keyring")
+    if isinstance(state, dict) and isinstance(state.get("adopt_until"), (int, float)):
+        return record, now < state["adopt_until"]
+    state = {"adopt_until": int(now) + ADOPTION_SECONDS}
+    application_id = safe_id(str(record.get("application_id", "")))
+    with _allocation_lock():
+        try:
+            current = read_record(application_id)
+        except InstallerError:
+            return {**record, "keyring": state}, True
+        if not (isinstance(current.get("keyring"), dict)
+                and isinstance(current["keyring"].get("adopt_until"), (int, float))):
+            write_record(application_id, {**current, "keyring": state})
+        else:
+            state = current["keyring"]
+    return {**record, "keyring": state}, now < state["adopt_until"]

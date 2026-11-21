@@ -80,6 +80,24 @@ class Allocation(unittest.TestCase):
         identity.level(stale)
         self.assertEqual(read_record("one")["mime_types"], ["x-scheme-handler/one"])
 
+    def test_an_application_installed_before_marking_may_find_its_older_keyring_entries_for_a_while(self):
+        write_record("old", {"format": "deb", "sha256": "d" * 64})
+        record, adopt = identity.keyring_adoption(read_record("old"), now=1000)
+        self.assertTrue(adopt)
+        self.assertEqual(read_record("old")["keyring"], {"adopt_until": 1000 + identity.ADOPTION_SECONDS})
+        self.assertEqual(record["keyring"], read_record("old")["keyring"])
+        # The clock does not start again on a later start.
+        self.assertTrue(identity.keyring_adoption(read_record("old"), now=5000)[1])
+        self.assertEqual(read_record("old")["keyring"]["adopt_until"], 1000 + identity.ADOPTION_SECONDS)
+        self.assertFalse(identity.keyring_adoption(read_record("old"), now=1001 + identity.ADOPTION_SECONDS)[1])
+
+    def test_an_application_installed_now_has_nothing_older_to_find(self):
+        write_record("new", {"format": "deb", "sha256": "e" * 64, "keyring": identity.new_keyring_state()})
+        record, adopt = identity.keyring_adoption(read_record("new"), now=1000)
+        self.assertFalse(adopt)
+        self.assertEqual(read_record("new")["keyring"], {"adopt_until": 0})
+        self.assertEqual(identity.keyring_tag(record), "e" * 64)
+
     def test_the_capsule_runs_at_the_allocated_level(self):
         home = Path(self.directory.name)
         write_record("fixture", {"format": "deb", "sha256": "c" * 64, "image": "localhost/fixture",
