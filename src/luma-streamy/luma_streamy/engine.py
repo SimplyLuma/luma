@@ -942,9 +942,22 @@ class Engine(GObject.Object):
         """The mixer's thread, before it composites a frame: each layer's pad takes the geometry of
         the revision its selected buffer was drawn with."""
         boxes = {}
-        with self._geom_lock:
-            pads = list(self._revs.items())
-        for pad, revs in pads:
+        # The mixer's own pads, each held while it is looked at (one being released stays valid).
+        pads = []
+        iterator = mixer.iterate_sink_pads()
+        while True:
+            result, pad = iterator.next()
+            if result == Gst.IteratorResult.RESYNC:
+                pads, _ = [], iterator.resync()
+                continue
+            if result != Gst.IteratorResult.OK:
+                break
+            pads.append(pad)
+        for pad in pads:
+            with self._geom_lock:
+                revs = self._revs.get(pad)
+            if revs is None:
+                continue
             sample = mixer.peek_next_sample(pad)
             buffer = sample.get_buffer() if sample is not None else None
             if buffer is None:
@@ -979,7 +992,7 @@ class Engine(GObject.Object):
             changed = {k: v for k, v in boxes.items() if self._on_screen.get(k) != v}
             if changed:
                 self._on_screen.update(changed)
-                GLib.idle_add(self._emit_shown, changed)
+                GLib.idle_add(self._emit_shown, changed, priority=GLib.PRIORITY_DEFAULT)
         return Gst.PadProbeReturn.OK
 
     def _emit_shown(self, boxes: dict) -> bool:

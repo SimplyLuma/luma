@@ -313,6 +313,16 @@ class Project:
             if not own:
                 w.look.pop(fmt, None)
 
+    #: The Look's properties (the crop is Arrange's).
+    LOOK = ("corner_radius", "stroke_width", "stroke_color", "stroke_position", "shadow_blur", "shadow_x",
+            "shadow_y", "shadow_opacity", "opacity")
+
+    def unsync_look(self, w: Widget, fmt: str | None = None) -> None:
+        """The secondary canvas keeps the Look it has now as its own: later primary edits stop there."""
+        fmt = fmt or (self.format if self.format != self.primary else next(f for f in FORMATS if f != self.primary))
+        fx = self.effects_on(w, fmt)
+        w.look[fmt] = {name: getattr(fx, name) for name in self.LOOK}
+
     def reset_secondary(self, scene_id: str) -> None:
         """Every widget of a scene follows the primary canvas again."""
         for w in self._require_scene(scene_id).widgets:

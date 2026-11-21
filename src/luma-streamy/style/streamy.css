@@ -9,3 +9,4 @@ box.streamy-strip-head { border-spacing: 8px; padding: 0 5px; } /* on the volume
 button.streamy-muted { color: @luma_destructive; }
 button.streamy-monitoring { color: @accent_color; }
 box.streamy-editor { min-width: 300px; }
+box.lumaui-details.raised box.streamy-editor { min-width: 0; }

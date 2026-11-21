@@ -36,6 +36,13 @@ def valid(layout):
                 seen.add(node)
                 return node
             return None
+        if isinstance(node, dict) and isinstance(node.get("tabs"), list):
+            # A tab group (LumaUI Dock): one place showing one of its tiles at a time.
+            keys = [k for k in (clean(k) for k in node["tabs"] if isinstance(k, str)) if k is not None]
+            if len(keys) < 2:
+                return keys[0] if keys else None
+            current = node.get("current") if node.get("current") in keys else keys[0]
+            return {"tabs": keys, "current": current}
         if not isinstance(node, dict) or node.get("split") not in ("h", "v"):
             return None
         start, end = clean(node.get("start")), clean(node.get("end"))

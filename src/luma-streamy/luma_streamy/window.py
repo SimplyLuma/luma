@@ -17,7 +17,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
     SEPARATOR, ActionCenter, BarTile, BarTiles, ColorPicker, Disclosure, PanelHeading,
-    PanelRow, PanelSwitch, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView,
+    InlineRenameField, OverrideDot, PanelRow, PanelSwitch, SyncKey, ActionEditor, AlignmentActions, AppWindow, ArrangeItem, ArrangeView,
     BarAction, BarChip, Command, CommandGroup, CommandRegistry, Dock, DockTile,
     DestructiveDialog, IconOnlyButton, ListEmptyState, ModeSwitch,
     NavigationList, NavigationSidebar, PropertyChoice, PropertyColor, PropertyNumber, PropertySection, RowAction, RowLead, SidebarFoot, SidebarRow,
@@ -52,6 +52,46 @@ def clock(seconds: float) -> str:
     seconds = int(seconds)
     return f"{seconds // 3600}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
 
+
+
+#: The Inspector's column: one width whatever it shows, so nothing beside it ever reflows.
+INSPECTOR_WIDTH = 384  # the widest editor (Look's five presets), with the dock gap before it
+
+
+class FixedColumn(Gtk.Widget):
+    """Holds a pane at one width: its content's natural width never reaches the layout. Empty (the pane
+    is a phone's drawer then) it takes no room."""
+
+    __gtype_name__ = "StreamyFixedColumn"
+
+    def __init__(self, child: Gtk.Widget, width: int) -> None:
+        super().__init__(hexpand=False, vexpand=True)
+        self._width = width
+        child.set_parent(self)
+
+    def do_measure(self, orientation, for_size):
+        child = self.get_first_child()
+        if child is None or not child.get_visible():
+            return 0, 0, -1, -1
+        if orientation == Gtk.Orientation.HORIZONTAL:
+            minimum, natural, _b, _n = child.measure(orientation, -1)
+            if natural == 0:
+                return 0, 0, -1, -1  # its sheet is elsewhere (a phone's drawer)
+            # Never narrower than its content needs; once wider, it stays that wide (one reflow at most).
+            self._width = max(self._width, minimum)
+            return self._width, self._width, -1, -1
+        minimum, natural, _b, _n = child.measure(orientation, max(for_size, self._width))
+        return minimum, natural, -1, -1
+
+    def do_size_allocate(self, width, height, baseline):
+        child = self.get_first_child()
+        if child is not None:
+            child.allocate(width, height, baseline, None)
+
+    def do_dispose(self):
+        child = self.get_first_child()
+        if child is not None:
+            child.unparent()
 
 class StreamyWindow(AppWindow):
     def __init__(self, application, *, engine: Engine | None = None, portals=None) -> None:
@@ -115,6 +155,10 @@ class StreamyWindow(AppWindow):
         self.engine.connect("widget-waiting", self._widget_waiting)
         self.engine.connect("widget-ready", self._widget_ready)
         self.engine.connect("source-size", self._source_size)
+        self.engine.connect("frame-shown", self._frame_shown)
+        #: Widgets whose outline follows the picture on screen (a drag, until the picture catches up):
+        #: widget id -> the committed rect, or None while the drag goes on.
+        self._following: dict[str, tuple | None] = {}
         self.engine.connect("preview-changed", lambda engine: self.picture.set_paintable(engine.paintable))
 
         self._build_sidebar()
@@ -170,7 +214,7 @@ class StreamyWindow(AppWindow):
                 Command("scene.new", "New scene", self.new_scene, icon="square-pen", shortcut=("Ctrl", "N")),
                 Command("scene.duplicate", "Duplicate scene", self.duplicate_scene, icon="copy",
                         shortcut=("Ctrl", "D")),
-                Command("scene.rename", "Rename scene…", self.rename_scene, icon="pencil", shortcut=("F2",)),
+                Command("scene.rename", "Rename", self.rename_focused, icon="pencil", shortcut=("F2",)),
                 Command("scene.delete", "Delete scene", self.delete_scene, icon="trash-2", destructive=True,
                         enabled=lambda: len(self.project.scenes) > 1),
             )),
@@ -251,7 +295,17 @@ class StreamyWindow(AppWindow):
         audio.append(audio_scroll)
         # The preview is an inset like the others (same radius, gaps and surface), the canvas fitted
         # inside it with room on every side.
-        self.preview_tile = DockTile("preview", "Preview", "monitor", self.arrange, main=True)
+        # The canvases, in the Preview's header: on = composited and shown. Until both can be shown side
+        # by side, turning one on shows it instead of the other; the last one on stays on.
+        from luma_appkit import ToggleChip
+
+        self.canvas_chips = {key: ToggleChip(FORMATS[key][0].split()[0], icon="rectangle-horizontal"
+                                             if key == "landscape" else "smartphone",
+                                             active=self.project.format == key,
+                                             on_toggle=lambda on, k=key: self._canvas_chip(k, on))
+                             for key in FORMATS}
+        self.preview_tile = DockTile("preview", "Preview", "monitor", self.arrange, main=True,
+                                     actions=list(self.canvas_chips.values()))
         # The panels belong to the app, not the scene: their sizes are the saved layout's (a person's seam
         # drags), never their content's, so switching scenes moves nothing; long lists scroll inside.
         # On a phone each is a key over the preview and a bottom drawer, so the preview keeps the screen.
@@ -259,17 +313,18 @@ class StreamyWindow(AppWindow):
         widgets.set_child(self.widget_nav)
         # Blank space under the rows: right click or long press adds a widget.
         blank = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
-        blank.connect("pressed", lambda _g, _n, _x, y: self.widget_list.get_row_at_y(int(y)) is None and
-                      self._add_widget_menu(widgets))
+        blank.connect("pressed", lambda _g, _n, x, y: self.widget_list.get_row_at_y(int(y)) is None and
+                      self._add_widget_menu(widgets, point=(x, y)))
         widgets.add_controller(blank)
         hold = Gtk.GestureLongPress(touch_only=True)
-        hold.connect("pressed", lambda _g, _x, y: self.widget_list.get_row_at_y(int(y)) is None and
-                     self._add_widget_menu(widgets))
+        hold.connect("pressed", lambda _g, x, y: self.widget_list.get_row_at_y(int(y)) is None and
+                     self._add_widget_menu(widgets, point=(x, y)))
         widgets.add_controller(hold)
         self.widgets_tile = DockTile("widgets", "Widgets", "layers", widgets, phone="drawer", actions=[add])
         self.audio_tile = DockTile("audio", "Audio", "volume-2", audio, phone="drawer")
         self.dock = Dock([self.preview_tile, self.widgets_tile, self.audio_tile], layout=self.layouts.current,
                          under_bar=True, on_layout=self.layouts.remember)
+        self.dock.on_rearrange = self._panels_moved
         self.preview_tile.connect("notify::width", lambda *_a: GLib.idle_add(self._size_preview))
 
     def _size_preview(self) -> bool:
@@ -283,7 +338,7 @@ class StreamyWindow(AppWindow):
         return False
 
     def _body(self) -> Gtk.Widget:
-        from luma_appkit import Island
+        from luma_appkit import DetailsPane, Island
 
         self.island = Island()
         self.island.append(self.dock)
@@ -295,6 +350,12 @@ class StreamyWindow(AppWindow):
         body = Gtk.Box(hexpand=True, vexpand=True)
         body.append(self.sidebar)
         body.append(self.host)
+        # The Inspector: a fixed column beside the island, always there (a bottom drawer on a phone);
+        # the selection's Source, Look and Arrange, or the scene's own settings when nothing is selected.
+        self.inspector = DetailsPane("Inspector", main=True, raised=True)
+        self._inspector_sections: dict[str, Gtk.Widget] = {}
+        body.append(FixedColumn(self.inspector, INSPECTOR_WIDTH))
+        self.inspector.show(open=True, subject="scene")
         # The toggle (F9) moves the sidebar into a drawer below its width, so it comes after the frame.
         self.sidebar_toggle = SidebarToggle(self.sidebar, drawer_below=901)
         # The title row is the app menu alone; the toggle shows only where the sidebar is a drawer
@@ -481,8 +542,7 @@ class StreamyWindow(AppWindow):
 
     def _show_problem(self, w: Widget) -> None:
         self.select(w.id)
-        if self.center.grown != "source":
-            self._grow("source")
+        self._grow("source")
 
     @staticmethod
     def fix_words(w: Widget, reason: str) -> str | None:
@@ -622,7 +682,7 @@ class StreamyWindow(AppWindow):
         """Before an edit: the project as it is, so Ctrl+Z gives it back (one step per drag or scrub)."""
         if self._building or getattr(self, "_restoring", False):
             return
-        if self.history.checkpoint(label, self.project.to_dict(), key=key):
+        if self.history.checkpoint(label, self._undo_state(), key=key):
             self._label_history()
 
     def _label_history(self) -> None:
@@ -648,7 +708,7 @@ class StreamyWindow(AppWindow):
         if text is not None:  # a field being typed in keeps its own undo
             text.activate_action("text.undo", None)
             return
-        step = self.history.undo(self.project.to_dict())
+        step = self.history.undo(self._undo_state())
         if step is not None:
             self._restore(step.project)
             Toast.show(self.host, f"Undid {step.label}", kind="done")
@@ -658,14 +718,32 @@ class StreamyWindow(AppWindow):
         if text is not None:
             text.activate_action("text.redo", None)
             return
-        step = self.history.redo(self.project.to_dict())
+        step = self.history.redo(self._undo_state())
         if step is not None:
             self._restore(step.project)
             Toast.show(self.host, f"Redid {step.label}", kind="done")
 
+    def _undo_state(self, panels=None) -> dict:
+        """An undo step's state: the project, and the app's panel arrangement (never the scene's)."""
+        data = self.project.to_dict()
+        data["_panels"] = panels if panels is not None else self.dock.layout()
+        return data
+
+    def _panels_moved(self, previous, _new) -> None:
+        """A panel docked somewhere else by drag: one undo step."""
+        if self.history.checkpoint("Move panel", self._undo_state(previous)):
+            self._label_history()
+
     def _restore(self, data: dict) -> None:
         """The project as a step had it: same ids, places, Looks and sources. Captures of widgets that
-        went away close; ones that came back reconnect from their restore tokens."""
+        went away close; ones that came back reconnect from their restore tokens. A step that only
+        moved panels moves them back and leaves the project (and its captures) alone."""
+        panels = data.pop("_panels", None)
+        if panels is not None and panels != self.dock.layout():
+            self.dock.set_layout(panels)
+            self.layouts.remember(self.dock.layout())
+        if data == self.project.to_dict():
+            return
         self._restoring = True
         try:
             before = {w.id for s in self.project.scenes for w in s.widgets}
@@ -741,15 +819,19 @@ class StreamyWindow(AppWindow):
             if self._scene_filter and self._scene_filter not in scene.name.casefold():
                 continue
             count = len(scene.widgets)
-            row = SidebarRow(scene.name, lead=RowLead.thumbnail(self._thumbs.get(scene.id), kind="image"),
+            row = SidebarRow(scene.name, lead=RowLead.thumbnail(self._thumbs.get(scene.id), kind="image", fit="contain",
+                                                                     aspect=self.project.canvas[0] / self.project.canvas[1]),
                              subtitle="Empty" if not count else f"{count} widget" + ("" if count == 1 else "s"))
             row.scene_id = scene.id
             click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
-            click.connect("pressed", lambda _g, _n, _x, _y, sid=scene.id, r=row: self._scene_menu(sid, r))
+            click.connect("pressed", lambda _g, _n, x, y, sid=scene.id, r=row: self._scene_menu(sid, r, x, y))
             row.add_controller(click)
             hold = Gtk.GestureLongPress(touch_only=True)
-            hold.connect("pressed", lambda _g, _x, _y, sid=scene.id, r=row: self._scene_menu(sid, r))
+            hold.connect("pressed", lambda _g, x, y, sid=scene.id, r=row: self._scene_menu(sid, r, x, y))
             row.add_controller(hold)
+            twice = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
+            twice.connect("pressed", lambda _g, n, _x, _y, sid=scene.id: n == 2 and self.rename_scene(sid))
+            row.add_controller(twice)
             self._scene_rows[scene.id] = row
             self.sidebar.append_row(row)
             if scene.id == self.project.active:
@@ -800,11 +882,14 @@ class StreamyWindow(AppWindow):
                              muted=not w.visible or bool(problem))
             row.widget_id = w.id
             click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
-            click.connect("pressed", lambda _g, _n, _x, _y, wid=w.id, r=row: self._widget_menu(wid, r))
+            click.connect("pressed", lambda _g, _n, x, y, wid=w.id, r=row: self._widget_menu(wid, r, x, y))
             row.add_controller(click)
             hold = Gtk.GestureLongPress(touch_only=True)
-            hold.connect("pressed", lambda _g, _x, _y, wid=w.id, r=row: self._widget_menu(wid, r))
+            hold.connect("pressed", lambda _g, x, y, wid=w.id, r=row: self._widget_menu(wid, r, x, y))
             row.add_controller(hold)
+            twice = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
+            twice.connect("pressed", lambda _g, n, _x, _y, wid=w: n == 2 and self.rename_widget(wid))
+            row.add_controller(twice)
             self.widget_list.append(row)
             self._widget_rows[w.id] = row
             if w.id == self.selected:
@@ -823,8 +908,74 @@ class StreamyWindow(AppWindow):
     # ── Inspector ──
 
     def _refresh_inspector(self) -> None:
-        """Editing lives in the action bar: a selection's keys grow its editors in place, and
-        an open editor keeps its fields while the widget moves on the canvas."""
+        """The Inspector shows the selection (Source, then Look and Arrange for a picture) or, with nothing
+        selected, the scene. It is rebuilt only when the selection or the structure changes, never while
+        a field in it is being dragged."""
+        pane = getattr(self, "inspector", None)
+        if pane is None:
+            return
+        scroll = self._inspector_scroll()
+        offset = scroll.get_vadjustment().get_value() if scroll is not None else 0
+        keep = getattr(self, "_inspector_for", None)
+        pane.clear()
+        self._inspector_sections = {}
+        w = self._selected_widget()
+        self._inspector_for = w.id if w is not None else None
+        if w is None:
+            scene = self.project.active_scene
+            pane.set_title(scene.name if scene else "Scene")
+            if scene is not None:
+                self._inspector_section("scene", "Scene", self._scene_panel(scene))
+            return
+        pane.set_title(w.name)
+        self._inspector_section("source", "Source", self._source_panel(w))
+        if w.has_picture:
+            self._inspector_section("look", "Look", self._look_panel(w))
+            self._inspector_section("arrange", "Arrange", self._arrange_panel(w))
+        if scroll is not None and keep == self._inspector_for:
+            GLib.idle_add(lambda: scroll.get_vadjustment().set_value(offset) and False)
+
+    def _inspector_section(self, key: str, title: str, content: Gtk.Widget) -> None:
+        heading = self.inspector.add_section(title)
+        self.inspector.add(content)
+        self._inspector_sections[key] = heading
+
+    def _inspector_scroll(self) -> Gtk.ScrolledWindow | None:
+        widget = self.inspector
+        while widget is not None:
+            child = widget.get_first_child()
+            found = None
+            stack = [self.inspector]
+            while stack:
+                node = stack.pop()
+                if isinstance(node, Gtk.ScrolledWindow):
+                    found = node
+                    break
+                c = node.get_first_child()
+                while c is not None:
+                    stack.append(c)
+                    c = c.get_next_sibling()
+            return found
+        return None
+
+    def _scene_panel(self, scene) -> Gtk.Widget:
+        """With nothing selected: the scene's own settings."""
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        rows.add_css_class("streamy-rows")
+        pictures = sum(1 for w in scene.widgets if w.has_picture)
+        sounds = len(scene.widgets) - pictures
+        cw, ch = self.project.canvas
+        rows.append(PanelRow(scene.name, icon="clapperboard", subtitle=f"{pictures} picture{'s' if pictures != 1 else ''}"
+                             f" · {sounds} sound{'s' if sounds != 1 else ''} · {cw}×{ch}", closes=False,
+                             on_activate=lambda: self.rename_scene(scene.id)))
+        rows.append(PanelSwitch("star", "Opens at startup", active=self.project.startup == scene.id,
+                                on_toggle=lambda _on: self.set_startup(scene.id)))
+        if self.project.format != self.project.primary:
+            rows.append(PanelRow(f"Reset to match {self._primary_words()}", icon="link-2", closes=False,
+                                 on_activate=self.reset_secondary))
+        rows.append(PanelRow("Add widget", icon="plus", closes=False,
+                             on_activate=lambda: self._add_widget_menu(self.inspector)))
+        return rows
 
     def _number(self, label, value, on_change, *, unit=None, minimum=None, maximum=None, step=None, digits=0,
                 name=None):
@@ -843,7 +994,8 @@ class StreamyWindow(AppWindow):
     ROW_SLOT = 28
 
     def _slider(self, label: str, value: float, low: float, high: float, on_change, *, unit: str = "px",
-                key=None, default: float = 0.0, trail: Gtk.Widget | None = None) -> Gtk.Widget:
+                key=None, default: float = 0.0, trail: Gtk.Widget | None = None,
+                own: tuple | None = None) -> Gtk.Widget:
         """One editor row: a name, a slider and its value (LumaUI's ValueSlider, one line), then its slot."""
         def changed(v: float) -> None:
             if not self._building:
@@ -854,6 +1006,14 @@ class StreamyWindow(AppWindow):
         slider.set_hexpand(True)
         row = Gtk.Box(spacing=8)
         row.add_css_class("streamy-row")
+        if own is not None:
+            # (overridden, reset): this canvas's own value; a click on the dot follows the primary again.
+            dot = OverrideDot(active=own[0], tooltip=f"Its own value · Click to reset to {self._primary_words()}")
+            if own[0]:
+                reset = Gtk.GestureClick()
+                reset.connect("released", lambda *_a: own[1]())
+                dot.add_controller(reset)
+            row.append(dot)
         row.append(slider)
         slot = trail or Gtk.Box()
         slot.set_size_request(self.ROW_SLOT, -1)
@@ -1049,10 +1209,9 @@ class StreamyWindow(AppWindow):
             self._restart_widget(w)
         self._regrow("source")
 
-    def _regrow(self, key: str) -> None:
-        """An open editor shows what just changed (the bar stays grown, its contents rebuilt)."""
-        if self.center.grown == key:
-            self._grow(key)
+    def _regrow(self, _key: str) -> None:
+        """The Inspector shows what just changed (rebuilt in place, at the same scroll)."""
+        self._refresh_inspector()
 
     # ── Look: how it is drawn ──
 
@@ -1110,7 +1269,16 @@ class StreamyWindow(AppWindow):
                 self._effects_changed(w)
             return apply
 
-        rows.append(self._slider("Corners", fx.corner_radius, 0, 200, fx_setter("corner_radius", "Corners")))
+        secondary = self.project.format != self.project.primary
+        own_now = self.project.own_look(w) if secondary else {}
+
+        def own(*names):
+            if not secondary:
+                return None
+            return (any(n in own_now for n in names), lambda: self._reset_look_field(w, names))
+
+        rows.append(self._slider("Corners", fx.corner_radius, 0, 200, fx_setter("corner_radius", "Corners"),
+                                 own=own("corner_radius")))
         swatch = Gtk.Button(valign=Gtk.Align.CENTER, tooltip_text="Border colour")
         swatch.add_css_class("lumaui-creative-swatch")
         swatch.update_property([Gtk.AccessibleProperty.LABEL], ["Border colour"])
@@ -1126,15 +1294,17 @@ class StreamyWindow(AppWindow):
         paint.set_draw_func(draw)
         swatch.set_child(paint)
         swatch.connect("clicked", lambda *_a: self._pick_border(w))
-        rows.append(self._slider("Border", fx.stroke_width, 0, 40, fx_setter("stroke_width", "Border"), trail=swatch))
+        rows.append(self._slider("Border", fx.stroke_width, 0, 40, fx_setter("stroke_width", "Border"), trail=swatch,
+                                 own=own("stroke_width", "stroke_color")))
         rows.append(self._slider("Shadow", self.shadow_strength(fx), 0, 100,
                                  lambda v: (self._checkpoint("Change shadow", key=(w.id, "shadow")),
-                                            self._set_shadow(w, v)), unit="%"))
+                                            self._set_shadow(w, v)), unit="%",
+                                 own=own("shadow_blur", "shadow_y", "shadow_opacity")))
         more = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         more.add_css_class("streamy-rows")
-        more.append(self._slider("Blur", fx.shadow_blur, 0, 200, fx_setter("shadow_blur", "Blur")))
-        more.append(self._slider("Offset X", fx.shadow_x, -200, 200, fx_setter("shadow_x", "Offset")))
-        more.append(self._slider("Offset Y", fx.shadow_y, -200, 200, fx_setter("shadow_y", "Offset")))
+        more.append(self._slider("Blur", fx.shadow_blur, 0, 200, fx_setter("shadow_blur", "Blur"), own=own("shadow_blur")))
+        more.append(self._slider("Offset X", fx.shadow_x, -200, 200, fx_setter("shadow_x", "Offset"), own=own("shadow_x")))
+        more.append(self._slider("Offset Y", fx.shadow_y, -200, 200, fx_setter("shadow_y", "Offset"), own=own("shadow_y")))
         more.append(PropertyChoice("Border", [("inside", "Inside"), ("center", "Centre"), ("outside", "Outside")],
                                    current=fx.stroke_position, segments=True,
                                    on_change=lambda pos: (self._checkpoint("Change border position"),
@@ -1144,18 +1314,27 @@ class StreamyWindow(AppWindow):
         return self._panel(tiles, rows, self._look_sync_row(w))
 
     def _look_sync_row(self, w: Widget) -> Gtk.Widget:
-        """The Look's sync key: whether the other canvas follows this Look, and the way back to it."""
+        """The Look's sync key (LumaUI SyncKey): whether the other canvas follows this Look, and the way back."""
         other = next(f for f in FORMATS if f != self.project.primary)
         primary, secondary = (FORMATS[f][0].split()[0] for f in (self.project.primary, other))
-        own = self.project.own_look(w)
+        own = self.project.own_look(w, other)
         if self.project.format == self.project.primary:
-            words = f"{secondary} follows this look" if not own else \
-                f"{secondary} has its own look ({len(own)} change{'s' if len(own) != 1 else ''})"
-            return PanelRow(words, icon="link-2" if not own else "lock-open", sensitive=False)
-        if own:
-            return PanelRow(f"{secondary} has its own look", icon="lock-open",
-                            subtitle=f"Sync with {primary}", closes=False, on_activate=lambda: self.sync_look(w))
-        return PanelRow(f"In sync with {primary}", icon="lock", sensitive=False)
+            return SyncKey(primary, secondary, synced=not own, primary=True, changes=len(own))
+        return SyncKey(primary, secondary, synced=not own, changes=len(own),
+                       on_unsync=lambda: self.unsync_look(w), on_sync=lambda: self.sync_look(w))
+
+    def unsync_look(self, w: Widget) -> None:
+        self._checkpoint("Own look")
+        self.project.unsync_look(w)
+        self._effects_changed(w)
+        self._regrow("look")
+
+    def _reset_look_field(self, w: Widget, names: tuple) -> None:
+        self._checkpoint(f"Reset to {self._primary_words()}")
+        for name in names:
+            self.project.sync_look(w, name=name)
+        self._effects_changed(w)
+        self._regrow("look")
 
     def sync_look(self, w: Widget) -> None:
         self._checkpoint("Sync look")
@@ -1322,17 +1501,28 @@ class StreamyWindow(AppWindow):
         self._changed(structure=True)
 
     def _grow(self, key: str) -> None:
-        """Grow the bar into one of the selection's editors (Source, Look, Arrange)."""
-        w = self._selected_widget()
-        if w is None:
+        """Show one of the selection's Inspector sections (Source, Look, Arrange): scrolled to, and on a
+        phone the Inspector's drawer opened."""
+        if self._inspector_for != self.selected:
+            self._refresh_inspector()
+        heading = self._inspector_sections.get(key)
+        if heading is None:
             return
-        builders = {"source": self._source_panel, "look": self._look_panel, "arrange": self._arrange_panel}
-        if key in builders:
-            self.center.grow(key, builders[key](w))
+        self.inspector.open()
+        scroll = self._inspector_scroll()
+
+        def reveal() -> bool:
+            ok, bounds = heading.compute_bounds(scroll.get_child()) if scroll is not None else (False, None)
+            if ok:
+                scroll.get_vadjustment().set_value(bounds.get_y())
+            return False
+
+        GLib.idle_add(reveal)
 
     # ── Audio inset ──
 
-    STRIP_WIDTH = 300
+    #: A strip's narrowest: under it the Audio inset scrolls, so it never pushes the Widgets/Audio seam.
+    STRIP_WIDTH = 220
 
     def _refresh_audio(self) -> None:
         """A strip per sound, each a comfortable fixed width, in a row that wraps: the mute and monitor keys,
@@ -1490,13 +1680,11 @@ class StreamyWindow(AppWindow):
             items.append(BarChip(w.name, detail=cause, on_dismiss=self.deselect) if cause else
                          BarChip(w.name, on_dismiss=self.deselect))
             # Source first: what makes the widget work, its summary as the key's words.
-            items.append(BarAction(KINDS[w.kind][1], self.source_summary(w), key="source",
-                                   panel=lambda: self._source_panel(w)))
+            # Editing is the Inspector's; the bar keeps the summary and the quick actions.
+            items.append(BarAction(KINDS[w.kind][1], self.source_summary(w), on_activate=lambda: self._grow("source")))
             if w.has_picture:
-                items += [BarAction("sparkles", "Look", key="look", panel=lambda: self._look_panel(w)),
-                          BarAction("frame", "Arrange", key="arrange", panel=lambda: self._arrange_panel(w)),
-                          BarAction("crop", tooltip="Crop on the canvas",
-                                    on_activate=lambda: self.arrange.set_cropping(w.id))]
+                items.append(BarAction("crop", tooltip="Crop on the canvas",
+                                       on_activate=lambda: self.arrange.set_cropping(w.id)))
             # A widget without its source ends the bar with the fix, as the bar's one key.
             fix = self.fix_words(w, self.widget_errors[w.id]) if w.id in self.widget_errors else None
             if fix:
@@ -1530,11 +1718,9 @@ class StreamyWindow(AppWindow):
             items.append(BarAction("square", "End stream", danger=True, on_activate=self.ask_end_stream))
         else:
             items.append(BarAction("radio-tower", "Go live", primary=True, on_activate=self.go_live))
-        # The canvas's shape starts the bar while nothing is selected or sent.
-        modes = self.formats if not live and self.recording_since is None else None
-        if modes is not None and modes.get_parent() is not None:
-            modes.get_parent().remove(modes)
-        self.center.show_bar(items, modes=modes)
+        # The canvases are the Preview header's chips now.
+        self._sync_canvas_chips()
+        self.center.show_bar(items)
 
     def _arrange_menu(self) -> list:
         return [MenuItem("Bring to front", icon="arrow-up", note="Ctrl+]", on_activate=lambda: self.restack(1)),
@@ -1645,7 +1831,7 @@ class StreamyWindow(AppWindow):
         else:
             self.widget_list.unselect_all()
         self._building = False
-        self._refresh_bar()
+        self._refresh_inspector()
         self._refresh_bar()
 
     def deselect(self) -> None:
@@ -1674,11 +1860,23 @@ class StreamyWindow(AppWindow):
             self._checkpoint(f"Move {w.name}")
             self._drag_start[widget_id] = (w.x, w.y, w.width, w.height)
         self.project.set_rect(widget_id, x, y, width, height)
+        self._following[widget_id] = None
         self.engine.update_widget(w)
+
+    def _frame_shown(self, _engine, widget_id: str, x: float, y: float, width: float, height: float) -> None:
+        """The preview on screen now draws ``widget_id`` here: a dragged widget's outline stays on its picture."""
+        if widget_id not in self._following or not hasattr(self.arrange, "set_item_shown_rect"):
+            return
+        self.arrange.set_item_shown_rect(widget_id, x, y, width, height)
+        final = self._following[widget_id]
+        if final is not None and all(abs(a - b) < 0.5 for a, b in zip(final, (x, y, width, height))):
+            del self._following[widget_id]  # caught up: the live rect again
+            self.arrange.clear_item_shown_rect(widget_id)
 
     def _canvas_committed(self, widget_id, x, y, width, height) -> None:
         self._canvas_changed(widget_id, x, y, width, height)
         _scene, w = self.project.find_widget(widget_id)
+        self._following[widget_id] = (float(w.x), float(w.y), float(w.width), float(w.height))
         start = self._drag_start.pop(widget_id, None)
         if start is not None and start[2] and start[3] and w.height:
             before, after = start[2] / start[3], w.width / w.height
@@ -1713,7 +1911,7 @@ class StreamyWindow(AppWindow):
             size = w.source.get("size")
             facts = f"{size[0]}×{size[1]} · {self._ratio_words(size)}" if size else None
             self.center.show_bar([BarChip(w.name, meta=facts, detail=hint)])
-        elif self.center.grown is None:
+        else:
             self._refresh_bar()
 
     @staticmethod
@@ -1837,9 +2035,9 @@ class StreamyWindow(AppWindow):
         self.engine.restack(scene)
         self._changed(structure=True)
 
-    def _widget_menu(self, widget_id: str, anchor: Gtk.Widget) -> None:
-        """A widget's menu (right click or long press, on the canvas or its row): the same commands as the
-        bar and the shortcuts, grouped; a drawer on a phone."""
+    def _widget_menu(self, widget_id: str, anchor: Gtk.Widget, x: float | None = None, y: float | None = None) -> None:
+        """A widget's menu (right click or long press, on the canvas or its row), at the pointer: the same
+        commands as the bar and the shortcuts; Order, Size, Align and Look cascade (drill in on a phone)."""
         from luma_appkit.action_bubble import FloatingMenu
 
         scene = self.project.active_scene
@@ -1849,47 +2047,49 @@ class StreamyWindow(AppWindow):
         self.select(w.id)
         rows: list = [MenuItem("Change source…", icon="monitor-up", on_activate=lambda: self._grow("source"))]
         if w.has_picture:
-            rows += ["Order",
-                     MenuItem("Bring to front", icon="bring-to-front", note="Ctrl+]", on_activate=lambda: self.restack(1)),
+            order = [MenuItem("Bring to front", icon="bring-to-front", shortcut="Ctrl+]", on_activate=lambda: self.restack(1)),
                      MenuItem("Bring forward", icon="arrow-up", on_activate=lambda: self.restack_by(w, 1)),
                      MenuItem("Send backward", icon="arrow-down", on_activate=lambda: self.restack_by(w, -1)),
-                     MenuItem("Send to back", icon="layers", note="Ctrl+[", on_activate=lambda: self.restack(-1)),
-                     "Size",
-                     MenuItem("Fill canvas", icon="maximize-2", on_activate=lambda: self._align("fill")),
-                     MenuItem("Fit in canvas", icon="minimize-2", on_activate=lambda: self._align("fit")),
-                     MenuItem("Fill width", icon="align-center-horizontal", on_activate=lambda: self._align("fill-width")),
-                     MenuItem("Fill height", icon="align-center-vertical", on_activate=lambda: self._align("fill-height")),
-                     MenuItem("Original size", icon="scan", on_activate=lambda: self._align("original")),
-                     MenuItem("Reset aspect", icon="scaling", on_activate=self.reset_aspect),
-                     "Align",
-                     MenuItem("Left", icon="align-start-vertical", on_activate=lambda: self._align("left")),
+                     MenuItem("Send to back", icon="send-to-back", shortcut="Ctrl+[", on_activate=lambda: self.restack(-1))]
+            size = [MenuItem("Fill canvas", icon="maximize-2", on_activate=lambda: self._align("fill")),
+                    MenuItem("Fit in canvas", icon="minimize-2", on_activate=lambda: self._align("fit")),
+                    MenuItem("Fill width", icon="move-horizontal", on_activate=lambda: self._align("fill-width")),
+                    MenuItem("Fill height", icon="move-vertical", on_activate=lambda: self._align("fill-height")),
+                    MenuItem("Original size", icon="scan", on_activate=lambda: self._align("original")),
+                    MenuItem("Reset aspect", icon="ratio", on_activate=self.reset_aspect)]
+            align = [MenuItem("Left", icon="align-start-vertical", on_activate=lambda: self._align("left")),
                      MenuItem("Centre", icon="align-center-vertical", on_activate=lambda: self._align("center")),
                      MenuItem("Right", icon="align-end-vertical", on_activate=lambda: self._align("right")),
+                     None,
                      MenuItem("Top", icon="align-start-horizontal", on_activate=lambda: self._align("top")),
                      MenuItem("Middle", icon="align-center-horizontal", on_activate=lambda: self._align("middle")),
-                     MenuItem("Bottom", icon="align-end-horizontal", on_activate=lambda: self._align("bottom")),
-                     "Look"]
-            rows += [MenuItem(label, icon=icon, on_activate=lambda k=key: self.apply_look(w, k))
-                     for key, (label, icon, _v) in self.LOOKS.items()]
+                     MenuItem("Bottom", icon="align-end-horizontal", on_activate=lambda: self._align("bottom"))]
+            current = self._look_of(w)
+            look = [MenuItem(label, icon=icon, selected=key == current, on_activate=lambda k=key: self.apply_look(w, k))
+                    for key, (label, icon, _v) in self.LOOKS.items()]
+            rows += [MenuItem("Order", icon="layers", submenu=order), MenuItem("Size", icon="scaling", submenu=size),
+                     MenuItem("Align", icon="align-center-horizontal", submenu=align),
+                     MenuItem("Look", icon="squircle", submenu=look)]
         if w.has_picture and self.project.format != self.project.primary:
             primary = self._primary_words()
-            rows += [f"{FORMATS[self.project.format][0].split()[0]} canvas",
+            rows += [None,
                      MenuItem(f"Match {primary}", icon="link-2", on_activate=lambda: self.match_primary(w)),
                      MenuItem(f"Reset scene to match {primary}", icon="link-2", on_activate=self.reset_secondary)]
         rows.append(None)
         if w.has_picture:
             rows.append(MenuItem("Show" if not w.visible else "Hide", icon="eye" if not w.visible else "eye-off",
-                                 note="Ctrl+H", on_activate=self.toggle_hidden))
+                                 shortcut="Ctrl+H", on_activate=self.toggle_hidden))
         else:
             rows.append(MenuItem("Unmute" if w.muted else "Mute", icon="volume-2" if w.muted else "volume-x",
                                  on_activate=lambda: self._toggle_mute(w)))
-        rows += [MenuItem("Rename…", icon="pencil", on_activate=lambda: self.rename_widget(w)),
+        rows += [MenuItem("Rename", icon="pencil", shortcut="F2", on_activate=lambda: self.rename_widget(w)),
                  MenuItem("Duplicate", icon="copy", on_activate=self.duplicate_selected),
                  MenuItem("Unlock" if w.locked else "Lock", icon="lock-open" if w.locked else "lock",
                           on_activate=self.toggle_lock),
                  None,
-                 MenuItem("Delete", icon="trash-2", danger=True, note="Delete", on_activate=self.delete_selected)]
-        FloatingMenu(rows, label=w.name, title=w.name).popup(anchor)
+                 MenuItem("Delete", icon="trash-2", danger=True, shortcut="Delete", on_activate=self.delete_selected)]
+        FloatingMenu(rows, label=w.name, title=w.name).popup(anchor, x=x, y=y)
+        self._last_menu = rows  # tests activate each row
 
     def _canvas_menu(self, x: float, y: float) -> bool:
         """Right click (or long press) on the canvas: the menu of the widget under it, topmost first."""
@@ -1904,14 +2104,15 @@ class StreamyWindow(AppWindow):
         cy = (y - y0) / (y1 - y0) * self.project.canvas[1]
         for w in reversed(scene.widgets):
             if w.has_picture and w.x <= cx <= w.x + w.width and w.y <= cy <= w.y + w.height:
-                self._widget_menu(w.id, self.arrange)
+                self._widget_menu(w.id, self.arrange, x, y)
                 return True
         if 0 <= cx <= self.project.canvas[0] and 0 <= cy <= self.project.canvas[1]:
-            self._add_widget_menu(self.arrange, at=(cx, cy))  # blank canvas: add one there
+            self._add_widget_menu(self.arrange, at=(cx, cy), point=(x, y))  # blank canvas: add one there
             return True
         return False
 
-    def _add_widget_menu(self, anchor: Gtk.Widget, at: tuple[float, float] | None = None) -> None:
+    def _add_widget_menu(self, anchor: Gtk.Widget, at: tuple[float, float] | None = None,
+                         point: tuple[float, float] | None = None) -> None:
         """Blank space's menu (the canvas, the Widgets panel): the + menu's kinds, from the same commands."""
         from luma_appkit.action_bubble import FloatingMenu
 
@@ -1920,25 +2121,71 @@ class StreamyWindow(AppWindow):
             command = self.commands.get(f"widget.add-{kind}")
             rows.append(MenuItem(command.label.replace("Add ", "").capitalize(), icon=command.icon,
                                  on_activate=lambda k=kind: self.add_widget(k, at=at)))
-        FloatingMenu(rows, label="Add widget", title="Add widget").popup(anchor)
+        x, y = point or (None, None)
+        FloatingMenu(rows, label="Add widget", title="Add widget").popup(anchor, x=x, y=y)
 
     def rename_widget(self, w: Widget) -> None:
-        entry = Gtk.Entry(text=w.name, hexpand=True)
+        """Rename in the widget's row: the name selected; Enter or a click away keeps it, Esc cancels."""
+        row = self._widget_rows.get(w.id)
 
-        def done() -> None:
-            if entry.get_text().strip():
-                self._checkpoint(f"Rename {w.name}")
-                w.name = entry.get_text().strip()
-                w.source["named"] = True  # an app-audio widget keeps a name the person gave it
-                self.center.fold()
-                self._changed(structure=True)
+        def commit(name: str) -> None:
+            self._checkpoint(f"Rename {w.name}")
+            w.name = name
+            w.source["named"] = True  # an app-audio widget keeps a name the person gave it
+            self._changed(structure=True)
 
-        entry.connect("activate", lambda *_a: done())
-        self.center.set_editor(ActionEditor("Rename widget", "pencil", fields=[("Name", entry)],
-                                            body=Gtk.Box(visible=False),
-                                            primary=BarAction("check", "Rename", on_activate=done)))
-        self.center.grow()
-        entry.grab_focus()
+        if row is not None:
+            self._inline_rename(row, w.name, commit)
+
+    def _inline_rename(self, row, text: str, commit) -> None:
+        """Swap a row's title for an InlineRenameField until it is done."""
+        label = getattr(row, "title_label", None)
+        box = label.get_parent() if label is not None else None
+        if box is None or getattr(row, "renaming", False):
+            return
+        row.renaming = True
+        finished = []
+
+        def close(*_a) -> None:
+            finished.append(True)  # removing the field moves focus, which would commit it again
+            row.renaming = False
+
+            def remove() -> bool:  # after the focus change that may have finished it is done
+                if field.get_parent() is box:
+                    box.remove(field)
+                label.set_visible(True)
+                return False
+
+            GLib.idle_add(remove, priority=GLib.PRIORITY_DEFAULT)
+
+        def done(value: str) -> bool:
+            if finished:
+                return True
+            value = value.strip()
+            close()
+            if value and value != text:
+                # The rows are rebuilt after this (default priority: a busy preview never starves it).
+                GLib.idle_add(lambda: commit(value) and False, priority=GLib.PRIORITY_DEFAULT)
+            return True
+
+        field = InlineRenameField(text, commit=done, cancel=close)
+        field.set_hexpand(True)
+        field.update_property([Gtk.AccessibleProperty.LABEL], [f"Rename {text}"])
+        box.insert_child_after(field, label)
+        label.set_visible(False)
+        # After the click, key or closing menu that asked for it has settled where focus goes.
+        GLib.timeout_add(60, lambda: (not finished and field.begin()) and False)
+
+    def rename_focused(self) -> None:
+        """F2: the selected widget when the widget list or the canvas has focus, otherwise the scene."""
+        focus = self.get_focus()
+        if self.selected and focus is not None and (focus.is_ancestor(self.widget_list) or focus is self.widget_list
+                                                    or focus.is_ancestor(self.arrange) or focus is self.arrange):
+            w = self.project.active_scene.widget(self.selected) if self.project.active_scene else None
+            if w is not None:
+                self.rename_widget(w)
+                return
+        self.rename_scene()
 
     def restack_by(self, w: Widget, step: int) -> None:
         scene = self.project.active_scene
@@ -1952,20 +2199,18 @@ class StreamyWindow(AppWindow):
 
     # ── Scenes ──
 
-    def _scene_menu(self, scene_id: str, anchor: Gtk.Widget) -> None:
-        """A scene's menu (right click or long press): the scene commands, with their shortcuts."""
+    def _scene_menu(self, scene_id: str, anchor: Gtk.Widget, x: float | None = None, y: float | None = None) -> None:
+        """A scene's menu (right click or long press), at the pointer: the scene commands, with their keys.
+        It acts on that scene without switching to it, so the row it opened from stays."""
         from luma_appkit.action_bubble import FloatingMenu
 
         scene = self.project.scene(scene_id)
         if scene is None:
             return
-        if scene_id != self.project.active:
-            self.switch_scene(scene_id)
-            anchor = self._scene_rows.get(scene_id, self.sidebar)  # the rows were rebuilt
         index = self.project.scenes.index(scene)
         startup = self.project.startup == scene_id
-        rows = [MenuItem("Rename…", icon="pencil", note="F2", on_activate=self.rename_scene),
-                MenuItem("Duplicate", icon="copy", note="Ctrl+D", on_activate=self.duplicate_scene),
+        rows = [MenuItem("Rename", icon="pencil", shortcut="F2", on_activate=lambda: self.rename_scene(scene_id)),
+                MenuItem("Duplicate", icon="copy", shortcut="Ctrl+D", on_activate=lambda: self.duplicate_scene(scene_id)),
                 MenuItem("Opens at startup" if startup else "Set as startup scene", icon="star", selected=startup,
                          on_activate=lambda: self.set_startup(scene_id))]
         if index > 0:
@@ -1973,9 +2218,12 @@ class StreamyWindow(AppWindow):
         if index < len(self.project.scenes) - 1:
             rows.append(MenuItem("Move down", icon="arrow-down", on_activate=lambda: self.move_scene(scene_id, 1)))
         if len(self.project.scenes) > 1:
-            rows += [None, MenuItem("Delete", icon="trash-2", danger=True, on_activate=self.delete_scene)]
-        FloatingMenu(rows,
-                     label=scene.name, title=scene.name).popup(anchor)
+            rows += [None, MenuItem("Delete", icon="trash-2", danger=True,
+                                    on_activate=lambda: self.delete_scene(scene_id))]
+        if anchor.get_root() is None:
+            anchor, x, y = self.sidebar, None, None
+        FloatingMenu(rows, label=scene.name, title=scene.name).popup(anchor, x=x, y=y)
+        self._last_menu = rows  # tests activate each row
 
     def set_startup(self, scene_id: str) -> None:
         self._checkpoint("Set startup scene")
@@ -2011,38 +2259,32 @@ class StreamyWindow(AppWindow):
         self.switch_scene(scene.id)
         self.rename_scene()
 
-    def duplicate_scene(self) -> None:
-        scene = self.project.active_scene
+    def duplicate_scene(self, scene_id: str | None = None) -> None:
+        scene = self.project.scene(scene_id) if scene_id else self.project.active_scene
         if scene is not None:
             self._checkpoint(f"Duplicate {scene.name}")
             copy = self.project.duplicate_scene(scene.id)
             self.switch_scene(copy.id)
 
-    def rename_scene(self) -> None:
-        scene = self.project.active_scene
-        if scene is None:
+    def rename_scene(self, scene_id: str | None = None) -> None:
+        """Rename in the scene's row: the name selected; Enter or a click away keeps it, Esc cancels."""
+        scene = self.project.scene(scene_id) if scene_id else self.project.active_scene
+        row = self._scene_rows.get(scene.id) if scene is not None else None
+        if row is None:
             return
-        entry = Gtk.Entry(text=scene.name, hexpand=True)
-        editor = ActionEditor("Rename scene", "pencil", fields=[("Name", entry)], body=Gtk.Box(visible=False),
-                              primary=BarAction("check", "Rename", on_activate=lambda: done()))
 
-        def done() -> None:
+        def commit(name: str) -> None:
             try:
                 self._checkpoint(f"Rename {scene.name}")
-                self.project.rename_scene(scene.id, entry.get_text())
+                self.project.rename_scene(scene.id, name)
             except ModelError:
                 return
-            self.center.fold()
             self._changed(structure=True)
 
-        entry.connect("activate", lambda *_a: done())
-        self.center.set_editor(editor)
-        self.center.grow()
-        entry.grab_focus()
-        entry.select_region(0, -1)
+        self._inline_rename(row, scene.name, commit)
 
-    def delete_scene(self) -> None:
-        scene = self.project.active_scene
+    def delete_scene(self, scene_id: str | None = None) -> None:
+        scene = self.project.scene(scene_id) if scene_id else self.project.active_scene
         if scene is None or len(self.project.scenes) < 2:
             return
         self._checkpoint(f"Delete {scene.name}")
@@ -2054,6 +2296,20 @@ class StreamyWindow(AppWindow):
         Toast.show(self.host, f"Deleted {removed.name}", kind="deleted", undo=self.undo)
 
     # ── Canvas format and layouts ──
+
+    def _canvas_chip(self, key: str, on: bool) -> bool:
+        if not on:
+            return False  # one canvas is always on
+        if self.engine.outputs:
+            Toast.show(self.host, "The canvas can't change while recording or live", kind="warning")
+            return False
+        self.set_format(key)
+        return self.project.format == key
+
+    def _sync_canvas_chips(self) -> None:
+        for key, chip in getattr(self, "canvas_chips", {}).items():
+            chip.set_active(self.project.format == key)
+            chip.set_live(bool(self.engine.outputs) and self.project.format == key)
 
     def set_format(self, key: str) -> None:
         if key == self.project.format:
@@ -2092,7 +2348,6 @@ class StreamyWindow(AppWindow):
                                             body=Gtk.Box(visible=False), primary=BarAction("check", "Save",
                                                                               on_activate=done)))
         self.center.grow()
-        entry.grab_focus()
 
     def show_recordings(self) -> None:
         folder = recordings_dir()

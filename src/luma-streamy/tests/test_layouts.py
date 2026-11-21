@@ -26,6 +26,13 @@ class LayoutTest(unittest.TestCase):
         old = {**split("v", 0.7, "preview", "audio"), "size": 180}
         self.assertEqual(valid(old), {**split("v", 0.7, "preview", split("h", 0.5, "widgets", "audio")), "size": 180})
 
+    def test_tab_groups_are_kept(self):
+        tree = split("v", 0.7, "preview", {"tabs": ["widgets", "audio", "widgets", "nope"], "current": "audio"})
+        self.assertEqual(valid(tree), split("v", 0.7, "preview", {"tabs": ["widgets", "audio"], "current": "audio"}))
+        # One tab left is that tile; the missing one joins.
+        self.assertEqual(valid(split("v", 0.7, "preview", {"tabs": ["widgets"], "current": "widgets"})),
+                         split("h", 0.75, split("v", 0.7, "preview", "widgets"), "audio"))
+
     def test_store(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "layouts.json"
