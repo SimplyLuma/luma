@@ -535,9 +535,10 @@ class Engine(GObject.Object):
         self.programs[fmt] = program
         if self.want_preview:
             self._add_preview(program)
-        # On GStreamer's pool: the preview sink makes its GL context, which can take a while.
-        self.pipeline.call_async(lambda _p, items: [e.sync_state_with_parent() for e in items],
-                                 list(reversed(elements + program.preview)))
+        # Before any layer links to it: a mixer still in NULL answers FLUSHING, and a still (imagefreeze)
+        # that is answered so stops for good.
+        for element in reversed(elements + program.preview):
+            element.sync_state_with_parent()
         # Every widget already captured gets its layer here.
         for branch in list(self.branches.values()) + list(self.placeholders.values()):
             if branch.picture and branch.view is not None:
