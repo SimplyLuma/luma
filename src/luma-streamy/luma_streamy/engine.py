@@ -666,6 +666,7 @@ class Engine(GObject.Object):
             pad.set_property(name, value)
         pad.set_property("alpha", 0.0 if self.outputs else 1.0)
         elements[-1].get_static_pad("src").link(pad)
+        self._resend_after_resize(elements[-1].get_static_pad("src"))
         self._place(elements[-1], pad, widget, chain.pad, True)
         self.placeholders[widget.id] = Branch(widget.id, elements, pad, True, shown=True,
                                               generation=self._generation)
@@ -792,6 +793,7 @@ class Engine(GObject.Object):
         if widget.has_picture:
             elements[-1].get_static_pad("src").add_probe(
                 Gst.PadProbeType.BUFFER, self._first_picture, (branch, widget))
+            self._resend_after_resize(elements[-1].get_static_pad("src"))
         # State changes run on GStreamer's thread pool: a source that takes its time
         # (a camera opening, a portal stream negotiating) never holds up the window.
         self.pipeline.call_async(lambda _pipeline, items: [e.sync_state_with_parent() for e in reversed(items)],
@@ -933,6 +935,34 @@ class Engine(GObject.Object):
             revision = self._revision
             revs[revision] = revs[max(revs)]
         frame.set_property("revision", revision)
+
+    @staticmethod
+    def _resend_after_resize(src: Gst.Pad) -> None:
+        """A layer that changes size (a resize, a Look with another margin) sends its first picture at
+        the new size twice. glvideomixer takes the first, finds the pad's caps changed, renegotiates and
+        drops that aggregate; with nothing queued it then waits a whole source frame for the next
+        picture. The copy, queued once the first is taken (same time, same revision), is composited at
+        once instead."""
+        def twice(pad: Gst.Pad, info: Gst.PadProbeInfo) -> Gst.PadProbeReturn:
+            pad.remove_probe(info.id)
+            buffer = info.get_buffer()
+            if pad.push(buffer.copy()) != Gst.FlowReturn.OK:
+                return Gst.PadProbeReturn.DROP
+            peer = pad.get_peer()
+            for _ in range(40):  # at most a frame or so: the mixer takes it on its next aggregate
+                if peer is None or not peer.has_buffer():
+                    break
+                time.sleep(0.001)
+            pad.push(buffer.copy())
+            return Gst.PadProbeReturn.DROP
+
+        def caps(pad: Gst.Pad, info: Gst.PadProbeInfo) -> Gst.PadProbeReturn:
+            event = info.get_event()
+            if event is not None and event.type == Gst.EventType.CAPS:
+                pad.add_probe(Gst.PadProbeType.BUFFER, twice)
+            return Gst.PadProbeReturn.OK
+
+        src.add_probe(Gst.PadProbeType.EVENT_DOWNSTREAM, caps)
 
     def _forget_pad(self, pad: Gst.Pad | None) -> None:
         with self._geom_lock:
