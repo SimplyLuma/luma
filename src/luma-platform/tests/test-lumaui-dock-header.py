@@ -197,6 +197,9 @@ def island_narrow_height() -> None:
     asked = []
 
     class Wide(Gtk.Widget):
+        def do_get_request_mode(self):
+            return Gtk.SizeRequestMode.HEIGHT_FOR_WIDTH
+
         def do_measure(self, orientation, for_size):
             if orientation == Gtk.Orientation.VERTICAL:
                 asked.append(for_size)
