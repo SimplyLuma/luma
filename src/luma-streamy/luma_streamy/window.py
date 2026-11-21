@@ -1075,12 +1075,8 @@ class StreamyWindow(AppWindow):
         if not width or not height or w.source.get("size") == [width, height]:
             return
         w.source["size"] = [width, height]
-        if not w.stretched and w.height:
-            # Fitted inside the box it had, centred: it never grows past where it was placed.
-            cx, cy = w.x + w.width / 2, w.y + w.height / 2
-            aspect = width / height
-            bw, bh = (w.width, w.width / aspect) if w.width / w.height < aspect else (w.height * aspect, w.height)
-            w.x, w.y, w.width, w.height = cx - bw / 2, cy - bh / 2, bw, bh
+        # Fitted inside the box it had on each canvas, centred: it never grows past where it was placed.
+        if self.project.reshape(w, fit=True):
             self.engine.update_widget(w)
             self._sync_rect(w)
         self._changed()
