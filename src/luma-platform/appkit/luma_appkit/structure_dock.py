@@ -184,6 +184,24 @@ def tree_dock(node, key: str, target: str, zone: str):
     return _replace_slot(rest, slot, new)
 
 
+def _covering(node, keys: set):
+    """The smallest part of a layout holding every key in ``keys``."""
+    if isinstance(node, dict) and "split" in node:
+        for side in ("start", "end"):
+            if keys <= set(tree_keys(node[side])):
+                return _covering(node[side], keys)
+    return node
+
+
+def _replace_node(node, old, new):
+    """The layout with the part ``old`` (by identity; a tile by its key) replaced by ``new``."""
+    if node is old or (isinstance(old, str) and node == old):
+        return new
+    if isinstance(node, str) or "tabs" in node:
+        return node
+    return {**node, "start": _replace_node(node["start"], old, new), "end": _replace_node(node["end"], old, new)}
+
+
 def _split_holding(node, key: str):
     """The split that has `key` itself as one side, if any."""
     if isinstance(node, str) or node is None or "tabs" in node:
@@ -380,6 +398,7 @@ class Dock(Gtk.Overlay):
         watch.connect("event", self._pointer)
         self.add_controller(watch)
         self._slots: list[tuple[object, Gtk.Widget]] = []  # each place in the layout and its widget
+        self._node_widgets: dict[int, Gtk.Widget] = {}  # id(layout node) -> its widget, as last built
         self._root_widget: Gtk.Widget | None = None
         self._grab: dict | None = None  # the header drag under way
         for tile in self.tiles.values():
@@ -430,7 +449,8 @@ class Dock(Gtk.Overlay):
 
     def layout(self):
         """The current arrangement as plain data (see the module's docs). With closed tiles it is
-        ``{"layout": tree, "closed": {key: {"beside", "edge", "share"}}}``."""
+        ``{"layout": tree, "closed": {key: record}}``: each record brings that tile back where it
+        was (its tab group and index, or the tiles it was split from, the split, side, share and size)."""
         tree = self._copy(self._tree)
         if not self._closed:
             return tree
@@ -481,7 +501,8 @@ class Dock(Gtk.Overlay):
         if isinstance(layout, dict) and "layout" in layout:
             for key, place in (layout.get("closed") or {}).items():
                 if key in self.tiles:
-                    closed[key] = {k: place[k] for k in ("beside", "edge", "share")
+                    closed[key] = {k: place[k] for k in ("tabs", "index", "split", "side", "sibling", "ratio",
+                                                         "px", "size", "beside", "edge", "share")
                                    if isinstance(place, dict) and k in place}
             layout = layout["layout"]
         seen: set[str] = set(closed)
@@ -520,6 +541,7 @@ class Dock(Gtk.Overlay):
             self._detach_tiles()
             self._panes = []
             self._slots = []
+            self._node_widgets = {}
             if self.phone:
                 content = self._phone_content()
             else:
@@ -535,6 +557,11 @@ class Dock(Gtk.Overlay):
             self._applying -= 1
 
     def _build(self, node) -> Gtk.Widget:
+        widget = self._build_node(node)
+        self._node_widgets[id(node)] = widget
+        return widget
+
+    def _build_node(self, node) -> Gtk.Widget:
         if isinstance(node, str):
             self._slots.append((node, self.tiles[node]))
             return self.tiles[node]
@@ -854,14 +881,21 @@ class Dock(Gtk.Overlay):
         self._apply(tree_remove(self._tree, key), rearranged=True)
 
     def open_tile(self, key: str, *, beside: str | None = None, edge: str = "right", size: int | None = None) -> None:
-        """Bring tile ``key`` back: at ``edge`` of ``beside``'s place (``"tabs"`` stacks it there), else
-        where it last was, else to the right of the main tile. ``size`` (px along the new split) sizes it."""
+        """Bring tile ``key`` back.
+
+        A tile that was closed goes back where it was: into its tab group at its index, or beside the
+        part of the layout it was split from, on the same side and with the same share (the share,
+        not pixels, so a window resized since keeps the proportion; a fitted side keeps its size).
+        When that part has changed, beside the smallest part still holding what remains of it, at its
+        old size. A tile with no place to go back to opens at ``edge`` of ``beside`` (``"tabs"`` stacks
+        it), sized ``size`` px along the new split; by default right of the main tile."""
         if key not in self.tiles or self.is_open(key):
             return
         place = self._closed.pop(key, {})
-        share = place.get("share") if beside is None else None
-        if beside is None and place.get("beside") in tree_keys(self._tree):
-            beside, edge = place["beside"], place.get("edge", "right")
+        tree = self._restored(key, place)
+        if tree is not None:  # a tile that was here goes back where it was, whatever the caller suggests
+            self._apply(tree, rearranged=True)
+            return
         if beside is None or not self.is_open(beside):
             beside, edge = self.main_key, "right"
         if edge not in ZONES:
@@ -870,18 +904,60 @@ class Dock(Gtk.Overlay):
                                                                        else [slot])), None)
         tree = tree_dock(self._tree, key, beside, edge)
         split = _split_holding(tree, key)
-        if split is not None and edge != "tabs":
-            first = split["start"] == key
-            if size is not None and slot_widget is not None:
-                along = slot_widget.get_width() if split["split"] == "h" else slot_widget.get_height()
-                share = size / along if along > 0 else None
-            if share is not None:
-                share = min(0.95, max(0.05, share))
-                split["ratio"] = share if first else 1 - share
+        if split is not None and edge != "tabs" and size is not None and slot_widget is not None:
+            along = slot_widget.get_width() if split["split"] == "h" else slot_widget.get_height()
+            if along > 0:
+                share = min(0.95, max(0.05, size / along))
+                split["ratio"] = share if split["start"] == key else 1 - share
         self._apply(tree, rearranged=True)
 
+    def _restored(self, key: str, place: dict):
+        """The layout with ``key`` back where ``place`` (its close record) says, or None."""
+        tree = self._tree
+        open_keys = set(tree_keys(tree))
+        tabs = [k for k in place.get("tabs", []) if k in open_keys]
+        if tabs:  # back into its tab group, at its index
+            slot = _slot_of(tree, tabs[0])
+            members = list(slot["tabs"]) if isinstance(slot, dict) else [slot]
+            index = min(max(0, int(place.get("index", len(members)))), len(members))
+            members.insert(index, key)
+            return _replace_slot(tree, slot, {"tabs": members, "current": key})
+        sibling = place.get("sibling")
+        if sibling is None and place.get("beside") in open_keys:  # an older record: beside one tile
+            edge = place.get("edge", "right")
+            new = tree_dock(tree, key, place["beside"], edge if edge in ZONES else "right")
+            split = _split_holding(new, key)
+            if split is not None and place.get("share"):
+                share = min(0.95, max(0.05, float(place["share"])))
+                split["ratio"] = share if split["start"] == key else 1 - share
+            return new
+        if not sibling or place.get("split") not in ("h", "v"):
+            return None
+        alive = [k for k in sibling if k in open_keys]
+        if not alive:
+            return None
+        node = _covering(tree, set(alive))
+        first = place.get("side") == "start"
+        if set(tree_keys(node)) == set(sibling):
+            # The part it was split from is as it was: the same split, side and share.
+            share = float(place.get("ratio", 0.5))
+        else:
+            # It changed: beside the smallest part holding what is left of it, at the old size.
+            widget = self._node_widgets.get(id(node))
+            along = (widget.get_width() if place["split"] == "h" else widget.get_height()) if widget else 0
+            size = place.get("px") or 0
+            # The new split takes that part's room; the tile gets its old size of it.
+            share = size / along if along > 0 and size > 0 else float(place.get("ratio", 0.5))
+        share = min(0.95, max(0.05, share))
+        split = {"split": place["split"], "ratio": share if first else 1 - share,
+                 "start": key if first else node, "end": node if first else key}
+        if place.get("size"):
+            split["size"] = int(place["size"])
+        return _replace_node(tree, node, split)
+
     def _place_of(self, key: str) -> dict:
-        """Where tile ``key`` is: beside which tile, on which side, with what share of the split."""
+        """The record that brings tile ``key`` back where it is: its tab group and index, or the part it
+        is split from (its tiles), the split's direction, its side, its share and size."""
         def find(node, parent=None):
             if node == key:
                 return parent
@@ -893,14 +969,20 @@ class Dock(Gtk.Overlay):
 
         parent = find(self._tree)
         if isinstance(parent, dict) and "tabs" in parent:
-            return {"beside": next(k for k in parent["tabs"] if k != key), "edge": "tabs"}
+            return {"tabs": [k for k in parent["tabs"] if k != key], "index": parent["tabs"].index(key)}
         if not isinstance(parent, dict):
             return {}
         first = parent["start"] == key
         other = parent["end"] if first else parent["start"]
-        edge = ({"h": "left", "v": "top"} if first else {"h": "right", "v": "bottom"})[parent["split"]]
-        share = parent["ratio"] if first else 1 - parent["ratio"]
-        return {"beside": tree_keys(other)[0], "edge": edge, "share": round(share, 4)}
+        tile = self.tiles[key]
+        px = tile.get_width() if parent["split"] == "h" else tile.get_height()
+        place = {"split": parent["split"], "side": "start" if first else "end", "sibling": tree_keys(other),
+                 "ratio": round(parent["ratio"] if first else 1 - parent["ratio"], 4)}
+        if px > 0:
+            place["px"] = int(px)
+        if parent.get("size") and self._fits(key):
+            place["size"] = int(parent["size"])
+        return place
 
     # ── Tab groups ──
 
