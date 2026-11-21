@@ -1,0 +1,359 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 21 Nov 2026 02:36:57 -0600
+Subject: [PATCH] clutter: Update only the views a redraw lands on
+
+A queued redraw scheduled an update on every stage view, whatever the
+actor's place on screen. With several monitors, anything that redraws on
+one (an animation, a playing video, a client's frame callback) dispatched
+every monitor's frame clock at its refresh rate: each one ran a stage
+update and found nothing to paint.
+
+A redraw of an actor whose place on screen is settled (mapped, allocated,
+visible paint volume up to date) now schedules the views its clip or
+visible paint volume is on. A view that finish_layout() later gives a
+redraw clip, and was not scheduled, is scheduled when the clip is added.
+Anything else, relayouts and events included, still schedules every view.
+
+A Wayland surface's frame-callback commit likewise schedules the views the
+surface is on, unless it has mapped clones or no views yet.
+---
+ clutter/clutter/clutter-actor.c     |  58 ++++++++++++-
+ clutter/clutter/clutter-stage.c     |  24 +++++-
+ src/compositor/meta-surface-actor.c |  24 +++++-
+ src/tests/stage-view-tests.c        | 121 ++++++++++++++++++++++++++++
+ 4 files changed, 221 insertions(+), 6 deletions(-)
+
+diff --git a/clutter/clutter/clutter-actor.c b/clutter/clutter/clutter-actor.c
+index 56fc7f592..1e2cada04 100644
+--- a/clutter/clutter/clutter-actor.c
++++ b/clutter/clutter/clutter-actor.c
+@@ -7657,6 +7657,55 @@ clutter_actor_destroy (ClutterActor *self)
+   g_object_unref (self);
+ }
+ 
++/*
++ * Schedule an update on the views a redraw of @self will paint, rather than
++ * on every view of the stage. Where the redraw lands is known when the
++ * actor's place on screen is settled: it is mapped, allocated and its
++ * visible paint volume is up to date. Otherwise, or when the redraw lands on
++ * no view, every view is scheduled, as before.
++ *
++ * A redraw clip that finish_layout() later adds to a view not scheduled
++ * here schedules that view itself (clutter_stage_add_redraw_clip()).
++ */
++static void
++schedule_update_for_redraw (ClutterActor             *self,
++                            ClutterStage             *stage,
++                            const ClutterPaintVolume *volume)
++{
++  ClutterActorPrivate *priv = self->priv;
++  g_autoptr (GList) views = NULL;
++  ClutterActorBox box;
++  graphene_rect_t rect;
++  GList *l;
++
++  if (CLUTTER_ACTOR_IS_TOPLEVEL (self) ||
++      !clutter_actor_is_mapped (self) ||
++      priv->needs_allocation ||
++      priv->needs_visible_paint_volume_update ||
++      !priv->visible_paint_volume_valid)
++    goto all_views;
++
++  _clutter_paint_volume_get_stage_paint_box (volume ? volume
++                                                    : &priv->visible_paint_volume,
++                                             stage,
++                                             &box);
++  if (box.x2 <= box.x1 || box.y2 <= box.y1)
++    goto all_views;
++
++  graphene_rect_init (&rect, box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
++  views = clutter_stage_get_views_for_rect (stage, &rect);
++  if (!views)
++    goto all_views;
++
++  for (l = views; l; l = l->next)
++    clutter_stage_view_schedule_update (l->data);
++
++  return;
++
++all_views:
++  clutter_stage_schedule_update (stage);
++}
++
+ void
+ _clutter_actor_queue_redraw_full (ClutterActor             *self,
+                                   const ClutterPaintVolume *volume,
+@@ -7721,7 +7770,7 @@ _clutter_actor_queue_redraw_full (ClutterActor             *self,
+ 
+           priv->needs_redraw = TRUE;
+ 
+-          clutter_stage_schedule_update (CLUTTER_STAGE (stage));
++          schedule_update_for_redraw (self, CLUTTER_STAGE (stage), volume);
+ 
+           while (iter && !iter->priv->needs_finish_layout)
+             {
+@@ -7729,6 +7778,13 @@ _clutter_actor_queue_redraw_full (ClutterActor             *self,
+               iter = iter->priv->parent;
+             }
+         }
++      else
++        {
++          /* Only the views of the first redraw were scheduled; this one
++           * may land elsewhere.
++           */
++          schedule_update_for_redraw (self, CLUTTER_STAGE (stage), volume);
++        }
+ 
+       if (volume)
+         g_array_append_val (priv->next_redraw_clips, *volume);
+diff --git a/clutter/clutter/clutter-stage.c b/clutter/clutter/clutter-stage.c
+index e28d5e741..813d7bfca 100644
+--- a/clutter/clutter/clutter-stage.c
++++ b/clutter/clutter/clutter-stage.c
+@@ -113,6 +113,9 @@ typedef struct _ClutterStagePrivate
+ 
+   gboolean update_scheduled;
+ 
++  /* The view whose update is running, if any. */
++  ClutterStageView *updating_view;
++
+   GPtrArray *all_active_gestures;
+ 
+   guint actor_needs_immediate_relayout : 1;
+@@ -214,6 +217,7 @@ static void
+ clutter_stage_add_redraw_clip (ClutterStage *stage,
+                                MtkRectangle *clip)
+ {
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
+   GList *l;
+ 
+   for (l = clutter_stage_peek_stage_views (stage); l; l = l->next)
+@@ -230,10 +234,20 @@ clutter_stage_add_redraw_clip (ClutterStage *stage,
+           MtkRectangle intersection;
+ 
+           clutter_stage_view_get_layout (view, &view_layout);
+-          if (mtk_rectangle_intersect (&view_layout, clip,
+-                                       &intersection))
+-            clutter_stage_view_add_redraw_clip (view, &intersection);
++          if (!mtk_rectangle_intersect (&view_layout, clip,
++                                        &intersection))
++            continue;
++
++          clutter_stage_view_add_redraw_clip (view, &intersection);
+         }
++
++      /* A redraw schedules only the views it was expected to land on
++       * (see clutter-actor.c); any other view that gets a clip is
++       * scheduled here. The view being updated paints its clip in this
++       * update already.
++       */
++      if (view != priv->updating_view)
++        clutter_stage_view_schedule_update (view);
+     }
+ }
+ 
+@@ -472,6 +486,9 @@ clutter_stage_emit_before_update (ClutterStage     *stage,
+                                   ClutterStageView *view,
+                                   ClutterFrame     *frame)
+ {
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  priv->updating_view = view;
+   g_signal_emit (stage, stage_signals[BEFORE_UPDATE], 0, view, frame);
+ }
+ 
+@@ -517,6 +534,7 @@ clutter_stage_after_update (ClutterStage     *stage,
+   g_signal_emit (stage, stage_signals[AFTER_UPDATE], 0, view, frame);
+ 
+   priv->update_scheduled = FALSE;
++  priv->updating_view = NULL;
+ }
+ 
+ void
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index e886d9a0e..1c340b778 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -20,6 +20,7 @@
+ #include "compositor/meta-surface-actor.h"
+ 
+ #include "clutter/clutter.h"
++#include "clutter/clutter-stage-view-private.h"
+ #include "compositor/clutter-utils.h"
+ #include "compositor/meta-background-effect.h"
+ #include "compositor/meta-cullable.h"
+@@ -568,13 +569,32 @@ meta_surface_actor_get_texture (MetaSurfaceActor *self)
+ void
+ meta_surface_actor_schedule_update (MetaSurfaceActor *self)
+ {
++  ClutterActor *actor = CLUTTER_ACTOR (self);
+   ClutterStage *stage;
++  GList *views = NULL;
++  GList *l;
+ 
+-  stage = CLUTTER_STAGE (clutter_actor_get_stage (CLUTTER_ACTOR (self)));
++  stage = CLUTTER_STAGE (clutter_actor_get_stage (actor));
+   if (!stage)
+     return;
+ 
+-  clutter_stage_schedule_update (stage);
++  /* The surface's frame callbacks are emitted by the update of a view it
++   * is on, so a surface on screen needs only those views updated. With
++   * clones on screen, or no views known yet, any view may be the one.
++   */
++  if (clutter_actor_is_mapped (actor) &&
++      !clutter_actor_has_mapped_clones (actor))
++    views = clutter_actor_peek_stage_views (actor);
++
++  if (views)
++    {
++      for (l = views; l; l = l->next)
++        clutter_stage_view_schedule_update (l->data);
++    }
++  else
++    {
++      clutter_stage_schedule_update (stage);
++    }
+ 
+   g_signal_emit (self, signals[UPDATE_SCHEDULED], 0);
+ }
+diff --git a/src/tests/stage-view-tests.c b/src/tests/stage-view-tests.c
+index 85d6c0eb7..f6b8feac0 100644
+--- a/src/tests/stage-view-tests.c
++++ b/src/tests/stage-view-tests.c
+@@ -1500,6 +1500,125 @@ meta_test_stage_views_fractional_position (void)
+   meta_monitor_manager_test_emulate_hotplug (monitor_manager_test, test_setup);
+ }
+ 
++static void
++on_before_update_count (ClutterStage     *stage,
++                        ClutterStageView *view,
++                        ClutterFrame     *frame,
++                        GHashTable       *updates)
++{
++  int n = GPOINTER_TO_INT (g_hash_table_lookup (updates, view));
++
++  g_hash_table_insert (updates, view, GINT_TO_POINTER (n + 1));
++}
++
++static void
++on_wait_done (gpointer user_data)
++{
++  gboolean *done = user_data;
++
++  *done = TRUE;
++}
++
++static void
++wait_ms (int ms)
++{
++  gboolean done = FALSE;
++
++  g_timeout_add_once (ms, on_wait_done, &done);
++  while (!done)
++    g_main_context_iteration (NULL, TRUE);
++}
++
++static int
++updates_of (GHashTable       *updates,
++            ClutterStageView *view)
++{
++  return GPOINTER_TO_INT (g_hash_table_lookup (updates, view));
++}
++
++static void
++meta_test_actor_redraw_updates_its_views (void)
++{
++  MetaBackend *backend = test_backend;
++  ClutterActor *stage = meta_backend_get_stage (backend);
++  g_autoptr (GHashTable) updates = NULL;
++  ClutterStageView *view1, *view2;
++  ClutterActor *actor;
++  GList *views;
++  MtkRectangle clip;
++  gulong handler_id;
++
++  views = clutter_stage_peek_stage_views (CLUTTER_STAGE (stage));
++  g_assert_cmpint (g_list_length (views), ==, 2);
++  view1 = views->data;
++  view2 = views->next->data;
++
++  actor = clutter_actor_new ();
++  clutter_actor_set_size (actor, 100, 100);
++  clutter_actor_set_background_color (actor,
++                                      &COGL_COLOR_INIT (255, 0, 0, 255));
++  clutter_actor_add_child (stage, actor);
++  clutter_actor_show (stage);
++  meta_wait_for_paint (CLUTTER_STAGE (stage));
++  wait_ms (100);
++
++  updates = g_hash_table_new (NULL, NULL);
++  handler_id = g_signal_connect (stage, "before-update",
++                                 G_CALLBACK (on_before_update_count),
++                                 updates);
++
++  /* At rest, no view updates. */
++  wait_ms (100);
++  g_assert_cmpint (updates_of (updates, view1), ==, 0);
++  g_assert_cmpint (updates_of (updates, view2), ==, 0);
++
++  /* A redraw of an actor on the first view updates only that view. */
++  clutter_actor_queue_redraw (actor);
++  wait_ms (100);
++  g_assert_cmpint (updates_of (updates, view1), >=, 1);
++  g_assert_cmpint (updates_of (updates, view2), ==, 0);
++
++  /* Moving it updates every view; then a redraw only the second. */
++  clutter_actor_set_x (actor, 1040);
++  wait_ms (100);
++  g_hash_table_remove_all (updates);
++  clutter_actor_queue_redraw (actor);
++  wait_ms (100);
++  g_assert_cmpint (updates_of (updates, view1), ==, 0);
++  g_assert_cmpint (updates_of (updates, view2), >=, 1);
++
++  /* On both views, a redraw updates both, and a clip on one only that. */
++  clutter_actor_set_x (actor, 974);
++  wait_ms (100);
++  g_hash_table_remove_all (updates);
++  clutter_actor_queue_redraw (actor);
++  wait_ms (100);
++  g_assert_cmpint (updates_of (updates, view1), >=, 1);
++  g_assert_cmpint (updates_of (updates, view2), >=, 1);
++
++  g_hash_table_remove_all (updates);
++  clip = (MtkRectangle) { .x = 70, .y = 10, .width = 20, .height = 20 };
++  clutter_actor_queue_redraw_with_clip (actor, &clip);
++  wait_ms (100);
++  g_assert_cmpint (updates_of (updates, view1), ==, 0);
++  g_assert_cmpint (updates_of (updates, view2), >=, 1);
++
++  /* A second clip on another view before the first is drawn updates its
++   * view too.
++   */
++  g_hash_table_remove_all (updates);
++  clip = (MtkRectangle) { .x = 70, .y = 10, .width = 20, .height = 20 };
++  clutter_actor_queue_redraw_with_clip (actor, &clip);
++  clip = (MtkRectangle) { .x = 10, .y = 10, .width = 20, .height = 20 };
++  clutter_actor_queue_redraw_with_clip (actor, &clip);
++  wait_ms (100);
++  g_assert_cmpint (updates_of (updates, view1), >=, 1);
++  g_assert_cmpint (updates_of (updates, view2), >=, 1);
++
++  g_signal_handler_disconnect (stage, handler_id);
++  clutter_actor_destroy (actor);
++}
++
+ static void
+ on_before_tests (MetaContext *context)
+ {
+@@ -1541,6 +1660,8 @@ init_tests (void)
+                    meta_test_timeline_actor_tree_clear);
+   g_test_add_func ("/stage-views/fractional-position",
+                    meta_test_stage_views_fractional_position);
++  g_test_add_func ("/stage-views/redraw-updates-its-views",
++                   meta_test_actor_redraw_updates_its_views);
+ }
+ 
+ int
