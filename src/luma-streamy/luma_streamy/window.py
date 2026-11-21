@@ -358,7 +358,12 @@ class StreamyWindow(AppWindow):
         self.audio_empty = ListEmptyState("No microphone or desktop audio")
         self._wrap_labels(self.audio_empty)  # its words never widen the panel (panels keep their sizes)
         audio = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        audio.append(self.audio_empty)
+        # The empty words never set the panel's width (panels keep the sizes the layout gives them).
+        empty = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+                                   vscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True)
+        empty.set_child(self.audio_empty)
+        self.audio_empty.connect("notify::visible", lambda e, _p, box=empty: box.set_visible(e.get_visible()))
+        audio.append(empty)
         audio.append(audio_scroll)
         # The preview is an inset like the others (same radius, gaps and surface), the canvas fitted
         # inside it with room on every side.
