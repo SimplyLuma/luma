@@ -121,7 +121,8 @@ builder_command='
       gcc glib2-devel gobject-introspection-devel gtk4-devel \
       libadwaita-devel meson ninja-build pkgconf-pkg-config \
       python3-devel python3-gobject python3-cairo python3-pyyaml redhat-rpm-config rpm-build \
-      systemd-rpm-macros dbus-daemon weston xdotool xorg-x11-server-Xvfb xorg-x11-xauth >"$build_log" 2>&1; then
+      systemd-rpm-macros dbus-daemon weston xdotool xorg-x11-server-Xvfb xorg-x11-xauth \
+      gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good >"$build_log" 2>&1; then
       cat "$build_log" >&2
       exit 1
     fi

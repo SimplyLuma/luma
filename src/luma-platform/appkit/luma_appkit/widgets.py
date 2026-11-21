@@ -18,9 +18,11 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("LumaAppearance", "1")
 gi.require_version("LumaUI", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango, LumaAppearance, LumaUI  # noqa: E402
+gi.require_version("Gsk", "4.0")
+gi.require_version("Graphene", "1.0")
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Graphene, Gsk, Gtk, Pango, LumaAppearance, LumaUI  # noqa: E402
 
-from . import window_frame, window_policy
+from . import lumaui_tokens, window_frame, window_policy
 from .commands import CommandRegistry
 # The menu is one component, defined once, in menus.py.
 from .menus import Menu, command_popover
@@ -364,37 +366,48 @@ class Island(Gtk.Box):
         from . import tv_frame
         self.connect("map", tv_frame.schedule)
         self.connect("unmap", tv_frame.schedule)
+        self._tv_stage: bool | None = None
+        self._outline: Gsk.RoundedRect | None = None
+        self._outline_key: tuple | None = None
+        self.connect("map", self._placed)
+        self.connect("notify::parent", self._placed)
+
+    def _placed(self, *_args: object) -> None:
+        """Where it sits changed (mapped, moved): ask again whether it is on a TV stage."""
+        self._tv_stage = None
 
     def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        # Runs on every frame of anything live inside (a preview, a meter), so it only draws: the
+        # outline is kept per size and radius, the TV-stage answer per placement.
         Gtk.Box.do_snapshot(self, snapshot)
         root = self.get_root()
         if isinstance(root, Gtk.Widget) and root.has_css_class("lumaui-phone-device"):
             return  # the phone screen has no desktop island rim, including below its status padding
-        if isinstance(root, Gtk.Widget) and root.has_css_class("lumaui-tv") and self.has_css_class("luma-island") and \
+        if isinstance(root, Gtk.Widget) and root.has_css_class("lumaui-tv") and \
                 self.get_parent() is not None and self.get_parent().has_css_class("lumaui-tv-frame"):
             return  # on a TV the page has no island rim
-        if _on_tv_stage(self):
+        if self._tv_stage is None:
+            self._tv_stage = _on_tv_stage(self)
+        if self._tv_stage:
             return  # nor on a TV stage, where it sits on the room (Terminal's panes)
         width, height = self.get_width(), self.get_height()
         if width <= 0 or height <= 0 or self.has_css_class("compact") or self.has_css_class("drawer"):
             return
-        from . import lumaui_tokens
-        gi.require_version("Gsk", "4.0")
-        gi.require_version("Graphene", "1.0")
-        from gi.repository import Graphene, Gsk
-
-        radius = float(lumaui_tokens.WINDOW["island_radius"])
-        if self.has_css_class("lumaui-docked"):  # holding a Dock: concentric with its tiles
-            radius = float(lumaui_tokens.DOCK["tile_radius"] + lumaui_tokens.DOCK["gap"])
-        corner = Graphene.Size().init(radius, radius)
-        outline = Gsk.RoundedRect()
-        outline.init(Graphene.Rect().init(0, 0, width, height), corner, corner, corner, corner)
+        docked = self.has_css_class("lumaui-docked")
+        key = (width, height, docked)
+        if self._outline_key != key:
+            radius = float(lumaui_tokens.WINDOW["island_radius"])
+            if docked:  # holding a Dock: concentric with its tiles
+                radius = float(lumaui_tokens.DOCK["tile_radius"] + lumaui_tokens.DOCK["gap"])
+            corner = Graphene.Size().init(radius, radius)
+            outline = Gsk.RoundedRect()
+            outline.init(Graphene.Rect().init(0, 0, width, height), corner, corner, corner, corner)
+            self._outline, self._outline_key = outline, key
         context = self.get_style_context()
         for token, dx, dy, spread, blur in self._INNER_EDGE:
             found, colour = context.lookup_color(token)
             if found and colour.alpha > 0:
-                snapshot.append_inset_shadow(outline, colour, dx, dy, spread, blur)
-
+                snapshot.append_inset_shadow(self._outline, colour, dx, dy, spread, blur)
 
 
 def _on_tv_stage(widget: Gtk.Widget) -> bool:

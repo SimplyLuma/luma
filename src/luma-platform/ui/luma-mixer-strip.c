@@ -14,6 +14,7 @@
 struct _LumaMixerStrip {
   GtkWidget parent_instance;
   GtkWidget *content;
+  GtkWidget *icon;
   GtkWidget *name;
   GtkWidget *device;
   GtkWidget *scale;
@@ -21,13 +22,15 @@ struct _LumaMixerStrip {
   GtkWidget *readout;
   GtkWidget *mute;
   GtkWidget *monitor;
+  GtkWidget *keys;
   char *label;
   char *subtitle;
   gboolean muted, monitoring;
   gboolean syncing; /* a setter is moving a key: not the person */
 };
 
-enum { PROP_0, PROP_LABEL, PROP_SUBTITLE, PROP_DB, PROP_MUTED, PROP_MONITORING, N_PROPS };
+enum { PROP_0, PROP_LABEL, PROP_SUBTITLE, PROP_DB, PROP_MUTED, PROP_MONITORING, PROP_GICON, PROP_MUTE_VISIBLE,
+       PROP_MONITOR_VISIBLE, N_PROPS };
 static GParamSpec *props[N_PROPS];
 enum { MOVED, MUTE_TOGGLED, MONITOR_TOGGLED, N_SIGNALS };
 static guint signals[N_SIGNALS];
@@ -195,7 +198,7 @@ static void fader_moved(LumaVolumeSlider *fader G_GNUC_UNUSED, double value, Lum
 /* M mutes from anywhere in the strip (the fader leaves letters alone). */
 static gboolean key_pressed(GtkEventControllerKey *controller G_GNUC_UNUSED, guint keyval, guint keycode G_GNUC_UNUSED,
                             GdkModifierType state, LumaMixerStrip *self) {
-  if ((keyval == GDK_KEY_m || keyval == GDK_KEY_M) &&
+  if ((keyval == GDK_KEY_m || keyval == GDK_KEY_M) && gtk_widget_get_visible(self->mute) &&
       !(state & (GDK_CONTROL_MASK | GDK_ALT_MASK | GDK_SUPER_MASK | GDK_META_MASK))) {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(self->mute), !self->muted);
     return TRUE;
@@ -228,6 +231,9 @@ static void set_property(GObject *object, guint id, const GValue *value, GParamS
   case PROP_DB: luma_mixer_strip_set_db(self, g_value_get_double(value)); break;
   case PROP_MUTED: luma_mixer_strip_set_muted(self, g_value_get_boolean(value)); break;
   case PROP_MONITORING: luma_mixer_strip_set_monitoring(self, g_value_get_boolean(value)); break;
+  case PROP_GICON: luma_mixer_strip_set_gicon(self, g_value_get_object(value)); break;
+  case PROP_MUTE_VISIBLE: luma_mixer_strip_set_mute_visible(self, g_value_get_boolean(value)); break;
+  case PROP_MONITOR_VISIBLE: luma_mixer_strip_set_monitor_visible(self, g_value_get_boolean(value)); break;
   default: G_OBJECT_WARN_INVALID_PROPERTY_ID(object, id, pspec);
   }
 }
@@ -240,6 +246,9 @@ static void get_property(GObject *object, guint id, GValue *value, GParamSpec *p
   case PROP_DB: g_value_set_double(value, luma_mixer_strip_get_db(self)); break;
   case PROP_MUTED: g_value_set_boolean(value, self->muted); break;
   case PROP_MONITORING: g_value_set_boolean(value, self->monitoring); break;
+  case PROP_GICON: g_value_set_object(value, gtk_image_get_gicon(GTK_IMAGE(self->icon))); break;
+  case PROP_MUTE_VISIBLE: g_value_set_boolean(value, gtk_widget_get_visible(self->mute)); break;
+  case PROP_MONITOR_VISIBLE: g_value_set_boolean(value, gtk_widget_get_visible(self->monitor)); break;
   default: G_OBJECT_WARN_INVALID_PROPERTY_ID(object, id, pspec);
   }
 }
@@ -272,6 +281,9 @@ static void luma_mixer_strip_class_init(LumaMixerStripClass *klass) {
   props[PROP_DB] = g_param_spec_double("db", NULL, NULL, -G_MAXDOUBLE, G_MAXDOUBLE, 0, flags);
   props[PROP_MUTED] = g_param_spec_boolean("muted", NULL, NULL, FALSE, flags);
   props[PROP_MONITORING] = g_param_spec_boolean("monitoring", NULL, NULL, FALSE, flags);
+  props[PROP_GICON] = g_param_spec_object("gicon", NULL, NULL, G_TYPE_ICON, flags);
+  props[PROP_MUTE_VISIBLE] = g_param_spec_boolean("mute-visible", NULL, NULL, TRUE, flags);
+  props[PROP_MONITOR_VISIBLE] = g_param_spec_boolean("monitor-visible", NULL, NULL, TRUE, flags);
   g_object_class_install_properties(object_class, N_PROPS, props);
   /**
    * LumaMixerStrip::moved:
@@ -328,6 +340,14 @@ static void luma_mixer_strip_init(LumaMixerStrip *self) {
 
   GtkWidget *head = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_widget_add_css_class(head, "lumaui-mixer-head");
+  /* What the channel is (an app's or device's icon); no room is kept while it has none. */
+  self->icon = gtk_image_new();
+  gtk_widget_add_css_class(self->icon, "lumaui-mixer-icon");
+  gtk_image_set_pixel_size(GTK_IMAGE(self->icon), LUMA_UI_MIXER_STRIP_ICON);
+  gtk_widget_set_halign(self->icon, GTK_ALIGN_CENTER);
+  gtk_widget_set_visible(self->icon, FALSE);
+  gtk_accessible_update_state(GTK_ACCESSIBLE(self->icon), GTK_ACCESSIBLE_STATE_HIDDEN, TRUE, -1);
+  gtk_box_append(GTK_BOX(head), self->icon);
   self->name = strip_label("lumaui-mixer-name", "label", FALSE);
   self->device = strip_label("lumaui-mixer-device", "caption", TRUE);
   /* The strip speaks its name and device; the labels would say them twice. */
@@ -371,7 +391,7 @@ static void luma_mixer_strip_init(LumaMixerStrip *self) {
   gtk_accessible_update_state(GTK_ACCESSIBLE(self->readout), GTK_ACCESSIBLE_STATE_HIDDEN, TRUE, -1);
   gtk_box_append(GTK_BOX(self->content), self->readout);
 
-  GtkWidget *keys = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, LUMA_UI_MIXER_STRIP_KEY_GAP);
+  GtkWidget *keys = self->keys = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, LUMA_UI_MIXER_STRIP_KEY_GAP);
   gtk_widget_add_css_class(keys, "lumaui-mixer-keys");
   gtk_widget_set_halign(keys, GTK_ALIGN_CENTER);
   self->mute = strip_key("volume-x", "Mute", "mute", "M");
@@ -463,6 +483,59 @@ void luma_mixer_strip_set_monitoring(LumaMixerStrip *self, gboolean monitoring) 
   g_return_if_fail(LUMA_IS_MIXER_STRIP(self));
   if (self->monitoring != !!monitoring)
     apply_monitoring(self, !!monitoring);
+}
+
+void luma_mixer_strip_set_gicon(LumaMixerStrip *self, GIcon *icon) {
+  g_return_if_fail(LUMA_IS_MIXER_STRIP(self));
+  g_return_if_fail(icon == NULL || G_IS_ICON(icon));
+  gtk_image_set_from_gicon(GTK_IMAGE(self->icon), icon);
+  gtk_widget_set_visible(self->icon, icon != NULL);
+  g_object_notify_by_pspec(G_OBJECT(self), props[PROP_GICON]);
+}
+
+void luma_mixer_strip_set_icon_name(LumaMixerStrip *self, const char *icon) {
+  g_return_if_fail(LUMA_IS_MIXER_STRIP(self));
+  if (icon == NULL || *icon == '\0') {
+    luma_mixer_strip_set_gicon(self, NULL);
+    return;
+  }
+  /* A Lucide name ("mic", "monitor-speaker") is the kit's glyph; a theme or app icon name is itself. */
+  g_autofree char *name = strchr(icon, '.') || g_str_has_suffix(icon, "-symbolic") ? g_strdup(icon) : luma_ui_icon_name(icon);
+  g_autoptr(GIcon) themed = g_themed_icon_new(name);
+  luma_mixer_strip_set_gicon(self, themed);
+}
+
+GIcon *luma_mixer_strip_get_gicon(LumaMixerStrip *self) {
+  g_return_val_if_fail(LUMA_IS_MIXER_STRIP(self), NULL);
+  return gtk_image_get_gicon(GTK_IMAGE(self->icon));
+}
+
+static void sync_keys(LumaMixerStrip *self) {
+  gtk_widget_set_visible(self->keys, gtk_widget_get_visible(self->mute) || gtk_widget_get_visible(self->monitor));
+}
+
+void luma_mixer_strip_set_mute_visible(LumaMixerStrip *self, gboolean visible) {
+  g_return_if_fail(LUMA_IS_MIXER_STRIP(self));
+  gtk_widget_set_visible(self->mute, visible);
+  sync_keys(self);
+  g_object_notify_by_pspec(G_OBJECT(self), props[PROP_MUTE_VISIBLE]);
+}
+
+gboolean luma_mixer_strip_get_mute_visible(LumaMixerStrip *self) {
+  g_return_val_if_fail(LUMA_IS_MIXER_STRIP(self), FALSE);
+  return gtk_widget_get_visible(self->mute);
+}
+
+void luma_mixer_strip_set_monitor_visible(LumaMixerStrip *self, gboolean visible) {
+  g_return_if_fail(LUMA_IS_MIXER_STRIP(self));
+  gtk_widget_set_visible(self->monitor, visible);
+  sync_keys(self);
+  g_object_notify_by_pspec(G_OBJECT(self), props[PROP_MONITOR_VISIBLE]);
+}
+
+gboolean luma_mixer_strip_get_monitor_visible(LumaMixerStrip *self) {
+  g_return_val_if_fail(LUMA_IS_MIXER_STRIP(self), FALSE);
+  return gtk_widget_get_visible(self->monitor);
 }
 
 gboolean luma_mixer_strip_get_monitoring(LumaMixerStrip *self) {

@@ -186,7 +186,15 @@ static void test_strip(void) {
   g_assert_cmpint(gtk_accessible_get_accessible_role(GTK_ACCESSIBLE(mute)), ==, GTK_ACCESSIBLE_ROLE_TOGGLE_BUTTON);
   g_assert_true(gtk_widget_get_focusable(GTK_WIDGET(fader)));
   /* The full name is the name's tooltip; without a device its line stays, empty, so faders line up. */
-  GtkWidget *name = gtk_widget_get_first_child(gtk_widget_get_first_child(gtk_widget_get_first_child(widget)));
+  /* The head: an icon slot (empty, taking no room until set), the name, the device. */
+  GtkWidget *icon = gtk_widget_get_first_child(gtk_widget_get_first_child(gtk_widget_get_first_child(widget)));
+  g_assert_true(gtk_widget_has_css_class(icon, "lumaui-mixer-icon") && !gtk_widget_get_visible(icon));
+  luma_mixer_strip_set_icon_name(strip, "mic");
+  g_assert_true(gtk_widget_get_visible(icon));
+  g_assert_cmpstr(g_themed_icon_get_names(G_THEMED_ICON(luma_mixer_strip_get_gicon(strip)))[0], ==, "lumaui-mic-symbolic");
+  luma_mixer_strip_set_icon_name(strip, NULL);
+  g_assert_false(gtk_widget_get_visible(icon));
+  GtkWidget *name = gtk_widget_get_next_sibling(icon);
   g_assert_true(gtk_widget_has_css_class(name, "lumaui-mixer-name"));
   g_assert_cmpstr(gtk_widget_get_tooltip_text(name), ==, "Desktop audio");
   g_assert_true(gtk_label_get_ellipsize(GTK_LABEL(name)) == PANGO_ELLIPSIZE_END);
