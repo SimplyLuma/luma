@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Drag latency per stage: a widget's move (or resize) to the preview on screen, p50/p95 in ms.
 
-    GST_PLUGIN_PATH=<lumaframe> python3 tests/engine_latency.py [move|resize] [MAX_P95_MS]
+    GST_PLUGIN_PATH=<lumaframe> python3 tests/engine_latency.py [move|resize|style] [MAX_P95_MS]
 
 Needs a display (the preview is a gtk4paintablesink shown in a window). Each step is timed on
 time.monotonic() and followed by its program frame (buffer pts) through the graph:
@@ -162,12 +162,15 @@ def main(mode: str, limit_ms: float | None) -> int:
             loop.quit()
             return False
         x, width = moves.pop()
-        if mode == "move":
+        if mode in ("move", "style"):
             width = 640
+        if mode == "style":  # a Look change: a new revision, the same size (no caps change)
+            x = 100
+            project.set_effect(box, "corner_radius", 8.0 if box.effects.corner_radius != 8.0 else 24.0)
         project.set_rect(box.id, x, 0, width, width * 9 // 16)
         m = int(round(box.effects.clamped().margin))
         step["target"] = (x - m, width + 2 * m)
-        if mode == "resize":
+        if mode in ("resize", "style"):
             step["rev"] = engine._revision + 1  # the revision this resize commits
         step["set"] = now()
         engine.update_widget(box)

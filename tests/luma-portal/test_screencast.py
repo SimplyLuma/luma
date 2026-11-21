@@ -281,6 +281,168 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(len(self.shell_calls("Choose")), 1)
 
 
+class FakeLock:
+    """The session lock (lock.py), set by the test."""
+
+    def __init__(self, locked=False):
+        self.locked = locked
+        self.waiting = []
+        self.refreshed = 0
+
+    def when_unlocked(self, callback):
+        if not self.locked:
+            callback()
+        elif callback not in self.waiting:
+            self.waiting.append(callback)
+
+    def refresh(self):
+        self.refreshed += 1
+
+    def unlock(self):
+        self.locked = False
+        waiting, self.waiting = self.waiting, []
+        for callback in waiting:
+            callback()
+
+
+class InhibitedCast(FakeCast):
+    """Mutter while the session is locked: no new share starts."""
+
+    def record_monitor(self, _connector, _cursor_mode):
+        raise GLib.Error.new_literal(GLib.quark_from_string("g-io-error-quark"),
+                                     "Session creation inhibited", 0)
+
+
+class LockTests(unittest.TestCase):
+    """Nothing is asked or started while locked; pickers come one at a time after unlock."""
+
+    def setUp(self):
+        self._real = mutter.ScreenCastSession
+        mutter.ScreenCastSession = FakeCast
+        self.bus = FakeBus()
+        self.lock = FakeLock(locked=True)
+        self.portal = screencast.ScreenCastPortal(self.bus, "/org/freedesktop/portal/desktop", self.lock)
+
+    def tearDown(self):
+        mutter.ScreenCastSession = self._real
+
+    def session(self, name, options):
+        handle = f"/org/freedesktop/portal/desktop/session/1_1/{name}"
+        self.portal._create_session(GLib.Variant("(oosa{sv})", (f"/r/{name}c", handle, "", {})),
+                                    FakeInvocation())
+        self.portal._select_sources(GLib.Variant("(oosa{sv})", (f"/r/{name}s", handle, "", options)),
+                                    FakeInvocation())
+        invocation = FakeInvocation()
+        self.portal._start(GLib.Variant("(oossa{sv})", (f"/r/{name}", handle, "", "", {})),
+                           invocation)
+        return handle, invocation
+
+    def chooses(self):
+        return [c for c in self.bus.calls if c["method"] == "Choose"]
+
+    def settle(self):
+        context = GLib.MainContext.default()
+        while context.pending():
+            context.iteration(False)
+
+    def test_no_picker_while_locked_and_one_after_unlock(self):
+        _h, first = self.session("a", {"types": GLib.Variant("u", 2)})
+        self.session("b", {"types": GLib.Variant("u", 2)})
+        self.assertEqual(self.chooses(), [], "nothing is asked while locked")
+        self.assertEqual(first.answers, [], "the application waits, unanswered")
+        self.lock.unlock()
+        self.assertEqual(len(self.chooses()), 1, "one picker at a time")
+
+    def test_the_next_picker_comes_when_the_first_is_answered(self):
+        self.session("a", {"types": GLib.Variant("u", 2)})
+        _h, second = self.session("b", {"types": GLib.Variant("u", 2)})
+        self.lock.unlock()
+        (choose,) = self.chooses()
+
+        class Denied:
+            def call_finish(self, _result):
+                return GLib.Variant("(ua{sv})", (screencast.PORTAL_CANCELLED, {}))
+        choose["callback"](Denied(), None, None)
+        self.settle()
+        self.assertEqual(len(self.chooses()), 2)
+        self.assertEqual(second.answers, [])
+
+    def test_a_restored_share_waits_and_needs_no_picker(self):
+        data = screencast.restore_data({"monitors": ["eDP-1"]})
+        _h, invocation = self.session("r", {"restore_data": data, "persist_mode": GLib.Variant("u", 2)})
+        self.assertEqual(invocation.answers, [])
+        self.lock.unlock()
+        self.assertEqual(self.chooses(), [])
+
+    def test_a_request_closed_while_waiting_is_answered(self):
+        handle, invocation = self.session("a", {"types": GLib.Variant("u", 2)})
+        self.portal._sessions[handle].close()
+        self.assertEqual(invocation.answers, [(screencast.PORTAL_CANCELLED, {})])
+        self.lock.unlock()
+        self.assertEqual(self.chooses(), [])
+
+    def test_mutter_refusing_a_restore_as_locked_waits_instead_of_asking(self):
+        mutter.ScreenCastSession = InhibitedCast
+        self.lock.locked = False
+        data = screencast.restore_data({"monitors": ["eDP-1"]})
+        _h, invocation = self.session("r", {"restore_data": data, "persist_mode": GLib.Variant("u", 2)})
+        self.assertEqual(self.chooses(), [], "a share refused as locked is not a reason to ask")
+        self.assertEqual(invocation.answers, [])
+
+
+class EndingTests(unittest.TestCase):
+    """Every way a share ends tells the Shell, so no ring or pill outlives it."""
+
+    def setUp(self):
+        self._real = mutter.ScreenCastSession
+        mutter.ScreenCastSession = FakeCast
+        self.bus = FakeBus()
+        self.bus.flush_sync = lambda _c: None
+        self.portal = screencast.ScreenCastPortal(self.bus, "/org/freedesktop/portal/desktop", FakeLock())
+
+    def tearDown(self):
+        mutter.ScreenCastSession = self._real
+
+    def open_session(self, name):
+        handle = f"/org/freedesktop/portal/desktop/session/1_1/{name}"
+        self.portal._create_session(GLib.Variant("(oosa{sv})", (f"/r/{name}c", handle, "", {})),
+                                    FakeInvocation())
+        return handle
+
+    def closed(self):
+        return [c for c in self.bus.calls if c["method"] == "SessionClosed"]
+
+    def test_xdg_desktop_portal_closing_the_session_tells_the_shell(self):
+        handle = self.open_session("a")
+
+        class Close:
+            def get_method_name(self):
+                return "Close"
+
+            def return_value(self, _v):
+                pass
+        self.portal._session_call(self.portal._sessions[handle], Close())
+        self.assertEqual(len(self.closed()), 1)
+
+    def test_stopping_the_backend_ends_every_share(self):
+        self.open_session("a")
+        self.open_session("b")
+        self.portal.shutdown()
+        self.assertEqual(len(self.closed()), 2)
+        self.assertEqual(self.portal._sessions, {})
+
+    def test_the_shell_learns_the_mutter_session(self):
+        handle = self.open_session("a")
+        session = self.portal._sessions[handle]
+        session.cast = type("Cast", (), {"path": "/org/gnome/Mutter/ScreenCast/Session/u7"})()
+        sent = []
+        self.portal._call_shell = lambda method, params: sent.append((method, params))
+        self.portal._tell_shell_started(session, {"windows": [3]})
+        (method, params), = sent
+        _handle, info = params.unpack()
+        self.assertEqual(info["mutter-session"], "/org/gnome/Mutter/ScreenCast/Session/u7")
+
+
 class OfferedCapabilityTests(unittest.TestCase):
     def test_luma_offers_windows_and_screens(self):
         self.assertEqual(screencast.AVAILABLE_SOURCE_TYPES,

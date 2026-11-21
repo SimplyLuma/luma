@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.103%{?dist}
+Release:        1.luma.104%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -33,6 +33,9 @@ BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 BuildRequires:  dconf
 BuildRequires:  glib2
+# test_application_socket starts a PipeWire server with the socket file.
+BuildRequires:  pipewire
+BuildRequires:  pipewire-utils
 Requires:       cpio
 Requires:       bubblewrap
 Requires:       dpkg
@@ -371,7 +374,7 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
-* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.103
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.104
 - Package files (.deb, .rpm, AppImage, archives) are installed into the
   application store (ADR-052): a tree of the package and its dependencies,
   built on the device by its own distribution's tools without root, kept as
@@ -399,6 +402,25 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
   (luma-app-migrate.timer); a capsule is kept until its application has
   started from the store once.
 - Requires ostree, debootstrap, debian-keyring, ubu-keyring, dnf5.
+- A refresh takes a newer build of the package itself from its repository
+  instead of rebuilding from the kept file; console programs get no desktop
+  baseline; 32-bit x86 Debian packages go through Valet into a tree with
+  both architectures; the hidden start has an X server of its own.
+- The device's settings-daemon schemas (without xsettings) are shown to
+  trees and capsules; GSettings of store applications are kept in a file.
+
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.103
+- PipeWire: the access module is back in its default mode. 1.luma.101 named
+  the sockets in module.access.args, which made every client on pipewire-0
+  wait for the session manager: with WirePlumber stopped or not yet up, new
+  PipeWire and PulseAudio clients hung, and xdg-desktop-portal started in
+  that state stalled for ten seconds and reported no camera until restarted.
+  The application socket now marks its clients itself (socket props,
+  pipewire.client.access "luma-application"), and the WirePlumber rule and
+  the capture hook go by pipewire.sec.socket, so a client on that socket is
+  held to the same list whatever access PipeWire derives for it. Clients on
+  pipewire-0 and pipewire-0-manager are treated as before 1.luma.101.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.102
 - Security updates for package capsules (capsule_refresh). Once a day, on
   mains power and an unmetered connection, luma-capsule-refresh.timer runs

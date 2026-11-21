@@ -118,6 +118,31 @@ def fitted_tile():
     window.destroy()
 
 
+def generic_channel():
+    """An app's channel: its icon heads the strip; an output without monitoring has Mute alone, a fixed one none."""
+    from gi.repository import Gio
+
+    from luma_appkit import MixerStrip
+
+    plain = MixerStrip("Desktop audio")
+    assert plain.get_gicon() is None and plain.get_mute_visible() and plain.get_monitor_visible()
+    app = MixerStrip("Music", "Speakers", icon=Gio.ThemedIcon.new("org.example.Music"), monitor=False)
+    assert app.get_gicon().get_names()[0] == "org.example.Music"
+    assert app.get_mute_visible() and not app.get_monitor_visible()
+    glyph = MixerStrip("Mic", icon="mic", mute=False, monitor=False)
+    assert glyph.get_gicon().get_names()[0] == "lumaui-mic-symbolic"
+    assert not glyph.get_mute_button().get_parent().get_visible(), "no keys, no key row"
+    window = Gtk.Window(child=glyph)
+    window.present()
+    settle()
+    glyph.get_fader().grab_focus()
+    key(glyph, Gdk.KEY_m)
+    assert not glyph.get_muted(), "M does nothing without a Mute key"
+    glyph.set_icon_name(None)
+    assert glyph.get_gicon() is None
+    window.destroy()
+
+
 def long_names_rtl():
     """A long name ellipsizes inside the strip; RTL lays the row out from the right."""
     Gtk.Widget.set_default_direction(Gtk.TextDirection.RTL)
@@ -141,6 +166,7 @@ def long_names_rtl():
 if __name__ == "__main__":
     builders()
     fitted_tile()
+    generic_channel()
     long_names_rtl()
     GLib.MainContext.default().iteration(False)
     print("ok")

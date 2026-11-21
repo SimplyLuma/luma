@@ -1,0 +1,201 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] lumaShare, screenShield: no share picker while the session is locked
+
+A share request that reached the Shell while the session was locked opened
+Luma Share's picker over the lock screen: the modal dialog layer sits above
+the screen shield, so the picker and its blurred scrim covered the unlock
+prompt. It also took the grab, and the lock screen shows its pointer only on
+motion it receives itself, so the pointer stayed hidden. An app that lost
+its shares at the lock and asked again at once left one such picker per
+source, to be answered blind before the session came back.
+
+The manager now owns the lock for its picker. Choose while the session is
+locked, or while the screen shield is up or still going away, is held,
+unanswered, and the picker is shown once the normal session is back; the
+person can still deny it there. A picker on screen when the session locks is
+withdrawn -- its grab released and it is hidden, still unanswered -- and
+comes back as it was after unlock. Cancel answers a held request. The
+picker no longer watches the session mode itself.
+
+The lock screen's pointer now shows on any pointer motion
+(MetaCursorTracker::position-invalidated), not only motion delivered to the
+lock dialog: a dialog over the lock screen, such as an authentication
+request, takes the grab and must not leave the pointer hidden.
+
+diff --git a/js/ui/lumaShare.js b/js/ui/lumaShare.js
+index 0791c42..9669a21 100644
+--- a/js/ui/lumaShare.js
++++ b/js/ui/lumaShare.js
+@@ -469,10 +469,9 @@ export const SharePicker = GObject.registerClass({
+         this._cursorModes = request.cursorModes || CursorMode.HIDDEN;
+         this._wantsControl = Boolean(request.control);
+ 
++        this._withdrawn = false;
++
+         this.connect('closed', () => this._answer(PORTAL_CANCELLED, {}));
+-        Main.sessionMode.connectObject('updated', () => {
+-            this.visible = !Main.sessionMode.isLocked;
+-        }, this);
+ 
+         this._build();
+         this._open();
+@@ -962,6 +961,29 @@ export const SharePicker = GObject.registerClass({
+ 
+     // ── Opening and closing ──────────────────────────────────────────────
+ 
++    /**
++     * Takes the picker off the screen while the session is locked, without
++     * answering: no grab, nothing drawn over or under the lock screen. It
++     * comes back as it was after unlock, and the person can still deny.
++     *
++     * @param {boolean} withdrawn
++     */
++    setWithdrawn(withdrawn) {
++        if (this._answered || this._withdrawn === withdrawn)
++            return;
++        this._withdrawn = withdrawn;
++        if (withdrawn) {
++            this.popModal();
++            this.hide();
++            return;
++        }
++        this.show();
++        if (!this.pushModal()) {
++            log('could not take the keyboard and pointer again; the request is cancelled');
++            this.close(global.get_current_time());
++        }
++    }
++
+     _open() {
+         if (!this.open()) {
+             log('could not take the keyboard and pointer; the request is cancelled');
+@@ -1217,6 +1239,10 @@ export const ShareManager = GObject.registerClass({
+         this._handles = new Set();
+         this._held = [];
+         this._hideId = 0;
++        // A Choose that arrived while the session was locked: shown after
++        // unlock, never over, under or during the lock screen.
++        this._waiting = null;
++        this._watchingLock = false;
+ 
+         this._dbus = Gio.DBusExportedObject.wrapJSObject(INTERFACE, this);
+         this._dbus.export(Gio.DBus.session, OBJECT_PATH);
+@@ -1279,20 +1305,65 @@ export const ShareManager = GObject.registerClass({
+         }
+     }
+ 
++    // ── The lock ─────────────────────────────────────────────────────────
++
++    // The picker belongs to the normal session: not while the session is
++    // locked, nor while the screen shield is up or still going away.
++    get _sessionOpen() {
++        return !Main.sessionMode.isLocked && !Main.sessionMode.isGreeter &&
++            !Main.screenShield?.active && !Main.screenShield?.locked;
++    }
++
++    // The shield is made after the manager, so the lock is watched from the
++    // first request on.
++    _watchLock() {
++        if (this._watchingLock || !Main.screenShield)
++            return;
++        this._watchingLock = true;
++        const sync = () => this._syncLock();
++        Main.sessionMode.connectObject('updated', sync, this);
++        Main.screenShield.connectObject(
++            'active-changed', sync,
++            'locked-changed', sync, this);
++    }
++
++    _syncLock() {
++        const open = this._sessionOpen;
++        this._picker?.setWithdrawn(!open);
++        if (!open || !this._waiting)
++            return;
++        const {options, invocation} = this._waiting;
++        this._waiting = null;
++        log('Luma Share: the session is unlocked; showing the picker that waited');
++        this._present(options, invocation);
++    }
++
+     async ChooseAsync([options], invocation) {
+         if (!await this._callerIsPortal(invocation)) {
+             invocation.return_error_literal(Gio.dbus_error_quark(),
+                 Gio.DBusError.ACCESS_DENIED, 'not the Luma portal backend');
+             return;
+         }
+-        if (this._picker) {
++        if (this._picker || this._waiting) {
+             invocation.return_value(new GLib.Variant('(ua{sv})', [PORTAL_CANCELLED, {}]));
+             return;
+         }
++        this._watchLock();
++        if (!this._sessionOpen) {
++            log('Luma Share: the session is locked; the picker waits for unlock');
++            this._waiting = {options, invocation};
++            return;
++        }
++        await this._present(options, invocation);
++    }
++
++    async _present(options, invocation) {
+         try {
+             const request = await this._describe(unpackDict(options));
+             const picker = new SharePicker(request);
+             this._picker = picker;
++            // The session may have locked while the request was described.
++            picker.setWithdrawn(!this._sessionOpen);
+             picker.connect('done', (o, answer) => {
+                 if (this._picker === picker)
+                     this._picker = null;
+@@ -1311,6 +1382,12 @@ export const ShareManager = GObject.registerClass({
+     // The application gave up while the picker was on screen. It comes off,
+     // and nothing was chosen.
+     Cancel() {
++        if (this._waiting) {
++            this._waiting.invocation.return_value(
++                new GLib.Variant('(ua{sv})', [PORTAL_CANCELLED, {}]));
++            this._waiting = null;
++            return;
++        }
+         this._picker?.close(global.get_current_time());
+     }
+ 
+diff --git a/js/ui/screenShield.js b/js/ui/screenShield.js
+index 515dc82..dc66d1c 100644
+--- a/js/ui/screenShield.js
++++ b/js/ui/screenShield.js
+@@ -138,6 +138,7 @@ export class ScreenShield extends Signals.EventEmitter {
+ 
+         this.idleMonitor = global.backend.get_core_idle_monitor();
+         this._cursorTracker = global.backend.get_cursor_tracker();
++        this._pointerMovedId = 0;
+ 
+         this._syncInhibitor();
+     }
+@@ -348,6 +349,11 @@ export class ScreenShield extends Signals.EventEmitter {
+             this._lockDialogGroup.disconnect(this._motionId);
+             this._motionId = 0;
+         }
++
++        if (this._pointerMovedId) {
++            this._cursorTracker.disconnect(this._pointerMovedId);
++            this._pointerMovedId = 0;
++        }
+     }
+ 
+     _hidePointer() {
+@@ -367,6 +373,14 @@ export class ScreenShield extends Signals.EventEmitter {
+ 
+             return Clutter.EVENT_PROPAGATE;
+         });
++        // Motion reaches the lock dialog only while it holds the grab. A
++        // dialog over the lock screen (an authentication request) takes it,
++        // and the pointer must not stay hidden over that dialog: any motion
++        // of the pointer shows it.
++        if (!this._pointerMovedId) {
++            this._pointerMovedId = this._cursorTracker.connect(
++                'position-invalidated', () => this._showPointer());
++        }
+         this._hidePointer();
+     }
+ 

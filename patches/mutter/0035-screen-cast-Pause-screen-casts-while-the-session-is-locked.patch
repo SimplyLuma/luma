@@ -1,0 +1,378 @@
+From 306f871d5f7acac68ed0525d5900a6834e2cb96b Mon Sep 17 00:00:00 2001
+From: Project Luma <engineering@projectluma.org>
+Date: Sat, 21 Nov 2026 03:00:00 -0500
+Subject: [PATCH] screen-cast: Pause screen casts while the session is
+ locked
+
+Locking the session inhibits remote access, and inhibiting closed every
+remote desktop and screen cast session. An application sharing a window
+or a screen lost its share at every lock and asked again at once, so
+share dialogs piled up behind the lock screen and the person had to
+answer them, one per source, before getting their session back.
+
+A screen cast session that is not part of a remote desktop session is now
+paused instead: its streams stay connected but every source is disabled,
+as when the consumer pauses the stream, and records nothing -- no frame,
+no cursor update, no empty buffer -- until the last inhibition ends. Then
+the streams are enabled again and record a fresh frame, so the same
+session carries on and the application never has to ask again.
+
+Nothing is shown to the application while locked, so the lock screen and
+whatever the shared windows draw meanwhile never leave Mutter, which is
+what closing guaranteed. Remote desktop sessions, and the screen casts
+that belong to them, are still closed: they carry input, and input into a
+locked session must never be possible. New sessions are still refused
+while inhibited.
+
+MetaDbusSession gains optional pause/resume vfuncs; a session without
+them is closed as before.
+---
+ src/backends/meta-dbus-session-manager.c     | 12 +++++
+ src/backends/meta-dbus-session-watcher.c     | 17 ++++++
+ src/backends/meta-dbus-session-watcher.h     | 11 ++++
+ src/backends/meta-remote-access-controller.c |  8 +--
+ src/backends/meta-screen-cast-session.c      | 56 ++++++++++++++++++++
+ src/backends/meta-screen-cast-session.h      |  2 +
+ src/backends/meta-screen-cast-stream-src.c   | 56 +++++++++++++++++++-
+ src/backends/meta-screen-cast-stream-src.h   |  2 +
+ 8 files changed, 160 insertions(+), 4 deletions(-)
+
+diff --git a/src/backends/meta-dbus-session-manager.c b/src/backends/meta-dbus-session-manager.c
+index 3944bca..76b9452 100644
+--- a/src/backends/meta-dbus-session-manager.c
++++ b/src/backends/meta-dbus-session-manager.c
+@@ -504,6 +504,9 @@ meta_dbus_session_manager_inhibit (MetaDbusSessionManager *session_manager)
+         {
+           MetaDbusSession *session = META_DBUS_SESSION (value);
+ 
++          if (meta_dbus_session_pause (session))
++            continue;
++
+           g_hash_table_iter_steal (&iter);
+           meta_dbus_session_close (session);
+         }
+@@ -519,6 +522,15 @@ meta_dbus_session_manager_uninhibit (MetaDbusSessionManager *session_manager)
+   g_return_if_fail (priv->inhibit_count > 0);
+ 
+   priv->inhibit_count--;
++  if (priv->inhibit_count == 0)
++    {
++      GHashTableIter iter;
++      gpointer value;
++
++      g_hash_table_iter_init (&iter, priv->sessions);
++      while (g_hash_table_iter_next (&iter, NULL, &value))
++        meta_dbus_session_resume (META_DBUS_SESSION (value));
++    }
+ }
+ 
+ MetaBackend *
+diff --git a/src/backends/meta-dbus-session-watcher.c b/src/backends/meta-dbus-session-watcher.c
+index 4c91a34..468734a 100644
+--- a/src/backends/meta-dbus-session-watcher.c
++++ b/src/backends/meta-dbus-session-watcher.c
+@@ -269,6 +269,23 @@ meta_dbus_session_close (MetaDbusSession *session)
+   META_DBUS_SESSION_GET_IFACE (session)->close (session);
+ }
+ 
++gboolean
++meta_dbus_session_pause (MetaDbusSession *session)
++{
++  MetaDbusSessionInterface *iface = META_DBUS_SESSION_GET_IFACE (session);
++
++  return iface->pause && iface->pause (session);
++}
++
++void
++meta_dbus_session_resume (MetaDbusSession *session)
++{
++  MetaDbusSessionInterface *iface = META_DBUS_SESSION_GET_IFACE (session);
++
++  if (iface->resume)
++    iface->resume (session);
++}
++
+ typedef struct _CloseClosure
+ {
+   MetaDbusSession *session;
+diff --git a/src/backends/meta-dbus-session-watcher.h b/src/backends/meta-dbus-session-watcher.h
+index 226f6b5..34b91a6 100644
+--- a/src/backends/meta-dbus-session-watcher.h
++++ b/src/backends/meta-dbus-session-watcher.h
+@@ -41,6 +41,13 @@ struct _MetaDbusSessionInterface
+   GTypeInterface parent_iface;
+ 
+   void (* close) (MetaDbusSession *session);
++
++  /* Optional. While remote access is inhibited (the session is locked) a
++   * session that can be paused is held instead of closed: pause() returns
++   * TRUE when it stopped delivering anything, FALSE when it must close.
++   * resume() is called when the last inhibition ends. */
++  gboolean (* pause) (MetaDbusSession *session);
++  void (* resume) (MetaDbusSession *session);
+ };
+ 
+ #define META_TYPE_DBUS_SESSION_WATCHER (meta_dbus_session_watcher_get_type ())
+@@ -60,6 +67,10 @@ void meta_dbus_session_notify_closed (MetaDbusSession *session);
+ 
+ void meta_dbus_session_close (MetaDbusSession *session);
+ 
++gboolean meta_dbus_session_pause (MetaDbusSession *session);
++
++void meta_dbus_session_resume (MetaDbusSession *session);
++
+ void meta_dbus_session_queue_close (MetaDbusSession *session);
+ 
+ MetaDbusSessionManager * meta_dbus_session_manager (MetaDbusSessionManager *session);
+diff --git a/src/backends/meta-remote-access-controller.c b/src/backends/meta-remote-access-controller.c
+index 82a25c8..674c16d 100644
+--- a/src/backends/meta-remote-access-controller.c
++++ b/src/backends/meta-remote-access-controller.c
+@@ -146,8 +146,10 @@ meta_remote_access_controller_notify_new_handle (MetaRemoteAccessController *con
+  * meta_remote_access_controller_inhibit_remote_access:
+  * @controller: a #MetaRemoteAccessController
+  *
+- * Inhibits remote access sessions from being created and running. Any active
+- * remote access session will be terminated.
++ * Inhibits remote access sessions from being created and running. Screen
++ * casts that are not part of a remote desktop session are paused: their
++ * streams stay connected but deliver no frames until the last inhibition
++ * ends. Every other active remote access session is terminated.
+  */
+ void
+ meta_remote_access_controller_inhibit_remote_access (MetaRemoteAccessController *controller)
+@@ -168,7 +170,7 @@ meta_remote_access_controller_inhibit_remote_access (MetaRemoteAccessController
+  *
+  * Uninhibits remote access sessions from being created and running. If this was
+  * the last inhibition that was inhibited, new remote access sessions can now
+- * be created.
++ * be created and paused screen casts resume.
+  */
+ void
+ meta_remote_access_controller_uninhibit_remote_access (MetaRemoteAccessController *controller)
+diff --git a/src/backends/meta-screen-cast-session.c b/src/backends/meta-screen-cast-session.c
+index 3ab9662..2e85f22 100644
+--- a/src/backends/meta-screen-cast-session.c
++++ b/src/backends/meta-screen-cast-session.c
+@@ -30,6 +30,7 @@
+ #include "backends/meta-screen-cast-area-stream.h"
+ #include "backends/meta-screen-cast-monitor-stream.h"
+ #include "backends/meta-screen-cast-stream.h"
++#include "backends/meta-screen-cast-stream-src.h"
+ #include "backends/meta-screen-cast-virtual-stream.h"
+ #include "backends/meta-screen-cast-window-stream.h"
+ #include "backends/meta-virtual-monitor.h"
+@@ -77,6 +78,7 @@ struct _MetaScreenCastSession
+   MetaScreenCastSessionHandle *handle;
+ 
+   gboolean is_active;
++  gboolean is_paused;
+   gboolean disable_animations;
+ 
+   MetaRemoteDesktopSession *remote_desktop_session;
+@@ -164,6 +166,58 @@ meta_screen_cast_session_is_active (MetaScreenCastSession *session)
+   return session->is_active;
+ }
+ 
++gboolean
++meta_screen_cast_session_is_paused (MetaScreenCastSession *session)
++{
++  return session->is_paused;
++}
++
++static void
++sync_stream_paused (MetaScreenCastStream *stream)
++{
++  MetaScreenCastStreamSrc *src = meta_screen_cast_stream_get_src (stream);
++
++  if (src)
++    meta_screen_cast_stream_src_sync_paused (src);
++}
++
++/* A locked session pauses screen casts instead of ending them: no frame
++ * (nor cursor update) leaves Mutter while it is locked, and the same streams
++ * carry on after unlock, so the application neither loses its share nor has
++ * to ask again. A screen cast that belongs to a remote desktop session is
++ * closed with it: input into a locked session is never allowed. */
++static gboolean
++meta_screen_cast_session_pause (MetaDbusSession *dbus_session)
++{
++  MetaScreenCastSession *session = META_SCREEN_CAST_SESSION (dbus_session);
++
++  if (session->session_type != META_SCREEN_CAST_SESSION_TYPE_NORMAL)
++    return FALSE;
++
++  meta_topic (META_DEBUG_SCREEN_CAST, "Pausing screen cast session %s",
++              session->session_id);
++
++  session->is_paused = TRUE;
++  g_list_foreach (session->streams, (GFunc) sync_stream_paused, NULL);
++
++  return TRUE;
++}
++
++static void
++meta_screen_cast_session_resume (MetaDbusSession *dbus_session)
++{
++  MetaScreenCastSession *session = META_SCREEN_CAST_SESSION (dbus_session);
++
++  if (!session->is_paused)
++    return;
++
++  meta_topic (META_DEBUG_SCREEN_CAST, "Resuming screen cast session %s",
++              session->session_id);
++
++  session->is_paused = FALSE;
++  g_list_foreach (session->streams, (GFunc) sync_stream_paused, NULL);
++}
++
+ static void
+ dispose_stream (MetaScreenCastStream  *stream,
+                 MetaScreenCastSession *session)
+@@ -917,6 +971,8 @@ static void
+ meta_dbus_session_init_iface (MetaDbusSessionInterface *iface)
+ {
+   iface->close = meta_screen_cast_session_close;
++  iface->pause = meta_screen_cast_session_pause;
++  iface->resume = meta_screen_cast_session_resume;
+ }
+ 
+ static void
+diff --git a/src/backends/meta-screen-cast-session.h b/src/backends/meta-screen-cast-session.h
+index b3be279..54368b2 100644
+--- a/src/backends/meta-screen-cast-session.h
++++ b/src/backends/meta-screen-cast-session.h
+@@ -56,6 +56,8 @@ gboolean meta_screen_cast_session_start (MetaScreenCastSession  *session,
+ 
+ gboolean meta_screen_cast_session_is_active (MetaScreenCastSession *session);
+ 
++gboolean meta_screen_cast_session_is_paused (MetaScreenCastSession *session);
++
+ GList * meta_screen_cast_session_peek_streams (MetaScreenCastSession *session);
+ 
+ MetaScreenCastStream * meta_screen_cast_session_get_stream (MetaScreenCastSession *session,
+diff --git a/src/backends/meta-screen-cast-stream-src.c b/src/backends/meta-screen-cast-stream-src.c
+index 7e1a63f..33023a9 100644
+--- a/src/backends/meta-screen-cast-stream-src.c
++++ b/src/backends/meta-screen-cast-stream-src.c
+@@ -108,6 +108,8 @@ typedef struct _MetaPipeWireSource
+   struct pw_loop *pipewire_loop;
+ } MetaPipeWireSource;
+ 
++static gboolean is_paused (MetaScreenCastStreamSrc *src);
++
+ typedef struct _MetaScreenCastStreamSrcPrivate
+ {
+   MetaScreenCastStream *stream;
+@@ -1199,6 +1201,9 @@ meta_screen_cast_stream_src_record_frame_with_timestamp (MetaScreenCastStreamSrc
+                         PW_STREAM_STATE_STREAMING,
+                         META_SCREEN_CAST_RECORD_RESULT_RECORDED_NOTHING);
+ 
++  if (is_paused (src))
++    return META_SCREEN_CAST_RECORD_RESULT_RECORDED_NOTHING;
++
+   meta_screen_cast_stream_src_accumulate_damage (src, flags, redraw_clip);
+ 
+   meta_topic (META_DEBUG_SCREEN_CAST, "Recording %s frame on stream %u",
+@@ -1327,6 +1332,9 @@ meta_screen_cast_stream_src_maybe_record_frame_with_timestamp (MetaScreenCastStr
+   COGL_TRACE_BEGIN_SCOPED (MaybeRecordFrame,
+                            "Meta::ScreenCastStreamSrc::maybe_record_frame_with_timestamp()");
+ 
++  if (is_paused (src))
++    return record_result;
++
+   if ((flags & META_SCREEN_CAST_RECORD_FLAG_CURSOR_ONLY) &&
+       klass->is_cursor_metadata_valid &&
+       klass->is_cursor_metadata_valid (src))
+@@ -1374,6 +1382,22 @@ meta_screen_cast_stream_src_is_enabled (MetaScreenCastStreamSrc *src)
+   return priv->is_enabled;
+ }
+ 
++/* The session is paused while the session is locked: the source records
++ * nothing, not even a cursor update, until it resumes. */
++static gboolean
++is_paused (MetaScreenCastStreamSrc *src)
++{
++  MetaScreenCastStreamSrcPrivate *priv =
++    meta_screen_cast_stream_src_get_instance_private (src);
++  MetaScreenCastSession *session;
++
++  if (!priv->stream)
++    return FALSE;
++
++  session = meta_screen_cast_stream_get_session (priv->stream);
++  return session && meta_screen_cast_session_is_paused (session);
++}
++
+ static void
+ meta_screen_cast_stream_src_enable (MetaScreenCastStreamSrc *src)
+ {
+@@ -1401,6 +1425,33 @@ meta_screen_cast_stream_src_disable (MetaScreenCastStreamSrc *src)
+   priv->is_enabled = FALSE;
+ }
+ 
++/**
++ * meta_screen_cast_stream_src_sync_paused:
++ *
++ * Applies the session's pause: a paused source is disabled, as when the
++ * consumer pauses the stream; on resume it is enabled again if the stream is
++ * streaming, which records a fresh frame.
++ */
++void
++meta_screen_cast_stream_src_sync_paused (MetaScreenCastStreamSrc *src)
++{
++  MetaScreenCastStreamSrcPrivate *priv =
++    meta_screen_cast_stream_src_get_instance_private (src);
++
++  if (is_paused (src))
++    {
++      if (meta_screen_cast_stream_src_is_enabled (src))
++        meta_screen_cast_stream_src_disable (src);
++      return;
++    }
++
++  if (!meta_screen_cast_stream_src_is_enabled (src) &&
++      priv->pipewire_stream &&
++      pw_stream_get_state (priv->pipewire_stream, NULL) ==
++      PW_STREAM_STATE_STREAMING)
++    meta_screen_cast_stream_src_enable (src);
++}
++
+ void
+ meta_screen_cast_stream_src_close (MetaScreenCastStreamSrc *src)
+ {
+@@ -1738,7 +1789,7 @@ on_stream_state_changed (void                 *data,
+         meta_screen_cast_stream_src_disable (src);
+       break;
+     case PW_STREAM_STATE_STREAMING:
+-      if (!meta_screen_cast_stream_src_is_enabled (src))
++      if (!meta_screen_cast_stream_src_is_enabled (src) && !is_paused (src))
+         meta_screen_cast_stream_src_enable (src);
+       break;
+     case PW_STREAM_STATE_UNCONNECTED:
+@@ -2849,6 +2900,9 @@ meta_screen_cast_stream_src_queue_empty_buffer (MetaScreenCastStreamSrc *src)
+   struct spa_data *spa_data;
+   struct spa_meta_header *header;
+ 
++  if (is_paused (src))
++    return;
++
+   buffer = dequeue_pw_buffer (src, &error);
+   if (!buffer)
+     {
+diff --git a/src/backends/meta-screen-cast-stream-src.h b/src/backends/meta-screen-cast-stream-src.h
+index 54d79c7..e527afd 100644
+--- a/src/backends/meta-screen-cast-stream-src.h
++++ b/src/backends/meta-screen-cast-stream-src.h
+@@ -121,6 +121,8 @@ void meta_screen_cast_stream_src_close (MetaScreenCastStreamSrc *src);
+ 
+ gboolean meta_screen_cast_stream_src_is_enabled (MetaScreenCastStreamSrc *src);
+ 
++void meta_screen_cast_stream_src_sync_paused (MetaScreenCastStreamSrc *src);
++
+ void meta_screen_cast_stream_src_accumulate_damage (MetaScreenCastStreamSrc  *src,
+                                                     MetaScreenCastRecordFlag  flags,
+                                                     const MtkRegion          *redraw_clip);
+-- 
+2.55.0
+

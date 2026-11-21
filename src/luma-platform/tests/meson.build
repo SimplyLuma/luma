@@ -184,6 +184,13 @@ if python3.found()
     env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
           'GI_TYPELIB_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance',
           'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'])
+  test('lumaui-level-tap-python', python3, is_parallel: false,
+    args: [meson.current_source_dir() / 'test-lumaui-level-tap.py'],
+    depends: [ui_lib, ui_gir[1]],
+    env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
+          'GI_TYPELIB_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance',
+          'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'],
+    timeout: 60)
   test('lumaui-dock-header-python', python3,
     args: [meson.current_source_dir() / 'test-lumaui-dock-header.py'],
     depends: [ui_lib, ui_gir[1]],

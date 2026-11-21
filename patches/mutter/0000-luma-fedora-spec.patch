@@ -1,11 +1,11 @@
 --- a/mutter.spec
 +++ b/mutter.spec
-@@ -29,13 +29,50 @@
+@@ -29,13 +29,53 @@
  
  Name:          mutter
  Version:       50.4
 -Release:       %autorelease
-+Release:       1.luma.24%{?dist}
++Release:       1.luma.26%{?dist}
  Summary:       Window and compositing manager based on Clutter
  
  # Automatically converted from old format: GPLv2+ - review is highly recommended.
@@ -49,10 +49,13 @@
 +Patch1031:     0032-wayland-Send-a-configure-without-resizing-when-a-resize-ends.patch
 +Patch1032:     0033-wayland-Let-a-client-keep-its-window-at-an-aspect-ratio.patch
 +Patch1033:     0034-screen-cast-Crop-window-streams-to-the-window-frame.patch
++Patch1034:     0035-screen-cast-Pause-screen-casts-while-the-session-is-locked.patch
++Patch1035:     0036-clutter-stage-Mark-capture-paints-let-captures-be-made-to-paint.patch
++Patch1036:     0037-clutter-Update-only-the-views-a-redraw-lands-on.patch
  
  
  BuildRequires: cvt
-@@ -169,6 +202,10 @@
+@@ -169,6 +204,10 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -63,7 +66,7 @@
  
  %build
  %meson -Degl_device=true
-@@ -179,6 +215,29 @@
+@@ -179,6 +217,29 @@
  
  %find_lang %{name}
  
@@ -93,7 +96,7 @@
  %files -f %{name}.lang
  %license COPYING
  %doc NEWS
-@@ -200,6 +258,7 @@
+@@ -200,6 +260,7 @@
  %{_datadir}/GConf/gsettings/mutter-schemas.convert
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.gschema.xml
  %{_datadir}/glib-2.0/schemas/org.gnome.mutter.wayland.gschema.xml

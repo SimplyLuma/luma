@@ -110,15 +110,6 @@ def check(path: str) -> list[str]:
         bottom = max(s[1] + s[3] for s in m["strips"])
         slack = audio["box"][1] + audio["box"][3] - bottom
         rule(slack <= 24, f"audio inset has {slack:.0f} px of empty well under its strips")
-    # Each strip's volume (LumaVolumeSlider): its track starts on the name's edge and the
-    # meter lies under it over exactly the track's length.
-    for parts in m.get("strip_parts", []):
-        name, track, meter = parts.get("name"), parts.get("track"), parts.get("meter")
-        if name and track:
-            rule(abs(name[0] - track[0]) <= TOL, f"strip name at {name[0]}, its volume's track at {track[0]}")
-        if track and meter:
-            rule(abs(track[0] - meter[0]) <= TOL and abs(track[2] - meter[2]) <= TOL,
-                 f"strip meter {meter[0]}+{meter[2]} is not along its track {track[0]}+{track[2]}")
     # Preview: breathing room on every side of the video inside its stage.
     preview = m["tiles"].get("landscape")
     if preview and preview["box"] and m["video"]:

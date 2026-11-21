@@ -2961,6 +2961,8 @@
   --lumaui-meter-length: 120px;
   --lumaui-meter-mid-db: -18px;
   --lumaui-meter-high-db: -6px;
+  --lumaui-meter-segment-gap: 1px;
+  --lumaui-meter-segment-min: 2px;
   --lumaui-volume-slider-track: 4px;
   --lumaui-volume-slider-knob: 14px;
   --lumaui-volume-slider-hit: 24px;
@@ -2982,6 +2984,7 @@
   --lumaui-mixer-strip-key-gap: 4px;
   --lumaui-mixer-strip-row-gap: 6px;
   --lumaui-mixer-strip-row-padding: 8px;
+  --lumaui-mixer-strip-icon: 20px;
   --lumaui-monitor-chart-radius: 16px;
   --lumaui-monitor-core-radius: 9px;
   --lumaui-monitor-content-gutter: 30px;
