@@ -863,6 +863,16 @@ button.lumaui-toggle-chip image { -gtk-icon-size: 14px; }
 box.lumaui-toggle-chip-live { min-width: 6px; min-height: 6px; border-radius: 3px; background: @luma_destructive; }
 /* Sparkline: the tone is the line's colour; the area under it is that colour, faint. */
 widget.lumaui-sparkline { color: @luma_accent; }
+/* ChatLine / ChatFeed: a stream's chat, compact lines; badges quiet; notices centred and quiet. */
+list.lumaui-chat-list { background: none; }
+list.lumaui-chat-list > row { padding: 0; background: none; }
+box.lumaui-chat-line { padding: 3px 10px; }
+label.lumaui-chat-text { font-size: 13px; color: @luma_ink; }
+box.lumaui-chat-line.notice label.lumaui-chat-text { font-size: 12px; color: @luma_muted; }
+box.lumaui-chat-line.dimmed { opacity: 0.45; }
+box.lumaui-chat-lead { margin-top: 1px; }
+image.lumaui-chat-badge { -gtk-icon-size: 14px; color: @luma_muted; margin-top: 2px; }
+button.lumaui-chat-jump { margin-bottom: 10px; }
 widget.lumaui-sparkline.warning { color: @luma_warning_ink; }
 widget.lumaui-sparkline.danger { color: @luma_danger_ink; }
 button.lumaui-sync-key-row { min-height: 32px; padding: 0 8px; margin: 0; border: none; border-radius: 9px; background: none; box-shadow: none; color: @luma_muted; }

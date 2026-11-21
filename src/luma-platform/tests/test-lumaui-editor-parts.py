@@ -12,7 +12,7 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 Gtk.init()
 
 from luma_appkit import (ActionEditor, BarAction, DetailsPane, OverrideDot, RowLead, SyncKey,  # noqa: E402
-                         Sparkline, ToggleChip, install_appkit)
+                         ChatFeed, ChatLine, Sparkline, ToggleChip, install_appkit)
 
 install_appkit()
 
@@ -134,4 +134,56 @@ snap = Gtk.Snapshot()
 paint.snapshot(snap, spark.get_width(), spark.get_height())
 assert snap.to_node() is not None, "it draws"
 holder.destroy()
+# ChatLine: readable author colours, badges, kinds; ChatFeed keeps the newest and follows the bottom.
+from luma_appkit.content_chat import _contrast, readable_color  # noqa: E402
+
+for color in ("#ffff00", "#000080", "", "#9146FF"):
+    for dark in (False, True):
+        hexed = readable_color(color, "lumafan", dark=dark)
+        rgb = tuple(int(hexed[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        surface = (0.118, 0.129, 0.141) if dark else (1.0, 1.0, 1.0)
+        assert _contrast(rgb, surface) >= 4.4, (color, dark, hexed)
+assert readable_color("", "a") == readable_color("", "a") != readable_color("", "b")
+line = ChatLine("lumafan", "hi <there>", color="#9146FF", badges=("moderator", "nobody", "vip"),
+                lead=Gtk.Image(icon_name="image-missing", pixel_size=16))
+badges = [c for c in [line.get_first_child()] + [] if c is not None]
+glyphs, child = [], line.get_first_child()
+while child is not None:
+    if child.has_css_class("lumaui-chat-badge"):
+        glyphs.append(child.get_tooltip_text())
+    child = child.get_next_sibling()
+assert glyphs == ["Moderator", "VIP"], glyphs
+assert "hi &lt;there&gt;" in line.label.get_label() and line.label.get_selectable()
+assert "<i>" in ChatLine("a", "waves", kind="action").label.get_label()
+notice = ChatLine("", "lumafan raided", kind="notice")
+assert notice.label.get_xalign() == 0.5 and notice.label.get_label() == "lumafan raided"
+line.set_dimmed(True)
+assert line.has_css_class("dimmed")
+try:
+    ChatLine("a", "b", kind="shout")
+except ValueError:
+    pass
+else:
+    raise AssertionError("refused")
+feed = ChatFeed(max_lines=5)
+chat = Gtk.Window(default_width=360, default_height=90)
+chat.set_child(feed)
+chat.present()
+for i in range(12):
+    feed.append(ChatLine(f"user{i}", f"message {i} " * 4))
+settle()
+assert feed.lines == 5 and feed.list.get_row_at_index(0).get_child().author == "user7"
+adj = feed.scroller.get_vadjustment()
+assert adj.get_upper() > adj.get_page_size(), (adj.get_upper(), adj.get_page_size())
+assert adj.get_value() >= adj.get_upper() - adj.get_page_size() - 4, "follows the newest"
+settle()
+adj.set_value(0)  # a person scrolls up: the key appears, and new lines don't pull the view down
+assert feed.jump.get_visible()
+feed.append(ChatLine("late", "one more"))
+settle()
+assert adj.get_value() == 0 and feed.jump.get_visible()
+feed.jump.emit("clicked")
+settle()
+assert not feed.jump.get_visible()
+chat.destroy()
 print("ok")

@@ -1010,6 +1010,15 @@
       "gtk_symbolic_sha256": "a9b32e5c2b247e0d6be25ddc844bc3428b14aea4d49e8f2d821cbeb9e1e6003d"
     },
     {
+      "lucide": "gem",
+      "icon": "lumaui-gem-symbolic",
+      "source": "upstream/lucide/lumaui/gem.svg",
+      "sha256": "5f47332085c4e5eb3fff6c038b3a3782dc07b194dbac5fd2aed1cea2f90bef4c",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "ad9175ed377eeac3071cb34cab61dd0ed1684e1a954d50f314738b3ca6f3f626",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/gem.svg"
+    },
+    {
       "lucide": "git-branch",
       "icon": "lumaui-git-branch-symbolic",
       "source": "upstream/lucide/lumaui/git-branch.svg",
