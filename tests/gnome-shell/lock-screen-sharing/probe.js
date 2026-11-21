@@ -20,6 +20,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -444,6 +445,11 @@ class PaintCounter extends Clutter.Actor {
         this.capture = 0;
     }
 
+    // An actor with nothing to draw has no paint volume and is culled.
+    vfunc_get_paint_volume(volume) {
+        return volume.set_from_allocation(this);
+    }
+
     vfunc_paint(paintContext) {
         if (paintContext.get_paint_flags() & (Clutter.PaintFlag.CAPTURE ?? 0))
             this.capture++;
@@ -562,7 +568,9 @@ async function ringScenario() {
     const backdrop = new St.Widget({style: 'background-color: #808080;'});
     backdrop.add_constraint(new Clutter.BindConstraint({source: global.stage,
         coordinate: Clutter.BindCoordinate.SIZE}));
-    global.window_group.insert_child_below(backdrop, null);
+    const wallpaper = global.window_group.get_children()
+        .find(child => child instanceof Meta.BackgroundGroup) ?? null;
+    global.window_group.insert_child_above(backdrop, wallpaper);
 
     const window = await openWindow('org.luma.test.Reel', 'Ring');
     window.move_resize_frame(true, 300, 220, 900, 560);
