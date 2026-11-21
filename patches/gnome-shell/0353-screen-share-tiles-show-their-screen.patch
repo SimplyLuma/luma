@@ -129,7 +129,7 @@ index 22f02ac..8d4d664 100644
 +        const never = new Set([global.window_group, layout.modalDialogGroup,
 +            layout.screenShieldGroup, layout.overviewGroup].filter(Boolean));
 +        for (const actor of layout.uiGroup.get_children()) {
-+            if (never.has(actor) || actor instanceof CaptureHidden)
++            if (never.has(actor) || actor instanceof CaptureHidden || actor._onScreenOnly)
 +                continue;
 +            if (this._onMonitor(actor))
 +                layers.push(actor);
