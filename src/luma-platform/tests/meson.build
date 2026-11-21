@@ -36,6 +36,8 @@ audio_meter_test = executable('test-luma-audio-meter', 'test-audio-meter.c', dep
 test('lumaui-audio-meter', audio_meter_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
 volume_slider_test = executable('test-luma-volume-slider', 'test-volume-slider.c', dependencies: ui_dep)
 test('lumaui-volume-slider', volume_slider_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
+mixer_strip_test = executable('test-luma-mixer-strip', 'test-mixer-strip.c', dependencies: ui_dep)
+test('lumaui-mixer-strip', mixer_strip_test, env: ['G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory'])
 
 media_transport_lcd_test = executable(
   'test-luma-media-transport-lcd',
@@ -171,6 +173,12 @@ if python3.found()
           'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'])
   test('lumaui-editor-parts-python', python3,
     args: [meson.current_source_dir() / 'test-lumaui-editor-parts.py'],
+    depends: [ui_lib, ui_gir[1]],
+    env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
+          'GI_TYPELIB_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance',
+          'LD_LIBRARY_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance'])
+  test('lumaui-mixer-python', python3,
+    args: [meson.current_source_dir() / 'test-lumaui-mixer.py'],
     depends: [ui_lib, ui_gir[1]],
     env: ['PYTHONPATH=' + meson.project_source_root() / 'appkit', 'G_DEBUG=fatal-criticals', 'GSETTINGS_BACKEND=memory',
           'GI_TYPELIB_PATH=' + meson.project_build_root() / 'ui' + ':' + meson.project_build_root() / 'semantics' + ':' + meson.project_build_root() / 'appearance',

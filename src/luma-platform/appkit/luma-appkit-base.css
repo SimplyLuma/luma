@@ -2483,6 +2483,31 @@ lumaui-volume-slider.muted > .lumaui-volume-ring { color: alpha(@luma_muted, .7)
 lumaui-volume-slider.muted > box.lumaui-audio-meter { opacity: .35; }
 lumaui-volume-slider:disabled { opacity: .5; }
 
+/* LumaMixerStrip (luma-mixer-strip.c): a channel strip, --lumaui-mixer-strip-width wide (the C part holds the
+ * width, inside this padding): name and device, a dB scale beside the fader and its meter, the readout, and the
+ * Mute and Monitor keys. LumaMixerRow lays strips out in a row that scrolls sideways. */
+lumaui-mixer-strip {
+  padding: var(--lumaui-mixer-strip-padding); border-radius: var(--lumaui-mixer-strip-radius);
+  background: alpha(@luma_ink, .035); box-shadow: inset 0 0 0 1px @luma_line_faint; color: @luma_ink;
+}
+lumaui-mixer-strip .lumaui-mixer-device { color: @luma_muted; }
+lumaui-mixer-strip .lumaui-mixer-scale {
+  font-size: var(--lumaui-mixer-strip-scale-font); font-weight: 550; font-feature-settings: "tnum"; color: @luma_muted;
+}
+lumaui-mixer-strip .lumaui-mixer-readout { font-feature-settings: "tnum"; color: @luma_ink_secondary; }
+lumaui-mixer-strip.muted .lumaui-mixer-readout { color: @luma_muted; }
+lumaui-mixer-strip button.lumaui-mixer-key {
+  min-width: var(--lumaui-mixer-strip-key); min-height: var(--lumaui-mixer-strip-key);
+  border-radius: var(--lumaui-icon-button-small-radius);
+}
+lumaui-mixer-strip button.lumaui-mixer-key image { -gtk-icon-size: var(--lumaui-mixer-strip-key-icon); }
+lumaui-mixer-strip button.lumaui-mixer-key.mute:checked { background: alpha(@luma_destructive, .16); color: @luma_destructive; }
+lumaui-mixer-strip button.lumaui-mixer-key.monitor:checked { background: alpha(@luma_state, .22); color: @luma_ink; }
+lumaui-mixer-row > scrolledwindow { background: none; }
+@media (prefers-reduced-motion: reduce) {
+  lumaui-mixer-strip button.lumaui-mixer-key { transition: none; }
+}
+
 /* ── LumaUI: Dock (an island tiled with insets) ── */
 overlay.lumaui-dock > box.lumaui-dock-frame { padding: var(--lumaui-dock-gap); }
 /* Under the island's floating action bar: the tiles end above it. */

@@ -2964,6 +2964,18 @@
   --lumaui-volume-slider-min-length: 48px;
   --lumaui-volume-slider-mark: 8px;
   --lumaui-volume-slider-focus: 2px;
+  --lumaui-mixer-strip-width: 76px;
+  --lumaui-mixer-strip-padding: 6px;
+  --lumaui-mixer-strip-gap: 6px;
+  --lumaui-mixer-strip-radius: 10px;
+  --lumaui-mixer-strip-scale-width: 20px;
+  --lumaui-mixer-strip-scale-gap: 2px;
+  --lumaui-mixer-strip-scale-tick: 3px;
+  --lumaui-mixer-strip-scale-font: 9px;
+  --lumaui-mixer-strip-key: 28px;
+  --lumaui-mixer-strip-key-icon: 15px;
+  --lumaui-mixer-strip-key-gap: 4px;
+  --lumaui-mixer-strip-row-gap: 6px;
   --lumaui-monitor-chart-radius: 16px;
   --lumaui-monitor-core-radius: 9px;
   --lumaui-monitor-content-gutter: 30px;

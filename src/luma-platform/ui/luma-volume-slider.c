@@ -267,6 +267,9 @@ static void drag_update(GtkGestureDrag *gesture G_GNUC_UNUSED, double dx, double
 
 static gboolean scrolled(GtkEventControllerScroll *controller G_GNUC_UNUSED, double dx, double dy,
                          LumaVolumeSlider *self) {
+  /* Upright, a sideways scroll is left for the row around it (a mixer's strips). */
+  if (vertical(self) && fabs(dx) > fabs(dy))
+    return FALSE;
   double delta = fabs(dy) >= fabs(dx) ? -dy : dx;
   if (delta == 0)
     return FALSE;
