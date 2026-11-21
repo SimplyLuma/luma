@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+# Boot policy for the OnePlus 6T. Format, page size and offsets come from
+# socs/qcom/sdm845/soc.toml. The kernel is Image.gz with the fajita DTB
+# appended, in a header v0 boot image.
+schema = 1
+partition = "boot"
+partition_size = 67108864
+
+[cmdline]
+# Fixed arguments, in order. Bring-up runs SELinux permissive: the device
+# files on /var are not labelled yet (see INSTALL.md).
+args = [
+  "console=ttyMSM0,115200",
+  "pmos_rootfsopts=defaults",
+  "rw",
+  "enforcing=0",
+  # The boot image is not rebuilt per deployment. The initramfs points
+  # /ostree/root.a and root.b at OSTree's default deployment on every boot.
+  "ostree=/ostree/root.a",
+]
+# Filled in per image by the image builder.
+generated = ["pmos_root_uuid", "pmos_boot_uuid"]
+forbidden = ["selinux=0", "lsm="]
+
+[avb]
+# No footer; vbmeta stays as OnePlus ships it (the bootloader is unlocked).
+footer = "none"
+vbmeta = "untouched"
+
+[dtbo]
+# The boot image carries its own complete DTB; dtbo is never written.
+policy = "stock"

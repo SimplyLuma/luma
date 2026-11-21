@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "oneplus"
+codename = "fajita"
+name = "OnePlus 6T"
+form_factor = "phone"
+year = 2018
+soc = "qcom/sdm845"
+tier = "experimental"
+maintainers = ["@adewaleafolabi"]
+
+[kernel]
+# A source lock is experimental bring-up, not a published kernel tag:
+# sdm845-mainline sdm845-7.1-rc1-r0 with postmarketOS's patches and config.
+source_lock = "config/kernel/oneplus-fajita-7.1-rc1.json"
+release = "7.1.0-rc1-sdm845-luma"
+config = "config/kernel/oneplus-fajita.config"
+dtb = "qcom/sdm845-oneplus-fajita.dtb"
+
+[boot]
+config = "boot.toml"
+
+[initramfs]
+# postmarketOS initramfs (postmarketos-initramfs 3.11.0-r1) with this
+# kernel's modules, ostree-prepare-root and its Fedora 44 libraries from the
+# deployment, and an OSTree hook before the os-release check.
+ramdisk_sha256 = "dd0fd5c9f3f74da7a42d028586a7cb880f46fecdd6b006a7668b4700d81f0bc3"
+base = "postmarketos-initramfs 3.11.0-r1"
+
+[firmware]
+# OnePlus firmware from sdm845-mainline/firmware-oneplus-sdm845 (3e31a0c3)
+# and linux-firmware, as postmarketOS packages it. Names and hashes only.
+manifest = "firmware.manifest"
+manifest_sha256 = "baba8269982106e5f446e281675407d544e7610c428d918109e17f7031296684"
+files = 35
+# Where the OS keeps it on the phone: shared /var, outside the signed /usr.
+store = "/var/lib/luma/device-firmware"
+
+[install]
+guide = "INSTALL.md"
+method = "fastboot"
+# Partitions the install must never erase or write. modemst1/modemst2 hold the
+# phone's own modem settings, including its IMEI.
+preserve = ["modemst1", "modemst2", "fsg", "fsc", "persist"]

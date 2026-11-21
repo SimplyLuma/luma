@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+# Shared configuration for every device on the Qualcomm SDM845 family.
+# A device on this SoC sets `soc = "qcom/sdm845"` and only declares what differs.
+schema = 1
+vendor = "qcom"
+family = "sdm845"
+name = "Qualcomm Snapdragon 845 (SDM845)"
+arch = "aarch64"
+part_numbers = ["SDM845"]
+
+[kernel]
+# The family branch in SimplyLuma/linux does not exist yet. Until it does,
+# devices pin the sdm845-mainline tree with a kernel source lock.
+repository = "https://github.com/SimplyLuma/linux"
+branch = "sdm845"
+upstream = "https://gitlab.com/sdm845-mainline/linux"
+dts_directory = "arch/arm64/boot/dts/qcom"
+
+[boot]
+# Android bootloader (ABL) of the 2018 SDM845 phones: boot image header v0,
+# with the DTB appended to Image.gz (no separate DTB section).
+format = "android-boot-v0"
+page_size = 4096
+slots = "ab"
+dtb_in_boot_image = true
+
+[boot.offsets]
+base = 0x00000000
+kernel = 0x00008000
+ramdisk = 0x01000000
+second = 0x00f00000
+tags = 0x00000100
+# Header v0 has no DTB section; the value is not used.
+dtb = 0x00000000
+
+[firmware]
+# Device firmware lives under this path on the phone, never in git.
+directory = "qcom/sdm845"

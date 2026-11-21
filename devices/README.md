@@ -10,6 +10,7 @@ builds from (SimplyLuma/linux `luma-7.2` plus one branch per SoC family).
 | Device | Directory | SoC | Tier |
 |---|---|---|---|
 | Fairphone 6 | [fairphone/fp6](fairphone/fp6) | Qualcomm SM7635 (milos) | supported |
+| OnePlus 6T | [oneplus/fajita](oneplus/fajita) | Qualcomm SDM845 | experimental |
 | Raspberry Pi 5 | [raspberrypi/rpi5](raspberrypi/rpi5) | Broadcom BCM2712 | experimental |
 | Surface Pro 12-inch | [microsoft/sp12in](microsoft/sp12in) | Qualcomm X1P-42-100 (purwa) | experimental |
 
