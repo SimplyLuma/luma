@@ -1,8 +1,8 @@
 ---
-type: fix
+type: improvement
 component: Viola
 packages: [viola-browser-stable]
 highlight: false
 ---
-Summary: Viola stays quiet when idle
-Details: With two Viola windows open, the windows kept redrawing their sidebars dozens of times a second even when nothing changed, using several CPU cores. They now update only when something changes, and the window draws a sidebar update at most once per frame.
+Summary: Updated Viola to 151.0.7922.72
+Details: With two Viola windows open, the windows no longer redraw their sidebars dozens of times a second when nothing changes, which kept several CPU cores busy. Each window now updates only when something changes, at most once per frame.
