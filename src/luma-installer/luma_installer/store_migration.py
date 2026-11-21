@@ -194,27 +194,51 @@ def unconfirmed(record: dict[str, object]) -> bool:
 
 def before_start(record: dict[str, object]) -> dict[str, object]:
     """A tree that was ready while the application was open is switched to before it starts again."""
-    if record.get("store") or state(record).get("state") != "ready" or capsule_running(record):
+    if record.get("store"):
+        # A removal that was interrupted (the session ended while a capsule image was being deleted) is finished here.
+        return finish_removal(record) if state(record).get("leaving") else record
+    if state(record).get("state") != "ready" or capsule_running(record):
         return record
     return switch(record)
 
 
 def confirm(record: dict[str, object]) -> dict[str, object]:
-    """The application opened from the store: what it was before is removed."""
+    """The application opened from the store: what it was before is removed.
+
+    The record says so first. Removing a capsule image takes a while, and a
+    launcher that is stopped meanwhile (the session ending) must not leave a
+    record that could still go back to an image that is gone.
+    """
     application_id = str(record["application_id"])
     stored = read_record(application_id)
     capsule = dict(state(stored).get("capsule") or {})  # type: ignore[arg-type]
-    for image in capsule_refresh.images(capsule):
-        subprocess.run(["podman", "image", "rm", "--force", image], capture_output=True, check=False)
-    root = Path(str(capsule.get("root") or ""))
+    root = str(capsule.get("root") or "")
+    leaving = {"images": capsule_refresh.images(capsule), "root": root}
+    updated = {**stored, "migration": {"state": "done", "unix": int(time.time()), "from": str(capsule.get("image") or root),
+                                       "leaving": leaving}}
+    write_record(application_id, updated)
+    return finish_removal(updated)
+
+
+def finish_removal(record: dict[str, object]) -> dict[str, object]:
+    """Remove what a confirmed move still has to remove; safe to run again after an interruption."""
+    current = state(record)
+    leaving = current.get("leaving")
+    if current.get("state") != "done" or not isinstance(leaving, dict):
+        return record
+    for image in leaving.get("images") or []:
+        subprocess.run(["podman", "image", "rm", "--force", str(image)], capture_output=True, check=False)
+    root = Path(str(leaving.get("root") or ""))
     home = Path.home() / ".local/share/luma"
     for boundary, name in ((home / "appimages", "AppDir"), (home / "portable", "app")):
         if root.name == name and root.parent.parent == boundary and root.parent.is_dir():
             shutil.rmtree(root.parent, ignore_errors=True)
-    sha256 = str(stored.get("sha256") or "")
+    sha256 = str(record.get("sha256") or "")
     if len(sha256) == 64:
         shutil.rmtree(Path.home() / ".local/share/luma/installer/staging" / sha256, ignore_errors=True)
-    updated = {**stored, "migration": {"state": "done", "unix": int(time.time()), "from": str(capsule.get("image") or root)}}
+    application_id = str(record["application_id"])
+    stored = read_record(application_id)
+    updated = {**stored, "migration": {key: value for key, value in state(stored).items() if key != "leaving"}}
     write_record(application_id, updated)
     return updated
 

@@ -124,7 +124,8 @@ def _remove_from_store(record: dict[str, object]) -> None:
         pass
     migration = record.get("migration")
     capsule = dict(migration.get("capsule") or {}) if isinstance(migration, dict) else {}
-    for image in capsule_refresh.images(capsule):
+    leaving = dict(migration.get("leaving") or {}) if isinstance(migration, dict) else {}
+    for image in [*capsule_refresh.images(capsule), *[str(image) for image in leaving.get("images") or []]]:
         subprocess.run(["podman", "image", "rm", "--force", image], check=False, capture_output=True)
     if not store.root.exists():
         # The last application from the store: its download cache has nothing left to serve.

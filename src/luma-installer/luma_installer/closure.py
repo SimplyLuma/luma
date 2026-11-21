@@ -116,7 +116,7 @@ RPM_KEY_DIRECTORIES = ("/etc/pki/rpm-gpg", "/usr/share/distribution-gpg-keys/fed
 # Secret Service client and certificates. Recorded in the closure as "baseline".
 BASELINE = {
     "deb": ("libgl1", "libegl1", "libgles2", "libgbm1", "libvulkan1", "libpulse0", "libasound2-plugins",
-            "libsecret-1-0", "ca-certificates", "libglib2.0-bin"),
+            "libsecret-1-0", "ca-certificates", "libglib2.0-bin", "gnome-settings-daemon-common"),
     "rpm": ("mesa-libGL", "mesa-libEGL", "mesa-libgbm", "libglvnd-gles", "vulkan-loader", "pulseaudio-libs",
             "alsa-plugins-pulseaudio", "libsecret", "ca-certificates", "glib2"),
 }
@@ -132,7 +132,7 @@ TOOLKIT_BASELINE = {
 
 DEB_ARCHITECTURES = {"x86_64": "amd64", "aarch64": "arm64"}
 
-BASELINE_VERSION = 1
+BASELINE_VERSION = 2
 BASELINE_FILES = ("/usr/share/luma/installer/userland-baseline.json",
                   str(Path(__file__).resolve().parent.parent / "data/userland-baseline.json"))
 

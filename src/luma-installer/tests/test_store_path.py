@@ -9,13 +9,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from luma_installer import backends, capsule_refresh, session_boundary, store_install, store_migration, store_refresh
+from luma_installer import backends, capsule_refresh, closure, session_boundary, store_install, store_migration, store_refresh
 from luma_installer.desktop import read_record, write_record
 from luma_installer.errors import InstallerError
 
 SHA = "ab" * 32
 TREE = {"id": "deb-vendor-abababababab", "format": "deb", "userland": "debian-13", "architecture": "x86_64",
-        "baseline_version": 1, "windowed": True, "unresolved": [], "packages": [["vendor", "1.0", "amd64"]],
+        "baseline_version": closure.BASELINE_VERSION, "windowed": True, "unresolved": [], "packages": [["vendor", "1.0", "amd64"]],
         "origin": {"package": "vendor", "version": "1.0", "sha256": SHA, "file": "vendor.deb", "added_repositories": [
             {"path": "etc/apt/sources.list.d/vendor.sources", "sha256": "x",
              "base64": "VVJJczogaHR0cHM6Ly9wYWNrYWdlcy52ZW5kb3IuZXhhbXBsZS9hcHQKU3VpdGVzOiBzdGFibGUK"},
@@ -43,7 +43,8 @@ class Home(unittest.TestCase):
         package = self.home / f"vendor.{kind}"
         package.write_bytes(b"package")
         return SimpleNamespace(kind=kind, path=package, sha256=SHA, title="vendor", summary="An editor", byte_size=7,
-                               details={"Package name": "vendor"}, requires_system_change=False, version="1.0")
+                               details={"Package name": "vendor"}, requires_system_change=False, version="1.0",
+                               architecture="amd64")
 
 
 class Install(Home):
@@ -261,8 +262,32 @@ class Refresh(Home):
         capsule_refresh.hold(self.APP, False)
         self.assertTrue(capsule_refresh.due(read_record(self.APP)))
 
+    def rebuilt_spec(self, changes):
+        """The spec a refresh builds from, for an application that arrived as a file and added no source."""
+        spec = closure.Spec(app_id=self.APP, kind="deb", userland="debian-13", package="vendor", package_file="/kept/vendor.deb")
+        seen = {}
+
+        def build(store, app, kind, **arguments):
+            seen.update(file=arguments["spec"].package_file, by_name=arguments["spec"].from_repository)
+            FakeStore.refs_now[arguments["ref"]] = "c2"
+            return {"commit": "c2", "tree": TREE, "why": "stayed up for 10 s"}
+        with patch.object(store_refresh.closure, "resolve_changes", return_value={"changes": changes, "download_bytes": 1}), \
+                patch.object(store_refresh.closure, "spec_from_record", return_value=spec), \
+                patch.object(store_refresh.store_install, "build_tree", side_effect=build), \
+                patch.object(store_refresh, "is_running", return_value=False):
+            self.assertEqual(capsule_refresh.refresh(self.APP), "updated")
+        return seen
+
+    def test_a_newer_build_of_the_package_itself_comes_from_the_repository_not_the_kept_file(self):
+        # Rebuilt from the kept file, the old version would come back and the same update be found at every check.
+        self.assertEqual(self.rebuilt_spec([["vendor:amd64", "1.0", "1.1"]]), {"file": "", "by_name": True})
+
+    def test_other_packages_changing_rebuilds_from_the_kept_file(self):
+        self.assertEqual(self.rebuilt_spec([["libssl3", "3.0.1", "3.0.2"]]), {"file": "/kept/vendor.deb", "by_name": False})
+
     def test_a_moved_baseline_rebuilds_the_tree(self):
-        with patch.object(store_refresh.closure, "baseline_for", return_value={"version": 2, "packages": [], "toolkit": []}):
+        moved = {"version": closure.BASELINE_VERSION + 1, "packages": [], "toolkit": []}
+        with patch.object(store_refresh.closure, "baseline_for", return_value=moved):
             status, built = self.refresh([])
         built.assert_called_once()
         self.assertEqual(status, "updated")
@@ -355,6 +380,21 @@ class Migration(Home):
         self.assertFalse((self.home / ".local/share/luma/installer/staging" / SHA).exists())
         self.assertFalse(store_refresh.unconfirmed(record))
 
+    def test_a_removal_cut_short_is_finished_at_the_next_start(self):
+        self.migrate()
+        with patch.object(store_migration.subprocess, "run", side_effect=SystemExit(143)), self.assertRaises(SystemExit):
+            store_refresh.after_watched_start(read_record(self.APP), 0, None, [])
+        record = read_record(self.APP)
+        # The record no longer names a capsule it could go back to, and knows what is still to be deleted.
+        self.assertEqual(record["migration"]["state"], "done")
+        self.assertEqual(record["migration"]["leaving"]["images"], ["localhost/luma-deb-vendor:abab"])
+        self.assertFalse(store_refresh.unconfirmed(record))
+        with patch.object(store_migration.subprocess, "run") as run:
+            record = store_migration.before_start(record)
+        self.assertIn(["podman", "image", "rm", "--force", "localhost/luma-deb-vendor:abab"], [call.args[0] for call in run.call_args_list])
+        self.assertNotIn("leaving", read_record(self.APP)["migration"])
+        self.assertFalse((self.home / ".local/share/luma/installer/staging" / SHA).exists())
+
     def test_a_failed_first_start_puts_the_capsule_back(self):
         self.migrate()
         failure = store_refresh.launch_guard.Failure("exit", 127, 0.2, stderr=["error while loading shared libraries"])
@@ -413,6 +453,49 @@ class Boundary(unittest.TestCase):
             self.assertEqual(session_boundary.cleaned({"XAUTHORITY": "/x", "DISPLAY": ":0", "LANG": "C"}), {"LANG": "C"})
             quiet = session_boundary.view(runtime, inside, {"WAYLAND_DISPLAY": "wayland-0"}, sound=False)
             self.assertEqual([mount.source.name for mount in quiet.mounts], ["wayland-0"])
+
+class TwoArchitectures(unittest.TestCase):
+    def test_a_32_bit_debian_package_is_let_through_only_when_the_store_can_take_it(self):
+        from luma_installer import inspectors
+        report = SimpleNamespace(kind="deb", architecture="i386")
+        with patch.object(inspectors, "host_architecture", return_value="x86_64"), \
+                patch.object(store_install, "missing_tools", return_value=[]):
+            with patch.object(store_install, "enabled", return_value=True):
+                self.assertTrue(inspectors.architecture_is_compatible(report))
+            with patch.object(store_install, "enabled", return_value=False):
+                self.assertFalse(inspectors.architecture_is_compatible(report))
+        with patch.object(inspectors, "host_architecture", return_value="x86_64"), \
+                patch.object(store_install, "enabled", return_value=True), \
+                patch.object(store_install, "missing_tools", return_value=["debootstrap"]):
+            self.assertFalse(inspectors.architecture_is_compatible(report))
+        with patch.object(inspectors, "host_architecture", return_value="aarch64"):
+            self.assertFalse(inspectors.architecture_is_compatible(report))
+            self.assertFalse(inspectors.needs_two_architectures(report))
+
+
+class HiddenDisplay(unittest.TestCase):
+    def test_the_hidden_x_server_is_read_from_what_the_compositor_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            self.assertIsNone(capsule_refresh.hidden_x11(runtime, "luma-smoke-1"))
+            (runtime / "luma-smoke-1.x11").write_text(":1\n/run/user/1000/.mutter-Xwaylandauth.ABC\n")
+            self.assertEqual(capsule_refresh.hidden_x11(runtime, "luma-smoke-1"), (":1", "/run/user/1000/.mutter-Xwaylandauth.ABC"))
+            (runtime / "luma-smoke-1.x11").write_text("\n\n")
+            self.assertIsNone(capsule_refresh.hidden_x11(runtime, "luma-smoke-1"))
+
+
+class RefFolders(unittest.TestCase):
+    def test_a_deleted_ref_leaves_no_folder_named_for_its_application(self):
+        from luma_installer.app_store import Store
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory))
+            heads = store.repo / "refs/heads"
+            (heads / "app/gone").mkdir(parents=True)
+            (heads / "app/kept").mkdir(parents=True)
+            (heads / "app/kept/x86_64").write_text("c1\n")
+            store._drop_empty_ref_folders()
+            self.assertEqual(sorted(str(p.relative_to(heads)) for p in heads.rglob("*")), ["app", "app/kept", "app/kept/x86_64"])
+
 
 
 if __name__ == "__main__":

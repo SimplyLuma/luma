@@ -54,12 +54,12 @@ import re
 import subprocess
 from pathlib import Path
 
-RUNTIME_VERSION = 5
+RUNTIME_VERSION = 6
 
 # Which capsule kinds each runtime version changed, so a capsule is only
 # rebuilt when something it would receive is new.
 RUNTIME_CHANGES = {1: {"deb", "rpm"}, 2: {"deb", "rpm"}, 3: {"rpm", "portable"}, 4: {"deb"},
-                   5: {"deb", "rpm", "portable"}}
+                   5: {"deb", "rpm", "portable"}, 6: {"deb"}}
 
 
 def upgrade_needed(kind: str, version: int) -> bool:
@@ -70,7 +70,11 @@ GRAPHICS_PACKAGES = {
     # Firefox, SDL and Qt, and declared by none of them: without it Chromium
     # falls back to ALSA, finds no device in a capsule, and plays nothing.
     "deb": ("libgl1", "libegl1", "libgles2", "libgbm1", "libgl1-mesa-dri", "libvulkan1", "mesa-vulkan-drivers",
-            "libsecret-1-0", "fonts-dejavu-core", "libpulse0"),
+            "libsecret-1-0", "fonts-dejavu-core", "libpulse0",
+            # The desktop's identity is passed in (XDG_CURRENT_DESKTOP=GNOME), and an application
+            # that believes it then reads GNOME's settings schemas: Zoom opens
+            # org.gnome.settings-daemon.plugins.media-keys and dies if the schema is not installed.
+            "gnome-settings-daemon-common"),
     # libGLESv2 is opened at run time by Flutter, Chromium's ANGLE and SDL, so no
     # loader check ever reports it missing.
     "rpm": ("mesa-libGL", "mesa-libEGL", "mesa-libgbm", "mesa-dri-drivers", "mesa-vulkan-drivers", "vulkan-loader",

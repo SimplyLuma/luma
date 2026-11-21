@@ -237,7 +237,11 @@ class Store:
         self.ensure()
         kept = self.packages / f"{sha256}{path.suffix.lower()}"
         if not kept.exists():
-            shutil.copyfile(path, kept)
+            try:
+                # Valet's staged copy and this one are the same bytes on the same disk: one file, two names.
+                os.link(path, kept)
+            except OSError:
+                shutil.copyfile(path, kept)
         return kept
 
     def kept_package(self, record: dict[str, object]) -> str:
@@ -316,11 +320,22 @@ class Store:
             before = self.disk_bytes()
             self._ostree("prune", "--refs-only", f"--depth={ROLLBACK_DEPTH}")
             freed = before - self.disk_bytes()
+            self._drop_empty_ref_folders()
         if not self.refs("app/") and not self.refs("pending/"):
             # No application left: the userlands and graphics layers that served them go
             # too, and the store itself, so removing the last one leaves no file.
             remove_checkout(self.root)
         return {"checkouts": removed, "freed_bytes": max(freed, 0)}
+
+    def _drop_empty_ref_folders(self) -> None:
+        """A deleted ref leaves the folders it was named in (refs/heads/app/ID); an application that is gone leaves none."""
+        heads = self.repo / "refs/heads"
+        for folder, _folders, _files in os.walk(heads, topdown=False):
+            if Path(folder) != heads:
+                try:
+                    os.rmdir(folder)
+                except OSError:
+                    pass  # not empty: still names a ref
 
     def verify(self) -> bool:
         """Whether every object still matches its checksum (content and mode)."""

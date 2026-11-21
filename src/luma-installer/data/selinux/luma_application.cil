@@ -53,30 +53,30 @@
     ; contexts below). This domain may already read and execute that type;
     ; what follows is what a whole distribution root as "/" needs beyond it.
     ;
-    ; Watching its own root. Browsers put inotify watches on /etc (resolv.conf,
-    ; localtime, the certificate folders) and toolkits on their data folders,
-    ; to notice changes without polling. Watching reads nothing the domain
-    ; cannot already read; mount-wide and permission watches stay refused.
-    (allow process container_ro_file_t (dir (watch watch_reads)))
-    (allow process container_ro_file_t (file (watch watch_reads)))
-    (allow process container_ro_file_t (lnk_file (watch)))
-    ; Machine code an application generates for itself. Qt's QML engine (Zoom)
-    ; and other JIT compilers write code into an anonymous memory file of
-    ; their own, then map it executable; the mapping is refused as "execmod"
-    ; and the application exits before its first window, in a capsule and
-    ; from the store alike. The file is anonymous: it has no name, exists only
-    ; while the process holds it, and nothing outside the application's
-    ; sandbox can reach it. Container domains may already make anonymous
-    ; memory executable (execmem); this is the same right for the file-backed
-    ; form of the same thing.
+    ; Watching its own root. Browsers and Electron applications put inotify
+    ; watches on folders of their root ("/", /etc, /etc/xdg,
+    ; /usr/share/applications, /usr/local/share) to notice changes without
+    ; polling; each was denied as { watch } on a container_ro_file_t dir
+    ; (Slack, Chrome). Watching reads nothing the domain cannot already read.
+    ; Files, links, mount-wide and permission watches stay refused: nothing
+    ; asked for them.
+    (allow process container_ro_file_t (dir (watch)))
+    ; The device's time zone database is bound over the application's own so
+    ; that both agree on today's rules. Chromium-based applications watch
+    ; that folder for a change of zone ({ watch } on a locale_t dir, Zoom's
+    ; web view); the domain may already read it.
+    (allow process locale_t (dir (watch)))
+    ; Machine code an application generates for itself. Qt's QML engine
+    ; (Zoom) writes compiled code into an anonymous memory file of its own
+    ; ("memfd:JITCode:QtQml", tmpfs_t), maps it and makes the mapping
+    ; executable; that was denied as { execmod }, and with that allowed as
+    ; { execute }, on a tmpfs_t file, and Zoom died before its first window,
+    ; in a capsule and from the store alike.
+    ; The file has no name, exists only while the process holds it, and
+    ; nothing outside the application's sandbox can reach it. Container
+    ; domains may already make anonymous memory executable (execmem); this is
+    ; the same right for the file-backed form of the same thing.
     (allow process tmpfs_t (file (execute execmod)))
-    ; fontconfig tries to refresh the system font cache under /var/cache when
-    ; it finds it older than a font folder, is refused by the read-only root,
-    ; and falls back to the cache in the application's own home. The attempt
-    ; is harmless and made at every start of every application; it is not
-    ; logged.
-    (dontaudit process container_ro_file_t (dir (write add_name remove_name create setattr)))
-    (dontaudit process container_ro_file_t (file (write create setattr unlink append)))
 )
 ; The store and its checkouts, per person. Without these a relabel of the home
 ; folder (restorecon) would give every tree the type of ordinary data, and no
