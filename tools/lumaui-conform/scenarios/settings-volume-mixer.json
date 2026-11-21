@@ -1,7 +1,7 @@
 {
   "app": "settings-volume-mixer",
   "title": "Settings: Volume mixer",
-  "about": "Settings › Sound › Volume mixer (gnome-control-center 0108, the active patch series) against the published reference (Design Center mockups/sound-mixer/settings.html), drawn from the fixture's CFMIX. The reference is the page alone: its stage takes the Settings window's size with the page, 680 px wide as in the simulator, where the main island puts it; its transport keys are given the names the row's keys have; the sidebar and the title row are left out of the GTK side.",
+  "about": "Settings › Sound › Volume mixer (gnome-control-center 0108, the active patch series) against the published reference (Design Center mockups/sound-mixer/settings.html), drawn from the fixture's CFMIX. The reference is the page alone: its stage takes the Settings window's size with the page, 680 px wide as in the simulator, where the main island puts it; its transport keys are given the names the row's keys have; the sidebar and the title row are left out of the GTK side. LumaUI's glyphs come from the worktree (LUMA_APPKIT_ICON_PATH), so ones newer than the capture image's icon theme draw.",
   "spec": {
     "root": "design-center",
     "url": "mockups/sound-mixer/settings.html",
@@ -55,7 +55,8 @@
     "env": {
       "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-v70.json",
       "GSETTINGS_BACKEND": "memory",
-      "XDG_CURRENT_DESKTOP": "GNOME"
+      "XDG_CURRENT_DESKTOP": "GNOME",
+      "LUMA_APPKIT_ICON_PATH": "{run}/preview/python/icons"
     },
     "app_id": "org.luma.Settings.Fixture",
     "binary": "bin/gnome-control-center",
