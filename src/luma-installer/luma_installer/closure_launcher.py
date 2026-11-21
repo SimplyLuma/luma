@@ -31,9 +31,11 @@ import os
 import pwd
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 from . import capsule_runtime as runtime_policy
@@ -362,7 +364,8 @@ def scope_prefix(app_id: str) -> list[str]:
     if not shutil.which("systemd-run") or not os.environ.get("XDG_RUNTIME_DIR"):
         return []
     name = "".join(character if character.isalnum() else "_" for character in app_id)
-    return ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--slice=app.slice",
+    # The application's arguments are passed as they are: no ${VARIABLE} expansion by systemd-run.
+    return ["systemd-run", "--user", "--scope", "--quiet", "--collect", "--slice=app.slice", "--expand-environment=no",
             f"--unit=app-luma-{name}-{os.getpid()}.scope", "--"]
 
 
@@ -386,6 +389,13 @@ def launch(store: Store, app_id: str, extra: list[str] | None = None, *, graphic
                     "format": record.get("format"), "id": app_id}
     proxy, bus_socket = capsule_launcher._start_bus_proxy(
         runtime, hashlib.sha256(app_id.encode()).hexdigest(), runtime_policy.own_bus_arguments(guard_record))
+
+    def stopped(_signal: int, _frame: object) -> None:
+        # Being told to stop is an ordinary way for an application to end: the
+        # bus proxy and its socket go with it instead of being left behind.
+        raise SystemExit(143)
+
+    previous = signal.signal(signal.SIGTERM, stopped) if threading.current_thread() is threading.main_thread() else None
     try:
         arguments, env = sandbox_arguments(checkout, guard_record, data=data, instance=instance, runtime=runtime,
                                            bus_socket=bus_socket, level=level)
@@ -395,6 +405,8 @@ def launch(store: Store, app_id: str, extra: list[str] | None = None, *, graphic
             return subprocess.run(full, env=env, check=False).returncode
         return capsule_launcher._guarded(guard_record, full, env)
     finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
         capsule_launcher._stop_bus_proxy(proxy, bus_socket)
 
 

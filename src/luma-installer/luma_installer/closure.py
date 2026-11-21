@@ -542,6 +542,10 @@ def _make_readable(root: Path) -> list[str]:
     verify a file its owner may not read (Fedora ships /etc/shadow with mode
     0000). Inside the application's namespace the owner is the person anyway."""
     changed = []
+    top = os.lstat(root).st_mode
+    if top & 0o700 != 0o700:
+        os.chmod(root, (top & 0o7777) | 0o700)
+        changed.append(".")
     for folder, directories, files in os.walk(root):
         for name in directories:
             path = os.path.join(folder, name)
