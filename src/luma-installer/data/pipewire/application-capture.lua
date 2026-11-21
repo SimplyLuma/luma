@@ -6,14 +6,14 @@
 -- Installed as /usr/share/wireplumber/scripts/luma/application-capture.lua by
 -- luma-application-installer and loaded by 70-luma-application-access.conf.
 --
--- A client on the application socket (access "luma-application") sees the
--- sound outputs so it can play to them. An output also has a monitor, and
--- WirePlumber links a capture stream to the monitor of any output the client
--- can see: the application would record everything the computer plays. This
--- hook runs before a target is chosen and leaves such a stream unlinked,
--- telling the client it was refused. Microphones are not visible on that
--- socket at all; cameras and screens come from the portal on a connection of
--- their own, which this hook never sees as "luma-application".
+-- A client on the application socket (pipewire.sec.socket, which the server
+-- records) sees the sound outputs so it can play to them. An output also has
+-- a monitor, and WirePlumber links a capture stream to the monitor of any
+-- output the client can see: the application would record everything the
+-- computer plays. This hook runs before a target is chosen and leaves such a
+-- stream unlinked, telling the client it was refused. Microphones are not
+-- visible on that socket at all; cameras and screens come from the portal on
+-- a connection of its own, which is not on that socket.
 
 lutils = require ("linking-utils")
 log = Log.open_topic ("s-luma-application")
@@ -42,7 +42,7 @@ SimpleEventHook {
     local client = clients_om:lookup {
       Constraint { "bound-id", "=", client_id, type = "gobject" }
     }
-    if not client or client.properties ["pipewire.access"] ~= "luma-application" then
+    if not client or client.properties ["pipewire.sec.socket"] ~= "pipewire-0-application" then
       return
     end
 
