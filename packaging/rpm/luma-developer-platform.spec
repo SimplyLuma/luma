@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.145%{?dist}
+Release:        1.luma.146%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,16 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.146
+- Dock: a closed tile reopens where and how it was. Its record keeps its tab
+  group and index, or the tiles it was split from, the split, its side,
+  share, pixel size and a fitted side's size; reopening splits that whole
+  part again (the share, so a resized window keeps the proportion), else
+  the smallest part still holding what is left of it at the old size, else
+  the suggested or default place. A remembered place wins over open_tile's
+  beside/edge/size. Records persist in layout()["closed"].
+- ProgressLine (Python and C): a "warning" tone (amber).
+
 * Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.145
 - Popovers are opaque in every treatment: the dark treatment's menus were
   alpha(@luma_window, .78) and frost/glass popovers the veil, so the window
