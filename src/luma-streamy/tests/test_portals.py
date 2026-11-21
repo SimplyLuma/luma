@@ -276,5 +276,20 @@ class CameraListTest(unittest.TestCase):
                                Camera("3", "d", "DJIPocket3", (), "v4l2")])
         self.assertEqual([c.target for c in rows], ["2", "3"])
 
+
+class CameraModesTest(unittest.TestCase):
+    def test_default_resolutions_rates_and_scaled_sizes(self):
+        from luma_streamy.portals import default_mode, rates, resolutions, source_for_scaled
+
+        modes = ((3840, 2160, 30), (3840, 2160, 25), (1920, 1080, 30), (1920, 1080, 60), (1280, 720, 30))
+        self.assertEqual(default_mode(modes), (1920, 1080, 30))
+        keys = [k for k, _l in resolutions(modes)]
+        self.assertEqual(keys[:3], ["3840x2160", "1920x1080", "1280x720"])
+        self.assertIn("854x480:scaled", keys)
+        self.assertEqual(rates(modes, (1920, 1080)), [60, 30])
+        self.assertEqual(source_for_scaled(modes, (854, 480)), (1280, 720))
+        self.assertEqual(source_for_scaled(((3840, 2160, 30),), (1280, 720)), (3840, 2160))
+        self.assertEqual(dict(resolutions(((3840, 2160, 30),)))["1280x720:scaled"], "720p, scaled")
+
 if __name__ == "__main__":
     unittest.main()

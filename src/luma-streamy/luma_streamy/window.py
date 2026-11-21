@@ -452,7 +452,8 @@ class StreamyWindow(AppWindow):
         return {"closable": True} if "closable" in inspect.signature(DockTile.__init__).parameters else {}
 
     def _is_open(self, key: str) -> bool:
-        return self.dock.is_open(key) if hasattr(self.dock, "is_open") else True
+        dock = getattr(self, "dock", None)
+        return dock.is_open(key) if dock is not None and hasattr(dock, "is_open") else True
 
     @staticmethod
     def _wrap_labels(widget: Gtk.Widget) -> None:
@@ -724,6 +725,15 @@ class StreamyWindow(AppWindow):
     def _source_for(self, widget: Widget):
         if self.portals is None:
             return None, None
+        if widget.kind == "camera" and not widget.source.get("mode"):
+            from .portals import default_mode
+
+            camera = self._camera_of(widget)
+            mode = default_mode(camera.modes) if camera is not None else None
+            if mode is not None:
+                widget.source["mode"] = list(mode)  # a new camera starts at 1080p30, not its largest mode
+                if mode[1] > 1080:
+                    widget.source["scaled"] = [1920, 1080]  # a camera with nothing smaller: 1080p, scaled
         return self.portals.source_for(widget)
 
     def _ask_missing_sources(self) -> None:
@@ -1348,7 +1358,9 @@ class StreamyWindow(AppWindow):
             camera = self._camera_of(w)
             name = camera.label if camera else w.source.get("device-name") or "Camera"
             mode = self._mode_of(w, camera)
-            return f"{name} · {mode[1]}p {mode[2]}" if mode else name
+            scaled = w.source.get("scaled")
+            height = scaled[1] if scaled else mode[1] if mode else None
+            return f"{name} · {height}p{mode[2]}" if mode else name
         if w.kind == "microphone":
             return self.devices.words("source", w.source.get("device"))
         if w.kind == "desktop-audio":
@@ -1419,14 +1431,17 @@ class StreamyWindow(AppWindow):
             rows.append(PanelRow(camera.label, icon="camera", selected=current is not None and camera.name == current.name,
                                  closes=False, on_activate=lambda c=camera: self._choose_camera(w, c.name)))
         if current is not None and current.modes:
-            mode = self._mode_of(w, current)
-            choices = []
-            for width, height, fps in current.modes[:6]:
-                key = f"{width}x{height}@{fps}"
-                choices.append((key, f"{height}p {fps}"))
-            rows.append(PropertyChoice("Picture", choices,
-                                       current=f"{mode[0]}x{mode[1]}@{mode[2]}" if mode else choices[0][0],
-                                       on_change=lambda key: self._choose_mode(w, key)))
+            from .portals import rates, resolutions
+
+            mode = self._mode_of(w, current) or current.modes[0]
+            scaled = w.source.get("scaled")
+            size_key = f"{scaled[0]}x{scaled[1]}:scaled" if scaled else f"{mode[0]}x{mode[1]}"
+            rows.append(PropertyChoice("Resolution", resolutions(current.modes), current=size_key,
+                                       on_change=lambda key: self._choose_size(w, key)))
+            fps = [(str(r), f"{r} fps") for r in rates(current.modes, mode[:2])]
+            if len(fps) > 1:
+                rows.append(PropertyChoice("Frame rate", fps, current=str(mode[2]),
+                                           on_change=lambda key: self._choose_rate(w, int(key))))
         rows.append(PanelSwitch("flip-horizontal-2", "Mirror", active=bool(w.source.get("mirror")),
                                 on_toggle=lambda on: self._set_source(w, "mirror", on, "Mirror")))
         return rows
@@ -1485,6 +1500,38 @@ class StreamyWindow(AppWindow):
         w.source["camera"] = name
         w.source.pop("mode", None)
         w.source.pop("sized", None)
+        self._reconnect(w)
+
+    def _choose_size(self, w: Widget, key: str) -> None:
+        """A camera's resolution, live (the capture reconnects; the camera stays chosen), undoable. A scaled
+        size captures the smallest of the camera's own sizes that holds it and scales on the GPU."""
+        from .portals import rates, source_for_scaled
+
+        camera = self._camera_of(w)
+        if camera is None:
+            return
+        size, _sep, scaled = key.partition(":")
+        width, height = (int(v) for v in size.split("x"))
+        native = source_for_scaled(camera.modes, (width, height)) if scaled else (width, height)
+        if native is None:
+            return
+        current = self._mode_of(w, camera)
+        fps_options = rates(camera.modes, native)
+        fps = min(fps_options, key=lambda r: abs(r - (current[2] if current else 30))) if fps_options else 30
+        self._checkpoint("Change resolution")
+        w.source["mode"] = [native[0], native[1], fps]
+        if scaled:
+            w.source["scaled"] = [width, height]
+        else:
+            w.source.pop("scaled", None)
+        self._reconnect(w)
+
+    def _choose_rate(self, w: Widget, fps: int) -> None:
+        mode = self._mode_of(w, self._camera_of(w))
+        if mode is None or mode[2] == fps:
+            return
+        self._checkpoint("Change frame rate")
+        w.source["mode"] = [mode[0], mode[1], fps]
         self._reconnect(w)
 
     def _choose_mode(self, w: Widget, key: str) -> None:

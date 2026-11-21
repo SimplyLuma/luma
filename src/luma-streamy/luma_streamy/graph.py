@@ -195,7 +195,10 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
                 "caps": f"video/x-raw,width={w},height={h},framerate={fps}/1;"
                         f"image/jpeg,width={w},height={h},framerate={fps}/1"}))
         # Cameras may send MJPEG; decodebin passes raw pictures through.
-        head += [Element("decodebin", f"{prefix}-decode"), Element("videoconvert", f"{prefix}-convert")]
+        # Software decoders: a VA decoder picked before decodebin's pad is linked outputs VA memory, which
+        # the converter after it can't take (not-negotiated: "Internal data stream error").
+        head += [Element("decodebin", f"{prefix}-decode", {"force-sw-decoders": True}),
+                 Element("videoconvert", f"{prefix}-convert")]
     return head
 
 
@@ -245,6 +248,12 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
     ]
     if is_still(widget, fake):
         elements += freeze(prefix)
+    scaled = widget.source.get("scaled") if widget.kind == "camera" else None
+    if isinstance(scaled, (list, tuple)) and len(scaled) == 2:
+        # A size the camera lacks: made on the GPU right after capture, so everything after is smaller.
+        elements += [Element("glcolorscale", f"{prefix}-scale"),
+                     Element("capsfilter", f"{prefix}-scaled", {"caps": f"video/x-raw(memory:GLMemory),format=RGBA,"
+                                                                          f"width={int(scaled[0])},height={int(scaled[1])}"})]
     if widget.kind == "camera":
         elements.append(Element("glvideoflip", f"{prefix}-flip", {"method": flip_method(widget)}))
     # Captured once; each canvas on takes its own layer from this tee (layer_chain).

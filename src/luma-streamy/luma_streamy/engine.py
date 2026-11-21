@@ -143,6 +143,8 @@ REASONS = ("busy", "missing", "denied", "format", "stopped")
 def source_problem(message: str, debug: str) -> str:
     """A source's GStreamer error as one of REASONS."""
     text = f"{message} {debug}".lower()
+    if "not-negotiated" in text or "not negotiated" in text or "no common format" in text:
+        return "format"  # before "busy": a negotiation failure's text can mention a device in use
     if "busy" in text or "ebusy" in text or "in use" in text:
         return "busy"
     if "target not found" in text or "no such" in text or "not found" in text or "removed" in text:
@@ -1698,5 +1700,9 @@ class Engine(GObject.Object):
                 # One widget failed (a window closed, a camera unplugged or busy): take it out, keep going.
                 self._fail(widget_id, source_problem(error.message, debug or ""),
                            f"{error.message} ({(debug or '').splitlines()[0] if debug else ''})")
+            elif widget_id is not None or source.startswith("p-"):
+                # A widget already out (its second error) or a card: its own words were said; never GStreamer's.
+                log(f"{source}: {error.message}")
             else:
-                self.emit("problem", error.message)
+                log(f"program: {error.message} ({(debug or '').splitlines()[0] if debug else ''})")
+                GLib.idle_add(lambda: self._keep_playing() and False)
