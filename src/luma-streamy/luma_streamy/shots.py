@@ -24,6 +24,26 @@ def render(window: Gtk.Window, path: str, quiet: bool = False) -> bool:
     return True
 
 
+def render_after_paint(window: Gtk.Window, path: str, then=None, frames: int = 600) -> bool:
+    """Render the window into ``path`` right after its next paint: its render node exists only between
+    a paint and the next queued draw, and a live preview queues one per frame. ``then()`` follows."""
+    clock = window.get_frame_clock()
+    if clock is None:
+        return False
+    left = [frames]
+
+    def painted(clock_) -> None:
+        left[0] -= 1
+        if render(window, path, quiet=left[0] > 0) or left[0] <= 0:
+            clock_.disconnect(handler)
+            if then is not None:
+                then()
+
+    handler = clock.connect("after-paint", painted)
+    window.queue_draw()
+    return True
+
+
 def _box(widget: Gtk.Widget, root: Gtk.Widget) -> list[float] | None:
     if widget is None or not widget.get_mapped():
         return None

@@ -31,6 +31,7 @@ from . import graph  # noqa: E402
 from .engine import Engine, EngineError  # noqa: E402
 from .devices import AudioDevices  # noqa: E402
 from .layouts import PRESETS, LayoutStore  # noqa: E402
+from .readout import Readout  # noqa: E402
 from .undo import History  # noqa: E402
 from .model import FORMATS, KINDS, ModelError, Project, ProjectStore, Widget  # noqa: E402
 
@@ -2189,7 +2190,7 @@ class StreamyWindow(AppWindow):
             name.label.set_ellipsize(3)
             name.label.set_width_chars(1)
             line.append(name)
-            level = TypeLabel("Muted" if w.muted else "−∞", role="caption")
+            level = Readout("Muted" if w.muted else "−∞", widest=("Muted", "−60 dB"), role="caption")
             level.add_css_class("streamy-strip-db")
             level.update_property([Gtk.AccessibleProperty.LABEL], ["Level"])
             line.append(level)
@@ -2239,12 +2240,12 @@ class StreamyWindow(AppWindow):
             meter.set_levels_db(left, right)
         words = self._level_words.get(widget_id)
         now = time.monotonic()
-        # The words at most 4 times a second: each new label relayouts the window (the meter is 20 Hz).
+        # The words 4 times a second, to be read (a Readout only redraws; the meter moves at 10 Hz).
         if words is not None and words.get_mapped() and now - self._words_at.get(widget_id, 0.0) >= 0.25:
             self._words_at[widget_id] = now
             text = self.level_words(max(left, right))
-            if words.label.get_label() not in (text, "Muted"):
-                words.label.set_label(text)
+            if words.get_label() not in (text, "Muted"):
+                words.set_label(text)
 
     def _set_volume(self, w: Widget, value: float) -> None:
         w.volume_db = round(value)

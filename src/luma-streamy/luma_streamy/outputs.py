@@ -574,6 +574,17 @@ class Outputs(GObject.Object):
         for encode in list(self.encodes.values()):
             encode.stop()
 
+    def close_now(self) -> None:
+        """Quitting: every row and encode to NULL at once (no drain), so no thread outlives the app."""
+        with self._lock:
+            rows, encodes = list(self.rows.values()), list(self.encodes.values())
+        for row in rows:
+            row.stopping = True
+            row._teardown()
+        for encode in encodes:
+            encode.stopping = True
+            encode.close()
+
     def _row_gone(self, row: Row) -> None:
         with self._lock:
             if self.rows.get(row.id) is row:

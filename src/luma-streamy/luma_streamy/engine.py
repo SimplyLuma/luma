@@ -134,6 +134,8 @@ def choose_encoders(codec: str) -> EncoderChoice | None:
 #: A capture that has sent no picture in this long says so ("waiting"). It is not a failure:
 #: a window cast sends nothing until the window redraws, so the stream stays open.
 FIRST_PICTURE_S = 8
+#: A change no frame has shown after this long (its source sends nothing new) is applied directly.
+SETTLE_S = 2.0
 
 #: Why a source failed: "busy", "missing" (the device or node is gone), "denied", "format"
 #: (no picture format both ends take) or "stopped" (any other pipeline error).
@@ -1196,13 +1198,31 @@ class Engine(GObject.Object):
 
     def _settle(self) -> bool:
         """Nothing changed for a second and every pad shows its latest revision: stop watching."""
+        quiet = time.monotonic() - self._last_change
+        if quiet < 1.0:
+            return True
         with self._geom_lock:
             # A pad never composited (its source hasn't sent yet) can't be pending: its first buffer
             # carries the newest revision.
-            pending = any(revs and pad in self._applied_rev and self._applied_rev[pad] != max(revs)
-                          for pad, revs in self._revs.items())
-        if pending or time.monotonic() - self._last_change < 1.0:
+            pending = [(pad, max(revs)) for pad, revs in self._revs.items()
+                       if revs and pad in self._applied_rev and self._applied_rev[pad] != max(revs)]
+        if pending and quiet < SETTLE_S:
             return True
+        for pad, latest in pending:
+            # Its source sends nothing new (a still window, a paused share): no frame will carry the
+            # change in step, so the pad takes it now and the watch ends.
+            with self._geom_lock:
+                revs = self._revs.get(pad)
+                if not revs or latest not in revs:
+                    continue
+                geometry = revs[latest][0]
+                for old in [r for r in revs if r < latest]:
+                    del revs[old]
+                self._applied[pad] = geometry
+                self._applied_rev[pad] = latest
+            for name, value in zip(self._GEOMETRY, geometry):
+                if pad.get_property(name) != value:
+                    pad.set_property(name, value)
         self._watch_timer = 0
         self._preview_flow(self._moving())
         for program in self.programs.values():
@@ -1437,6 +1457,10 @@ class Engine(GObject.Object):
                               lambda *_a: Gst.PadProbeReturn.DROP)
         for element in elements:
             element.set_locked_state(True)
+        if downstream is not None and downstream.find_property("alpha") is not None:
+            # A mixer keeps compositing a pad's last frame until the pad goes: hidden now, not after NULL.
+            downstream.set_property("alpha", 0.0)
+            self._watch()
 
         def drop() -> bool:
             for peer, pad in ((upstream, sink), (src, downstream)):
@@ -1451,6 +1475,8 @@ class Engine(GObject.Object):
             for element in elements:
                 if element.get_parent() is pipeline:
                     pipeline.remove(element)
+            if self.pipeline is pipeline:
+                self._watch()  # the canvases changed: the preview shows it before it rests
             return False
 
         def stop(_pipeline, items) -> None:
@@ -1784,7 +1810,11 @@ class Engine(GObject.Object):
             error, debug = message.parse_error()
             source = message.src.get_name() if message.src else ""
             widget_id = graph.widget_of(source)
-            if widget_id is not None and widget_id in self.branches:
+            branch = self.branches.get(widget_id) if widget_id is not None else None
+            if branch is not None and graph.generation_of(source) not in (None, branch.generation):
+                # A branch already replaced (a new mode, a scene shown again) failing as it stops.
+                log(f"{source}: {error.message} (stopping)")
+            elif branch is not None:
                 # One widget failed (a window closed, a camera unplugged or busy): take it out, keep going.
                 self._fail(widget_id, source_problem(error.message, debug or ""),
                            f"{error.message} ({(debug or '').splitlines()[0] if debug else ''})")

@@ -22,6 +22,7 @@ Shape (one pipeline; branches come and go while it runs):
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 from .model import Effects, Widget
@@ -251,11 +252,19 @@ def branch_prefix(widget: Widget, generation: int) -> str:
     return f"w-{widget.id}-g{generation}"
 
 
+_BRANCH_NAME = re.compile(r"^w-(.+?)-g(\d+)(?:-|$)")
+
+
 def widget_of(element_name: str) -> str | None:
-    """The widget id in a branch element's name, or None."""
-    if not element_name.startswith("w-") or "-g" not in element_name:
-        return None
-    return element_name[2:].rsplit("-g", 1)[0]
+    """The widget id in a branch element's name ("w-<id>-g<n>-<part>"), or None."""
+    match = _BRANCH_NAME.match(element_name)
+    return match.group(1) if match else None
+
+
+def generation_of(element_name: str) -> int | None:
+    """The branch generation in a branch element's name, or None."""
+    match = _BRANCH_NAME.match(element_name)
+    return int(match.group(2)) if match else None
 
 
 def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | None = None,
@@ -368,7 +377,7 @@ def sound_chain(widget: Widget, *, fake: bool = False, fd: int | None = None, no
         Element("audioconvert", f"{prefix}-aconvert"),
         Element("audioresample", f"{prefix}-resample"),
         Element("volume", f"{prefix}-volume", volume_props(widget)),
-        Element("level", f"{prefix}-level", {"interval": 50_000_000, "post-messages": True}),
+        Element("level", f"{prefix}-level", {"interval": 100_000_000, "post-messages": True}),
         # The monitor (headphones) hangs off this tee only while it is on.
         Element("tee", f"{prefix}-atee", {"allow-not-linked": True}),
         Element("queue", f"{prefix}-aqueue", {"max-size-time": 200_000_000, "leaky": 2}),
