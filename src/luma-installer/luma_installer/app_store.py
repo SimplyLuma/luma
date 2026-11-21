@@ -135,7 +135,8 @@ class Store:
             shown = self._ostree("show", commit, check=False)
             if shown.returncode != 0:
                 break  # pruned
-            subject = next((line.strip() for line in shown.stdout.splitlines()[3:] if line.strip()), "")
+            # After the header lines comes a blank line, then the indented subject.
+            subject = next((line.strip() for line in shown.stdout.splitlines() if line.startswith("    ")), "")
             date = next((line.split(":", 1)[1].strip() for line in shown.stdout.splitlines() if line.startswith("Date:")), "")
             entries.append({"commit": commit, "date": date, "subject": subject})
             commit = self.parent(commit)
@@ -195,14 +196,14 @@ class Store:
             if final.is_dir():
                 return final
             partial = self.checkouts / f".{key}.partial"
-            if partial.exists():
-                shutil.rmtree(partial)
+            remove_checkout(partial)
             self._ostree("checkout", "--user-mode", "--require-hardlinks", "--fsync=false", commits[0], str(partial))
             for commit in commits[1:]:
                 self._ostree("checkout", "--user-mode", "--require-hardlinks", "--fsync=false", "--union", commit, str(partial))
             for commit, subpath in unions or []:
                 self._ostree("checkout", "--user-mode", "--require-hardlinks", "--fsync=false", "--union", f"--subpath={subpath}",
                              commit, str(partial / subpath.lstrip("/")))
+            owner_writable(partial)
             if finish is not None:
                 finish(partial)
             (self.checkouts / f"{key}.json").write_text(json.dumps({"commits": commits, "unions": unions or [], "salt": salt}) + "\n")
@@ -290,17 +291,17 @@ class Store:
                     commits = []
                 if commits and all(commit in wanted for commit in commits):
                     continue
-                shutil.rmtree(self.checkouts / sidecar.stem, ignore_errors=True)
+                remove_checkout(self.checkouts / sidecar.stem)
                 sidecar.unlink(missing_ok=True)
                 removed += 1
             for stale in self.checkouts.glob(".*.partial"):
-                shutil.rmtree(stale, ignore_errors=True)
+                remove_checkout(stale)
             before = self.disk_bytes()
             self._ostree("prune", "--refs-only", f"--depth={ROLLBACK_DEPTH}")
             freed = before - self.disk_bytes()
         if not self.refs():
             # Nothing installed: the store itself goes, so removal leaves no file.
-            shutil.rmtree(self.root, ignore_errors=True)
+            remove_checkout(self.root)
         return {"checkouts": removed, "freed_bytes": max(freed, 0)}
 
     def verify(self) -> bool:
@@ -379,6 +380,33 @@ class Store:
         fresh = {checksum: size for checksum, size in after.items() if checksum not in before}
         return {"new_files": len(fresh), "new_bytes": sum(fresh.values()), "kept_files": len(after) - len(fresh),
                 "kept_bytes": sum(after.values()) - sum(fresh.values())}
+
+
+def owner_writable(root: Path) -> None:
+    """Make every directory of a checkout writable by its owner.
+
+    Distributions ship read-only directories (Fedora's / and /usr/bin are
+    0555). In a checkout they are real directories owned by the person: they
+    have to accept the launcher's few additions, and be removable."""
+    try:
+        os.chmod(root, (os.lstat(root).st_mode & 0o7777) | 0o700)
+    except OSError:
+        return
+    for folder, directories, _files in os.walk(root):
+        for name in directories:
+            path = os.path.join(folder, name)
+            try:
+                mode = os.lstat(path).st_mode
+                if not os.path.islink(path) and mode & 0o700 != 0o700:
+                    os.chmod(path, (mode & 0o7777) | 0o700)
+            except OSError:
+                continue
+
+
+def remove_checkout(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        owner_writable(path)
+    shutil.rmtree(path, ignore_errors=True)
 
 
 def stamp() -> str:

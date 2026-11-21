@@ -64,6 +64,9 @@ pub struct LumaFrame {
     /// input buffer so a frame never mixes two revisions.
     frame: Mutex<Option<(Settings, u64)>>,
     shader: Mutex<Option<gst_gl::GLShader>>,
+    /// The minimum latency answered for everything upstream, in ns; None
+    /// passes upstream's answer through.
+    source_latency: Mutex<Option<gst::ClockTime>>,
 }
 
 #[glib::object_subclass]
@@ -396,6 +399,24 @@ impl ObjectImpl for LumaFrame {
                  * was drawn with. Until it is first set (0), changes apply as
                  * they are made.
                  */
+                /*
+                 * GstLumaFrame:source-latency:
+                 *
+                 * The minimum latency this element answers for its upstream
+                 * in latency queries, in nanoseconds; -1 answers what
+                 * upstream says. A live source stamped on arrival
+                 * (pipewiresrc do-timestamp) has a whole picture at its
+                 * timestamp, so 0 is true for it, and a live compositor
+                 * downstream then draws each frame without waiting a source
+                 * frame's duration for it.
+                 */
+                glib::ParamSpecInt64::builder("source-latency")
+                    .nick("Source latency")
+                    .blurb("Minimum latency answered for upstream in ns (-1 = as upstream answers)")
+                    .minimum(-1)
+                    .default_value(-1)
+                    .mutable_playing()
+                    .build(),
                 glib::ParamSpecUInt64::builder("revision")
                     .nick("Revision")
                     .blurb("Commits pending changes; stamped on output buffers as their offset (0 = changes apply at once)")
@@ -407,6 +428,15 @@ impl ObjectImpl for LumaFrame {
     }
 
     fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+        if pspec.name() == "source-latency" {
+            let ns: i64 = value.get().expect("type checked by GObject");
+            *self.source_latency.lock().unwrap() = u64::try_from(ns).ok().map(gst::ClockTime::from_nseconds);
+            // A live compositor downstream asks again and takes the new figure.
+            let _ = self
+                .obj()
+                .post_message(gst::message::Latency::builder().src(&*self.obj()).build());
+            return;
+        }
         let mut live = self.settings.lock().unwrap();
         let before = live.clone();
         if pspec.name() == "revision" {
@@ -458,6 +488,14 @@ impl ObjectImpl for LumaFrame {
     }
 
     fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+        if pspec.name() == "source-latency" {
+            return self
+                .source_latency
+                .lock()
+                .unwrap()
+                .map_or(-1i64, |t| t.nseconds() as i64)
+                .to_value();
+        }
         if pspec.name() == "revision" {
             return self.revision.lock().unwrap().to_value();
         }
@@ -536,6 +574,22 @@ impl BaseTransformImpl for LumaFrame {
         // A crop meta on the input selects the content (content-width 0).
         query.add_allocation_meta::<gst_video::VideoCropMeta>(None);
         Ok(())
+    }
+
+    fn query(&self, direction: gst::PadDirection, query: &mut gst::QueryRef) -> bool {
+        if !BaseTransformImplExt::parent_query(self, direction, query) {
+            return false;
+        }
+        if direction == gst::PadDirection::Src {
+            if let gst::QueryViewMut::Latency(q) = query.view_mut() {
+                if let Some(min) = *self.source_latency.lock().unwrap() {
+                    let (live, _min, max) = q.result();
+                    let max = max.map(|m| m.max(min));
+                    q.set(live, min, max);
+                }
+            }
+        }
+        true
     }
 
     fn before_transform(&self, inbuf: &gst::BufferRef) {

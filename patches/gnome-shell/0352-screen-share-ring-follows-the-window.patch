@@ -1,0 +1,252 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] lumaShare: the window ring follows the window's own outline
+
+The shared window's ring was a 7px translucent violet border with a fixed
+16px outer radius around the frame. Its inner radius (9px) did not match
+the window's 15px corners, so the ring and the window parted at every
+corner, and the band ended in a hard edge: a half glow cut off at 7px.
+
+The ring is now drawn from the window's own corner radius
+(lumaWindowCorners.windowCornerRadius(): Luma's 15px for every application
+window, maximized and tiled included, none for fullscreen, Android and
+Mutter-framed X11 windows). Every outline outside a rounded rectangle is the
+same rectangle grown by the distance, so the ring is a function of the
+distance from the window alone: a 2.5px violet line from the window's edge
+out, then a halo that falls smoothly to zero 11px beyond it, inside the
+ring's actor. It is concentric with the window at every offset (radius plus
+distance) and square where the window is square.
+
+The ring is eight pieces around the frame, four corners and four edges,
+children of the CaptureHidden actor so none reaches a stream. Their images
+depend only on the radius and the display's resolution (drawn at the
+monitor's scale, so the line is crisp at 100%, 150% and 200%) and are shared
+between rings; moving or resizing a window moves and stretches the pieces
+and draws nothing.
+
+diff --git a/data/theme/luma-share.css b/data/theme/luma-share.css
+index 45cdc6c..b521a24 100644
+--- a/data/theme/luma-share.css
++++ b/data/theme/luma-share.css
+@@ -264,11 +264,9 @@
+ 
+ /* ── While sharing ───────────────────────────────────────────────────────── */
+ 
+-/* A shared window's ring, with its halo, drawn 7 outside the frame. */
+-.luma-share-window-edge {
+-  border-radius: 16px;
+-  border: 7px solid rgba(125, 92, 240, 0.22);
+-  box-shadow: inset 0 0 0 2.5px #7d5cf0; }
++/* The shared window's ring is drawn in lumaShare.js (WindowEdge), from the
++ * window's own corner radius: a 2.5 violet line and a halo that fades to
++ * nothing, concentric with the window at every offset. */
+ 
+ /* A shared monitor's edge, 3 inside that monitor. A border rather than an
+  * inset shadow: St paints an inset shadow only into a background it renders
+diff --git a/js/ui/lumaShare.js b/js/ui/lumaShare.js
+index 9669a21..22f02ac 100644
+--- a/js/ui/lumaShare.js
++++ b/js/ui/lumaShare.js
+@@ -36,6 +36,8 @@ import {Glyph} from './lumaSealGlyph.js';
+ import {PreviewThumbnail} from './lumaDockWindows.js';
+ import {listDisplays} from './lumaCast.js';
+ import {placeShelfBar} from './lumaShelfSurface.js';
++import {windowCornerRadius} from './lumaWindowCorners.js';
++import Cogl from 'gi://Cogl';
+ 
+ const STYLESHEET_URI = 'resource:///org/gnome/shell/theme/luma-share.css';
+ 
+@@ -1112,19 +1114,114 @@ export const SharePicker = GObject.registerClass({
+ function edgeFace(styleClass) {
+     return new St.Widget({style_class: styleClass, x_expand: true, y_expand: true});
+ }
++// The window ring: a violet line around the window's own outline and a halo
++// that fades to nothing outside it. Every outline outside a rounded
++// rectangle is the same rectangle grown by the distance, so the ring is drawn
++// as a function of that distance alone: concentric with the window at every
++// offset (the window's radius plus the distance), square where the window is
++// square. It is eight pieces around the frame -- four corners and four edges
++// -- whose images depend only on the radius and the display scale; moving or
++// resizing the window moves and stretches the pieces and draws nothing.
++const RING_LINE = 2.5;          // the violet line, from the window's edge out
++const HALO_ALPHA = 0.3;         // the halo where it meets the line
++const HALO_FADE = 11;           // the halo reaches zero this far past the line
++const RING_MARGIN = Math.ceil(RING_LINE + HALO_FADE + 1);
++const RING_VIOLET = [125, 92, 240];
++
++// Coverage of the line and the halo at distance d outside the window (in
++// logical pixels), antialiased over one image pixel (px logical pixels).
++function ringAlpha(d, px) {
++    const cover = (a, b) => Math.min(1, Math.max(0, (b - a) / px + 0.5));
++    if (d < -px)
++        return 0;
++    const inside = cover(0, d);                 // outside the window at all
++    const line = Math.min(inside, cover(d, RING_LINE));
++    const t = Math.min(1, Math.max(0, (d - RING_LINE) / HALO_FADE));
++    const halo = HALO_ALPHA * (1 - t * t * (3 - 2 * t)) * inside;
++    return line + halo * (1 - line);
++}
++
++const ringImages = new Map();
++
++// One piece's image: 'corner' is a (margin + radius) square whose inner
++// corner is the window's corner centre; 'edge' is one pixel along the edge
++// and the margin across it, stretched along the edge.
++function ringImage(kind, radius, resolution) {
++    const key = `${kind}:${radius}:${resolution}`;
++    let content = ringImages.get(key);
++    if (content)
++        return content;
++    const extent = kind === 'corner' ? RING_MARGIN + radius : RING_MARGIN;
++    const size = Math.max(1, Math.ceil(extent * resolution));
++    const [width, height] = kind === 'corner' ? [size, size] : [1, size];
++    const px = 1 / resolution;
++    const data = new Uint8Array(width * height * 4);
++    for (let y = 0; y < height; y++) {
++        for (let x = 0; x < width; x++) {
++            // Distance from the piece's inner end (the window side), in
++            // logical pixels, measured at the pixel's centre.
++            const across = extent - (y + 0.5) * px;
++            let d;
++            if (kind === 'corner') {
++                const along = extent - (x + 0.5) * px;
++                d = Math.hypot(Math.max(0, along), Math.max(0, across)) - radius;
++            } else {
++                d = across;
++            }
++            const a = ringAlpha(d, px);
++            const i = (y * width + x) * 4;
++            // Premultiplied BGRA.
++            data[i] = Math.round(RING_VIOLET[2] * a);
++            data[i + 1] = Math.round(RING_VIOLET[1] * a);
++            data[i + 2] = Math.round(RING_VIOLET[0] * a);
++            data[i + 3] = Math.round(255 * a);
++        }
++    }
++    const coglContext = global.stage.context.get_backend().get_cogl_context();
++    content = St.ImageContent.new_with_preferred_size(width, height);
++    content.set_bytes(coglContext, new GLib.Bytes(data), Cogl.PixelFormat.BGRA_8888_PRE,
++        width, height, width * 4);
++    ringImages.set(key, content);
++    return content;
++}
++
++// The pieces, each as the top-left one is drawn and then turned to its side:
++// [corner?, rotation in degrees].
++const RING_PIECES = [
++    ['corner', 0], ['corner', 90], ['corner', 180], ['corner', 270],
++    ['edge', 0], ['edge', 90], ['edge', 180], ['edge', 270],
++];
++
+ const WindowEdge = GObject.registerClass(
+ class WindowEdge extends CaptureHidden {
+     _init(window) {
+-        super._init({reactive: false, layout_manager: new Clutter.BinLayout()});
+-        this.add_child(edgeFace('luma-share-window-edge'));
++        super._init({reactive: false});
++        // The pieces are children, never the CaptureHidden actor itself (see
++        // edgeFace), so none of them reaches a stream.
++        this._pieces = RING_PIECES.map(([kind, angle]) => {
++            const piece = new Clutter.Actor({
++                content_gravity: Clutter.ContentGravity.RESIZE_FILL,
++                pivot_point: new Graphene.Point({x: 0, y: 0}),
++                rotation_angle_z: angle,
++            });
++            piece.set_content_scaling_filters(Clutter.ScalingFilter.LINEAR,
++                Clutter.ScalingFilter.LINEAR);
++            piece._kind = kind;
++            piece._angle = angle;
++            this.add_child(piece);
++            return piece;
++        });
+         Shell.util_set_hidden_from_pick(this, true);
+         this._window = window;
+         this._actor = window.get_compositor_private();
++        this._shape = '';
+         window.connectObject(
+             'position-changed', () => this._follow(),
+             'size-changed', () => this._follow(),
++            'notify::fullscreen', () => this._follow(),
+             'unmanaged', () => this.destroy(), this);
+         global.window_manager.connectObject('switch-workspace', () => this._follow(), this);
++        global.display.connectObject('workareas-changed', () => this._follow(), this);
+         this._actor?.connectObject('notify::visible', () => this._follow(), this);
+         this._follow();
+     }
+@@ -1132,9 +1229,45 @@ class WindowEdge extends CaptureHidden {
+     _follow() {
+         const rect = this._window.get_frame_rect();
+         const scale = stageScale();
+-        const halo = 7 * scale;
+-        this.set_position(rect.x - halo, rect.y - halo);
+-        this.set_size(rect.width + 2 * halo, rect.height + 2 * halo);
++        const margin = RING_MARGIN * scale;
++        const radius = Math.round(windowCornerRadius(this._window) * scale * 2) / 2;
++        // Images are drawn at the display's resolution so the line is crisp
++        // at 100%, 150% and 200%.
++        const monitorScale = global.display.get_monitor_scale(this._window.get_monitor()) || 1;
++        const resolution = Math.ceil(monitorScale) * scale;
++        const shape = `${radius}:${resolution}`;
++        if (shape !== this._shape) {
++            this._shape = shape;
++            for (const piece of this._pieces) {
++                piece.set_content(ringImage(piece._kind, radius / scale, resolution));
++            }
++        }
++
++        this.set_position(rect.x - margin, rect.y - margin);
++        this.set_size(rect.width + 2 * margin, rect.height + 2 * margin);
++        // In this actor's coordinates the frame runs from margin to
++        // margin + width/height. A piece is laid out unturned at its
++        // corner of the frame and turned about its own origin.
++        const [w, h] = [rect.width, rect.height];
++        const corner = margin + radius;
++        const straightW = Math.max(0, w - 2 * radius);
++        const straightH = Math.max(0, h - 2 * radius);
++        const place = {
++            'corner:0': [0, 0, corner, corner],
++            'corner:90': [2 * margin + w, 0, corner, corner],
++            'corner:180': [2 * margin + w, 2 * margin + h, corner, corner],
++            'corner:270': [0, 2 * margin + h, corner, corner],
++            'edge:0': [margin + radius, 0, straightW, margin],
++            'edge:90': [2 * margin + w, margin + radius, straightH, margin],
++            'edge:180': [margin + w - radius, 2 * margin + h, straightW, margin],
++            'edge:270': [0, margin + h - radius, straightH, margin],
++        };
++        for (const piece of this._pieces) {
++            const [x, y, width, height] = place[`${piece._kind}:${piece._angle}`];
++            piece.set_position(x, y);
++            piece.set_size(width, height);
++            piece.visible = width > 0 && height > 0;
++        }
+         this.visible = this._window.showing_on_its_workspace() &&
+             !this._window.minimized;
+     }
+diff --git a/js/ui/lumaWindowCorners.js b/js/ui/lumaWindowCorners.js
+--- a/js/ui/lumaWindowCorners.js
++++ b/js/ui/lumaWindowCorners.js
+@@ -343,3 +343,25 @@ export class WindowCorners {
+         effect.queue_repaint();
+     }
+ }
++
++/**
++ * The corner radius a window shows on screen, in logical pixels: what a
++ * frame drawn around it (the screen sharing ring) must follow. Luma's radius
++ * for every application window -- libadwaita draws it, maximized and tiled
++ * included (libadwaita 0034 and 0036), and this file's mask gives it to every
++ * other window -- and none for a fullscreen window, an Android window or a
++ * Mutter-framed X11 window, which keep square corners.
++ *
++ * @param {Meta.Window} window
++ * @returns {number}
++ */
++export function windowCornerRadius(window) {
++    if (window.is_fullscreen())
++        return 0;
++    if ((window.get_wm_class() ?? '').toLowerCase().startsWith('waydroid'))
++        return 0;
++    if (window.get_client_type() === Meta.WindowClientType.X11 && window.decorated)
++        return 0;
++    const frame = window.get_frame_rect();
++    return Math.max(0, Math.min(RADIUS, frame.width / 2, frame.height / 2));
++}

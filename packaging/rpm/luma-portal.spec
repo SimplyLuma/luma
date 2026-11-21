@@ -2,7 +2,7 @@
 
 Name:           luma-portal
 Version:        0.1.0
-Release:        1.luma.12%{?dist}
+Release:        1.luma.13%{?dist}
 Summary:        Project Luma's desktop portal backend
 License:        Apache-2.0
 URL:            https://projectluma.org/platform/portal
@@ -104,6 +104,13 @@ grep -Fq 'is-recording' luma_portal/mutter.py
 %config(noreplace) %{_sysconfdir}/xdg-desktop-portal/gnome-portals.conf
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.13
+- Nothing is asked or started while the session is locked (lock.py, from
+  org.gnome.ScreenSaver): a ScreenCast or AudioCapture Start waits and goes
+  on after unlock. Screen sharing pickers are shown one at a time, in order.
+  A restored share Mutter refuses as locked waits for unlock instead of
+  falling back to the picker.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.12
 - Share sound picker as Luma Share's card: the asking app with the sharing
   badge, the question, the choices on rounded blocks of LumaUI rows (app

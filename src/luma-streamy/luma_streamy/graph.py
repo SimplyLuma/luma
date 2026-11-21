@@ -294,12 +294,18 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
     return Chain(elements)
 
 
+#: A live capture is stamped on arrival (pipewiresrc do-timestamp; videotestsrc stamps when it sends), so
+#: its picture is whole at its timestamp: each layer answers no source latency, and the live mixer
+#: composites a frame when it is due instead of a source frame later (a drag shows on the next frame).
+LAYER_LATENCY = {"source-latency": 0}
+
+
 def layer_chain(widget: Widget, zorder: int, prefix: str, fmt: str) -> Chain:
     """A picture widget drawn on canvas ``fmt``: ``widget`` is placed and styled as that canvas has it.
     The queue lets one canvas's mixer never hold up another's."""
     return Chain([Element("queue", f"{prefix}-{fmt}-lqueue", {"max-size-buffers": 1, "max-size-bytes": 0,
                                                                "max-size-time": 0, "leaky": 2}),
-                  Element("lumaframe", f"{prefix}-{fmt}-frame", frame_props(widget))],
+                  Element("lumaframe", f"{prefix}-{fmt}-frame", {**frame_props(widget), **LAYER_LATENCY})],
                  f"mixer-{fmt}", mixer_pad_props(widget, zorder))
 
 
@@ -421,6 +427,22 @@ def program(canvas: tuple[int, int], fmt: str = "landscape") -> list[Element]:
                                                                f"height={height},framerate={PREVIEW_FPS}/1,format=RGBA"}),
         Element("tee", f"program-{fmt}", {"allow-not-linked": True}),
     ]
+
+
+#: The pacer's one picture lasts this long (ns): it stays the pad's current buffer for good.
+PACER_DURATION = 10 ** 15
+
+
+def pacer(fmt: str) -> Chain:
+    """A pad that never has a picture waiting, so canvas ``fmt``'s live mixer composites on its clock
+    every frame instead of when its layers' pictures arrive. Without it a 30 fps layer on the 60 fps canvas
+    drew two frames at once every 33 ms (no frame in between), so a move waited up to two frames.
+    One transparent picture, sent once, drawn nowhere (alpha 0)."""
+    return Chain([Element("appsrc", f"pacer-{fmt}", {"is-live": True, "format": "time", "do-timestamp": True,
+                                                       "min-latency": 0, "max-latency": 0, "block": False,
+                                                       "caps": "video/x-raw,format=RGBA,width=16,height=16,framerate=0/1"}),
+                  Element("glupload", f"pacer-upload-{fmt}")],
+                 f"mixer-{fmt}", {"alpha": 0.0, "width": 1, "height": 1, "zorder": 0})
 
 
 def sound_program() -> list[Element]:

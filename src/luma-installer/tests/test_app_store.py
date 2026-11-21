@@ -44,7 +44,8 @@ class StoreBehaviour(unittest.TestCase):
 
     def commit(self, app_id: str, own: dict[str, str], version: str = "1") -> str:
         root = tree(self.base / f"build-{app_id}-{version}", {**self.shared, **own})
-        return self.store.commit_tree(root, self.store.app_ref(app_id, "x86_64"), record(app_id, version))
+        return self.store.commit_tree(root, self.store.app_ref(app_id, "x86_64"), record(app_id, version),
+                                      subject=f"{app_id} {version}")
 
     def test_a_file_two_applications_contain_is_stored_once(self):
         self.commit("one", {"usr/bin/one": "1" * 100})
@@ -80,11 +81,28 @@ class StoreBehaviour(unittest.TestCase):
         plain = self.store.compose([commit])
         self.assertEqual((plain / "etc/passwd").read_text(), "root:x:0:0::/root:/bin/sh\n")
 
+    def test_read_only_directories_in_a_tree_can_be_finished_and_removed(self):
+        root = tree(self.base / "build-ro", {**self.shared, "usr/bin/tool": "x"})
+        (root / "usr/bin").chmod(0o555)
+        root.chmod(0o555)
+        try:
+            commit = self.store.commit_tree(root, self.store.app_ref("ro", "x86_64"), record("ro"))
+        finally:
+            root.chmod(0o755)
+            (root / "usr/bin").chmod(0o755)
+        checkout = self.store.compose([commit], "salt", finish=lambda path: (path / "added-at-the-root").write_text("x"))
+        self.assertTrue((checkout / "added-at-the-root").is_file())
+        (checkout / "usr/bin").chmod(0o555)
+        self.store.remove("ro")
+        self.assertFalse(checkout.exists())
+        self.assertFalse(self.store.root.exists())
+
     def test_a_new_version_is_a_commit_and_rollback_is_a_ref_move(self):
         ref = self.store.app_ref("one", "x86_64")
         first = self.commit("one", {"usr/bin/one": "version 1"}, "1")
         second = self.commit("one", {"usr/bin/one": "version 2"}, "2")
         self.assertEqual([entry["commit"] for entry in self.store.history(ref)], [second, first])
+        self.assertEqual([entry["subject"] for entry in self.store.history(ref)], ["one 2", "one 1"])
         delta = self.store.delta(first, second)
         self.assertEqual(delta["new_bytes"] > 0, True)
         self.assertEqual(delta["kept_bytes"], sum(len(text) for text in self.shared.values()))

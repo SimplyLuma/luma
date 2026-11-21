@@ -139,6 +139,7 @@ class Payload(unittest.TestCase):
             prefix = launcher.scope_prefix("google-chrome.stable")
         self.assertIn("--scope", prefix)
         self.assertIn("--slice=app.slice", prefix)
+        self.assertIn("--expand-environment=no", prefix)
         unit = next(value for value in prefix if value.startswith("--unit="))
         self.assertRegex(unit, r"^--unit=app-luma-google_chrome_stable-\d+\.scope$")
 
