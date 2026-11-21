@@ -6,8 +6,9 @@
 #include <math.h>
 
 #define TRACK LUMA_UI_VOLUME_SLIDER_TRACK
-#define KNOB LUMA_UI_VOLUME_SLIDER_KNOB
-#define HIT LUMA_UI_VOLUME_SLIDER_HIT
+/* A compact slider (a panel's row) has the smaller knob and slot. */
+#define KNOB (self->compact ? LUMA_UI_VOLUME_SLIDER_COMPACT_KNOB : LUMA_UI_VOLUME_SLIDER_KNOB)
+#define HIT (self->compact ? LUMA_UI_VOLUME_SLIDER_COMPACT_HIT : LUMA_UI_VOLUME_SLIDER_HIT)
 #define METER_GAP LUMA_UI_VOLUME_SLIDER_METER_GAP
 #define MARK LUMA_UI_VOLUME_SLIDER_MARK
 #define FOCUS LUMA_UI_VOLUME_SLIDER_FOCUS
@@ -25,6 +26,7 @@ struct _LumaVolumeSlider {
   double lower, upper, value, unity, step, page;
   char *unit;
   gboolean muted;
+  gboolean compact;
   double grab;    /* where on the knob the drag took it, along, in px */
   double start;   /* the knob's centre when the drag began */
   gint64 last_press;
@@ -89,6 +91,20 @@ static double fraction_at(LumaVolumeSlider *self, double at) {
     return 0;
   double f = CLAMP((at - KNOB / 2.0) / span, 0, 1);
   return vertical(self) ? 1 - f : f;
+}
+
+void luma_volume_slider_set_compact(LumaVolumeSlider *self, gboolean compact) {
+  g_return_if_fail(LUMA_IS_VOLUME_SLIDER(self));
+  if (self->compact == !!compact)
+    return;
+  self->compact = !!compact;
+  luma_ui_set_css_class(GTK_WIDGET(self), "compact", self->compact);
+  gtk_widget_queue_resize(GTK_WIDGET(self));
+}
+
+gboolean luma_volume_slider_get_compact(LumaVolumeSlider *self) {
+  g_return_val_if_fail(LUMA_IS_VOLUME_SLIDER(self), FALSE);
+  return self->compact;
 }
 
 void luma_volume_slider_get_track_bounds(LumaVolumeSlider *self, graphene_rect_t *bounds) {

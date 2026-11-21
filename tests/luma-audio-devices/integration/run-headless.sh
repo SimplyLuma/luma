@@ -10,7 +10,7 @@
 # src/luma-audio-devices into /usr). For the AirPlay scenario also avahi,
 # nss-mdns and a reachable AirPlay receiver (see scenario_airplay.py).
 #
-# Usage: run-headless.sh [outputs|mixer|airplay|all]
+# Usage: run-headless.sh [outputs|mixer|playing|airplay|all]
 set -u
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 what=${1:-all}
@@ -95,6 +95,10 @@ fi
 if [ "$what" = mixer ] || [ "$what" = all ]; then
   echo "== per-app mixer and capture scenarios"
   python3 "$here/scenario_mixer.py" || status=1
+fi
+if [ "$what" = playing ] || [ "$what" = all ]; then
+  echo "== playing list scenarios"
+  python3 "$here/scenario_playing.py" || status=1
 fi
 if [ "$what" = airplay ] || [ "$what" = all ]; then
   echo "== AirPlay scenarios"

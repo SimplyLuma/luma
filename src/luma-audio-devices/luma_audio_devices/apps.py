@@ -16,9 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import os
+import re
 
 __all__ = (
-    "KEY_PROPERTIES", "SYSTEM_KEY", "app_key", "is_system_sound", "is_app_playback",
+    "KEY_PROPERTIES", "SCOPED_EVENT_APPS", "SYSTEM_KEY", "app_key", "is_system_sound", "is_app_playback",
     "is_portal_remote", "capture_includes", "cubic_to_linear", "linear_to_cubic",
     "stream_volume", "AppIdentity", "DesktopIndex",
 )
@@ -33,6 +34,10 @@ KEY_PROPERTIES = (
 )
 SYSTEM_ROLES = frozenset(("notification", "event"))
 SYSTEM_KEY = "@system"
+# Apps whose own event sounds have their own level: an event stream that
+# carries one of these app IDs (application.id or the portal's app ID, never
+# a name or a binary) is that app's, not System sounds.
+SCOPED_EVENT_APPS = frozenset(("org.projectluma.Messages",))
 
 
 def _nonempty(value) -> str | None:
@@ -55,9 +60,23 @@ def app_key(props: dict, client: dict | None = None) -> tuple[str | None, str | 
     return None, None
 
 
-def is_system_sound(props: dict) -> bool:
+def scoped_event_app(props: dict, client: dict | None = None) -> str | None:
+    """The app ID an event sound carries when that app levels its own event
+    sounds (SCOPED_EVENT_APPS), else None."""
+    client = client or {}
+    for value in (props.get("pipewire.access.portal.app_id"), client.get("pipewire.access.portal.app_id"),
+                  props.get("application.id")):
+        value = _nonempty(value)
+        if value is not None:
+            return value if value in SCOPED_EVENT_APPS else None
+    return None
+
+
+def is_system_sound(props: dict, client: dict | None = None) -> bool:
     role = _nonempty(props.get("media.role"))
-    return role is not None and role.lower() in SYSTEM_ROLES
+    if role is None or role.lower() not in SYSTEM_ROLES:
+        return False
+    return scoped_event_app(props, client) is None
 
 
 def _truthy(value) -> bool:
@@ -70,6 +89,10 @@ def is_app_playback(props: dict) -> bool:
     if _truthy(props.get("stream.monitor")):
         return False
     if props.get("luma.audio-levels") or props.get("luma.audio-capture.id"):
+        return False
+    # The playback half of a loopback or filter (WirePlumber's role sinks, an
+    # equalizer): plumbing between an app and an output, not an app.
+    if props.get("node.link-group"):
         return False
     return True
 
@@ -115,6 +138,9 @@ class AppIdentity:
     icon: str
     desktop_id: str
 
+
+# A web app a Chromium-family browser installed: <browser>-<32 letters a-p>-<profile>.desktop.
+WEB_APP_ID = re.compile(r"(?:^|\.)[a-z][a-z0-9_-]*-[a-p]{32}-[^.]+(\.desktop)?$", re.IGNORECASE)
 
 # The bell is Prairie's Lucide bell (prairie-icon-theme), as in Notifications.
 SYSTEM_IDENTITY = AppIdentity(SYSTEM_KEY, "System sounds", "lumaui-bell-symbolic", "")
@@ -190,6 +216,17 @@ class DesktopIndex:
             if info is not None:
                 return info
         return None
+
+    def is_browser(self, desktop_id: str) -> bool:
+        """A web browser or one of its web apps: its player names a page, so
+        the row's second line may be the site."""
+        info = self.lookup(desktop_id[:-len(".desktop")] if desktop_id.endswith(".desktop") else desktop_id)
+        if info is None:
+            return False
+        categories = (info.get_categories() or "") if hasattr(info, "get_categories") else ""
+        if "WebBrowser" in categories.split(";"):
+            return True
+        return bool(WEB_APP_ID.search(desktop_id))
 
     def identify(self, key: str, props: dict, client: dict | None = None) -> AppIdentity:
         if key == SYSTEM_KEY:

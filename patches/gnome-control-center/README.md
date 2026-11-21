@@ -351,3 +351,33 @@ Systems, Inc.") and a row that opens Cisco's terms
 rule allows for the active local session, then reads the status again.
 Without luma-openh264 the rows are left out; the Apps page does not wait for
 the status.
+
+`0108-lumaui-sound-volume-mixer-rows.patch`: **Sound › Volume mixer as
+playing rows**, the Settings side of the Shell's Sound page. It replaces
+0106's channel strips. The hero is the Sound page's: a tile for each output
+of `org.projectluma.AudioDevices1` version 3 (`GetOutputs`: `label`,
+`detail`, a glyph by `kind`), four to a line and wrapping (two on a phone),
+the default one raised; a press makes another the default through the sound
+adapter's `out` key (`CFSINKS` maps a node name to that key's id). Under
+them the output's volume and its level in the slider's column, a
+`LumaAudioMeter` without zones (32 segments 5 px tall, 3 px apart, 2 px
+round). "Playing now" is a Settings group with a LumaUI `LumaMediaRow` for
+each app the service marks `listed`: artwork and badge, the title, "App ·
+artist" or "App · Paused at 14:02", the transport its player offers
+(`ApplicationPlayPause`, `ApplicationNext`, `ApplicationPrevious`), volume
+and mute, a press on the artwork (`RaiseApplication`), a 28-segment level,
+and the output picker on the row's chip: LumaUI's menu, "Main output
+(Speakers)" first, then every output (`SetApplicationOutput`); the chip is
+raised while the app is sent elsewhere. "Other sounds" are Settings slider
+rows, in the same kind of group, for the entries marked `other` (System
+sounds, Phone). With
+no listed app the card is left out and the header says "Nothing playing".
+Up and Down move from one volume to the next. Levels are watched
+(`WatchLevels`) for the listed apps and `output:` only while the page is
+mapped in a window that is not suspended. Below version 3 the page shows
+its unavailable state. Sound's row is always Volume mixer; the adapter's
+`mixer` flag and its proxy go. `tests/fixtures/settings-v70.json` and
+`settings-tv.json` list the page and carry `CFMIX` (the service's outputs,
+applications and levels as JSON, with `icon_asset` and `art_asset` naming
+the fixture's artwork): a fixture with it is drawn from it and asks nothing
+of the bus; one without it asks whatever owns the service's name.

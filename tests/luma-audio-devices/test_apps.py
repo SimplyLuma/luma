@@ -47,7 +47,7 @@ class AppKeys(unittest.TestCase):
             with self.subTest(vector["case"]):
                 key, _ = apps.app_key(vector["props"], vector.get("client"))
                 self.assertEqual(key, vector["key"])
-                self.assertEqual(apps.is_system_sound(vector["props"]), vector["system"])
+                self.assertEqual(apps.is_system_sound(vector["props"], vector.get("client")), vector["system"])
                 self.assertEqual(apps.is_app_playback(vector["props"]), vector["playback"])
 
     @unittest.skipUnless(LUA, "lua is not installed")
@@ -57,7 +57,7 @@ class AppKeys(unittest.TestCase):
         for vector in VECTORS:
             props, client = lua_literal(vector["props"]), lua_literal(vector.get("client") or {})
             lines.append(f"print(tostring(app.app_key({props}, {client})))")
-            lines.append(f"print(tostring(app.is_system_sound({props})))")
+            lines.append(f"print(tostring(app.is_system_sound({props}, {client})))")
             lines.append(f"print(tostring(app.is_app_playback({props})))")
         with tempfile.NamedTemporaryFile("w", suffix=".lua", delete=False) as handle:
             handle.write("\n".join(lines) + "\n")
@@ -240,7 +240,10 @@ class MixerModel(unittest.TestCase):
         mixer = Mixer(None, _Control())
         self.assertTrue(mixer.update(self.graph()))
         rows = {row["id"]: row for row in mixer.rows()}
-        self.assertEqual(list(rows), ["@system", "paplay", "ToneA"])
+        # The other sounds first, then apps in the order they started.
+        self.assertEqual(list(rows), ["@system", "org.projectluma.Phone",
+                                      "ToneA", "paplay"])
+        self.assertEqual([r["id"] for r in rows.values() if r["listed"]], ["ToneA", "paplay"])
         self.assertEqual(rows["paplay"]["output"], "")
         self.assertEqual(rows["@system"]["name"], "System sounds")
         tone = rows["ToneA"]
@@ -259,7 +262,8 @@ class MixerModel(unittest.TestCase):
                                     "value": '{"volume": 0.125, "mute": true}'}]}])
         mixer = Mixer(None, _Control())
         mixer.update(graph)
-        (row,) = mixer.rows()
+        row = mixer.rows()[0]
+        self.assertEqual([r["id"] for r in mixer.rows() if r["listed"]], [])
         self.assertEqual((row["id"], row["kind"], row["muted"]), ("@system", "system", True))
         self.assertAlmostEqual(row["volume"], 0.5, places=3)
 

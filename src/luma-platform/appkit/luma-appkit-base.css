@@ -93,8 +93,8 @@ window.luma-app-window label, box.lumaui-menu label { line-height: var(--lumaui-
  * The toolkit's window controls are image buttons too; they are excluded by
  * class, because the kit does not style the frame's controls. */
 .luma-icon-button,
-.luma-app-window button.image-button:not(.minimize):not(.maximize):not(.close):not(.luma-media-play):not(.lumaui-bar-button):not(.lumaui-corner-button):not(.lumaui-media-key):not(.lumaui-sidebar-toggle):not(.lumaui-mark-button):not(.lumaui-menu-trail):not(.lumaui-row-trail):not(.lumaui-mini-button):not(.lumaui-share-key):not(.lumaui-bar-chip-close):not(.lumaui-bar-entry-close):not(.lumaui-foot-square):not(.lumaui-fact-copy):not(.lumaui-details-close):not(.lumaui-mode):not(.lumaui-trail-back):not(.lumaui-icon-only):not(.lumaui-text-button):not(.lumaui-title-island-lead):not(.lumaui-title-island-title):not(.lumaui-title-island-button):not(.lumaui-list-first-back),
-.luma-application-window button.image-button:not(.minimize):not(.maximize):not(.close):not(.luma-media-play):not(.lumaui-bar-button):not(.lumaui-corner-button):not(.lumaui-media-key):not(.lumaui-sidebar-toggle):not(.lumaui-mark-button):not(.lumaui-menu-trail):not(.lumaui-row-trail):not(.lumaui-mini-button):not(.lumaui-share-key):not(.lumaui-bar-chip-close):not(.lumaui-bar-entry-close):not(.lumaui-foot-square):not(.lumaui-fact-copy):not(.lumaui-details-close):not(.lumaui-mode):not(.lumaui-trail-back):not(.lumaui-icon-only):not(.lumaui-text-button):not(.lumaui-title-island-lead):not(.lumaui-title-island-title):not(.lumaui-title-island-button):not(.lumaui-list-first-back),
+.luma-app-window button.image-button:not(.minimize):not(.maximize):not(.close):not(.luma-media-play):not(.lumaui-bar-button):not(.lumaui-corner-button):not(.lumaui-media-key):not(.lumaui-media-row-key):not(.lumaui-sidebar-toggle):not(.lumaui-mark-button):not(.lumaui-menu-trail):not(.lumaui-row-trail):not(.lumaui-mini-button):not(.lumaui-share-key):not(.lumaui-bar-chip-close):not(.lumaui-bar-entry-close):not(.lumaui-foot-square):not(.lumaui-fact-copy):not(.lumaui-details-close):not(.lumaui-mode):not(.lumaui-trail-back):not(.lumaui-icon-only):not(.lumaui-text-button):not(.lumaui-title-island-lead):not(.lumaui-title-island-title):not(.lumaui-title-island-button):not(.lumaui-list-first-back),
+.luma-application-window button.image-button:not(.minimize):not(.maximize):not(.close):not(.luma-media-play):not(.lumaui-bar-button):not(.lumaui-corner-button):not(.lumaui-media-key):not(.lumaui-media-row-key):not(.lumaui-sidebar-toggle):not(.lumaui-mark-button):not(.lumaui-menu-trail):not(.lumaui-row-trail):not(.lumaui-mini-button):not(.lumaui-share-key):not(.lumaui-bar-chip-close):not(.lumaui-bar-entry-close):not(.lumaui-foot-square):not(.lumaui-fact-copy):not(.lumaui-details-close):not(.lumaui-mode):not(.lumaui-trail-back):not(.lumaui-icon-only):not(.lumaui-text-button):not(.lumaui-title-island-lead):not(.lumaui-title-island-title):not(.lumaui-title-island-button):not(.lumaui-list-first-back),
 .luma-toolbar button, .luma-action-bar button {
   min-width: 28px;
   min-height: 28px;
@@ -2466,6 +2466,9 @@ box.lumaui-audio-meter > .lumaui-meter-low { color: @luma_good; }
 box.lumaui-audio-meter > .lumaui-meter-mid { color: @luma_mark_yellow; }
 box.lumaui-audio-meter > .lumaui-meter-high { color: @luma_destructive; }
 box.lumaui-audio-meter > .lumaui-meter-peak { color: @luma_ink_secondary; }
+/* An output's meter (set_zones(FALSE)): one green over the control fill, no zones. */
+box.lumaui-audio-meter.plain > .lumaui-meter-track { color: @luma_control_fill; }
+box.lumaui-audio-meter.plain > .lumaui-meter-low { color: @luma_good; }
 
 /* LumaVolumeSlider (luma-volume-slider.c): the kit's slider (a recessed 4 px
  * track in the state fill, a raised 14 px knob with a state ring) drawn
@@ -2510,6 +2513,84 @@ lumaui-mixer-row { padding: var(--lumaui-mixer-strip-row-padding); }
 lumaui-mixer-row > scrolledwindow { background: none; }
 @media (prefers-reduced-motion: reduce) {
   lumaui-mixer-strip button.lumaui-mixer-key { transition: none; }
+}
+
+/* ── LumaUI: MediaRow (luma-media-row.c): a playing app as its content ──
+ * The artwork badged with the app, a title and a line, the transport and the
+ * volume. Regular is a card's block, compact a row in a panel's well, touch
+ * that row under a finger. The Shell's St row reads the same tokens. */
+lumaui-media-row { outline: none; }
+lumaui-media-row > box.lumaui-media-row-art {
+  border-radius: var(--lumaui-media-row-regular-art-radius);
+  box-shadow: 0 0 0 0.5px alpha(white, .08), 0 2px 6px alpha(black, .35);
+}
+lumaui-media-row.compact > box.lumaui-media-row-art { border-radius: var(--lumaui-media-row-compact-art-radius); }
+/* Without artwork: the app's icon on a neutral tile, the same in light and dark. */
+lumaui-media-row > box.lumaui-media-row-art.tile { background: @luma_media_row_tile; }
+lumaui-media-row > box.lumaui-media-row-badge {
+  border-radius: var(--lumaui-media-row-regular-badge-radius);
+  /* A ring in the surface's colour lifts the badge off the artwork. */
+  box-shadow: 0 0 0 var(--lumaui-media-row-regular-badge-ring) var(--lumaui-media-row-surface, @luma_window);
+}
+lumaui-media-row.compact > box.lumaui-media-row-badge { border-radius: var(--lumaui-media-row-compact-badge-radius); }
+lumaui-media-row label.lumaui-media-row-title { color: @luma_ink; }
+lumaui-media-row box.lumaui-media-row-line { margin-top: 2px; }
+lumaui-media-row.compact box.lumaui-media-row-line { margin-top: 1px; }
+/* In a panel the line is the panel's second ink (the reference's .62 ink over its lighter sheet). */
+lumaui-media-row.compact box.lumaui-media-row-line,
+lumaui-media-row.compact box.lumaui-media-row-line > label { color: alpha(@luma_ink, .57); }
+lumaui-media-row lumaui-media-row-level { margin-right: var(--lumaui-media-row-level-end); color: @luma_state; }
+lumaui-media-row lumaui-media-row-level:dir(rtl) { margin-right: 0; margin-left: var(--lumaui-media-row-level-end); }
+lumaui-media-row lumaui-media-row-level.off { color: @luma_faint; }
+lumaui-media-row > image.lumaui-media-row-volume { color: @luma_muted; }
+lumaui-media-row > box.lumaui-media-row-keys { border-spacing: var(--lumaui-media-row-regular-key-gap); }
+lumaui-media-row button.lumaui-media-row-key {
+  min-width: var(--lumaui-media-row-regular-key); min-height: var(--lumaui-media-row-regular-key);
+  padding: 0; border: none; border-radius: var(--lumaui-media-row-regular-key-radius);
+  background: none; box-shadow: none; color: @luma_ink_secondary;
+  -gtk-icon-size: var(--lumaui-media-row-regular-key-icon);
+}
+lumaui-media-row button.lumaui-media-row-key:hover { background: @luma_fill; color: @luma_ink; }
+lumaui-media-row button.lumaui-media-row-key:active { background: @luma_control_fill; }
+lumaui-media-row button.lumaui-media-row-key:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+/* Play/pause is the raised one: a round chip with the kit's raised-chip edge. */
+lumaui-media-row button.lumaui-media-row-key.play {
+  min-width: var(--lumaui-media-row-regular-play); min-height: var(--lumaui-media-row-regular-play);
+  border-radius: 9999px; background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+  -gtk-icon-size: var(--lumaui-media-row-regular-play-icon);
+}
+lumaui-media-row button.lumaui-media-row-key.play:hover { filter: brightness(var(--lumaui-hover-brightness)); }
+lumaui-media-row button.lumaui-media-row-key.play:active { filter: brightness(0.95); }
+lumaui-media-row.compact button.lumaui-media-row-key.play {
+  min-width: var(--lumaui-media-row-compact-play); min-height: var(--lumaui-media-row-compact-play);
+  -gtk-icon-size: var(--lumaui-media-row-compact-play-icon);
+}
+lumaui-media-row.touch button.lumaui-media-row-key.play {
+  min-width: var(--lumaui-media-row-touch-play); min-height: var(--lumaui-media-row-touch-play);
+  -gtk-icon-size: var(--lumaui-media-row-touch-play-icon);
+}
+lumaui-media-row.compact { border-radius: var(--lumaui-media-row-compact-radius); }
+/* A paused row in a panel steps back; a card's block keeps its ink. */
+lumaui-media-row.compact.paused label.lumaui-media-row-title,
+lumaui-media-row.compact.paused box.lumaui-media-row-line,
+lumaui-media-row.compact.paused > box.lumaui-media-row-art { opacity: var(--lumaui-media-row-compact-paused-opacity); }
+lumaui-media-row.muted > image.lumaui-media-row-volume { color: @luma_faint; }
+
+/* The row's trailing picker (luma_media_row_chip_new): a plain fill while
+ * the choice is the default, raised when it is not. */
+menubutton.lumaui-media-row-chip > button {
+  min-height: var(--lumaui-media-row-chip-height); padding: 0 var(--lumaui-media-row-chip-padding-end) 0 var(--lumaui-media-row-chip-padding-start);
+  border: none; border-radius: var(--lumaui-media-row-chip-radius);
+  background: @luma_fill; box-shadow: none; color: @luma_ink_secondary;
+}
+menubutton.lumaui-media-row-chip > button:dir(rtl) { padding: 0 var(--lumaui-media-row-chip-padding-start) 0 var(--lumaui-media-row-chip-padding-end); }
+menubutton.lumaui-media-row-chip > button:hover { background: @luma_control_fill; }
+menubutton.lumaui-media-row-chip > button:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
+menubutton.lumaui-media-row-chip image.lumaui-media-row-chip-icon { color: @luma_muted; }
+menubutton.lumaui-media-row-chip.raised > button {
+  background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
 }
 
 /* ── LumaUI: Dock (an island tiled with insets) ── */

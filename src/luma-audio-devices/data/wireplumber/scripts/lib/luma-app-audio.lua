@@ -32,6 +32,13 @@ M.SYSTEM_ROLES = {
 
 M.SYSTEM_KEY = "@system"
 
+-- Apps whose own event sounds have their own level: an event stream that
+-- carries one of these app IDs (application.id or the portal's app ID, never
+-- a name or a binary) is that app's, not System sounds.
+M.SCOPED_EVENT_APPS = {
+  ["org.projectluma.Messages"] = true,
+}
+
 local function nonempty (value)
   if type (value) ~= "string" then
     return nil
@@ -71,9 +78,27 @@ function M.app_key (props, client)
   return nil, nil
 end
 
-function M.is_system_sound (props)
+-- The app ID an event sound carries when that app levels its own event
+-- sounds (SCOPED_EVENT_APPS), else nil.
+function M.scoped_event_app (props, client)
+  props = props or {}
+  client = client or {}
+  for _, value in ipairs ({ props ["pipewire.access.portal.app_id"] or false,
+      client ["pipewire.access.portal.app_id"] or false, props ["application.id"] or false }) do
+    value = nonempty (value)
+    if value then
+      return M.SCOPED_EVENT_APPS [value] and value or nil
+    end
+  end
+  return nil
+end
+
+function M.is_system_sound (props, client)
   local role = nonempty ((props or {}) ["media.role"])
-  return role ~= nil and M.SYSTEM_ROLES [role:lower ()] == true
+  if role == nil or M.SYSTEM_ROLES [role:lower ()] ~= true then
+    return false
+  end
+  return M.scoped_event_app (props, client) == nil
 end
 
 -- A stream the mixer lists and a capture can include: an app's playback
@@ -87,6 +112,10 @@ function M.is_app_playback (props)
     return false
   end
   if props ["luma.audio-levels"] or props ["luma.audio-capture.id"] then
+    return false
+  end
+  -- The playback half of a loopback or filter is plumbing, not an app.
+  if props ["node.link-group"] then
     return false
   end
   return true

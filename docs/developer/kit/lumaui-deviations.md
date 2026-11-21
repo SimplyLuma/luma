@@ -176,3 +176,12 @@ Depot (`depot-redesign`) against the Design Center mockup:
 - charlie-info-rows: v71's Information lists its people as plain rows; LumaUI's DetailsRow is one control each (name and address), for the keyboard and screen readers.
 - charlie-photo-clip: v71 rounds a lone photo with its grid's 18 px clip (the photo inside is square); GTK clips the grid the same at the same box, and the comparator gives that clip to the photo.
 - charlie-open-key-wrap: v71's phone bar wraps its items (.crphbar flex-wrap) and, with a file picked, the Open key's glyph lands over its word: that bar is 8 px taller and its keys sit 4 px higher. LumaUI keeps the key on one line, as every other bar key.
+
+## Settings Volume mixer (mixer-*)
+
+Settings › Sound › Volume mixer (`settings-volume-mixer`) against the Design Center reference page:
+
+- `mixer-group-wells`, `-chip`: Playing now and Other sounds are the standard Settings group, a filled well, where the reference draws hairline cards on the page; a row's plain output picker is its fill over that well.
+- `mixer-tiles-taller`, `-below`: the output tiles are the Sound page's own, about 2 px taller than the reference's; the hero is that much taller and what follows sits up to 4 px lower.
+- `media-row-pause-glyph`: the reference's compact pause glyph is two CSS bars the spec capture does not list as an icon; the row draws `lumaui-pause-filled` there.
+- `media-row-panel-chip`: the compact and touch play key is the toolkit's raised chip (`@luma_chip`); the reference's sheet uses the Shell's own sheet chip, a slightly darker grey.

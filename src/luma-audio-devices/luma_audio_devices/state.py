@@ -72,6 +72,8 @@ class Store:
     path: Path
     policy: PolicyState = field(default_factory=PolicyState)
     receivers: dict[str, RememberedReceiver] = field(default_factory=dict)
+    # Output device key -> when it was last the output, for "recently used".
+    used: dict[str, float] = field(default_factory=dict)
     # Set when the file was written by a newer version (after a rollback):
     # use defaults for this session and leave the newer file intact.
     read_only: bool = False
@@ -103,6 +105,9 @@ class Store:
             for receiver_id, entry in (data.get("airplay") or {}).items():
                 if isinstance(receiver_id, str) and isinstance(entry, dict):
                     store.receivers[receiver_id] = RememberedReceiver.from_dict(receiver_id, entry)
+            for key, when in (data.get("used") or {}).items():
+                if isinstance(key, str) and isinstance(when, (int, float)):
+                    store.used[key] = float(when)
         except (ValueError, TypeError, AttributeError) as error:
             aside = path.with_name(f"{path.name}.unreadable-{int(time.time())}")
             log.warning("state file %s is unreadable (%s); moved to %s", path, error, aside)
@@ -125,6 +130,9 @@ class Store:
             ordinary = sorted((m.last_seen, k) for k, m in devices.items() if m.auto_switch)
             for _, key in ordinary[:len(devices) - MAX_OUTPUTS]:
                 del devices[key]
+        for key, when in list(self.used.items()):
+            if now - when > PRUNE_AFTER:
+                del self.used[key]
 
     def save(self) -> None:
         if self.read_only:
@@ -135,6 +143,7 @@ class Store:
                         for key, memory in sorted(self.policy.devices.items())},
             "airplay": {receiver_id: receiver.to_dict()
                         for receiver_id, receiver in sorted(self.receivers.items())},
+            "used": {key: round(when) for key, when in sorted(self.used.items())},
         }
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = self.path.with_name(self.path.name + ".tmp")

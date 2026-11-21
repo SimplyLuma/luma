@@ -1,0 +1,52 @@
+{
+  "app": "media-row-touch",
+  "title": "LumaMediaRow, touch (vs the phone drawer's playing row)",
+  "about": "LumaMediaRow at touch density, alone in its window, against the first playing row of the published Quick Options reference in its phone posture (Design Center mockups/sound-mixer/quick.html?posture=phone .mxqr).",
+  "spec": {
+    "root": "design-center",
+    "url": "mockups/sound-mixer/quick.html?posture=phone",
+    "window": ".mxqr",
+    "ready": "html[data-ready]",
+    "exclude": [],
+    "before": [
+      {
+        "eval": "(() => { if (matchMedia('(prefers-color-scheme: light)').matches) document.querySelector('.screen').dataset.theme = 'light'; })()",
+        "wait": 300
+      }
+    ]
+  },
+  "app_icon": {
+    "gtk": "^luma-v3-"
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "assets/wallpapers/meadow.png"
+    ],
+    "build": {},
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "media-touch",
+      "LUMAUI_ROWS_ART": "{run}/fixtures/meadow.png",
+      "LUMA_APPKIT_ICON_PATH": "{run}/preview/python/icons"
+    }
+  },
+  "states": [
+    {
+      "name": "playing",
+      "about": "A song playing at full volume on the main output",
+      "spec": [],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "row",
+      "spec": ".mxqr"
+    }
+  ]
+}

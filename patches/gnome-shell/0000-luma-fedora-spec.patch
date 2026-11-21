@@ -6,7 +6,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Name:           gnome-shell
  Version:        50.3
 -Release:        %autorelease
-+Release:        1.luma.193%{?dist}
++Release:        1.luma.194%{?dist}
  Summary:        Window management and application launching for GNOME
  
 -License:        GPL-2.0-or-later
@@ -14,7 +14,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  URL:            https://wiki.gnome.org/Projects/GnomeShell
  Source0:        https://download.gnome.org/sources/gnome-shell/%{major_version}/%{name}-%{tarball_version}.tar.xz
  
-@@ -32,6 +32,411 @@ Patch: gnome-shell-favourite-apps-firefox.patch
+@@ -32,6 +32,417 @@
  # Some users might have a broken PAM config, so we really need this
  # downstream patch to stop trying on configuration errors.
  Patch: 0001-gdm-Work-around-failing-fingerprint-auth.patch
@@ -356,6 +356,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1335:      0353-screen-share-tiles-show-their-screen.patch
 +Patch1336:      0354-screen-share-pill-out-of-streams-and-dismiss.patch
 +Patch1337:      0355-screen-share-ends-with-the-share.patch
++Patch1338:      0360-sound-page.patch
 +Patch1339:      0358-notification-pill-breathes-once-per-notification.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
@@ -422,11 +423,16 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Source9062:     file-drag-policy.js
 +Source9063:     well-overflow-policy.js
 +Source9064:     app-mixer-policy.js
++Source9065:     mediaRow.js
++Source9066:     mediaRowTokens.js
++Source9067:     soundPage.js
++Source9068:     soundPageModel.js
++Source9069:     sound-page-policy.js
 +Source9070:     notification-breaths-policy.js
  
  %define eds_version 3.45.1
  %define gnome_desktop_version 44.0-7
-@@ -71,6 +476,9 @@ BuildRequires:  pkgconfig(libpipewire-0.3) >= %{pipewire_version}
+@@ -71,6 +482,9 @@
  BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
  BuildRequires:  gettext >= 0.19.6
  BuildRequires:  python3
@@ -436,7 +442,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  
  # for rst2man
  BuildRequires:  python3-docutils
-@@ -90,6 +498,16 @@ Conflicts: %{name} < 48~rc-5
+@@ -90,6 +504,16 @@
  %ifnarch s390 s390x
  Recommends:     gnome-bluetooth%{?_isa} >= %{gnome_bluetooth_version}
  %endif
@@ -453,7 +459,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  Requires:       %{name}-common = %{version}-%{release}
  Requires:       gcr%{?_isa}
  Requires:       gjs%{?_isa} >= %{gjs_version}
-@@ -189,8 +607,60 @@ BuildArch: noarch
+@@ -189,8 +613,64 @@
  
  %prep
  %autosetup -S git -n %{name}-%{tarball_version}
@@ -504,6 +510,10 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +cp %{SOURCE9055} js/ui/lumaPresentation/tvPointer.js
 +# The cellular indicator's state mapping (status/cellular.js).
 +cp %{SOURCE9060} js/ui/lumaPresentation/cellularStatus.js
++cp %{SOURCE9065} js/ui/lumaPresentation/mediaRow.js
++cp %{SOURCE9066} js/ui/lumaPresentation/mediaRowTokens.js
++cp %{SOURCE9067} js/ui/lumaPresentation/soundPage.js
++cp %{SOURCE9068} js/ui/lumaPresentation/soundPageModel.js
 +# Keycap icons, derived from Stevia's Lucide outlines (generate-keycap-shell-icons.py).
 +tar -xf %{SOURCE9034} -C data/icons/scalable/status --exclude=LICENSE
 +tar -xOf %{SOURCE9034} LICENSE > LUCIDE-KEYCAP-LICENSE.txt
@@ -514,7 +524,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %meson \
    -Dextensions_app=false \
  %if %{portal_helper}
-@@ -208,9 +678,40 @@ BuildArch: noarch
+@@ -208,9 +688,41 @@
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/extensions
  mkdir -p %{buildroot}%{_datadir}/gnome-shell/search-providers
  
@@ -551,11 +561,12 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +gjs -m %{SOURCE9062} js/ui/lumaFileDragModel.js js/ui/lumaFileDrag.js js/ui/lumaDockFolders.js js/ui/lumaPresentation/launcherFolders.js js/ui/xdndHandler.js
 +gjs -m %{SOURCE9063} js/ui/lumaWellModel.js js/ui/lumaWell.js js/ui/notificationDaemon.js
 +gjs -m %{SOURCE9064} js/ui/status/volume.js js/ui/quickSettings.js js/ui/panel.js js/ui/lumaPresentation/fillSlider.js
++gjs -m %{SOURCE9069} js/ui/lumaPresentation/soundPageModel.js js/ui/lumaPresentation/mediaRowTokens.js js/ui/lumaPresentation/soundPage.js js/ui/lumaPresentation/mediaRow.js js/ui/lumaPresentation/tvQuickPanel.js js/ui/status/volume.js js/ui/quickSettings.js
 +gjs -m %{SOURCE9070} js/ui/lumaNotificationBeacon.js
  desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Extensions.desktop
  
  %if %{portal_helper}
-@@ -218,7 +719,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
+@@ -218,7 +730,7 @@
  %endif
  
  %files -f %{name}.lang
@@ -564,7 +575,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %doc NEWS README.md
  %{_bindir}/gnome-shell
  %{_bindir}/gnome-extensions
-@@ -250,6 +751,11 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
+@@ -250,6 +762,11 @@
  %{_datadir}/desktop-directories/X-GNOME-Shell-Utilities.directory
  %{_datadir}/icons/hicolor/scalable/apps/org.gnome.Shell.Extensions.svg
  %{_datadir}/icons/hicolor/symbolic/apps/org.gnome.Shell.Extensions-symbolic.svg
@@ -576,7 +587,7 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
  %{_userunitdir}/org.gnome.Shell-disable-extensions.service
  #{_userunitdir}/org.gnome.Shell.target
  %{_userunitdir}/org.gnome.Shell@.service
-@@ -272,6 +778,12 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.gnome.Shell.Porta
+@@ -272,6 +789,12 @@
  %{_datadir}/glib-2.0/schemas/*.xml
  
  %changelog

@@ -681,8 +681,9 @@ posture.
   (Left/Right between them, OK switches; on is a chip with an accent icon,
   off is recessed). Sound: the output in use over the volume (Left/Right
   steps it through the output slider; OK lists the outputs when there are
-  several, then each app playing sound with its own volume, System sounds
-  first: Left/Right steps an app, OK mutes it). Notifications, newest first (OK runs the notification's default
+  several, named as the Sound page names them, then its playing rows: each app with a sound stream,
+  named by what it plays, with its own volume: Left/Right steps it, OK plays
+  or pauses, or mutes an app without a player). Notifications, newest first (OK runs the notification's default
   action, as a click on its card does) and Clear all (never a critical one).
   All Settings. Sleep (suspend where logind allows it, else the screensaver's
   blank, as on a Raspberry Pi). Power drops Restart… and Power Off…, which ask

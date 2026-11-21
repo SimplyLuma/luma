@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.149%{?dist}
+Release:        1.luma.150%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -382,6 +382,26 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.150
+- MediaRow (C, luma_appkit): one playing app as its content: artwork badged
+  with the app's icon (the icon on a neutral tile without artwork), a title
+  and a line, the transport its player offers and its volume on
+  LumaVolumeSlider. Regular is a card's block with a trailing picker
+  (MediaRowChip) and a segmented level meter under the slider; compact is a
+  row in a panel's well; touch is that row in a 64 px box (44 px artwork,
+  10 px above and below) with a 44 px key. A
+  regular row narrower than media_row.regular.stack_below stacks. The
+  Shell's St row reads the same tokens (mediaRowTokens.js).
+- AudioMeter: set_segment_shape(thickness, gap, radius) for a segmented bar
+  and set_zones(FALSE) for an output's level (one green over the control
+  fill, no loud or hot zone, no peak hold). MediaRow's meter is one: 28
+  segments, 3 px, 2 px apart, 1.5 px round.
+- VolumeSlider: set_compact(), a 12 px knob in a 16 px slot.
+- TV: Up and Down step a list of MediaRows row by row
+  (luma_media_row_focus_sibling), a focused horizontal VolumeSlider takes
+  Left and Right as a GtkRange does, and OK on a row plays or pauses.
+- Prairie: lumaui-airplay, lumaui-play-filled, lumaui-pause-filled.
+
 * Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.149
 - AudioMeter segments (0 continuous, up to 128 LED segments with the zone
   colours, the peak hold a lit segment); LevelMeter is AudioMeter.

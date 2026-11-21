@@ -361,6 +361,7 @@ __all__ = [
     "VolumeSlider",
     "MixerStrip",
     "MixerRow",
+    "MediaRow", "MediaRowChip", "MEDIA_ROW_DENSITIES",
     "SyncKey",
     "OverrideDot",
     "ToggleChip",
@@ -700,6 +701,9 @@ def __getattr__(name: str):
     if name in {"SyncKey", "OverrideDot", "ToggleChip"}:
         from . import editor_sync
         return getattr(editor_sync, name)
+    if name in {"MediaRow", "MediaRowChip", "MEDIA_ROW_DENSITIES"}:
+        from . import media_row
+        return getattr(media_row, name)
     if name in {"AudioMeter", "LevelMeter", "VolumeSlider", "MixerStrip", "MixerRow"}:
         from . import media_meter
         return getattr(media_meter, name)

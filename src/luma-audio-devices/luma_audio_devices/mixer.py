@@ -1,10 +1,22 @@
 # SPDX-License-Identifier: MPL-2.0
-"""The per-app mixer: every app that has a sound stream, as one row.
+"""The per-app mixer: every app that is playing, as one row.
 
 Rows are built from the pw-dump graph (graph.StreamNode) and the shared app
-key (apps.app_key). Volume, mute and output changes go to WirePlumber as
-luma-app-audio commands (luma/app-audio.lua), which applies them to every
-stream of the app and remembers them for its next stream.
+key (apps.app_key): one row per app, however many streams it has, running or
+corked. A row stays for LINGER_SECONDS after the app's last stream closes, so
+an app does not leave and come back between two tracks; an app without a
+stream is never listed. What the app is playing and its transport come from
+its MPRIS player when it has one (mpris.py); without one the row is the app's
+own name and icon.
+
+"Other sounds" (System sounds, Phone) are rows that stay while
+silent: their volume holds for sounds not yet played. Messages joins them
+once an event sound has carried its app ID (apps.SCOPED_EVENT_APPS): only
+then can its alert be levelled apart from System sounds.
+
+Volume, mute and output changes go to WirePlumber as luma-app-audio commands
+(luma/app-audio.lua), which applies them to every stream of the app and
+remembers them for its next stream, by app key.
 
 Volumes on the bus use the cubic 0..1 scale GNOME's sliders and wpctl use;
 1.0 is the stream's full level, values up to 1.5 amplify.
@@ -15,14 +27,28 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import logging
 
-from . import apps
+from . import apps, mpris
 
-__all__ = ("Application", "Mixer", "MAX_VOLUME")
+__all__ = ("Application", "Mixer", "MAX_VOLUME", "LINGER_SECONDS", "OTHER_SOUNDS")
 
 log = logging.getLogger("luma-audio-devices")
 
 MAX_VOLUME = 1.5
+LINGER_SECONDS = 10.0
 SYSTEM_ROUTE_KEY = "restore.stream.Output/Audio.media.role:Notification"
+# Apps whose sounds are listed under "Other sounds" whether or not they are
+# sounding: (app key, name when no desktop entry is installed). Only apps
+# that play their own sounds belong here: a notification sound is the
+# Shell's event sound whichever app sent it, so it is System sounds.
+OTHER_SOUNDS = (
+    ("org.projectluma.Phone", "Phone"),
+)
+# Other sounds listed only once one of their event sounds carried the app's
+# ID: (app key, name when no desktop entry is installed).
+SCOPED_OTHER_SOUNDS = (
+    ("org.projectluma.Messages", "Messages"),
+)
+SAVED_STATE_PREFIX = "app.state:"
 
 
 @dataclass
@@ -40,14 +66,24 @@ class Application:
     serials: list[int] = field(default_factory=list)
     pid: int = 0
     playing_on: str = ""           # node.name of the output it plays on now
+    listed: bool = True            # in the playing list: has a stream, or had one LINGER_SECONDS ago
+    other: bool = False            # an "Other sounds" row
+    browser: bool = False
+    binary: str = ""
+    pids: set = field(default_factory=set)
+    order: int = 0                 # when the row first appeared
+    gone_at: float | None = None   # when its last stream closed
+    media: dict = field(default_factory=lambda: mpris.describe(None))
 
     def as_dict(self) -> dict:
-        return {
+        row = {
             "id": self.key, "name": self.name, "icon": self.icon, "desktop_id": self.desktop_id,
             "kind": self.kind, "volume": round(self.volume, 4), "muted": self.muted,
             "output": self.output, "playing": self.playing, "streams": list(self.streams),
-            "pid": self.pid, "playing_on": self.playing_on,
+            "pid": self.pid, "playing_on": self.playing_on, "listed": self.listed, "other": self.other,
         }
+        row.update(self.media)
+        return row
 
 
 def _as_int(value) -> int:
@@ -62,33 +98,49 @@ class Mixer:
         self._index = index
         self._control = control
         self.applications: dict[str, Application] = {}
+        self._order = 0
 
     # Model ------------------------------------------------------------------
 
-    def update(self, graph) -> bool:
-        """Rebuild the rows from the graph. True when anything a client shows
-        changed."""
+    def update(self, graph, now: float = 0.0, players=()) -> bool:
+        """Rebuild the rows from the graph and the media players. True when
+        anything a client shows changed."""
         rows: dict[str, Application] = {}
+        measured: set[str] = set()   # rows with a stream that reported its volume
+        media: set[str] = set()      # rows with a stream that is not an event sound
         for stream in graph.stream_nodes():
             if not apps.is_app_playback(stream.props):
                 continue
-            if apps.is_system_sound(stream.props):
+            if apps.is_system_sound(stream.props, stream.client):
                 key = apps.SYSTEM_KEY
             else:
                 key, _source = apps.app_key(stream.props, stream.client)
                 if key is None:
                     continue
+            if apps.scoped_event_app(stream.props, stream.client) is None or \
+                    (stream.props.get("media.role") or "").strip().lower() not in apps.SYSTEM_ROLES:
+                media.add(key)
             row = rows.get(key)
             if row is None:
                 identity = self._identify(key, stream.props, stream.client)
                 row = Application(key, identity.name, identity.icon, identity.desktop_id,
                                   "system" if key == apps.SYSTEM_KEY else "app",
                                   0.0, True, "", False,
-                                  pid=_as_int(stream.props.get("application.process.id")))
+                                  pid=_as_int(stream.props.get("application.process.id")),
+                                  browser=self._is_browser(identity.desktop_id))
                 rows[key] = row
+            binary = stream.props.get("application.process.binary") or \
+                stream.client.get("application.process.binary")
+            if isinstance(binary, str) and binary and not row.binary:
+                row.binary = binary.rsplit("/", 1)[-1]
+            for value in (stream.client.get("pipewire.sec.pid"), stream.props.get("application.process.id"),
+                          stream.client.get("application.process.id")):
+                if _as_int(value):
+                    row.pids.add(_as_int(value))
             volume = apps.stream_volume(stream.channel_volumes)
             if volume is not None:
                 row.volume = max(row.volume, apps.linear_to_cubic(volume))
+                measured.add(key)
             row.muted = row.muted and stream.mute is True
             row.playing = row.playing or stream.state == "running"
             row.streams.append(stream.node_id)
@@ -96,13 +148,44 @@ class Mixer:
                 row.serials.append(stream.serial)
             # The app's own output is the one it was sent to and plays on
             # now. A target left in the metadata that the stream does not use
-            # (or a link to the default) is reported as following the default.
+            # (an output that is unplugged, or a link to the default) is
+            # reported as following the default.
             if stream.target_serial is not None and not row.output:
                 chosen = graph.node_name_for_serial(stream.target_serial)
                 if chosen and chosen == stream.linked_sink:
                     row.output = chosen
             if stream.linked_sink and not row.playing_on:
                 row.playing_on = stream.linked_sink
+
+        # A stream on its way in or out reports no volume: the row keeps
+        # what it showed rather than dropping to zero for a moment.
+        for key, row in rows.items():
+            previous = self.applications.get(key)
+            if key not in measured and previous is not None and row.kind == "app":
+                row.volume, row.muted = previous.volume, previous.muted
+
+        # An app whose last stream closed keeps its row for LINGER_SECONDS.
+        for key, old in self.applications.items():
+            if key in rows or old.kind != "app" or not old.listed:
+                continue
+            gone_at = old.gone_at if old.gone_at is not None else now
+            if now - gone_at >= LINGER_SECONDS:
+                continue
+            # It shows the level WirePlumber remembers for the app (what its
+            # next stream starts at), not whatever its last stream reported
+            # while it was being torn down.
+            volume, muted = old.volume, old.muted
+            saved = graph.metadata_json("luma-app-audio", SAVED_STATE_PREFIX + key)
+            if isinstance(saved, dict):
+                if isinstance(saved.get("volume"), (int, float)):
+                    volume = apps.linear_to_cubic(saved["volume"])
+                if isinstance(saved.get("mute"), bool):
+                    muted = saved["mute"]
+            rows[key] = Application(key, old.name, old.icon, old.desktop_id, "app", volume, muted,
+                                    "", False, pid=old.pid, browser=old.browser, binary=old.binary,
+                                    pids=set(old.pids), order=old.order, gone_at=gone_at)
+            measured.add(key)
+
         # System sounds is always a row: its volume holds for sounds not yet
         # played (WirePlumber's route-settings value, as pavucontrol uses).
         if apps.SYSTEM_KEY not in rows:
@@ -114,12 +197,88 @@ class Mixer:
                 apps.SYSTEM_KEY, identity.name, identity.icon, "", "system",
                 apps.linear_to_cubic(volume) if isinstance(volume, (int, float)) else 1.0,
                 mute is True, "", False)
+        system = rows[apps.SYSTEM_KEY]
+        system.other = True
+        system.listed = False
+        # So are the other sounds: silent, they show the level WirePlumber
+        # remembers for the app (published as app.state:<key>).
+        for key, fallback_name in OTHER_SOUNDS:
+            row = rows.get(key)
+            if row is None:
+                saved = graph.metadata_json("luma-app-audio", SAVED_STATE_PREFIX + key) or {}
+                volume = saved.get("volume") if isinstance(saved, dict) else None
+                mute = saved.get("mute") if isinstance(saved, dict) else None
+                identity = self._identify(key, {"application.name": fallback_name}, {})
+                row = rows[key] = Application(
+                    key, identity.name, identity.icon, identity.desktop_id, "app",
+                    apps.linear_to_cubic(volume) if isinstance(volume, (int, float)) else 1.0,
+                    mute is True, "", False, listed=False)
+            row.other = True
+        # An app that levels its own event sounds is an other sound once one
+        # carried its ID: while one sounds, or while WirePlumber remembers a
+        # level for it. It is in the playing list only for its other streams.
+        for key, fallback_name in SCOPED_OTHER_SOUNDS:
+            row = rows.get(key)
+            if row is not None and key in media:
+                continue
+            saved = graph.metadata_json("luma-app-audio", SAVED_STATE_PREFIX + key)
+            saved = saved if isinstance(saved, dict) else {}
+            if row is None:
+                if not isinstance(saved.get("volume"), (int, float)) and not isinstance(saved.get("mute"), bool):
+                    continue
+                identity = self._identify(key, {"application.name": fallback_name}, {})
+                row = rows[key] = Application(
+                    key, identity.name, identity.icon, identity.desktop_id, "app",
+                    apps.linear_to_cubic(saved["volume"]) if isinstance(saved.get("volume"), (int, float)) else 1.0,
+                    saved.get("mute") is True, "", False)
+            row.other = True
+            row.listed = False
+            row.gone_at = None
+
         for row in rows.values():
-            if not row.streams and row.kind != "system":
-                row.muted = False
+            if not row.streams and row.kind != "system" and not row.other:
+                row.muted = row.muted if row.gone_at is not None else False
+            previous = self.applications.get(row.key)
+            if previous is not None and previous.order:
+                row.order = previous.order
+            elif row.listed and not row.order:
+                self._order += 1
+                row.order = self._order
+            if row.listed and row.kind == "app":
+                found = mpris.matches(players, key=row.key, desktop_id=row.desktop_id,
+                                      binary=row.binary, pids=row.pids)
+                playing = [p for p in found if p.status == "Playing"] if row.browser else []
+                row.media = mpris.describe(found[0] if found else None, browser=row.browser,
+                                           others=playing[1:] if len(playing) > 1 else ())
+                # A player that says it is paused is paused, whatever its
+                # stream does (a browser keeps a silent stream running).
+                if row.media["status"] == "paused":
+                    row.playing = False
         changed = _public(rows) != _public(self.applications)
         self.applications = rows
         return changed
+
+    def saved_state_keys(self) -> list[str]:
+        """App keys whose remembered level the service asks WirePlumber to
+        publish: the other sounds, and every app in the playing list."""
+        keys = [key for key, _name in OTHER_SOUNDS + SCOPED_OTHER_SOUNDS]
+        keys += [row.key for row in self.applications.values()
+                 if row.kind == "app" and row.listed and row.key not in keys]
+        return keys
+
+    def next_deadline(self) -> float | None:
+        """When the next lingering row leaves, for the service's one timer."""
+        deadlines = [row.gone_at + LINGER_SECONDS for row in self.applications.values()
+                     if row.gone_at is not None]
+        return min(deadlines) if deadlines else None
+
+    def _is_browser(self, desktop_id: str) -> bool:
+        if self._index is None or not desktop_id:
+            return False
+        try:
+            return self._index.is_browser(desktop_id)
+        except Exception:
+            return False
 
     def _identify(self, key, props, client) -> apps.AppIdentity:
         if self._index is None:
@@ -134,10 +293,16 @@ class Mixer:
             return apps.AppIdentity(key, props.get("application.name") or key, apps.FALLBACK_ICON, "")
 
     def rows(self) -> list[dict]:
-        """System sounds first, then apps by name."""
+        """System sounds and the other sounds first, then the playing apps in
+        the order they started (a row never jumps while it is on screen)."""
         ordered = sorted(self.applications.values(),
-                         key=lambda row: (row.kind != "system", row.name.casefold(), row.key))
+                         key=lambda row: (row.kind != "system", not row.other, row.order,
+                                          row.name.casefold(), row.key))
         return [row.as_dict() for row in ordered]
+
+    def player_of(self, key: str) -> str:
+        row = self.applications.get(key)
+        return row.media.get("player", "") if row else ""
 
     # Commands ---------------------------------------------------------------
 
@@ -155,4 +320,5 @@ class Mixer:
 
 def _public(rows: dict[str, Application]) -> list:
     return sorted((row.key, row.name, row.icon, row.kind, round(row.volume, 3), row.muted,
-                   row.output, row.playing, tuple(row.streams), row.playing_on) for row in rows.values())
+                   row.output, row.playing, tuple(row.streams), row.playing_on, row.listed, row.other,
+                   tuple(sorted(row.media.items()))) for row in rows.values())

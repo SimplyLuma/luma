@@ -1,0 +1,69 @@
+{
+  "app": "sound-page",
+  "title": "Quick Options › Sound (Shell)",
+  "about": "The Shell's Sound page against the Design Center reference, in pixel mode: the caller supplies <variant>/<state>.png, the page's sheet cut from a session with the reference's outputs and three playing apps (run.sh sound-page --pixel DIR). Phone: the top of the drawer, as tall as the reference.",
+  "spec": {
+    "root": "design-center",
+    "url": "mockups/sound-mixer/quick.html",
+    "window": "#stage",
+    "ready": "html[data-ready]",
+    "viewport": {
+      "width": 420,
+      "height": 600
+    },
+    "phone_url": "mockups/sound-mixer/quick.html?posture=phone",
+    "phone_viewport": {
+      "width": 400,
+      "height": 844
+    }
+  },
+  "states": [
+    {
+      "name": "sound",
+      "about": "Sound page, dark: four outputs, Tide playing, a paused app on headphones, a browser tab",
+      "themes": [
+        "dark"
+      ],
+      "spec": []
+    },
+    {
+      "name": "sound-light",
+      "about": "The same page, light",
+      "themes": [
+        "light"
+      ],
+      "spec": [
+        {
+          "eval": "document.querySelector('.screen').dataset.theme = 'light'",
+          "wait": 300
+        }
+      ]
+    }
+  ],
+  "phone_states": [
+    "sound",
+    "sound-light"
+  ],
+  "groups": [
+    {
+      "name": "header",
+      "spec": "#stage .q2h"
+    },
+    {
+      "name": "master volume",
+      "spec": "#stage .q2s"
+    },
+    {
+      "name": "outputs",
+      "spec": "#stage .mxouts"
+    },
+    {
+      "name": "playing",
+      "spec": "#stage .q2l"
+    },
+    {
+      "name": "row",
+      "spec": "#stage .mxqr"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ const PASSIVE = new Set(['sep', 'label']);
 //   toggles   [{key, visible, ...}]: Quick Options toggles; hidden ones drop out
 //   leave     true when TV was chosen (Quick Options' TV): the way back, right under the toggles
 //   level     {visible, outputs: [{id, name}], current, apps: [{id, name}]}: the output
-//             volume; apps are the per-app mixer's (System sounds first)
+//             volume; apps are the Sound page's playing rows (soundPageModel.js)
 //   notes     [notification records], newest first
 //   settings  true when Settings can be opened
 //   sleep     true when the TV can sleep (suspend or screen off)

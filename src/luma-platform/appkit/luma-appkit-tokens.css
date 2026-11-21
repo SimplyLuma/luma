@@ -245,6 +245,7 @@
 @define-color luma_creative_panel_surface #f8f9fa;
 @define-color luma_dock_header rgba(255, 255, 255, 0.5);
 @define-color luma_dock_header_line rgba(20, 22, 26, 0.08);
+@define-color luma_media_row_tile #f3f2ef;
 @define-color luma_media_select #0278e7;
 @define-color luma_media_badge_scrim rgba(0, 0, 0, 0.5);
 @define-color luma_media_soft_key rgba(20, 22, 26, 0.09);
@@ -869,6 +870,48 @@
   --lumaui-t-media-mini-detail-tracking: 0px;
   --lumaui-t-media-mini-detail-unit-size: 5px;
   --lumaui-t-media-mini-detail-unit-gap: 1.5px;
+  --lumaui-t-media-row-title-size: 13.5px;
+  --lumaui-t-media-row-title-weight: 600;
+  --lumaui-t-media-row-title-line-height: 18.23px;
+  --lumaui-t-media-row-title-tracking: 0px;
+  --lumaui-t-media-row-title-unit-size: 5.4px;
+  --lumaui-t-media-row-title-unit-gap: 1.62px;
+  --lumaui-t-media-row-line-size: 12px;
+  --lumaui-t-media-row-line-weight: 400;
+  --lumaui-t-media-row-line-line-height: 16.2px;
+  --lumaui-t-media-row-line-tracking: 0.12px;
+  --lumaui-t-media-row-line-unit-size: 4.8px;
+  --lumaui-t-media-row-line-unit-gap: 1.44px;
+  --lumaui-t-media-row-compact-title-size: 12.5px;
+  --lumaui-t-media-row-compact-title-weight: 650;
+  --lumaui-t-media-row-compact-title-line-height: 17.5px;
+  --lumaui-t-media-row-compact-title-tracking: 0px;
+  --lumaui-t-media-row-compact-title-unit-size: 5px;
+  --lumaui-t-media-row-compact-title-unit-gap: 1.5px;
+  --lumaui-t-media-row-compact-line-size: 11px;
+  --lumaui-t-media-row-compact-line-weight: 400;
+  --lumaui-t-media-row-compact-line-line-height: 15.4px;
+  --lumaui-t-media-row-compact-line-tracking: 0px;
+  --lumaui-t-media-row-compact-line-unit-size: 4.4px;
+  --lumaui-t-media-row-compact-line-unit-gap: 1.32px;
+  --lumaui-t-media-row-readout-size: 12.5px;
+  --lumaui-t-media-row-readout-weight: 400;
+  --lumaui-t-media-row-readout-line-height: 16.88px;
+  --lumaui-t-media-row-readout-tracking: 0px;
+  --lumaui-t-media-row-readout-unit-size: 5px;
+  --lumaui-t-media-row-readout-unit-gap: 1.5px;
+  --lumaui-t-media-row-chip-size: 12px;
+  --lumaui-t-media-row-chip-weight: 550;
+  --lumaui-t-media-row-chip-line-height: 16.2px;
+  --lumaui-t-media-row-chip-tracking: 0px;
+  --lumaui-t-media-row-chip-unit-size: 4.8px;
+  --lumaui-t-media-row-chip-unit-gap: 1.44px;
+  --lumaui-t-media-row-output-size: 12px;
+  --lumaui-t-media-row-output-weight: 600;
+  --lumaui-t-media-row-output-line-height: 16.2px;
+  --lumaui-t-media-row-output-tracking: 0px;
+  --lumaui-t-media-row-output-unit-size: 4.8px;
+  --lumaui-t-media-row-output-unit-gap: 1.44px;
   --lumaui-t-feature-title-size: 28px;
   --lumaui-t-feature-title-weight: 700;
   --lumaui-t-feature-title-line-height: 29.4px;
@@ -2958,14 +3001,93 @@
   --lumaui-media-strip-radius: 4px;
   --lumaui-media-strip-current-radius: 8px;
   --lumaui-media-strip-ring: 2px;
-  --lumaui-meter-bar: 4px;
-  --lumaui-meter-gap: 2px;
-  --lumaui-meter-min-length: 24px;
-  --lumaui-meter-length: 120px;
-  --lumaui-meter-mid-db: -18px;
-  --lumaui-meter-high-db: -6px;
-  --lumaui-meter-segment-gap: 1px;
-  --lumaui-meter-segment-min: 2px;
+  --lumaui-media-row-regular-art: 44px;
+  --lumaui-media-row-regular-art-radius: 10px;
+  --lumaui-media-row-regular-art-top: 2px;
+  --lumaui-media-row-regular-tile-padding: 9px;
+  --lumaui-media-row-regular-badge: 20px;
+  --lumaui-media-row-regular-badge-radius: 6px;
+  --lumaui-media-row-regular-badge-offset: 5px;
+  --lumaui-media-row-regular-badge-ring: 2px;
+  --lumaui-media-row-regular-column-gap: 14px;
+  --lumaui-media-row-regular-row-gap: 10px;
+  --lumaui-media-row-regular-padding-x: 16px;
+  --lumaui-media-row-regular-padding-top: 16px;
+  --lumaui-media-row-regular-padding-bottom: 15px;
+  --lumaui-media-row-regular-key: 36px;
+  --lumaui-media-row-regular-key-radius: 10px;
+  --lumaui-media-row-regular-key-icon: 18px;
+  --lumaui-media-row-regular-key-gap: 2px;
+  --lumaui-media-row-regular-play: 42px;
+  --lumaui-media-row-regular-play-icon: 17px;
+  --lumaui-media-row-regular-volume-icon: 15px;
+  --lumaui-media-row-regular-slider-gap: 10px;
+  --lumaui-media-row-regular-readout-width: 38px;
+  --lumaui-media-row-regular-meter-segments: 28px;
+  --lumaui-media-row-regular-meter-thickness: 3px;
+  --lumaui-media-row-regular-meter-gap: 2px;
+  --lumaui-media-row-regular-meter-radius: 1.5px;
+  --lumaui-media-row-regular-meter-top: 6px;
+  --lumaui-media-row-regular-stack-below: 440px;
+  --lumaui-media-row-compact-art: 40px;
+  --lumaui-media-row-compact-art-radius: 9px;
+  --lumaui-media-row-compact-art-top: 0px;
+  --lumaui-media-row-compact-tile-padding: 8px;
+  --lumaui-media-row-compact-badge: 17px;
+  --lumaui-media-row-compact-badge-radius: 5px;
+  --lumaui-media-row-compact-badge-offset: 4px;
+  --lumaui-media-row-compact-badge-ring: 2px;
+  --lumaui-media-row-compact-column-gap: 11px;
+  --lumaui-media-row-compact-row-gap: 3px;
+  --lumaui-media-row-compact-padding-top: 6px;
+  --lumaui-media-row-compact-padding-end: 4px;
+  --lumaui-media-row-compact-padding-bottom: 6px;
+  --lumaui-media-row-compact-padding-start: 6px;
+  --lumaui-media-row-compact-radius: 12px;
+  --lumaui-media-row-compact-play: 32px;
+  --lumaui-media-row-compact-play-icon: 14px;
+  --lumaui-media-row-compact-slider-height: 16px;
+  --lumaui-media-row-compact-slider-end: 6px;
+  --lumaui-media-row-compact-track: 4px;
+  --lumaui-media-row-compact-knob: 12px;
+  --lumaui-media-row-compact-paused-opacity: 0.62;
+  --lumaui-media-row-compact-list-gap: 2px;
+  --lumaui-media-row-compact-list-padding: 6px;
+  --lumaui-media-row-compact-list-radius: 16px;
+  --lumaui-media-row-compact-visible-count: 3;
+  --lumaui-media-row-compact-row: 60px;
+  --lumaui-media-row-touch-row: 64px;
+  --lumaui-media-row-touch-art: 44px;
+  --lumaui-media-row-touch-padding-y: 10px;
+  --lumaui-media-row-touch-play: 44px;
+  --lumaui-media-row-touch-play-icon: 18px;
+  --lumaui-media-row-touch-output-height: 40px;
+  --lumaui-media-row-level-height: 11px;
+  --lumaui-media-row-level-bar: 2.5px;
+  --lumaui-media-row-level-gap: 2px;
+  --lumaui-media-row-level-radius: 1px;
+  --lumaui-media-row-level-end: 5px;
+  --lumaui-media-row-level-period-ms: 1000ms;
+  --lumaui-media-row-level-low-scale: 0.55;
+  --lumaui-media-row-level-rest: 3px;
+  --lumaui-media-row-chip-height: 28px;
+  --lumaui-media-row-chip-radius: 9px;
+  --lumaui-media-row-chip-gap: 6px;
+  --lumaui-media-row-chip-padding-start: 9px;
+  --lumaui-media-row-chip-padding-end: 8px;
+  --lumaui-media-row-chip-icon: 14px;
+  --lumaui-media-row-chip-chevron: 12px;
+  --lumaui-media-row-output-height: 32px;
+  --lumaui-media-row-output-radius: 11px;
+  --lumaui-media-row-output-gap: 6px;
+  --lumaui-media-row-output-content-gap: 7px;
+  --lumaui-media-row-output-padding-start: 9px;
+  --lumaui-media-row-output-padding-end: 11px;
+  --lumaui-media-row-output-icon: 15px;
+  --lumaui-media-row-output-columns-count: 2;
+  --lumaui-media-row-output-max-count: 4;
+  --lumaui-volume-slider-compact-knob: 12px;
+  --lumaui-volume-slider-compact-hit: 16px;
   --lumaui-volume-slider-track: 4px;
   --lumaui-volume-slider-knob: 14px;
   --lumaui-volume-slider-hit: 24px;
@@ -2974,6 +3096,14 @@
   --lumaui-volume-slider-min-length: 48px;
   --lumaui-volume-slider-mark: 8px;
   --lumaui-volume-slider-focus: 2px;
+  --lumaui-meter-bar: 4px;
+  --lumaui-meter-gap: 2px;
+  --lumaui-meter-min-length: 24px;
+  --lumaui-meter-length: 120px;
+  --lumaui-meter-mid-db: -18px;
+  --lumaui-meter-high-db: -6px;
+  --lumaui-meter-segment-gap: 1px;
+  --lumaui-meter-segment-min: 2px;
   --lumaui-mixer-strip-width: 76px;
   --lumaui-mixer-strip-padding: 6px;
   --lumaui-mixer-strip-gap: 6px;
@@ -3610,6 +3740,13 @@
 .lumaui-t-media-collection-detail, window.luma-app-window label.lumaui-t-media-collection-detail { font-size: var(--lumaui-t-media-collection-detail-size); font-weight: var(--lumaui-t-media-collection-detail-weight); line-height: 18px; letter-spacing: 0px; }
 .lumaui-t-media-mini-title, window.luma-app-window label.lumaui-t-media-mini-title { font-size: var(--lumaui-t-media-mini-title-size); font-weight: var(--lumaui-t-media-mini-title-weight); line-height: 21px; letter-spacing: 0px; }
 .lumaui-t-media-mini-detail, window.luma-app-window label.lumaui-t-media-mini-detail { font-size: var(--lumaui-t-media-mini-detail-size); font-weight: var(--lumaui-t-media-mini-detail-weight); line-height: 18px; letter-spacing: 0px; }
+.lumaui-t-media-row-title, window.luma-app-window label.lumaui-t-media-row-title { font-size: var(--lumaui-t-media-row-title-size); font-weight: var(--lumaui-t-media-row-title-weight); line-height: 18px; letter-spacing: 0px; }
+.lumaui-t-media-row-line, window.luma-app-window label.lumaui-t-media-row-line { font-size: var(--lumaui-t-media-row-line-size); font-weight: var(--lumaui-t-media-row-line-weight); line-height: 16px; letter-spacing: 0.12px; color: @luma_muted; }
+.lumaui-t-media-row-compact-title, window.luma-app-window label.lumaui-t-media-row-compact-title { font-size: var(--lumaui-t-media-row-compact-title-size); font-weight: var(--lumaui-t-media-row-compact-title-weight); line-height: 18px; letter-spacing: 0px; }
+.lumaui-t-media-row-compact-line, window.luma-app-window label.lumaui-t-media-row-compact-line { font-size: var(--lumaui-t-media-row-compact-line-size); font-weight: var(--lumaui-t-media-row-compact-line-weight); line-height: 15px; letter-spacing: 0px; }
+.lumaui-t-media-row-readout, window.luma-app-window label.lumaui-t-media-row-readout { font-size: var(--lumaui-t-media-row-readout-size); font-weight: var(--lumaui-t-media-row-readout-weight); line-height: 17px; letter-spacing: 0px; font-feature-settings: "tnum"; color: @luma_ink_secondary; }
+.lumaui-t-media-row-chip, window.luma-app-window label.lumaui-t-media-row-chip { font-size: var(--lumaui-t-media-row-chip-size); font-weight: var(--lumaui-t-media-row-chip-weight); line-height: 16px; letter-spacing: 0px; }
+.lumaui-t-media-row-output, window.luma-app-window label.lumaui-t-media-row-output { font-size: var(--lumaui-t-media-row-output-size); font-weight: var(--lumaui-t-media-row-output-weight); line-height: 16px; letter-spacing: 0px; }
 .lumaui-t-feature-title, window.luma-app-window label.lumaui-t-feature-title { font-size: var(--lumaui-t-feature-title-size); font-weight: var(--lumaui-t-feature-title-weight); line-height: 29px; letter-spacing: -0.98px; }
 .lumaui-t-now-title, window.luma-app-window label.lumaui-t-now-title { font-size: var(--lumaui-t-now-title-size); font-weight: var(--lumaui-t-now-title-weight); line-height: 26px; letter-spacing: -0.44px; }
 .lumaui-t-now-display, window.luma-app-window label.lumaui-t-now-display { font-size: var(--lumaui-t-now-display-size); font-weight: var(--lumaui-t-now-display-weight); line-height: 46px; letter-spacing: -0.96px; }

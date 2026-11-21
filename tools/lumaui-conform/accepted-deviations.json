@@ -637,6 +637,58 @@
       "prop": "^radius$",
       "spec_value": "^0$",
       "gtk_value": "^18$"
+    },
+    {
+      "id": "media-row-pause-glyph",
+      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
+      "apps": ["media-row-compact", "media-row-touch"],
+      "reason": "The reference draws the Quick Options pause glyph as two CSS bars, which the spec capture does not list as an icon; the row draws the Lucide-derived lumaui-pause-filled icon in the same place.",
+      "subject": "^icon pause$",
+      "prop": "^extra$"
+    },
+    {
+      "id": "media-row-panel-chip",
+      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
+      "apps": ["media-row-compact", "media-row-touch"],
+      "reason": "The raised play key is the toolkit's raised chip (@luma_chip); the reference's Quick Options sheet draws the Shell's own sheet chip, a slightly darker grey.",
+      "subject": "^button \"(Pause|Play)\"$",
+      "prop": "^surface colour$",
+      "max_delta": 6
+    },
+    {
+      "id": "mixer-group-wells",
+      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
+      "apps": ["settings-volume-mixer"],
+      "reason": "Playing now and Other sounds sit in the standard Settings group, a filled well; the reference draws hairline cards on the page.",
+      "subject": "^card \"(God Only Knows|System sounds)\"$",
+      "prop": "^(background|surface colour)$"
+    },
+    {
+      "id": "mixer-group-wells-chip",
+      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
+      "apps": ["settings-volume-mixer"],
+      "reason": "mixer-group-wells: a row's output picker is the plain fill over the well, not over the page.",
+      "subject": "^button \"Speakers\"$",
+      "prop": "^surface colour$",
+      "max_delta": 5
+    },
+    {
+      "id": "mixer-tiles-taller",
+      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
+      "apps": ["settings-volume-mixer"],
+      "reason": "The output tiles are the Sound page's own, about 2 px taller than the reference's, so the hero is that much taller.",
+      "subject": "^card \"62%\"$",
+      "prop": "^size$",
+      "max_delta": 3
+    },
+    {
+      "id": "mixer-tiles-taller-below",
+      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
+      "apps": ["settings-volume-mixer"],
+      "reason": "mixer-tiles-taller: everything under the tiles sits up to 4 px lower (2.7 px from the tiles, the rest within the position tolerance).",
+      "subject": ".",
+      "prop": "^position$",
+      "max_delta": 4.1
     }
   ]
 }
