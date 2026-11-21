@@ -749,16 +749,32 @@ class StreamyWindow(AppWindow):
             return
         wanted = [w for w in scene.widgets if w.kind in ("display", "window", "camera", "app-audio") and w.visible
                   and w.id not in self.portals.captures and w.id not in self.widget_errors]
-        self._share_queue = [w.id for w in wanted if w.id not in getattr(self, "_share_queue", [])] + \
-            list(getattr(self, "_share_queue", []))
-        if not getattr(self, "_sharing", None):
+        # Only what restores without a picker starts by itself (a camera, a share with its restore token);
+        # the rest say "Needs sharing again" and wait for Share in the bar: no picker pops up on its own.
+        silent = [w for w in wanted if w.kind == "camera" or w.source.get("restore-token")]
+        later = [w for w in wanted if w not in silent]
+        for w in later:
+            self.widget_errors[w.id] = "reshare"
+        wanted = silent
+        if later:
+            self._share_queue = [w.id for w in later] + [i for i in getattr(self, "_share_queue", [])
+                                                          if i not in {w.id for w in later}]
+            self._show_scene()
+            self.refresh_all()
+            GLib.idle_add(lambda: self._offer_share_again() and False)
+        queued = [i for i in getattr(self, "_share_queue", []) if i not in {w.id for w in wanted}]
+        self._auto_queue = [w.id for w in wanted]
+        self._share_queue = queued
+        if not getattr(self, "_sharing", None) and self._auto_queue:
             self._share_next(auto=True)
 
     def _share_next(self, *, auto: bool) -> None:
-        queue = getattr(self, "_share_queue", [])
+        queue = getattr(self, "_auto_queue", []) if auto else getattr(self, "_share_queue", [])
         scene = self.project.active_scene
         while queue:
             widget_id = queue.pop(0)
+            if not auto:
+                self.widget_errors.pop(widget_id, None)  # its picker now
             w = scene.widget(widget_id) if scene is not None else None
             if w is None or w.id in self.portals.captures or not w.visible:
                 continue
@@ -774,8 +790,26 @@ class StreamyWindow(AppWindow):
             return
         _wid, started, auto = sharing
         self._sharing = None
-        if auto and time.monotonic() - started > 2.0 and getattr(self, "_share_queue", []):
-            self._offer_share_again()  # a picker came up: the rest wait for the person
+        if not auto:
+            # One picker at a time, walked by the person's Share: the next follows this one's answer; a
+            # Cancel stops the walk (the rest keep their Share).
+            if self.widget_errors.get(widget_id) == "unshared":
+                for other in getattr(self, "_share_queue", []):
+                    self.widget_errors[other] = "reshare"
+                self._show_scene()
+                self._offer_share_again()
+            elif getattr(self, "_share_queue", []):
+                self._share_next(auto=False)
+            return
+        if auto and time.monotonic() - started > 2.0 and getattr(self, "_auto_queue", []):
+            # A picker came up: the rest wait for the person.
+            self._share_queue = self._auto_queue + [i for i in getattr(self, "_share_queue", [])
+                                                    if i not in self._auto_queue]
+            self._auto_queue = []
+            for widget_id in self._share_queue:
+                self.widget_errors[widget_id] = "reshare"
+            self._show_scene()
+            self._offer_share_again()
             return
         self._share_next(auto=auto)
 
@@ -786,10 +820,9 @@ class StreamyWindow(AppWindow):
             return
         kinds = {w.kind for w in waiting}
         what = "windows" if kinds == {"window"} else "sources"
-        words = f"{len(waiting)} {what} need sharing again" if len(waiting) > 1 else f"{waiting[0].name} needs sharing again"
+        words = f"Share {len(waiting)} {what} again" if len(waiting) > 1 else f"Share {waiting[0].name} again"
         self.center.grow("share-again", panel_list([
-            PanelHeading(words),
-            PanelRow("Share", icon="monitor-up", on_activate=lambda: self._share_next(auto=False))]))
+            PanelRow(words, icon="monitor-up", on_activate=lambda: self._share_next(auto=False))]))
 
     # ── The session's lock ──
 
@@ -886,6 +919,7 @@ class StreamyWindow(AppWindow):
         states = {wid: "waiting" for wid in self.widget_waiting}
         states.update({wid: "choose" for wid, reason in self.widget_errors.items() if reason in ("unshared", "nocamera")})
         states.update({wid: "Paused while locked" for wid, reason in self.widget_errors.items() if reason == "paused"})
+        states.update({wid: "Needs sharing again" for wid, reason in self.widget_errors.items() if reason == "reshare"})
         self.engine.show_scene(self.project.active_scene, skip=set(self.widget_errors), states=states)
         self._close_offscene_sound()
 
@@ -1011,6 +1045,7 @@ class StreamyWindow(AppWindow):
             "denied": f"Streamy isn't allowed to use {name[0].lower() + name[1:] if name.startswith('The ') else name}",
             "nocamera": "No camera found",
             "paused": "Paused while locked",
+            "reshare": "Needs sharing again",
             "missing": f"{name} stopped responding" if w.kind == "camera" else f"{name} is gone",
             "format": f"{name} sends a picture Streamy can't read" if w.has_picture else
                       f"{name} sends sound Streamy can't read",
