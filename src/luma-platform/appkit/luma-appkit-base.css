@@ -2550,11 +2550,10 @@ lumaui-media-row button.lumaui-media-row-key {
 lumaui-media-row button.lumaui-media-row-key:hover { background: @luma_fill; color: @luma_ink; }
 lumaui-media-row button.lumaui-media-row-key:active { background: @luma_control_fill; }
 lumaui-media-row button.lumaui-media-row-key:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
-/* Play/pause is the raised one: a round chip. */
+/* Play/pause is the filled one: a round chip that sits in the row, with no edge or drop. */
 lumaui-media-row button.lumaui-media-row-key.play {
   min-width: var(--lumaui-media-row-regular-play); min-height: var(--lumaui-media-row-regular-play);
-  border-radius: 9999px; background: @luma_chip; color: @luma_ink;
-  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring;
+  border-radius: 9999px; background: @luma_chip; color: @luma_ink; box-shadow: none;
   -gtk-icon-size: var(--lumaui-media-row-regular-play-icon);
 }
 lumaui-media-row button.lumaui-media-row-key.play:hover { filter: brightness(var(--lumaui-hover-brightness)); }

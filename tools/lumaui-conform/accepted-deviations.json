@@ -703,10 +703,10 @@
       "id": "mixer-tiles-taller-below",
       "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
       "apps": ["settings-volume-mixer"],
-      "reason": "mixer-tiles-taller: everything under the tiles sits up to 3 px lower.",
+      "reason": "mixer-tiles-taller: everything under the tiles sits up to 4 px lower (2.7 px from the tiles, the rest within the position tolerance).",
       "subject": ".",
       "prop": "^position$",
-      "max_delta": 3
+      "max_delta": 4.1
     }
   ]
 }

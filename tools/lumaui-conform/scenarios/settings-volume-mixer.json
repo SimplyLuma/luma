@@ -14,7 +14,7 @@
     },
     "before": [
       {
-        "eval": "(() => { const s = document.querySelector('#stage'); s.style.boxSizing = 'border-box'; s.style.width = '1180px'; s.style.margin = '0'; s.style.padding = '46px 0 0 228px'; const page = s.querySelector('.cfpage'); page.style.boxSizing = 'border-box'; page.style.width = '680px'; for (const keys of s.querySelectorAll('.mxctl')) { const b = [...keys.querySelectorAll('button')]; if (b.length === 3) { b[0].setAttribute('aria-label', 'Previous'); b[2].setAttribute('aria-label', 'Next'); } } const play = [...s.querySelectorAll('.mxctl .pp')]; ['Pause', 'Play', 'Pause'].forEach((l, i) => play[i] && play[i].setAttribute('aria-label', l)); })()",
+        "eval": "(() => { if (matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.dataset.mode = 'light'; const s = document.querySelector('#stage'); s.style.boxSizing = 'border-box'; s.style.width = '1180px'; s.style.margin = '0'; s.style.padding = '46px 0 0 228px'; const page = s.querySelector('.cfpage'); page.style.boxSizing = 'border-box'; page.style.width = '680px'; for (const keys of s.querySelectorAll('.mxctl')) { const b = [...keys.querySelectorAll('button')]; if (b.length === 3) { b[0].setAttribute('aria-label', 'Previous'); b[2].setAttribute('aria-label', 'Next'); } } const play = [...s.querySelectorAll('.mxctl .pp')]; ['Pause', 'Play', 'Pause'].forEach((l, i) => play[i] && play[i].setAttribute('aria-label', l)); })()",
         "wait": 300
       }
     ]
