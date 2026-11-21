@@ -170,6 +170,9 @@ assert(/_renderAll\(outputs\)/.test(page) && /Model\.outputLabel\(output\)/.test
 
 // TV: the same rows; OK plays or pauses.
 assert(/playingRows\(mixer\.applications\)/.test(tv), 'the TV panel lists the playing rows');
+assert(/mixer\.outputs\.map\(output => \(\{id: `node:\$\{output\.name\}`, node: output\.name, name: outputLabel\(output\)/.test(tv) &&
+    /if \(row\.output\.node\) \{\s*item\?\.appMixer\?\.setDefaultOutput\(row\.output\.node\);/.test(tv),
+    'the TV panel names and chooses outputs as the Sound page does');
 assert(/if \(row\.app\.canPlayPause\) \{\s*mixer\?\.playPause\(row\.app\.id\);/.test(tv), 'OK plays or pauses');
 
 print('sound-page-policy: PASS');
