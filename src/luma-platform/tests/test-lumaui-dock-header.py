@@ -189,6 +189,27 @@ def island_rim_cache() -> None:
         window.destroy()
 
 
+def island_narrow_height() -> None:
+    """Asked for its height at its 160 px floor, an island measures its content at the content's own
+    minimum width, as it lays it out (no "Trying to measure ... for width of 160" from GTK)."""
+    from luma_appkit import Island
+
+    asked = []
+
+    class Wide(Gtk.Widget):
+        def do_measure(self, orientation, for_size):
+            if orientation == Gtk.Orientation.VERTICAL:
+                asked.append(for_size)
+                return 100, 100, -1, -1
+            return 700, 700, -1, -1
+
+    island = Island()
+    island.append(Wide())
+    assert island.measure(Gtk.Orientation.HORIZONTAL, -1)[0] <= 160
+    assert island.measure(Gtk.Orientation.VERTICAL, 160)[0] == 100
+    assert asked and min(asked) >= 700, asked
+
+
 if __name__ == "__main__":
     band_contrast()
     Gtk.init()
@@ -198,4 +219,5 @@ if __name__ == "__main__":
     header_and_status()
     icon_only_modes()
     island_rim_cache()
+    island_narrow_height()
     print("ok")
