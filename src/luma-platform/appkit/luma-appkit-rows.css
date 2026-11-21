@@ -70,9 +70,12 @@ row.lumaui-row:selected .lumaui-row-lead.lead-well {
 }
 .lumaui-row-lead.lead-thumbnail image { -gtk-icon-size: var(--lumaui-nav-files-thumb-icon); }
 .lumaui-row-lead.lead-thumbnail.document { background: none; box-shadow: none; }
-/* A contained picture: whole, in its own shape (16:9, 9:16) with the small radius and a hairline. */
-.lumaui-row-lead.lead-thumbnail.contain { background: none; box-shadow: none; }
-.lumaui-row-lead.lead-thumbnail.contain picture.lumaui-row-thumb-picture { border-radius: 3px; outline: 1px solid @luma_line; outline-offset: -1px; }
+/* The media tile (fit="contain"): one 16:9 tile in every state, picture or glyph; a picture of
+ * another shape sits whole on the tile's own surface; the hairline is drawn over the picture. */
+.lumaui-row-lead.lead-thumbnail.contain {
+  min-width: var(--lumaui-nav-files-media-thumb-width); min-height: var(--lumaui-nav-files-media-thumb-height);
+  outline: 1px solid @luma_line; outline-offset: -1px;
+}
 .lumaui-row-lead.lead-thumbnail box.lumaui-row-page {
   min-width: calc(var(--lumaui-nav-files-page-width) - 2 * var(--lumaui-nav-files-page-padding-x));
   min-height: var(--lumaui-nav-files-thumb-height); padding: 0 var(--lumaui-nav-files-page-padding-x);

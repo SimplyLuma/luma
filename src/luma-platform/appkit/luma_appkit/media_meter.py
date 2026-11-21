@@ -11,6 +11,15 @@ flat for a row, with the meter laid along the track over the track's length.
     VolumeSlider(-60, 6, value=0, unity=0, unit="dB", meter=2, horizontal=True,
                  label="Mic volume", on_move=fn)  # .get_meter().set_levels_db(l, r)
 
+A mixer's channel is a ``MixerStrip`` (``luma-mixer-strip.c``): a fixed-width
+column of name and device, a dB scale beside an upright VolumeSlider and its
+stereo meter, the readout, and Mute and Monitor keys. ``MixerRow`` lays strips
+out left to right in a row that scrolls sideways; it fits ``DockTile(fit=True)``.
+
+    MixerStrip("Mic", "USB microphone", db=-6, on_change=fn, on_mute=fn, on_monitor=fn)
+        # .set_levels(l, r), .set_levels_db(l, r), .set_db(db), .set_muted(b), .set_monitoring(b)
+    MixerRow([strip, ...])  # .append(strip), .remove(strip)
+
 A meter animates only while a level falls, so a silent row costs nothing.
 Feed it from GStreamer's ``level`` element (``rms`` or ``peak`` per channel,
 in dB) at 10 to 20 updates a second.
@@ -19,7 +28,7 @@ from __future__ import annotations
 
 from .creative_parts import lumaui_module
 
-__all__ = ["AudioMeter", "VolumeSlider"]
+__all__ = ["AudioMeter", "MixerRow", "MixerStrip", "VolumeSlider"]
 
 
 def AudioMeter(channels: int = 2, *, horizontal: bool = False, label: str | None = None):
@@ -66,3 +75,40 @@ def VolumeSlider(lower: float = 0, upper: float = 100, *, value: float | None = 
     if on_move is not None:
         slider.connect("moved", lambda _s, v: on_move(v))
     return slider
+
+
+def MixerStrip(name: str, subtitle: str | None = None, *, db: float = 0.0, min_db: float = -60,
+               max_db: float = 6, muted: bool = False, monitoring: bool = False,
+               on_change=None, on_mute=None, on_monitor=None):
+    """A channel strip; ``on_change(db)``, ``on_mute(muted)`` and ``on_monitor(on)`` hear only the person.
+
+    The setters (``set_db``, ``set_muted``, ``set_monitoring``) are silent.
+    """
+    if max_db <= min_db:
+        raise ValueError("a strip's max_db must be above its min_db")
+    L = lumaui_module()
+    strip = L.MixerStrip.new(name, subtitle)
+    strip.set_range(min_db, max_db)
+    strip.set_db(db)
+    strip.set_muted(muted)
+    strip.set_monitoring(monitoring)
+    if on_change is not None:
+        strip.connect("moved", lambda _s, value: on_change(value))
+    if on_mute is not None:
+        strip.connect("mute-toggled", lambda _s, value: on_mute(value))
+    if on_monitor is not None:
+        strip.connect("monitor-toggled", lambda _s, value: on_monitor(value))
+    return strip
+
+
+def MixerRow(strips=(), *, label: str | None = None):
+    """Strips left to right, scrolling sideways when they do not fit; ``.append`` and ``.remove`` change it."""
+    L = lumaui_module()
+    row = L.MixerRow.new()
+    for strip in strips:
+        row.append(strip)
+    if label is not None:
+        from gi.repository import Gtk
+
+        row.update_property([Gtk.AccessibleProperty.LABEL], [label])
+    return row

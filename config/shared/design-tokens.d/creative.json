@@ -92,7 +92,7 @@
       "picker_swatch": 22,
       "picker_swatch_gap": 6,
       "picker_swatch_radius": 7,
-      "picker_recent_max": 8
+      "picker_recent_max": 12
     },
     "motion": {
       "creative_panel_move_ms": 380,

@@ -26,6 +26,7 @@ if str(HERE.parents[1] / "appkit") not in sys.path:
 from luma_appkit import TypeLabel  # noqa: E402
 from luma_appkit import AudioWaveform, ImageViewport, MediaGrid, MediaItem, MediaTile, MediaTransport, Timeline  # noqa: E402
 from luma_appkit import AdjustmentGroup, AdjustmentPanel, CoverArt, ValueSlider, VoiceClip  # noqa: E402
+from luma_appkit import Dock, DockTile, MixerRow, MixerStrip  # noqa: E402
 
 # (key, title, Lucide glyph, family, module) in the gallery's PAGES shape.
 PAGES = [
@@ -37,6 +38,7 @@ PAGES = [
     ("media-viewport", "Image viewport", "image", "media", None),
     ("media-voice", "Voice clip", "mic", "media", None),
     ("media-timeline", "Timeline", "film", "media", None),
+    ("media-mixer", "Mixer strips", "sliders-vertical", "media", None),
 ]
 
 
@@ -352,8 +354,46 @@ def page_media_timeline() -> Gtk.Widget:
     return page
 
 
+def page_media_mixer() -> Gtk.Widget:
+    page, demo = _page(
+        "Mixer strips",
+        "One channel per strip, a fixed width: its name and device, a dB scale beside the fader and its "
+        "stereo meter, the value, and Mute and Monitor. Double-click the fader for 0 dB, scroll or use the "
+        "arrows to adjust it, M to mute. Strips sit in a row that scrolls sideways when they do not fit.",
+        "MixerStrip(name, subtitle=None, db=0, min_db=-60, max_db=6, muted=, monitoring=, on_change=, on_mute=, "
+        "on_monitor=) .set_levels(l, r) .set_levels_db(l, r) .set_db(db) .set_muted(b) .set_monitoring(b); "
+        "MixerRow(strips) .append(strip) .remove(strip)")
+    channels = (("Mic", "USB microphone", -3.5, (-14, -16), False, True),
+                ("Desktop audio", "Built-in speakers", 0, (-22, -20), False, False),
+                ("Music", "App audio", -12, (-30, -28), False, False),
+                ("Game capture", "HDMI capture card", -6, (-4, -2), False, False),
+                ("Alerts", None, -18, (-60, -60), True, False))
+
+    def row() -> Gtk.Widget:
+        strips = []
+        for name, device, db, (left, right), muted, monitoring in channels:
+            strip = MixerStrip(name, device, db=db, muted=muted, monitoring=monitoring)
+            strip.set_levels_db(left, right)
+            strips.append(strip)
+        return MixerRow(strips)
+
+    demo.append(_section("Streamy: the Audio panel"))
+    wide = row()
+    wide.set_size_request(-1, 300)
+    demo.append(wide)
+    demo.append(_section("In a fitted dock tile, narrower than its strips"))
+    preview = DockTile("preview", "Preview", "monitor", Gtk.Box(), main=True, bare=True)
+    audio = DockTile("audio", "Audio", "volume-2", row(), fit=True)
+    dock = Dock([preview, audio], layout=Dock.split("v", 0.35, "preview", "audio"))
+    dock.set_size_request(320, 520)
+    dock.set_halign(Gtk.Align.START)
+    demo.append(dock)
+    return page
+
+
 BUILDERS = {"media-grid": page_media_grid, "media-viewport": page_media_viewport, "media-voice": page_media_voice, "media-adjust": page_media_adjust, "media-cover": page_media_cover, "media-transport": page_media_transport,
-            "media-waveform": page_media_waveform, "media-timeline": page_media_timeline}
+            "media-waveform": page_media_waveform, "media-timeline": page_media_timeline,
+            "media-mixer": page_media_mixer}
 
 
 # ── conform surfaces ───────────────────────────────────────────────────────
