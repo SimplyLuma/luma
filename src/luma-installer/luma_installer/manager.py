@@ -106,6 +106,18 @@ def _remove_exports(application_id: str, exported_command: object = None) -> Non
     remove_command(exported_command)
 
 
+def _forget_socket_folder() -> None:
+    """The launchers' socket folder in the runtime directory, once none of them has a socket there.
+
+    Every running launcher keeps its bus socket in it, so an empty folder means none is running.
+    """
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    try:
+        (runtime / "luma-installer-bus").rmdir()
+    except OSError:
+        pass  # not there, or in use
+
+
 def _remove_from_store(record: dict[str, object]) -> None:
     """Take an application's trees out of the store, and what a move from a capsule still kept beside them."""
     from . import closure_launcher, store_install
@@ -248,6 +260,8 @@ def remove(application_id: str, delete_data: bool = False) -> str:
     remove_record(application_id)
     # The lock its updates were taken under is the application's too.
     (records_root() / f".refresh-{safe_id(application_id)}.lock").unlink(missing_ok=True)
+    if kind in {"deb", "rpm", "appimage", "portable"}:
+        _forget_socket_folder()
     if kind == "snap":
         return "Removed. snapd manages the retained snapshot according to system policy."
     return "Removed. Private application data was deleted." if delete_data else "Removed. Private application data was retained."

@@ -77,6 +77,13 @@
     ; domains may already make anonymous memory executable (execmem); this is
     ; the same right for the file-backed form of the same thing.
     (allow process tmpfs_t (file (execute execmod)))
+    ; fontconfig tries to refresh the font cache of the tree it runs on
+    ; ({ write } on a fontconfig cache folder of the tree, Mousepad, GTK 3)
+    ; and then uses its per-person cache in the private home. The tree is
+    ; read-only by design, so the attempt stays refused; it is only not
+    ; logged, so that a real denial on the tree is not lost among these.
+    ; Only adding an entry to a folder of the tree is silenced.
+    (dontaudit process container_ro_file_t (dir (write add_name)))
 )
 ; The store and its checkouts, per person. Without these a relabel of the home
 ; folder (restorecon) would give every tree the type of ordinary data, and no

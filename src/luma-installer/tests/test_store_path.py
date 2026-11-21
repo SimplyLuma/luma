@@ -543,6 +543,21 @@ class ReviewCache(unittest.TestCase):
             facts.forget_artwork(SHA)  # nothing cached: nothing to do
 
 
+class SocketFolder(unittest.TestCase):
+    def test_the_launchers_socket_folder_goes_only_when_no_launcher_has_a_socket_in_it(self):
+        from luma_installer import manager
+        with tempfile.TemporaryDirectory() as runtime, patch.dict(os.environ, {"XDG_RUNTIME_DIR": runtime}):
+            folder = Path(runtime) / "luma-installer-bus"
+            folder.mkdir()
+            (folder / "abc-123.bus").touch()
+            manager._forget_socket_folder()
+            self.assertTrue(folder.exists())
+            (folder / "abc-123.bus").unlink()
+            manager._forget_socket_folder()
+            self.assertFalse(folder.exists())
+            manager._forget_socket_folder()  # nothing there: nothing to do
+
+
 class BuildLogs(unittest.TestCase):
     def test_a_removed_application_leaves_no_build_log_and_the_last_no_folder(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(Path, "home", return_value=Path(directory)):
