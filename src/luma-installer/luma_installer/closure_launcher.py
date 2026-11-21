@@ -306,7 +306,10 @@ def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, 
         # The display's own socket, not the folder of every display's.
         arguments.extend(("--ro-bind", str(display_socket), str(display_socket)))
         env["DISPLAY"] = host["DISPLAY"]
-        authority = capsule_launcher._runtime_authority(runtime)
+        # Today's launcher hands over the session's X cookie; once it stops (the
+        # cookie stays out of capsules), there is nothing to hand over here either.
+        find_authority = getattr(capsule_launcher, "_runtime_authority", None)
+        authority = find_authority(runtime) if find_authority is not None else None
         if authority is not None:
             arguments.extend(("--ro-bind", str(authority), str(inside / authority.name)))
             env["XAUTHORITY"] = str(inside / authority.name)

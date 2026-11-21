@@ -144,23 +144,36 @@ class Payload(unittest.TestCase):
 
 
 class SharedPolicy(unittest.TestCase):
-    """The session rules are today's launcher's, used by import. If one of
-    these moves or changes shape, this launcher has to follow in the same change."""
+    """The session rules are today's launcher's, used by import, so they change
+    here when they change there. This pins only how this launcher calls them."""
 
-    def test_the_functions_this_launcher_borrows_still_have_their_shape(self):
+    def test_the_functions_this_launcher_borrows_can_be_called_the_way_it_calls_them(self):
         import inspect
         borrowed = launcher.capsule_launcher
-        self.assertEqual(list(inspect.signature(borrowed._start_bus_proxy).parameters), ["runtime", "identity", "own"])
-        self.assertEqual(list(inspect.signature(borrowed._stop_bus_proxy).parameters), ["process", "socket"])
-        self.assertEqual(list(inspect.signature(borrowed._guarded).parameters), ["record", "arguments", "env"])
-        self.assertEqual(list(inspect.signature(borrowed._person_folders).parameters), [])
-        self.assertEqual(list(inspect.signature(borrowed._runtime_authority).parameters), ["runtime"])
-        self.assertEqual(list(inspect.signature(borrowed._desktop_id).parameters), ["record"])
+        self.assertEqual(list(inspect.signature(borrowed._start_bus_proxy).parameters)[:3], ["runtime", "identity", "own"])
+        inspect.signature(borrowed._start_bus_proxy).bind(Path("/run/user/1"), "identity", [])
+        inspect.signature(borrowed._stop_bus_proxy).bind(None, None)
+        inspect.signature(borrowed._guarded).bind({}, [], {})
+        inspect.signature(borrowed._person_folders).bind()
+        inspect.signature(borrowed._desktop_id).bind({})
         self.assertTrue(callable(borrowed.host_time_zone))
         policy = launcher.runtime_policy
         for name in ("payload_arguments", "own_bus_arguments", "login_environment", "is_chromium", "deb_package_candidates"):
             self.assertTrue(callable(getattr(policy, name)), name)
         self.assertIn("XDG_CURRENT_DESKTOP", policy.DESKTOP_IDENTITY)
+
+    def test_x11_works_with_or_without_a_cookie_to_hand_over(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder).resolve()
+            for name in ("checkout", "data", "instance/tmp", "run"):
+                (base / name).mkdir(parents=True)
+            options = {"data": base / "data", "instance": base / "instance", "runtime": base / "run", "bus_socket": None,
+                       "folders": [], "environment": {"DISPLAY": ":0"}}
+            with patch.object(launcher, "x11_socket", return_value=Path("/tmp/.X11-unix/X0")), \
+                    patch.object(launcher.capsule_launcher, "_runtime_authority", None, create=True):
+                _arguments, env = launcher.sandbox_arguments(base / "checkout", dict(RECORD), **options)
+            self.assertEqual(env["DISPLAY"], ":0")
+            self.assertNotIn("XAUTHORITY", env)
 
 
 class Integration(unittest.TestCase):
