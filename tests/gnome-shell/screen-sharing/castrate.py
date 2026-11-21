@@ -48,11 +48,23 @@ call(session, "org.gnome.Mutter.ScreenCast.Session", "Start", None)
 GLib.timeout_add_seconds(10, loop.quit)
 loop.run()
 
+def serial(node_id):
+    """The node's object.serial, which pipewiresrc's target-object takes."""
+    for _ in range(20):
+        dump = subprocess.run(["pw-dump"], capture_output=True, text=True).stdout
+        for obj in json.loads(dump or "[]"):
+            if obj.get("id") == node_id:
+                return obj.get("info", {}).get("props", {}).get("object.serial")
+        GLib.usleep(250000)
+    return None
+
+
 result = {"frames": 0, "seconds": seconds, "node": node[0]}
 if node[0] is not None:
+    result["serial"] = serial(node[0])
     run = subprocess.run(
         ["timeout", "-s", "INT", str(seconds), "gst-launch-1.0", "-e", "-v",
-         "pipewiresrc", f"path={node[0]}", "always-copy=true", "!",
+         "pipewiresrc", f"target-object={result['serial'] or node[0]}", "always-copy=true", "!",
          "fakesink", "silent=false", "sync=false"],
         capture_output=True, text=True)
     result["frames"] = sum(1 for line in run.stdout.splitlines() if "chain" in line)

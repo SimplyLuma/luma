@@ -786,7 +786,7 @@ the microphone indicator, strip and status well, as pavucontrol is. Without
 the service or before version 2 the page is unchanged. Test:
 `app-mixer-policy.js` in %check. Shell .188.
 
-`0355-blur-one-target-per-framebuffer.patch`: `ShellBlurEffect` keeps its
+`0356-blur-one-target-per-framebuffer.patch`: `ShellBlurEffect` keeps its
 textures, pipelines and cache state per framebuffer (each stage view, and
 off-stage captures), at most four, dropping one unpainted for 5 s. A
 background blur copies and blurs only the part of the actor inside that
@@ -799,7 +799,7 @@ the actor on that view, so an actor across monitors no longer asks for a
 frame on every view every frame. `shell_blur_effect_get_framebuffer_allocations()`
 is for tests. Test: `tests/gnome-shell/screen-sharing` `MODE=perf`. Shell .190.
 
-`0356-share-previews-snapshot.patch`: Share previews draw into their own
+`0357-share-previews-snapshot.patch`: Share previews draw into their own
 framebuffer at the tile's size and take the source again at most once a
 second (`SnapshotEffect`), and the picker holds the backgrounds outside its
 card while it is open, so the scrim keeps the blur it opened with. Live

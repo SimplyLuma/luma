@@ -349,8 +349,8 @@ diff --git a/gnome-shell.spec b/gnome-shell.spec
 +Patch1328:      0348-file-drag-out-of-shell.patch
 +Patch1329:      0349-well-background-apps.patch
 +Patch1330:      0350-app-mixer.patch
-+Patch1331:      0355-blur-one-target-per-framebuffer.patch
-+Patch1332:      0356-share-previews-snapshot.patch
++Patch1331:      0356-blur-one-target-per-framebuffer.patch
++Patch1332:      0357-share-previews-snapshot.patch
 +Source9000:     quick-options-page.js
 +Source9001:     quick-options-network.js
 +Source9002:     window-corners-first-commit.js
