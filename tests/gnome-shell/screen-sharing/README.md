@@ -11,7 +11,7 @@ the screenshots and the frames the application received into checks.
 What it shows (evidence items in the handoff):
 
 - **2** the picker from a portal request, light and dark, 100% and 200%, with
-  a playing window whose preview changes between two shots 700 ms apart while
+  a playing window whose preview changes between two shots 1.2 s apart (previews refresh once a second) while
   still windows' previews do not; a resolved requester (Viola) and an
   unresolved host caller.
 - **3** Windows and Screens, and a request that allows only screens (no

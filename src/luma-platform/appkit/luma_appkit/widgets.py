@@ -2030,6 +2030,15 @@ class AppWindow(Adw.ApplicationWindow):
         if self._native_sheet_layer:
             LumaUI.window_set_sheet_layer(self, self.sheet_layer, self.body, self.title_bar)
         self._toolbar_view = view
+        # F10 opens the app menu (the identity's), as in every GNOME app; win.show-app-menu is also how
+        # tools and tests open it without a click.
+        show_menu = Gio.SimpleAction.new("show-app-menu", None)
+        show_menu.connect("activate", lambda *_a: self.identity.popup())
+        self.add_action(show_menu)
+        menu_keys = Gtk.ShortcutController(scope=Gtk.ShortcutScope.MANAGED)
+        menu_keys.add_shortcut(Gtk.Shortcut.new(Gtk.ShortcutTrigger.parse_string("F10"),
+                                                Gtk.NamedAction.new("win.show-app-menu")))
+        self.add_controller(menu_keys)
         self._status_ink = Gio.SimpleAction.new_stateful("luma-status-ink", None, GLib.Variant("s", "auto"))
         self._status_ink.set_enabled(False)
         self.add_action(self._status_ink)

@@ -27,7 +27,7 @@ from . import lumaui  # noqa: E402
 __all__ = ["PROGRESS_SIZES", "PROGRESS_TONES", "ProgressLine"]
 
 PROGRESS_SIZES = ("row", "tile", "meter", "hero", "well")
-PROGRESS_TONES = ("accent", "good", "neutral", "danger", "chart")
+PROGRESS_TONES = ("accent", "good", "neutral", "warning", "danger", "chart")
 
 
 def _clamp(value: float) -> float:

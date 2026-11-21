@@ -486,6 +486,7 @@ label.lumaui-mark-none { color: @luma_muted; padding: 12px 0; }
 .lumaui-progress.good > .lumaui-progress-fill { background: @luma_progress_good; }
 .lumaui-progress.neutral > .lumaui-progress-fill { background: @luma_ink_secondary; }
 .lumaui-progress.danger > .lumaui-progress-fill { background: @luma_danger_ink; }
+.lumaui-progress.warning > .lumaui-progress-fill { background: @luma_warning_ink; }
 
 /* LumaUI: Favourites strip
  * v70 Phone .pnfavs (64 wide tiles, 48 faces) and Maps .mpfavs (80 wide, 44 glyph wells). */

@@ -40,6 +40,13 @@ G_BEGIN_DECLS
  * - Edges and centres snap to the canvas's edges, centre lines and thirds,
  *   and to the other boxes' edges and centres, a resize's and a crop's
  *   pulled edges too; a guide shows each snap.
+ * - Several boxes: Shift+click adds or removes one; a drag from empty canvas
+ *   draws a rubber band that selects what it touches (Shift: adds); Ctrl+A
+ *   selects every visible box. Two or more chosen share one box with
+ *   handles: dragging any of them moves all, the handles scale them all
+ *   inside it (proportions kept, Shift stretches, Alt from the centre), and
+ *   the arrow keys nudge all; #LumaArrangeView::group-changed and
+ *   ::group-committed report every moved box (crops untouched).
  * - Keyboard: the arrow keys move the selected box one unit (Shift: ten),
  *   Tab and Shift+Tab choose the next and previous box, Esc clears the
  *   selection.
@@ -61,7 +68,7 @@ G_BEGIN_DECLS
  *
  * Tree: widget.lumaui-arrange-view
  *   ├ content
- *   └ (style nodes: .lumaui-arrange-frame, -hover, -handle, -knob, -guide, -locked, -ghost)
+ *   └ (style nodes: .lumaui-arrange-frame, -hover, -handle, -knob, -guide, -locked, -ghost, -marquee)
  */
 #define LUMA_TYPE_ARRANGE_VIEW (luma_arrange_view_get_type())
 G_DECLARE_FINAL_TYPE(LumaArrangeView, luma_arrange_view, LUMA, ARRANGE_VIEW, GtkWidget)
@@ -253,6 +260,30 @@ void luma_arrange_view_set_order(LumaArrangeView *self, const char *const *ids);
  * Select without emitting #LumaArrangeView::selection-changed.
  */
 void luma_arrange_view_set_selected(LumaArrangeView *self, const char *id);
+/**
+ * luma_arrange_view_set_selection:
+ * @self: a view
+ * @ids: (array zero-terminated=1) (nullable): the boxes to select, the last
+ *   one the primary (luma_arrange_view_get_selected())
+ *
+ * Select without emitting anything.
+ */
+void luma_arrange_view_set_selection(LumaArrangeView *self, const char *const *ids);
+/**
+ * luma_arrange_view_get_selection:
+ * @self: a view
+ *
+ * Returns: (array zero-terminated=1) (transfer full): every chosen box, in
+ *   the order chosen
+ */
+char **luma_arrange_view_get_selection(LumaArrangeView *self);
+/**
+ * luma_arrange_view_select_all:
+ * @self: a view
+ *
+ * Select every visible box (Ctrl+A), as a person would: emits.
+ */
+void luma_arrange_view_select_all(LumaArrangeView *self);
 /**
  * luma_arrange_view_get_selected:
  * @self: a view

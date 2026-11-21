@@ -37,6 +37,33 @@ def docks():
         raise AssertionError("an unknown side is refused")
 
 
+def arrange_group():
+    """Several boxes from Python: selection, group signals as dicts, align and distribute."""
+    from luma_appkit import ArrangeItem, ArrangeView, align_rects, distribute_rects
+
+    chosen, groups = [], []
+    view = ArrangeView(items=[ArrangeItem("a", "A", 0, 0, 100, 50), ArrangeItem("b", "B", 300, 100, 50, 50)],
+                       on_selection=chosen.append, on_group_commit=groups.append)
+    view.set_selection(["a", "b"])
+    assert view.get_selection() == ["a", "b"] and view.get_selected() == "b"
+    view.select_all()
+    assert chosen == [] or chosen[-1] == ["a", "b"]
+    rects = {"a": (0, 0, 100, 50), "b": (300, 100, 50, 50), "c": (100, 300, 20, 20)}
+    assert align_rects(rects, "left")["b"] == (0, 100, 50, 50)
+    assert align_rects(rects, "right")["a"] == (250, 0, 100, 50)
+    assert align_rects(rects, "middle")["c"][1] == (0 + 320) / 2 - 10
+    assert align_rects({"a": (10, 10, 100, 50)}, "centre", canvas=(1920, 1080))["a"] == (910, 10, 100, 50)
+    spread = distribute_rects(rects, "h")
+    assert spread["a"][0] == 0 and spread["b"][0] == 300 and abs(spread["c"][0] - 190) < 1e-9, spread
+    for bad in (lambda: align_rects(rects, "diagonal"), lambda: align_rects({"a": (0, 0, 1, 1)}, "left")):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("refused")
+
+
 def picker():
     from gi.repository import Gdk
     from luma_appkit import ColorPicker, PropertyColor, recent_colors
@@ -549,21 +576,78 @@ def dock_close_open():
     settle()
     layout = d.layout()
     assert not d.is_open("vert") and tiles["vert"].get_parent() is None
-    assert layout["closed"] == {"vert": {"beside": "land", "edge": "right", "share": 0.4}}, layout
+    record = layout["closed"]["vert"]
+    assert {k: record[k] for k in ("split", "side", "sibling", "ratio")} == \
+        {"split": "h", "side": "end", "sibling": ["land"], "ratio": 0.4}, layout
     assert layout["layout"]["start"] == "land" and len(undo) == 1
     # The closed set round-trips: set_layout keeps it closed (it doesn't join at the end).
     d.set_layout(layout)
     assert not d.is_open("vert") and d.layout() == layout
-    # Reopened at its last place, with its share.
+    # Reopened at its last place, with its share and its geometry.
+    width = tiles["vert"].get_width()
     d.open_tile("vert")
     settle()
     assert d.layout()["start"] == {"split": "h", "ratio": 0.6, "start": "land", "end": "vert"}, d.layout()
     assert "closed" not in str(d.layout()) and len(undo) == 2
+    # A tile split from a group of tiles goes back beside the whole group, not one of them.
+    d.close_tile("audio")
+    d.open_tile("audio")
+    settle()
+    assert d.layout()["end"] == {"split": "v", "ratio": 0.5, "start": "widgets", "end": "audio"}, d.layout()
+    d.set_layout({"split": "h", "ratio": 0.6, "start": "land",
+                  "end": {"split": "v", "ratio": 0.5, "start": {"split": "h", "ratio": 0.5, "start": "vert",
+                                                                "end": "widgets"}, "end": "audio"}})
+    settle()
+    d.close_tile("audio")
+    settle()
+    d.open_tile("audio")
+    settle()
+    assert d.layout()["end"]["end"] == "audio" and d.layout()["end"]["start"]["start"] == "vert", d.layout()
+    assert abs(d.layout()["end"]["ratio"] - 0.5) < 0.01, d.layout()
+    # Closed, the window resized, reopened: the share holds, not the pixels.
+    before = tiles["audio"].get_height() / d.get_height()
+    d.close_tile("audio")
+    window.set_default_size(1200, 900)
+    settle()
+    d.open_tile("audio")
+    settle()
+    assert abs(tiles["audio"].get_height() / d.get_height() - before) < 0.03, (before, tiles["audio"].get_height())
+    # Closed, the others rearranged, reopened: beside the smallest part still holding its old neighbours,
+    # at its old size.
+    tall = tiles["audio"].get_height()
+    d.close_tile("audio")
+    d.move_tile("widgets", "land", "left")
+    settle()
+    d.open_tile("audio")
+    settle()
+    assert d.is_open("audio") and abs(tiles["audio"].get_height() - tall) < 30, (tall, tiles["audio"].get_height(),
+                                                                                d.layout())
+    # In a tab group it goes back into the group at its index.
+    d.move_tile("audio", "vert", "tabs")
+    d.move_tile("widgets", "vert", "tabs")
+    settle()
+    group = next(slot for slot, _w in d._slots if isinstance(slot, dict))["tabs"]
+    d.close_tile("audio")
+    d.open_tile("audio")
+    settle()
+    assert next(slot for slot, _w in d._slots if isinstance(slot, dict))["tabs"] == group
+    window.set_default_size(1200, 700)
+    d.set_layout({"split": "h", "ratio": 0.7, "start": {"split": "h", "ratio": 0.6, "start": "land", "end": "vert"},
+                  "end": {"split": "v", "ratio": 0.5, "start": "widgets", "end": "audio"}})
+    settle()
     # The main tile may close while another main stays: the other leads.
     d.close_tile("land")
     assert d.main_key == "vert"
     settle()
-    # Opened elsewhere at a size: the share is that many px of the target's place.
+    # A suggested place doesn't override a remembered one (a canvas toggle passes one every time).
+    d.open_tile("land", beside="vert", edge="right", size=90)
+    settle()
+    assert d.layout()["start"] == {"split": "h", "ratio": 0.6, "start": "land", "end": "vert"}, d.layout()
+    d.close_tile("land")
+    settle()
+    # With no remembered place, it opens where suggested, that many px of the target's place.
+    d.set_layout({"layout": d.layout()["layout"], "closed": {"land": {}}})
+    settle()
     width = tiles["vert"].get_width()
     d.open_tile("land", beside="vert", edge="left", size=200)
     settle()
@@ -603,6 +687,7 @@ if __name__ == "__main__":
     docks()
     arrange()
     picker()
+    arrange_group()
     meter()
     live_chip()
     dock()

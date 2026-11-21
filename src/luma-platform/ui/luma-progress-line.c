@@ -13,7 +13,7 @@ struct _LumaProgressLine {
 G_DEFINE_FINAL_TYPE(LumaProgressLine, luma_progress_line, GTK_TYPE_WIDGET)
 
 static const char *const sizes[] = {"row", "tile", "meter", "hero", "well"};
-static const char *const tones[] = {"accent", "good", "neutral", "danger", "chart"};
+static const char *const tones[] = {"accent", "good", "neutral", "warning", "danger", "chart"};
 
 static gboolean one_of(const char *value, const char *const *choices, guint n) {
   for (guint i = 0; i < n; i++)

@@ -3,7 +3,7 @@
 """Turn the screenshots into checks. $1: the output root all.sh wrote.
 
 - live: the playing window's preview differs between two screenshots taken
-  700 ms apart, and a still window's preview does not;
+  1.2 s apart (previews refresh once a second), and a still window's preview does not;
 - edge on screen: a shared screen's border is violet in the screenshot;
 - edge not in the stream: the frames the application received have no violet
   border and no violet pill mark, for the shared screen and the shared window.

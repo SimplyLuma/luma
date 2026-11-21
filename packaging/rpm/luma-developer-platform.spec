@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.144%{?dist}
+Release:        1.luma.147%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,32 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.147
+- ArrangeView: several boxes. Shift+click adds or removes, a rubber band
+  from empty canvas selects what it touches (Shift adds), Ctrl+A selects
+  all; set_selection()/get_selection()/select_all(),
+  selection-ids-changed. Two or more share one box: dragging moves all,
+  its handles scale all in proportion (Shift stretches, Alt from the
+  centre), arrows nudge all; group-changed/group-committed a{s(dddd)}.
+- luma_appkit: ArrangeView(on_selection=, on_group_change=,
+  on_group_commit=); align_rects() and distribute_rects().
+
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.146
+- Dock: a closed tile reopens where and how it was. Its record keeps its tab
+  group and index, or the tiles it was split from, the split, its side,
+  share, pixel size and a fitted side's size; reopening splits that whole
+  part again (the share, so a resized window keeps the proportion), else
+  the smallest part still holding what is left of it at the old size, else
+  the suggested or default place. A remembered place wins over open_tile's
+  beside/edge/size. Records persist in layout()["closed"].
+- ProgressLine (Python and C): a "warning" tone (amber).
+
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.145
+- Popovers are opaque in every treatment: the dark treatment's menus were
+  alpha(@luma_window, .78) and frost/glass popovers the veil, so the window
+  under a menu showed through (nothing blurs behind a popover surface).
+- AppWindow: F10 and win.show-app-menu open the app menu.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.144
 - ChatLine and ChatFeed (luma_appkit): a live chat's lines (lead, badges,
   the author's colour made readable, selectable text; action and notice

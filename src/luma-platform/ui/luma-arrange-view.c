@@ -37,6 +37,9 @@ enum {
   SIG_ITEM_ACTIVATED,
   SIG_CROP_CHANGED,
   SIG_CROP_COMMITTED,
+  SIG_SELECTION_IDS_CHANGED,
+  SIG_GROUP_CHANGED,
+  SIG_GROUP_COMMITTED,
   N_SIGNALS
 };
 static guint signals[N_SIGNALS];
@@ -52,7 +55,7 @@ static GParamSpec *props[N_PROPS];
 struct _LumaArrangeView {
   GtkWidget parent_instance;
   GtkWidget *content;
-  GtkWidget *nodes[7];
+  GtkWidget *nodes[8];
   GPtrArray *items; /* bottom to top */
   char *selected;
   char *hovered;
@@ -70,12 +73,19 @@ struct _LumaArrangeView {
   char *cropping;            /* the box in crop mode */
   /* Guides shown during a drag, in canvas units (NAN: none). */
   double guide_x[2], guide_y[2];
+  /* The selection: every chosen box, in the order chosen; `selected` is the last. */
+  GPtrArray *chosen;          /* char*, owned */
+  gboolean group;             /* the drag moves or scales the chosen boxes together */
+  GHashTable *group_start;    /* id -> Item (geometry at the drag's start) */
+  gboolean marquee;           /* a rubber band from empty canvas */
+  double band[4];             /* its start and end, canvas units */
+  GPtrArray *band_base;       /* the selection it adds to (Shift), char* owned */
 };
 
-enum { NODE_FRAME, NODE_HOVER, NODE_HANDLE, NODE_KNOB, NODE_GUIDE, NODE_LOCKED, NODE_GHOST };
+enum { NODE_FRAME, NODE_HOVER, NODE_HANDLE, NODE_KNOB, NODE_GUIDE, NODE_LOCKED, NODE_GHOST, NODE_MARQUEE };
 static const char *node_names[] = {"lumaui-arrange-frame", "lumaui-arrange-hover", "lumaui-arrange-handle",
                                    "lumaui-arrange-knob",  "lumaui-arrange-guide", "lumaui-arrange-locked",
-                                   "lumaui-arrange-ghost"};
+                                   "lumaui-arrange-ghost", "lumaui-arrange-marquee"};
 
 G_DEFINE_FINAL_TYPE(LumaArrangeView, luma_arrange_view, GTK_TYPE_WIDGET)
 
@@ -170,17 +180,104 @@ static void announce(LumaArrangeView *self) {
   gtk_accessible_update_property(GTK_ACCESSIBLE(self), GTK_ACCESSIBLE_PROPERTY_DESCRIPTION, words, -1);
 }
 
-static void select_item(LumaArrangeView *self, const char *id, gboolean emit) {
-  if (g_strcmp0(self->selected, id) == 0)
-    return;
-  if (self->cropping != NULL && g_strcmp0(self->cropping, id) != 0)
+static gboolean chosen_has(LumaArrangeView *self, const char *id) {
+  for (guint i = 0; id != NULL && i < self->chosen->len; i++)
+    if (g_str_equal(g_ptr_array_index(self->chosen, i), id))
+      return TRUE;
+  return FALSE;
+}
+
+static char **chosen_strv(LumaArrangeView *self) {
+  char **ids = g_new0(char *, self->chosen->len + 1);
+  for (guint i = 0; i < self->chosen->len; i++)
+    ids[i] = g_strdup(g_ptr_array_index(self->chosen, i));
+  return ids;
+}
+
+/* Make `ids` (boxes the view has, once each) the selection; its last is `selected`. */
+static void choose(LumaArrangeView *self, const char *const *ids, guint n, gboolean emit) {
+  g_autoptr(GPtrArray) next = g_ptr_array_new_with_free_func(g_free);
+  for (guint i = 0; i < n; i++) {
+    gboolean seen = FALSE;
+    for (guint j = 0; j < next->len; j++)
+      seen = seen || g_str_equal(g_ptr_array_index(next, j), ids[i]);
+    if (ids[i] != NULL && !seen && find_item(self, ids[i]) != NULL)
+      g_ptr_array_add(next, g_strdup(ids[i]));
+  }
+  gboolean same = next->len == self->chosen->len;
+  for (guint i = 0; same && i < next->len; i++)
+    same = g_str_equal(g_ptr_array_index(next, i), g_ptr_array_index(self->chosen, i));
+  const char *primary = next->len > 0 ? g_ptr_array_index(next, next->len - 1) : NULL;
+  gboolean primary_changed = g_strcmp0(primary, self->selected) != 0;
+  if (self->cropping != NULL && (next->len != 1 || g_strcmp0(self->cropping, primary) != 0))
     luma_arrange_view_set_cropping(self, NULL);
+  g_ptr_array_set_size(self->chosen, 0);
+  for (guint i = 0; i < next->len; i++)
+    g_ptr_array_add(self->chosen, g_strdup(g_ptr_array_index(next, i)));
   g_free(self->selected);
-  self->selected = g_strdup(id);
+  self->selected = g_strdup(primary);
   announce(self);
   gtk_widget_queue_draw(GTK_WIDGET(self));
-  if (emit)
+  if (!emit)
+    return;
+  if (primary_changed)
     g_signal_emit(self, signals[SIG_SELECTION_CHANGED], 0, self->selected);
+  if (!same) {
+    g_auto(GStrv) all = chosen_strv(self);
+    g_signal_emit(self, signals[SIG_SELECTION_IDS_CHANGED], 0, all);
+  }
+}
+
+static void select_item(LumaArrangeView *self, const char *id, gboolean emit) {
+  const char *ids[] = {id};
+  choose(self, ids, id != NULL ? 1 : 0, emit);
+}
+
+/* Add `id` to the selection, or take it out (Shift+click). */
+static void toggle_item(LumaArrangeView *self, const char *id) {
+  gboolean had = chosen_has(self, id);
+  g_autoptr(GPtrArray) ids = g_ptr_array_new_with_free_func(g_free);
+  for (guint i = 0; i < self->chosen->len; i++)
+    if (!g_str_equal(g_ptr_array_index(self->chosen, i), id))
+      g_ptr_array_add(ids, g_strdup(g_ptr_array_index(self->chosen, i)));
+  if (!had)
+    g_ptr_array_add(ids, g_strdup(id));
+  choose(self, (const char *const *)ids->pdata, ids->len, TRUE);
+}
+
+/* The box around every chosen visible box; FALSE when none. */
+static gboolean chosen_bounds(LumaArrangeView *self, Item *box) {
+  gboolean any = FALSE;
+  double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  for (guint i = 0; i < self->chosen->len; i++) {
+    Item *item = find_item(self, g_ptr_array_index(self->chosen, i));
+    if (item == NULL || !item->visible)
+      continue;
+    if (!any) {
+      x0 = item->x, y0 = item->y, x1 = item->x + item->w, y1 = item->y + item->h;
+      any = TRUE;
+    } else {
+      x0 = MIN(x0, item->x), y0 = MIN(y0, item->y);
+      x1 = MAX(x1, item->x + item->w), y1 = MAX(y1, item->y + item->h);
+    }
+  }
+  if (any) {
+    memset(box, 0, sizeof *box);
+    box->id = (char *)"";
+    box->x = x0, box->y = y0, box->w = MAX(x1 - x0, 1), box->h = MAX(y1 - y0, 1);
+    box->visible = TRUE;
+    box->keeps_aspect = TRUE; /* a group scales in proportion; Shift stretches it */
+  }
+  return any;
+}
+
+static gboolean chosen_movable(LumaArrangeView *self) {
+  for (guint i = 0; i < self->chosen->len; i++) {
+    Item *item = find_item(self, g_ptr_array_index(self->chosen, i));
+    if (item != NULL && !item->locked)
+      return TRUE;
+  }
+  return FALSE;
 }
 
 /* ── Hit testing ── */
@@ -200,7 +297,13 @@ static double handle_hit(LumaArrangeView *self) {
 
 /* Which handle of the selected box is under a view point. */
 static Grab handle_at(LumaArrangeView *self, double vx, double vy) {
+  Item box;
   Item *item = find_item(self, self->selected);
+  if (self->chosen->len >= 2) {
+    if (!chosen_bounds(self, &box) || !chosen_movable(self))
+      return GRAB_NONE;
+    item = &box;
+  }
   if (item == NULL || item->locked || !item->visible)
     return GRAB_NONE;
   double ox, oy, scale = fit(self, &ox, &oy);
@@ -251,7 +354,8 @@ static guint snap_lines(LumaArrangeView *self, Item *moving, gboolean vertical, 
     lines[n++] = fixed[i];
   for (guint i = 0; i < self->items->len && n + 3 <= room; i++) {
     Item *other = g_ptr_array_index(self->items, i);
-    if (other == moving || !other->visible || g_str_equal(other->id, moving->id))
+    if (other == moving || !other->visible || g_str_equal(other->id, moving->id) ||
+        (self->group && chosen_has(self, other->id)))
       continue;
     double a = vertical ? other->x : other->y, l = vertical ? other->w : other->h;
     lines[n++] = a;
@@ -465,7 +569,62 @@ static void pan(LumaArrangeView *self, Item *item, double cdx, double cdy) {
 }
 
 /* Lay the drag so far over the box it started from, with the modifiers held now. */
+static GVariant *group_rects(LumaArrangeView *self) {
+  GVariantBuilder rects;
+  g_variant_builder_init(&rects, G_VARIANT_TYPE("a{s(dddd)}"));
+  for (guint i = 0; i < self->chosen->len; i++) {
+    Item *item = find_item(self, g_ptr_array_index(self->chosen, i));
+    if (item != NULL && g_hash_table_contains(self->group_start, item->id))
+      g_variant_builder_add(&rects, "{s(dddd)}", item->id, item->x, item->y, item->w, item->h);
+  }
+  return g_variant_builder_end(&rects);
+}
+
+/* The group's drag: every chosen box moves with the box around them, or scales inside it. */
+static void apply_group(LumaArrangeView *self) {
+  double scale = fit(self, NULL, NULL);
+  double cdx = self->drag_dx / scale, cdy = self->drag_dy / scale;
+  double threshold = LUMA_UI_CREATIVE_ARRANGE_SNAP / scale, min = 2 * LUMA_UI_CREATIVE_ARRANGE_HANDLE / scale;
+  gboolean alt = (self->mods & GDK_ALT_MASK) != 0;
+  Item *box = &self->start, now = self->start;
+  const char *mode = mode_for(self, box, self->grab, self->mods);
+  clear_guides(self);
+  if (self->grab == GRAB_MOVE) {
+    now.x = box->x + cdx;
+    now.y = box->y + cdy;
+    if (self->snapping && !alt) {
+      now.x += snap_move(self, &now, TRUE, threshold, &self->guide_x[0]);
+      now.y += snap_move(self, &now, FALSE, threshold, &self->guide_y[0]);
+    }
+  } else {
+    resize(self, &now, cdx, cdy, g_str_has_prefix(mode, "resize"), alt, self->snapping, threshold, min);
+  }
+  set_drag_mode(self, mode);
+  double sx = now.w / box->w, sy = now.h / box->h;
+  GHashTableIter iter;
+  gpointer key, value;
+  g_hash_table_iter_init(&iter, self->group_start);
+  while (g_hash_table_iter_next(&iter, &key, &value)) {
+    Item *item = find_item(self, key), *start = value;
+    if (item == NULL)
+      continue;
+    item->x = now.x + (start->x - box->x) * sx;
+    item->y = now.y + (start->y - box->y) * sy;
+    item->w = start->w * sx;
+    item->h = start->h * sy;
+  }
+  if (now.x == box->x && now.y == box->y && now.w == box->w && now.h == box->h && !self->moved)
+    return;
+  self->moved = TRUE;
+  g_signal_emit(self, signals[SIG_GROUP_CHANGED], 0, group_rects(self));
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
 static void apply_drag(LumaArrangeView *self) {
+  if (self->group) {
+    apply_group(self);
+    return;
+  }
   Item *item = find_item(self, self->selected);
   if (item == NULL || self->grab == GRAB_NONE)
     return;
@@ -518,14 +677,56 @@ static void drag_begin(GtkGestureDrag *gesture, double x, double y, gpointer use
   if (event != NULL)
     self->mods = gdk_event_get_modifier_state(event) & DRAG_MODS;
   clear_guides(self);
+  self->group = FALSE;
+  g_hash_table_remove_all(self->group_start);
   Grab grab = handle_at(self, x, y);
   Item *item = NULL;
-  if (grab != GRAB_NONE) {
+  gboolean shift = (self->mods & GDK_SHIFT_MASK) != 0;
+  if (grab != GRAB_NONE && self->chosen->len >= 2) {
+    self->group = TRUE;
+  } else if (grab != GRAB_NONE) {
     item = find_item(self, self->selected);
   } else {
     item = item_at(self, cx, cy);
-    select_item(self, item != NULL ? item->id : NULL, TRUE);
-    grab = item != NULL && !item->locked ? GRAB_MOVE : GRAB_NONE;
+    if (item != NULL && shift) {
+      /* Shift+click: in or out of the selection, nothing moves. */
+      toggle_item(self, item->id);
+      self->grab = GRAB_NONE;
+      gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+      return;
+    }
+    if (item != NULL && self->chosen->len >= 2 && chosen_has(self, item->id)) {
+      self->group = chosen_movable(self);
+      grab = self->group ? GRAB_MOVE : GRAB_NONE;
+    } else if (item != NULL) {
+      select_item(self, item->id, TRUE);
+      grab = !item->locked ? GRAB_MOVE : GRAB_NONE;
+    } else {
+      /* Empty canvas: a rubber band (Shift adds to the selection). */
+      g_ptr_array_set_size(self->band_base, 0);
+      for (guint i = 0; shift && i < self->chosen->len; i++)
+        g_ptr_array_add(self->band_base, g_strdup(g_ptr_array_index(self->chosen, i)));
+      if (!shift)
+        select_item(self, NULL, TRUE);
+      self->marquee = TRUE;
+      self->band[0] = self->band[2] = cx;
+      self->band[1] = self->band[3] = cy;
+      self->grab = GRAB_NONE;
+      gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+      return;
+    }
+  }
+  if (self->group) {
+    for (guint i = 0; i < self->chosen->len; i++) {
+      Item *chosen = find_item(self, g_ptr_array_index(self->chosen, i));
+      if (chosen != NULL && !chosen->locked && chosen->visible)
+        g_hash_table_insert(self->group_start, g_strdup(chosen->id), g_memdup2(chosen, sizeof *chosen));
+    }
+    chosen_bounds(self, &self->start);
+    self->grab = grab;
+    set_drag_mode(self, mode_for(self, &self->start, grab, self->mods));
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+    return;
   }
   self->grab = grab;
   if (item != NULL) {
@@ -544,12 +745,56 @@ static void drag_update(GtkGestureDrag *gesture, double dx, double dy, gpointer 
     self->mods = gdk_event_get_modifier_state(event) & DRAG_MODS;
   self->drag_dx = dx;
   self->drag_dy = dy;
+  if (self->marquee) {
+    double scale = fit(self, NULL, NULL);
+    self->band[2] = self->band[0] + dx / scale;
+    self->band[3] = self->band[1] + dy / scale;
+    double x0 = MIN(self->band[0], self->band[2]), x1 = MAX(self->band[0], self->band[2]);
+    double y0 = MIN(self->band[1], self->band[3]), y1 = MAX(self->band[1], self->band[3]);
+    g_autoptr(GPtrArray) ids = g_ptr_array_new();
+    for (guint i = 0; i < self->band_base->len; i++)
+      g_ptr_array_add(ids, g_ptr_array_index(self->band_base, i));
+    for (guint i = 0; i < self->items->len; i++) {
+      Item *item = g_ptr_array_index(self->items, i);
+      /* Touched or enclosed. */
+      if (item->visible && item->x < x1 && item->x + item->w > x0 && item->y < y1 && item->y + item->h > y0)
+        g_ptr_array_add(ids, item->id);
+    }
+    g_autoptr(GPtrArray) copies = g_ptr_array_new_with_free_func(g_free);
+    for (guint i = 0; i < ids->len; i++)
+      g_ptr_array_add(copies, g_strdup(g_ptr_array_index(ids, i)));
+    choose(self, (const char *const *)copies->pdata, copies->len, FALSE);
+    gtk_widget_queue_draw(GTK_WIDGET(self));
+    return;
+  }
   apply_drag(self);
 }
 
 static void drag_end(GtkGestureDrag *gesture G_GNUC_UNUSED, double dx G_GNUC_UNUSED, double dy G_GNUC_UNUSED,
                      gpointer user_data) {
   LumaArrangeView *self = user_data;
+  if (self->marquee) {
+    self->marquee = FALSE;
+    /* The band chose quietly as it moved; say the outcome once. */
+    g_auto(GStrv) all = chosen_strv(self);
+    g_signal_emit(self, signals[SIG_SELECTION_CHANGED], 0, self->selected);
+    g_signal_emit(self, signals[SIG_SELECTION_IDS_CHANGED], 0, all);
+    gtk_widget_queue_draw(GTK_WIDGET(self));
+    return;
+  }
+  if (self->group) {
+    clear_guides(self);
+    if (self->moved)
+      g_signal_emit(self, signals[SIG_GROUP_COMMITTED], 0, group_rects(self));
+    self->group = FALSE;
+    g_hash_table_remove_all(self->group_start);
+    self->grab = GRAB_NONE;
+    self->moved = FALSE;
+    set_drag_mode(self, "none");
+    announce(self);
+    gtk_widget_queue_draw(GTK_WIDGET(self));
+    return;
+  }
   Item *item = find_item(self, self->selected);
   clear_guides(self);
   if (item != NULL && self->crop_moved)
@@ -656,6 +901,10 @@ static gboolean key_pressed(GtkEventControllerKey *keys G_GNUC_UNUSED, guint key
     modifiers_now(self, state | modifier);
     return FALSE;
   }
+  if ((keyval == GDK_KEY_a || keyval == GDK_KEY_A) && (state & GDK_CONTROL_MASK)) {
+    luma_arrange_view_select_all(self);
+    return TRUE;
+  }
   Item *item = find_item(self, self->selected);
   double step = (state & GDK_SHIFT_MASK) ? LUMA_UI_CREATIVE_ARRANGE_NUDGE_LARGE : 1;
   double dx = 0, dy = 0;
@@ -685,6 +934,25 @@ static gboolean key_pressed(GtkEventControllerKey *keys G_GNUC_UNUSED, guint key
   case GDK_KEY_Tab: case GDK_KEY_KP_Tab: return cycle(self, 1);
   case GDK_KEY_ISO_Left_Tab: return cycle(self, -1);
   default: return FALSE;
+  }
+  if (self->chosen->len >= 2) {
+    /* Every chosen box moves together: one undo step a key. */
+    g_hash_table_remove_all(self->group_start);
+    for (guint i = 0; i < self->chosen->len; i++) {
+      Item *chosen = find_item(self, g_ptr_array_index(self->chosen, i));
+      if (chosen == NULL || chosen->locked)
+        continue;
+      chosen->x = round(chosen->x + dx);
+      chosen->y = round(chosen->y + dy);
+      g_hash_table_insert(self->group_start, g_strdup(chosen->id), g_memdup2(chosen, sizeof *chosen));
+    }
+    if (g_hash_table_size(self->group_start) == 0)
+      return FALSE;
+    g_signal_emit(self, signals[SIG_GROUP_CHANGED], 0, group_rects(self));
+    g_signal_emit(self, signals[SIG_GROUP_COMMITTED], 0, group_rects(self));
+    g_hash_table_remove_all(self->group_start);
+    gtk_widget_queue_draw(GTK_WIDGET(self));
+    return TRUE;
   }
   if (item == NULL || item->locked)
     return FALSE;
@@ -790,7 +1058,7 @@ static void luma_arrange_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
   LumaArrangeView *self = LUMA_ARRANGE_VIEW(widget);
   if (self->content != NULL)
     gtk_widget_snapshot_child(widget, self->content, snapshot);
-  GdkRGBA colors[7];
+  GdkRGBA colors[8];
   for (guint i = 0; i < G_N_ELEMENTS(self->nodes); i++)
     gtk_widget_get_color(self->nodes[i], &colors[i]);
   double ox, oy, scale = fit(self, &ox, &oy);
@@ -814,6 +1082,40 @@ static void luma_arrange_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
     graphene_rect_t r = GRAPHENE_RECT_INIT((float)(ox + hover->x * scale), (float)(oy + hover->y * scale),
                                            (float)(hover->w * scale), (float)(hover->h * scale));
     stroke_rect(snapshot, &r, 1, &colors[NODE_HOVER]);
+  }
+  if (self->marquee) {
+    double bx0 = MIN(self->band[0], self->band[2]), by0 = MIN(self->band[1], self->band[3]);
+    graphene_rect_t band = GRAPHENE_RECT_INIT((float)(ox + bx0 * scale), (float)(oy + by0 * scale),
+                                              (float)(fabs(self->band[2] - self->band[0]) * scale),
+                                              (float)(fabs(self->band[3] - self->band[1]) * scale));
+    GdkRGBA soft = colors[NODE_MARQUEE];
+    soft.alpha *= 0.18f;
+    gtk_snapshot_append_color(snapshot, &soft, &band);
+    stroke_rect(snapshot, &band, 1, &colors[NODE_MARQUEE]);
+  }
+  Item group;
+  if (self->chosen->len >= 2 && chosen_bounds(self, &group)) {
+    for (guint i = 0; i < self->chosen->len; i++) {
+      Item *one = find_item(self, g_ptr_array_index(self->chosen, i));
+      if (one == NULL || !one->visible)
+        continue;
+      graphene_rect_t r = GRAPHENE_RECT_INIT((float)(ox + one->x * scale), (float)(oy + one->y * scale),
+                                             (float)(one->w * scale), (float)(one->h * scale));
+      stroke_rect(snapshot, &r, 1, one->locked ? &colors[NODE_LOCKED] : &colors[NODE_HOVER]);
+    }
+    double gx0 = ox + group.x * scale, gy0 = oy + group.y * scale;
+    double gx1 = gx0 + group.w * scale, gy1 = gy0 + group.h * scale;
+    graphene_rect_t box = GRAPHENE_RECT_INIT((float)gx0, (float)gy0, (float)(gx1 - gx0), (float)(gy1 - gy0));
+    stroke_rect(snapshot, &box, LUMA_UI_CREATIVE_ARRANGE_FRAME, &colors[NODE_FRAME]);
+    if (!chosen_movable(self))
+      return;
+    double gr = LUMA_UI_CREATIVE_ARRANGE_HANDLE * 1.5;
+    gboolean gsmall = (gx1 - gx0) < 3 * gr || (gy1 - gy0) < 3 * gr;
+    double gspots[8][2] = {{gx0, gy0}, {gx1, gy0}, {gx0, gy1}, {gx1, gy1},
+                           {(gx0 + gx1) / 2, gy0}, {(gx0 + gx1) / 2, gy1}, {gx0, (gy0 + gy1) / 2}, {gx1, (gy0 + gy1) / 2}};
+    for (guint i = 0; i < (gsmall ? 4 : 8); i++)
+      draw_handle(snapshot, gspots[i][0], gspots[i][1], &colors[NODE_HANDLE], &colors[NODE_KNOB]);
+    return;
   }
   Item *item = find_item(self, self->selected);
   if (item == NULL || !item->visible)
@@ -858,6 +1160,9 @@ static void luma_arrange_view_finalize(GObject *object) {
   g_clear_pointer(&self->selected, g_free);
   g_clear_pointer(&self->hovered, g_free);
   g_clear_pointer(&self->cropping, g_free);
+  g_clear_pointer(&self->chosen, g_ptr_array_unref);
+  g_clear_pointer(&self->band_base, g_ptr_array_unref);
+  g_clear_pointer(&self->group_start, g_hash_table_unref);
   G_OBJECT_CLASS(luma_arrange_view_parent_class)->finalize(object);
 }
 
@@ -963,6 +1268,34 @@ static void luma_arrange_view_class_init(LumaArrangeViewClass *klass) {
                                              NULL, NULL, NULL, G_TYPE_NONE, 5, G_TYPE_STRING, G_TYPE_DOUBLE,
                                              G_TYPE_DOUBLE, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
   /**
+   * LumaArrangeView::selection-ids-changed:
+   * @self: the view
+   * @ids: every chosen box, in the order chosen (the last is #LumaArrangeView::selection-changed's)
+   *
+   * A person changed the selection: a click, Shift+click, a rubber band, Ctrl+A, Esc.
+   */
+  signals[SIG_SELECTION_IDS_CHANGED] = g_signal_new("selection-ids-changed", G_TYPE_FROM_CLASS(klass),
+                                                    G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL, G_TYPE_NONE, 1,
+                                                    G_TYPE_STRV);
+  /**
+   * LumaArrangeView::group-changed:
+   * @self: the view
+   * @rects: `a{s(dddd)}`, each moved box's id and its x, y, width and height
+   *
+   * Every step of a drag or nudge of two or more boxes together.
+   */
+  signals[SIG_GROUP_CHANGED] = g_signal_new("group-changed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0, NULL,
+                                            NULL, NULL, G_TYPE_NONE, 1, G_TYPE_VARIANT);
+  /**
+   * LumaArrangeView::group-committed:
+   * @self: the view
+   * @rects: `a{s(dddd)}`, the boxes' final rectangles
+   *
+   * The end of such a drag, or a nudge: one undoable change.
+   */
+  signals[SIG_GROUP_COMMITTED] = g_signal_new("group-committed", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_LAST, 0,
+                                              NULL, NULL, NULL, G_TYPE_NONE, 1, G_TYPE_VARIANT);
+  /**
    * LumaArrangeView:cropping:
    *
    * The box in crop mode, or %NULL.
@@ -985,6 +1318,9 @@ static void luma_arrange_view_class_init(LumaArrangeViewClass *klass) {
 static void luma_arrange_view_init(LumaArrangeView *self) {
   luma_creative_install();
   self->items = g_ptr_array_new_with_free_func(item_free);
+  self->chosen = g_ptr_array_new_with_free_func(g_free);
+  self->band_base = g_ptr_array_new_with_free_func(g_free);
+  self->group_start = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
   self->canvas_w = 1920;
   self->canvas_h = 1080;
   self->snapping = TRUE;
@@ -1089,8 +1425,13 @@ void luma_arrange_view_remove_item(LumaArrangeView *self, const char *id) {
     return;
   if (g_strcmp0(self->cropping, id) == 0)
     luma_arrange_view_set_cropping(self, NULL);
-  if (g_strcmp0(self->selected, id) == 0)
-    select_item(self, NULL, FALSE);
+  if (chosen_has(self, id)) {
+    g_autoptr(GPtrArray) rest = g_ptr_array_new_with_free_func(g_free);
+    for (guint i = 0; i < self->chosen->len; i++)
+      if (!g_str_equal(g_ptr_array_index(self->chosen, i), id))
+        g_ptr_array_add(rest, g_strdup(g_ptr_array_index(self->chosen, i)));
+    choose(self, (const char *const *)rest->pdata, rest->len, FALSE);
+  }
   if (g_strcmp0(self->hovered, id) == 0)
     g_clear_pointer(&self->hovered, g_free);
   g_ptr_array_remove(self->items, item);
@@ -1317,4 +1658,25 @@ gboolean luma_arrange_view_get_item_shown_rect(LumaArrangeView *self, const char
     if (out[i] != NULL)
       *out[i] = item->shown[i];
   return TRUE;
+}
+
+void luma_arrange_view_set_selection(LumaArrangeView *self, const char *const *ids) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  choose(self, ids, ids != NULL ? g_strv_length((char **)ids) : 0, FALSE);
+}
+
+char **luma_arrange_view_get_selection(LumaArrangeView *self) {
+  g_return_val_if_fail(LUMA_IS_ARRANGE_VIEW(self), NULL);
+  return chosen_strv(self);
+}
+
+void luma_arrange_view_select_all(LumaArrangeView *self) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  g_autoptr(GPtrArray) ids = g_ptr_array_new_with_free_func(g_free);
+  for (guint i = 0; i < self->items->len; i++) {
+    Item *item = g_ptr_array_index(self->items, i);
+    if (item->visible)
+      g_ptr_array_add(ids, g_strdup(item->id));
+  }
+  choose(self, (const char *const *)ids->pdata, ids->len, TRUE);
 }
