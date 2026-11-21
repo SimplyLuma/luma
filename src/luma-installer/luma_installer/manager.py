@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from . import capsule_refresh
 from .desktop import (applications_root, iter_records, records_root, remove_command, remove_record,
                       safe_id)
 from .errors import InstallerError
@@ -167,6 +168,7 @@ def remove(application_id: str, delete_data: bool = False) -> str:
             return "Removal is staged. Restart to enter the deployment without this system component."
     elif kind in {"deb", "rpm"}:
         _run(["podman", "image", "rm", "--force", str(record["image"])])
+        capsule_refresh.forget(record)
     elif kind == "appimage":
         root = record.get("root")
         if isinstance(root, (str, Path)) and Path(root).name == "AppDir":
@@ -179,6 +181,7 @@ def remove(application_id: str, delete_data: bool = False) -> str:
         _safe_remove_tree(root, Path.home() / ".local/share/luma/portable")
         if record.get("image"):
             _run(["podman", "image", "rm", "--force", str(record["image"])])
+            capsule_refresh.forget(record)
     else:
         raise InstallerError(f"Removal is not implemented for {kind or 'this record'}.")
 
@@ -194,6 +197,13 @@ def remove(application_id: str, delete_data: bool = False) -> str:
                 Path.home() / ".local/share/luma/installer/data" / sha256,
                 Path.home() / ".local/share/luma/installer/data",
             )
+            if kind in {"deb", "rpm", "appimage", "portable"}:
+                # Its saved passwords are part of its data.
+                try:
+                    from . import capsule_identity, capsule_secrets
+                    capsule_secrets.forget(capsule_identity.keyring_tag(record))
+                except Exception:  # noqa: BLE001 - never a reason to keep the application
+                    pass
     remove_record(application_id)
     if kind == "snap":
         return "Removed. snapd manages the retained snapshot according to system policy."
@@ -206,9 +216,29 @@ def update(application_id: str) -> str:
     if kind == "flatpak":
         _run(["flatpak", "update", "--user", "--noninteractive", "--assumeyes", str(record["flatpak_id"])])
         return "Flatpak checked its signed origin and applied the newest compatible update."
+    if capsule_refresh.kind_of(record):
+        status = capsule_refresh.refresh(str(record["application_id"]), force=True)
+        return {
+            "updated": "The capsule's packages were updated from their signed repositories. "
+                       "The previous capsule is kept in case this one fails.",
+            "update waiting": "An updated capsule is ready and will be used the next time the application starts.",
+            "update failed": "The updated capsule did not start, so the application stays as it was.",
+            "held": "Updates are held for this application.",
+        }.get(status, "The capsule's packages are already up to date.")
     if kind in {"appimage", "portable", "deb", "rpm", "snap"}:
         raise InstallerError("This local package has no trusted update origin. Open a newer package to review and replace it.")
     raise InstallerError(f"Updates are not implemented for {kind or 'this record'}.")
+
+
+def update_states(application_id: str | None = None) -> dict[str, dict[str, object]]:
+    """Per application: updated, held, rolled back, and what it would take to go back.
+
+    What the list of applications in Settings and Valet reads; see
+    capsule_refresh.summary for the fields.
+    """
+    wanted = safe_id(application_id) if application_id else None
+    return {str(record.get("application_id")): capsule_refresh.summary(record) for record in iter_records()
+            if capsule_refresh.kind_of(record) and wanted in (None, record.get("application_id"))}
 
 
 def _energy(values) -> int:
@@ -306,8 +336,25 @@ def main(argv: list[str] | None = None) -> int:
                         help="stop doing this to the application: video-decode, wayland, or all")
     energy.add_argument("--redo", metavar="GROUP", nargs="?", const="all",
                         help="start doing it again")
+    for name, text in (("hold", "do not update this application's capsule until it is released"),
+                       ("release", "let this application's capsule be updated again"),
+                       ("rollback", "go back to the capsule this application had before its last update")):
+        subparsers.add_parser(name, help=text).add_argument("application_id")
+    status = subparsers.add_parser("updates", help="what has been updated, held or rolled back")
+    status.add_argument("application_id", nargs="?")
     values = parser.parse_args(argv)
     try:
+        if values.action in {"hold", "release"}:
+            capsule_refresh.hold(str(_record(values.application_id)["application_id"]), values.action == "hold")
+            print("Updates are held." if values.action == "hold" else "Updates are released.")
+            return 0
+        if values.action == "rollback":
+            capsule_refresh.rollback(str(_record(values.application_id)["application_id"]), "Rolled back on request.")
+            print("Rolled back to the previous capsule.")
+            return 0
+        if values.action == "updates":
+            print(json.dumps(update_states(values.application_id), indent=2, sort_keys=True))
+            return 0
         if values.action == "list":
             reconcile()
             records = iter_records()

@@ -817,3 +817,85 @@ fn crop_meta_survives_colour_conversion() {
         assert_eq!(out.px(x, y), [0, 0, 255, 255], "blue quadrant at {x},{y}");
     }
 }
+
+#[test]
+fn revision_commits_changes_together_and_stamps_buffers() {
+    let input = solid(64, 48, [255, 0, 0, 255]);
+    let mut h = Harness::new(64, 48, None, &[]);
+    h.set("revision", 1u64);
+    h.send(&input);
+    let sample = h.sink.try_pull_sample(gst::ClockTime::from_seconds(20)).unwrap();
+    assert_eq!(sample.buffer().unwrap().offset(), 1);
+
+    // Held until the next revision commits it.
+    h.set("margin", 10.0);
+    let out = h.push(&input);
+    assert_eq!((out.w, out.h), (64, 48));
+    h.set("revision", 2u64);
+    h.send(&input);
+    let sample = h.sink.try_pull_sample(gst::ClockTime::from_seconds(20)).unwrap();
+    assert_eq!(sample.buffer().unwrap().offset(), 2);
+    let info = gst_video::VideoInfo::from_caps(sample.caps().unwrap()).unwrap();
+    assert_eq!((info.width(), info.height()), (84, 68));
+}
+
+#[test]
+fn downscale_averages_the_footprint() {
+    // Alternating one-pixel columns, drawn at a quarter of the width: an even
+    // grey, never one column's colour.
+    let (w, h) = (256, 16);
+    let mut data = Vec::with_capacity(w * h * 4);
+    for _y in 0..h {
+        for x in 0..w {
+            let v = if x % 2 == 0 { 255 } else { 0 };
+            data.extend_from_slice(&[v, v, v, 255]);
+        }
+    }
+    let input = Frame { w, h, data };
+    let out = run(&input, &props(&[("box-width", 64.0), ("box-height", 16.0)]));
+    for x in 4..60 {
+        let p = out.px(x, 8);
+        assert!((p[0] as i32 - 128).abs() <= 40, "column {x}: {p:?}");
+    }
+}
+
+/// `source-latency` replaces upstream's minimum latency in the answer
+/// downstream gets (a live compositor waits that long for a layer).
+#[test]
+fn source_latency_replaces_upstream_minimum() {
+    init();
+    let pipeline = gst::parse::launch(
+        "videotestsrc is-live=true ! video/x-raw,width=64,height=48,framerate=30/1 ! glupload ! \
+         lumaframe name=f ! fakesink",
+    )
+    .unwrap()
+    .downcast::<gst::Pipeline>()
+    .unwrap();
+    // The tests' one GL display: a display of its own breaks the others running in parallel.
+    pipeline.set_context(&gl_display_context());
+    pipeline.set_state(gst::State::Playing).unwrap();
+    let _ = pipeline.state(gst::ClockTime::from_seconds(5));
+    let frame = pipeline.by_name("f").unwrap();
+    let src = frame.static_pad("src").unwrap();
+    let sink = frame.static_pad("sink").unwrap();
+    let min = |pad: &gst::Pad, peer: bool| {
+        let mut q = gst::query::Latency::new();
+        assert!(if peer {
+            pad.peer_query(&mut q)
+        } else {
+            pad.query(&mut q)
+        });
+        let (live, min, _max) = q.result();
+        assert!(live);
+        min
+    };
+    let upstream = min(&sink, true);
+    assert!(upstream > gst::ClockTime::ZERO, "a live source answers some latency");
+    assert_eq!(frame.property::<i64>("source-latency"), -1);
+    assert_eq!(min(&src, false), upstream, "passed through by default");
+    frame.set_property("source-latency", 0i64);
+    assert_eq!(min(&src, false), gst::ClockTime::ZERO);
+    frame.set_property("source-latency", 2_000_000i64);
+    assert_eq!(min(&src, false), gst::ClockTime::from_mseconds(2));
+    pipeline.set_state(gst::State::Null).unwrap();
+}

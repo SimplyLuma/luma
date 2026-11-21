@@ -1617,6 +1617,8 @@ label.lumaui-mode-status { font-size: 11.5px; font-weight: 400; font-feature-set
 box.lumaui-mode-dot { min-width: 6px; min-height: 6px; border-radius: 999px; background: @luma_good; animation: lumaui-island-pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { box.lumaui-mode-dot { animation: none; } }
 box.lumaui-modes.narrow button.lumaui-mode:not(.on) { padding: 0 var(--lumaui-modes-button-padding-narrow); }
+/* icon_only: every mode is its glyph alone (the words are the tooltip and the accessible name). */
+box.lumaui-modes.icon-only button.lumaui-mode { padding: 0 var(--lumaui-modes-button-padding-narrow); }
 box.lumaui-corner > box.lumaui-modes { margin-right: 2px; }
 /* compact: a choice inside a settings row (v70 .cfrow .seg: a 32 well, 26 buttons at 0 11, 12.5). */
 box.lumaui-modes.compact { min-height: var(--lumaui-modes-compact-button-height); }
@@ -2483,6 +2485,32 @@ lumaui-volume-slider.muted > .lumaui-volume-ring { color: alpha(@luma_muted, .7)
 lumaui-volume-slider.muted > box.lumaui-audio-meter { opacity: .35; }
 lumaui-volume-slider:disabled { opacity: .5; }
 
+/* LumaMixerStrip (luma-mixer-strip.c): a channel strip, --lumaui-mixer-strip-width wide (the C part holds the
+ * width, inside this padding): name and device, a dB scale beside the fader and its meter, the readout, and the
+ * Mute and Monitor keys. LumaMixerRow lays strips out in a row that scrolls sideways. */
+lumaui-mixer-strip {
+  padding: var(--lumaui-mixer-strip-padding); border-radius: var(--lumaui-mixer-strip-radius);
+  background: alpha(@luma_ink, .035); box-shadow: inset 0 0 0 1px @luma_line_faint; color: @luma_ink;
+}
+lumaui-mixer-strip .lumaui-mixer-device { color: @luma_muted; }
+lumaui-mixer-strip .lumaui-mixer-scale {
+  font-size: var(--lumaui-mixer-strip-scale-font); font-weight: 550; font-feature-settings: "tnum"; color: @luma_muted;
+}
+lumaui-mixer-strip .lumaui-mixer-readout { font-feature-settings: "tnum"; color: @luma_ink_secondary; }
+lumaui-mixer-strip.muted .lumaui-mixer-readout { color: @luma_muted; }
+lumaui-mixer-strip button.lumaui-mixer-key {
+  min-width: var(--lumaui-mixer-strip-key); min-height: var(--lumaui-mixer-strip-key);
+  border-radius: var(--lumaui-icon-button-small-radius);
+}
+lumaui-mixer-strip button.lumaui-mixer-key image { -gtk-icon-size: var(--lumaui-mixer-strip-key-icon); }
+lumaui-mixer-strip button.lumaui-mixer-key.mute:checked { background: alpha(@luma_destructive, .16); color: @luma_destructive; }
+lumaui-mixer-strip button.lumaui-mixer-key.monitor:checked { background: alpha(@luma_state, .22); color: @luma_ink; }
+lumaui-mixer-row { padding: var(--lumaui-mixer-strip-row-padding); }
+lumaui-mixer-row > scrolledwindow { background: none; }
+@media (prefers-reduced-motion: reduce) {
+  lumaui-mixer-strip button.lumaui-mixer-key { transition: none; }
+}
+
 /* ── LumaUI: Dock (an island tiled with insets) ── */
 overlay.lumaui-dock > box.lumaui-dock-frame { padding: var(--lumaui-dock-gap); }
 /* Under the island's floating action bar: the tiles end above it. */
@@ -2508,10 +2536,25 @@ button.lumaui-dock-tab image.lumaui-dock-tile-icon { -gtk-icon-size: var(--lumau
 button.lumaui-dock-tab:not(.current) label.lumaui-dock-tile-title { font-weight: 500; color: @luma_muted; }
 /* A bare tile (a stage, a preview) is the content alone: no well, no header. */
 box.lumaui-dock-tile.bare { background: none; box-shadow: none; }
+/* The header is a band one step toward the island from the well: inside the well's ring (1px in), its top
+ * corners the tile's less that ring, a hairline under it, the title row centred with equal room above and
+ * below. Ring, padding and hairline included it is still header_height tall. */
 box.lumaui-dock-tile-header {
-  min-height: var(--lumaui-dock-header-height); border-spacing: var(--lumaui-dock-header-gap);
-  padding: 0 var(--lumaui-dock-header-padding-end) 0 var(--lumaui-dock-header-padding-start);
+  min-height: calc(var(--lumaui-dock-header-height) - 2px - 2 * var(--lumaui-dock-header-padding-y));
+  border-spacing: var(--lumaui-dock-header-gap); margin: 1px 1px 0 1px;
+  padding: var(--lumaui-dock-header-padding-y) calc(var(--lumaui-dock-header-padding-end) - 1px)
+           var(--lumaui-dock-header-padding-y) calc(var(--lumaui-dock-header-padding-start) - 1px);
+  border-radius: calc(var(--lumaui-dock-tile-radius) - 1px) calc(var(--lumaui-dock-tile-radius) - 1px) 0 0;
+  background: @luma_dock_header; border-bottom: 1px solid @luma_dock_header_line;
 }
+/* set_status: a short state after the title ("Live"), a dot before it. */
+box.lumaui-dock-tile-status { border-spacing: var(--lumaui-dock-status-gap); }
+box.lumaui-dock-tile-status > .lumaui-dock-tile-status-dot {
+  min-width: var(--lumaui-dock-status-dot); min-height: var(--lumaui-dock-status-dot); border-radius: 999px; background: @luma_muted;
+}
+box.lumaui-dock-tile-status > label { font-size: var(--lumaui-dock-title-size); font-weight: 600; color: @luma_muted; }
+box.lumaui-dock-tile-status.live > .lumaui-dock-tile-status-dot { background: @luma_record; }
+box.lumaui-dock-tile-status.live > label { color: @luma_danger_ink; }
 image.lumaui-dock-tile-icon { -gtk-icon-size: var(--lumaui-dock-icon); color: @luma_muted; }
 label.lumaui-dock-tile-title { font-size: var(--lumaui-dock-title-size); font-weight: 600; color: @luma_ink; }
 /* Header keys fit the header and centre their glyph as far from the end as the title's glyph is from the start. */
@@ -2543,6 +2586,8 @@ box.lumaui-dock-target {
 flowbox.lumaui-dock-keys { padding-bottom: var(--lumaui-dock-gap); }
 flowbox.lumaui-dock-keys > flowboxchild { padding: 0; }
 box.lumaui-dock-drawer box.lumaui-dock-tile { background: none; box-shadow: none; min-height: 320px; }
+/* In a drawer the sheet is the surface: the header keeps its hairline, not the band. */
+box.lumaui-dock-drawer box.lumaui-dock-tile-header { background: none; margin: 0; border-radius: 0; }
 box.lumaui-dock-tile.inline { margin-top: var(--lumaui-dock-gap); min-height: 0; }
 box.lumaui-dock-tile scrolledwindow.lumaui-dock-tile-scroll, box.lumaui-dock-tile scrolledwindow.lumaui-dock-tile-scroll > viewport { background: none; }
 box.luma-navigation-pane { min-height: var(--lumaui-dock-min-size); }

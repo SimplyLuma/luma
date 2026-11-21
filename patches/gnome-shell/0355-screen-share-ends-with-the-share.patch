@@ -1,0 +1,92 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] lumaShare: a share's ring and pill end with the share
+
+The Shell kept a share's ring and pill until the portal backend called
+SessionClosed. When the backend died or restarted, or missed an end, the
+rings stayed on every shared window for good (48 stale sessions were
+found after a restart).
+
+The Shell now ends shares on its own evidence too. It watches the
+backend's bus name: when the owner leaves the bus or changes, every share
+it held has ended. And each share is tied to the Mutter screen cast session
+behind it (luma-portal 1.luma.13 passes "mutter-session" in SessionStarted):
+when that session closes, for any reason, the share ends. A SessionStarted
+for a handle that is already held replaces it.
+
+diff --git a/js/ui/lumaShare.js b/js/ui/lumaShare.js
+index 2a84f44..b887696 100644
+--- a/js/ui/lumaShare.js
++++ b/js/ui/lumaShare.js
+@@ -1483,6 +1483,23 @@ export const ShareManager = GObject.registerClass({
+ 
+         const controller = global.backend.get_remote_access_controller();
+         controller?.connect('new-handle', (o, handle) => this._onNewHandle(handle));
++
++        // A share's ring and pill last only as long as a process serves it.
++        // The portal backend tells the Shell when a share ends; if it leaves
++        // the bus (a crash, a restart) every share it held ended with it, and
++        // each share also ends with the Mutter session behind it.
++        this._portalOwner = null;
++        Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameWatcherFlags.NONE,
++            (connection, name, owner) => {
++                if (this._portalOwner && owner !== this._portalOwner)
++                    this._endAll('the portal backend restarted');
++                this._portalOwner = owner;
++            },
++            () => {
++                if (this._portalOwner)
++                    this._endAll('the portal backend left the bus');
++                this._portalOwner = null;
++            });
+     }
+ 
+     // ── Settings ─────────────────────────────────────────────────────────
+@@ -1652,7 +1669,11 @@ export const ShareManager = GObject.registerClass({
+         const windows = choice?.windows ?? this._windowsById(data.windows ?? []);
+         const monitors = choice?.monitors ?? this._monitorsByConnector(data.monitors ?? []);
+         this._pillDismissed = false;
++        if (this._sessions.has(handle))
++            this.SessionClosed(handle);
+         this._sessions.set(handle, {
++            mutterWatch: data['mutter-session']
++                ? this._watchMutterSession(handle, data['mutter-session']) : 0,
+             requester,
+             windows,
+             monitors,
+@@ -1665,12 +1686,35 @@ export const ShareManager = GObject.registerClass({
+     }
+ 
+     SessionClosed(handle) {
+-        if (!this._sessions.delete(handle))
++        const session = this._sessions.get(handle);
++        if (!session)
+             return;
++        if (session.mutterWatch)
++            Gio.DBus.session.signal_unsubscribe(session.mutterWatch);
++        this._sessions.delete(handle);
+         log(`sharing ended (${handle})`);
+         this._sync();
+     }
+ 
++    _endAll(why) {
++        if (this._sessions.size === 0)
++            return;
++        log(`sharing ended for every session: ${why}`);
++        for (const handle of [...this._sessions.keys()])
++            this.SessionClosed(handle);
++    }
++
++    // The share ends with the Mutter session that streams it, even when no
++    // one says so.
++    _watchMutterSession(handle, path) {
++        return Gio.DBus.session.signal_subscribe('org.gnome.Mutter.ScreenCast',
++            'org.gnome.Mutter.ScreenCast.Session', 'Closed', path, null,
++            Gio.DBusSignalFlags.NONE, () => {
++                log(`the Mutter session of ${handle} ended`);
++                this.SessionClosed(handle);
++            });
++    }
++
+     // ── What the picker chose ────────────────────────────────────────────
+ 
+     rememberChoice(choice) {

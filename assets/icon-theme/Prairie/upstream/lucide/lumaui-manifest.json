@@ -149,6 +149,15 @@
       "source_origin": "https://unpkg.com/lucide-static@0.468.0/icons/arrow-down-a-z.svg"
     },
     {
+      "lucide": "arrow-left",
+      "icon": "lumaui-arrow-left-symbolic",
+      "source": "upstream/lucide/lumaui/arrow-left.svg",
+      "sha256": "db02bc350fd7d18cf5bd92441e10d9159e16518a05f27c921f0f4ae634c35db9",
+      "upstream_version": "1.48.0",
+      "gtk_symbolic_sha256": "979e5ca5da63232e49ceb432f1b987b3b0243971a5977253c13d5bcab2fe65d5",
+      "source_origin": "https://cdn.jsdelivr.net/npm/lucide-static@1.48.0/icons/arrow-left.svg"
+    },
+    {
       "lucide": "arrow-left-right",
       "icon": "lumaui-arrow-left-right-symbolic",
       "source": "upstream/lucide/lumaui/arrow-left-right.svg",

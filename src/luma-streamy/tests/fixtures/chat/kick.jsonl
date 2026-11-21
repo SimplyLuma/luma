@@ -1,0 +1,6 @@
+"{\"event\": \"pusher:connection_established\", \"data\": \"{\\\"socket_id\\\":\\\"1234.5678\\\",\\\"activity_timeout\\\":120}\"}"
+"{\"event\": \"pusher_internal:subscription_succeeded\", \"data\": \"{}\", \"channel\": \"chatrooms.668.v2\"}"
+"{\"event\": \"App\\\\Events\\\\ChatMessageEvent\", \"data\": \"{\\\"id\\\": \\\"9f1\\\", \\\"chatroom_id\\\": 668, \\\"content\\\": \\\"gg [emote:37226:KEKW]\\\", \\\"type\\\": \\\"message\\\", \\\"created_at\\\": \\\"2026-11-20T18:00:00+00:00\\\", \\\"sender\\\": {\\\"id\\\": 5, \\\"username\\\": \\\"Orbit\\\", \\\"slug\\\": \\\"orbit\\\", \\\"identity\\\": {\\\"color\\\": \\\"#53FC18\\\", \\\"badges\\\": [{\\\"type\\\": \\\"moderator\\\", \\\"text\\\": \\\"Moderator\\\"}]}}}\", \"channel\": \"chatrooms.668.v2\"}"
+"{\"event\": \"pusher:ping\", \"data\": {}}"
+"{\"event\": \"App\\\\Events\\\\ChatMessageEvent\", \"data\": \"{\\\"id\\\": \\\"9f2\\\", \\\"chatroom_id\\\": 668, \\\"content\\\": \\\"first time here\\\", \\\"type\\\": \\\"message\\\", \\\"sender\\\": {\\\"id\\\": 6, \\\"username\\\": \\\"newviewer\\\", \\\"identity\\\": {\\\"color\\\": \\\"\\\", \\\"badges\\\": []}}}\", \"channel\": \"chatrooms.668.v2\"}"
+"{\"event\": \"App\\\\Events\\\\MessageDeletedEvent\", \"data\": \"{\\\"id\\\": \\\"x\\\", \\\"message\\\": {\\\"id\\\": \\\"9f2\\\"}}\", \"channel\": \"chatrooms.668.v2\"}"

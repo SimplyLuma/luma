@@ -28,6 +28,8 @@ import gi
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
+from .lock import SessionLock  # noqa: E402
+
 LOGGER = logging.getLogger("luma-portal")
 
 AUDIO_NAME = "org.projectluma.AudioDevices"
@@ -179,16 +181,20 @@ class Session:
         self.capture_id: str | None = None
         self.picker = None
         self.closed = False
+        #: A Start waiting for the session to be unlocked, or None.
+        self.waiting = None
 
 
 class AudioCapturePortal:
     """org.freedesktop.impl.portal.AudioCapture."""
 
-    def __init__(self, connection, object_path: str, show_picker) -> None:
+    def __init__(self, connection, object_path: str, show_picker, lock=None) -> None:
         """show_picker(app_id, app_name, types, multiple, parent_window,
         on_done) presents the picker and returns an object with close();
-        on_done(choice or None)."""
+        on_done(choice or None). Nothing is asked or started while the
+        session is locked (lock.py): a Start waits for unlock."""
         self._connection = connection
+        self._lock = lock or SessionLock(connection)
         self._show_picker = show_picker
         self._sessions: dict[str, Session] = {}
         self._registrations: dict[str, int] = {}
@@ -246,6 +252,9 @@ class AudioCapturePortal:
         if session.closed:
             return
         session.closed = True
+        if session.waiting is not None:
+            answer(session.waiting, PORTAL_CANCELLED)
+            session.waiting = None
         if session.picker is not None:
             session.picker.close()
             session.picker = None
@@ -296,6 +305,20 @@ class AudioCapturePortal:
         if session is None:
             answer(invocation, PORTAL_CANCELLED)
             return
+        if self._lock.locked:
+            LOGGER.info("the session is locked; audio capture %s waits for unlock", session_handle)
+            session.waiting = invocation
+
+            def resume():
+                if session.waiting is invocation:
+                    session.waiting = None
+                    self._start_now(session, handle, app_id, parent_window, invocation)
+            self._lock.when_unlocked(resume)
+            return
+        self._start_now(session, handle, app_id, parent_window, invocation)
+
+    def _start_now(self, session: Session, handle, app_id, parent_window, invocation) -> None:
+        session_handle = session.handle
         if session.restored is not None:
             LOGGER.info("session %s restored a previous choice", session_handle)
             self._begin(session, invocation, session.restored)

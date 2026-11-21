@@ -6,13 +6,14 @@ import time
 import gi
 
 gi.require_version("Gdk", "4.0")
+gi.require_version("Graphene", "1.0")
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, GObject, Graphene, Gtk  # noqa: E402
 
 Gtk.init()
 
 from luma_appkit import (ActionEditor, BarAction, DetailsPane, OverrideDot, RowLead, SyncKey,  # noqa: E402
-                         ChatFeed, ChatLine, Sparkline, ToggleChip, install_appkit)
+                         ChatFeed, ChatLine, Sparkline, ToggleChip, install_appkit, rows_tokens)
 
 install_appkit()
 
@@ -68,15 +69,76 @@ assert not dot.has_css_class("active")
 dot.set_active(True)
 assert dot.has_css_class("active") and dot.get_tooltip_text() == "Differs from Landscape"
 
-# A contained thumbnail: the whole 16:9 or 9:16 picture in its own shape, never cropped.
-wide = RowLead.thumbnail(Gdk.Paintable.new_empty(160, 90), fit="contain")
-tall = RowLead.thumbnail(Gdk.Paintable.new_empty(90, 160), fit="contain")
-for lead, ratio in ((wide, 16 / 9), (tall, 9 / 16)):
-    shape = lead.get_center_widget()
-    assert isinstance(shape, Gtk.AspectFrame) and abs(shape.get_ratio() - ratio) < 1e-3, shape
-    assert shape.get_child().get_content_fit() == Gtk.ContentFit.CONTAIN and lead.has_css_class("contain")
-forced = RowLead.thumbnail(Gdk.Paintable.new_empty(10, 10), fit="contain", aspect=16 / 9)
-assert abs(forced.get_center_widget().get_ratio() - 16 / 9) < 1e-3
+# The media tile (fit="contain"): one fixed 16:9 tile whatever the picture, its size, or the row's height.
+class Frames(GObject.Object, Gdk.Paintable):
+    """A source whose frames change size after the first (a camera settling, a 9:16 scene arriving)."""
+
+    def __init__(self, width: int, height: int) -> None:
+        super().__init__()
+        self.width, self.height = width, height
+
+    def do_get_intrinsic_width(self) -> int:
+        return self.width
+
+    def do_get_intrinsic_height(self) -> int:
+        return self.height
+
+    def do_get_intrinsic_aspect_ratio(self) -> float:
+        return self.width / self.height
+
+    def do_snapshot(self, snapshot, width, height) -> None:
+        colour = Gdk.RGBA()
+        colour.parse("#3070c0")
+        snapshot.append_color(colour, Graphene.Rect().init(0, 0, width, height))
+
+    def resize(self, width: int, height: int) -> None:
+        self.width, self.height = width, height
+        self.invalidate_size()
+        self.invalidate_contents()
+
+
+tile_w, tile_h = int(rows_tokens.value("nav_files", "media_thumb_width")), int(rows_tokens.value("nav_files", "media_thumb_height"))
+source = Frames(1920, 1080)
+leads = {"wide": RowLead.thumbnail(source, fit="contain"),
+         "tall": RowLead.thumbnail(Gdk.Paintable.new_empty(1080, 1920), fit="contain"),
+         "forced": RowLead.thumbnail(Gdk.Paintable.new_empty(10, 10), fit="contain", aspect=9 / 16),
+         "empty": RowLead.thumbnail(None, kind="image", fit="contain", aspect=16 / 9)}
+column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
+for lead in leads.values():
+    row = Gtk.Box(vexpand=True)  # a tall row: the tile still centres at its own height
+    row.append(lead)
+    column.append(row)
+window = Gtk.Window(child=column, default_width=320, default_height=640)
+window.present()
+settle(0.4)
+
+
+def sizes() -> dict:
+    return {key: (lead.get_width(), lead.get_height()) for key, lead in leads.items()}
+
+
+assert set(sizes().values()) == {(tile_w, tile_h)}, sizes()
+for lead in leads.values():
+    assert lead.has_css_class("contain") and lead.get_valign() == Gtk.Align.CENTER and not lead.get_vexpand()
+    assert lead.get_parent().get_height() > 2 * tile_h  # the row is tall; the tile is not
+    assert lead.measure(Gtk.Orientation.VERTICAL, -1)[:2] == (tile_h, tile_h)
+assert leads["wide"].picture_rect(tile_w, tile_h) == (0.0, 0.0, tile_w, tile_h)  # 16:9 fills, no margin
+x, y, w, h = leads["tall"].picture_rect(tile_w, tile_h)
+assert h == tile_h and abs(w - tile_h * 9 / 16) < 1e-6 and abs(x - (tile_w - w) / 2) < 1e-6 and y == 0
+assert abs(leads["forced"].picture_rect(tile_w, tile_h)[2] - tile_h * 9 / 16) < 1e-6
+assert leads["empty"].glyph.get_visible() and leads["empty"].picture_rect(tile_w, tile_h) is None
+assert not leads["wide"].glyph.get_visible()
+# Frames of another size, and then another shape, arrive: the tile keeps its size and contains them.
+source.resize(3840, 2160)
+settle(0.2)
+source.resize(1080, 1920)
+settle(0.2)
+assert sizes()["wide"] == (tile_w, tile_h), sizes()
+assert leads["wide"].picture_rect(tile_w, tile_h)[2] < tile_w
+leads["empty"].set_paintable(Frames(1920, 1080))
+settle(0.2)
+assert sizes()["empty"] == (tile_w, tile_h) and not leads["empty"].glyph.get_visible()
+window.destroy()
 assert RowLead.thumbnail(Gdk.Paintable.new_empty(160, 90)).get_center_widget().get_content_fit() == \
     Gtk.ContentFit.COVER
 for bad in (lambda: RowLead.thumbnail(None, fit="fill"), lambda: RowLead.thumbnail(None, fit="contain", aspect=0)):

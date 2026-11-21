@@ -30,12 +30,23 @@ class StreamyApplication(Adw.Application):
             self.add_action(action)
 
     def _save_picture(self, folder: str, name: str) -> None:
-        from .shots import render
+        from .shots import render_after_paint
 
         window = self.props.active_window
         if window is not None:
             os.makedirs(folder, exist_ok=True)
-            render(window, os.path.join(folder, os.path.basename(name) or "streamy.png"))
+            render_after_paint(window, os.path.join(folder, os.path.basename(name) or "streamy.png"))
+
+    def do_shutdown(self) -> None:
+        # Quitting without closing the window (a check run, a session ending) still stops the pipeline
+        # before the interpreter goes: no GStreamer thread calls into Python after that.
+        for window in self.get_windows():
+            engine, outputs = getattr(window, "engine", None), getattr(window, "outputs", None)
+            if outputs is not None:
+                outputs.close_now()
+            if engine is not None:
+                engine.stop()
+        Adw.Application.do_shutdown(self)
 
     def do_activate(self) -> None:
         window = self.props.active_window
@@ -70,4 +81,6 @@ def main(argv: list[str] | None = None) -> int:
 
         register_host_app(APP_ID)
     Gst.init(None)
+    # GStreamer's threads (the mixers' per-frame callbacks) wait for the GIL at most 1 ms, not 5.
+    sys.setswitchinterval(0.001)
     return StreamyApplication().run(argv if argv is not None else sys.argv)

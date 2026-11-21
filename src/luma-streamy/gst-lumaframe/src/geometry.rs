@@ -281,6 +281,11 @@ pub struct Layout {
     /// Gaussian sigma: half of `shadow-blur`, as for CSS box-shadow.
     pub sigma: f64,
     pub opacity: f64,
+    /// One output pixel's extent in texture coordinates.
+    pub footprint: (f64, f64),
+    /// Samples per axis spread over the footprint: 1 at up to 1.5 source
+    /// pixels per output pixel, at most 4 (a sharp downscale, no aliasing).
+    pub taps: f64,
 }
 
 impl Layout {
@@ -305,6 +310,10 @@ impl Layout {
             StrokePosition::Outside => s.stroke_width.max(0.0),
         };
         let stroke_out = s.stroke_position.reach(stroke);
+        let crop = crop_rect(s, content_region(s, input, meta));
+        let footprint = (crop[2] * aa / bw.max(1e-6), crop[3] * aa / bh.max(1e-6));
+        let texels = (footprint.0 * input.0.max(1) as f64).max(footprint.1 * input.1.max(1) as f64);
+        let taps = (texels / 1.5 - 1e-6).ceil().clamp(1.0, 4.0);
         Layout {
             canvas,
             aa,
@@ -317,11 +326,13 @@ impl Layout {
             outer_half: (half.0 + stroke_out, half.1 + stroke_out),
             outer_radius: radius + stroke_out,
             stroke_color: argb_to_rgba(s.stroke_color),
-            crop: crop_rect(s, content_region(s, input, meta)),
+            crop,
             shadow_color: argb_to_rgba(s.shadow_color),
             shadow_offset: (s.shadow_offset_x, s.shadow_offset_y),
             sigma: 0.5 * s.shadow_blur,
             opacity: s.opacity.clamp(0.0, 1.0),
+            footprint,
+            taps,
         }
     }
 
@@ -867,6 +878,31 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(content_rect(&s, (5120, 1440), meta), (0.0, 0.0, 512.0, 1440.0));
+    }
+
+    #[test]
+    fn downscales_sample_the_whole_footprint() {
+        // A 1124 px wide window region drawn 640 px wide: 1.76 source pixels per
+        // output pixel, two taps per axis.
+        let s = Settings {
+            content_width: 1124.0,
+            content_height: 667.0,
+            box_width: 640.0,
+            box_height: 380.0,
+            ..Default::default()
+        };
+        let l = Layout::new(&s, (5120, 1440), (640, 380));
+        assert_eq!(l.taps, 2.0);
+        assert!(close(l.footprint.0 * 5120.0, 1124.0 / 640.0, 1e-9));
+        // One to one: a single tap.
+        let s = Settings {
+            box_width: 640.0,
+            box_height: 360.0,
+            ..Default::default()
+        };
+        assert_eq!(Layout::new(&s, (640, 360), (640, 360)).taps, 1.0);
+        // Never more than four.
+        assert_eq!(Layout::new(&s, (7680, 4320), (640, 360)).taps, 4.0);
     }
 
     #[test]

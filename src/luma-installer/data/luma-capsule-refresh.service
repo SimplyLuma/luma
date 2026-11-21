@@ -1,0 +1,14 @@
+[Unit]
+Description=Update the libraries inside installed application capsules
+Documentation=https://simplyluma.com/apps
+After=graphical-session.target
+PartOf=graphical-session.target
+# An upgrade downloads packages and rebuilds an image; not on battery.
+ConditionACPower=true
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/luma-capsule-refresh --all
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=20

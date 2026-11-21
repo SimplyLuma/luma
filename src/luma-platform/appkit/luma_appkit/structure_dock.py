@@ -52,6 +52,9 @@ Rules the dock owns, so every app gets the same answers:
   kept (``"size"`` on the split in ``layout()``), and a double click on the
   seam fits the side to its content again. A seam with no room to move
   (both sides at their minimum) shows no mark and no resize cursor.
+- **Headers are a band.** A tile's header (or tab strip) is one step toward
+  the island from the well (``@luma_dock_header``), with a hairline under it;
+  ``set_status("Live", tone="live")`` puts a dot and a word after the title.
 - **Radii stay concentric.** Every tile is LumaUI's card radius
   (``--lumaui-dock-tile-radius``, Settings' grouped cards), never sharpened
   to fit the island: the island holding a dock grows to that radius plus the
@@ -91,6 +94,8 @@ PREVIEW_MS = 120
 #: A drag starts once the pointer has moved this far (px), so a click on a header stays a click.
 DRAG_THRESHOLD = 8
 #: Where a tile other than the main one goes on a phone.
+#: set_status tones: None (muted) or "live" (the recording red dot and word).
+STATUS_TONES = (None, "live")
 PHONE = ("inline", "drawer")
 _SAVE_DELAY_MS = 300
 
@@ -263,9 +268,18 @@ class DockTile(Gtk.Box):
         glyph = image(icon)
         glyph.add_css_class("lumaui-dock-tile-icon")
         self.header.append(glyph)
-        self.title_label = Gtk.Label(label=title, xalign=0, hexpand=True, ellipsize=3)
+        self.title_label = Gtk.Label(label=title, xalign=0, ellipsize=3)
         self.title_label.add_css_class("lumaui-dock-tile-title")
         self.header.append(self.title_label)
+        # set_status: a dot and a word after the title; the box takes the header's spare width either way.
+        self.status = Gtk.Box(hexpand=True, halign=Gtk.Align.START, valign=Gtk.Align.CENTER)
+        self.status.add_css_class("lumaui-dock-tile-status")
+        self.status_dot = Gtk.Box(valign=Gtk.Align.CENTER, visible=False)
+        self.status_dot.add_css_class("lumaui-dock-tile-status-dot")
+        self.status_label = Gtk.Label(visible=False)
+        self.status.append(self.status_dot)
+        self.status.append(self.status_label)
+        self.header.append(self.status)
         self.actions = Gtk.Box()
         self.actions.add_css_class("lumaui-dock-tile-actions")
         for action in actions:
@@ -298,14 +312,30 @@ class DockTile(Gtk.Box):
     def set_title(self, title: str) -> None:
         self.title = title
         self.title_label.set_label(title)
-        self.update_property([Gtk.AccessibleProperty.LABEL], [title])
+        self._describe()
+
+    def set_status(self, text: str | None, tone: str | None = None) -> None:
+        """A short state after the title in the header ("Live"), with a dot; ``tone="live"`` is the
+        recording red. None clears it. The tile's accessible label carries it ("Preview, Live")."""
+        if tone not in STATUS_TONES:
+            raise ValueError(f"a dock tile's status tone is one of {STATUS_TONES}, not {tone!r}")
+        shown = bool(text)
+        self.status_label.set_label(text or "")
+        self.status_label.set_visible(shown)
+        self.status_dot.set_visible(shown)
+        lumaui.set_css_class(self.status, "live", shown and tone == "live")
+        self._describe()
+
+    def _describe(self) -> None:
+        status = self.status_label.get_label() if self.status_label.get_visible() else ""
+        self.update_property([Gtk.AccessibleProperty.LABEL], [f"{self.title}, {status}" if status else self.title])
 
     def _restore_header(self) -> None:
         """Its header back as it was (a tab group borrows its actions and More, and hides it)."""
         if self.actions.get_parent() is not self.header:
             if self.actions.get_parent() is not None:
                 self.actions.get_parent().remove(self.actions)
-            self.header.insert_child_after(self.actions, self.title_label)
+            self.header.insert_child_after(self.actions, self.status)
         if self.more_button.get_parent() is not self.header:
             if self.more_button.get_parent() is not None:
                 self.more_button.get_parent().remove(self.more_button)

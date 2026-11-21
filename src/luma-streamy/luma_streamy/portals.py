@@ -191,10 +191,80 @@ class Camera:
     name: str  # node.name, stable across boots: what a widget remembers
     label: str  # "Built-in Front Camera"
     modes: tuple = ()  # ((width, height, fps), ...) best first
+    api: str = ""  # "libcamera" | "v4l2"
 
     @property
     def size(self) -> tuple[int, int] | None:
         return self.modes[0][:2] if self.modes else None
+
+
+def _rates(structure: str) -> list[int]:
+    """Whole frame rates in a caps structure's text: one fraction, a list { 30/1, 25/1 } or a range
+    [ 5/1, 30/1 ] (its ends). Read from the text: PyGObject can't hold a GstValueList."""
+    import re
+
+    found = re.search(r"framerate=\(fraction\)(\{[^}]*\}|\[[^\]]*\]|[0-9]+/[0-9]+)", structure)
+    if found is None:
+        return []
+    rates = []
+    for num, den in re.findall(r"([0-9]+)/([0-9]+)", found.group(1)):
+        if int(den):
+            rates.append(round(int(num) / int(den)))
+    return rates
+
+
+#: Picture sizes people choose by name (height): offered scaled when the camera lacks them.
+STANDARD_SIZES = ((3840, 2160), (2560, 1440), (1920, 1080), (1280, 720), (854, 480))
+
+
+def size_label(width: int, height: int) -> str:
+    return f"{height}p" if (width, height) in STANDARD_SIZES or width * 9 == height * 16 else f"{width}×{height}"
+
+
+def default_mode(modes) -> tuple[int, int, int] | None:
+    """A new camera's mode: 1080p30 when it has it, else the largest size up to 1080p at the rate
+    nearest 30 (4K costs far more to decode and composite than a stream shows)."""
+    if not modes:
+        return None
+    fits = [m for m in modes if m[1] <= 1080] or list(modes)
+    best = max(m[0] * m[1] for m in fits)
+    return min((m for m in fits if m[0] * m[1] == best), key=lambda m: abs(m[2] - 30))
+
+
+def resolutions(modes) -> list[tuple[str, str]]:
+    """(key, label) per picture size: the camera's own (largest first), then standard sizes it lacks below
+    its largest, made by scaling on the GPU ("720p, scaled"). Key "WxH" or "WxH:scaled"."""
+    sizes = sorted({(m[0], m[1]) for m in modes}, key=lambda s: s[0] * s[1], reverse=True)
+    out = [(f"{w}x{h}", size_label(w, h)) for w, h in sizes]
+    if sizes:
+        top = sizes[0][0] * sizes[0][1]
+        for w, h in STANDARD_SIZES:
+            if (w, h) not in sizes and w * h < top:
+                out.append((f"{w}x{h}:scaled", f"{h}p, scaled"))
+    return out
+
+
+def rates(modes, size: tuple[int, int]) -> list[int]:
+    """Frame rates the camera offers at ``size`` (a scaled size: the rates of the size it is made from)."""
+    found = sorted({m[2] for m in modes if (m[0], m[1]) == tuple(size)}, reverse=True)
+    return found
+
+
+def source_for_scaled(modes, size: tuple[int, int]) -> tuple[int, int] | None:
+    """The camera's own size a scaled size is made from: the smallest at least as large, same shape first."""
+    w, h = size
+    larger = [(m[0], m[1]) for m in modes if m[0] >= w and m[1] >= h]
+    if not larger:
+        return None
+    return min(larger, key=lambda s: (abs(s[0] / s[1] - w / h) > 0.01, s[0] * s[1]))
+
+
+def camera_label(description: str) -> str:
+    """A camera's name as people know it: "DJIPocket3", not "DJIPocket3 (V4L2)"."""
+    for suffix in (" (V4L2)", " (libcamera)"):
+        if description.endswith(suffix):
+            return description[: -len(suffix)]
+    return description
 
 
 def _modes(caps) -> tuple:
@@ -208,17 +278,7 @@ def _modes(caps) -> tuple:
         ok_h, height = st.get_int("height")
         if not (ok_w and ok_h):
             continue
-        rates = []
-        if st.has_field("framerate"):
-            value = st.get_value("framerate")
-            for v in (value if isinstance(value, list) else [value]):
-                try:
-                    rates.append(round(v.num / v.denom) if hasattr(v, "num") else round(float(v)))
-                except (TypeError, ZeroDivisionError, ValueError):
-                    pass
-            ok_f, num, den = st.get_fraction("framerate")
-            if ok_f and den:
-                rates.append(round(num / den))
+        rates = _rates(st.to_string()) if st.has_field("framerate") else []
         for fps in rates or [30]:
             if fps > 0:
                 found.add((width, height, fps))
@@ -229,7 +289,19 @@ def _camera(device) -> Camera | None:
     target = _prop(device, "object.serial") or _prop(device, "node.name")
     if target is None:
         return None
-    return Camera(target, _prop(device, "node.name") or target, device.get_display_name(), _modes(device.get_caps()))
+    label = camera_label(_prop(device, "node.description") or device.get_display_name())
+    return Camera(target, _prop(device, "node.name") or target, label, _modes(device.get_caps()),
+                  _prop(device, "device.api") or "")
+
+
+def unique_cameras(cameras: list) -> list:
+    """One row per physical camera: a camera both libcamera and V4L2 show (same name) once, libcamera's."""
+    by_label: dict[str, object] = {}
+    for camera in cameras:
+        kept = by_label.get(camera.label)
+        if kept is None or (getattr(kept, "api", "") != "libcamera" and getattr(camera, "api", "") == "libcamera"):
+            by_label[camera.label] = camera
+    return [c for c in cameras if by_label.get(c.label) is c]
 
 
 class CameraWatch:
@@ -239,6 +311,8 @@ class CameraWatch:
     def __init__(self, fd: int, on_changed: Callable[[], None]) -> None:
         self.cameras: list[Camera] = []
         self.ready = False
+        #: Why there is no list (the device provider failed), in words; None when it is fine.
+        self.error: str | None = None
         self.on_changed = on_changed
         self._lock = threading.Lock()
         threading.Thread(target=self._run, args=(fd,), name="streamy-cameras", daemon=True).start()
@@ -249,8 +323,13 @@ class CameraWatch:
         gi.require_version("Gst", "1.0")
         from gi.repository import Gst
 
-        provider, _devices_now = _devices(fd, "Video/Source")
+        try:
+            provider, _devices_now = _devices(fd, "Video/Source")
+        except Exception as error:  # noqa: BLE001 - the list must come back, empty, whatever failed
+            print(f"streamy: cameras: {error}", flush=True)
+            provider = None
         if provider is None:
+            self.error = "The camera list could not be read"
             self._publish([])
             return
         self._provider = provider
@@ -269,11 +348,15 @@ class CameraWatch:
         if provider:
             for device in provider.get_devices():
                 if device.get_device_class().startswith("Video/Source"):
-                    camera = _camera(device)
+                    try:
+                        camera = _camera(device)
+                    except Exception as error:  # noqa: BLE001 - one odd device never hides the others
+                        print(f"streamy: camera {device.get_display_name()}: {error}", flush=True)
+                        camera = None
                     if camera is not None:
                         cameras.append(camera)
         with self._lock:
-            self.cameras, self.ready = cameras, True
+            self.cameras, self.ready = unique_cameras(cameras), True
         GLib.idle_add(lambda: self.on_changed() and False)
 
     def find(self, name: str | None) -> Camera | None:

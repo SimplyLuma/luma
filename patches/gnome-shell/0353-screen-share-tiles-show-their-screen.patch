@@ -1,0 +1,211 @@
+From: Project Luma <builds@project-luma.local>
+Subject: [PATCH] lumaShare: a screen tile shows exactly its screen
+
+Each screen tile cloned global.window_group and was meant to offset and
+scale it onto its monitor, but the clone was allocated at the stage's
+origin, so the offset never applied: every tile showed the whole
+multi-monitor stage squashed into it. The tile's name and resolution came
+from listDisplays() by position, but that list is sorted for naming
+(built-in first) while tiles follow the layout's monitor order, so a tile
+could carry another monitor's name, its connector -- the screen actually
+shared -- and a size that was a layout size, not the display's.
+
+A screen tile now holds that monitor at 1:1, scaled into the tile at the
+monitor's own aspect and clipped to it: the background, the windows on
+that monitor and the Shell's chrome there (shelf, bar), each a clone bound
+to where its source is, less the monitor's origin. Only what is on the
+monitor is cloned, so a tile repaints only that monitor; dialogs (the
+picker itself), the lock screen, the overview and anything held back from
+captures are never cloned. The set is resynced on restack and at most once
+a second for windows moving between monitors. A tile takes the display
+whose layout index is its monitor's, and shows that display's current
+mode in pixels (listDisplays() now returns it).
+
+diff --git a/js/ui/lumaCast.js b/js/ui/lumaCast.js
+index f7de746..fc6233b 100644
+--- a/js/ui/lumaCast.js
++++ b/js/ui/lumaCast.js
+@@ -179,13 +179,16 @@ export async function listDisplays() {
+                 inLayout.add(connector);
+         }
+         const displays = monitors
+-            .map(([[connector], , props]) => {
++            .map(([[connector], modes, props]) => {
+                 const p = unpackDict(props);
++                // The current mode: the display's resolution in pixels.
++                const current = modes.find(mode => unpackDict(mode[6])['is-current']);
+                 return {
+                     connector,
+                     builtin: Boolean(p['is-builtin']),
+                     name: p['is-builtin'] ? _('Built-in display') : (p['display-name'] || connector),
+                     index: manager.get_monitor_for_connector(connector),
++                    mode: current ? [current[1], current[2]] : null,
+                 };
+             })
+             .filter(d => inLayout.has(d.connector) && d.index >= 0)
+diff --git a/js/ui/lumaShare.js b/js/ui/lumaShare.js
+index 22f02ac..8d4d664 100644
+--- a/js/ui/lumaShare.js
++++ b/js/ui/lumaShare.js
+@@ -313,10 +313,19 @@ const PreviewTile = GObject.registerClass({
+     }
+ });
+ 
+-// A monitor's live content: the wallpaper and every window on it, clipped to
+-// that monitor and scaled into the tile. global.window_group holds the
+-// background group and every window actor and no shell chrome, so nothing
+-// here can show the picker drawing itself.
++// A monitor's live content, exactly that monitor: its wallpaper, the windows
++// on it and the Shell's own chrome there (the shelf, the bar), each a clone
++// placed where it is on that monitor, clipped to the monitor and scaled into
++// the tile at the monitor's own aspect. Only what is on the monitor is
++// cloned, so a tile repaints that monitor and nothing else. The picker and
++// every other dialog, the lock screen, the overview and anything held back
++// from captures (the pill, the sharing edges) are never cloned.
++//
++// One clone of global.window_group used to stand for the monitor, allocated
++// at the stage's origin: the offset it was given never applied, so every
++// tile showed the whole multi-monitor stage squashed into it.
++const PREVIEW_RESYNC_MS = 1000;
++
+ const ScreenPreview = GObject.registerClass(
+ class ScreenPreview extends St.Widget {
+     _init(monitor) {
+@@ -326,30 +335,100 @@ class ScreenPreview extends St.Widget {
+             layout_manager: new Clutter.FixedLayout(),
+         });
+         this._monitor = monitor;
+-        this._clone = new Clutter.Clone({
+-            source: global.window_group,
++        // The monitor at 1:1, in its own coordinates, scaled into the tile.
++        this._view = new Clutter.Actor({
++            clip_to_allocation: true,
+             pivot_point: new Graphene.Point({x: 0, y: 0}),
+         });
+-        Shell.util_set_hidden_from_pick(this._clone, true);
+-        this.add_child(this._clone);
++        Shell.util_set_hidden_from_pick(this._view, true);
++        this.add_child(this._view);
++        this._sources = [];
++        this._sync();
++        global.display.connectObject('restacked', () => this._sync(), this);
++        // Windows moving between monitors are picked up within a second.
++        this._resyncId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PREVIEW_RESYNC_MS, () => {
++            this._sync();
++            return GLib.SOURCE_CONTINUE;
++        });
++        this.connect('destroy', () => {
++            if (this._resyncId)
++                GLib.source_remove(this._resyncId);
++            this._resyncId = 0;
++        });
++    }
++
++    _onMonitor(actor) {
++        if (!actor.visible || actor.opacity === 0)
++            return false;
++        const m = this._monitor;
++        const [x, y] = actor.get_transformed_position();
++        const [width, height] = actor.get_transformed_size();
++        return x < m.x + m.width && x + width > m.x && y < m.y + m.height && y + height > m.y;
++    }
++
++    // What the monitor shows, bottom to top.
++    _layers() {
++        const layers = [];
++        const background = global.window_group.get_children()
++            .find(child => child instanceof Meta.BackgroundGroup);
++        if (background)
++            layers.push(background);
++        for (const actor of global.get_window_actors()) {
++            const window = actor.meta_window;
++            if (window.minimized || !window.showing_on_its_workspace() ||
++                !window.located_on_workspace(global.workspace_manager.get_active_workspace()))
++                continue;
++            if (this._onMonitor(actor))
++                layers.push(actor);
++        }
++        const layout = Main.layoutManager;
++        const never = new Set([global.window_group, layout.modalDialogGroup,
++            layout.screenShieldGroup, layout.overviewGroup].filter(Boolean));
++        for (const actor of layout.uiGroup.get_children()) {
++            if (never.has(actor) || actor instanceof CaptureHidden || actor._onScreenOnly)
++                continue;
++            if (this._onMonitor(actor))
++                layers.push(actor);
++        }
++        return layers;
++    }
++
++    _sync() {
++        const layers = this._layers();
++        if (layers.length === this._sources.length &&
++            layers.every((actor, i) => actor === this._sources[i]))
++            return;
++        this._sources = layers;
++        this._view.destroy_all_children();
++        const m = this._monitor;
++        for (const source of layers) {
++            const clone = new Clutter.Clone({source});
++            // Where the source is on the stage, less the monitor's origin.
++            // Every layer's parent sits at the stage's origin.
++            clone.add_constraint(new Clutter.BindConstraint({
++                source, coordinate: Clutter.BindCoordinate.X, offset: -m.x,
++            }));
++            clone.add_constraint(new Clutter.BindConstraint({
++                source, coordinate: Clutter.BindCoordinate.Y, offset: -m.y,
++            }));
++            clone.add_constraint(new Clutter.BindConstraint({
++                source, coordinate: Clutter.BindCoordinate.SIZE,
++            }));
++            source.connectObject('destroy', () => this._sync(), clone);
++            this._view.add_child(clone);
++        }
+     }
+ 
+     vfunc_allocate(box) {
+         this.set_allocation(box);
+         const width = box.get_width();
+         const height = box.get_height();
+-        const monitor = this._monitor;
+-        const scale = Math.min(width / Math.max(1, monitor.width),
+-            height / Math.max(1, monitor.height));
+-        this._clone.allocate(new Clutter.ActorBox({
+-            x1: 0, y1: 0,
+-            x2: global.window_group.width || monitor.width,
+-            y2: global.window_group.height || monitor.height,
+-        }));
+-        this._clone.set_scale(scale, scale);
+-        this._clone.set_position(
+-            Math.round((width - monitor.width * scale) / 2 - monitor.x * scale),
+-            Math.round((height - monitor.height * scale) / 2 - monitor.y * scale));
++        const m = this._monitor;
++        const scale = Math.min(width / Math.max(1, m.width), height / Math.max(1, m.height));
++        const x = Math.round((width - m.width * scale) / 2);
++        const y = Math.round((height - m.height * scale) / 2);
++        this._view.allocate(new Clutter.ActorBox({x1: x, y1: y, x2: x + m.width, y2: y + m.height}));
++        this._view.set_scale(scale, scale);
+     }
+ });
+ 
+@@ -736,14 +815,18 @@ export const SharePicker = GObject.registerClass({
+     _sources() {
+         if (this._mode === 'screens') {
+             return Main.layoutManager.monitors.map((monitor, index) => {
+-                const display = this._request.displays?.[index];
++                // displays is sorted for naming (built-in first); each entry
++                // carries the layout index of the monitor it is.
++                const display = this._request.displays?.find(d => d.index === index);
++                const [width, height] = display?.mode ?? [monitor.width, monitor.height];
+                 return {
+                     kind: 'screen',
+                     monitor,
+                     index,
+                     connector: display?.connector ?? `monitor-${index}`,
+                     title: display?.name ?? _('Display %d').format(index + 1),
+-                    detail: `${monitor.width} × ${monitor.height}`,
++                    // The display's own resolution, not its size in the layout.
++                    detail: `${width} × ${height}`,
+                 };
+             });
+         }

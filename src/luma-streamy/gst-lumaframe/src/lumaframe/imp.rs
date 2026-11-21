@@ -55,7 +55,18 @@ pub struct LumaFrame {
     input_size: Mutex<Option<(i32, i32)>>,
     /// The current input buffer's crop meta, if it has one.
     crop_meta: Mutex<Option<geometry::CropMeta>>,
+    /// Property changes made since `revision` was first set, held until the
+    /// next `revision` commits them all at once.
+    pending: Mutex<Option<Settings>>,
+    /// The last committed revision; 0 until the application sets one.
+    revision: Mutex<u64>,
+    /// The settings and revision of the buffer being drawn, taken once per
+    /// input buffer so a frame never mixes two revisions.
+    frame: Mutex<Option<(Settings, u64)>>,
     shader: Mutex<Option<gst_gl::GLShader>>,
+    /// The minimum latency answered for everything upstream, in ns; None
+    /// passes upstream's answer through.
+    source_latency: Mutex<Option<gst::ClockTime>>,
 }
 
 #[glib::object_subclass]
@@ -379,14 +390,72 @@ impl ObjectImpl for LumaFrame {
                     1.0,
                     1.0,
                 ),
+                /*
+                 * GstLumaFrame:revision:
+                 *
+                 * Commits every property change since the last commit, at once,
+                 * and stamps each output buffer drawn with them (its offset
+                 * field), so downstream can match a buffer to the geometry it
+                 * was drawn with. Until it is first set (0), changes apply as
+                 * they are made.
+                 */
+                /*
+                 * GstLumaFrame:source-latency:
+                 *
+                 * The minimum latency this element answers for its upstream
+                 * in latency queries, in nanoseconds; -1 answers what
+                 * upstream says. A live source stamped on arrival
+                 * (pipewiresrc do-timestamp) has a whole picture at its
+                 * timestamp, so 0 is true for it, and a live compositor
+                 * downstream then draws each frame without waiting a source
+                 * frame's duration for it.
+                 */
+                glib::ParamSpecInt64::builder("source-latency")
+                    .nick("Source latency")
+                    .blurb("Minimum latency answered for upstream in ns (-1 = as upstream answers)")
+                    .minimum(-1)
+                    .default_value(-1)
+                    .mutable_playing()
+                    .build(),
+                glib::ParamSpecUInt64::builder("revision")
+                    .nick("Revision")
+                    .blurb("Commits pending changes; stamped on output buffers as their offset (0 = changes apply at once)")
+                    .mutable_playing()
+                    .build(),
             ]
         });
         PROPERTIES.as_ref()
     }
 
     fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-        let mut s = self.settings.lock().unwrap();
-        let before = s.clone();
+        if pspec.name() == "source-latency" {
+            let ns: i64 = value.get().expect("type checked by GObject");
+            *self.source_latency.lock().unwrap() = u64::try_from(ns).ok().map(gst::ClockTime::from_nseconds);
+            // A live compositor downstream asks again and takes the new figure.
+            let _ = self
+                .obj()
+                .post_message(gst::message::Latency::builder().src(&*self.obj()).build());
+            return;
+        }
+        let mut live = self.settings.lock().unwrap();
+        let before = live.clone();
+        if pspec.name() == "revision" {
+            if let Some(p) = self.pending.lock().unwrap().take() {
+                *live = p;
+            }
+            *self.revision.lock().unwrap() = value.get().expect("type checked by GObject");
+            let after = live.clone();
+            drop(live);
+            self.reconfigure_if_resized(&before, &after);
+            return;
+        }
+        let deferred = *self.revision.lock().unwrap() > 0;
+        let mut pending = self.pending.lock().unwrap();
+        let s: &mut Settings = if deferred {
+            pending.get_or_insert_with(|| before.clone())
+        } else {
+            &mut live
+        };
         let f = || value.get::<f64>().expect("type checked by GObject");
         match pspec.name() {
             "box-width" => s.box_width = f(),
@@ -411,21 +480,29 @@ impl ObjectImpl for LumaFrame {
             "opacity" => s.opacity = f(),
             name => unreachable!("unknown property {name}"),
         }
-        let after = s.clone();
-        drop(s);
+        drop(pending);
+        let after = live.clone();
+        drop(live);
         gst::debug!(CAT, imp = self, "{} = {:?}", pspec.name(), value);
-        // A size change renegotiates before the next buffer; anything else is
-        // only uniforms.
-        if let Some(input) = *self.input_size.lock().unwrap() {
-            if geometry::output_size(&before, input) != geometry::output_size(&after, input) {
-                gst::debug!(CAT, imp = self, "output size changes, reconfiguring");
-                self.obj().reconfigure_src();
-            }
-        }
+        self.reconfigure_if_resized(&before, &after);
     }
 
     fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-        let s = self.settings.lock().unwrap();
+        if pspec.name() == "source-latency" {
+            return self
+                .source_latency
+                .lock()
+                .unwrap()
+                .map_or(-1i64, |t| t.nseconds() as i64)
+                .to_value();
+        }
+        if pspec.name() == "revision" {
+            return self.revision.lock().unwrap().to_value();
+        }
+        let s = match self.pending.lock().unwrap().clone() {
+            Some(p) => p,
+            None => self.settings.lock().unwrap().clone(),
+        };
         match pspec.name() {
             "box-width" => s.box_width.to_value(),
             "box-height" => s.box_height.to_value(),
@@ -448,6 +525,19 @@ impl ObjectImpl for LumaFrame {
             "shadow-color" => s.shadow_color.to_value(),
             "opacity" => s.opacity.to_value(),
             name => unreachable!("unknown property {name}"),
+        }
+    }
+}
+
+impl LumaFrame {
+    /// A size change renegotiates before the next buffer; anything else is
+    /// only uniforms.
+    fn reconfigure_if_resized(&self, before: &Settings, after: &Settings) {
+        if let Some(input) = *self.input_size.lock().unwrap() {
+            if geometry::output_size(before, input) != geometry::output_size(after, input) {
+                gst::debug!(CAT, imp = self, "output size changes, reconfiguring");
+                self.obj().reconfigure_src();
+            }
         }
     }
 }
@@ -486,10 +576,38 @@ impl BaseTransformImpl for LumaFrame {
         Ok(())
     }
 
+    fn query(&self, direction: gst::PadDirection, query: &mut gst::QueryRef) -> bool {
+        if !BaseTransformImplExt::parent_query(self, direction, query) {
+            return false;
+        }
+        if direction == gst::PadDirection::Src {
+            if let gst::QueryViewMut::Latency(q) = query.view_mut() {
+                if let Some(min) = *self.source_latency.lock().unwrap() {
+                    let (live, _min, max) = q.result();
+                    let max = max.map(|m| m.max(min));
+                    q.set(live, min, max);
+                }
+            }
+        }
+        true
+    }
+
     fn before_transform(&self, inbuf: &gst::BufferRef) {
         let meta = inbuf.meta::<gst_video::VideoCropMeta>().map(|m| m.rect());
         *self.crop_meta.lock().unwrap() = meta;
+        let snapshot = (self.settings.lock().unwrap().clone(), *self.revision.lock().unwrap());
+        *self.frame.lock().unwrap() = Some(snapshot);
         self.parent_before_transform(inbuf);
+    }
+
+    fn copy_metadata(&self, inbuf: &gst::BufferRef, outbuf: &mut gst::BufferRef) -> Result<(), gst::LoggableError> {
+        self.parent_copy_metadata(inbuf, outbuf)?;
+        if let Some((_, revision)) = *self.frame.lock().unwrap() {
+            if revision > 0 {
+                outbuf.set_offset(revision);
+            }
+        }
+        Ok(())
     }
 
     fn fixate_caps(&self, direction: gst::PadDirection, caps: &gst::Caps, othercaps: gst::Caps) -> gst::Caps {
@@ -618,7 +736,10 @@ impl GLFilterImpl for LumaFrame {
             .unwrap()
             .clone()
             .ok_or_else(|| gst::loggable_error!(CAT, "no shader"))?;
-        let settings = self.settings.lock().unwrap().clone();
+        let settings = match self.frame.lock().unwrap().clone() {
+            Some((s, _)) => s,
+            None => self.settings.lock().unwrap().clone(),
+        };
         let meta = *self.crop_meta.lock().unwrap();
         let l = Layout::for_frame(
             &settings,
@@ -651,6 +772,8 @@ impl GLFilterImpl for LumaFrame {
             s.set_uniform_1f("u_sigma", f(l.sigma));
             s.set_uniform_1f("u_sigma_min", f(geometry::SHADOW_SIGMA_MIN_PX * l.aa));
             s.set_uniform_1f("u_opacity", f(l.opacity));
+            s.set_uniform_2f("u_footprint", f(l.footprint.0), f(l.footprint.1));
+            s.set_uniform_1f("u_taps", f(l.taps));
         });
         self.obj().render_to_target_with_shader(input, output, &shader);
         Ok(())

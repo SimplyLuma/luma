@@ -77,7 +77,7 @@ def main() -> int:
 
     def add() -> bool:
         idle.show_scene(empty.active_scene)
-        frame = idle.branches[late.id].elements[-1]
+        frame = idle.branches[late.id].frame("landscape")
         frame.get_static_pad("src").add_probe(
             Gst.PadProbeType.BUFFER, lambda *_a: (frames.__setitem__(0, frames[0] + 1), Gst.PadProbeReturn.OK)[1])
         return False

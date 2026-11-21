@@ -58,7 +58,9 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, GObject, Gtk, Pango  # noqa: E402
+gi.require_version("Graphene", "1.0")
+gi.require_version("Gsk", "4.0")
+from gi.repository import Gdk, GObject, Graphene, Gsk, Gtk, Pango  # noqa: E402
 
 from . import icons, lumaui, rows_tokens  # noqa: E402
 
@@ -159,28 +161,27 @@ class RowLead:
                   aspect: float | None = None) -> Gtk.Widget:
         """A 42x34 thumbnail (Viewer): the picture, a page for a document, a glyph when the file is gone.
 
-        ``fit="contain"`` never crops: the picture (a 16:9 scene, a 9:16 one) sits whole in the slot, in a
-        frame of its ``aspect`` (width / height; default the picture's own) with the small radius and a
-        hairline, centred on a clear slot."""
+        ``fit="contain"`` is the media tile (a scene, a clip): one fixed 16:9 tile (``media_thumb``) in
+        every state, the same radius, hairline and shadow. A picture of about the tile's shape fills it;
+        any other (a 9:16 scene) is drawn whole inside it on the tile's own surface; no picture is the
+        same tile with a glyph. ``aspect`` (width / height) is the picture's shape when it is not the
+        paintable's own. The tile never takes its size from the picture, so a frame arriving later, or
+        changing size, never resizes the row."""
         if kind not in THUMBNAIL_KINDS:
             raise ValueError(f"thumbnail kind must be one of {', '.join(THUMBNAIL_KINDS)}, not {kind!r}")
         if fit not in ("cover", "contain"):
             raise ValueError(f'a thumbnail is "cover" or "contain", not {fit!r}')
         if aspect is not None and not aspect > 0:
             raise ValueError(f"an aspect is width / height, more than 0, not {aspect!r}")
+        if fit == "contain" and kind != "document":
+            tile = _MediaTile(picture if kind == "image" else None, aspect)
+            widget = _lead(tile, "thumbnail")
+            widget.add_css_class(kind)
+            widget.add_css_class("contain")
+            return widget
         frame = Gtk.CenterBox(valign=Gtk.Align.CENTER, overflow=Gtk.Overflow.HIDDEN,
                               accessible_role=Gtk.AccessibleRole.PRESENTATION)
-        if kind == "image" and picture is not None and fit == "contain":
-            if aspect is None and picture.get_intrinsic_height() > 0:
-                aspect = picture.get_intrinsic_width() / picture.get_intrinsic_height()
-            shape = Gtk.AspectFrame(ratio=aspect or 16 / 9, obey_child=False, xalign=0.5, yalign=0.5,
-                                    hexpand=True, vexpand=True)
-            inner = Gtk.Picture(paintable=picture, content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True)
-            inner.set_overflow(Gtk.Overflow.HIDDEN)
-            inner.add_css_class("lumaui-row-thumb-picture")
-            shape.set_child(inner)
-            frame.set_center_widget(shape)
-        elif kind == "image" and picture is not None:
+        if kind == "image" and picture is not None:
             frame.set_center_widget(Gtk.Picture(paintable=picture, content_fit=Gtk.ContentFit.COVER,
                                                 can_shrink=True, hexpand=True, vexpand=True))
         elif kind == "document":
@@ -197,8 +198,6 @@ class RowLead:
             frame.set_center_widget(icons.image("image"))
         widget = _lead(frame, "thumbnail")
         widget.add_css_class(kind)
-        if fit == "contain" and kind == "image" and picture is not None:
-            widget.add_css_class("contain")
         return widget
 
     @staticmethod
@@ -217,6 +216,85 @@ class RowLead:
         from .rows_mark import Mark, MarkValue
         widget = value if isinstance(value, Mark) else Mark(value=value if isinstance(value, MarkValue) else None)
         return _lead(widget, "mark")
+
+
+class _MediaTile(Gtk.Widget):
+    """RowLead.thumbnail(fit="contain"): a fixed media_thumb tile that draws its paintable into itself.
+
+    Its size is the token, never the paintable's, at every width and height asked; the kit's CSS paints
+    the tile (surface, radius, shadow) and its hairline (an outline, over the picture)."""
+
+    __gtype_name__ = "LumaUIRowMediaTile"
+
+    def __init__(self, picture: Gdk.Paintable | None, aspect: float | None) -> None:
+        super().__init__(accessible_role=Gtk.AccessibleRole.PRESENTATION, halign=Gtk.Align.CENTER,
+                         valign=Gtk.Align.CENTER, hexpand=False, vexpand=False, overflow=Gtk.Overflow.HIDDEN)
+        self.add_css_class("lumaui-row-media-tile")
+        self.aspect = aspect
+        self.picture: Gdk.Paintable | None = None
+        self._watch: list[int] = []
+        self.glyph = icons.image("image")
+        self.glyph.set_parent(self)
+        self.set_paintable(picture)
+
+    def set_paintable(self, picture: Gdk.Paintable | None) -> None:
+        """Show another picture (None: the glyph) in the same tile."""
+        if self.picture is not None:
+            for handler in self._watch:
+                self.picture.disconnect(handler)
+        self.picture, self._watch = picture, []
+        if picture is not None:
+            # A new frame, or a frame of another size, is drawn again into the same box; never a resize.
+            self._watch = [picture.connect("invalidate-contents", lambda *_: self.queue_draw()),
+                           picture.connect("invalidate-size", lambda *_: self.queue_draw())]
+        self.glyph.set_visible(picture is None)
+        self.queue_draw()
+
+    @staticmethod
+    def size() -> tuple[int, int]:
+        return int(rows_tokens.value("nav_files", "media_thumb_width")), int(rows_tokens.value("nav_files", "media_thumb_height"))
+
+    def do_measure(self, orientation: Gtk.Orientation, _for_size: int) -> tuple[int, int, int, int]:
+        width, height = self.size()
+        side = width if orientation == Gtk.Orientation.HORIZONTAL else height
+        return side, side, -1, -1
+
+    def do_size_allocate(self, width: int, height: int, _baseline: int) -> None:
+        _, natural = self.glyph.get_preferred_size()
+        w, h = min(natural.width, width), min(natural.height, height)
+        self.glyph.allocate(w, h, -1, Gsk.Transform().translate(Graphene.Point().init((width - w) / 2, (height - h) / 2)))
+
+    def picture_rect(self, width: float, height: float) -> tuple[float, float, float, float] | None:
+        """Where the picture is drawn in a width x height tile: filling it when its shape is within
+        media_thumb_snap_pct of the tile's, else whole and centred."""
+        picture = self.picture
+        if picture is None or width <= 0 or height <= 0:
+            return None
+        ratio = self.aspect or picture.get_intrinsic_aspect_ratio() or width / height
+        tile = width / height
+        if abs(ratio - tile) / tile <= rows_tokens.value("nav_files", "media_thumb_snap_pct") / 100:
+            return 0.0, 0.0, float(width), float(height)
+        w, h = (width, width / ratio) if ratio > tile else (height * ratio, height)
+        return (width - w) / 2, (height - h) / 2, w, h
+
+    def do_snapshot(self, snapshot: Gtk.Snapshot) -> None:
+        width, height = self.get_width(), self.get_height()
+        rect = self.picture_rect(width, height)
+        if rect is not None:
+            x, y, w, h = rect
+            snapshot.save()
+            snapshot.push_clip(Graphene.Rect().init(0, 0, width, height))
+            snapshot.translate(Graphene.Point().init(x, y))
+            self.picture.snapshot(snapshot, w, h)
+            snapshot.pop()
+            snapshot.restore()
+        self.snapshot_child(self.glyph, snapshot)
+
+    def do_dispose(self) -> None:
+        self.set_paintable(None)
+        if self.glyph.get_parent() is self:
+            self.glyph.unparent()
+        Gtk.Widget.do_dispose(self)
 
 
 class _HueDot(Gtk.Widget):

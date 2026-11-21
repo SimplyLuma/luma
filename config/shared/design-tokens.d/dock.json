@@ -1,5 +1,5 @@
 {
-  "_doc": "LumaUI dock: an island tiled with insets (Dock, DockTile) and the sidebar's pane. Merged into lumaui by the generator: --lumaui-dock-*, LUMA_UI_DOCK_*. tile_radius is the kit's card radius (radius.island, Settings' grouped cards); an island hosting a dock is tile_radius + gap round, so the radii stay concentric. fit_max_pct caps a content-fitted tile (or group) at that share of the dock along its split.",
+  "_doc": "LumaUI dock: an island tiled with insets (Dock, DockTile) and the sidebar's pane. Merged into lumaui by the generator: --lumaui-dock-*, LUMA_UI_DOCK_*. tile_radius is the kit's card radius (radius.island, Settings' grouped cards); an island hosting a dock is tile_radius + gap round, so the radii stay concentric. fit_max_pct caps a content-fitted tile (or group) at that share of the dock along its split. The header is a band one step toward the island from the well (colors: dock_header, its hairline dock_header_line; frost and glass take the light values over their own well), header_padding_y above and below the title row; status_dot is set_status's mark.",
   "lumaui": {
     "dock": {
       "gap": 8,
@@ -7,16 +7,33 @@
       "header_height": 32,
       "header_padding_start": 12,
       "header_padding_end": 6,
+      "header_padding_y": 1,
       "header_button": 28,
       "header_gap": 8,
       "icon": 16,
       "title_size": 13,
+      "status_dot": 6,
+      "status_gap": 6,
       "min_size": 96,
       "fit_max_pct": 40,
       "seam_mark": 4,
       "seam_mark_length": 36,
       "bar_clearance": 76,
       "phone_bar_clearance": 98
+    },
+    "colors": {
+      "light": {
+        "dock_header": "rgba(255, 255, 255, 0.5)",
+        "dock_header_line": "rgba(20, 22, 26, 0.08)"
+      },
+      "dark": {
+        "dock_header": "rgba(255, 255, 255, 0.04)",
+        "dock_header_line": "rgba(0, 0, 0, 0.4)"
+      },
+      "high_contrast": {
+        "dock_header": "@window_bg_color",
+        "dock_header_line": "@window_fg_color"
+      }
     }
   }
 }

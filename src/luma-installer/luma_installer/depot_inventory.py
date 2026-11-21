@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import os
 import shlex
 
+from . import capsule_refresh
+
 
 @dataclass(frozen=True)
 class InstalledApp:
@@ -16,6 +18,10 @@ class InstalledApp:
     management: str
     can_review_removal: bool
     app_info: object = field(compare=False, repr=False)
+    #: For an application in a capsule: "Updated", "Held", "Rolled back", ... or "".
+    update_state: str = ""
+    #: The same in full (capsule_refresh.summary); empty for everything else.
+    update: dict = field(default_factory=dict, compare=False, repr=False)
 
 
 #: Programs that open a file, folder or address rather than being an application.
@@ -94,8 +100,10 @@ def visible_applications(app_infos, records=()):
         if not is_application(app, managed=provider != 'System or external package'):
             continue
         seen.add(identity)
+        update = capsule_refresh.summary(owned[0]) if len(owned) == 1 else {}
         result.append(InstalledApp(identity, app.get_display_name() or app.get_name() or identity,
-                                   provider, message, review, app))
+                                   provider, message, review, app,
+                                   capsule_refresh.label(owned[0]) if update else "", update))
     return tuple(sorted(result, key=lambda app: (app.name.casefold(), app.desktop_id)))
 
 

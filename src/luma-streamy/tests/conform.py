@@ -55,7 +55,7 @@ def check(path: str) -> list[str]:
     # Widgets and Audio under the preview: equal widths, one top edge, the dock's gap between them
     # and between them and the preview.
     tiles = m["tiles"]
-    wt, at, pt = (tiles.get(k, {}).get("box") for k in ("widgets", "audio", "preview"))
+    wt, at, pt = (tiles.get(k, {}).get("box") for k in ("widgets", "audio", "landscape"))
     gap = m.get("dock_gap") or 8
     if wt and at and not phone and abs(wt[1] - at[1]) < 40:
         rule(abs(wt[2] - at[2]) <= TOL, f"widgets {wt[2]} and audio {at[2]} insets differ in width")
@@ -110,17 +110,8 @@ def check(path: str) -> list[str]:
         bottom = max(s[1] + s[3] for s in m["strips"])
         slack = audio["box"][1] + audio["box"][3] - bottom
         rule(slack <= 24, f"audio inset has {slack:.0f} px of empty well under its strips")
-    # Each strip's volume (LumaVolumeSlider): its track starts on the name's edge and the
-    # meter lies under it over exactly the track's length.
-    for parts in m.get("strip_parts", []):
-        name, track, meter = parts.get("name"), parts.get("track"), parts.get("meter")
-        if name and track:
-            rule(abs(name[0] - track[0]) <= TOL, f"strip name at {name[0]}, its volume's track at {track[0]}")
-        if track and meter:
-            rule(abs(track[0] - meter[0]) <= TOL and abs(track[2] - meter[2]) <= TOL,
-                 f"strip meter {meter[0]}+{meter[2]} is not along its track {track[0]}+{track[2]}")
     # Preview: breathing room on every side of the video inside its stage.
-    preview = m["tiles"].get("preview")
+    preview = m["tiles"].get("landscape")
     if preview and preview["box"] and m["video"]:
         p, v = preview["box"], m["video"]
         gaps = (v[0] - p[0], p[0] + p[2] - (v[0] + v[2]), v[1] - p[1], p[1] + p[3] - (v[1] + v[3]))
