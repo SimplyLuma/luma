@@ -34,7 +34,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from luma_installer import capsule_runtime as runtime_policy  # noqa: E402
-from luma_installer.launcher import _capsule_level  # noqa: E402
+from luma_installer import capsule_identity  # noqa: E402
 
 ORPHANS = 100
 
@@ -52,7 +52,7 @@ def capsule_arguments(init: bool = True) -> list[str]:
         arguments = [a for a in arguments if a != "--init"]
     if os.environ.get("LUMA_CAPSULE_TEST_LABEL") == "1":
         arguments += ["--security-opt", "label=type:luma_application.process",
-                      "--security-opt", f"label=level:{_capsule_level('capsule-reaper-test')}"]
+                      "--security-opt", f"label=level:{capsule_identity.format_level(capsule_identity.legacy_pair('capsule-reaper-test'))}"]
     return arguments
 
 

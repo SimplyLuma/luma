@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from . import appimage_payload, capsule_runtime, network
+from . import appimage_payload, capsule_identity, capsule_runtime, network
 from .desktop import (applications_root, capsule_declared_schemes, command_name, desktop_is_console,
                       desktop_mime_types, desktop_window_class, export_command, parse_desktop,
                       parse_desktop_entry, register_handlers, safe_id, write_launcher, write_record)
@@ -67,6 +67,22 @@ def _fetch(arguments: list[str], *, timeout: int = 1800, source: str = "the pack
         raise
 
 
+def _kept_identity(application_id: str) -> dict[str, object]:
+    """What an application keeps when its record is written again.
+
+    Installing the same package over itself rewrites the record. Its category
+    pair labels the private home it keeps, and an application that was here
+    before keyring entries were marked still has its older sign-ins to find;
+    one installed for the first time has none.
+    """
+    try:
+        from .desktop import read_record
+        existing = read_record(application_id)
+    except InstallerError:
+        return {"keyring": capsule_identity.new_keyring_state()}
+    return {key: existing[key] for key in ("mcs_level", "keyring") if key in existing}
+
+
 def _find_squashfs_offset(path: Path) -> int:
     kind, offset = appimage_payload.locate(path)
     if kind != appimage_payload.SQUASHFS:
@@ -119,7 +135,7 @@ def _install_appimage(report: PackageReport, keep: bool = True) -> str:
         "format": "appimage", "name": name, "comment": comment, "sha256": report.sha256,
         "root": str(payload), "command": "/app/AppRun", "icon": exported_icon,
         "mime_types": mime_types, "launcher_metadata_version": LAUNCHER_METADATA_VERSION,
-        "kept": keep, "source": str(report.path),
+        "kept": keep, "source": str(report.path), **_kept_identity(application_id),
     })
     write_launcher(application_id, name, comment, exported_icon, mime_types=mime_types, hidden=not keep)
     return name
@@ -271,7 +287,7 @@ def _install_portable(report: PackageReport) -> str:
         "toolkit": layout.toolkit, "chromium": layout.toolkit == "electron",
         "source": str(report.path), "source_bytes": report.byte_size, "startup_wm_class": window_class,
         "mime_types": layout.mime_types, "launcher_metadata_version": LAUNCHER_METADATA_VERSION,
-        **runtime,
+        **runtime, **_kept_identity(application_id),
     })
     write_launcher(application_id, name, report.summary, icon, window_class, mime_types=layout.mime_types)
     return name
@@ -687,7 +703,7 @@ def _install_deb(report: PackageReport) -> str:
             "format": "deb", "name": name, "sha256": report.sha256, "package": package,
             "image": output_image, "command": command, "desktop_path": desktop_path, "icon": exported_icon, "startup_wm_class": window_class, "launcher_metadata_version": LAUNCHER_METADATA_VERSION,
             "terminal": console, "exported_command": exported_command, "command_not_exported": shim_refusal,
-            "mime_types": mime_types, **runtime,
+            "mime_types": mime_types, **runtime, **_kept_identity(application_id),
         })
     except Exception:
         if committed and not image_existed:
@@ -741,7 +757,7 @@ def _install_rpm_capsule(report: PackageReport) -> str:
             "format": "rpm", "name": name, "sha256": report.sha256, "package": package,
             "image": output_image, "command": command, "desktop_path": desktop_path, "icon": exported_icon, "startup_wm_class": window_class, "launcher_metadata_version": LAUNCHER_METADATA_VERSION,
             "terminal": console, "exported_command": exported_command, "command_not_exported": shim_refusal,
-            "mime_types": mime_types, **runtime,
+            "mime_types": mime_types, **runtime, **_kept_identity(application_id),
         })
     except Exception:
         if committed and not image_existed:
