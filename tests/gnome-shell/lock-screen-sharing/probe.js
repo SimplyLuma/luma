@@ -11,6 +11,13 @@
 //            without a new request, the restored share starts without a
 //            picker, the new request's picker is shown once, and denying it
 //            answers the application.
+// MODE=lifecycle  A share's ring and pill go when the application is
+//            killed, the portal backend is killed or stopped, or Mutter ends
+//            the session underneath.
+// MODE=screens  Three monitors at 100%, 125% and 200%: each Screens tile
+//            shows its own monitor, display name and resolution.
+// MODE=pill  A screen share: the pill is in no frame the application
+//            receives; Dismiss and the sharing mark.
 // MODE=ring  The ring of a shared window at the Shell's scales and in every
 //            surface treatment, on floating, maximized, tiled, fullscreen,
 //            moved and resized windows: crops and measurements for measure.py.
