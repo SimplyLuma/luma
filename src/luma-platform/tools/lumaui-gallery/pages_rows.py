@@ -667,7 +667,42 @@ def surface_messages_run() -> Gtk.Widget:
     return run
 
 
-SURFACES = {"messages-run": surface_messages_run, "messages-swipe-pin": surface_messages_swipe_pin, "messages-swipe-mute": surface_messages_swipe_mute,
+def _media_row(density: str) -> Gtk.Widget:
+    """The Volume mixer reference's first playing app (Design Center mockups/sound-mixer): a song
+    playing in a music app at full volume on the main output."""
+    from gi.repository import Gio
+
+    from luma_appkit import MediaRow, MediaRowChip
+
+    art = os.environ.get("LUMAUI_ROWS_ART", "")
+    regular = density == "regular"
+    row = MediaRow("God Only Knows", "Tide · The Beach Boys" if regular else "Tide", app="Tide",
+                   icon=Gio.ThemedIcon.new("luma-v3-music"), art=Gio.File.new_for_path(art) if os.path.isfile(art) else None,
+                   density=density, transport=("previous", "play", "next") if regular else ("play",),
+                   playing=True, sounding=True, volume=100, meter=28 if regular else 0)
+    if regular:
+        row.set_trailing(MediaRowChip("volume-2", "Speakers"))
+        row.set_level(0.94)
+    return row
+
+
+def surface_media_regular() -> Gtk.Widget:
+    """settings.html .mxch: a card's block."""
+    return _media_row("regular")
+
+
+def surface_media_compact() -> Gtk.Widget:
+    """quick.html .mxqr: a row in the panel's well."""
+    return _media_row("compact")
+
+
+def surface_media_touch() -> Gtk.Widget:
+    """quick.html?posture=phone .mxqr: that row under a finger."""
+    return _media_row("touch")
+
+
+SURFACES = {"media-regular": surface_media_regular, "media-compact": surface_media_compact, "media-touch": surface_media_touch,
+            "messages-run": surface_messages_run, "messages-swipe-pin": surface_messages_swipe_pin, "messages-swipe-mute": surface_messages_swipe_mute,
             "contacts-az": surface_contacts_az, "contacts-az-touch": surface_contacts_az_touch,
             "notes-drawer": surface_notes_drawer, "messages-drawer": surface_messages_drawer, "camera-menu": surface_camera_menu, "leaf-progress": surface_leaf_progress, "notes-side": surface_notes_side, "depot-icon": surface_depot_icon, "messages-side": surface_messages_side, "tasks-side": surface_tasks_side,
             "monitor-side": surface_monitor_side, "phone-favourites": surface_phone_favourites}
@@ -693,7 +728,8 @@ def main() -> int:
         surface.set_name("rows-surface")
         filling = isinstance(surface, (FavouritesStrip, ProgressLine)) or name in ("camera-menu", "messages-drawer", "notes-drawer",
                                                                                          "messages-swipe-pin", "messages-swipe-mute",
-                                                                                         "contacts-az", "contacts-az-touch", "messages-run")
+                                                                                         "contacts-az", "contacts-az-touch", "messages-run",
+                                                                                         "media-regular", "media-compact", "media-touch")
         surface.set_halign(Gtk.Align.FILL if filling else Gtk.Align.START)
         if name == "depot-icon":
             # v70 .dic has its own drop; the window is its box, so the icon stands on the list it sits in.
