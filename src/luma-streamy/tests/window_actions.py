@@ -119,15 +119,16 @@ def check(app) -> None:
 
     scene = win.project.active_scene
     pump(1.0)  # the rows rebuilt by the menu rows above are settled
+    # The field is in the row at once; used before its focus timer, so a window without focus (Xvfb)
+    # never finishes it first.
     win.rename_scene(scene.id)
-    pump(0.3)
     field = field_in(win._scene_rows[scene.id])
     field.set_text("Renamed here")
     field.emit("activate")
     pump(0.2)
     assert win.project.active_scene.name == "Renamed here", win.project.active_scene.name
-    win.rename_scene(scene.id)
     pump(0.3)
+    win.rename_scene(scene.id)
     field = field_in(win._scene_rows[scene.id])
     field.set_text("Never")
     field._finished = True  # as Esc does
@@ -136,7 +137,6 @@ def check(app) -> None:
     assert win.project.active_scene.name == "Renamed here"
     w = win.project.active_scene.widgets[0]
     win.rename_widget(w)
-    pump(0.3)
     field = field_in(win._widget_rows[w.id])
     field.set_text("Cam")
     field.emit("activate")
