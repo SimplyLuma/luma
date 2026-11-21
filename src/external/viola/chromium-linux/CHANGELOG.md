@@ -1,5 +1,12 @@
 # Viola Linux changes
 
+## 2026-11-21
+
+- Two open windows no longer rewrite each other's active tab in the shared
+  workspace at frame rate (engine patch 0009); each pass also pushed a new
+  sidebar state to every window. The engine sends a sidebar state only when it
+  differs from the last one sent. Host release native48.
+
 ## 2026-11-20
 
 - An idle window no longer redraws its chrome dozens of times per second. The
