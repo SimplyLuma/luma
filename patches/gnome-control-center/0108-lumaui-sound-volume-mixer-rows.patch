@@ -18,7 +18,10 @@ the transport the player offers, volume, mute, a 28-segment level, and the
 output picker (LumaUI's menu on the row's chip: the main output first,
 then every output; raised while the app is sent elsewhere). Other sounds
 are Settings slider rows in the same kind of group for the entries the
-service marks other (System sounds, Phone). Without a listed app there is no Playing now
+service marks other (System sounds, Phone). Their sliders are 180 px
+where the row has room (140 on a phone) and shrink below that, so a narrow
+window still reaches its phone layout. An icon the service gives as a
+file is drawn with the Settings row image, as a fixture's artwork is. Without a listed app there is no Playing now
 card. Apps that are not listed, and "Default" under an app, are gone.
 
 Up and Down move from one volume to the next. Volume writes keep one call
@@ -169,7 +172,7 @@ index f18d48c..fda09ff 100644
    for (guint i = 0; i < G_N_ELEMENTS (numbers); i++) {
      JsonNode *n = cc_luma_fixture_get (model, numbers[i]);
 diff --git a/shell/cc-luma-view-mixer.c b/shell/cc-luma-view-mixer.c
-index 8d56a82..5256674 100644
+index 8d56a82..48fdb44 100644
 --- a/shell/cc-luma-view-mixer.c
 +++ b/shell/cc-luma-view-mixer.c
 @@ -1,18 +1,21 @@
@@ -299,13 +302,16 @@ index 8d56a82..5256674 100644
  maximum (Mixer *m)
  {
 -  return over_amplified (m->v) ? 150 : 100;
--}
--
++  return cc_luma_view_flag (m->v, "overamp") ? 150 : 100;
+ }
+ 
 -/* The output a node name is, as the Sound page names it: its port and where
 - * it lives (CFSINKS from the sound adapter), else the service's words. */
 -static void
 -describe_output (Mixer *m, const char *node, GVariantDict *service, char **title, char **origin, char **icon)
--{
++static char *
++percent_text (double value)
+ {
 -  JsonNode *sinks = json_object_get_member (cc_luma_fixture_get_data (m->v->model), "CFSINKS");
 -  JsonObject *known = sinks && JSON_NODE_HOLDS_OBJECT (sinks) && node && json_object_has_member (json_node_get_object (sinks), node) ?
 -    json_object_get_object_member (json_node_get_object (sinks), node) : NULL;
@@ -347,20 +353,17 @@ index 8d56a82..5256674 100644
 -      g_variant_dict_unref (dict);
 -    }
 -  return NULL;
-+  return cc_luma_view_flag (m->v, "overamp") ? 150 : 100;
- }
- 
+-}
+-
 -static guint
 -output_count (Mixer *m)
-+static char *
-+percent_text (double value)
- {
+-{
 -  return m->outputs ? (guint) g_variant_n_children (m->outputs) : 0;
 +  return g_strdup_printf ("%d%%", (int) round (value));
  }
  
  static void
-@@ -142,122 +106,177 @@ set_label (GtkWidget *label, const char *text)
+@@ -142,122 +106,175 @@ set_label (GtkWidget *label, const char *text)
      gtk_label_set_text (GTK_LABEL (label), text);
  }
  
@@ -368,26 +371,19 @@ index 8d56a82..5256674 100644
  static void
 -key_glyph (GtkWidget *button, const char *lucide)
 +report (Mixer *m, GError *error)
- {
--  if (g_strcmp0 (g_object_get_data (G_OBJECT (button), "cf-mix-glyph"), lucide) == 0) return;
--  g_object_set_data_full (G_OBJECT (button), "cf-mix-glyph", g_strdup (lucide), g_free);
--  gtk_button_set_child (GTK_BUTTON (button), luma_ui_icon_new (lucide));
++{
 +  if (error) cc_luma_view_report_error (m->v, error);
- }
- 
--static void
--strip_set_level (Strip *s, double level)
++}
++
 +/* ── outputs ─────────────────────────────────────────────────────────── */
 +
 +/* The Lucide glyph of an output's kind. */
 +static const char *
 +kind_glyph (const char *kind)
  {
--  if (!s->meter) return;
--  /* The service's positions run from −60 dB (0) to full scale (1). A mixer
--   * shows how loud each strip is, so full scale is the top, not a clip. */
--  double db = s->muted || level <= 0 ? -60.0 : MIN (-60.0 + 60.0 * CLAMP (level, 0.0, 1.0), -0.01);
--  luma_audio_meter_set_levels_db (s->meter, db, db);
+-  if (g_strcmp0 (g_object_get_data (G_OBJECT (button), "cf-mix-glyph"), lucide) == 0) return;
+-  g_object_set_data_full (G_OBJECT (button), "cf-mix-glyph", g_strdup (lucide), g_free);
+-  gtk_button_set_child (GTK_BUTTON (button), luma_ui_icon_new (lucide));
 +  if (g_strcmp0 (kind, "headphones") == 0) return "headphones";
 +  if (g_strcmp0 (kind, "usb") == 0) return "speaker";
 +  if (g_strcmp0 (kind, "airplay") == 0) return "airplay";
@@ -396,25 +392,18 @@ index 8d56a82..5256674 100644
  }
  
 -static void
--strip_show_volume (Strip *s)
+-strip_set_level (Strip *s, double level)
 +typedef struct { const char *name, *label, *detail, *glyph; gboolean is_default; } Output;
 +
 +/* The i-th output; its strings live as long as *dict. */
 +static gboolean
 +output_at (Mixer *m, gsize i, GVariantDict **dict, Output *out)
  {
--  g_autofree char *text = g_strdup_printf ("%d%%", (int) round (s->volume));
--  double upper;
--  luma_volume_slider_get_range (s->scale, NULL, &upper);
--  if (upper != maximum (s->m))
--    {
--      /* A range that clamps the value is not the person moving it (no ::moved). */
--      luma_volume_slider_set_range (s->scale, 0, maximum (s->m));
--      luma_volume_slider_set_unity (s->scale, maximum (s->m) > 100 ? 100 : NAN);
--    }
--  /* Muted, the knob stays at the volume; the fill and the level go quiet. */
--  luma_volume_slider_set_muted (s->scale, s->muted);
--  if (g_get_monotonic_time () - s->touched > TOUCH_HOLD && !s->in_flight && isnan (s->pending))
+-  if (!s->meter) return;
+-  /* The service's positions run from −60 dB (0) to full scale (1). A mixer
+-   * shows how loud each strip is, so full scale is the top, not a clip. */
+-  double db = s->muted || level <= 0 ? -60.0 : MIN (-60.0 + 60.0 * CLAMP (level, 0.0, 1.0), -0.01);
+-  luma_audio_meter_set_levels_db (s->meter, db, db);
 +  if (!m->outputs || i >= g_variant_n_children (m->outputs)) return FALSE;
 +  g_autoptr (GVariant) entry = g_variant_get_child_value (m->outputs, i);
 +  const char *description = NULL, *kind = NULL;
@@ -431,19 +420,33 @@ index 8d56a82..5256674 100644
 +  if (!out->detail) out->detail = "";
 +  out->glyph = kind_glyph (kind);
 +  return TRUE;
-+}
-+
+ }
+ 
+-static void
+-strip_show_volume (Strip *s)
 +/* The output with this node name, or the default one for NULL. */
 +static gboolean
 +find_output (Mixer *m, const char *name, GVariantDict **dict, Output *out)
-+{
+ {
+-  g_autofree char *text = g_strdup_printf ("%d%%", (int) round (s->volume));
+-  double upper;
+-  luma_volume_slider_get_range (s->scale, NULL, &upper);
+-  if (upper != maximum (s->m))
 +  for (gsize i = 0; output_at (m, i, dict, out); i++)
      {
--      luma_volume_slider_set_value (s->scale, MIN (s->volume, maximum (s->m)));
--      set_label (s->readout, s->muted ? "Muted" : text);
+-      /* A range that clamps the value is not the person moving it (no ::moved). */
+-      luma_volume_slider_set_range (s->scale, 0, maximum (s->m));
+-      luma_volume_slider_set_unity (s->scale, maximum (s->m) > 100 ? 100 : NAN);
 +      if (name ? g_str_equal (out->name, name) : out->is_default) return TRUE;
 +      g_clear_pointer (dict, g_variant_dict_unref);
      }
+-  /* Muted, the knob stays at the volume; the fill and the level go quiet. */
+-  luma_volume_slider_set_muted (s->scale, s->muted);
+-  if (g_get_monotonic_time () - s->touched > TOUCH_HOLD && !s->in_flight && isnan (s->pending))
+-    {
+-      luma_volume_slider_set_value (s->scale, MIN (s->volume, maximum (s->m)));
+-      set_label (s->readout, s->muted ? "Muted" : text);
+-    }
 -  luma_icon_button_set_active (GTK_BUTTON (s->mute), s->muted);
 -  key_glyph (s->mute, s->muted ? "volume-x" : "volume-2");
 -  g_autofree char *mute = g_strdup_printf (s->muted ? "Unmute %s" : "Mute %s", s->name);
@@ -519,12 +522,10 @@ index 8d56a82..5256674 100644
 -      if (g_strcmp0 (s->id, id) == 0) return s;
 +      if (!*out.name) continue;
 +      GtkWidget *tile = cc_luma_dev_choice_card (out.glyph, out.label, out.detail, out.is_default);
-+      /* Four tiles fit a narrow window: a long name or detail ends in …, the whole of it on hover. */
++      /* Four tiles fit a narrow window: a long name or detail ends in …. */
 +      GtkWidget *words = gtk_widget_get_next_sibling (gtk_widget_get_first_child (gtk_button_get_child (GTK_BUTTON (tile))));
 +      gtk_label_set_ellipsize (GTK_LABEL (words), PANGO_ELLIPSIZE_END);
 +      gtk_label_set_ellipsize (GTK_LABEL (gtk_widget_get_next_sibling (words)), PANGO_ELLIPSIZE_END);
-+      g_autofree char *whole = *out.detail ? g_strdup_printf ("%s · %s", out.label, out.detail) : g_strdup (out.label);
-+      gtk_widget_set_tooltip_text (tile, whole);
 +      g_object_set_data_full (G_OBJECT (tile), "cf-mix-node", g_strdup (out.name), g_free);
 +      gtk_accessible_update_property (GTK_ACCESSIBLE (tile), GTK_ACCESSIBLE_PROPERTY_LABEL, out.label, -1);
 +      g_signal_connect (tile, "clicked", G_CALLBACK (tile_clicked), m);
@@ -617,7 +618,7 @@ index 8d56a82..5256674 100644
  static void
  logged (GObject *proxy, GAsyncResult *result, gpointer data)
  {
-@@ -268,48 +287,83 @@ logged (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -268,48 +285,83 @@ logged (GObject *proxy, GAsyncResult *result, gpointer data)
  }
  
  static void
@@ -727,7 +728,7 @@ index 8d56a82..5256674 100644
  static void
  choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
  {
-@@ -320,321 +374,375 @@ choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
+@@ -320,321 +372,410 @@ choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
                         G_DBUS_CALL_FLAGS_NONE, -1, NULL, logged, "output");
  }
  
@@ -825,10 +826,7 @@ index 8d56a82..5256674 100644
 +  gtk_widget_set_visible (c->chip, known);
 +  if (!known) return;
 +  g_autofree char *glyph = g_strdup_printf ("lumaui-%s-symbolic", out.glyph);
-+  g_autofree char *tip = moved ? g_strdup_printf ("%s plays on %s", c->name, out.label) :
-+                                 g_strdup_printf ("%s plays on the main output", c->name);
 +  luma_media_row_chip_set (c->chip, glyph, out.label, moved);
-+  gtk_widget_set_tooltip_text (c->chip, tip);
  }
  
  static void
@@ -974,6 +972,21 @@ index 8d56a82..5256674 100644
 +/* Whether a report may move a volume the person is not holding. */
 +static gboolean
 +settled (Channel *c)
++{
++  return g_get_monotonic_time () - c->touched > TOUCH_HOLD && !c->in_flight && isnan (c->pending);
++}
++
++/* One entry of GetApplications. */
++typedef struct {
++  const char *id, *name, *icon, *kind, *desktop, *output, *title, *artist, *art;
++  const char *icon_asset, *art_asset; /* a fixture's artwork, by its id */
++  double volume;
++  gint64 position;
++  gboolean muted, playing, listed, other, can_play, can_pause, can_next, can_previous;
++} App;
++
++static void
++block_apply (Channel *c, const App *app)
  {
 -  Strip *s = g_new0 (Strip, 1);
 -  s->m = m;
@@ -995,41 +1008,9 @@ index 8d56a82..5256674 100644
 -  gtk_widget_add_css_class (s->readout, "cf-mix-readout");
 -  s->title = strip_label (name, "row-title", FALSE, !m->rows);
 -  if (!m->rows)
-+  return g_get_monotonic_time () - c->touched > TOUCH_HOLD && !c->in_flight && isnan (c->pending);
-+}
-+
-+/* One entry of GetApplications. */
-+typedef struct {
-+  const char *id, *name, *icon, *kind, *desktop, *output, *title, *artist, *art;
-+  const char *icon_asset, *art_asset; /* a fixture's artwork, by its id */
-+  double volume;
-+  gint64 position;
-+  gboolean muted, playing, listed, other, can_play, can_pause, can_next, can_previous;
-+} App;
-+
-+static void
-+block_apply (Channel *c, const App *app)
-+{
 +  LumaMediaRow *row = LUMA_MEDIA_ROW (c->root);
 +  Mixer *m = c->m;
 +  if (g_strcmp0 (c->name, app->name) != 0 || g_strcmp0 (c->icon, app->icon) != 0)
-+    {
-+      g_autoptr (GIcon) gicon = app_icon (app->icon, app->desktop);
-+      g_set_str (&c->name, app->name);
-+      g_set_str (&c->icon, app->icon);
-+      luma_media_row_set_app (row, app->name, gicon);
-+    }
-+  if (g_strcmp0 (c->art, app->art) != 0)
-+    {
-+      g_autoptr (GFile) file = *app->art ? g_file_new_for_uri (app->art) : NULL;
-+      g_set_str (&c->art, app->art);
-+      luma_media_row_set_art_file (row, file);
-+    }
-+  luma_media_row_set_title (row, *app->title ? app->title : app->name);
-+  g_autofree char *line = NULL;
-+  if (app->playing)
-+    line = *app->artist ? g_strdup_printf ("%s · %s", app->name, app->artist) : g_strdup (app->name);
-+  else if (app->position >= 0)
      {
 -      /* A column's name takes two lines, always, so every strip's parts stay level. */
 -      gtk_label_set_wrap (GTK_LABEL (s->title), TRUE);
@@ -1040,8 +1021,10 @@ index 8d56a82..5256674 100644
 -      /* A one-line name sits on the lower line, against where it plays. */
 -      gtk_label_set_yalign (GTK_LABEL (s->title), 1.0);
 -      gtk_widget_add_css_class (s->title, "cf-mix-name");
-+      g_autofree char *at = position_text (app->position);
-+      line = g_strdup_printf ("%s · Paused at %s", app->name, at);
++      g_autoptr (GIcon) gicon = app_icon (app->icon, app->desktop);
++      g_set_str (&c->name, app->name);
++      g_set_str (&c->icon, app->icon);
++      luma_media_row_set_app (row, app->name, gicon);
      }
 -  s->sub = strip_label ("", "row-subtitle", TRUE, !m->rows);
 -  s->mute = luma_icon_button_new ("volume-2", name);
@@ -1049,6 +1032,31 @@ index 8d56a82..5256674 100644
 -  gtk_widget_add_css_class (s->mute, "cf-mix-key");
 -  g_signal_connect (s->mute, "clicked", G_CALLBACK (mute_clicked), s);
 -  if (id)
++  if (g_strcmp0 (c->art, app->art) != 0)
+     {
+-      g_autofree char *label = g_strdup_printf ("Output for %s", name);
+-      s->route = luma_icon_button_new ("speaker", label);
+-      luma_icon_button_set_size (GTK_BUTTON (s->route), "row");
+-      gtk_widget_add_css_class (s->route, "cf-mix-key");
+-      g_signal_connect (s->route, "clicked", G_CALLBACK (route_clicked), s);
++      g_autoptr (GFile) file = *app->art ? g_file_new_for_uri (app->art) : NULL;
++      g_set_str (&c->art, app->art);
++      luma_media_row_set_art_file (row, file);
+     }
+-  GtkWidget *face = strip_face (lucide, gicon, m->rows, &s->icon);
+-  GtkWidget *keys = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+-  gtk_widget_add_css_class (keys, "cf-mix-keys");
+-  gtk_box_append (GTK_BOX (keys), s->mute);
+-  if (s->route) gtk_box_append (GTK_BOX (keys), s->route);
++  luma_media_row_set_title (row, *app->title ? app->title : app->name);
++  g_autofree char *line = NULL;
++  if (app->playing)
++    line = *app->artist ? g_strdup_printf ("%s · %s", app->name, app->artist) : g_strdup (app->name);
++  else if (app->position >= 0)
++    {
++      g_autofree char *at = position_text (app->position);
++      line = g_strdup_printf ("%s · Paused at %s", app->name, at);
++    }
 +  else
 +    line = g_strdup_printf ("%s · Paused", app->name);
 +  luma_media_row_set_line (row, line);
@@ -1069,28 +1077,17 @@ index 8d56a82..5256674 100644
 +  double upper;
 +  luma_volume_slider_get_range (slider, NULL, &upper);
 +  if (upper != maximum (m))
-     {
--      g_autofree char *label = g_strdup_printf ("Output for %s", name);
--      s->route = luma_icon_button_new ("speaker", label);
--      luma_icon_button_set_size (GTK_BUTTON (s->route), "row");
--      gtk_widget_add_css_class (s->route, "cf-mix-key");
--      g_signal_connect (s->route, "clicked", G_CALLBACK (route_clicked), s);
++    {
 +      luma_volume_slider_set_range (slider, 0, maximum (m));
 +      luma_volume_slider_set_unity (slider, maximum (m) > 100 ? 100 : NAN);
-     }
--  GtkWidget *face = strip_face (lucide, gicon, m->rows, &s->icon);
--  GtkWidget *keys = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
--  gtk_widget_add_css_class (keys, "cf-mix-keys");
--  gtk_box_append (GTK_BOX (keys), s->mute);
--  if (s->route) gtk_box_append (GTK_BOX (keys), s->route);
++    }
 +  if (settled (c)) luma_media_row_set_volume (row, MIN (c->volume, maximum (m)));
 +  g_set_str (&c->output, app->output);
 +  block_sync_output (c);
 +}
 +
 +/* ── an other sound's row ────────────────────────────────────────────── */
- 
--  if (m->rows)
++
 +static void
 +row_moved (GtkRange *range, Channel *c)
 +{
@@ -1108,6 +1105,36 @@ index 8d56a82..5256674 100644
 +  return NULL;
 +}
 +
++/* A row's slider and its percent: 180 px of slider where the row has room (140 on a phone), down to
++ * the slider's own minimum where it has not, so a narrow window still reaches its phone layout. */
++#define SLIDER_GAP 10
++static void
++slider_measure (GtkWidget *box, GtkOrientation o, int for_size, int *min, int *nat, int *minb, int *natb)
++{
++  GtkWidget *scale = gtk_widget_get_first_child (box), *readout = gtk_widget_get_last_child (box);
++  int smin, snat, rmin, rnat;
++  *minb = *natb = -1;
++  gtk_widget_measure (scale, o, -1, &smin, &snat, NULL, NULL);
++  gtk_widget_measure (readout, o, -1, &rmin, &rnat, NULL, NULL);
++  if (o == GTK_ORIENTATION_VERTICAL) { *min = MAX (smin, rmin); *nat = MAX (snat, rnat); return; }
++  int wide = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (box), "cf-mix-slider"));
++  *min = smin + SLIDER_GAP + rnat;
++  *nat = MAX (smin, wide) + SLIDER_GAP + rnat;
++}
++
++static void
++slider_allocate (GtkWidget *box, int width, int height, int baseline)
++{
++  GtkWidget *scale = gtk_widget_get_first_child (box), *readout = gtk_widget_get_last_child (box);
++  gboolean rtl = gtk_widget_get_direction (box) == GTK_TEXT_DIR_RTL;
++  int rnat, scale_width;
++  gtk_widget_measure (readout, GTK_ORIENTATION_HORIZONTAL, -1, NULL, &rnat, NULL, NULL);
++  scale_width = MAX (0, width - SLIDER_GAP - rnat);
++  gtk_widget_size_allocate (scale, &(GtkAllocation) { rtl ? rnat + SLIDER_GAP : 0, 0, scale_width, height }, -1);
++  gtk_widget_size_allocate (readout, &(GtkAllocation) { rtl ? 0 : width - rnat, 0, rnat, height }, -1);
++}
+ 
+-  if (m->rows)
 +/* A Settings slider row (cf_rg's parts), its value the service's. */
 +static Channel *
 +row_new (Mixer *m, const App *app)
@@ -1118,6 +1145,13 @@ index 8d56a82..5256674 100644
 +  GtkWidget *lead;
 +  if (!system && app->icon_asset)
 +    lead = cf_lead_image (m->v, app->icon_asset); /* a fixture's artwork, as every Settings row draws it */
++  else if (!system && g_path_is_absolute (app->icon) && cc_luma_fixture_is_live (m->v->model))
++    {
++      /* An icon the service gives as a file (a desktop entry's Icon= path): the same row image. */
++      g_autofree char *asset = g_strconcat ("mixer:", app->id, NULL);
++      cc_luma_fixture_publish_asset (m->v->model, asset, app->icon);
++      lead = cf_lead_image (m->v, asset);
++    }
 +  else if (gicon)
      {
 -      /* v70 row anatomy (lead, words, controls), then the volume under the words. */
@@ -1192,6 +1226,8 @@ index 8d56a82..5256674 100644
 +  gtk_label_set_xalign (GTK_LABEL (c->readout), 1);
 +  gtk_box_append (GTK_BOX (box), c->scale);
 +  gtk_box_append (GTK_BOX (box), c->readout);
++  g_object_set_data (G_OBJECT (box), "cf-mix-slider", GINT_TO_POINTER (m->phone ? 140 : 180));
++  gtk_widget_set_layout_manager (box, gtk_custom_layout_new (NULL, slider_measure, slider_allocate));
 +  c->root = g_object_ref_sink (cf_row (NULL, lead, c->name, other_words (app->id), box, FALSE));
 +  c->moved = g_signal_connect (c->scale, "value-changed", G_CALLBACK (row_moved), c);
 +  add_stop (m, c->scale);
@@ -1355,7 +1391,7 @@ index 8d56a82..5256674 100644
    GVariantIter iter;
    GVariant *entry;
    g_variant_iter_init (&iter, apps);
-@@ -642,88 +750,79 @@ apply_applications (Mixer *m, GVariant *apps)
+@@ -642,88 +783,79 @@ apply_applications (Mixer *m, GVariant *apps)
      {
        g_autoptr (GVariantDict) dict = g_variant_dict_new (entry);
        g_variant_unref (entry);
@@ -1503,7 +1539,7 @@ index 8d56a82..5256674 100644
  }
  
  static void
-@@ -735,7 +834,7 @@ applications_read (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -735,7 +867,7 @@ applications_read (GObject *proxy, GAsyncResult *result, gpointer data)
    Mixer *m = data;
    if (error) { g_warning ("Volume mixer: %s", error->message); return; }
    g_autoptr (GVariant) apps = g_variant_get_child_value (reply, 0);
@@ -1512,7 +1548,7 @@ index 8d56a82..5256674 100644
  }
  
  static void
-@@ -748,7 +847,11 @@ outputs_read (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -748,7 +880,11 @@ outputs_read (GObject *proxy, GAsyncResult *result, gpointer data)
    if (error) { g_warning ("Volume mixer: %s", error->message); return; }
    g_clear_pointer (&m->outputs, g_variant_unref);
    m->outputs = g_variant_get_child_value (reply, 0);
@@ -1525,20 +1561,20 @@ index 8d56a82..5256674 100644
  }
  
  static void
-@@ -758,24 +861,19 @@ read_outputs (Mixer *m)
+@@ -758,24 +894,19 @@ read_outputs (Mixer *m)
  }
  
  static void
 -read_all (Mixer *m)
--{
++show_level (Mixer *m, const char *target, double level)
+ {
 -  read_outputs (m);
 -  g_dbus_proxy_call (m->proxy, "GetApplications", NULL, G_DBUS_CALL_FLAGS_NONE, -1, m->cancel, applications_read, m);
 -}
 -
 -static void
 -levels (Mixer *m, GVariant *values)
-+show_level (Mixer *m, const char *target, double level)
- {
+-{
 -  GVariantIter iter;
 -  const char *target;
 -  double level;
@@ -1560,7 +1596,7 @@ index 8d56a82..5256674 100644
  }
  
  static void
-@@ -785,35 +883,50 @@ proxy_signal (GDBusProxy *proxy, const char *sender, const char *signal, GVarian
+@@ -785,35 +916,50 @@ proxy_signal (GDBusProxy *proxy, const char *sender, const char *signal, GVarian
      {
        guint32 watch;
        g_autoptr (GVariant) values = NULL;
@@ -1625,7 +1661,7 @@ index 8d56a82..5256674 100644
  }
  
  static void
-@@ -825,18 +938,21 @@ proxy_ready (GObject *source, GAsyncResult *result, gpointer data)
+@@ -825,18 +971,21 @@ proxy_ready (GObject *source, GAsyncResult *result, gpointer data)
    Mixer *m = data;
    if (!proxy)
      {
@@ -1652,7 +1688,7 @@ index 8d56a82..5256674 100644
  
  static void
  watched (GObject *proxy, GAsyncResult *result, gpointer data)
-@@ -844,17 +960,17 @@ watched (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -844,17 +993,17 @@ watched (GObject *proxy, GAsyncResult *result, gpointer data)
    WatchCall *c = data;
    g_autoptr (GError) error = NULL;
    g_autoptr (GVariant) reply = g_dbus_proxy_call_finish (G_DBUS_PROXY (proxy), result, &error);
@@ -1674,7 +1710,7 @@ index 8d56a82..5256674 100644
    g_object_unref (c->proxy);
    g_free (c);
  }
-@@ -873,29 +989,39 @@ unwatch (Mixer *m)
+@@ -873,29 +1022,39 @@ unwatch (Mixer *m)
  static gboolean
  on_screen (Mixer *m)
  {
@@ -1722,7 +1758,7 @@ index 8d56a82..5256674 100644
    c->proxy = g_object_ref (m->proxy);
    c->serial = m->watch_serial;
    g_dbus_proxy_call (m->proxy, "WatchLevels", g_variant_new ("(^as)", targets), G_DBUS_CALL_FLAGS_NONE, -1, NULL, watched, c);
-@@ -908,9 +1034,9 @@ suspended_changed (GtkWindow *window, GParamSpec *pspec, Mixer *m)
+@@ -908,9 +1067,9 @@ suspended_changed (GtkWindow *window, GParamSpec *pspec, Mixer *m)
  }
  
  static void
@@ -1734,7 +1770,7 @@ index 8d56a82..5256674 100644
    if (m->window != GTK_WIDGET (root))
      {
        if (m->window) g_clear_signal_handler (&m->suspended, m->window);
-@@ -921,7 +1047,7 @@ page_mapped (GtkWidget *page, Mixer *m)
+@@ -921,7 +1080,7 @@ page_mapped (GtkWidget *page, Mixer *m)
  }
  
  static void
@@ -1743,7 +1779,7 @@ index 8d56a82..5256674 100644
  {
    sync_watch (m);
  }
-@@ -937,30 +1063,40 @@ mixer_free (Mixer *m)
+@@ -937,30 +1096,40 @@ mixer_free (Mixer *m)
    if (m->window) g_clear_signal_handler (&m->suspended, m->window);
    g_clear_weak_pointer (&m->window);
    g_clear_pointer (&m->outputs, g_variant_unref);
@@ -1804,7 +1840,7 @@ index 8d56a82..5256674 100644
  }
  
  void
-@@ -968,94 +1104,110 @@ cc_luma_view_sound_mixer_render (View *v)
+@@ -968,94 +1137,111 @@ cc_luma_view_sound_mixer_render (View *v)
  {
    Mixer *m = g_new0 (Mixer, 1);
    m->v = v;
@@ -1833,6 +1869,7 @@ index 8d56a82..5256674 100644
 +  m->outs = cc_luma_dev_card_grid (v);
 +  if (!v->phone) g_object_set_data (G_OBJECT (m->outs), "cf-columns", GINT_TO_POINTER (4));
 +  gtk_widget_add_css_class (m->outs, "cf-outs");
++  gtk_widget_add_css_class (m->outs, "cf-mix-outs");
 +  /* The volume line, and under it the level in the slider's column: it runs along the slider's track. */
 +  m->volume = gtk_grid_new ();
 +  gtk_grid_set_column_spacing (GTK_GRID (m->volume), 12);
@@ -2000,10 +2037,10 @@ index 1cb8431..f3aece0 100644
    cc_luma_dev_prune (v);
  }
 diff --git a/shell/luma-settings-devices.css b/shell/luma-settings-devices.css
-index 1cb46a0..f3295ba 100644
+index 1cb46a0..6ec32c8 100644
 --- a/shell/luma-settings-devices.css
 +++ b/shell/luma-settings-devices.css
-@@ -46,30 +46,13 @@ button.cf-mon.on { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @lu
+@@ -46,30 +46,15 @@ button.cf-mon.on { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @lu
  .cf-meter > box.on { background: @luma_good; }
  .cf-meter.in { min-width: 170px; margin: 0; }
  
@@ -2034,6 +2071,8 @@ index 1cb46a0..f3295ba 100644
 +/* Volume mixer (cc-luma-view-mixer.c): the Sound hero with a live level, a group of LumaUI media rows, slider rows.
 + * The level is LumaUI's LumaAudioMeter (an output's: one green) in the slider's column, where .cf-meter sits. */
 +.cf-vol > box.lumaui-audio-meter.cf-mix-meter { margin-top: 12px; }
++/* The chosen output's tile is the raised chip without the chooser cards' wide drop. */
++.cf-mix-outs > button.cf-choice.on { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow; }
 +/* Playing now: a hairline 16 in between blocks; an app's badge is ringed in the group's well. */
 +.cf-mix-now { --lumaui-media-row-surface: @luma_well; }
 +.cf-mix-now > lumaui-media-row:not(:first-child) { background-image: linear-gradient(@luma_menu_border, @luma_menu_border);

@@ -367,7 +367,7 @@
      "other": true
     },
     {
-     "id": "phone",
+     "id": "org.projectluma.Phone",
      "name": "Phone",
      "icon": "",
      "icon_asset": "phone",
@@ -395,8 +395,7 @@
     {
      "id": "tide",
      "name": "Tide",
-     "icon": "",
-     "icon_asset": "tide",
+     "icon": "luma-v3-music",
      "desktop_id": "",
      "kind": "app",
      "volume": 1.0,
@@ -422,8 +421,7 @@
     {
      "id": "youtube",
      "name": "YouTube",
-     "icon": "",
-     "icon_asset": "reel",
+     "icon": "luma-v3-video-editor",
      "desktop_id": "",
      "kind": "app",
      "volume": 0.7,
@@ -449,8 +447,7 @@
     {
      "id": "viola",
      "name": "Viola",
-     "icon": "",
-     "icon_asset": "viola",
+     "icon": "luma-v3-browser",
      "desktop_id": "",
      "kind": "app",
      "volume": 0.45,

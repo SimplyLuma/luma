@@ -1,0 +1,52 @@
+{
+  "app": "media-row-regular",
+  "title": "LumaMediaRow, regular (vs the Volume mixer's playing block)",
+  "about": "LumaMediaRow at regular density, alone in its window, against the first playing block of the published Volume mixer reference (Design Center mockups/sound-mixer/settings.html .mxch). The reference's page is set to the simulator's 680 px and its transport keys are named as the row's are.",
+  "spec": {
+    "root": "design-center",
+    "url": "mockups/sound-mixer/settings.html",
+    "window": ".mxch",
+    "ready": "html[data-ready]",
+    "exclude": [],
+    "before": [
+      {
+        "eval": "(() => { if (matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.dataset.mode = 'light'; const page = document.querySelector('.cfpage'); page.style.boxSizing = 'border-box'; page.style.width = '680px'; const b = [...document.querySelectorAll('.mxch')[0].querySelectorAll('.mxctl button')]; b[0].setAttribute('aria-label', 'Previous'); b[1].setAttribute('aria-label', 'Pause'); b[2].setAttribute('aria-label', 'Next'); })()",
+        "wait": 300
+      }
+    ]
+  },
+  "app_icon": {
+    "gtk": "^luma-v3-"
+  },
+  "gtk": {
+    "module": "pages_rows",
+    "app_id": "org.projectluma.LumaUIRowsConform",
+    "pythonpath": [
+      "src/luma-platform/tools/lumaui-gallery"
+    ],
+    "fixtures": [
+      "assets/wallpapers/meadow.png"
+    ],
+    "build": {},
+    "env": {
+      "LUMAUI_ROWS_SURFACE": "media-regular",
+      "LUMAUI_ROWS_ART": "{run}/fixtures/meadow.png",
+      "LUMA_APPKIT_ICON_PATH": "{run}/preview/python/icons"
+    }
+  },
+  "states": [
+    {
+      "name": "playing",
+      "about": "A song playing at full volume on the main output",
+      "spec": [],
+      "gtk": []
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "row",
+      "spec": ".mxch"
+    }
+  ]
+}
