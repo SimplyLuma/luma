@@ -191,5 +191,26 @@ class Cleaning(unittest.TestCase):
             self.assertTrue((root / "tmp").is_dir() and (root / "run").is_dir())
 
 
+class Readable(unittest.TestCase):
+    def test_files_the_owner_could_not_read_get_owner_read_and_are_listed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "etc").mkdir()
+            (root / "etc/shadow").write_text("root:*:::::::\n")
+            (root / "etc/shadow").chmod(0)
+            (root / "etc/passwd").write_text("root:x:0:0::/root:/bin/sh\n")
+            (root / "etc/passwd").chmod(0o644)
+            (root / "var/private").mkdir(parents=True)
+            (root / "var/private").chmod(0o050)
+            try:
+                self.assertEqual(closure._make_readable(root), ["etc/shadow", "var/private"])
+                self.assertEqual((root / "etc/shadow").stat().st_mode & 0o777, 0o400)
+                self.assertEqual((root / "etc/passwd").stat().st_mode & 0o777, 0o644)
+                self.assertEqual((root / "var/private").stat().st_mode & 0o777, 0o750)
+                self.assertEqual(closure._make_readable(root), [])
+            finally:
+                (root / "var/private").chmod(0o755)
+
+
 if __name__ == "__main__":
     unittest.main()

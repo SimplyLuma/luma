@@ -526,7 +526,31 @@ def _clean_tree(root: Path) -> None:
                 child.unlink(missing_ok=True)
 
 
-CLEAN_HELPER = "import sys; from luma_installer import closure; from pathlib import Path; closure._clean_tree(Path(sys.argv[1]))"
+def _make_readable(root: Path) -> list[str]:
+    """Give the owner read access to everything in the tree; returns what changed.
+
+    A store whose files are plain files owned by the person cannot check out or
+    verify a file its owner may not read (Fedora ships /etc/shadow with mode
+    0000). Inside the application's namespace the owner is the person anyway."""
+    changed = []
+    for folder, directories, files in os.walk(root):
+        for name in directories:
+            path = os.path.join(folder, name)
+            mode = os.lstat(path).st_mode
+            if not os.path.islink(path) and mode & 0o700 != 0o700:
+                os.chmod(path, (mode & 0o7777) | 0o700)
+                changed.append(os.path.relpath(path, root))
+        for name in files:
+            path = os.path.join(folder, name)
+            status = os.lstat(path)
+            if (status.st_mode & 0o170000) == 0o100000 and not status.st_mode & 0o400:
+                os.chmod(path, (status.st_mode & 0o7777) | 0o400)
+                changed.append(os.path.relpath(path, root))
+    return sorted(changed)
+
+
+CLEAN_HELPER = ("import sys; from luma_installer import closure; from pathlib import Path; "
+                "closure._clean_tree(Path(sys.argv[1])); print('\\n'.join(closure._make_readable(Path(sys.argv[1]))))")
 
 
 def _python_in_userns(code: str, *arguments: str) -> list[str]:
@@ -871,7 +895,8 @@ def build(spec: Spec, work: Path, cache: Path, store=None, log_path: Path | None
         built = _build_deb(spec, userland, work, cache, store, log)
     else:
         built = _build_rpm(spec, userland, work, cache, store, log, payload)
-    _run(_python_in_userns(CLEAN_HELPER, str(built.root)), timeout=600)
+    cleaned = _run(_python_in_userns(CLEAN_HELPER, str(built.root)), timeout=600)
+    built.record["made_readable"] = [line for line in cleaned.stdout.splitlines() if line]
     return built
 
 

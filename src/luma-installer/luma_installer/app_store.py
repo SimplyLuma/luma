@@ -168,8 +168,9 @@ class Store:
             # Every object is checked against its name on the way in: a repository of this
             # kind keeps a file's mode in the file itself, and a source whose modes were
             # changed behind its back must not be copied as it stands.
+            # In the build's ID mapping: a tree can hold files its owner may not read (mode 0000).
             self._ostree("pull-local", "--untrusted", f"--depth={ROLLBACK_DEPTH}",
-                         *([] if self.fsync else ["--disable-fsync"]), str(source), *wanted, timeout=7200)
+                         *([] if self.fsync else ["--disable-fsync"]), str(source), *wanted, timeout=7200, userns=True)
         return wanted
 
     def export(self, ref: str, destination: Path) -> None:
@@ -196,11 +197,11 @@ class Store:
             partial = self.checkouts / f".{key}.partial"
             if partial.exists():
                 shutil.rmtree(partial)
-            self._ostree("checkout", "--user-mode", "--require-hardlinks", commits[0], str(partial))
+            self._ostree("checkout", "--user-mode", "--require-hardlinks", "--fsync=false", commits[0], str(partial))
             for commit in commits[1:]:
-                self._ostree("checkout", "--user-mode", "--require-hardlinks", "--union", commit, str(partial))
+                self._ostree("checkout", "--user-mode", "--require-hardlinks", "--fsync=false", "--union", commit, str(partial))
             for commit, subpath in unions or []:
-                self._ostree("checkout", "--user-mode", "--require-hardlinks", "--union", f"--subpath={subpath}",
+                self._ostree("checkout", "--user-mode", "--require-hardlinks", "--fsync=false", "--union", f"--subpath={subpath}",
                              commit, str(partial / subpath.lstrip("/")))
             if finish is not None:
                 finish(partial)
