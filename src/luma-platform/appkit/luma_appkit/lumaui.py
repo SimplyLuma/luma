@@ -481,6 +481,10 @@ class YieldingLayout(Gtk.BoxLayout):
     FLOOR = 160
 
     def do_measure(self, widget, orientation, for_size):
+        if orientation == Gtk.Orientation.VERTICAL and for_size >= 0:
+            # Its height at a width narrower than the content needs is the height at that need: the
+            # content is laid out there (do_allocate) and clipped, never measured narrower than it can be.
+            for_size = max(for_size, Gtk.BoxLayout.do_measure(self, widget, Gtk.Orientation.HORIZONTAL, -1)[0])
         minimum, natural, min_base, nat_base = Gtk.BoxLayout.do_measure(self, widget, orientation, for_size)
         if orientation == Gtk.Orientation.HORIZONTAL:
             return min(minimum, self.FLOOR), natural, min_base, nat_base

@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.148%{?dist}
+Release:        1.luma.149%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -36,6 +36,10 @@ BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  xorg-x11-xauth
 BuildRequires:  xdotool
 BuildRequires:  weston
+# LevelTap's %check pipeline: audiotestsrc and audioconvert (base), level (good).
+BuildRequires:  gstreamer1
+BuildRequires:  gstreamer1-plugins-base
+BuildRequires:  gstreamer1-plugins-good
 Requires:       glib2 >= 2.80
 Requires:       gobject-introspection
 Requires:       gtk4 >= 4.18
@@ -378,6 +382,17 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.149
+- AudioMeter segments (0 continuous, up to 128 LED segments with the zone
+  colours, the peak hold a lit segment); LevelMeter is AudioMeter.
+- LevelTap(meter, source): a GStreamer level tap on a PipeWire node, an
+  AudioCapture or any source, running only while the meter is mapped.
+- MixerStrip: an icon slot (gicon, icon-name) and optional Mute and
+  Monitor keys, so one strip serves app panels and the volume mixer.
+- Island.do_snapshot draws its rim from cached geometry: no imports or
+  ancestor walks per frame under a live child.
+- ValueSlider.set_mixed(value=None) and .mixed.
+
 * Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.148
 - Dock: a tile's header (and tab strip) is a band, @luma_dock_header, one
   step toward the island from the well, 1px inside its ring with its top

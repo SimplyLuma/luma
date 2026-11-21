@@ -217,6 +217,7 @@ class ValueSlider(Gtk.Box):
         self.default = float(default) if default is not None else min(self.maximum, max(self.minimum, 0.0))
         self.on_change, self.on_reset = on_change, on_reset
         self._listeners: list[Callable[["ValueSlider"], None]] = []
+        self._mixed = False
         self.name_label = Gtk.Label(label=label, xalign=0, ellipsize=3)
         self.name_label.add_css_class("name")
         self.value_label = Gtk.Label(xalign=1)
@@ -253,14 +254,28 @@ class ValueSlider(Gtk.Box):
         """Moved away from its default."""
         return abs(self.range.value - self.default) > 1e-9
 
+    @property
+    def mixed(self) -> bool:
+        """The selection disagrees (set_mixed) and nobody has chosen one value since."""
+        return self._mixed
+
     def set_value(self, value: float) -> None:
         """The app's value (a photo was opened, an undo); never calls on_change."""
+        self._mixed = False
         self.range.set_value(value)
+        self._show()
+
+    def set_mixed(self, value: float | None = None) -> None:
+        """Say the selection disagrees (PropertyNumber's Mixed): the readout says "Mixed" and the knob rests,
+        dimmed, at ``value`` (default: the default). Moving it, a reset or set_value applies one value again."""
+        self._mixed = True
+        self.range.set_value(self.default if value is None else value)
         self._show()
 
     def reset(self) -> None:
         """Back to the default, as a double-click does; reports it."""
-        was = self.changed
+        was = self.changed or self._mixed
+        self._mixed = False
         self.range.set_value(self.default)
         self._show()
         if was:
@@ -270,15 +285,18 @@ class ValueSlider(Gtk.Box):
                 self.on_reset()
 
     def _moved(self, _range: ValueRange, value: float) -> None:
+        self._mixed = False
         self._show()
         if self.on_change is not None:
             self.on_change(value)
 
     def _show(self) -> None:
-        text = value_text(self.value, self.minimum, self.unit, self.step)
+        text = "Mixed" if self._mixed else value_text(self.value, self.minimum, self.unit, self.step)
         self.value_label.set_label(text)
-        self.range.set_value_text(text)
-        (self.add_css_class if self.changed else self.remove_css_class)("set")
+        self.range.set_value_text("Mixed: several values; moving applies one to everything selected" if self._mixed
+                                  else text)
+        (self.add_css_class if self.changed and not self._mixed else self.remove_css_class)("set")
+        (self.add_css_class if self._mixed else self.remove_css_class)("mixed")
         for listener in list(self._listeners):
             listener(self)
 
