@@ -177,6 +177,7 @@ class StreamyWindow(AppWindow):
         self._build_insets()
         self.set_body(self._body())
         self._build_outputs()
+        self._watch_lock()
         self.refresh_all()
         self.connect("close-request", self._closing)
         self.connect("notify::is-active", lambda *_a: self._update_preview_running())
@@ -390,10 +391,8 @@ class StreamyWindow(AppWindow):
         for fmt in FORMATS:
             chips = []
             for key in FORMATS:
-                # The panel's own glyph leads its header: its own chip needs none.
-                chip = ToggleChip(FORMATS[key][0].split()[0], icon=None if key == fmt else
-                                  "rectangle-horizontal" if key == "landscape" else "smartphone",
-                                  active=key in self.canvas_on,
+                chip = ToggleChip(FORMATS[key][0].split()[0], icon="rectangle-horizontal" if key == "landscape"
+                                  else "smartphone", active=key in self.canvas_on,
                                   on_toggle=lambda on, k=key: self._canvas_chip(k, on))
                 self.canvas_chips.append((key, chip))
                 self._chip_owner[chip] = fmt
@@ -402,7 +401,11 @@ class StreamyWindow(AppWindow):
             tile = DockTile(fmt, FORMATS[fmt][0].split()[0], "rectangle-horizontal" if fmt == "landscape"
                             else "smartphone", self.arranges[fmt], main=True, actions=chips, **self._closable())
             tile.add_css_class("streamy-preview")
-            tile.title_label.set_visible(False)  # its own chip names it
+            # Its own chip (glyph and name in one pill) is its title.
+            tile.title_label.set_visible(False)
+            glyph = tile.header.get_first_child()
+            if glyph is not None and glyph.has_css_class("lumaui-dock-tile-icon"):
+                glyph.set_visible(False)
             tile.connect("notify::width", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
             tile.connect("notify::height", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
             self.preview_tiles[fmt] = tile
@@ -737,13 +740,92 @@ class StreamyWindow(AppWindow):
         return self.portals.source_for(widget)
 
     def _ask_missing_sources(self) -> None:
+        """The scene's sources without a capture reconnect, one at a time: each from its restore token,
+        silently. One that brought up a picker (it took a person's answer) stops the walk; the rest wait
+        for "Share" in the bar. Nothing is asked while the session is locked."""
         scene = self.project.active_scene
-        if scene is None or self.fake or self.portals is None:
+        if scene is None or self.fake or self.portals is None or getattr(self, "locked", False):
             return
-        for w in scene.widgets:
-            if w.kind in ("display", "window", "camera", "app-audio") and w.visible and \
-                    w.id not in self.portals.captures and w.id not in self.widget_errors:
-                self._choose_source(w, restore=True)
+        wanted = [w for w in scene.widgets if w.kind in ("display", "window", "camera", "app-audio") and w.visible
+                  and w.id not in self.portals.captures and w.id not in self.widget_errors]
+        self._share_queue = [w.id for w in wanted if w.id not in getattr(self, "_share_queue", [])] + \
+            list(getattr(self, "_share_queue", []))
+        if not getattr(self, "_sharing", None):
+            self._share_next(auto=True)
+
+    def _share_next(self, *, auto: bool) -> None:
+        queue = getattr(self, "_share_queue", [])
+        scene = self.project.active_scene
+        while queue:
+            widget_id = queue.pop(0)
+            w = scene.widget(widget_id) if scene is not None else None
+            if w is None or w.id in self.portals.captures or not w.visible:
+                continue
+            self._sharing = (w.id, time.monotonic(), auto)
+            self._choose_source(w, restore=True)
+            return
+        self._sharing = None
+
+    def _shared_one(self, widget_id: str) -> None:
+        """A queued source answered (shared or not): the next one, unless that took a picker."""
+        sharing = getattr(self, "_sharing", None)
+        if sharing is None or sharing[0] != widget_id:
+            return
+        _wid, started, auto = sharing
+        self._sharing = None
+        if auto and time.monotonic() - started > 2.0 and getattr(self, "_share_queue", []):
+            self._offer_share_again()  # a picker came up: the rest wait for the person
+            return
+        self._share_next(auto=auto)
+
+    def _offer_share_again(self) -> None:
+        scene = self.project.active_scene
+        waiting = [w for w in (scene.widgets if scene else []) if w.id in self._share_queue]
+        if not waiting:
+            return
+        kinds = {w.kind for w in waiting}
+        what = "windows" if kinds == {"window"} else "sources"
+        words = f"{len(waiting)} {what} need sharing again" if len(waiting) > 1 else f"{waiting[0].name} needs sharing again"
+        self.center.grow("share-again", panel_list([
+            PanelHeading(words),
+            PanelRow("Share", icon="monitor-up", on_activate=lambda: self._share_next(auto=False))]))
+
+    # ── The session's lock ──
+
+    def _watch_lock(self) -> None:
+        """Locked, nothing asks for a share (a picker can't be answered over the lock screen): sources that
+        end are paused, and come back after unlock (silently from their tokens, else one at a time)."""
+        self.locked = False
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        except GLib.Error:
+            return
+        self._lock_bus = bus
+        bus.signal_subscribe(None, "org.gnome.ScreenSaver", "ActiveChanged", "/org/gnome/ScreenSaver", None,
+                             Gio.DBusSignalFlags.NONE, lambda *a: self._lock_changed(bool(a[5].unpack()[0])))
+
+        def answered(source, result) -> None:
+            try:
+                self._lock_changed(bool(source.call_finish(result).unpack()[0]))
+            except GLib.Error:
+                pass
+
+        bus.call("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver", "org.gnome.ScreenSaver", "GetActive", None,
+                 GLib.VariantType.new("(b)"), Gio.DBusCallFlags.NONE, 2000, None, answered)
+
+    def _lock_changed(self, locked: bool) -> None:
+        if locked == self.locked:
+            return
+        self.locked = locked
+        from .engine import log
+
+        log("session locked: shares wait" if locked else "session unlocked")
+        if not locked:
+            paused = [wid for wid, reason in self.widget_errors.items() if reason == "paused"]
+            for widget_id in paused:
+                self.widget_errors.pop(widget_id, None)
+            self.refresh_all()
+            GLib.timeout_add(1000, lambda: self._ask_missing_sources() and False)
 
     def _choose_source(self, widget: Widget, *, restore: bool) -> None:
         if self.portals is None or self.fake:
@@ -765,6 +847,7 @@ class StreamyWindow(AppWindow):
                 self.project.place_natural(widget.id)
             self._changed(structure=True)
             self._show_scene()
+            self._shared_one(widget.id)
 
         def failed(reason: str) -> None:
             # Every ending leaves the widget saying what happened and offering the fix; nothing
@@ -801,6 +884,7 @@ class StreamyWindow(AppWindow):
     def _show_scene(self) -> None:
         states = {wid: "waiting" for wid in self.widget_waiting}
         states.update({wid: "choose" for wid, reason in self.widget_errors.items() if reason in ("unshared", "nocamera")})
+        states.update({wid: "Paused while locked" for wid, reason in self.widget_errors.items() if reason == "paused"})
         self.engine.show_scene(self.project.active_scene, skip=set(self.widget_errors), states=states)
         self._close_offscene_sound()
 
@@ -925,6 +1009,7 @@ class StreamyWindow(AppWindow):
             "busy": f"{name} is in use by another app",
             "denied": f"Streamy isn't allowed to use {name[0].lower() + name[1:] if name.startswith('The ') else name}",
             "nocamera": "No camera found",
+            "paused": "Paused while locked",
             "missing": f"{name} stopped responding" if w.kind == "camera" else f"{name} is gone",
             "format": f"{name} sends a picture Streamy can't read" if w.has_picture else
                       f"{name} sends sound Streamy can't read",
@@ -939,13 +1024,18 @@ class StreamyWindow(AppWindow):
             return
         from .engine import log
 
+        if getattr(self, "locked", False) and reason in ("ended", "stopped", "missing", "timeout", "unshared"):
+            reason = "paused"  # it comes back after unlock
         log(f"{w.kind} widget {w.name!r}: {self.cause_line(w, reason)} ({reason})")
         self.widget_waiting.discard(widget_id)
         self.widget_errors[widget_id] = reason
         if self.portals is not None:
             self.portals.close(widget_id)
         self._show_scene()  # its card says so in its place
-        if reason == "timeout":
+        self._shared_one(widget_id)
+        if reason == "paused":
+            pass
+        elif reason == "timeout":
             Toast.show(self.host, "The picker stopped waiting. Share again when you're ready.", kind="warning")
         elif reason != "unshared":  # a person who pressed Cancel knows
             Toast.show(self.host, f"{w.name} couldn't start", kind="warning")

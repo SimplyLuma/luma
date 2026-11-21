@@ -38,8 +38,8 @@ class LayoutTest(unittest.TestCase):
         # From before two canvases, Widgets and Destinations: "preview" is Landscape, Vertical opens to its
         # right, Widgets and Destinations join Audio; a moved seam keeps its size.
         old = {**split("v", 0.7, "preview", "audio"), "size": 180}
-        self.assertEqual(tree(valid(old)), {**split("v", 0.7, BOTH, split("h", 0.36, "widgets", split(
-            "h", 0.5, "audio", "destinations"))), "size": 180})
+        self.assertEqual(tree(valid(old)), {**split("v", 0.7, BOTH, split(
+            "h", 0.5, {"tabs": ["widgets", "destinations"], "current": "widgets"}, "audio")), "size": 180})
 
     def test_closed_tiles_stay_closed(self):
         base = split("v", 0.7, "landscape", split("h", 0.5, "widgets", split("h", 0.5, "audio", "destinations")))

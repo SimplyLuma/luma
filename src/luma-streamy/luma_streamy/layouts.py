@@ -28,11 +28,11 @@ def split(orientation: str, ratio: float, start, end) -> dict:
 PRESETS: dict[str, tuple[str, object]] = {
     # Both canvases side by side, Vertical at about 9:16 of the preview's height.
     "default": ("Default", split("v", 0.72, split("h", 0.7, "landscape", "vertical"),
-                                 split("h", 0.36, "widgets", split("h", 0.5, "audio", "destinations")))),
+                                 split("h", 0.5, {"tabs": ["widgets", "destinations"], "current": "widgets"}, "audio"))),
     "side": ("Insets beside", split("h", 0.72, split("h", 0.7, "landscape", "vertical"),
-                                     split("v", 0.36, "widgets", split("v", 0.5, "audio", "destinations")))),
+                                     split("v", 0.5, {"tabs": ["widgets", "destinations"], "current": "widgets"}, "audio"))),
     "compact": ("Compact", split("v", 0.88, split("h", 0.7, "landscape", "vertical"),
-                                 split("h", 0.36, "widgets", split("h", 0.5, "audio", "destinations")))),
+                                 split("h", 0.5, {"tabs": ["widgets", "destinations"], "current": "widgets"}, "audio"))),
 }
 
 
@@ -109,16 +109,17 @@ def _valid_tree(layout, closed: set[str]):
         # A layout from before the Widgets inset: Widgets joins Audio, side by side.
         def join(node):
             if node == "audio":
-                return split("h", 0.36, "widgets", split("h", 0.5, "audio", "destinations"))
+                return split("h", 0.5, "widgets", "audio")
             if isinstance(node, dict):
                 return {**node, "start": join(node["start"]), "end": join(node["end"])}
             return node
-        return join(tree)
-    if "destinations" not in seen and "destinations" not in closed and "audio" in seen:
-        # A layout from before Destinations: it joins Audio, side by side.
+        tree = join(tree)
+        seen.add("widgets")
+    if "destinations" not in seen and "destinations" not in closed and "widgets" in seen:
+        # A layout from before Destinations: it joins Widgets as a tab.
         def join(node):
-            if node == "audio":
-                return split("h", 0.5, "audio", "destinations")
+            if node == "widgets":  # a tab beside Widgets: a third column would not fit a laptop
+                return {"tabs": ["widgets", "destinations"], "current": "widgets"}
             if isinstance(node, dict) and "split" in node:
                 return {**node, "start": join(node["start"]), "end": join(node["end"])}
             return node
