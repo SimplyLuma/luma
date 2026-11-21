@@ -60,9 +60,10 @@ def names_in_mockup(html: Path) -> list[str]:
     return sorted(set(re.findall(r"'([a-z0-9-]+)'", match.group(1))))
 
 
-# Glyphs v70 also draws filled when they are on (the Favourite heart, .ib.loved):
+# Glyphs the design also draws filled: when they are on (the Favourite heart,
+# .ib.loved), and the play and pause of a raised transport key (.pp):
 # lumaui-<name>-filled-symbolic, the same geometry with a foreground fill.
-FILLED = ("heart", "star", "bookmark", "square", "circle")
+FILLED = ("heart", "star", "bookmark", "square", "circle", "play", "pause")
 
 
 def filled(icon: str) -> str:

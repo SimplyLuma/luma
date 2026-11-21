@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.148%{?dist}
+Release:        1.luma.149%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,18 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.149
+- MediaRow (C, luma_appkit): one playing app as its content: artwork badged
+  with the app's icon (the icon on a neutral tile without artwork), a title
+  and a line, the transport its player offers and its volume on
+  LumaVolumeSlider. Regular is a card's block with a trailing picker
+  (MediaRowChip) and a segmented level meter under the slider; compact is a
+  row in a panel's well; touch is that row at 56 px with a 44 px key. A
+  regular row narrower than media_row.regular.stack_below stacks. The
+  Shell's St row reads the same tokens (mediaRowTokens.js).
+- VolumeSlider: set_compact(), a 12 px knob in a 16 px slot.
+- Prairie: lumaui-airplay, lumaui-play-filled, lumaui-pause-filled.
+
 * Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.148
 - Dock: a tile's header (and tab strip) is a band, @luma_dock_header, one
   step toward the island from the well, 1px inside its ring with its top

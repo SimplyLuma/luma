@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import os
+import re
 
 __all__ = (
     "KEY_PROPERTIES", "SYSTEM_KEY", "app_key", "is_system_sound", "is_app_playback",
@@ -116,6 +117,9 @@ class AppIdentity:
     desktop_id: str
 
 
+# A web app a Chromium-family browser installed: <browser>-<32 letters a-p>-<profile>.desktop.
+WEB_APP_ID = re.compile(r"(?:^|\.)[a-z][a-z0-9_-]*-[a-p]{32}-[^.]+(\.desktop)?$", re.IGNORECASE)
+
 # The bell is Prairie's Lucide bell (prairie-icon-theme), as in Notifications.
 SYSTEM_IDENTITY = AppIdentity(SYSTEM_KEY, "System sounds", "lumaui-bell-symbolic", "")
 FALLBACK_ICON = "application-x-executable"
@@ -190,6 +194,17 @@ class DesktopIndex:
             if info is not None:
                 return info
         return None
+
+    def is_browser(self, desktop_id: str) -> bool:
+        """A web browser or one of its web apps: its player names a page, so
+        the row's second line may be the site."""
+        info = self.lookup(desktop_id[:-len(".desktop")] if desktop_id.endswith(".desktop") else desktop_id)
+        if info is None:
+            return False
+        categories = (info.get_categories() or "") if hasattr(info, "get_categories") else ""
+        if "WebBrowser" in categories.split(";"):
+            return True
+        return bool(WEB_APP_ID.search(desktop_id))
 
     def identify(self, key: str, props: dict, client: dict | None = None) -> AppIdentity:
         if key == SYSTEM_KEY:

@@ -12,8 +12,10 @@
   -->
   <interface name="org.projectluma.AudioDevices1">
     <!--
-      Version: 2 for this interface. Version 2 adds the per-app mixer, level
-      meters and capture sessions; clients check it before calling them.
+      Version: 3 for this interface. Version 2 adds the per-app mixer, level
+      meters and capture sessions; version 3 adds what each app is playing and
+      its transport, the other sounds, and output labels. Clients check it
+      before using them.
     -->
     <property name="Version" type="u" access="read"/>
 
@@ -113,6 +115,16 @@
         description (s)  display name
         icon (s)         symbolic icon name
         default (b)      the current default output
+      Version 3:
+        label (s)        what a person calls it: "Speakers", the headphones'
+                         or display's own name, the AirPlay receiver's name;
+                         never a card, port or profile name
+        detail (s)       how it connects: "Built in", "Wired", "USB",
+                         "Bluetooth · 80%", "Display", "AirPlay"; followed by
+                         the card's name only when two outputs share a label
+        kind (s)         "speakers", "headphones", "usb", "airplay", "display"
+        battery (x)      percent, or -1
+        last_used (x)    seconds since the epoch it was last the output, or 0
     -->
     <method name="GetOutputs">
       <arg name="outputs" type="aa{sv}" direction="out"/>
@@ -120,9 +132,11 @@
     <signal name="OutputsChanged"/>
 
     <!--
-      GetApplications (version 2): the mixer. One entry for System sounds
-      (always present, with its remembered volume) and one per app with a
-      sound stream, System sounds first, then by name.
+      GetApplications (version 2): the mixer. One entry per app with a sound
+      stream, running or corked, however many streams it has; it stays for 10
+      seconds after the app's last stream closes. The other sounds (System
+      sounds, Messages, Phone) are always present, with their remembered
+      volume. Other sounds first, then apps in the order they started.
       Keys:
         id (s)          the app key: Flatpak app id, application.id, name or
                         binary, in that order; "@system" for System sounds
@@ -138,6 +152,19 @@
         playing (b)     a stream of the app is running now
         streams (au)    PipeWire node ids of the app's streams
         pid (x)         process id of one stream's client, or 0
+      Version 3:
+        listed (b)      belongs in the playing list (false for a silent
+                        other sound)
+        other (b)       one of the other sounds
+        player (s)      bus name of the app's MPRIS player, or ""
+        title (s)       what is playing, or "": show the app's name
+        artist (s)      the artist; for a browser without one, the site
+                        ("simplyluma.com"); or ""
+        art (s)         artwork URL, or "": show the app's icon
+        status (s)      "playing", "paused", "stopped", or "" without a player
+        position (x)    microseconds into the track while paused, or -1
+        can_play, can_pause, can_go_next, can_go_previous (b)
+      playing is false while the player says it is paused.
       Volume, mute and output are remembered per app across restarts. The
       Set methods accept any app id, playing or not; a value set for an app
       that is not playing applies to its next stream.
@@ -163,6 +190,26 @@
     <method name="SetApplicationOutput">
       <arg name="id" type="s" direction="in"/>
       <arg name="output" type="s" direction="in"/>
+    </method>
+
+    <!--
+      Transport (version 3): the app's MPRIS player. Fails with .NotFound for
+      an app without one.
+    -->
+    <method name="ApplicationPlayPause">
+      <arg name="id" type="s" direction="in"/>
+    </method>
+    <method name="ApplicationNext">
+      <arg name="id" type="s" direction="in"/>
+    </method>
+    <method name="ApplicationPrevious">
+      <arg name="id" type="s" direction="in"/>
+    </method>
+    <!--
+      RaiseApplication (version 3): bring the app's window forward.
+    -->
+    <method name="RaiseApplication">
+      <arg name="id" type="s" direction="in"/>
     </method>
 
     <!--

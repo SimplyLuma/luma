@@ -2,7 +2,7 @@
 
 Name:           luma-audio-policy
 Version:        0.1.0
-Release:        1.luma.4%{?dist}
+Release:        1.luma.5%{?dist}
 Summary:        Luma sound policy: outputs, per-app mixer, app audio capture, opt-in AirPlay
 License:        MPL-2.0 AND CC-BY-SA-4.0
 URL:            https://projectluma.org/sound
@@ -82,7 +82,7 @@ for key in NoDisplay=true DBusActivatable=true Name=Sound Icon=audio-volume-high
   grep -Fqx "$key" %{buildroot}%{_datadir}/applications/org.projectluma.AudioDevices.desktop
 done
 glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
-PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_audio_devices.classify, luma_audio_devices.routing, luma_audio_devices.apps, luma_audio_devices.mixer, luma_audio_devices.levels, luma_audio_devices.captures"
+PYTHONPATH=%{buildroot}%{python3_sitelib} %{python3} -c "import luma_audio_devices.classify, luma_audio_devices.routing, luma_audio_devices.apps, luma_audio_devices.mixer, luma_audio_devices.levels, luma_audio_devices.captures, luma_audio_devices.mpris, luma_audio_devices.battery"
 cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 
 %files
@@ -105,6 +105,16 @@ cd tests && PYTHONPATH=$PWD/.. %{python3} -m unittest discover -p "test_*.py" -v
 %{_datadir}/icons/hicolor/scalable/status/luma-network-speaker-symbolic.svg
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.5
+- org.projectluma.AudioDevices1 version 3: a playing app keeps its row for
+  10 s after its last stream closes; what it plays and its transport come
+  from its MPRIS player (ApplicationPlayPause, ApplicationNext,
+  ApplicationPrevious, RaiseApplication); the other sounds (System sounds,
+  Messages, Phone) are listed while silent; outputs carry a label, how they
+  connect, a kind, battery and last use
+- An app sent to an output that is unplugged plays on the default, keeps the
+  choice and returns when the output comes back
+
 * Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.4
 - Per-app mixer in org.projectluma.AudioDevices1 version 2: GetApplications,
   ApplicationsChanged, SetApplicationVolume/Mute/Output and GetOutputs

@@ -7,7 +7,9 @@
       "min_length": 24,
       "length": 120,
       "mid_db": -18,
-      "high_db": -6
+      "high_db": -6,
+      "segment_gap": 1,
+      "segment_min": 2
     },
     "volume_slider": {
       "track": 4,

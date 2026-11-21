@@ -20,6 +20,14 @@
       "gtk_symbolic_sha256": "76da13f6f70f8826deb057301f3463a61e2f95f53d852aa1be8c36e7e99f9185"
     },
     {
+      "lucide": "airplay",
+      "icon": "lumaui-airplay-symbolic",
+      "source": "upstream/lucide/lumaui/airplay.svg",
+      "sha256": "6d9ea57b9f0833ce780486e6edac9d9bc5c168dca99963ada2e6ffe82051a462",
+      "upstream_version": "0.460.0",
+      "gtk_symbolic_sha256": "b0bc2708b6998145d06e262f6f30ec2fba0aa47af2dfd92865579f1053b1e303"
+    },
+    {
       "lucide": "alarm-clock",
       "icon": "lumaui-alarm-clock-symbolic",
       "source": "upstream/lucide/lumaui/alarm-clock.svg",
@@ -170,7 +178,7 @@
       "icon": "lumaui-arrow-right-symbolic",
       "source": "upstream/lucide/lumaui/arrow-right.svg",
       "sha256": "75e3cc5b0970e196f4f4cf46a7f742a8f7cdec8c428dffe359a77201175dba68",
-      "upstream_version": "1.48.0",
+      "upstream_version": "1.39.0",
       "gtk_symbolic_sha256": "857f9c17cb6a392677d10cacdd5975127331a72da5d2c278b377564a2156d628"
     },
     {
@@ -1554,7 +1562,7 @@
       "icon": "lumaui-monitor-smartphone-symbolic",
       "source": "upstream/lucide/lumaui/monitor-smartphone.svg",
       "sha256": "8e5bcf8a4c030bfe013e88d2a0cd0f519fc7c804141d50a2bf32454da20100b5",
-      "upstream_version": "1.48.0",
+      "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "01aa67d9cb5c134fcc25b95fd44159c3499b400f002a936ce812638b0ae313ca"
     },
     {
@@ -2447,7 +2455,7 @@
       "icon": "lumaui-tablet-symbolic",
       "source": "upstream/lucide/lumaui/tablet.svg",
       "sha256": "d3f7609a62014154c728b774ce9410f9088773d0867411c12b8bf963b8645332",
-      "upstream_version": "1.48.0",
+      "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "dbcd62fa35e7242eda8a791d678cbe373626b1aa8b5d0b8e39f6d65f76a19756"
     },
     {
@@ -2560,7 +2568,7 @@
       "icon": "lumaui-tv-symbolic",
       "source": "upstream/lucide/lumaui/tv.svg",
       "sha256": "1d47e5de7e912d21e1f431fdda9accd52095c3ad1e07d875bf89132232b2e97e",
-      "upstream_version": "1.48.0",
+      "upstream_version": "not stated in supplied SVG",
       "gtk_symbolic_sha256": "547ec673297366da1324723a1c6c7539de56c8fecbf9c26ffd12e0996e799fa2"
     },
     {

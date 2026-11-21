@@ -14,10 +14,12 @@ D-Bus activatable as org.projectluma.AudioDevices) that
   Settings (data/dbus/org.projectluma.AudioDevices1.xml);
 * runs the per-app mixer (mixer.py), its live level meters (levels.py, only
   while watched) and the capture sessions behind the audio capture portal
-  (captures.py), with WirePlumber's luma/app-audio.lua.
+  (captures.py), with WirePlumber's luma/app-audio.lua; what each app is
+  playing and its transport come from its MPRIS player (mpris.py).
 
 It holds no timers while nothing happens: pw-dump, Avahi and D-Bus signals
-wake it.
+wake it. The one mixer timer runs only while an app whose last stream closed
+is still listed (mixer.LINGER_SECONDS).
 """
 
 from __future__ import annotations
@@ -38,9 +40,11 @@ from gi.repository import Gio, GLib  # noqa: E402
 
 from . import __version__, apps, classify, migration, routing  # noqa: E402
 from .airplay import AirPlayManager  # noqa: E402
+from .battery import Batteries  # noqa: E402
 from .captures import CaptureError, CaptureManager  # noqa: E402
 from .levels import LevelMeters  # noqa: E402
-from .mixer import Mixer  # noqa: E402
+from .mixer import OTHER_SOUNDS, Mixer  # noqa: E402
+from .mpris import Players  # noqa: E402
 from .avahi import AirPlayDiscovery  # noqa: E402
 from .pipewire import GraphMonitor, PipeWireUnavailable, WirePlumberControl  # noqa: E402
 from .secrets import PasswordStore  # noqa: E402
@@ -59,7 +63,7 @@ SETTINGS_SCHEMA = "org.projectluma.audio-devices"
 LEGACY_PROMPT_NOTIFICATION = "new-output"
 FAILURE_NOTIFICATION = "airplay-failed"
 SAVE_DELAY_MS = 1500
-INTERFACE_VERSION = 2
+INTERFACE_VERSION = 3
 
 
 def _interface_xml() -> str:
@@ -96,9 +100,12 @@ class AudioDevicesService(Gio.Application):
         self._connection: Gio.DBusConnection | None = None
         self._browse_watches: dict[str, int] = {}
         self._tick_id = 0
+        self._linger_id = 0
+        self._watched_saved = False
         self._save_id = 0
         self._started = False
         self._default: str | None = None
+        self._used_node: str | None = None
         self._hidden_outputs: list[str] = []
         self._output_nodes: dict[str, classify.Output] = {}
         self._last_properties: dict[str, GLib.Variant] = {}
@@ -118,6 +125,8 @@ class AudioDevicesService(Gio.Application):
             log.exception("cannot index desktop entries")
             index = None
         self.mixer = Mixer(index, self.control)
+        self.players = Players(self._streams_changed)
+        self.batteries = Batteries(lambda: self._emit_signal("OutputsChanged"))
         self.levels = LevelMeters(lambda: self._connection, self._level_serials, OBJECT_PATH, INTERFACE)
         self.captures = CaptureManager(self.control, lambda k, v: self.graph.graph.nodes_with(k, v),
                                        lambda: self._connection)
@@ -136,12 +145,14 @@ class AudioDevicesService(Gio.Application):
         self._registration_id = connection.register_object(
             OBJECT_PATH, info, self._method_call, self._get_property, None)
         self._connection = connection
+        self.players.start(connection)
         return Gio.Application.do_dbus_register(self, connection, object_path)
 
     def do_dbus_unregister(self, connection, object_path) -> None:
         if self._registration_id:
             connection.unregister_object(self._registration_id)
             self._registration_id = 0
+        self.players.stop()
         Gio.Application.do_dbus_unregister(self, connection, object_path)
 
     def do_startup(self) -> None:
@@ -163,6 +174,10 @@ class AudioDevicesService(Gio.Application):
 
     def do_shutdown(self) -> None:
         self.levels.stop_all()
+        self.batteries.stop()
+        if self._linger_id:
+            GLib.source_remove(self._linger_id)
+            self._linger_id = 0
         self.graph.stop()
         if self._save_id:
             GLib.source_remove(self._save_id)
@@ -174,6 +189,7 @@ class AudioDevicesService(Gio.Application):
 
     def _pipewire_connected(self) -> None:
         self.airplay.pipewire_reconnected()
+        self._watched_saved = False
 
     def _outputs_changed(self, nodes) -> None:
         now = time.time()
@@ -201,6 +217,9 @@ class AudioDevicesService(Gio.Application):
             log.debug("default output is now %s (graph)", graph_default)
             self._default = graph_default
             actions += self.policy.default_changed(graph_default, now)
+        self._note_used(graph_default or self._default, now)
+        if any(output.address for output in described.values()):
+            self.batteries.start()
         self.airplay.outputs_changed(set(described))
         hidden = sorted(name for name, node in nodes.items() if classify.is_hidden_output(node.props))
         if hidden != self._hidden_outputs:
@@ -211,11 +230,46 @@ class AudioDevicesService(Gio.Application):
         self._emit_signal("OutputsChanged")
 
     def _streams_changed(self) -> None:
-        if self.mixer.update(self.graph.graph):
+        self._watch_saved_levels()
+        if self.mixer.update(self.graph.graph, time.monotonic(), self.players.players()):
             self._emit_applications()
+        self._schedule_linger()
         self.captures.graph_changed()
         if self.levels.active:
             self.levels.refresh()
+
+    def _schedule_linger(self) -> None:
+        """One timer, only while a row outlives its last stream."""
+        if self._linger_id:
+            GLib.source_remove(self._linger_id)
+            self._linger_id = 0
+        deadline = self.mixer.next_deadline()
+        if deadline is None:
+            return
+
+        def expired() -> bool:
+            self._linger_id = 0
+            self._streams_changed()
+            return GLib.SOURCE_REMOVE
+
+        self._linger_id = GLib.timeout_add(max(0, int((deadline - time.monotonic()) * 1000) + 20), expired)
+
+    def _watch_saved_levels(self) -> None:
+        """Ask WirePlumber to publish the remembered level of the other
+        sounds (app.state:<key>), once per connection."""
+        if self._watched_saved or not self.control.app_audio_ready:
+            return
+        self._watched_saved = True
+        for key, _name in OTHER_SOUNDS:
+            self.control.app_audio_command("app.watch:" + key, {})
+
+    def _note_used(self, node_name: str | None, now: float) -> None:
+        output = self._output_nodes.get(node_name or "")
+        if output is None or self._used_node == node_name:
+            return
+        self._used_node = node_name
+        self.store.used[output.key] = now
+        self._schedule_save()
 
     def _emit_applications(self) -> None:
         if self._connection is None:
@@ -242,12 +296,21 @@ class AudioDevicesService(Gio.Application):
     def _outputs(self) -> list[dict]:
         default = self._default or self.graph.graph.default_sink()
         rows = []
-        for name, output in sorted(self._output_nodes.items(), key=lambda item: item[1].name.casefold()):
+        nodes = self.graph.graph.output_nodes()
+        cards = {}
+        for name, output in sorted(self._output_nodes.items(), key=lambda item: item[1].label.casefold()):
             if name in self._hidden_outputs and name != default:
                 continue
-            rows.append(_to_vardict({"name": name, "description": output.name, "icon": output.icon,
-                                     "default": name == default}))
-        return rows
+            node = nodes.get(name)
+            battery = self.batteries.percent(output.address) if output.address else None
+            cards[name] = output.card
+            rows.append({"name": name, "description": output.name, "icon": output.icon,
+                         "default": name == default, "label": output.label, "kind": output.kind,
+                         "detail": classify.output_detail(node.props, node.route, battery) if node else "",
+                         "battery": battery if battery is not None else -1,
+                         "last_used": int(self.store.used.get(output.key, 0))})
+        classify.label_outputs(rows, cards)
+        return [_to_vardict(row) for row in rows]
 
     def _default_changed(self, node_name: str | None) -> None:
         if node_name == self._default:
@@ -256,6 +319,7 @@ class AudioDevicesService(Gio.Application):
         self._default = node_name
         if not self._started:
             return
+        self._note_used(node_name, time.time())
         self._perform(self.policy.default_changed(node_name, time.time()))
 
     def _preferences_changed(self) -> None:
@@ -289,6 +353,24 @@ class AudioDevicesService(Gio.Application):
         self._tick_id = 0
         self._perform(self.policy.tick(time.time()))
         return GLib.SOURCE_REMOVE
+
+    def _raise_application(self, key: str) -> bool:
+        """Bring the app's window forward: its player's Raise, else its
+        desktop entry (which presents the running instance)."""
+        row = self.mixer.applications.get(key)
+        if row is None:
+            return False
+        player = self.players.get(row.media.get("player", ""))
+        if player is not None and player.can_raise:
+            return self.players.call(player.bus_name, "Raise")
+        info = Gio.DesktopAppInfo.new(row.desktop_id) if row.desktop_id else None
+        if info is None:
+            return False
+        try:
+            return bool(info.launch([], None))
+        except GLib.Error as error:
+            log.warning("cannot show %s: %s", key, error.message)
+            return False
 
     def _open_sound_settings(self) -> None:
         info = Gio.DesktopAppInfo.new("gnome-sound-panel.desktop")
@@ -387,6 +469,19 @@ class AudioDevicesService(Gio.Application):
                 else:
                     invocation.return_dbus_error(ERROR_PREFIX + "Unavailable",
                                                  "The sound system isn’t ready yet.")
+            elif method in ("ApplicationPlayPause", "ApplicationNext", "ApplicationPrevious"):
+                (key,) = parameters.unpack()
+                player = self.mixer.player_of(key)
+                if player and self.players.call(player, method[len("Application"):]):
+                    invocation.return_value(None)
+                else:
+                    invocation.return_dbus_error(ERROR_PREFIX + "NotFound", "That app has no media player.")
+            elif method == "RaiseApplication":
+                (key,) = parameters.unpack()
+                if self._raise_application(key):
+                    invocation.return_value(None)
+                else:
+                    invocation.return_dbus_error(ERROR_PREFIX + "NotFound", "That app has no window to show.")
             elif method == "WatchLevels":
                 (targets,) = parameters.unpack()
                 invocation.return_value(GLib.Variant("(u)", (self.levels.watch(sender, list(targets)),)))

@@ -969,6 +969,21 @@ def render_tv_js() -> str:
             "export const tv = Object.freeze(" + json.dumps(tv_tokens(), sort_keys=True) + ");\n")
 
 
+MEDIA_ROW_JS_OUTPUT = ROOT / "src/luma-shell-presentation/mediaRowTokens.js"
+
+
+def render_media_row_js() -> str:
+    """The media row's metrics and type for the Shell's St row (mediaRow.js),
+    the same numbers LumaMediaRow reads in C."""
+    lumaui = load_document()["lumaui"]
+    value = {key: group for key, group in lumaui["media_row"].items() if not key.startswith("_")}
+    value["type"] = {name[len("media_row_"):]: spec for name, spec in lumaui["type_scale"].items()
+                     if name.startswith("media_row_")}
+    return ("// SPDX-License-Identifier: Apache-2.0\n"
+            "// Generated from config/shared/design-tokens.d/media-row.json; do not edit.\n"
+            "export const mediaRow = Object.freeze(" + json.dumps(value, sort_keys=True) + ");\n")
+
+
 def render_keycap_js() -> str:
     tokens = load_document()["keycap"]
     value = {key: {k: v for k, v in tokens[key].items() if not k.startswith("_")}
@@ -1008,6 +1023,7 @@ def main() -> int:
     expected_keycap_css = render_keycap_shell_css()
     expected_keycap_js = render_keycap_js()
     expected_tv_js = render_tv_js()
+    expected_media_row_js = render_media_row_js()
     expected_icons = render_icon_tokens()
     expected = render("light")
     expected_dark = render("dark")
@@ -1028,6 +1044,7 @@ def main() -> int:
                     (KEYCAP_CSS_OUTPUT, expected_keycap_css),
                     (KEYCAP_JS_OUTPUT, expected_keycap_js),
                     (TV_JS_OUTPUT, expected_tv_js),
+                    (MEDIA_ROW_JS_OUTPUT, expected_media_row_js),
                     (ICON_OUTPUT, expected_icons),
                     (OUTPUT, expected),
                     (DARK_OUTPUT, expected_dark),
@@ -1058,6 +1075,7 @@ def main() -> int:
     KEYCAP_CSS_OUTPUT.write_text(expected_keycap_css, encoding="utf-8")
     KEYCAP_JS_OUTPUT.write_text(expected_keycap_js, encoding="utf-8")
     TV_JS_OUTPUT.write_text(expected_tv_js, encoding="utf-8")
+    MEDIA_ROW_JS_OUTPUT.write_text(expected_media_row_js, encoding="utf-8")
     ICON_OUTPUT.write_text(expected_icons, encoding="utf-8")
     OUTPUT.write_text(expected, encoding="utf-8")
     DARK_OUTPUT.write_text(expected_dark, encoding="utf-8")

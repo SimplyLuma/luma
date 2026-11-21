@@ -14,6 +14,7 @@ dictionary of the node's active route plus its ``port.type`` when known.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Mapping
 
 __all__ = (
@@ -21,6 +22,7 @@ __all__ = (
     "truthy", "is_network", "is_discovered_network", "is_hidden_output",
     "is_local_hardware", "device_key", "display_name", "icon_name",
     "is_personal_listening", "is_display", "Output", "describe",
+    "output_kind", "output_label", "output_detail", "label_outputs",
 )
 
 AIRPLAY_NODE_PREFIX = "luma_airplay."
@@ -185,6 +187,123 @@ def icon_name(props: Mapping, route: Mapping | None = None) -> str:
     return "audio-card-symbolic"
 
 
+# What the sound menus call an output -----------------------------------------
+#
+# A person picks an output by what it is: "Speakers", the headphones' own
+# name, the monitor's name, the AirPlay receiver's name. A card, port or
+# profile name ("Analog Output", "USB Audio", "Digital Stereo (IEC958)") is
+# never the label; it may only tell two same-named outputs apart, in the
+# secondary line (label_outputs).
+
+OUTPUT_KINDS = ("speakers", "headphones", "usb", "airplay", "display")
+
+_PORT_LABELS = {
+    "speaker": "Speakers", "headphones": "Headphones", "headset": "Headset",
+    "line": "Line out", "spdif": "Digital out", "earpiece": "Earpiece", "handset": "Handset",
+}
+# Words of a USB product string that say how it connects, not what it is.
+_USB_NOISE = re.compile(
+    r"\b(usb|audio|device|adapter|codec|advanced|sound\s*card|analog(ue)?|digital|stereo|mono|output|"
+    r"iec958|s/?pdif|class|composite|high[- ]speed|full[- ]speed|true\s*hd|hd)\b|[()\[\]]", re.IGNORECASE)
+_GENERIC_VENDORS = frozenset({
+    "qemu", "generic", "c-media", "cmedia", "realtek", "conexant", "ess", "via", "tenor", "texas instruments",
+    "burr-brown", "ti", "gn", "",
+})
+
+
+def _port_type(props: Mapping, route: Mapping) -> str:
+    return str(route.get("port.type") or "").lower()
+
+
+def output_kind(props: Mapping, route: Mapping | None = None) -> str:
+    """speakers, headphones, usb, airplay or display: which glyph it gets."""
+    route = route or {}
+    if is_network(props):
+        return "airplay"
+    if is_display(props, route):
+        return "display"
+    if is_personal_listening(props, route):
+        return "headphones"
+    if props.get("device.bus") == "usb":
+        return "usb"
+    return "speakers"
+
+
+def _clean_product(name: str | None) -> str:
+    """"Scarlett 2i2" of "Scarlett 2i2 USB Audio"; "" when nothing is left
+    but a chip vendor ("QEMU USB Audio", "USB Audio Device")."""
+    if not name:
+        return ""
+    cleaned = " ".join(_USB_NOISE.sub(" ", name).replace("_", " ").split()).strip(" -,.")
+    return "" if cleaned.casefold() in _GENERIC_VENDORS else cleaned
+
+
+def output_label(props: Mapping, route: Mapping | None = None) -> str:
+    route = route or {}
+    if is_network(props) or is_display(props, route):
+        return display_name(props, route)
+    if props.get("device.api") == "bluez5":
+        for key in ("device.alias", "device.description", "node.description", "device.product.name"):
+            value = _nonempty(props.get(key))
+            if value:
+                return value
+    port = _PORT_LABELS.get(_port_type(props, route))
+    if props.get("device.bus") == "usb":
+        product = (_clean_product(_nonempty(props.get("device.product.name")))
+                   or _clean_product(_nonempty(props.get("device.description"))))
+        if product:
+            return product
+        if port:
+            return port
+        return "Headphones" if is_personal_listening(props, route) else "Speakers"
+    if port:
+        return port
+    if is_personal_listening(props, route):
+        return "Headphones"
+    if props.get("device.api") == "alsa":
+        return "Speakers"
+    return (_nonempty(props.get("node.description")) or _nonempty(props.get("node.nick"))
+            or "Sound output")
+
+
+def output_detail(props: Mapping, route: Mapping | None = None, battery: int | None = None) -> str:
+    """The secondary line: how it connects."""
+    route = route or {}
+    if is_network(props):
+        return "AirPlay" if (props.get("sess.media") == "raop" or _nonempty(props.get("luma.airplay.id"))
+                             or str(props.get("node.name") or "").startswith(("raop_sink.", AIRPLAY_NODE_PREFIX))) \
+            else "Network"
+    if props.get("device.api") == "bluez5":
+        return f"Bluetooth · {battery}%" if battery is not None and 0 <= battery <= 100 else "Bluetooth"
+    if is_display(props, route):
+        return "Display"
+    if props.get("device.bus") == "usb":
+        return "USB"
+    if _port_type(props, route) in ("headphones", "headset", "line", "spdif"):
+        return "Wired"
+    return "Built in"
+
+
+def _card_name(props: Mapping) -> str:
+    return (_nonempty(props.get("device.profile.description")) or _nonempty(props.get("device.description"))
+            or _nonempty(props.get("node.description")) or "")
+
+
+def label_outputs(entries: list[dict], cards: Mapping[str, str]) -> None:
+    """Two outputs that would read the same get their card or profile name
+    after the connection in the secondary line; nothing else ever shows it."""
+    seen: dict[str, list[dict]] = {}
+    for entry in entries:
+        seen.setdefault(entry["label"].casefold(), []).append(entry)
+    for same in seen.values():
+        if len(same) < 2:
+            continue
+        for entry in same:
+            card = cards.get(entry["name"]) or ""
+            if card and card.casefold() != entry["label"].casefold():
+                entry["detail"] = f"{entry['detail']} · {card}" if entry["detail"] else card
+
+
 @dataclass(frozen=True)
 class Output:
     """One sound output as the routing policy sees it."""
@@ -197,6 +316,10 @@ class Output:
     network: bool = False
     local: bool = True
     priority: int = 0
+    kind: str = "speakers"
+    label: str = ""
+    card: str = ""
+    address: str = ""
 
 
 def describe(props: Mapping, route: Mapping | None = None) -> Output:
@@ -213,4 +336,8 @@ def describe(props: Mapping, route: Mapping | None = None) -> Output:
         network=is_network(props),
         local=is_local_hardware(props),
         priority=priority,
+        kind=output_kind(props, route),
+        label=output_label(props, route),
+        card=_card_name(props),
+        address=str(props.get("api.bluez5.address") or "").upper(),
     )

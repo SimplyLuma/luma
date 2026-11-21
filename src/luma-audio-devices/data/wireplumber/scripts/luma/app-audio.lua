@@ -10,6 +10,8 @@
 --    every SDL game ("Game") or GStreamer music player ("Music") shares one
 --    remembered volume. This hook runs after it and restores what was saved
 --    for the app itself. System sounds keep the stock route-settings key.
+--    An app sent to an output that is then unplugged plays on the default
+--    and keeps its choice: when that output returns, its streams go back.
 --
 -- 2. Capture sessions for the audio capture portal. A capture is one
 --    support.null-audio-sink node, class Audio/Source/Virtual/Capture (linked
@@ -27,6 +29,9 @@
 -- luma-audio-devices):
 --   app.volume:<key>  {"volume": <linear>, "mute": <bool>}  (either optional)
 --   app.target:<key>  {"name": "<node.name>"} or {"name": null}
+--   app.watch:<key>   {}  publish what is remembered for the app as
+--                     app.state:<key> {"volume", "mute", "target"} and keep
+--                     it current (for sounds listed while silent)
 --   capture:<id>      {"mode": "apps"|"system", "apps": [...], "requester":
 --                      "<app id>", "include_self": bool, "owner": <client id>,
 --                      "name": "<label>"}; removing the key ends the capture
@@ -65,6 +70,8 @@ end)
 
 -- node bound-id -> { volume = v, mute = m, until = usec }
 restoring = {}
+-- app keys whose remembered state is published as app.state:<key>
+watched = {}
 -- capture id -> { spec = ..., node = proxy, links = { [stream si id] = silink } }
 captures = {}
 -- portal-remote stream si ids already refused (log once)
@@ -106,6 +113,9 @@ local function save_app (key, saved)
   if saved.target ~= nil then out.target = saved.target end
   state_table [key] = Json.Object (out):to_string ()
   state:save_after_timeout (state_table)
+  if watched [key] then
+    metadata:set (0, "app.state:" .. key, "Spa:String:JSON", state_table [key])
+  end
 end
 
 local function parse_json (value)
@@ -354,6 +364,43 @@ SimpleEventHook {
   end
 }:register ()
 
+-- An output came (back): the streams of every app that was sent to it by
+-- name return to it. The target in the default metadata is an object serial,
+-- which a replugged device does not keep.
+SimpleEventHook {
+  name = "luma/app-audio/return-to-output",
+  interests = {
+    EventInterest {
+      Constraint { "event.type", "=", "node-added" },
+      Constraint { "media.class", "#", "Audio/*" },
+    },
+  },
+  execute = function (event)
+    local sink = event:get_subject ()
+    local class = sink.properties ["media.class"]
+    if class ~= "Audio/Sink" and class ~= "Audio/Duplex" then
+      return
+    end
+    local name = sink.properties ["node.name"]
+    if not name then
+      return
+    end
+    for node in cutils.get_object_manager ("node"):iterate {
+      Constraint { "media.class", "=", "Stream/Output/Audio" },
+    } do
+      local props = node.properties
+      if app.is_app_playback (props) and not app.is_system_sound (props) and
+          props ["state.restore-target"] ~= "false" then
+        local key = key_for (node)
+        if key and load_app (key).target == name then
+          log:info (node, "output " .. name .. " is back: " .. key .. " returns to it")
+          set_target (node, name)
+        end
+      end
+    end
+  end
+}:register ()
+
 restoring_cleanup = SimpleEventHook {
   name = "luma/app-audio/forget-node",
   interests = {
@@ -571,7 +618,8 @@ SimpleEventHook {
       end
       return
     end
-    if value == nil then
+    if value == nil or kind == "app.state" then
+      -- app.state is this script's own answer, not a command.
       return
     end
     local request = parse_json (value)
@@ -579,7 +627,11 @@ SimpleEventHook {
       command_done (key)
       return
     end
-    if kind == "app.volume" then
+    if kind == "app.watch" then
+      watched [rest] = true
+      metadata:set (0, "app.state:" .. rest, "Spa:String:JSON",
+          state_table [rest] or Json.Object ({}):to_string ())
+    elseif kind == "app.volume" then
       set_app_volume (rest, request)
     elseif kind == "app.target" then
       set_app_target (rest, request)

@@ -25,7 +25,7 @@ G_BEGIN_DECLS
  * go to the ends; the wheel steps; a press on the track jumps there and drags.
  * Only those moves emit ::moved; luma_volume_slider_set_value() does not.
  *
- * Tree: lumaui-volume-slider(.vertical|.horizontal)(.muted) with style nodes
+ * Tree: lumaui-volume-slider(.vertical|.horizontal)(.compact)(.muted) with style nodes
  * .lumaui-volume-track, -fill, -knob, -ring, -shadow, -mark, -focus, and the
  * meter (box.lumaui-audio-meter) as its child.
  */
@@ -52,6 +52,14 @@ double luma_volume_slider_get_unity(LumaVolumeSlider *self);
  * @unit: (nullable): "%" (the default) or "dB": how the value is spoken
  */
 void luma_volume_slider_set_unit(LumaVolumeSlider *self, const char *unit);
+/**
+ * luma_volume_slider_set_compact:
+ * @self: a slider
+ * @compact: TRUE for a row in a panel: a 12 px knob in a 16 px slot (the
+ *   `--lumaui-volume-slider-compact-*` tokens) on the same 4 px track
+ */
+void luma_volume_slider_set_compact(LumaVolumeSlider *self, gboolean compact);
+gboolean luma_volume_slider_get_compact(LumaVolumeSlider *self);
 void luma_volume_slider_set_muted(LumaVolumeSlider *self, gboolean muted);
 gboolean luma_volume_slider_get_muted(LumaVolumeSlider *self);
 /**
