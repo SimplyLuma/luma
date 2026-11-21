@@ -186,6 +186,9 @@ class NativeMedia:
         self.stop()
 
     def stop(self):
+        if (self.paintable is None and self.pipeline is None
+                and self.generation is None and self.tab_id is None):
+            return
         if self.paintable:
             self.update_metrics()
             self.presented += self.paintable.presented

@@ -9,17 +9,17 @@
 
 %global viola_version 0.2.10
 %global viola_build 8210
-%global native_release 47
+%global native_release 48
 # The native host is shared. Both CPUs use source-built engines from the same
-# tree (engine patches 0001-0008); each has its own release number.
+# tree (engine patches 0001-0009); each has its own release number.
 %ifarch aarch64
-%global engine_release 42
-%global approved_release 20261119-native42-arm-desktop
-%global engine_sha256 dd8afae6f35a187afe9254abc0544fff2272ab10d99c49d6cf43005d25f129dd
+%global engine_release 44
+%global approved_release 20261121-native44-arm-desktop
+%global engine_sha256 227a684dfca3b840f45fe78732af0d838a47086286065b73ce6353c0b791cae4
 %else
-%global engine_release 41
-%global approved_release 20261119-native41-x86-desktop
-%global engine_sha256 f0d2df116052799620f9c3321c7110f5460e92c89f6a1d9c5eb9fffb4b2fd05e
+%global engine_release 43
+%global approved_release 20261121-native43-x86-desktop
+%global engine_sha256 dce029011780fb2c3f6393981a148fb49066c3cd5e2ed2377a2e9d19d16b0efa
 %endif
 
 # Prebuilt Chromium engine: no debuginfo split and no automatic stripping (the
@@ -35,7 +35,7 @@
 
 Name:           viola-browser-stable
 Version:        151.0.7922.72
-Release:        15.viola%{viola_build}.native%{native_release}.creator20261119.1%{?dist}
+Release:        15.viola%{viola_build}.native%{native_release}.creator20261121.1%{?dist}
 Summary:        Viola web browser
 License:        GPL-3.0-only AND BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
 URL:            https://github.com/nmcmil/Viola
@@ -284,6 +284,12 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); assert r["engine_pa
 %{_mandir}/man1/viola-browser-stable.1*
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native48.creator20261121.1
+- Two open windows no longer rewrite each other's active tab in the shared workspace at frame rate (engine patch 0009); every pass pushed a new state to each sidebar and the host redrew it.
+- The engine sends a sidebar state only when it differs from the last one sent.
+- The host drops unchanged states, renders the newest state at most once per frame, and leaves unchanged address, pin and connection widgets alone.
+- Engines native43 (x86) and native44 (ARM): native41 and native42 with 0009; only chrome differs.
+
 * Thu Nov 19 2026 Project Luma <maintainers@projectluma.org> - 151.0.7922.72-15.viola8210.native47.creator20261119.1
 - Removing an extension asks in the bar (engine patch 0008); the dialog on the undisplayed window never answered.
 - The Web Store's package download is not listed in Downloads or notices.

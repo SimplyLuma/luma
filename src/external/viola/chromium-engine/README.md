@@ -83,6 +83,21 @@ DevTools window beside it and kept it from closing. On the Web Store, the
 banner asking to switch to Chrome to install is hidden, as Viola installs from
 it; the browser still identifies as Chromium.
 
+`0009-render-state-churn.patch` applies after `0008`. With two windows
+open, each window's reconcile wrote its own active tab (and a fresh
+`lastAccessed`) into the shared organization's workspace, which notified every
+window, whose reconcile wrote its tab back: the windows overwrote each other
+at frame rate for as long as both were open, and each pass pushed a full
+render state to every sidebar page, which re-rendered and republished it to
+the host. A window now writes its active tab and workspace only when they
+change for that window (and once more after a synced organization replaces
+them). Separately, the handler serializes each render state and sends it only
+when it differs from the last one sent; a reload of the page, a
+`download:update`, or the shell's `sidebar:collapsed` and `permission:prompt`
+edits of the page's copy make the next state go out.
+`--vmodule=viola_message_handler=1` logs tab changes and sent or unchanged
+states.
+
 Do not replace a released engine merely because these inputs build successfully;
 its native rendering, input, resize and window lifecycle checks must also pass.
 

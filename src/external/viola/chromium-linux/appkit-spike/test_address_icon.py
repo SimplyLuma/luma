@@ -11,7 +11,9 @@ class AddressIconTest(unittest.TestCase):
         entry = SimpleNamespace(
             set_icon_from_icon_name=lambda _, icon: shown.append(icon),
             set_icon_from_paintable=lambda _, icon: shown.append(icon),
-            set_icon_tooltip_text=lambda *_: None)
+            set_icon_tooltip_text=lambda *_: None,
+            get_icon_name=lambda _: shown[-1] if shown and isinstance(shown[-1], str) else None,
+            get_icon_tooltip_text=lambda _: None)
         adapter.host = SimpleNamespace(address=entry, state={'activeTabId':'tab','activeConnection':{'kind':'secure'}},
             address_focused=lambda: True, favicons=SimpleNamespace(request=lambda url, cb: requested.append((url,cb))))
         adapter.owns_focus = lambda: False

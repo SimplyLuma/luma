@@ -449,13 +449,21 @@ class IntegratedWindow(AppWindow):
         self.back.set_sensitive(state.get('canGoBack', False))
         self.forward.set_sensitive(state.get('canGoForward', False))
         if not self.address_focused() and not self.address_suggestions.owns_focus() and not self.new_tab_pending:
-            self.address.set_text(state.get('nativePrettyUrl') or state.get('activeUrl', ''))
+            # GTK 4 replaces the buffer (delete + insert) even for equal text.
+            text = state.get('nativePrettyUrl') or state.get('activeUrl', '')
+            if self.address.get_text() != text:
+                self.address.set_text(text)
         self.address_suggestions.refresh_icon()
         pinned = any(tab['id'] == state.get('activeTabId') for tab in state.get('favorites', []))
-        self.bookmark.get_child().set_from_icon_name('lumaui-pin-symbolic')
-        self.bookmark.set_tooltip_text('Unpin from top' if pinned else 'Pin to top')
-        self.bookmark.update_property([Gtk.AccessibleProperty.LABEL], [self.bookmark.get_tooltip_text()])
-        (self.bookmark.add_css_class if pinned else self.bookmark.remove_css_class)('lumaui-selected')
+        icon = self.bookmark.get_child()
+        if icon.get_icon_name() != 'lumaui-pin-symbolic':
+            icon.set_from_icon_name('lumaui-pin-symbolic')
+        tooltip = 'Unpin from top' if pinned else 'Pin to top'
+        if self.bookmark.get_tooltip_text() != tooltip:
+            self.bookmark.set_tooltip_text(tooltip)
+            self.bookmark.update_property([Gtk.AccessibleProperty.LABEL], [tooltip])
+        if self.bookmark.has_css_class('lumaui-selected') != pinned:
+            (self.bookmark.add_css_class if pinned else self.bookmark.remove_css_class)('lumaui-selected')
         if self.mini:
             self.mini_presentation.render(state)
         else:
@@ -783,6 +791,8 @@ def main():
             window_count=len(windows.contexts), window_active=active_window.is_active(),
             frame_size=active_window.page.frame_size_diagnostic,
             imported_frames=receiver.imported, pending_leases=len(receiver.pending),
+            state_renders=dict(getattr(getattr(active_window, 'state_renders', None), 'metrics', {}),
+                               **getattr(active_window.services, 'state_metrics', {})),
             input_pending=active_window.page_input.pending,
             address_input=dict(active_window.address_suggestions.input_metrics,
                                focused=active_window.address_focused(),
