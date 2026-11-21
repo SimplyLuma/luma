@@ -12,9 +12,9 @@ from pathlib import Path
 
 from .model import atomic_write
 
-TILES = ("landscape", "vertical", "widgets", "audio", "destinations", "stats", "chat")
+TILES = ("landscape", "vertical", "widgets", "audio", "destinations", "stats", "chat", "inspector")
 #: Tiles a person may close (they then sit in the layout's "closed" record, LumaUI Dock).
-CLOSABLE = ("landscape", "vertical", "destinations", "stats", "chat")
+CLOSABLE = ("landscape", "vertical", "destinations", "stats", "chat", "inspector")
 #: The previews: one of them always stays open.
 PREVIEWS = ("landscape", "vertical")
 #: Panels closed until opened from the app menu (a layout from before them has them closed).
@@ -25,14 +25,21 @@ def split(orientation: str, ratio: float, start, end) -> dict:
     return {"split": orientation, "ratio": ratio, "start": start, "end": end}
 
 
+def _insets() -> dict:
+    return {"tabs": ["widgets", "destinations"], "current": "widgets"}
+
+
+#: The Inspector: a full-height column at the right (as wide as it asks, LumaUI Dock fit).
+INSPECTOR_SHARE = 0.76
+
 PRESETS: dict[str, tuple[str, object]] = {
     # Both canvases side by side, Vertical at about 9:16 of the preview's height.
-    "default": ("Default", split("v", 0.72, split("h", 0.7, "landscape", "vertical"),
-                                 split("h", 0.5, {"tabs": ["widgets", "destinations"], "current": "widgets"}, "audio"))),
-    "side": ("Insets beside", split("h", 0.72, split("h", 0.7, "landscape", "vertical"),
-                                     split("v", 0.5, {"tabs": ["widgets", "destinations"], "current": "widgets"}, "audio"))),
-    "compact": ("Compact", split("v", 0.88, split("h", 0.7, "landscape", "vertical"),
-                                 split("h", 0.5, {"tabs": ["widgets", "destinations"], "current": "widgets"}, "audio"))),
+    "default": ("Default", split("h", INSPECTOR_SHARE, split("v", 0.72, split("h", 0.7, "landscape", "vertical"),
+                                                             split("h", 0.5, _insets(), "audio")), "inspector")),
+    "side": ("Insets beside", split("h", INSPECTOR_SHARE, split("h", 0.72, split("h", 0.7, "landscape", "vertical"),
+                                                                split("v", 0.5, _insets(), "audio")), "inspector")),
+    "compact": ("Compact", split("h", INSPECTOR_SHARE, split("v", 0.88, split("h", 0.7, "landscape", "vertical"),
+                                                             split("h", 0.5, _insets(), "audio")), "inspector")),
 }
 
 
@@ -127,7 +134,8 @@ def _valid_tree(layout, closed: set[str]):
         seen.add("destinations")
     for key in TILES:
         if key not in seen and key not in closed:
-            tree = split("h", 0.75, tree, key)
+            # A layout from before this tile (the Inspector was a column at the right): at the right edge.
+            tree = split("h", INSPECTOR_SHARE if key == "inspector" else 0.75, tree, key)
     return tree
 
 

@@ -858,3 +858,39 @@ fn downscale_averages_the_footprint() {
         assert!((p[0] as i32 - 128).abs() <= 40, "column {x}: {p:?}");
     }
 }
+
+/// `source-latency` replaces upstream's minimum latency in the answer
+/// downstream gets (a live compositor waits that long for a layer).
+#[test]
+fn source_latency_replaces_upstream_minimum() {
+    init();
+    let pipeline = gst::parse::launch(
+        "videotestsrc is-live=true ! video/x-raw,width=64,height=48,framerate=30/1 ! glupload ! \
+         lumaframe name=f ! fakesink",
+    )
+    .unwrap()
+    .downcast::<gst::Pipeline>()
+    .unwrap();
+    pipeline.set_state(gst::State::Playing).unwrap();
+    let _ = pipeline.state(gst::ClockTime::from_seconds(5));
+    let frame = pipeline.by_name("f").unwrap();
+    let pad = frame.static_pad("src").unwrap();
+    let min = |pad: &gst::Pad| {
+        let mut q = gst::query::Latency::new();
+        assert!(pad.query(&mut q));
+        let (live, min, _max) = q.result();
+        assert!(live);
+        min
+    };
+    assert_eq!(frame.property::<i64>("source-latency"), -1);
+    assert_eq!(
+        min(&pad),
+        gst::ClockTime::from_nseconds(33_333_333),
+        "upstream's: one source frame"
+    );
+    frame.set_property("source-latency", 0i64);
+    assert_eq!(min(&pad), gst::ClockTime::ZERO);
+    frame.set_property("source-latency", 2_000_000i64);
+    assert_eq!(min(&pad), gst::ClockTime::from_mseconds(2));
+    pipeline.set_state(gst::State::Null).unwrap();
+}

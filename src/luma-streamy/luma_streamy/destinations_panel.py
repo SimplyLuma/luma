@@ -150,15 +150,10 @@ class DestinationsPanel(Gtk.Box):
 
     def _canvas_choice(self, row: Destination) -> ModeSwitch:
         """The row's canvas as two glyphs (landscape | vertical); one is always the chosen one."""
-        choice = ModeSwitch([(key, canvas_label(key), CANVAS_ICONS[key]) for key in ("landscape", "vertical")],
-                            current=row.canvas, compact=True, label=f"{row.label} canvas",
-                            on_change=lambda key, r=row: self._set_canvas(r, key))
-        for key, button in choice.buttons.items():
-            # Glyphs alone; the name is the tooltip and the accessible name.
-            button.label_widget.set_visible(False)
-            button.set_tooltip_text(canvas_label(key))
-            button.update_property([Gtk.AccessibleProperty.LABEL], [canvas_label(key)])
-        return choice
+        # Glyphs alone; each canvas's name is its tooltip and accessible name.
+        return ModeSwitch([(key, canvas_label(key), CANVAS_ICONS[key]) for key in ("landscape", "vertical")],
+                          current=row.canvas, compact=True, icon_only=True, label=f"{row.label} canvas",
+                          on_change=lambda key, r=row: self._set_canvas(r, key))
 
     def _row(self, row: Destination) -> SidebarRow:
         trail = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)

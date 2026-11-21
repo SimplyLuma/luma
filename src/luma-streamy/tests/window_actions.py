@@ -118,6 +118,7 @@ def check(app) -> None:
         return next(c for c in walk(row) if isinstance(c, InlineRenameField))
 
     scene = win.project.active_scene
+    pump(1.0)  # the rows rebuilt by the menu rows above are settled
     win.rename_scene(scene.id)
     pump(0.3)
     field = field_in(win._scene_rows[scene.id])
@@ -180,10 +181,10 @@ def check(app) -> None:
 def inspector(win) -> None:
     """Closed, the Inspector stays closed through selections and scene switches (and is saved so);
     Source/Look/Arrange or Ctrl+I open it."""
-    pane = win.inspector
-    pane.close()
+    win.toggle_inspector()
     pump(0.1)
-    assert not pane.shown and win.settings.get("inspector") == "closed"
+    closed = win.dock.layout()
+    assert not win._inspector_shown() and "inspector" in closed.get("closed", {}), closed
     scene = next(sc for sc in win.project.scenes if any(w.has_picture for w in sc.widgets))
     win.switch_scene(scene.id)
     for w in scene.widgets:
@@ -194,18 +195,18 @@ def inspector(win) -> None:
         pump(0.1)
     win.switch_scene(scene.id)
     pump(0.1)
-    assert not pane.shown, "the Inspector reopened by itself"
+    assert not win._inspector_shown(), "the Inspector reopened by itself"
     picture = next(w for w in win.project.active_scene.widgets if w.has_picture)
     win.select(picture.id)
     win._grow("look")
     pump(0.1)
-    assert pane.shown and win.settings.get("inspector") == "open"
+    assert win._inspector_shown() and "inspector" not in win.dock.layout().get("closed", {})
     win.toggle_inspector()
     pump(0.1)
-    assert not pane.shown
+    assert not win._inspector_shown()
     win.toggle_inspector()
     pump(0.1)
-    assert pane.shown
+    assert win._inspector_shown()
     win.select(None)
     print("inspector: closes, stays closed, opens when asked")
 
