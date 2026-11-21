@@ -1,8 +1,8 @@
-From 59cd1d82d1832be23e8a36cc5f5bf6fe1456dc46 Mon Sep 17 00:00:00 2001
+From 19f52fb5a41be3ab2ce80ed2918a9dedbcdeb8e7 Mon Sep 17 00:00:00 2001
 From: Project Luma <engineering@projectluma.org>
 Date: Sat, 21 Nov 2026 04:00:00 -0500
-Subject: [PATCH] clutter/stage: Mark capture paints; let captures be made to
- paint
+Subject: [PATCH] clutter/stage: Mark capture paints; let captures be made
+ to paint
 
 The compositor's own overlays that must stay out of what is shared (the
 screen sharing pill and edges, a recording's controls) can only skip a

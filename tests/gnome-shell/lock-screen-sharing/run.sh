@@ -38,6 +38,7 @@ cleanup() {
   pkill -x pipewire 2>/dev/null; pkill -x wireplumber 2>/dev/null
   pkill -f xdg-desktop-portal 2>/dev/null; pkill -f luma_portal 2>/dev/null
   pkill -f "$here/client.py" 2>/dev/null; pkill -f "screen-sharing/window.py" 2>/dev/null
+  pkill -f fake-gdm.py 2>/dev/null
   true
 }
 cleanup
@@ -56,7 +57,7 @@ if [ "$mode" != ring ]; then
 CONF
   dbus-send --system --type=method_call --dest=org.freedesktop.DBus / org.freedesktop.DBus.ReloadConfig 2>/dev/null
   pkill -f fake-gdm.py 2>/dev/null
-  python3 "$here/fake-gdm.py" &
+  python3 "$here/fake-gdm.py" >"$out/fake-gdm.log" 2>&1 </dev/null &
   sleep 1
   mkdir -p /run/systemd/seats
 fi

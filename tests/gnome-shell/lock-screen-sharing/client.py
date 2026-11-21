@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 
 import gi
 
@@ -139,15 +140,18 @@ def on_bus_message(_bus, message):
 def link(node):
     """Link Mutter's node to ours. The session manager in a bare container
     session does not link video streams, so the client links its own."""
-    result = subprocess.run(["pw-link", str(node), f"lock-consumer-{safe}"],
-                            capture_output=True, text=True)
-    if result.returncode != 0 and tries[0] < 40:
-        tries[0] += 1
-        GLib.timeout_add(250, lambda: (link(node), GLib.SOURCE_REMOVE)[1])
-    elif result.returncode == 0:
-        step("linked", node=node)
-    else:
-        step("stream-ended", detail=result.stderr.strip())
+    def done(proc, result):
+        ok, out, err = proc.communicate_utf8_finish(result)
+        if proc.get_exit_status() == 0:
+            step("linked", node=node)
+        elif tries[0] < 40:
+            tries[0] += 1
+            GLib.timeout_add(250, lambda: (link(node), GLib.SOURCE_REMOVE)[1])
+        else:
+            step("stream-ended", detail=(err or out or "").strip())
+    proc = Gio.Subprocess.new(["pw-link", str(node), f"lock-consumer-{safe}"],
+                              Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+    proc.communicate_utf8_async(None, None, done)
 
 
 def consume(node):
@@ -160,8 +164,11 @@ def consume(node):
     watch = p.get_bus()
     watch.add_signal_watch()
     watch.connect("message", on_bus_message)
-    p.set_state(Gst.State.PLAYING)
     pipeline[0] = p
+    print(f"[client {tag}] consuming node {node}", flush=True)
+    # pipewiresrc blocks going to PLAYING until its stream is linked, and
+    # linking needs the main loop: start it from a thread.
+    threading.Thread(target=lambda: p.set_state(Gst.State.PLAYING), daemon=True).start()
     GLib.timeout_add(300, lambda: (link(node), GLib.SOURCE_REMOVE)[1])
 
 
