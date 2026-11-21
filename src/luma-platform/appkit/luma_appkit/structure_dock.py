@@ -376,6 +376,9 @@ class Dock(Gtk.Overlay):
         self._target_tick = 0
         self.add_overlay(self.target)
         self.connect("get-child-position", self._place_target)
+        watch = Gtk.EventControllerLegacy(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        watch.connect("event", self._pointer)
+        self.add_controller(watch)
         self._slots: list[tuple[object, Gtk.Widget]] = []  # each place in the layout and its widget
         self._root_widget: Gtk.Widget | None = None
         self._grab: dict | None = None  # the header drag under way
@@ -559,10 +562,6 @@ class Dock(Gtk.Overlay):
         paned.add_controller(twice)
         # Only a person's move sizes a fitted side (GTK also moves the position as it lays out).
         paned.held = False
-        hold = Gtk.GestureDrag(button=Gdk.BUTTON_PRIMARY, propagation_phase=Gtk.PropagationPhase.CAPTURE)
-        hold.connect("drag-begin", lambda _g, x, y, p=paned: setattr(p, "held", self._on_seam(p, x, y)))
-        hold.connect("drag-end", lambda *_a, p=paned: setattr(p, "held", False))
-        paned.add_controller(hold)
         paned.connect("move-handle", lambda p, *_a: (setattr(p, "held", True),
                                                      GLib.idle_add(lambda: setattr(p, "held", False))) and False)
         return paned
@@ -711,13 +710,42 @@ class Dock(Gtk.Overlay):
             self._allocated = (width, height)
             self.refit()
 
+    def _by_person(self, paned: Gtk.Paned) -> bool:
+        """Whether the seam is moving because a person moves it (a pointer or touch held on it, or F8
+        and the keys); GTK moving it while it lays the tiles out is not."""
+        return getattr(paned, "held", False)
+
+    def _pointer(self, controller, event) -> bool:
+        """Watch every press and release in the dock before its children do (the paned's own drag
+        claims the seam's press, so a gesture on the paned never sees it): a press on a seam holds
+        that seam until the release."""
+        event = event or controller.get_current_event()  # PyGObject may hand the signal's event as None
+        if event is None:
+            return False
+        kind = event.get_event_type()
+        if kind in (Gdk.EventType.BUTTON_PRESS, Gdk.EventType.TOUCH_BEGIN):
+            native = self.get_native()
+            ok, x, y = event.get_position()
+            if not ok or native is None:
+                return False
+            tx, ty = native.get_surface_transform()
+            ok, point = native.compute_point(self, Graphene.Point().init(x - tx, y - ty))
+            target = self.pick(point.x, point.y, Gtk.PickFlags.DEFAULT) if ok else None
+            for paned, _node in self._panes:
+                if target is not None and target.get_parent() is paned and target.get_css_name() == "separator":
+                    paned.held = True
+        elif kind in (Gdk.EventType.BUTTON_RELEASE, Gdk.EventType.TOUCH_END, Gdk.EventType.TOUCH_CANCEL):
+            for paned, _node in self._panes:
+                paned.held = False
+        return False
+
     def _moved(self, paned: Gtk.Paned, node: dict) -> None:
         if self._applying:
             return
         total = paned.get_property("max-position")
         if total <= 0:
             return
-        if not getattr(paned, "held", False):
+        if not self._by_person(paned):
             # GTK moving the seam as it lays out is not a person's choice: the share stays, and the
             # seam goes back to it once this layout is done.
             if not getattr(paned, "refit_pending", False):
@@ -742,7 +770,7 @@ class Dock(Gtk.Overlay):
         length = self._length(paned, node)
         node["ratio"] = min(0.95, max(0.05, position / length)) if length > 0 else node["ratio"]
         fits = {side: self._fits(node[side]) for side in ("start", "end")}
-        if fits["start"] != fits["end"] and getattr(paned, "held", False):
+        if fits["start"] != fits["end"] and self._by_person(paned):
             # A fitted side the person sized keeps that size (saved with the layout) until a
             # double click on the seam fits it to its content again.
             horizontal = node["split"] == "h"

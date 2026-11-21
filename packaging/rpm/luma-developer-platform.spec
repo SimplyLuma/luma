@@ -383,6 +383,10 @@ done
   the author's colour made readable, selectable text; action and notice
   kinds; dimmed) and a feed that keeps the newest lines, follows the bottom
   and offers Jump to newest. readable_color().
+- Dock: a seam a person drags keeps its size. The paned's own drag claims
+  the press, so the gesture that marked a held seam never saw it and every
+  drag was taken for GTK's layout and put back; the dock now marks the seam
+  from its capture phase (press to release). Real-pointer test.
 - Lucide: gem.
 
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.143
