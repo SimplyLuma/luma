@@ -6,10 +6,9 @@
 
 The ring sits over a flat #808080 backdrop. For every shot:
 
-- halo-edge: the largest difference from the backdrop on the last pixel row
-  and column inside the ring's actor, at the middle of each side that is on
-  screen. A halo cut off by its bounds leaves a step there; one that fades
-  out leaves nothing.
+- halo-edge: at the middle of each side of the ring's actor, the difference
+  between the last pixel inside and the pixels just beyond. A halo cut off by
+  its bounds leaves a step there; one that fades out leaves nothing.
 - corner: walking from the window's corner centre along the diagonal, where
   the violet line begins, against where it begins on a straight edge. A ring
   concentric with the window starts its line at the same distance from the
@@ -48,15 +47,19 @@ for shot in state.get("shots", []):
     px = lambda x, y: image.getpixel((min(W - 1, max(0, int(x * s))), min(H - 1, max(0, int(y * s)))))
     on = lambda x, y: 0 <= x * s < W and 0 <= y * s < H
 
-    # The halo at the actor's bounds, mid-side, one device pixel inside.
+    # The halo at the actor's bounds, mid-side: the last pixel inside against
+    # the first pixels beyond. A halo cut off by its bounds is a step there;
+    # one that has faded out matches whatever lies beyond (the backdrop, or
+    # the shelf where the ring runs under it).
     edge = []
     inset = 0.5 / s
-    for x, y in ((a["x"] + a["width"] / 2, a["y"] + inset),
-                 (a["x"] + a["width"] / 2, a["y"] + a["height"] - inset - 1 / s),
-                 (a["x"] + inset, a["y"] + a["height"] / 2),
-                 (a["x"] + a["width"] - inset - 1 / s, a["y"] + a["height"] / 2)):
-        if on(x, y):
-            edge.append(diff(px(x, y), BACKDROP))
+    for x, y, dx, dy in ((a["x"] + a["width"] / 2, a["y"] + inset, 0, -1),
+                         (a["x"] + a["width"] / 2, a["y"] + a["height"] - inset - 1 / s, 0, 1),
+                         (a["x"] + inset, a["y"] + a["height"] / 2, -1, 0),
+                         (a["x"] + a["width"] - inset - 1 / s, a["y"] + a["height"] / 2, 1, 0)):
+        beyond = (x + dx * 2 / s, y + dy * 2 / s)
+        if on(x, y) and on(*beyond):
+            edge.append(diff(px(x, y), px(*beyond)))
 
     # Where the line begins, straight edge (top, mid) and corner diagonal.
     radius = float(str(shot.get("radius") or "0:1").split(":")[0]) if shot.get("radius") else None
@@ -69,6 +72,7 @@ for shot in state.get("shots", []):
                 return t
         return None
 
+    whole = on(f["x"], f["y"]) and on(f["x"] + f["width"], f["y"] + f["height"])
     top = line_start(f["x"] + f["width"] / 2, f["y"], 0, -1, -2, 8)
     diag = None
     if radius is not None:
@@ -83,7 +87,9 @@ for shot in state.get("shots", []):
     if shot.get("state") in ("floating", "moved", "resized", "resizing"):
         checks.append({"name": f"{shot['name']}: the halo fades out inside its actor",
                        "ok": bool(edge) and max(edge) <= 3, "detail": edge})
-    if shot.get("state") not in ("fullscreen", "maximized") and top is not None and diag is not None:
+    if not whole and shot.get("state") not in ("fullscreen", "maximized"):
+        pass  # the window reaches past the screen (a small monitor): nothing to measure
+    elif shot.get("state") not in ("fullscreen", "maximized") and top is not None and diag is not None:
         checks.append({"name": f"{shot['name']}: the ring is concentric with the window",
                        "ok": abs(diag - top) <= 1.0 + 1 / s, "detail": {"edge": top, "corner": diag}})
     elif shot.get("state") not in ("fullscreen", "maximized"):

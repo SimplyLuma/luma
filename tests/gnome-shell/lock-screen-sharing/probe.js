@@ -435,8 +435,9 @@ async function readPng(path) {
 // A shared screen: the pill is on the screen in every frame and in none of
 // the frames the application receives; Dismiss puts it away and the sharing
 // mark brings it back.
-// A one-pixel child of the pill's surface: painted exactly when the surface
-// paints its children, which is what the pill holds back from captures.
+// A one-pixel child of the pill: painted exactly when the pill paints its
+// children, which is what it holds back from captures. (Not a child of the
+// surface: its material caches the surface's paint.)
 const PaintCounter = GObject.registerClass(
 class PaintCounter extends Clutter.Actor {
     _init() {
@@ -472,7 +473,7 @@ async function pillScenario() {
     const pill = share()._pill;
     check('the pill is up while a screen is shared', pill.visible && pill.mapped);
     const counter = new PaintCounter();
-    pill.surface.add_child(counter);
+    pill.add_child(counter);
     let stagePaints = 0;
     const id = global.stage.connect('after-paint', () => stagePaints++);
     const before = frames('S').length;
