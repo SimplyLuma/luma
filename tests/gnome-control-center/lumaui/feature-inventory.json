@@ -283,6 +283,20 @@
       "visual_gate": "unmeasured; no conform PASS"
     },
     {
+      "id": "sound-mixer",
+      "title": "Volume mixer",
+      "features": [
+        "Every output of the sound service, the default one chosen",
+        "Rg: vol",
+        "Output and per-app live level meters",
+        "Every playing app: transport, volume, mute and output",
+        "Other sounds volumes"
+      ],
+      "fixture_ui": "drawn from org.projectluma.AudioDevices1 version 3 on the session bus; the unavailable state without it",
+      "live_adapter": "output volume and default output through the sound adapter; apps through the sound service",
+      "visual_gate": "unmeasured; no conform PASS"
+    },
+    {
       "id": "power",
       "title": "Power",
       "features": [
@@ -1098,6 +1112,7 @@
     "nightlight",
     "sound-levels",
     "sound-alert",
+    "sound-mixer",
     "shortcuts",
     "defaults",
     "media",

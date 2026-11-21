@@ -1556,6 +1556,11 @@
    "parent": "sound"
   },
   {
+   "id": "sound-mixer",
+   "title": "Volume mixer",
+   "parent": "sound"
+  },
+  {
    "id": "power",
    "title": "Power",
    "parent": null
