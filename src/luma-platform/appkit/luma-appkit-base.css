@@ -2522,7 +2522,7 @@ lumaui-media-row > box.lumaui-media-row-art {
 }
 lumaui-media-row.compact > box.lumaui-media-row-art { border-radius: var(--lumaui-media-row-compact-art-radius); }
 /* Without artwork: the app's icon on a neutral tile, the same in light and dark. */
-lumaui-media-row > box.lumaui-media-row-art.tile { background: #f3f2ef; }
+lumaui-media-row > box.lumaui-media-row-art.tile { background: @luma_media_row_tile; }
 lumaui-media-row > box.lumaui-media-row-badge {
   border-radius: var(--lumaui-media-row-regular-badge-radius);
   /* A ring in the surface's colour lifts the badge off the artwork. */

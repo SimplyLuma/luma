@@ -242,6 +242,7 @@
 @define-color luma_creative_panel_surface #f8f9fa;
 @define-color luma_dock_header rgba(255, 255, 255, 0.5);
 @define-color luma_dock_header_line rgba(20, 22, 26, 0.08);
+@define-color luma_media_row_tile #f3f2ef;
 @define-color luma_media_select #0278e7;
 @define-color luma_media_badge_scrim rgba(0, 0, 0, 0.5);
 @define-color luma_media_soft_key rgba(20, 22, 26, 0.09);

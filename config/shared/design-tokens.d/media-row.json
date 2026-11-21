@@ -145,6 +145,17 @@
     "volume_slider": {
       "compact_knob": 12,
       "compact_hit": 16
+    },
+    "colors": {
+      "light": {
+        "media_row_tile": "#f3f2ef"
+      },
+      "dark": {
+        "media_row_tile": "#f3f2ef"
+      },
+      "high_contrast": {
+        "media_row_tile": "#f3f2ef"
+      }
     }
   }
 }
