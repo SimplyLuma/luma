@@ -291,7 +291,8 @@ class StreamyWindow(AppWindow):
                                   on_activate=on(fmt, lambda wid: self._grow("look")),
                                   on_crop=on(fmt, self._canvas_cropped),
                                   on_crop_commit=on(fmt, self._canvas_crop_committed),
-                                  on_drag_mode=self._drag_mode)
+                                  on_drag_mode=self._drag_mode,
+                                  **self._group_handlers(fmt))
             # The video always has room around it, whatever the stage's size.
             arrange.set_fit_margins(STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN)
             arrange.update_property([Gtk.AccessibleProperty.LABEL], [f"{FORMATS[fmt][0].split()[0]} canvas"])
@@ -308,6 +309,57 @@ class StreamyWindow(AppWindow):
             press.connect("pressed", lambda *_a, f=fmt: self._edit_canvas(f))
             arrange.add_controller(press)
             self.pictures[fmt], self.arranges[fmt] = picture, arrange
+
+    def _group_handlers(self, fmt: str) -> dict:
+        """Several widgets at once (LumaUI ArrangeView multi-selection), where this LumaUI has it."""
+        import inspect
+
+        params = inspect.signature(ArrangeView.__init__).parameters
+        if "on_selection" not in params:
+            return {}
+        on = self._on_canvas
+        return {"on_selection": on(fmt, self._canvas_selection), "on_group_change": on(fmt, self._group_changed),
+                "on_group_commit": on(fmt, self._group_committed)}
+
+    def _canvas_selection(self, ids: list) -> None:
+        self.selection = list(ids)
+        if len(self.selection) == 1:
+            self.select(self.selection[0])
+        elif not self.selection:
+            self.select(None)
+        else:
+            self.selected = self.selection[-1]
+            self._refresh_inspector()
+
+    def _group_changed(self, rects: dict) -> None:
+        """A group move or scale, live: every widget's box on the canvas edited (crop and Look kept)."""
+        if not getattr(self, "_group_checkpoint", False):
+            self._checkpoint(f"Move {len(rects)} widgets")
+            self._group_checkpoint = True
+        for widget_id, (x, y, width, height) in rects.items():
+            try:
+                _scene, w = self.project.find_widget(widget_id)
+            except ModelError:
+                continue
+            self.project.set_rect(widget_id, x, y, width, height)
+            self.engine.update_widget(w)
+            for fmt, arrange in self.arranges.items():
+                if fmt != self.project.format:
+                    view = self.project.view_on(w, fmt)
+                    arrange.set_item_rect(w.id, view.x, view.y, view.width, view.height)
+
+    def _group_committed(self, rects: dict) -> None:
+        if not getattr(self, "_group_checkpoint", False):
+            self._checkpoint(f"Move {len(rects)} widgets")  # a nudge: one step
+        self._group_checkpoint = True
+        self._group_changed(rects)
+        self._group_checkpoint = False
+        self._changed()
+
+    def _selected_ids(self) -> list[str]:
+        ids = [i for i in getattr(self, "selection", []) if self.project.active_scene and
+               self.project.active_scene.widget(i)]
+        return ids if len(ids) > 1 else ([self.selected] if self.selected else [])
 
     @property
     def arrange(self) -> ArrangeView:
@@ -1392,6 +1444,13 @@ class StreamyWindow(AppWindow):
         elif not pane.main:
             pane.show(open=True, main=True)
         w = self._selected_widget()
+        several = [i for i in getattr(self, "selection", []) if self.project.active_scene and
+                   self.project.active_scene.widget(i)]
+        if len(several) > 1:
+            self._inspector_for = None
+            pane.set_title(f"{len(several)} widgets")
+            self._inspector_section("arrange", "Arrange", self._group_panel(several))
+            return
         self._inspector_for = w.id if w is not None else None
         # With both canvases on, the Inspector names the one its edits go to.
         on = f" · {FORMATS[self.project.format][0].split()[0]}" if len(getattr(self, "canvas_on", ())) > 1 else ""
@@ -1408,6 +1467,32 @@ class StreamyWindow(AppWindow):
             self._inspector_section("arrange", "Arrange", self._arrange_panel(w))
         if scroll is not None and keep == self._inspector_for:
             GLib.idle_add(lambda: scroll.get_vadjustment().set_value(offset) and False)
+
+    def _group_panel(self, ids: list[str]) -> Gtk.Widget:
+        """Several widgets: align and distribute them within their box (LumaUI align_rects)."""
+        rows = []
+        try:
+            from luma_appkit import align_rects, distribute_rects
+        except ImportError:
+            return self._panel(TypeLabel("Move or scale them together on the canvas", role="body", wrap=True))
+        scene = self.project.active_scene
+
+        def apply(fn) -> None:
+            rects = {i: (w.x, w.y, w.width, w.height) for i in ids if (w := scene.widget(i)) is not None}
+            self._group_committed(fn(rects))
+
+        for how, label, icon in (("left", "Align left", "align-start-vertical"), ("centre", "Align centres", "align-center-vertical"),
+                                 ("right", "Align right", "align-end-vertical"), ("top", "Align tops", "align-start-horizontal"),
+                                 ("middle", "Align middles", "align-center-horizontal"), ("bottom", "Align bottoms", "align-end-horizontal")):
+            rows.append(PanelRow(label, icon=icon, closes=False,
+                                 on_activate=lambda h=how: apply(lambda r: align_rects(r, h, canvas=self.project.canvas))))
+        if len(ids) > 2:
+            rows.append(PanelRow("Distribute across", icon="between-horizontal-end", closes=False,
+                                 on_activate=lambda: apply(lambda r: distribute_rects(r, "h"))))
+            rows.append(PanelRow("Distribute down", icon="between-vertical-end", closes=False,
+                                 on_activate=lambda: apply(lambda r: distribute_rects(r, "v"))))
+        rows.append(PanelRow(f"Delete {len(ids)} widgets", icon="trash-2", danger=True, on_activate=self.delete_selected))
+        return self._panel(*rows)
 
     def _inspector_section(self, key: str, title: str, content: Gtk.Widget) -> None:
         heading = self.inspector.add_section(title)
@@ -2380,9 +2465,10 @@ class StreamyWindow(AppWindow):
     # ── Selection ──
 
     def select(self, widget_id: str | None) -> None:
-        if widget_id == self.selected:
+        if widget_id == self.selected and len(getattr(self, "selection", [])) <= 1:
             return
         self.selected = widget_id
+        self.selection = [widget_id] if widget_id else []
         w = self._selected_widget()
         for fmt, arrange in self.arranges.items():
             arrange.set_selected(widget_id if w is not None and w.has_picture and fmt == self.project.format
@@ -2539,6 +2625,20 @@ class StreamyWindow(AppWindow):
         Toast.show(self.host, f"{w.name} added", kind="added")
 
     def delete_selected(self) -> None:
+        ids = self._selected_ids()
+        if len(ids) > 1:
+            self._checkpoint(f"Delete {len(ids)} widgets")
+            for widget_id in ids:
+                self.project.remove_widget(widget_id)
+                self.widget_errors.pop(widget_id, None)
+                self.widget_waiting.discard(widget_id)
+                if self.portals is not None:
+                    self.portals.close(widget_id)
+            self.selected, self.selection = None, []
+            self._show_scene()
+            self._changed(structure=True)
+            Toast.show(self.host, f"Deleted {len(ids)} widgets", kind="deleted", undo=self.undo)
+            return
         w = self._selected_widget()
         if w is None:
             return
