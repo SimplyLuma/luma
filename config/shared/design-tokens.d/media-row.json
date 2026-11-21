@@ -55,7 +55,8 @@
         "list_gap": 2,
         "list_padding": 6,
         "list_radius": 16,
-        "visible_count": 3
+        "visible_count": 3,
+        "row": 65
       },
       "touch": {
         "row": 56,

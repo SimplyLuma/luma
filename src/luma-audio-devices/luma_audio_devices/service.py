@@ -298,7 +298,11 @@ class AudioDevicesService(Gio.Application):
         rows = []
         nodes = self.graph.graph.output_nodes()
         cards = {}
-        for name, output in sorted(self._output_nodes.items(), key=lambda item: item[1].label.casefold()):
+        # This machine's own speakers first, then what is worn, what is
+        # plugged in, displays, and the network; by name within each.
+        order = {kind: rank for rank, kind in enumerate(("speakers", "headphones", "usb", "display", "airplay"))}
+        for name, output in sorted(self._output_nodes.items(),
+                                   key=lambda item: (order.get(item[1].kind, 9), item[1].label.casefold())):
             if name in self._hidden_outputs and name != default:
                 continue
             node = nodes.get(name)

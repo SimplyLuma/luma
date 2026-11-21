@@ -26,6 +26,7 @@ import {remoteAction, repeatAllowed} from './tvModel.js';
 import {chipState, firstChip, firstStop, keepRow, levelOpens, levelPercent, mixRgba, noteAge, noteRecords, okGate,
     okPress, okRelease, originHeldOk, panelRows, scrollTo, sleepAction, stepChip, stepLevel, stepRow, toggleMethod} from './tvQuickPanelModel.js';
 import {gettext as _} from 'gettext';
+import {playingRows, rowTitle} from './soundPageModel.js';
 
 const SETTINGS_APP = 'org.gnome.Settings.desktop';
 // Presses closer than this to the last one belong to the same held OK.
@@ -217,9 +218,11 @@ export class TvQuickPanel {
         const maximum = item.slider.maximum_value || 1;
         // The per-app mixer's model (status/volume.js), held while the panel is open.
         const mixer = item.appMixer;
-        const apps = mixer?.available ? mixer.applications.map(app => ({id: app.id, name: app.name,
-            gicon: app.gicon, muted: !!app.muted, value: app.muted ? 0 : Math.min(app.volume ?? 1, maximum),
-            maximum})) : [];
+        // The Sound page's rows: an app while it has a stream, named by what it plays.
+        const apps = mixer?.available ? playingRows(mixer.applications).map(app => ({id: app.id,
+            name: rowTitle(app, app.windowTitle), gicon: app.gicon, muted: !!app.muted,
+            canPlayPause: !!(app.can_play || app.can_pause),
+            value: app.muted ? 0 : Math.min(app.volume ?? 1, maximum), maximum})) : [];
         return {visible: true, item, outputs, current, apps, name: active?.name ?? item.levelDetail ?? _('Volume'),
             gicon: active?.gicon ?? null, value: item.stream.is_muted ? 0 : item.slider.value,
             maximum, muted: item.stream.is_muted};
@@ -833,6 +836,11 @@ export class TvQuickPanel {
         }
         case 'app': {
             const mixer = this._volume()?.appMixer;
+            // OK plays or pauses; an app without a player is muted instead.
+            if (row.app.canPlayPause) {
+                mixer?.playPause(row.app.id);
+                return true;
+            }
             mixer?.setMuted(row.app.id, !row.app.muted);
             const entry = mixer?.applications.find(a => a.id === row.app.id);
             if (entry) entry.muted = !row.app.muted;

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// The per-app mixer in the Sound output page (0350): it appears only with
-// org.projectluma.AudioDevices1 version 2, its meters run only while its rows
-// are on screen, and the service's level meters never count as an app using
-// the microphone.
+// The per-app mixer's model (0350, 0360): available only with
+// org.projectluma.AudioDevices1 version 3, its meters run only while a view
+// watches them, and the service's level meters never count as an app using
+// the microphone. The Sound page itself is sound-page-policy.js.
 // Run: gjs -m app-mixer-policy.js js/ui/status/volume.js js/ui/quickSettings.js \
 //   js/ui/panel.js js/ui/lumaPresentation/fillSlider.js
 // (node app-mixer-policy.js ... works too).
@@ -28,31 +28,28 @@ const slice = (from, to) => {
     return volume.slice(start, end);
 };
 const model = slice('export const AppMixer =', 'let _appMixer');
-const section = slice('const AppMixerSection', '// Each Gvc.MixerControl');
 
-// Version gate: without the service, or before version 2, nothing changes.
-assert(/const MIXER_VERSION = 2;/.test(volume), 'mixer needs interface version 2');
+// Version gate: without the service, or before version 3, the sheet is the
+// output list.
+assert(/const MIXER_VERSION = 3;/.test(volume), 'mixer needs interface version 3');
 assert(/\(this\._proxy\.Version \?\? 0\) >= MIXER_VERSION/.test(model),
-    'mixer is available only at version 2 or later');
-assert(/mixerSection\.actor\.visible = this\.appMixer\.available && mixer\.visible;/.test(volume),
-    'the page shows the mixer only while it is available and has rows');
+    'mixer is available only at version 3 or later');
 
-// Meters: watched while the rows are mapped, unwatched when they are not.
-assert(/this\._presence\.connectObject\('notify::mapped', \(\) => this\._syncShown\(\), this\)/.test(section),
-    'mixer follows whether its page is on screen');
-assert(/new AppMixerSection\(this\.appMixer, this\.menu\.actor\)/.test(volume),
-    'the page is the Sound output sheet');
-assert(/if \(shown\) \{\s*this\._mixer\.hold\(\);\s*this\._mixer\.watchLevels\(\);/.test(section),
-    'on screen: held and metered');
-assert(/\} else \{\s*this\._mixer\.unwatchLevels\(\);\s*this\._mixer\.release\(\);/.test(section),
-    'off screen: meters stop and the model is released');
-assert(/'destroy', \(\) => \{\s*this\._setShown\(false\);/.test(section),
-    'destroying the rows stops their meters');
+// Views hold the model while they are on screen; nothing is fetched otherwise.
+assert(/if \(!this\._holds\) \{\s*this\._appsDirty = true;\s*return;/.test(model),
+    'a change nobody is looking at is only remembered as dirty');
 assert(/const targets = this\._meterHolds > 0 && this\.available/.test(model),
     'the service watch follows the meter holders');
 assert(/if \(serial !== this\._watchSerial\) \{\s*this\._proxy\.UnwatchLevelsAsync\(watch\)/.test(model),
     'a watch that returns after the rows closed is dropped at once');
 assert(/if \(watch !== this\._watch \|\| !watch\)/.test(model), 'only our own Levels are shown');
+
+// Transport, raising and switching the output go through the model.
+assert(/playPause\(id\) \{\s*this\._proxy\.ApplicationPlayPauseAsync\(id\)/.test(model), 'play/pause is the service\'s');
+assert(/raise\(id\) \{[\s\S]*?app\.shellApp\.activate\(\);[\s\S]*?this\._proxy\.RaiseApplicationAsync\(id\)/.test(model),
+    'raising uses the Shell\'s own window, else the service');
+assert(/setDefaultOutput\(name\) \{[\s\S]*?control\.set_default_sink\(stream\);/.test(model),
+    'a chip switches the default output');
 
 // The service's level probes are not an app recording.
 assert(/const LEVEL_METER_APPLICATION_IDS = \[[\s\S]*?AUDIO_DEVICES_BUS_NAME,\s*\];/.test(volume),
@@ -64,26 +61,14 @@ assert(/input\.getRecordingOutputs\?\.\(\)/.test(quickSettings),
 assert(/_input\?\.getRecordingOutputs\?\.\(\)/.test(panel),
     'the status well names recording apps only');
 
-// System sounds row and the shared level.
+// System sounds and the shared level.
 assert(/const SYSTEM_SOUNDS_ICON = 'lumaui-bell-symbolic';/.test(volume), 'System sounds uses the bell');
-assert(/new FillSlider\(0\)/.test(volume), 'app levels are the shared filled slider');
 assert(/'meter': GObject\.ParamSpec\.double/.test(fillSlider), 'FillSlider draws a meter');
-
-// Muted keeps the volume where it is and says so; the fill and meter go quiet.
-const row = slice('const AppMixerRow', 'const AppMixerSection');
-assert(/this\.slider\.value = Math\.clamp\(app\.volume \?\? 1, 0, MIXER_MAX_VOLUME\);/.test(row),
-    'a muted app keeps its volume on the slider');
-assert(/this\._app\.muted \? _\('Muted'\)/.test(row), 'a muted app reads Muted, not 0%');
 assert(/has_style_class_name\('lumaui-muted-level'\)/.test(fillSlider), 'FillSlider draws muted quietly');
-// The output key is a picker (where it plays and a chevron).
-assert(/'lumaui-chevron-down-symbolic'/.test(row) && /'lumaui-chevron-up-symbolic'/.test(row),
-    'the output key carries a chevron that follows the open list');
-// A row never makes the page's scroll view outgrow its max-height.
-assert(/style_class: 'luma-app-mixer-app',[\s\S]*?y_expand: false,/.test(row), 'rows do not expand the page');
-// The page's settings link is pinned under the scrolled list.
+// A page's settings link is pinned under the scrolled list.
 assert(/_pinPageLink\(menu\) \{/.test(quickSettings) && /this\._pinPageLink\(menu\);/.test(quickSettings) &&
     /this\._pinPageLink\(null\);/.test(quickSettings), 'a page pins its settings link while open');
-assert(/const maxHeight = Math\.max\(96, Math\.min\(420, \(workArea\?\.height \?\? 600\) \/ scale - 160\) - foot\);/.test(quickSettings),
-    'the scrolled list leaves room for the pinned link');
+assert(/\(menu\._lumaPlainPage \? tallest : Math\.min\(420, tallest\)\) - foot/.test(quickSettings),
+    'a list page stops at 420 px; a plain page may use the work area');
 
 print('app-mixer-policy: PASS');

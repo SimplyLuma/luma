@@ -786,6 +786,25 @@ the microphone indicator, strip and status well, as pavucontrol is. Without
 the service or before version 2 the page is unchanged. Test:
 `app-mixer-policy.js` in %check. Shell .188.
 
+`0360-sound-page.patch`: Quick Options' sound sheet is the Sound page. The
+master volume is the main page's filled level; the outputs are a two-column
+grid of chips named and drawn by `org.projectluma.AudioDevices1` version 3
+(`label`, `kind`; more than four show the three used last and "More…", which
+opens the device list of 0119 with the AirPlay picker); "Playing" is one
+LumaUI media row per app with a stream (`mediaRow.js`, the St row drawn from
+the LumaMediaRow tokens in `mediaRowTokens.js`): artwork badged with the
+app, the player's title, where it plays or that it is paused, its volume
+and a play key, three rows before the list scrolls in its well; "Volume
+mixer" opens Settings. The page (`soundPage.js`, rules in
+`soundPageModel.js`) holds the mixer model only while its sheet is mapped,
+watches no levels and runs no timers. Arrows move between rows, Left and
+Right step a row's volume by 5 %, Space plays or pauses, M mutes, Esc
+returns to the main page. A phone's or tablet's drawer uses the touch row
+(56 px, a 44 px key); the TV quick panel lists the same rows and OK plays or
+pauses. 0350's `AppMixerRow` and `AppMixerSection` are removed. Without the
+service or before version 3 the sheet is the output list. Tests:
+`sound-page-policy.js`, `app-mixer-policy.js` in %check. Shell .192.
+
 `0356-blur-one-target-per-framebuffer.patch`: `ShellBlurEffect` keeps its
 textures, pipelines and cache state per framebuffer (each stage view, and
 off-stage captures), at most four, dropping one unpainted for 5 s. A

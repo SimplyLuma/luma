@@ -318,55 +318,91 @@
 .high-contrast .luma-search-dialog #searchResults.luma-search-material { border-color: white; box-shadow: none; }
 
 /* Per-app mixer (Sound output page): each app is the volume level itself, with
- * its icon and name on the track, a meter along its foot, then mute and output. */
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-options-detail > .popup-menu-section.luma-app-mixer-section { padding: 6px 4px 4px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer { spacing: 8px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-heading { padding: 0 2px; font-size: 12px; font-weight: 650; color: rgba(238,240,244,.62); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-list { spacing: 8px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level > StBoxLayout { spacing: 4px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-route { margin-left: 5px; font-size: 11.5px; color: rgba(238,240,244,.45); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-idle .luma-app-mixer-name { color: rgba(238,240,244,.6); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-options-level-key,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-options-level-key:checked,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-options-level-key:active { border: 0; box-shadow: none; background-color: transparent; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-options-level-key:hover,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-options-level-key:focus { border-radius: 12px; background-color: rgba(255,255,255,.07); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-outputs { padding-top: 4px; spacing: 1px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .lumaui-level-foreground .luma-app-mixer-icon { margin-left: 12px; icon-size: 22px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.lumaui-touch-options .luma-app-mixer-name { font-size: 14px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-heading,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-heading { color: rgba(22,25,29,.62); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-icon,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-icon { color: rgba(22,25,29,.65); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-name,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-name { color: rgba(22,25,29,.88); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-route,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-route,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-idle .luma-app-mixer-name,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-idle .luma-app-mixer-name { color: rgba(22,25,29,.55); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-options-level-key:hover,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-options-level-key:focus,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-options-level-key:hover,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-options-level-key:focus { background-color: rgba(20,22,26,.06); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-options-level-key:checked,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-options-level-key:checked { color: #318bd5; }
 /* A detail page's settings link, pinned under its scrolled list (quickSettings.js _pinPageLink). */
 .quick-settings.luma-studio-options .luma-options-page-foot { padding: 0 12px; }
 /* The list fades where it continues past the scroll view's edge, above the pinned link. */
 .quick-settings.luma-studio-options .luma-options-page-scroll.luma-options-page-scroll { -st-vfade-offset: 28px; }
 /* The app rows' icon and name share the device rows' columns above them
- * (icon centre and title start), and every row's level reads at one edge. */
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-level-foreground .luma-app-mixer-icon { margin-left: 13px; icon-size: 18px; color: rgba(238,240,244,.65); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-name { margin-left: 17px; font-size: 12.5px; font-weight: 650; color: rgba(238,240,244,.88); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-quick-level-value { min-width: 44px; text-align: right; }
 /* The output key is a picker on a key at rest: where the app plays and a chevron. */
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output { width: 40px; height: 30px; margin-left: 2px; border-radius: 10px; background-color: rgba(255,255,255,.07); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output:focus { background-color: rgba(255,255,255,.12); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-level .luma-app-mixer-output:checked { background-color: rgba(97,179,242,.18); color: #61b3f2; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-output-face { spacing: 3px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-output-icon { icon-size: 16px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-app-mixer-output-chevron { icon-size: 12px; }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output { background-color: rgba(20,22,26,.06); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output:focus,
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output:focus { background-color: rgba(20,22,26,.1); }
-.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-app-mixer-level .luma-app-mixer-output:checked, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-app-mixer-level .luma-app-mixer-output:checked { background-color: rgba(49,139,213,.14); color: #318bd5; }
+
+/* ── Sound page (soundPage.js, mediaRow.js): the master volume, the outputs as
+ * chips and what is playing, one LumaUI media row per app. Lengths are the
+ * media row's tokens (config/shared/design-tokens.d/media-row.json). ── */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-options-page-scroll.lumaui-plain-page, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-options-page-scroll.lumaui-plain-page:rtl { padding: 0; border-radius: 0; background-color: transparent; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-options-page-scroll.lumaui-plain-page .luma-options-pages { padding: 0; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .luma-options-page-meta { font-size: 12px; color: rgba(238,240,244,.5); margin-right: 4px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .luma-options-page-meta,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .luma-options-page-meta { color: rgba(22,25,29,.5); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-page { spacing: 10px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-master .lumaui-sound-master-icon { icon-size: 16px; margin-left: 12px; color: rgba(238,240,244,.65); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-master .lumaui-sound-master-icon,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-master .lumaui-sound-master-icon { color: rgba(22,25,29,.65); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-outputs { spacing-rows: 6px; spacing-columns: 6px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip { height: 32px; padding: 0 11px 0 9px; border-radius: 11px; font-size: 12px; font-weight: 600; color: rgba(238,240,244,.82); background-color: rgba(0,0,0,.2); border: 1px solid rgba(0,0,0,.28); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-chip,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-chip { color: rgba(22,25,29,.78); background-color: rgba(22,25,29,.05); border-color: rgba(22,25,29,.075); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip:rtl { padding: 0 9px 0 11px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip:focus { color: #eef0f4; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-chip:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip:focus,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-chip:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip:focus { color: #16191d; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip.on { color: #eef0f4; background-color: rgb(79,81,87); border-color: rgba(0,0,0,.32); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-chip.on,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-chip.on { color: #16191d; background-color: #fff; border-color: rgba(0,0,0,.08); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip-content { spacing: 7px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip-icon { icon-size: 15px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-chip.on .lumaui-sound-chip-icon { color: -st-accent-color; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-label { margin: 2px 4px 0 6px; font-size: 12px; font-weight: 650; color: rgba(238,240,244,.82); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-label,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-label { color: rgba(22,25,29,.78); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-nothing { margin: 2px 6px; font-size: 12px; color: rgba(238,240,244,.5); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-nothing,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-nothing { color: rgba(22,25,29,.5); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-well { padding: 6px; border-radius: 16px; background-color: rgba(0,0,0,.2); border: 1px solid rgba(0,0,0,.28); -st-vfade-offset: 18px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-well,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-well { background-color: rgba(22,25,29,.05); border-color: rgba(22,25,29,.075); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-list { spacing: 2px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-playing { spacing: 4px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-link { height: 28px; padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 600; color: -st-accent-color; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-link:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-link:focus { background-color: rgba(255,255,255,.07); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-link:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-link:focus,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-link:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-link:focus { background-color: rgba(20,22,26,.06); }
+/* The media row, compact: 40 | 1fr | auto, 11 px apart. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row { spacing: 11px; padding: 6px 4px 6px 6px; min-height: 53px; border-radius: 12px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row:rtl { padding: 6px 6px 6px 4px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row:focus { background-color: rgba(255,255,255,.07); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row:focus,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row:focus { background-color: rgba(20,22,26,.06); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-art { border-radius: 9px; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-art.tile { background-color: #f3f2ef; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-tile-icon { icon-size: 24px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-badge { border-radius: 7px; border: 2px solid rgb(38,39,43); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row-badge,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row-badge { border-color: rgb(233,234,237); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-badge-icon { icon-size: 17px; border-radius: 5px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-words { spacing: 1px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-title { font-size: 12.5px; font-weight: 650; color: #eef0f4; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row-title,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row-title { color: #16191d; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-line { font-size: 11px; color: rgba(238,240,244,.82); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row-line,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row-line { color: rgba(22,25,29,.78); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-slider { height: 16px; min-height: 16px; margin: 2px 6px 0 0; -barlevel-height: 4px; -barlevel-background-color: rgba(0,0,0,.32); -barlevel-active-background-color: -st-accent-color; -barlevel-overdrive-color: -st-accent-color; -barlevel-overdrive-separator-width: 0; -slider-handle-radius: 6px; -slider-handle-border-width: 0; color: #fff; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row-slider,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row-slider { -barlevel-background-color: rgba(22,25,29,.12); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-slider:rtl { margin: 2px 0 0 6px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row.muted .lumaui-media-row-slider { -barlevel-active-background-color: rgba(238,240,244,.3); color: rgba(238,240,244,.6); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row.muted .lumaui-media-row-slider,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row.muted .lumaui-media-row-slider { -barlevel-active-background-color: rgba(22,25,29,.28); color: rgba(255,255,255,.8); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-play { width: 32px; height: 32px; border-radius: 16px; color: #eef0f4; background-color: rgb(79,81,87); border: 1px solid rgba(0,0,0,.32); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row-play,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row-play { color: #16191d; background-color: #fff; border-color: rgba(0,0,0,.08); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-play:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-play:focus { background-color: rgb(92,94,100); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row-play:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-play:focus,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row-play:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-play:focus { background-color: #f4f5f7; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row-play-icon { icon-size: 14px; color: #eef0f4; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-media-row-play-icon,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-media-row-play-icon { color: #16191d; }
+/* Under a finger: rows at least 56 px with a 44 px key. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row.touch { min-height: 56px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row.touch .lumaui-media-row-play { width: 44px; height: 44px; border-radius: 22px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row.touch .lumaui-media-row-play-icon { icon-size: 18px; }

@@ -3,8 +3,12 @@
 """A stand-in MPRIS player: fake_player.py NAME [TITLE [ARTIST]].
 
 Owns org.mpris.MediaPlayer2.NAME, answers Properties, toggles PlaybackStatus
-on PlayPause and prints each transport call on its own line."""
+on PlayPause and prints each transport call on its own line. The environment
+may set FAKE_DESKTOP (DesktopEntry), FAKE_ART (mpris:artUrl), FAKE_URL
+(xesam:url), FAKE_STATUS (Playing or Paused), FAKE_POSITION (microseconds)
+and FAKE_CAN (a subset of "play pause next previous")."""
 
+import os
 import sys
 
 import gi
@@ -35,21 +39,25 @@ XML = """<node>
     <property name="CanGoPrevious" type="b" access="read"/>
   </interface>
 </node>"""
-state = {"status": "Playing"}
+CAN = os.environ.get("FAKE_CAN", "play pause next").split()
+state = {"status": os.environ.get("FAKE_STATUS", "Playing")}
 
 
 def properties() -> dict:
     return {
-        "Identity": GLib.Variant("s", NAME), "DesktopEntry": GLib.Variant("s", ""),
+        "Identity": GLib.Variant("s", NAME),
+        "DesktopEntry": GLib.Variant("s", os.environ.get("FAKE_DESKTOP", "")),
         "CanRaise": GLib.Variant("b", True),
         "PlaybackStatus": GLib.Variant("s", state["status"]),
         "Metadata": GLib.Variant("a{sv}", {
-            "xesam:title": GLib.Variant("s", TITLE), "xesam:artist": GLib.Variant("as", [ARTIST]),
-            "mpris:artUrl": GLib.Variant("s", "file:///usr/share/pixmaps/fedora-logo.png")}),
-        "Position": GLib.Variant("x", 842_000_000),
-        "CanControl": GLib.Variant("b", True), "CanPlay": GLib.Variant("b", True),
-        "CanPause": GLib.Variant("b", True), "CanGoNext": GLib.Variant("b", True),
-        "CanGoPrevious": GLib.Variant("b", False),
+            "xesam:title": GLib.Variant("s", TITLE),
+            "xesam:artist": GLib.Variant("as", [ARTIST] if ARTIST else []),
+            "xesam:url": GLib.Variant("s", os.environ.get("FAKE_URL", "")),
+            "mpris:artUrl": GLib.Variant("s", os.environ.get("FAKE_ART", "file:///usr/share/pixmaps/fedora-logo.png"))}),
+        "Position": GLib.Variant("x", int(os.environ.get("FAKE_POSITION", 842_000_000))),
+        "CanControl": GLib.Variant("b", True), "CanPlay": GLib.Variant("b", "play" in CAN),
+        "CanPause": GLib.Variant("b", "pause" in CAN), "CanGoNext": GLib.Variant("b", "next" in CAN),
+        "CanGoPrevious": GLib.Variant("b", "previous" in CAN),
     }
 
 
