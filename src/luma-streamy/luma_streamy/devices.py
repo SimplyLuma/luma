@@ -22,6 +22,8 @@ class Device:
     kind: str  # "source" | "sink"
     default: bool = False
     internal: bool = False  # built into the computer (a laptop's speakers or microphone)
+    #: The card it belongs to, shown under the label only when two devices would read the same.
+    card: str = ""
 
 
 def _props(device) -> dict:
@@ -57,7 +59,38 @@ def _device(gst_device) -> Device | None:
     text = " ".join(str(v) for v in props.values()).lower()
     internal = props.get("device.form-factor") == "internal" or props.get("device.form_factor") == "internal" or \
         any(word in text for word in ("built-in", "internal", "sof_sdw", "sof-hda", "hda intel"))
-    return Device(str(name), gst_device.get_display_name(), kind, bool(props.get("is-default")), internal)
+    label, card = friendly_name(props, gst_device.get_display_name())
+    return Device(str(name), label, kind, bool(props.get("is-default")), internal, card)
+
+
+#: Profile words that say how, not what (the product's own name says what).
+_GENERIC = ("analog stereo", "analog mono", "mono", "stereo", "digital stereo", "analog surround",
+            "multichannel", "pro audio", "pro")
+
+
+def friendly_name(props: dict, display: str) -> tuple[str, str]:
+    """(label, card) for a sound device as people know it: "Speaker", "Headphones", "HDMI 1 – LG ULTRAWIDE",
+    "DJIPocket3"; the card ("Core Ultra Processors (Series 3) HD Audio") apart, for when it's needed."""
+    import re
+
+    profile = str(props.get("device.profile.description") or "").strip()
+    nick = str(props.get("node.nick") or "").strip()
+    description = str(props.get("node.description") or display or "").strip()
+    card = description
+    if profile and profile in description:
+        card = description[: description.index(profile)].strip()
+    card = re.sub(r"\s*\((stereo|mono)\)$", "", card, flags=re.I).strip()
+    hdmi = re.match(r"HDMI\s*/\s*DisplayPort\s*(\d+)", profile)
+    if hdmi:
+        screen = nick if nick and not nick.upper().startswith("HDMI") else ""
+        label = f"HDMI {hdmi.group(1)}" + (f" – {screen}" if screen else "")
+    elif profile and profile.lower() not in _GENERIC and not profile.lower().startswith(("analog", "digital")):
+        label = profile
+    else:
+        label = nick or re.sub(r"\s+(analog stereo|analog mono|mono|stereo|digital stereo)$", "", description,
+                                  flags=re.I)
+        card = ""
+    return label or display, card
 
 
 class AudioDevices:
@@ -108,6 +141,11 @@ class AudioDevices:
     def of(self, kind: str) -> list[Device]:
         with self._lock:
             return [d for d in self.devices if d.kind == kind]
+
+    def subtitle(self, device: Device) -> str | None:
+        """The card's name, only when another device of the kind reads the same."""
+        same = [d for d in self.of(device.kind) if d.label == device.label]
+        return device.card or None if len(same) > 1 else None
 
     def default(self, kind: str) -> Device | None:
         listed = self.of(kind)

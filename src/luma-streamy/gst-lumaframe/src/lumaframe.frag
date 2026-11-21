@@ -21,6 +21,8 @@ uniform vec2 u_shadow_offset;
 uniform float u_sigma;
 uniform float u_sigma_min;    // below this, the shadow is a plain AA edge
 uniform float u_opacity;
+uniform vec2 u_footprint;     // one output pixel in texture coordinates
+uniform float u_taps;         // samples per axis over the footprint, 1..4
 
 #define SHADOW_SLICES 6
 #define SHADOW_EXTENT 4.0
@@ -80,10 +82,24 @@ void main() {
   float outer = coverage(d - u_stroke_out);
 
   vec2 uv = clamp((p - (c - h)) / (2.0 * h), 0.0, 1.0);
-  vec4 src = texture2D(tex, u_crop.xy + uv * u_crop.zw);
-  // Premultiplied colour of the part of the pixel inside the box.
-  float a = src.a;
-  vec3 rgb = src.rgb * a;
+  vec2 st = u_crop.xy + uv * u_crop.zw;
+  // Premultiplied colour of the part of the pixel inside the box: a box
+  // filter over the pixel's footprint when the source is much larger.
+  vec4 acc = vec4(0.0);
+  for (int i = 0; i < 4; i++) {
+    if (float(i) >= u_taps)
+      break;
+    for (int j = 0; j < 4; j++) {
+      if (float(j) >= u_taps)
+        break;
+      vec2 o = (vec2(float(i), float(j)) + 0.5) / u_taps - 0.5;
+      vec4 t = texture2D(tex, st + o * u_footprint);
+      acc += vec4(t.rgb * t.a, t.a);
+    }
+  }
+  acc /= u_taps * u_taps;
+  float a = acc.a;
+  vec3 rgb = acc.rgb;
 
   if (u_stroke > 0.0 && inside > 0.0) {
     // The share of the box's covered area under the stroke, laid over the

@@ -153,6 +153,9 @@ class Widget:
     #: Groups that are this widget's own on the secondary canvas ("placement": True). A group not
     #: listed is linked: the secondary canvas derives it from the primary one.
     own: dict = field(default_factory=dict)
+    #: The secondary canvas's own Look values ({"vertical": {"stroke_width": 12}}): a property listed
+    #: there is its own; any other follows the primary canvas's Look (``effects``).
+    look: dict = field(default_factory=dict)
 
     @property
     def natural_aspect(self) -> float | None:
@@ -261,6 +264,22 @@ class Project:
         _l, pw, ph = FORMATS[self.primary]
         return derive_placement(tuple(float(v) for v in source), (pw, ph), FORMATS[fmt][1:])
 
+    def view_on(self, w: Widget, fmt: str) -> Widget:
+        """``w`` as canvas ``fmt`` draws it: its placement and Look there (``w`` itself on the canvas
+        edited when its Look there is the base one). Never changes ``w``."""
+        effects = self.effects_on(w, fmt)
+        if fmt == self.format and effects is w.effects:
+            return w
+        view = copy.copy(w)
+        view.effects = effects
+        if fmt != self.format and w.has_picture:
+            rect = self.placement_on(w, fmt)
+            if rect is None:
+                _l, cw, ch = FORMATS[self.format]
+                rect = derive_placement((w.x, w.y, w.width, w.height), (cw, ch), FORMATS[fmt][1:])
+            view.x, view.y, view.width, view.height = (float(v) for v in rect)
+        return view
+
     def match_primary(self, widget_id: str) -> Widget:
         """Link a widget's placement on the secondary canvas to the primary again."""
         _scene, w = self.find_widget(widget_id)
@@ -268,6 +287,57 @@ class Project:
         if self.format != self.primary:
             self._place(w)
         return w
+
+    # ── Look per canvas ──
+
+    def effects_on(self, w: Widget, fmt: str | None = None) -> Effects:
+        """The Look ``w`` has on canvas ``fmt`` (default: the current one): the primary's, with the
+        secondary canvas's own values over it."""
+        fmt = fmt or self.format
+        own = w.look.get(fmt) if fmt != self.primary else None
+        if not own:
+            return w.effects
+        fx = copy.copy(w.effects)
+        names = {f.name for f in fields(Effects)}
+        for name, value in own.items():
+            if name in names:
+                setattr(fx, name, value)
+        return fx.clamped()
+
+    def set_effect(self, w: Widget, name: str, value) -> None:
+        """Change one Look property where the person is: on the primary canvas the base value (which the
+        other canvas follows unless it has its own), on the secondary its own value for that property only."""
+        if self.format == self.primary:
+            setattr(w.effects, name, value)
+        else:
+            w.look.setdefault(self.format, {})[name] = value
+
+    def own_look(self, w: Widget, fmt: str | None = None) -> dict:
+        fmt = fmt or (self.format if self.format != self.primary else next(f for f in FORMATS if f != self.primary))
+        return dict(w.look.get(fmt) or {})
+
+    def sync_look(self, w: Widget, fmt: str | None = None, name: str | None = None) -> None:
+        """The secondary canvas follows the primary's Look again (every property, or ``name``)."""
+        fmt = fmt or (self.format if self.format != self.primary else next(f for f in FORMATS if f != self.primary))
+        own = w.look.get(fmt)
+        if not own:
+            return
+        if name is None:
+            w.look.pop(fmt, None)
+        else:
+            own.pop(name, None)
+            if not own:
+                w.look.pop(fmt, None)
+
+    #: The Look's properties (the crop is Arrange's).
+    LOOK = ("corner_radius", "stroke_width", "stroke_color", "stroke_position", "shadow_blur", "shadow_x",
+            "shadow_y", "shadow_opacity", "opacity")
+
+    def unsync_look(self, w: Widget, fmt: str | None = None) -> None:
+        """The secondary canvas keeps the Look it has now as its own: later primary edits stop there."""
+        fmt = fmt or (self.format if self.format != self.primary else next(f for f in FORMATS if f != self.primary))
+        fx = self.effects_on(w, fmt)
+        w.look[fmt] = {name: getattr(fx, name) for name in self.LOOK}
 
     def reset_secondary(self, scene_id: str) -> None:
         """Every widget of a scene follows the primary canvas again."""

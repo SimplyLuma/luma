@@ -6,7 +6,7 @@
 
 Name:           luma-streamy
 Version:        0.1.0
-Release:        1.luma.7%{?dist}
+Release:        1.luma.8%{?dist}
 Summary:        Stream and record your screen, windows and camera
 # The app: Apache-2.0. gst-lumaframe: MPL-2.0. Vendored crates (Cargo.lock):
 # gstreamer-rs and glib-rs (MIT OR Apache-2.0, MIT), memchr (Unlicense OR
@@ -40,7 +40,7 @@ BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  gtk4 >= 4.22
 BuildRequires:  libadwaita >= 1.9
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.139
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.144
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 
@@ -49,7 +49,7 @@ Requires:       python3-gobject
 Requires:       gtk4 >= 4.22
 Requires:       libadwaita >= 1.9
 # Dock (fitted, movable seams), NavigationList, ArrangeView with crop, ColorPicker and the AudioMeter.
-Requires:       luma-developer-platform >= 0.1.0-1.luma.139
+Requires:       luma-developer-platform >= 0.1.0-1.luma.144
 Requires:       google-figtree-fonts
 # The program graph: GL upload, mixing and conversion (base), FLV/MKV/MP4
 # muxers, PulseAudio capture and level meters (good), RTMP(S), VA-API
@@ -162,6 +162,25 @@ gtk4-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1
 %{_libdir}/gstreamer-1.0/libgstlumavideofx.so
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.8
+- lumaframe: a revision property commits property changes together and
+  stamps output buffers; downscaled content is box-filtered over each output
+  pixel's footprint
+- Mixer pads take the geometry of the buffer being composited, so Look
+  changes never move the picture; window casts prefer alpha formats
+- Inspector beside the island (Source, Look, Arrange; the scene with nothing
+  selected); menus at the pointer with Order/Size/Align/Look submenus; inline
+  rename in rows; per-field Look overrides with a sync key; panel moves undo
+- Landscape and Vertical are separate preview panels with canvas chips; each
+  source is captured once and teed to one compositor per canvas, which runs
+  only while its panel shows or an output takes it; edits go to the canvas
+  clicked
+- Window casts negotiate alpha formats only, opaque when none is offered
+- Every camera on the portal is listed (V4L2 and libcamera, one row each);
+  sound devices get short names; monitoring is one "Hear it on" choice
+- Stills and placeholder cards are uploaded once; per-frame layer reports
+  run only while something changes
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.7
 - lumaframe: content-x/-y/-width/-height pick the source region before
   crop-*; with content-width 0 a buffer's GstVideoCropMeta does, so a window

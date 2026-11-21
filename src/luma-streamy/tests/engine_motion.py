@@ -36,7 +36,7 @@ def main(limit_ms: float | None) -> int:
                                          "video/x-raw,format=RGBA ! appsink name=probe emit-signals=true "
                                          "max-buffers=1 drop=true sync=false", True)
     engine.pipeline.add(tap)
-    engine.pipeline.get_by_name("program").link(tap)
+    engine.pipeline.get_by_name("program-landscape").link(tap)
     tap.sync_state_with_parent()
     state = {"target": None, "moved": 0.0, "delays": []}
 
