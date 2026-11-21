@@ -176,3 +176,9 @@ Depot (`depot-redesign`) against the Design Center mockup:
 - charlie-info-rows: v71's Information lists its people as plain rows; LumaUI's DetailsRow is one control each (name and address), for the keyboard and screen readers.
 - charlie-photo-clip: v71 rounds a lone photo with its grid's 18 px clip (the photo inside is square); GTK clips the grid the same at the same box, and the comparator gives that clip to the photo.
 - charlie-open-key-wrap: v71's phone bar wraps its items (.crphbar flex-wrap) and, with a file picked, the Open key's glyph lands over its word: that bar is 8 px taller and its keys sit 4 px higher. LumaUI keeps the key on one line, as every other bar key.
+
+## Settings Volume mixer (mixer-*)
+
+Settings › Sound › Volume mixer (`settings-volume-mixer`) against the Design Center reference page:
+
+- `mixer-no-messages-row`: the reference lists Messages under Other sounds. A message's alert is the Shell's event sound whichever app sent it, so it has no volume of its own; the page lists System sounds and Phone.

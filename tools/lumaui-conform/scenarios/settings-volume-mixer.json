@@ -1,13 +1,23 @@
 {
   "app": "settings-volume-mixer",
   "title": "Settings: Volume mixer",
-  "about": "Settings › Sound › Volume mixer (gnome-control-center 0108, the whole patch series) against the published reference (Design Center mockups/sound-mixer/settings.html), drawn from the fixture's CFMIX.",
+  "about": "Settings › Sound › Volume mixer (gnome-control-center 0108, the whole patch series) against the published reference (Design Center mockups/sound-mixer/settings.html), drawn from the fixture's CFMIX. The reference is the page alone: its stage takes the Settings window's size with the page where the main island puts it, and the sidebar is left out of the GTK side.",
   "spec": {
     "root": "design-center",
     "url": "mockups/sound-mixer/settings.html",
     "window": "#stage",
     "ready": "html[data-ready]",
-    "exclude": []
+    "exclude": [],
+    "viewport": {
+      "width": 1180,
+      "height": 1100
+    },
+    "before": [
+      {
+        "eval": "(() => { const s = document.querySelector('#stage'); s.style.boxSizing = 'border-box'; s.style.width = '1180px'; s.style.margin = '0'; s.style.padding = '36px 0 0 228px'; })()",
+        "wait": 300
+      }
+    ]
   },
   "gtk": {
     "module": "settings",
@@ -169,7 +179,13 @@
         "0107-lumaui-apps-openh264-switch.patch",
         "0108-lumaui-sound-volume-mixer-rows.patch"
       ]
-    }
+    },
+    "exclude": [
+      "cf-sidebar",
+      "cf-account",
+      "cf-foot",
+      "cf-search"
+    ]
   },
   "states": [
     {

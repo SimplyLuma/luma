@@ -637,6 +637,14 @@
       "prop": "^radius$",
       "spec_value": "^0$",
       "gtk_value": "^18$"
+    },
+    {
+      "id": "mixer-no-messages-row",
+      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
+      "apps": ["settings-volume-mixer"],
+      "reason": "A message's alert is the Shell's event sound whichever app sent it, so it has no volume of its own: Other sounds lists System sounds and Phone, and the reference's Messages row is not drawn.",
+      "subject": "^text \"(Messages|New message sounds)\"$",
+      "prop": "^missing$"
     }
   ]
 }
