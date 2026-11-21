@@ -393,6 +393,8 @@ done
   (the first open one leads on a phone); on_rearrange covers close and open.
 - Command icons (app menu rows) resolve through the installed icon theme, so
   a bare Lucide name shows its glyph on an installed system.
+- Sparkline (luma_appkit): recent values as a line with a soft area, accent,
+  warning or danger, marks, push()/set_values(), an accessible description.
 
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.142
 - ActionEditor (Python and C): focuses its first field with the text

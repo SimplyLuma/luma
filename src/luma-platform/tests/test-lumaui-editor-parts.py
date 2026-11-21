@@ -12,7 +12,7 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 Gtk.init()
 
 from luma_appkit import (ActionEditor, BarAction, DetailsPane, OverrideDot, RowLead, SyncKey,  # noqa: E402
-                         ToggleChip, install_appkit)
+                         Sparkline, ToggleChip, install_appkit)
 
 install_appkit()
 
@@ -109,4 +109,29 @@ pane = DetailsPane("Inspector", main=True, raised=True)
 assert pane.sheet.has_css_class("raised")
 pane.set_raised(False)
 assert not pane.sheet.has_css_class("raised")
+# Sparkline: a rolling window, tones, marks, a description, and it draws.
+spark = Sparkline([1, 2, 3], capacity=4, label="Bitrate")
+for v in (4, 5):
+    spark.push(v)
+assert spark.values == [2.0, 3.0, 4.0, 5.0]
+spark.mark()
+spark.set_tone("danger")
+assert spark.has_css_class("danger") and not spark.has_css_class("accent")
+for bad in (lambda: spark.set_tone("red"), lambda: Sparkline(capacity=1)):
+    try:
+        bad()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("refused")
+holder = Gtk.Window(default_width=360, default_height=60)
+holder.set_child(spark)
+holder.present()
+settle()
+assert spark.get_height() == 24 and spark.get_width() > 100
+paint = Gtk.WidgetPaintable.new(spark)
+snap = Gtk.Snapshot()
+paint.snapshot(snap, spark.get_width(), spark.get_height())
+assert snap.to_node() is not None, "it draws"
+holder.destroy()
 print("ok")

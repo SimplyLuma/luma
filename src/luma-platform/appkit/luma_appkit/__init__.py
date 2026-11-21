@@ -360,6 +360,7 @@ __all__ = [
     "SyncKey",
     "OverrideDot",
     "ToggleChip",
+    "Sparkline",
 ]
 
 
@@ -684,6 +685,9 @@ def __getattr__(name: str):
     if name in {"Dock", "DockTile"}:
         from . import structure_dock
         return getattr(structure_dock, name)
+    if name == "Sparkline":
+        from .rows_sparkline import Sparkline
+        return Sparkline
     if name in {"SyncKey", "OverrideDot", "ToggleChip"}:
         from . import editor_sync
         return getattr(editor_sync, name)

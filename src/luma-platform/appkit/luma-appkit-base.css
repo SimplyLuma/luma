@@ -861,6 +861,10 @@ button.lumaui-toggle-chip:checked { background: @luma_control_fill; color: @luma
 button.lumaui-toggle-chip:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
 button.lumaui-toggle-chip image { -gtk-icon-size: 14px; }
 box.lumaui-toggle-chip-live { min-width: 6px; min-height: 6px; border-radius: 3px; background: @luma_destructive; }
+/* Sparkline: the tone is the line's colour; the area under it is that colour, faint. */
+widget.lumaui-sparkline { color: @luma_accent; }
+widget.lumaui-sparkline.warning { color: @luma_warning_ink; }
+widget.lumaui-sparkline.danger { color: @luma_danger_ink; }
 button.lumaui-sync-key-row { min-height: 32px; padding: 0 8px; margin: 0; border: none; border-radius: 9px; background: none; box-shadow: none; color: @luma_muted; }
 button.lumaui-sync-key-row:hover:not(.static) { background: @luma_hover; color: @luma_ink; }
 button.lumaui-sync-key-row:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
