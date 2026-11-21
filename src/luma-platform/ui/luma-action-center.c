@@ -862,7 +862,7 @@ static void luma_action_editor_init(LumaActionEditor *self) {
   GtkWidget *room = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   gtk_widget_set_hexpand(room, TRUE);
   gtk_box_append(GTK_BOX(self->footer), room);
-  self->hint = gtk_label_new("Esc to fold");
+  self->hint = gtk_label_new("Esc to cancel");
   gtk_widget_add_css_class(self->hint, "lumaui-ac-hint");
   gtk_box_append(GTK_BOX(self->footer), self->hint);
   gtk_box_append(GTK_BOX(self), self->footer);
@@ -1010,6 +1010,14 @@ void luma_action_editor_add_tool(LumaActionEditor *self, LumaBarItem *tool) {
   gtk_box_append(GTK_BOX(self->tools), control);
 }
 
+/* An empty section (a hidden body) takes no room: no blank band, no extra rule. */
+static void editor_collapse_empty(LumaActionEditor *self) {
+  gboolean empty = self->body != NULL && self->text_view == NULL && !gtk_widget_get_visible(self->body);
+  if (empty || !self->form)
+    gtk_widget_set_visible(self->scroller, !empty);
+  luma_ui_set_css_class(GTK_WIDGET(self), "bodyless", empty);
+}
+
 void luma_action_editor_set_body(LumaActionEditor *self, GtkWidget *body) {
   g_return_if_fail(LUMA_IS_ACTION_EDITOR(self));
   g_return_if_fail(body == NULL || GTK_IS_WIDGET(body));
@@ -1029,6 +1037,10 @@ void luma_action_editor_set_body(LumaActionEditor *self, GtkWidget *body) {
   gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(self->scroller),
                                              self->text_view != NULL ? LUMA_UI_ACTION_CENTER_TEXT_MIN_HEIGHT : 0);
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(self->scroller), body);
+  if (self->text_view == NULL) {
+    g_signal_connect_object(body, "notify::visible", G_CALLBACK(editor_collapse_empty), self, G_CONNECT_SWAPPED);
+    editor_collapse_empty(self);
+  }
 }
 
 void luma_action_editor_set_placeholder(LumaActionEditor *self, const char *placeholder) {
@@ -1047,9 +1059,9 @@ void luma_action_editor_set_submit_on_return(LumaActionEditor *self, gboolean en
   self->submit_on_return = enabled;
   g_autofree char *action = self->primary != NULL && self->primary->label != NULL
       ? g_utf8_strdown(self->primary->label, -1) : g_strdup("submit");
-  g_autofree char *hint = self->primary == NULL ? g_strdup("Esc to fold")
-      : enabled ? g_strdup_printf("Esc to fold · Return to %s", action)
-      : g_strdup("Esc to fold · Ctrl Return");
+  g_autofree char *hint = self->primary == NULL ? g_strdup("Esc to cancel")
+      : enabled ? g_strdup_printf("Esc to cancel · Return to %s", action)
+      : g_strdup("Esc to cancel · Ctrl Return");
   gtk_label_set_label(GTK_LABEL(self->hint), hint);
 }
 
@@ -1111,8 +1123,28 @@ static GtkWidget *first_focusable(GtkWidget *widget) {
   return NULL;
 }
 
+/* The first field's input, in the order the fields were added (the rows are the editor's children). */
+static GtkWidget *first_field(LumaActionEditor *self) {
+  for (GtkWidget *row = gtk_widget_get_first_child(GTK_WIDGET(self)); row != NULL; row = gtk_widget_get_next_sibling(row)) {
+    if (!gtk_widget_has_css_class(row, "lumaui-ac-field") || !gtk_widget_get_visible(row))
+      continue;
+    for (GtkWidget *input = gtk_widget_get_first_child(row); input != NULL; input = gtk_widget_get_next_sibling(input))
+      if (gtk_widget_has_css_class(input, "lumaui-ac-field-input") && gtk_widget_is_sensitive(input))
+        return input;
+  }
+  return NULL;
+}
+
 void luma_action_editor_focus_content(LumaActionEditor *self) {
   g_return_if_fail(LUMA_IS_ACTION_EDITOR(self));
+  /* What the editor is for: its first field (its text selected, to type over), else the composer. */
+  GtkWidget *field = first_field(self);
+  if (field != NULL) {
+    gtk_widget_grab_focus(field);
+    if (GTK_IS_EDITABLE(field))
+      gtk_editable_select_region(GTK_EDITABLE(field), 0, -1);
+    return;
+  }
   GtkWidget *target = self->text_view;
   if (target == NULL)
     target = first_focusable(self->body);

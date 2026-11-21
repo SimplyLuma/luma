@@ -847,6 +847,17 @@ label.lumaui-ac-placeholder {
   color: @luma_muted; font-size: var(--lumaui-ac-text-size);
 }
 box.lumaui-ac-footer { padding: 8px; border-spacing: 10px; border-top: 1px solid @luma_line; }
+/* An editor with no body: the rule over the last field (or the header's) is the only one, no band. */
+box.lumaui-ac-editor-content.bodyless box.lumaui-ac-footer { border-top: none; }
+/* SyncKey: a section's link to another's look, at its foot; OverrideDot: a field that differs. */
+box.lumaui-sync-key { border-spacing: 8px; padding: 2px 0; }
+button.lumaui-sync-key-row { min-height: 32px; padding: 0 8px; margin: 0; border: none; border-radius: 9px; background: none; box-shadow: none; color: @luma_muted; }
+button.lumaui-sync-key-row:hover:not(.static) { background: @luma_hover; color: @luma_ink; }
+button.lumaui-sync-key-row:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: -2px; }
+image.lumaui-sync-key-lock { -gtk-icon-size: 15px; }
+box.lumaui-sync-key:not(.synced) image.lumaui-sync-key-lock { color: @luma_accent; }
+label.lumaui-sync-key-words { font-size: 12.5px; }
+box.lumaui-override-dot { min-width: 6px; min-height: 6px; border-radius: 3px; background: @luma_accent; }
 /* A form (v70 Settings' cfSheet, .cflac): a 128 label column, and Cancel (fill-2) then the key,
  * both 36 and 12 round, at the footer's end. */
 box.lumaui-ac-editor-content.form label.lumaui-ac-field-label { min-width: var(--lumaui-ac-form-label-width); }

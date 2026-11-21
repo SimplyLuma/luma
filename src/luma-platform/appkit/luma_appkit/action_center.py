@@ -680,6 +680,10 @@ class ActionEditor(Gtk.Box):
         self.scroller.set_min_content_height(tokens.ACTION_CENTER["text_min_height"] if self.text_view else 0)
         self.scroller.set_child(body)
         self.append(self.scroller)
+        # An empty section (a hidden body) takes no room: no blank band, no extra rule.
+        if self.text_view is None:
+            body.connect("notify::visible", lambda *_a: self._collapse_empty())
+            self._collapse_empty()
 
         if revert is not None:
             self._build_edit(title, icon, header, tools, primary, revert)
@@ -689,7 +693,7 @@ class ActionEditor(Gtk.Box):
         self.discard_button = make_control(BarAction("trash-2", tooltip="Discard", on_activate=self._discard))
         footer.append(self.discard_button)
         footer.append(Gtk.Box(hexpand=True))
-        hint = Gtk.Label(label="Esc to fold" + ((" · Return to " + (primary.label or "submit").lower())
+        hint = Gtk.Label(label="Esc to cancel" + ((" · Return to " + (primary.label or "submit").lower())
                               if primary and submit_on_return else " · Ctrl Return" if primary else ""))
         hint.add_css_class("lumaui-ac-hint")
         if keep_hint:
@@ -869,9 +873,21 @@ class ActionEditor(Gtk.Box):
             self.text_view.get_buffer().set_text("")
 
     def focus_content(self) -> None:
-        target = self.text_view or _first_focusable(self.body) or self.primary_button
-        if target is not None:
-            target.grab_focus()
+        """Focus what the editor is for: its first field (its text selected, to type over), else the
+        composer, else the body's first control, else the primary."""
+        first_field = next((w for w in self._fields.values() if w.get_visible() and w.get_sensitive()), None)
+        target = first_field or self.text_view or _first_focusable(self.body) or self.primary_button
+        if target is None:
+            return
+        target.grab_focus()
+        if isinstance(target, Gtk.Editable) and target is not self.text_view:
+            target.select_region(0, -1)
+
+    def _collapse_empty(self) -> None:
+        body = self.body
+        empty = not body.get_visible()
+        self.scroller.set_visible(not empty)
+        lumaui.set_css_class(self, "bodyless", empty)
 
     def run_primary(self) -> bool:
         if self.primary is None or self.primary_button is None or not self.primary_button.is_sensitive():
