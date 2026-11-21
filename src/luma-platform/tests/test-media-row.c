@@ -181,7 +181,8 @@ static void test_regular(void) {
   g_assert_cmpfloat(meter_box.origin.x, ==, slider.origin.x + track.origin.x);
   g_assert_cmpfloat(meter_box.size.width, ==, track.size.width);
   g_assert_cmpfloat(meter_box.origin.y, ==, chip_box.origin.y + 28 + 6);
-  g_assert_cmpint(gtk_widget_get_height(widget), ==, (int)(meter_box.origin.y + meter_box.size.height) + 15);
+  /* The meter lies in the 10 px row gap under the volume line; 15 px close the block. */
+  g_assert_cmpint(gtk_widget_get_height(widget), ==, (int)(chip_box.origin.y + 28 + 10) + 15);
 
   /* The service's meter position reaches the meter; paused, it rests. */
   luma_media_row_set_level(row, 1.0);

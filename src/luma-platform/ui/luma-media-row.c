@@ -256,8 +256,10 @@ static int regular_height(LumaMediaRow *self, int width) {
   if (text_width >= 0)
     l = lines(self, MAX(0, text_width));
   int content = l.row1 + m.row_gap + l.row2;
+  /* The meter sits in the row gap under the volume line: the block grows by that gap, not by the meter. */
   if (l.meter_h)
-    content += LUMA_UI_MEDIA_ROW_REGULAR_METER_TOP + l.meter_h;
+    content += self->stacked ? LUMA_UI_MEDIA_ROW_REGULAR_METER_TOP + l.meter_h
+                             : MAX(m.row_gap, LUMA_UI_MEDIA_ROW_REGULAR_METER_TOP + l.meter_h);
   if (self->stacked && l.trailing_h)
     content += m.row_gap + l.trailing_h;
   return m.padding_top + MAX(m.art_top + m.art, content) + m.padding_bottom;

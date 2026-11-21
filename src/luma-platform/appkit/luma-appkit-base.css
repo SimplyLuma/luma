@@ -2554,7 +2554,7 @@ lumaui-media-row button.lumaui-media-row-key:focus-visible { outline: 2px solid 
 lumaui-media-row button.lumaui-media-row-key.play {
   min-width: var(--lumaui-media-row-regular-play); min-height: var(--lumaui-media-row-regular-play);
   border-radius: 9999px; background: @luma_chip; color: @luma_ink;
-  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring;
   -gtk-icon-size: var(--lumaui-media-row-regular-play-icon);
 }
 lumaui-media-row button.lumaui-media-row-key.play:hover { filter: brightness(var(--lumaui-hover-brightness)); }
