@@ -90,6 +90,27 @@ def log_path(application_id: str) -> Path:
     return folder / f"{safe_id(application_id)}.log"
 
 
+def forget_log(application_id: str) -> None:
+    """An application that is removed leaves no build log, and the last one no folder for them."""
+    folder = Path.home() / ".local/state/luma/app-builds"
+    (folder / f"{safe_id(application_id)}.log").unlink(missing_ok=True)
+    try:
+        folder.rmdir()
+    except OSError:
+        pass
+
+
+def forget_scratch() -> None:
+    """The download cache and work folders. Packages are unpacked there under subordinate IDs, so it
+    is deleted the way a built tree is (closure.remove_tree), not as the person alone."""
+    root = Path(os.environ.get("LUMA_APP_SCRATCH") or Path.home() / ".cache/luma/app-closures")
+    try:
+        closure.remove_tree(root)
+    except (InstallerError, OSError):
+        pass
+    shutil.rmtree(root, ignore_errors=True)
+
+
 def _forced(stage: str) -> None:
     if os.environ.get(FAIL_VARIABLE, "") == stage:
         raise Fallback(stage, f"Stopped at the {stage} stage because {FAIL_VARIABLE} asked for it.")

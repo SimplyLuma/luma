@@ -543,6 +543,19 @@ class ReviewCache(unittest.TestCase):
             facts.forget_artwork(SHA)  # nothing cached: nothing to do
 
 
+class BuildLogs(unittest.TestCase):
+    def test_a_removed_application_leaves_no_build_log_and_the_last_no_folder(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(Path, "home", return_value=Path(directory)):
+            first, second = store_install.log_path("deb-one-1"), store_install.log_path("deb-two-2")
+            first.write_text("log")
+            second.write_text("log")
+            store_install.forget_log("deb-one-1")
+            self.assertEqual([path.name for path in first.parent.iterdir()], ["deb-two-2.log"])
+            store_install.forget_log("deb-two-2")
+            self.assertFalse(first.parent.exists())
+            store_install.forget_log("deb-two-2")  # nothing there: nothing made
+
+
 class RefFolders(unittest.TestCase):
     def test_a_deleted_ref_leaves_no_folder_named_for_its_application(self):
         from luma_installer.app_store import Store

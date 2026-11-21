@@ -117,11 +117,6 @@ def _remove_from_store(record: dict[str, object]) -> None:
     except InstallerError:
         pass  # already gone from the store; the record and exports still have to go
     closure_launcher.remove_runtime(application_id)
-    store_install.log_path(application_id).unlink(missing_ok=True)
-    try:
-        store_install.log_path(application_id).parent.rmdir()
-    except OSError:
-        pass
     migration = record.get("migration")
     capsule = dict(migration.get("capsule") or {}) if isinstance(migration, dict) else {}
     leaving = dict(migration.get("leaving") or {}) if isinstance(migration, dict) else {}
@@ -129,7 +124,7 @@ def _remove_from_store(record: dict[str, object]) -> None:
         subprocess.run(["podman", "image", "rm", "--force", image], check=False, capture_output=True)
     if not store.root.exists():
         # The last application from the store: its download cache has nothing left to serve.
-        shutil.rmtree(Path(os.environ.get("LUMA_APP_SCRATCH") or Path.home() / ".cache/luma/app-closures"), ignore_errors=True)
+        store_install.forget_scratch()
 
 
 def reconcile() -> None:
@@ -243,6 +238,13 @@ def remove(application_id: str, delete_data: bool = False) -> str:
                     capsule_secrets.forget(capsule_identity.keyring_tag(record))
                 except Exception:  # noqa: BLE001 - never a reason to keep the application
                     pass
+    if kind in {"deb", "rpm", "appimage", "portable"}:
+        # The log of its build for the store, whether that build was used or not (a move that failed).
+        try:
+            from . import store_install
+            store_install.forget_log(application_id)
+        except Exception:  # noqa: BLE001 - never a reason to keep the application
+            pass
     remove_record(application_id)
     # The lock its updates were taken under is the application's too.
     (records_root() / f".refresh-{safe_id(application_id)}.lock").unlink(missing_ok=True)
