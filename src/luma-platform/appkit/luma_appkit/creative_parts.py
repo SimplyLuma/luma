@@ -41,6 +41,9 @@ __all__ = [
     "AlignmentActions",
     "ArrangeItem",
     "ArrangeView",
+    "ALIGNMENTS",
+    "align_rects",
+    "distribute_rects",
     "lumaui_module",
 ]
 
@@ -330,7 +333,10 @@ def ArrangeView(content=None, *, canvas: tuple[float, float] = (1920, 1080), ite
                 on_activate: Callable[[str], None] | None = None,
                 on_crop: Callable[[str, float, float, float, float], None] | None = None,
                 on_crop_commit: Callable[[str, float, float, float, float], None] | None = None,
-                on_drag_mode: Callable[[str], None] | None = None):
+                on_drag_mode: Callable[[str], None] | None = None,
+                on_selection: Callable[[list[str]], None] | None = None,
+                on_group_change: Callable[[dict], None] | None = None,
+                on_group_commit: Callable[[dict], None] | None = None):
     """Boxes on a canvas, moved, resized and cropped by hand, with snapping guides.
 
     ``content`` is the picture of the canvas (it covers the fitted canvas).
@@ -345,6 +351,11 @@ def ArrangeView(content=None, *, canvas: tuple[float, float] = (1920, 1080), ite
     is crop mode (also a double click or Enter). ``on_drag_mode(mode)`` follows
     ``get_drag_mode()`` ("move", "resize", "stretch", "resize-centre",
     "stretch-centre", "crop", "crop-centre", "pan", "none") for a hint.
+
+    Several boxes: Shift+click, a rubber band from empty canvas, Ctrl+A or ``set_selection([ids])``;
+    ``on_selection(ids)`` follows a person's changes (``on_select(id)`` still gets the last one).
+    Two or more move and scale together inside one box: ``on_group_change({id: (x, y, w, h)})`` every
+    step, ``on_group_commit(...)`` once (one undo step). ``align_rects``/``distribute_rects`` lay them out.
     """
     L = lumaui_module()
     view = L.ArrangeView.new(content)
@@ -367,7 +378,76 @@ def ArrangeView(content=None, *, canvas: tuple[float, float] = (1920, 1080), ite
     _connect(view, "crop-committed", on_crop_commit)
     if on_drag_mode is not None:
         view.connect("notify::drag-mode", lambda v, _s: on_drag_mode(v.get_drag_mode()))
+    if on_selection is not None:
+        view.connect("selection-ids-changed", lambda _v, ids: on_selection(list(ids)))
+    for signal, callback in (("group-changed", on_group_change), ("group-committed", on_group_commit)):
+        if callback is not None:
+            view.connect(signal, lambda _v, rects, cb=callback: cb(dict(rects.unpack())))
     return view
+
+
+ALIGNMENTS = ("left", "centre", "right", "top", "middle", "bottom")
+
+
+def _bounds(rects: dict) -> tuple[float, float, float, float]:
+    x0 = min(r[0] for r in rects.values())
+    y0 = min(r[1] for r in rects.values())
+    x1 = max(r[0] + r[2] for r in rects.values())
+    y1 = max(r[1] + r[3] for r in rects.values())
+    return x0, y0, x1 - x0, y1 - y0
+
+
+def align_rects(rects: dict, how: str, *, canvas: tuple[float, float] | None = None) -> dict:
+    """``rects`` ({id: (x, y, w, h)}) lined up: to the box around them, or, for a single rect, to the
+    canvas (``canvas=(w, h)``). ``how``: left, centre, right, top, middle, bottom. Returns the new
+    rects; sizes never change."""
+    if how not in ALIGNMENTS:
+        raise ValueError(f"an alignment is one of {', '.join(ALIGNMENTS)}, not {how!r}")
+    if not rects:
+        return {}
+    if len(rects) == 1:
+        if canvas is None:
+            raise ValueError("one rect aligns to the canvas: pass canvas=(w, h)")
+        bx, by, bw, bh = 0.0, 0.0, float(canvas[0]), float(canvas[1])
+    else:
+        bx, by, bw, bh = _bounds(rects)
+    out = {}
+    for key, (x, y, w, h) in rects.items():
+        if how == "left":
+            x = bx
+        elif how == "centre":
+            x = bx + (bw - w) / 2
+        elif how == "right":
+            x = bx + bw - w
+        elif how == "top":
+            y = by
+        elif how == "middle":
+            y = by + (bh - h) / 2
+        else:
+            y = by + bh - h
+        out[key] = (x, y, w, h)
+    return out
+
+
+def distribute_rects(rects: dict, axis: str = "h") -> dict:
+    """``rects`` spread so the gaps between them are equal, the first and last staying put (three or
+    more; ``axis`` "h" across, "v" down). Returns the new rects."""
+    if axis not in ("h", "v"):
+        raise ValueError(f"distribute along h or v, not {axis!r}")
+    if len(rects) < 3:
+        return dict(rects)
+    i = 0 if axis == "h" else 1
+    order = sorted(rects, key=lambda k: rects[k][i])
+    first, last = rects[order[0]], rects[order[-1]]
+    span = last[i] + last[i + 2] - first[i]
+    gap = (span - sum(rects[k][i + 2] for k in order)) / (len(order) - 1)
+    out, at = {}, first[i]
+    for key in order:
+        r = list(rects[key])
+        r[i] = at
+        out[key] = tuple(r)
+        at += r[i + 2] + gap
+    return out
 
 
 def add_arrange_item(view, item: ArrangeItem) -> None:

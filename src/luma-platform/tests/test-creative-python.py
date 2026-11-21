@@ -37,6 +37,33 @@ def docks():
         raise AssertionError("an unknown side is refused")
 
 
+def arrange_group():
+    """Several boxes from Python: selection, group signals as dicts, align and distribute."""
+    from luma_appkit import ArrangeItem, ArrangeView, align_rects, distribute_rects
+
+    chosen, groups = [], []
+    view = ArrangeView(items=[ArrangeItem("a", "A", 0, 0, 100, 50), ArrangeItem("b", "B", 300, 100, 50, 50)],
+                       on_selection=chosen.append, on_group_commit=groups.append)
+    view.set_selection(["a", "b"])
+    assert view.get_selection() == ["a", "b"] and view.get_selected() == "b"
+    view.select_all()
+    assert chosen == [] or chosen[-1] == ["a", "b"]
+    rects = {"a": (0, 0, 100, 50), "b": (300, 100, 50, 50), "c": (100, 300, 20, 20)}
+    assert align_rects(rects, "left")["b"] == (0, 100, 50, 50)
+    assert align_rects(rects, "right")["a"] == (250, 0, 100, 50)
+    assert align_rects(rects, "middle")["c"][1] == (0 + 320) / 2 - 10
+    assert align_rects({"a": (10, 10, 100, 50)}, "centre", canvas=(1920, 1080))["a"] == (910, 10, 100, 50)
+    spread = distribute_rects(rects, "h")
+    assert spread["a"][0] == 0 and spread["b"][0] == 300 and abs(spread["c"][0] - 190) < 1e-9, spread
+    for bad in (lambda: align_rects(rects, "diagonal"), lambda: align_rects({"a": (0, 0, 1, 1)}, "left")):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("refused")
+
+
 def picker():
     from gi.repository import Gdk
     from luma_appkit import ColorPicker, PropertyColor, recent_colors
@@ -660,6 +687,7 @@ if __name__ == "__main__":
     docks()
     arrange()
     picker()
+    arrange_group()
     meter()
     live_chip()
     dock()

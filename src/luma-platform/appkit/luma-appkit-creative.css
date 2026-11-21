@@ -350,3 +350,4 @@ widget.lumaui-arrange-view > .lumaui-arrange-guide { color: @luma_mark_pink; }
 widget.lumaui-arrange-view > .lumaui-arrange-locked { color: @luma_muted; }
 /* What a crop cuts away: the source at this opacity (its alpha), or this scrim without one. */
 widget.lumaui-arrange-view > .lumaui-arrange-ghost { color: rgba(0, 0, 0, 0.38); }
+widget.lumaui-arrange-view > .lumaui-arrange-marquee { color: @luma_creative_selection; }

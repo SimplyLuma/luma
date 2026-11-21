@@ -353,7 +353,7 @@ __all__ = [
     "PropertySection", "PropertyNumber", "PropertyColor", "ColorPicker", "recent_colors", "PropertyChoice", "AlignmentActions",
     "CreativeWorkspace",
     "FloatingPanel",
-    "ArrangeView", "ArrangeItem",
+    "ArrangeView", "ArrangeItem", "align_rects", "distribute_rects",
     "Dock", "DockTile",
     "AudioMeter",
     "VolumeSlider",
@@ -699,7 +699,7 @@ def __getattr__(name: str):
     if name in {"AudioMeter", "VolumeSlider"}:
         from . import media_meter
         return getattr(media_meter, name)
-    if name in {"ToolBar", "Tool", "Flyout", "TOOL_SEPARATOR", "Layer", "LayerTree", "PropertySection", "PropertyNumber", "PropertyColor", "ColorPicker", "recent_colors", "PropertyChoice", "AlignmentActions", "ArrangeView", "ArrangeItem"}:
+    if name in {"ToolBar", "Tool", "Flyout", "TOOL_SEPARATOR", "Layer", "LayerTree", "PropertySection", "PropertyNumber", "PropertyColor", "ColorPicker", "recent_colors", "PropertyChoice", "AlignmentActions", "ArrangeView", "ArrangeItem", "align_rects", "distribute_rects"}:
         from . import creative_parts
         return getattr(creative_parts, name)
     if name in {"CreativeWorkspace", "FloatingPanel"}:
