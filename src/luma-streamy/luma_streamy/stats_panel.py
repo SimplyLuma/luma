@@ -99,7 +99,7 @@ class StatsPanel(Gtk.Box):
             title = SYSTEM_TITLES[key]
             line = meter()
             self._meters[key] = line
-            self.system.row(key, title, lead=RowLead.icon(icon), trail=line)
+            self.system.row(key, title, lead=RowLead.well(icon), trail=line)
         self.connect("map", lambda *_a: self._schedule())
         self.connect("unmap", lambda *_a: self._schedule())
         if outputs is not None:
@@ -160,10 +160,10 @@ class StatsPanel(Gtk.Box):
             if since is None:
                 continue
             keys.add(key)
-            self.session.row(key, title, lead=RowLead.icon(icon)).set_subtitle(_clock(now - since))
+            self.session.row(key, title, lead=RowLead.well(icon)).set_subtitle(_clock(now - since))
         if not keys:
             keys.add("idle")
-            self.session.row("idle", "Not live", lead=RowLead.icon("radio-tower")).set_subtitle(
+            self.session.row("idle", "Not live", lead=RowLead.well("radio-tower")).set_subtitle(
                 "Go live or record to see each destination here")
         self.session.keep(keys)
 
@@ -189,7 +189,7 @@ class StatsPanel(Gtk.Box):
         keys = set()
         for canvas, (fps, frame_ms) in self.canvases.items():
             keys.add(canvas)
-            row = self.canvas_section.row(canvas, canvas_label(canvas), lead=RowLead.icon(
+            row = self.canvas_section.row(canvas, canvas_label(canvas), lead=RowLead.well(
                 "rectangle-horizontal" if canvas == "landscape" else "smartphone"))
             row.set_subtitle(f"{fps:.0f} fps · {frame_ms:.1f} ms a frame")
         self.canvas_section.keep(keys)

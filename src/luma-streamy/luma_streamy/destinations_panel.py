@@ -96,24 +96,20 @@ class DestinationsPanel(Gtk.Box):
         self.append(scroll)
         add = IconOnlyButton("plus", "Add destination", on_click=self.add_menu)
         self.actions = [add]
+        self._narrow = False
+        from luma_appkit import WidthWatch
+
+        self._watch = WidthWatch(self, on_tier=self._tier)
         if outputs is not None:
             outputs.connect("row-state", self._row_state)
             outputs.connect("tick", lambda *_a: self._refresh_live())
         self.refresh()
 
-    #: Below this panel width a row's canvas chip shows its glyph alone, so the status keeps its words.
-    NARROW = 440
-
-    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
-        Gtk.Box.do_size_allocate(self, width, height, baseline)
-        narrow = width < self.NARROW
-        if narrow != getattr(self, "_narrow", None):
-            self._narrow = narrow
-            GLib.idle_add(lambda: self._fit_chips() and False)
-
-    def _fit_chips(self) -> None:
+    def _tier(self, tier: str) -> None:
+        """On a phone a row's canvas chip shows its glyph alone, so the status keeps its words."""
+        self._narrow = tier == "phone"
         for widget in self._rows.values():
-            widget.chip.label.set_visible(not getattr(self, "_narrow", False))
+            widget.chip.label.set_visible(not self._narrow)
 
     # ── Keyring ──
 
@@ -181,7 +177,7 @@ class DestinationsPanel(Gtk.Box):
         hold.connect("pressed", lambda _g, x, y, r=row, w=widget: self._menu(r, w, x, y))
         widget.add_controller(hold)
         widget.chip, widget.switch = chip, switch
-        chip.label.set_visible(not getattr(self, "_narrow", False))
+        chip.label.set_visible(not self._narrow)
         self._rows[row.id] = widget
         return widget
 
@@ -285,8 +281,7 @@ class DestinationsPanel(Gtk.Box):
     def add_menu(self) -> None:
         rows = [PanelHeading("Add a destination")]
         for platform in ADDABLE:
-            lead = logo(platform)
-            rows.append(PanelRow(PLATFORMS[platform][0], icon=None if lead else "server", lead=lead,
+            rows.append(PanelRow(PLATFORMS[platform][0], lead=logo(platform) or RowLead.well("server"),
                                  note="Sign in" if platform in ("twitch", "youtube") else
                                  ("RTMP, SRT or WHIP" if platform == "custom" else "Server and key"),
                                  on_activate=lambda p=platform: GLib.idle_add(lambda: self.edit_new(p) and False)))
@@ -314,7 +309,8 @@ class DestinationsPanel(Gtk.Box):
         key = Gtk.PasswordEntry(show_peek_icon=True, hexpand=True)
         key.set_text(self.key_for(row) if row.id else "")
         key.update_property([Gtk.AccessibleProperty.LABEL], ["Stream key"])
-        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_start=14, margin_end=14,
+                       margin_top=8, margin_bottom=8)
         body.add_css_class("streamy-destination-body")
         fields: list = []
         mode = {"value": "signin" if row.signs_in and (row.account or not self.key_for(row)) else "key"}
@@ -380,7 +376,9 @@ class DestinationsPanel(Gtk.Box):
         if row.account:
             line = Gtk.Label(label=f"Signed in as {row.account}", xalign=0, wrap=True)
             box.append(line)
-            box.append(TextButton("Sign out", icon="log-out", on_click=lambda: self.sign_out(row, box)))
+            out = TextButton("Sign out", icon="log-out", on_click=lambda: self.sign_out(row, box))
+            out.set_halign(Gtk.Align.START)
+            box.append(out)
             return
         words = Gtk.Label(xalign=0, wrap=True, label=f"Sign in to {label} and Streamy finds your stream key itself.")
         box.append(words)
@@ -389,8 +387,10 @@ class DestinationsPanel(Gtk.Box):
                              f"will be refused. Paste a stream key instead.")
             note.add_css_class("dim-label")
             box.append(note)
-        box.append(TextButton(f"Sign in with {label}", icon="user", style="raised",
-                              on_click=lambda: self.sign_in(row, box)))
+        sign_in = TextButton(f"Sign in with {label}", icon="user", style="raised",
+                             on_click=lambda: self.sign_in(row, box))
+        sign_in.set_halign(Gtk.Align.START)
+        box.append(sign_in)
 
     def sign_in(self, row: Destination, box: Gtk.Box | None = None) -> None:
         """Twitch: show the code and open twitch.tv/activate; YouTube: open Google's page. Then the row

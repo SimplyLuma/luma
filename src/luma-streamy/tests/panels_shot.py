@@ -103,6 +103,9 @@ def main() -> None:
         island = Island()
         host = ToastHost(island)
         center = ActionCenter().attach(host)
+        from luma_appkit import BarAction
+
+        center.show_bar([BarAction("radio-tower", "Go live", primary=True, on_activate=lambda: None)])
         destinations = DestinationsPanel(store, center=center, host=host, outputs=outputs, secrets=secrets)
         rows = {r.platform: r for r in store.rows}
         live = RowStats(state="live", bitrate_kbps=6012, started=time.monotonic() - 3725,
@@ -170,7 +173,11 @@ def main() -> None:
         def shoot() -> bool:
             tries[0] += 1
             if tries[0] == 1:
-                json.dump(measure(window, panels, destinations), open(OUT.rsplit(".", 1)[0] + ".json", "w"), indent=1)
+                try:
+                    json.dump(measure(window, panels, destinations), open(OUT.rsplit(".", 1)[0] + ".json", "w"),
+                              indent=1)
+                except Exception as error:  # a check run: say what broke, keep the picture
+                    print(f"measure failed: {error!r}")
             if render(window, OUT) or tries[0] > 40:
                 window.close()
                 app.quit()

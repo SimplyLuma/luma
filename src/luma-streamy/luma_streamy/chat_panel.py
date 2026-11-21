@@ -82,6 +82,8 @@ class ChatPanel(Gtk.Box):
         self.append(self.scroll)
         self.composer = TextField("Message", placeholder="Sign in to Twitch or YouTube to send",
                                   on_activate=self._send)
+        for side in ("start", "end", "bottom"):
+            getattr(self.composer, f"set_margin_{side}")(8)
         self.append(self.composer)
         self.actions = [IconOnlyButton("plus", "Add a chat", on_click=self.add_menu)]
         if not self.offline:
@@ -238,8 +240,15 @@ class ChatPanel(Gtk.Box):
         from .shots import _box
 
         return {"sources": [_box(r, root) for r in self._source_rows.values()],
-                "lines": [_box(r, root) for r in self.lines.lines][-8:],
+                "lines": [_box(r, root) for r in _children(self.lines.list)][-8:],
                 "composer": _box(self.composer, root), "scroll": _box(self.scroll, root)}
+
+
+def _children(widget: Gtk.Widget):
+    child = widget.get_first_child()
+    while child is not None:
+        yield child
+        child = child.get_next_sibling()
 
 
 def fixture_feed() -> Feed:
