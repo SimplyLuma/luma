@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.99%{?dist}
+Release:        1.luma.100%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -314,6 +314,15 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.100
+- Package capsules run under an allocated SELinux category pair instead of
+  one derived from a hash of the package, which let two applications land on
+  the same pair (capsule_identity). The pair is checked against every
+  installed application and kept in the record as mcs_level. An existing
+  record keeps the pair its private files already carry when no other record
+  holds it; otherwise it is given a free pair and Podman relabels its private
+  home on the next start. Installing a package over itself keeps the pair.
+
 * Wed Nov 18 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.99
 - An AppImage opened from Filer or a browser runs at once, with no Valet
   window: luma-install FILE starts it before any interface is loaded
