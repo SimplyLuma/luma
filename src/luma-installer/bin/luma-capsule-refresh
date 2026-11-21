@@ -1,0 +1,4 @@
+#!/usr/bin/python3
+from luma_installer.capsule_refresh import main
+
+raise SystemExit(main())

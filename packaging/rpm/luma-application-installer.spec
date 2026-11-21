@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.101%{?dist}
+Release:        1.luma.102%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -172,6 +172,11 @@ printf 'enable luma-icon-plates.service\nenable luma-icon-plates.path\n' > %{bui
 install -D -m 0755 bin/luma-installer-service %{buildroot}%{_bindir}/luma-installer-service
 install -D -m 0755 bin/luma-capsule-open %{buildroot}%{_libexecdir}/luma-capsule-open
 install -D -m 0755 bin/luma-capsule-launch %{buildroot}%{_bindir}/luma-capsule-launch
+install -D -m 0755 bin/luma-capsule-refresh %{buildroot}%{_bindir}/luma-capsule-refresh
+install -D -m 0644 data/luma-capsule-refresh.service %{buildroot}%{_userunitdir}/luma-capsule-refresh.service
+install -D -m 0644 data/luma-capsule-refresh.timer %{buildroot}%{_userunitdir}/luma-capsule-refresh.timer
+ln -s ../luma-capsule-refresh.timer \
+  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-capsule-refresh.timer
 # crun with the application scoped; Podman knows a runtime by its file name.
 install -D -m 0755 bin/luma-capsule-runtime %{buildroot}%{_libexecdir}/luma-capsule-runtime/crun
 install -D -m 0644 data/pipewire/60-luma-application-socket.conf \
@@ -300,6 +305,10 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_userpresetdir}/60-luma-icon-plates.preset
 %{_bindir}/luma-installer-service
 %{_bindir}/luma-capsule-launch
+%{_bindir}/luma-capsule-refresh
+%{_userunitdir}/luma-capsule-refresh.service
+%{_userunitdir}/luma-capsule-refresh.timer
+%{_userunitdir}/graphical-session.target.wants/luma-capsule-refresh.timer
 %{_libexecdir}/luma-app-data-broker
 %{_bindir}/luma-seed-app-baseline
 %{_unitdir}/luma-app-baseline.service
@@ -333,6 +342,31 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.102
+- Security updates for package capsules (capsule_refresh). Once a day, on
+  mains power and an unmetered connection, luma-capsule-refresh.timer runs
+  the distribution's own upgrade in a build container started from each
+  capsule's image (apt-get dist-upgrade, dnf upgrade), including any
+  repository the application's package added for itself, and commits the
+  result under a new tag. Those repositories are recorded as part of the
+  application's origin.
+- The new image is started once out of sight (no network, a throwaway home, a
+  headless compositor behind a bus filter that grants nothing) and its
+  libraries are checked with the loader; an image that fails is deleted and
+  that package set is not tried again. An apt source that cannot be read
+  (a vendor repository whose key was never installed) is noted and does not
+  keep the distribution's updates out.
+- The record moves to the new image only while the application is closed;
+  otherwise the launcher makes the swap before the next start. One previous
+  image is kept. If the first real start on a new image fails while opening,
+  the launcher returns to the previous image, starts the application from it
+  and does not report a failure.
+- luma-appctl hold, release, rollback and updates; luma-appctl update
+  refreshes a capsule now. manager.update_states() and
+  depot_inventory.InstalledApp.update_state carry "Updated", "Held",
+  "Rolled back", "Update waiting" and "Update failed" for the application
+  list. Removing an application removes its previous and waiting images.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.101
 - Package capsules and sandboxed AppImages no longer reach the whole session.
   ADR-052, step 1.

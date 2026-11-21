@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from . import capsule_display, capsule_identity, capsule_scope, capsule_secrets
+from . import capsule_display, capsule_identity, capsule_refresh, capsule_scope, capsule_secrets
 from . import capsule_runtime as runtime_policy
 from . import launch_guard
 from .desktop import read_record, safe_id
@@ -395,12 +395,42 @@ def _launch_deb(record: dict[str, object], extra: list[str] | None = None) -> in
     arguments.extend(extra or [])
     if zone and not os.environ.get("TZ"):
         _follow_time_zone(instance, zone)
+    watched = capsule_refresh.unconfirmed(record)
     try:
-        return _guarded(record, arguments)
+        status = _guarded(record, arguments, watched=True) if watched else _guarded(record, arguments)
     finally:
         _stop_bus_proxy(proxy, bus_socket)
         if display is not None:
             display.stop()
+    if watched:
+        return _after_watched_start(record, status, extra)
+    return status
+
+
+def _after_watched_start(record: dict[str, object], status: int, extra: list[str] | None) -> int:
+    """The first start on a refreshed capsule has ended: keep it, or go back.
+
+    If the application failed while opening, the record returns to the capsule
+    that worked and the application is started again from it, so the person
+    sees their application a moment later rather than a failure they did not
+    cause. That update is not taken again.
+    """
+    global _watched_failure
+    failure, _watched_failure = _watched_failure, None
+    if failure is None:
+        try:
+            capsule_refresh.confirm(record)
+        except InstallerError:
+            pass
+        return status
+    name = _display_name(record)
+    try:
+        previous = capsule_refresh.rollback(
+            str(record["application_id"]), f"The updated capsule failed on its first start: {launch_guard.summary(name, failure)}")
+    except (InstallerError, OSError, KeyError):
+        launch_guard.report(name, str(record.get("application_id") or ""), str(record.get("icon") or ""), failure)
+        return status
+    return _launch_deb(previous, extra)
 
 
 # crun, with the application scoped as its container is created; the name the
@@ -469,12 +499,27 @@ def _display_name(record: dict[str, object], fallback: str = "") -> str:
     return str(record.get("name") or record.get("application_id") or fallback or "An application")
 
 
-def _guarded(record: dict[str, object], arguments: list[str], env: dict[str, str] | None = None) -> int:
-    """Run the application; if it fails while opening, stop the spinner and say so."""
+# Set by a watched start that failed while opening; read by whoever asked for
+# the watch. A launcher process starts one application, once.
+_watched_failure: launch_guard.Failure | None = None
+
+
+def _guarded(record: dict[str, object], arguments: list[str], env: dict[str, str] | None = None,
+             watched: bool = False) -> int:
+    """Run the application; if it fails while opening, stop the spinner and say so.
+
+    A watched start is the first on a refreshed capsule. Its failure is not
+    reported and Luma's own switches are not blamed for it: the caller goes
+    back to the capsule that worked and starts the application again.
+    """
+    global _watched_failure
     capture = launch_guard.should_capture() and not record.get("terminal")
     status, seconds, stderr = launch_guard.run(arguments, env=env, capture=capture)
     failure = launch_guard.classify(status, seconds, stderr)
     if failure is None:
+        return status
+    if watched:
+        _watched_failure = failure
         return status
 
     application_id = str(record.get("application_id") or "")
@@ -645,6 +690,13 @@ def main(argv: list[str] | None = None) -> int:
             # Its category pair and what it may still find in the keyring are
             # settled once, before anything else rewrites the record.
             record = capsule_identity.keyring_adoption(capsule_identity.ensure_level(record))[0]
+        if capsule_refresh.state(record).get("pending_image"):
+            # A refreshed capsule waits until the application is closed. If
+            # it is closed now, this start is the first on the new one.
+            try:
+                record = capsule_refresh.apply_pending(record)
+            except (InstallerError, OSError, KeyError):
+                pass
         if record.get("format") == "portable" and record.get("image"):
             record = _upgrade_unless_running(record)
         if record.get("format") in {"deb", "rpm"}:

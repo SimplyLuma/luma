@@ -1,0 +1,12 @@
+[Unit]
+Description=Check installed application capsules for security updates once a day
+Documentation=https://simplyluma.com/apps
+PartOf=graphical-session.target
+
+[Timer]
+OnStartupSec=45min
+OnUnitActiveSec=24h
+RandomizedDelaySec=2h
+
+[Install]
+WantedBy=graphical-session.target
