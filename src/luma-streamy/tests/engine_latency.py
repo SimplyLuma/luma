@@ -128,8 +128,8 @@ def main(mode: str, limit_ms: float | None) -> int:
     mixer.connect("samples-selected", on_selected)  # after the engine's: the geometry is applied
     for stage, element in (("mixed", "mixer"), ("queued", "preview-queue"), ("half", "preview-scale-half"),
                            ("scaled", "preview-scale")):
-        pipeline.get_by_name(element).get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, at(stage))
-    sink = pipeline.get_by_name("preview").get_property("sink")
+        pipeline.get_by_name(f"{element}-landscape").get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, at(stage))
+    sink = pipeline.get_by_name("preview-landscape").get_property("sink")
     sink.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, at("sink"))
     engine.paintable.connect("invalidate-contents", on_invalidate)
     window.get_frame_clock().connect("after-paint", on_paint)
@@ -146,6 +146,8 @@ def main(mode: str, limit_ms: float | None) -> int:
         return probe
 
     for element in branch.elements[:1] + branch.elements[-4:] + [mixer]:
+        if element.get_static_pad("src") is None:
+            continue  # a tee: request pads only
         element.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, late(element.get_name().split("-")[-1]))
     sink.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, late("preview"))
 
