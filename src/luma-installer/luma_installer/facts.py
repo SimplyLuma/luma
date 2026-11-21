@@ -123,6 +123,9 @@ def rpm_identity(report, desktop):
 
 def forget_artwork(sha256):
     """Drop what reviewing a package file cached about it; its application is being removed."""
+    import base64
+    import hashlib
+    import json
     root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "luma/installer/artwork"
     cache = root / (sha256 + "-v2.json")
     try:

@@ -527,6 +527,22 @@ class Exports(unittest.TestCase):
             self.assertNotIn("--open-url", exports["command"])
 
 
+class ReviewCache(unittest.TestCase):
+    def test_removal_drops_what_reviewing_the_package_cached(self):
+        import base64
+        import hashlib
+        from luma_installer import facts
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CACHE_HOME": directory}):
+            root = Path(directory) / "luma/installer/artwork"
+            root.mkdir(parents=True)
+            picture = b"picture"
+            (root / f"{SHA}-v2.json").write_text(json.dumps({"entry": {}, "artwork": base64.b64encode(picture).decode(), "suffix": ".png"}))
+            (root / (hashlib.sha256(picture).hexdigest() + ".png")).write_bytes(picture)
+            facts.forget_artwork(SHA)
+            self.assertFalse((Path(directory) / "luma").exists() and any((Path(directory) / "luma").rglob("*")))
+            facts.forget_artwork(SHA)  # nothing cached: nothing to do
+
+
 class RefFolders(unittest.TestCase):
     def test_a_deleted_ref_leaves_no_folder_named_for_its_application(self):
         from luma_installer.app_store import Store
