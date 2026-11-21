@@ -391,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if values.action == "rollback":
             capsule_refresh.rollback(str(_record(values.application_id)["application_id"]), "Rolled back on request.")
-            print("Rolled back to the previous capsule.")
+            print("Rolled back to the previous version.")
             return 0
         if values.action == "updates":
             print(json.dumps(update_states(values.application_id), indent=2, sort_keys=True))

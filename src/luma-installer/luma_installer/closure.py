@@ -776,6 +776,11 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
             log.run("update userland", sandbox_in_tree(root, [
                 "env", "LUMA_SOURCES=" + "\n".join(userland.sources_at(spec.stamp)),
                 "LUMA_FOREIGN=" + " ".join(spec.foreign_architectures), "sh", "-c", DEB_BASE_SCRIPT], binds=common))
+    if spec.package_file or spec.added:
+        # A vendor's package registers its repository while it is installed, and converts its signing
+        # key with gpg when gpg is there (VS Code). Without it the source is written and its key is
+        # not: the repository is "not signed" for ever after and no update from the vendor arrives.
+        log.run("signing tool", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", "gpg"], binds=common), check=False)
     before = snapshot_files(root, DEB_SOURCE_PATHS)
     binds = list(common)
     if spec.added and spec.from_repository:
