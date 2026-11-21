@@ -111,9 +111,7 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
         if path:
             return [Element("filesrc", f"{prefix}-src", {"location": path}),
                     Element("decodebin", f"{prefix}-decode"),
-                    Element("videoconvert", f"{prefix}-convert"),
-                    Element("imagefreeze", f"{prefix}-freeze", {"is-live": True}),
-                    Element("capsfilter", f"{prefix}-rate", {"caps": f"video/x-raw,framerate={FPS}/1"})]
+                    Element("videoconvert", f"{prefix}-convert")]  # a still: frozen once uploaded
         pattern = {"display": "smpte100", "window": "bar", "camera": "ball"}.get(kind, "smpte")
         return [Element("videotestsrc", f"{prefix}-src", {"is-live": True, "pattern": pattern}),
                 Element("capsfilter", f"{prefix}-caps",
@@ -121,9 +119,7 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
     if kind == "image":
         return [Element("filesrc", f"{prefix}-src", {"location": widget.source.get("path", "")}),
                 Element("decodebin", f"{prefix}-decode"),
-                Element("videoconvert", f"{prefix}-convert"),
-                Element("imagefreeze", f"{prefix}-freeze", {"is-live": True}),
-                Element("capsfilter", f"{prefix}-rate", {"caps": f"video/x-raw,framerate={FPS}/1"})]
+                Element("videoconvert", f"{prefix}-convert")]  # a still: frozen once uploaded
     # do-timestamp: PipeWire's own times aren't the pipeline's; stamping on arrival keeps the mixer in step.
     # resend-last + keepalive: a still screen (no damage, no new frames) keeps its picture.
     props = {"always-copy": False, "keepalive-time": 1000, "resend-last": True, "do-timestamp": True}
@@ -156,6 +152,21 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
     return head
 
 
+def is_still(widget: Widget, fake: bool) -> bool:
+    """A picture decoded once (an image, or a fake source's stand-in picture)."""
+    if fake:
+        return bool(widget.source.get("fake-image")) and not widget.source.get("fake-silent")
+    return widget.kind == "image"
+
+
+def freeze(prefix: str) -> list[Element]:
+    """A still picture repeated at the canvas rate on the GPU: uploaded and converted once, then the
+    same texture every frame (the mixer needs a picture per frame from every layer)."""
+    return [Element("imagefreeze", f"{prefix}-freeze", {"is-live": True}),
+            Element("capsfilter", f"{prefix}-rate", {"caps": f"video/x-raw(memory:GLMemory),format=RGBA,"
+                                                              f"framerate={FPS}/1"})]
+
+
 def flip_method(widget: Widget) -> str:
     """A camera shown as a mirror (the way people see themselves) or as others see it."""
     return "horizontal-flip" if widget.source.get("mirror") else "none"
@@ -185,6 +196,8 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
         Element("glcolorconvert", f"{prefix}-glconvert"),
         Element("capsfilter", f"{prefix}-rgba", {"caps": "video/x-raw(memory:GLMemory),format=RGBA"}),
     ]
+    if is_still(widget, fake):
+        elements += freeze(prefix)
     if widget.kind == "camera":
         elements.append(Element("glvideoflip", f"{prefix}-flip", {"method": flip_method(widget)}))
     elements += [
@@ -197,7 +210,7 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
 
 #: A frameless picture widget's card: a quiet neutral grey (ARGB for videotestsrc) and its word.
 PLACEHOLDER_COLOR = 0xFF3A3E46
-PLACEHOLDER_FPS = FPS  # at the canvas rate: a resize shows every frame
+PLACEHOLDER_FPS = FPS
 
 
 def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int = 0) -> Chain:
@@ -210,8 +223,9 @@ def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int =
     scale = min(1.0, 1280 / max(width, height))  # a card, not a full-size picture: the box scales it
     cw, ch = max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2)
     font = max(10, round(min(cw, ch) / 9))
+    # Drawn once (one buffer, the text rendered and uploaded once), then frozen on the GPU.
     elements = [
-        Element("videotestsrc", f"{prefix}-src", {"is-live": True, "pattern": "solid-color",
+        Element("videotestsrc", f"{prefix}-src", {"num-buffers": 1, "pattern": "solid-color",
                                                    "foreground-color": PLACEHOLDER_COLOR}),
         Element("capsfilter", f"{prefix}-caps", {"caps": f"video/x-raw,format=BGRA,width={cw},height={ch},"
                                                           f"framerate={PLACEHOLDER_FPS}/1"}),
@@ -223,6 +237,7 @@ def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int =
         Element("glupload", f"{prefix}-upload"),
         Element("glcolorconvert", f"{prefix}-glconvert"),
         Element("capsfilter", f"{prefix}-rgba", {"caps": "video/x-raw(memory:GLMemory),format=RGBA"}),
+        *freeze(prefix),
         Element("lumaframe", f"{prefix}-frame", frame_props(widget)),
     ]
     return Chain(elements, "mixer", mixer_pad_props(widget, zorder))
