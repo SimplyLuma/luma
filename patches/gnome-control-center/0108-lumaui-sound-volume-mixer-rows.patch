@@ -8,16 +8,17 @@ grid of channel strips. The hero is the Sound page's: a tile per output of
 org.projectluma.AudioDevices1 (label, detail and a glyph by kind), four to
 a line and wrapping, the default one raised; a press makes another the
 default through the sound adapter's out key (CFSINKS now maps a node name
-to that key's id). Under them the output's volume and a 32-segment
-LumaAudioMeter in the slider's column.
+to that key's id). Under them the output's volume and its level in the
+slider's column: a LumaAudioMeter without zones, 32 segments 5 px tall,
+3 px apart and 2 px round.
 
-Playing now is one hairline card with a LumaUI LumaMediaRow per listed
+Playing now is a Settings group with a LumaUI LumaMediaRow per listed
 app: artwork and badge, title, "App · artist" or "App · Paused at 14:02",
 the transport the player offers, volume, mute, a 28-segment level, and the
 output picker (LumaUI's menu on the row's chip: the main output first,
 then every output; raised while the app is sent elsewhere). Other sounds
-are Settings slider rows for the entries the service marks other (System
-sounds, Messages, Phone). Without a listed app there is no Playing now
+are Settings slider rows in the same kind of group for the entries the
+service marks other (System sounds, Phone). Without a listed app there is no Playing now
 card. Apps that are not listed, and "Default" under an app, are gone.
 
 Up and Down move from one volume to the next. Volume writes keep one call
@@ -26,7 +27,9 @@ only while the page is mapped in a window that is not suspended.
 
 The page needs the service at version 3 and shows its unavailable state
 below that. Sound's row is always Volume mixer; the adapter's mixer flag
-and its proxy go. The fixture lists the page (54 pages).
+and its proxy go. The fixture lists the page (54 pages), and a fixture
+that carries CFMIX (the service's outputs, applications and levels as
+JSON) is drawn from it without the bus.
 ---
 diff --git a/shell/cc-luma-live-sound.c b/shell/cc-luma-live-sound.c
 index c036de4..4f00c7e 100644
@@ -166,10 +169,10 @@ index f18d48c..fda09ff 100644
    for (guint i = 0; i < G_N_ELEMENTS (numbers); i++) {
      JsonNode *n = cc_luma_fixture_get (model, numbers[i]);
 diff --git a/shell/cc-luma-view-mixer.c b/shell/cc-luma-view-mixer.c
-index 8d56a82..a84f7a6 100644
+index 8d56a82..5256674 100644
 --- a/shell/cc-luma-view-mixer.c
 +++ b/shell/cc-luma-view-mixer.c
-@@ -1,18 +1,18 @@
+@@ -1,18 +1,21 @@
  /* SPDX-License-Identifier: GPL-2.0-or-later */
 -/* Sound › Volume mixer: the default output and every app with sound, each
 - * with its volume, a live level, mute and (apps) the output it plays on.
@@ -188,7 +191,7 @@ index 8d56a82..a84f7a6 100644
 - * (mapped, in a window that is not suspended). */
 + * The hero is the Sound page's: a tile per output (the default one raised, a
 + * press makes another the default), the output's volume and a live level.
-+ * "Playing now" is one card with a LumaUI LumaMediaRow per playing app: its
++ * "Playing now" is a Settings group with a LumaUI LumaMediaRow per playing app: its
 + * artwork, title and transport, its volume and level, and the output it
 + * plays on. "Other sounds" are Settings rows for the volumes that stay while
 + * silent (System sounds, Messages, Phone).
@@ -197,11 +200,14 @@ index 8d56a82..a84f7a6 100644
 + * model the Shell's Sound page draws; the output's volume and the switch of
 + * output are the sound adapter's (vol and out, cc-luma-live-sound.c). Rows
 + * change in place as the service reports. Levels are watched only while the
-+ * page is on screen (mapped, in a window that is not suspended). */
++ * page is on screen (mapped, in a window that is not suspended).
++ *
++ * A fixture that carries CFMIX (the service's outputs, applications and
++ * levels as JSON) is drawn from it and asks nothing of the bus. */
  #include "cc-luma-view-devices.h"
  #include "cc-luma-sound.h"
  #include <gio/gdesktopappinfo.h>
-@@ -21,44 +21,58 @@
+@@ -21,44 +24,59 @@
  #define DEVICES_NAME "org.projectluma.AudioDevices"
  #define DEVICES_PATH "/org/projectluma/AudioDevices"
  #define DEVICES_IFACE "org.projectluma.AudioDevices1"
@@ -267,6 +273,7 @@ index 8d56a82..a84f7a6 100644
    GCancellable *cancel;
 -  GPtrArray *strips;     /* app strips, the service's order */
 -  Strip *device;
++  gboolean fixture;      /* drawn from the fixture's CFMIX: no service */
 +  GPtrArray *blocks;     /* playing apps, the service's order */
 +  GPtrArray *rows;       /* other sounds */
    GVariant *outputs;     /* aa{sv} from GetOutputs */
@@ -275,7 +282,7 @@ index 8d56a82..a84f7a6 100644
    guint watch;
    char *watched;
    guint watch_serial;
-@@ -67,72 +81,18 @@ struct _Mixer {
+@@ -67,72 +85,18 @@ struct _Mixer {
  };
  
  static void sync_watch (Mixer *m);
@@ -353,7 +360,7 @@ index 8d56a82..a84f7a6 100644
  }
  
  static void
-@@ -142,122 +102,178 @@ set_label (GtkWidget *label, const char *text)
+@@ -142,122 +106,177 @@ set_label (GtkWidget *label, const char *text)
      gtk_label_set_text (GTK_LABEL (label), text);
  }
  
@@ -512,13 +519,12 @@ index 8d56a82..a84f7a6 100644
 -      if (g_strcmp0 (s->id, id) == 0) return s;
 +      if (!*out.name) continue;
 +      GtkWidget *tile = cc_luma_dev_choice_card (out.glyph, out.label, out.detail, out.is_default);
-+      /* A long name takes a second line; neither line widens the tile. */
++      /* Four tiles fit a narrow window: a long name or detail ends in …, the whole of it on hover. */
 +      GtkWidget *words = gtk_widget_get_next_sibling (gtk_widget_get_first_child (gtk_button_get_child (GTK_BUTTON (tile))));
-+      gtk_label_set_wrap (GTK_LABEL (words), TRUE);
-+      gtk_label_set_wrap_mode (GTK_LABEL (words), PANGO_WRAP_WORD_CHAR);
-+      gtk_label_set_lines (GTK_LABEL (words), 2);
 +      gtk_label_set_ellipsize (GTK_LABEL (words), PANGO_ELLIPSIZE_END);
 +      gtk_label_set_ellipsize (GTK_LABEL (gtk_widget_get_next_sibling (words)), PANGO_ELLIPSIZE_END);
++      g_autofree char *whole = *out.detail ? g_strdup_printf ("%s · %s", out.label, out.detail) : g_strdup (out.label);
++      gtk_widget_set_tooltip_text (tile, whole);
 +      g_object_set_data_full (G_OBJECT (tile), "cf-mix-node", g_strdup (out.name), g_free);
 +      gtk_accessible_update_property (GTK_ACCESSIBLE (tile), GTK_ACCESSIBLE_PROPERTY_LABEL, out.label, -1);
 +      g_signal_connect (tile, "clicked", G_CALLBACK (tile_clicked), m);
@@ -611,7 +617,7 @@ index 8d56a82..a84f7a6 100644
  static void
  logged (GObject *proxy, GAsyncResult *result, gpointer data)
  {
-@@ -268,48 +284,83 @@ logged (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -268,48 +287,83 @@ logged (GObject *proxy, GAsyncResult *result, gpointer data)
  }
  
  static void
@@ -721,7 +727,7 @@ index 8d56a82..a84f7a6 100644
  static void
  choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
  {
-@@ -320,321 +371,367 @@ choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
+@@ -320,321 +374,375 @@ choose_output (GSimpleAction *action, GVariant *parameter, Mixer *m)
                         G_DBUS_CALL_FLAGS_NONE, -1, NULL, logged, "output");
  }
  
@@ -968,20 +974,6 @@ index 8d56a82..a84f7a6 100644
 +/* Whether a report may move a volume the person is not holding. */
 +static gboolean
 +settled (Channel *c)
-+{
-+  return g_get_monotonic_time () - c->touched > TOUCH_HOLD && !c->in_flight && isnan (c->pending);
-+}
-+
-+/* One entry of GetApplications. */
-+typedef struct {
-+  const char *id, *name, *icon, *kind, *desktop, *output, *title, *artist, *art;
-+  double volume;
-+  gint64 position;
-+  gboolean muted, playing, listed, other, can_play, can_pause, can_next, can_previous;
-+} App;
-+
-+static void
-+block_apply (Channel *c, const App *app)
  {
 -  Strip *s = g_new0 (Strip, 1);
 -  s->m = m;
@@ -1003,9 +995,41 @@ index 8d56a82..a84f7a6 100644
 -  gtk_widget_add_css_class (s->readout, "cf-mix-readout");
 -  s->title = strip_label (name, "row-title", FALSE, !m->rows);
 -  if (!m->rows)
++  return g_get_monotonic_time () - c->touched > TOUCH_HOLD && !c->in_flight && isnan (c->pending);
++}
++
++/* One entry of GetApplications. */
++typedef struct {
++  const char *id, *name, *icon, *kind, *desktop, *output, *title, *artist, *art;
++  const char *icon_asset, *art_asset; /* a fixture's artwork, by its id */
++  double volume;
++  gint64 position;
++  gboolean muted, playing, listed, other, can_play, can_pause, can_next, can_previous;
++} App;
++
++static void
++block_apply (Channel *c, const App *app)
++{
 +  LumaMediaRow *row = LUMA_MEDIA_ROW (c->root);
 +  Mixer *m = c->m;
 +  if (g_strcmp0 (c->name, app->name) != 0 || g_strcmp0 (c->icon, app->icon) != 0)
++    {
++      g_autoptr (GIcon) gicon = app_icon (app->icon, app->desktop);
++      g_set_str (&c->name, app->name);
++      g_set_str (&c->icon, app->icon);
++      luma_media_row_set_app (row, app->name, gicon);
++    }
++  if (g_strcmp0 (c->art, app->art) != 0)
++    {
++      g_autoptr (GFile) file = *app->art ? g_file_new_for_uri (app->art) : NULL;
++      g_set_str (&c->art, app->art);
++      luma_media_row_set_art_file (row, file);
++    }
++  luma_media_row_set_title (row, *app->title ? app->title : app->name);
++  g_autofree char *line = NULL;
++  if (app->playing)
++    line = *app->artist ? g_strdup_printf ("%s · %s", app->name, app->artist) : g_strdup (app->name);
++  else if (app->position >= 0)
      {
 -      /* A column's name takes two lines, always, so every strip's parts stay level. */
 -      gtk_label_set_wrap (GTK_LABEL (s->title), TRUE);
@@ -1016,10 +1040,8 @@ index 8d56a82..a84f7a6 100644
 -      /* A one-line name sits on the lower line, against where it plays. */
 -      gtk_label_set_yalign (GTK_LABEL (s->title), 1.0);
 -      gtk_widget_add_css_class (s->title, "cf-mix-name");
-+      g_autoptr (GIcon) gicon = app_icon (app->icon, app->desktop);
-+      g_set_str (&c->name, app->name);
-+      g_set_str (&c->icon, app->icon);
-+      luma_media_row_set_app (row, app->name, gicon);
++      g_autofree char *at = position_text (app->position);
++      line = g_strdup_printf ("%s · Paused at %s", app->name, at);
      }
 -  s->sub = strip_label ("", "row-subtitle", TRUE, !m->rows);
 -  s->mute = luma_icon_button_new ("volume-2", name);
@@ -1027,31 +1049,6 @@ index 8d56a82..a84f7a6 100644
 -  gtk_widget_add_css_class (s->mute, "cf-mix-key");
 -  g_signal_connect (s->mute, "clicked", G_CALLBACK (mute_clicked), s);
 -  if (id)
-+  if (g_strcmp0 (c->art, app->art) != 0)
-     {
--      g_autofree char *label = g_strdup_printf ("Output for %s", name);
--      s->route = luma_icon_button_new ("speaker", label);
--      luma_icon_button_set_size (GTK_BUTTON (s->route), "row");
--      gtk_widget_add_css_class (s->route, "cf-mix-key");
--      g_signal_connect (s->route, "clicked", G_CALLBACK (route_clicked), s);
-+      g_autoptr (GFile) file = *app->art ? g_file_new_for_uri (app->art) : NULL;
-+      g_set_str (&c->art, app->art);
-+      luma_media_row_set_art_file (row, file);
-     }
--  GtkWidget *face = strip_face (lucide, gicon, m->rows, &s->icon);
--  GtkWidget *keys = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
--  gtk_widget_add_css_class (keys, "cf-mix-keys");
--  gtk_box_append (GTK_BOX (keys), s->mute);
--  if (s->route) gtk_box_append (GTK_BOX (keys), s->route);
-+  luma_media_row_set_title (row, *app->title ? app->title : app->name);
-+  g_autofree char *line = NULL;
-+  if (app->playing)
-+    line = *app->artist ? g_strdup_printf ("%s · %s", app->name, app->artist) : g_strdup (app->name);
-+  else if (app->position >= 0)
-+    {
-+      g_autofree char *at = position_text (app->position);
-+      line = g_strdup_printf ("%s · Paused at %s", app->name, at);
-+    }
 +  else
 +    line = g_strdup_printf ("%s · Paused", app->name);
 +  luma_media_row_set_line (row, line);
@@ -1072,17 +1069,28 @@ index 8d56a82..a84f7a6 100644
 +  double upper;
 +  luma_volume_slider_get_range (slider, NULL, &upper);
 +  if (upper != maximum (m))
-+    {
+     {
+-      g_autofree char *label = g_strdup_printf ("Output for %s", name);
+-      s->route = luma_icon_button_new ("speaker", label);
+-      luma_icon_button_set_size (GTK_BUTTON (s->route), "row");
+-      gtk_widget_add_css_class (s->route, "cf-mix-key");
+-      g_signal_connect (s->route, "clicked", G_CALLBACK (route_clicked), s);
 +      luma_volume_slider_set_range (slider, 0, maximum (m));
 +      luma_volume_slider_set_unity (slider, maximum (m) > 100 ? 100 : NAN);
-+    }
+     }
+-  GtkWidget *face = strip_face (lucide, gicon, m->rows, &s->icon);
+-  GtkWidget *keys = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+-  gtk_widget_add_css_class (keys, "cf-mix-keys");
+-  gtk_box_append (GTK_BOX (keys), s->mute);
+-  if (s->route) gtk_box_append (GTK_BOX (keys), s->route);
 +  if (settled (c)) luma_media_row_set_volume (row, MIN (c->volume, maximum (m)));
 +  g_set_str (&c->output, app->output);
 +  block_sync_output (c);
 +}
 +
 +/* ── an other sound's row ────────────────────────────────────────────── */
-+
+ 
+-  if (m->rows)
 +static void
 +row_moved (GtkRange *range, Channel *c)
 +{
@@ -1090,8 +1098,7 @@ index 8d56a82..a84f7a6 100644
 +  set_label (c->readout, text);
 +  volume_changed (c, gtk_range_get_value (range));
 +}
- 
--  if (m->rows)
++
 +static const char *
 +other_words (const char *id)
 +{
@@ -1107,9 +1114,11 @@ index 8d56a82..a84f7a6 100644
 +{
 +  Channel *c = channel_new (m, app->id, TRUE);
 +  gboolean system = g_str_equal (app->id, SYSTEM_ID);
-+  g_autoptr (GIcon) gicon = system ? NULL : app_icon (app->icon, app->desktop);
++  g_autoptr (GIcon) gicon = system || app->icon_asset ? NULL : app_icon (app->icon, app->desktop);
 +  GtkWidget *lead;
-+  if (gicon)
++  if (!system && app->icon_asset)
++    lead = cf_lead_image (m->v, app->icon_asset); /* a fixture's artwork, as every Settings row draws it */
++  else if (gicon)
      {
 -      /* v70 row anatomy (lead, words, controls), then the volume under the words. */
 -      s->root = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
@@ -1134,9 +1143,13 @@ index 8d56a82..a84f7a6 100644
 -      gtk_box_append (GTK_BOX (level), s->readout);
 -      gtk_box_append (GTK_BOX (s->root), line);
 -      gtk_box_append (GTK_BOX (s->root), level);
-+      lead = gtk_image_new_from_gicon (gicon);
-+      gtk_image_set_pixel_size (GTK_IMAGE (lead), 30);
-+      gtk_widget_add_css_class (lead, "cf-img");
++      /* The app's icon in a row's 30 px frame, as cf_lead_image frames a fixture's artwork. */
++      GtkWidget *image = gtk_image_new_from_gicon (gicon);
++      lead = gtk_fixed_new ();
++      gtk_image_set_pixel_size (GTK_IMAGE (image), 30);
++      gtk_widget_set_size_request (image, 30, 30);
++      gtk_widget_add_css_class (image, "cf-img");
++      gtk_fixed_put (GTK_FIXED (lead), image, 0, 0);
 +      gtk_widget_set_valign (lead, GTK_ALIGN_CENTER);
      }
    else
@@ -1320,7 +1333,8 @@ index 8d56a82..a84f7a6 100644
 +      if (gtk_widget_get_parent (c->root) != GTK_WIDGET (card))
 +        {
 +          gtk_box_insert_child_after (card, c->root, previous);
-+          cf_rows_prepare (m->v, c->root);
++          /* While the page is being drawn (a fixture's rows) the page prepares every row itself. */
++          if (!m->v->rendering) cf_rows_prepare (m->v, c->root);
 +        }
 +      else
 +        gtk_box_reorder_child_after (card, c->root, previous);
@@ -1341,7 +1355,7 @@ index 8d56a82..a84f7a6 100644
    GVariantIter iter;
    GVariant *entry;
    g_variant_iter_init (&iter, apps);
-@@ -642,88 +739,71 @@ apply_applications (Mixer *m, GVariant *apps)
+@@ -642,88 +750,79 @@ apply_applications (Mixer *m, GVariant *apps)
      {
        g_autoptr (GVariantDict) dict = g_variant_dict_new (entry);
        g_variant_unref (entry);
@@ -1381,6 +1395,13 @@ index 8d56a82..a84f7a6 100644
 +      g_variant_dict_lookup (dict, "can_pause", "b", &app.can_pause);
 +      g_variant_dict_lookup (dict, "can_go_next", "b", &app.can_next);
 +      g_variant_dict_lookup (dict, "can_go_previous", "b", &app.can_previous);
++      g_variant_dict_lookup (dict, "icon_asset", "&s", &app.icon_asset);
++      g_variant_dict_lookup (dict, "art_asset", "&s", &app.art_asset);
++      g_autofree char *icon_path = app.icon_asset ? cc_luma_fixture_asset_path (m->v->model, app.icon_asset, NULL) : NULL;
++      g_autofree char *art_path = app.art_asset ? cc_luma_fixture_asset_path (m->v->model, app.art_asset, NULL) : NULL;
++      g_autofree char *art_uri = art_path ? g_filename_to_uri (art_path, NULL, NULL) : NULL;
++      if (icon_path) app.icon = icon_path;
++      if (art_uri) app.art = art_uri;
 +      if (!app.name || !*app.name) app.name = app.id;
 +      if (!app.icon) app.icon = "";
 +      if (!app.output) app.output = "";
@@ -1474,6 +1495,7 @@ index 8d56a82..a84f7a6 100644
 -  gtk_widget_set_visible (m->unavailable, !available);
 -  for (GtkWidget *c = gtk_widget_get_first_child (m->page); c; c = gtk_widget_get_next_sibling (c))
 -    if (c != m->unavailable) gtk_widget_set_visible (c, available);
++  if (m->fixture) return TRUE;
 +  g_autofree char *owner = m->proxy ? g_dbus_proxy_get_name_owner (m->proxy) : NULL;
 +  g_autoptr (GVariant) version = m->proxy ? g_dbus_proxy_get_cached_property (m->proxy, "Version") : NULL;
 +  return owner && version && g_variant_is_of_type (version, G_VARIANT_TYPE_UINT32) &&
@@ -1481,7 +1503,7 @@ index 8d56a82..a84f7a6 100644
  }
  
  static void
-@@ -735,7 +815,7 @@ applications_read (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -735,7 +834,7 @@ applications_read (GObject *proxy, GAsyncResult *result, gpointer data)
    Mixer *m = data;
    if (error) { g_warning ("Volume mixer: %s", error->message); return; }
    g_autoptr (GVariant) apps = g_variant_get_child_value (reply, 0);
@@ -1490,7 +1512,7 @@ index 8d56a82..a84f7a6 100644
  }
  
  static void
-@@ -748,7 +828,11 @@ outputs_read (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -748,7 +847,11 @@ outputs_read (GObject *proxy, GAsyncResult *result, gpointer data)
    if (error) { g_warning ("Volume mixer: %s", error->message); return; }
    g_clear_pointer (&m->outputs, g_variant_unref);
    m->outputs = g_variant_get_child_value (reply, 0);
@@ -1503,7 +1525,7 @@ index 8d56a82..a84f7a6 100644
  }
  
  static void
-@@ -758,24 +842,19 @@ read_outputs (Mixer *m)
+@@ -758,24 +861,19 @@ read_outputs (Mixer *m)
  }
  
  static void
@@ -1538,7 +1560,7 @@ index 8d56a82..a84f7a6 100644
  }
  
  static void
-@@ -785,35 +864,50 @@ proxy_signal (GDBusProxy *proxy, const char *sender, const char *signal, GVarian
+@@ -785,35 +883,50 @@ proxy_signal (GDBusProxy *proxy, const char *sender, const char *signal, GVarian
      {
        guint32 watch;
        g_autoptr (GVariant) values = NULL;
@@ -1603,7 +1625,7 @@ index 8d56a82..a84f7a6 100644
  }
  
  static void
-@@ -825,18 +919,21 @@ proxy_ready (GObject *source, GAsyncResult *result, gpointer data)
+@@ -825,18 +938,21 @@ proxy_ready (GObject *source, GAsyncResult *result, gpointer data)
    Mixer *m = data;
    if (!proxy)
      {
@@ -1630,7 +1652,7 @@ index 8d56a82..a84f7a6 100644
  
  static void
  watched (GObject *proxy, GAsyncResult *result, gpointer data)
-@@ -844,17 +941,17 @@ watched (GObject *proxy, GAsyncResult *result, gpointer data)
+@@ -844,17 +960,17 @@ watched (GObject *proxy, GAsyncResult *result, gpointer data)
    WatchCall *c = data;
    g_autoptr (GError) error = NULL;
    g_autoptr (GVariant) reply = g_dbus_proxy_call_finish (G_DBUS_PROXY (proxy), result, &error);
@@ -1652,7 +1674,7 @@ index 8d56a82..a84f7a6 100644
    g_object_unref (c->proxy);
    g_free (c);
  }
-@@ -873,7 +970,7 @@ unwatch (Mixer *m)
+@@ -873,29 +989,39 @@ unwatch (Mixer *m)
  static gboolean
  on_screen (Mixer *m)
  {
@@ -1661,7 +1683,9 @@ index 8d56a82..a84f7a6 100644
  }
  
  static void
-@@ -882,20 +979,29 @@ sync_watch (Mixer *m)
+ sync_watch (Mixer *m)
+ {
++  if (m->fixture) return;
    g_autoptr (GStrvBuilder) builder = g_strv_builder_new ();
    if (on_screen (m) && service_ready (m))
      {
@@ -1698,7 +1722,7 @@ index 8d56a82..a84f7a6 100644
    c->proxy = g_object_ref (m->proxy);
    c->serial = m->watch_serial;
    g_dbus_proxy_call (m->proxy, "WatchLevels", g_variant_new ("(^as)", targets), G_DBUS_CALL_FLAGS_NONE, -1, NULL, watched, c);
-@@ -908,9 +1014,9 @@ suspended_changed (GtkWindow *window, GParamSpec *pspec, Mixer *m)
+@@ -908,9 +1034,9 @@ suspended_changed (GtkWindow *window, GParamSpec *pspec, Mixer *m)
  }
  
  static void
@@ -1710,7 +1734,7 @@ index 8d56a82..a84f7a6 100644
    if (m->window != GTK_WIDGET (root))
      {
        if (m->window) g_clear_signal_handler (&m->suspended, m->window);
-@@ -921,7 +1027,7 @@ page_mapped (GtkWidget *page, Mixer *m)
+@@ -921,7 +1047,7 @@ page_mapped (GtkWidget *page, Mixer *m)
  }
  
  static void
@@ -1719,7 +1743,7 @@ index 8d56a82..a84f7a6 100644
  {
    sync_watch (m);
  }
-@@ -937,125 +1043,119 @@ mixer_free (Mixer *m)
+@@ -937,30 +1063,40 @@ mixer_free (Mixer *m)
    if (m->window) g_clear_signal_handler (&m->suspended, m->window);
    g_clear_weak_pointer (&m->window);
    g_clear_pointer (&m->outputs, g_variant_unref);
@@ -1736,7 +1760,12 @@ index 8d56a82..a84f7a6 100644
 - * side-by-side wells. */
 -static GtkWidget *
 -section (const char *heading, GtkWidget *content)
--{
++/* The fixture's CFMIX: "outputs" and "applications" as GetOutputs and
++ * GetApplications return them (icon_asset and art_asset name the fixture's
++ * artwork), and "levels", a meter position for each target. */
++static gboolean
++fixture_load (Mixer *m)
+ {
 -  GtkWidget *box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 -  GtkWidget *h6 = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 -  GtkWidget *label = cf_text (heading, NULL);
@@ -1751,10 +1780,31 @@ index 8d56a82..a84f7a6 100644
 -  gtk_box_append (GTK_BOX (box), h6);
 -  gtk_box_append (GTK_BOX (box), card);
 -  return box;
--}
--
++  if (cc_luma_fixture_is_live (m->v->model)) return FALSE;
++  JsonNode *mix = json_object_get_member (cc_luma_fixture_get_data (m->v->model), "CFMIX");
++  JsonObject *data = mix && JSON_NODE_HOLDS_OBJECT (mix) ? json_node_get_object (mix) : NULL;
++  if (!data || !json_object_has_member (data, "outputs") || !json_object_has_member (data, "applications")) return FALSE;
++  g_autoptr (GVariant) outputs = json_gvariant_deserialize (json_object_get_member (data, "outputs"), "aa{sv}", NULL);
++  g_autoptr (GVariant) apps = json_gvariant_deserialize (json_object_get_member (data, "applications"), "aa{sv}", NULL);
++  if (outputs) g_variant_ref_sink (outputs);
++  if (apps) g_variant_ref_sink (apps);
++  if (!outputs || !apps) return FALSE;
++  m->fixture = TRUE;
++  m->outputs = g_variant_ref (outputs);
++  sync_tiles (m);
++  apply_applications (m, apps);
++  JsonNode *levels = json_object_get_member (data, "levels");
++  if (levels && JSON_NODE_HOLDS_OBJECT (levels))
++    {
++      g_autoptr (GList) targets = json_object_get_members (json_node_get_object (levels));
++      for (GList *l = targets; l; l = l->next)
++        show_level (m, l->data, json_object_get_double_member (json_node_get_object (levels), l->data));
++    }
++  return TRUE;
+ }
+ 
  void
- cc_luma_view_sound_mixer_render (View *v)
+@@ -968,94 +1104,110 @@ cc_luma_view_sound_mixer_render (View *v)
  {
    Mixer *m = g_new0 (Mixer, 1);
    m->v = v;
@@ -1799,9 +1849,12 @@ index 8d56a82..a84f7a6 100644
 +  gtk_grid_attach (GTK_GRID (m->volume), luma_ui_icon_new ("volume-2"), 0, 0, 1, 1);
 +  gtk_grid_attach (GTK_GRID (m->volume), m->range, 1, 0, 1, 1);
 +  gtk_grid_attach (GTK_GRID (m->volume), m->readout, 2, 0, 1, 1);
++  /* An output's level: 32 segments 5 px tall, 3 px apart and 2 px round, one green. */
 +  m->meter = g_object_ref_sink (LUMA_AUDIO_METER (luma_audio_meter_new (1)));
 +  luma_audio_meter_set_horizontal (m->meter, TRUE);
 +  luma_audio_meter_set_segments (m->meter, HERO_SEGMENTS);
++  luma_audio_meter_set_segment_shape (m->meter, 5, 3, 2);
++  luma_audio_meter_set_zones (m->meter, FALSE);
 +  gtk_widget_add_css_class (GTK_WIDGET (m->meter), "cf-mix-meter");
 +  gtk_grid_attach (GTK_GRID (m->volume), GTK_WIDGET (m->meter), 1, 1, 1, 1);
 +  gtk_box_append (GTK_BOX (hero), m->outs);
@@ -1823,7 +1876,6 @@ index 8d56a82..a84f7a6 100644
 -  m->unavailable = cf_off_hero (v, "volume-x", "The volume mixer isn’t available", "Each app’s volume needs the Luma sound service", NULL, NULL);
 +  m->others_card = cf_group (v, "Other sounds", NULL);
 +  m->others = gtk_widget_get_parent (GTK_WIDGET (m->others_card));
-+  gtk_widget_add_css_class (GTK_WIDGET (m->others_card), "cf-mix-others");
 +
 +  /* Nothing shows until the service answers. */
    gtk_widget_set_visible (m->unavailable, FALSE);
@@ -1884,6 +1936,7 @@ index 8d56a82..a84f7a6 100644
 +  g_signal_connect (m->anchor, "unmap", G_CALLBACK (page_unmapped), m);
 +  g_set_weak_pointer (&v->mixer, m->anchor);
 +  gtk_box_append (v->body, m->anchor);
++  if (fixture_load (m)) return;
    g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE, NULL, DEVICES_NAME, DEVICES_PATH,
                              DEVICES_IFACE, m->cancel, proxy_ready, m);
  }
@@ -1947,10 +2000,10 @@ index 1cb8431..f3aece0 100644
    cc_luma_dev_prune (v);
  }
 diff --git a/shell/luma-settings-devices.css b/shell/luma-settings-devices.css
-index 1cb46a0..e05b0ca 100644
+index 1cb46a0..f3295ba 100644
 --- a/shell/luma-settings-devices.css
 +++ b/shell/luma-settings-devices.css
-@@ -46,30 +46,18 @@ button.cf-mon.on { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @lu
+@@ -46,30 +46,13 @@ button.cf-mon.on { box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @lu
  .cf-meter > box.on { background: @luma_good; }
  .cf-meter.in { min-width: 170px; margin: 0; }
  
@@ -1978,18 +2031,13 @@ index 1cb46a0..e05b0ca 100644
 -.cf-mixer .cf-card > box > .cf-mix-row:first-child { background-image: none; }
 -.cf-mix-level { margin-left: 37px; } /* the track starts on the words' edge (the knob's half less the track's) */
 -.cf-mix-level > .cf-mix-readout { margin-top: 3px; }
-+/* Volume mixer (cc-luma-view-mixer.c): the Sound hero with a live level, a hairline card of LumaUI media rows, slider rows.
-+ * The level is LumaUI's segmented LumaAudioMeter in the slider's column (where .cf-meter sits), coloured as a media row's. */
-+.cf-vol > box.lumaui-audio-meter.cf-mix-meter { min-height: 5px; margin-top: 12px; }
-+box.lumaui-audio-meter.cf-mix-meter > .lumaui-meter-track { color: @luma_control_fill; }
-+box.lumaui-audio-meter.cf-mix-meter > .lumaui-meter-low, box.lumaui-audio-meter.cf-mix-meter > .lumaui-meter-mid { color: @luma_good; }
-+box.lumaui-audio-meter.cf-mix-meter > .lumaui-meter-high, box.lumaui-audio-meter.cf-mix-meter > .lumaui-meter-peak { color: @luma_mark_yellow; }
-+/* Playing now: one hairline card (v70 .cfcard), a hairline 16 in between blocks. */
-+.cf-card.cf-mix-now { background: none; box-shadow: inset 0 0 0 1px @luma_menu_border; }
++/* Volume mixer (cc-luma-view-mixer.c): the Sound hero with a live level, a group of LumaUI media rows, slider rows.
++ * The level is LumaUI's LumaAudioMeter (an output's: one green) in the slider's column, where .cf-meter sits. */
++.cf-vol > box.lumaui-audio-meter.cf-mix-meter { margin-top: 12px; }
++/* Playing now: a hairline 16 in between blocks; an app's badge is ringed in the group's well. */
++.cf-mix-now { --lumaui-media-row-surface: @luma_well; }
 +.cf-mix-now > lumaui-media-row:not(:first-child) { background-image: linear-gradient(@luma_menu_border, @luma_menu_border);
 +  background-repeat: no-repeat; background-size: calc(100% - 32px) 1px; background-position: 16px 0; }
-+/* Other sounds: a wide page's sliders are 180 */
-+.cf-mix-others .cf-rg:not(.phone) scale { min-width: 180px; }
  
  /* Power (v70 .cfbat, .cfcell, .cfbars) */
  .cf-cell { min-width: 124px; min-height: 46px; padding: 4px; border-radius: 13px; box-shadow: inset 0 0 0 2px @luma_faint; }

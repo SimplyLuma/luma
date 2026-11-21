@@ -688,29 +688,6 @@
       ]
     },
     {
-      "name": "sound-mixer",
-      "about": "Settings page: Volume mixer (the simulator's sound-mixer concept in place of Volume by app)",
-      "spec": [
-        {
-          "click": "[data-cfp=\"sound\"]"
-        },
-        {
-          "click": "[data-cfp=\"sound-levels\"]"
-        },
-        {
-          "eval": "(async () => { const text = async u => (await fetch(u)).text(); const style = document.createElement('style'); style.textContent = await text('sound-mixer/mixer.css'); document.head.appendChild(style); (0, eval)(await text('sound-mixer/mixer.js')); await MX.load(); document.querySelector('#w-settings .cfpage').outerHTML = MX.settings(); })()",
-          "wait": 700
-        }
-      ],
-      "gtk": [
-        {
-          "env": {
-            "LUMA_SETTINGS_PAGE": "sound-mixer"
-          }
-        }
-      ]
-    },
-    {
       "name": "shortcuts",
       "about": "Settings page: Keyboard shortcuts",
       "spec": [
@@ -1615,7 +1592,6 @@
     "nightlight",
     "sound-levels",
     "sound-alert",
-    "sound-mixer",
     "shortcuts",
     "defaults",
     "media",

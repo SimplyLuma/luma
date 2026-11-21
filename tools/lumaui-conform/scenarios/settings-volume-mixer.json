@@ -1,0 +1,94 @@
+{
+  "app": "settings-volume-mixer",
+  "title": "Settings: Volume mixer",
+  "about": "Settings › Sound › Volume mixer (gnome-control-center 0108, the whole patch series) against the published reference (Design Center mockups/sound-mixer/settings.html), drawn from the fixture's CFMIX.",
+  "spec": {
+    "root": "design-center",
+    "url": "mockups/sound-mixer/settings.html",
+    "window": "#stage",
+    "ready": "html[data-ready]",
+    "exclude": []
+  },
+  "gtk": {
+    "module": "settings",
+    "fixtures": [
+      "tests/fixtures/settings-v70.json",
+      "assets/wallpapers/prism.png",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-documents.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-browser.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-messages.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-files.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-music.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-mail.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-photos.svg",
+      "assets/wallpapers/meadow.png",
+      "assets/wallpapers/ember.png",
+      "src/luma-platform/ui/luma-creatives.png",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-calendar.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-phone.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-clock.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-app-store.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-maps.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-settings.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-calculator.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-contacts.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-notes.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-terminal.svg",
+      "assets/icon-theme/Prairie/scalable/apps/org.projectluma.Tasks.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-video-editor.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-camera.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-ari.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-designer.svg",
+      "assets/icon-theme/Prairie/scalable/apps/org.projectluma.VoiceMemos.svg",
+      "assets/icon-theme/Prairie/scalable/apps/luma-v3-weather.svg"
+    ],
+    "env": {
+      "LUMA_SETTINGS_FIXTURE": "{run}/fixtures/settings-v70.json",
+      "GSETTINGS_BACKEND": "memory",
+      "XDG_CURRENT_DESKTOP": "GNOME"
+    },
+    "app_id": "org.luma.Settings.Fixture",
+    "binary": "bin/gnome-control-center",
+    "build": {
+      "patched_upstream": "gnome-control-center",
+      "patches": "patches/gnome-control-center",
+      "meson_options": [
+        "-Dtests=false",
+        "-Ddocumentation=false",
+        "-Dmalcontent=false",
+        "-Dsnap=false",
+        "-Dlocation-services=enabled"
+      ]
+    }
+  },
+  "states": [
+    {
+      "name": "mixer",
+      "about": "Two apps playing, one paused on headphones",
+      "spec": [],
+      "gtk": [
+        {
+          "env": {
+            "LUMA_SETTINGS_PAGE": "sound-mixer"
+          }
+        }
+      ]
+    }
+  ],
+  "phone_states": [],
+  "groups": [
+    {
+      "name": "page header",
+      "spec": "#stage .cfhd"
+    },
+    {
+      "name": "hero",
+      "spec": "#stage .cfhero"
+    },
+    {
+      "name": "row groups",
+      "spec": "#stage .cfgrp"
+    }
+  ],
+  "pairs": []
+}

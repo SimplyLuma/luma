@@ -359,8 +359,9 @@ of `org.projectluma.AudioDevices1` version 3 (`GetOutputs`: `label`,
 `detail`, a glyph by `kind`), four to a line and wrapping (two on a phone),
 the default one raised; a press makes another the default through the sound
 adapter's `out` key (`CFSINKS` maps a node name to that key's id). Under
-them the output's volume and a 32-segment `LumaAudioMeter` in the slider's
-column. "Playing now" is one hairline card with a LumaUI `LumaMediaRow` for
+them the output's volume and its level in the slider's column, a
+`LumaAudioMeter` without zones (32 segments 5 px tall, 3 px apart, 2 px
+round). "Playing now" is a Settings group with a LumaUI `LumaMediaRow` for
 each app the service marks `listed`: artwork and badge, the title, "App ·
 artist" or "App · Paused at 14:02", the transport its player offers
 (`ApplicationPlayPause`, `ApplicationNext`, `ApplicationPrevious`), volume
@@ -368,12 +369,15 @@ and mute, a press on the artwork (`RaiseApplication`), a 28-segment level,
 and the output picker on the row's chip: LumaUI's menu, "Main output
 (Speakers)" first, then every output (`SetApplicationOutput`); the chip is
 raised while the app is sent elsewhere. "Other sounds" are Settings slider
-rows for the entries marked `other` (System sounds, Messages, Phone). With
+rows, in the same kind of group, for the entries marked `other` (System
+sounds, Phone). With
 no listed app the card is left out and the header says "Nothing playing".
 Up and Down move from one volume to the next. Levels are watched
 (`WatchLevels`) for the listed apps and `output:` only while the page is
 mapped in a window that is not suspended. Below version 3 the page shows
 its unavailable state. Sound's row is always Volume mixer; the adapter's
 `mixer` flag and its proxy go. `tests/fixtures/settings-v70.json` and
-`settings-tv.json` list the page, so a fixture run opens it against
-whatever owns the service's name on its bus.
+`settings-tv.json` list the page and carry `CFMIX` (the service's outputs,
+applications and levels as JSON, with `icon_asset` and `art_asset` naming
+the fixture's artwork): a fixture with it is drawn from it and asks nothing
+of the bus; one without it asks whatever owns the service's name.
