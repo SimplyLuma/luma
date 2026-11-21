@@ -680,11 +680,16 @@ def _exports(root: Path, spec: Spec, files: str) -> dict[str, object]:
         from .backends import _launcher_score
     except ImportError:  # the scoring lives with today's installer
         _launcher_score = None
+    readable = []
     for path in paths:
         try:
-            contents = (root / path.lstrip("/")).read_text(errors="replace")
+            readable.append((path, (root / path.lstrip("/")).read_text(errors="replace")))
         except OSError:
             continue
+    # A launcher the package hides from the applications list (a link handler: VS Code's
+    # "code --open-url") is not how the application is opened, whatever its name scores.
+    shown = [entry for entry in readable if "NoDisplay=true" not in entry[1] and "Hidden=true" not in entry[1]]
+    for path, contents in shown or readable:
         score = _launcher_score(spec.package or spec.app_id, path, contents) if _launcher_score else 0
         if score > best_score:
             best, best_score = path, score

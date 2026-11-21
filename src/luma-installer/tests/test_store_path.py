@@ -509,6 +509,24 @@ class DesktopSchemas(unittest.TestCase):
             self.assertEqual([path.name for path in holder.iterdir()], [made.name])
 
 
+class Exports(unittest.TestCase):
+    def test_a_hidden_link_handler_is_not_the_applications_launcher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launchers = root / "usr/share/applications"
+            launchers.mkdir(parents=True)
+            (launchers / "com.vendor.Editor.UrlHandler.desktop").write_text(
+                "[Desktop Entry]\nType=Application\nName=Editor - URL Handler\nExec=/usr/share/editor/editor --open-url %U\n"
+                "NoDisplay=true\nMimeType=x-scheme-handler/editor;\n")
+            (launchers / "com.vendor.Editor.desktop").write_text(
+                "[Desktop Entry]\nType=Application\nName=Editor\nExec=/usr/share/editor/editor %F\nIcon=editor\n")
+            spec = closure.Spec(app_id="deb-editor-1", kind="deb", userland="debian-13", package="editor")
+            files = "/usr/share/applications/com.vendor.Editor.UrlHandler.desktop\n/usr/share/applications/com.vendor.Editor.desktop\n"
+            exports = closure._exports(root, spec, files)
+            self.assertEqual(exports["desktop_path"], "/usr/share/applications/com.vendor.Editor.desktop")
+            self.assertNotIn("--open-url", exports["command"])
+
+
 class RefFolders(unittest.TestCase):
     def test_a_deleted_ref_leaves_no_folder_named_for_its_application(self):
         from luma_installer.app_store import Store
