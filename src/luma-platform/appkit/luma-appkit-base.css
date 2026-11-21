@@ -2536,9 +2536,9 @@ lumaui-media-row.compact > box.lumaui-media-row-badge { border-radius: var(--lum
 lumaui-media-row label.lumaui-media-row-title { color: @luma_ink; }
 lumaui-media-row box.lumaui-media-row-line { margin-top: 2px; }
 lumaui-media-row.compact box.lumaui-media-row-line { margin-top: 1px; }
-/* In a panel the line is the panel's second ink. */
+/* In a panel the line is the panel's second ink (the reference's .62 ink over its lighter sheet). */
 lumaui-media-row.compact box.lumaui-media-row-line,
-lumaui-media-row.compact box.lumaui-media-row-line > label { color: alpha(@luma_ink, .62); }
+lumaui-media-row.compact box.lumaui-media-row-line > label { color: alpha(@luma_ink, .57); }
 lumaui-media-row lumaui-media-row-level { margin-right: var(--lumaui-media-row-level-end); color: @luma_state; }
 lumaui-media-row lumaui-media-row-level:dir(rtl) { margin-right: 0; margin-left: var(--lumaui-media-row-level-end); }
 lumaui-media-row lumaui-media-row-level.off { color: @luma_faint; }
