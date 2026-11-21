@@ -35,6 +35,14 @@ from .undo import History  # noqa: E402
 from .model import FORMATS, KINDS, ModelError, Project, ProjectStore, Widget  # noqa: E402
 
 
+CANVAS_GLYPHS = {"landscape": "rectangle-horizontal", "vertical": "smartphone"}
+
+
+def canvas_name(fmt: str) -> str:
+    """"Landscape", "Vertical": a canvas by its short name."""
+    return FORMATS[fmt][0].split()[0]
+
+
 def lumaui_set_class(widget: Gtk.Widget, name: str, on: bool) -> None:
     (widget.add_css_class if on else widget.remove_css_class)(name)
 
@@ -427,38 +435,22 @@ class StreamyWindow(AppWindow):
         audio.append(audio_scroll)
         # The preview is an inset like the others (same radius, gaps and surface), the canvas fitted
         # inside it with room on every side.
-        # The canvases, in the Preview's header: on = composited and shown. Until both can be shown side
-        # by side, turning one on shows it instead of the other; the last one on stays on.
-        from luma_appkit import ToggleChip
-
+        # The canvases: on = composited and shown. Each preview panel has the dock's own header (glyph and
+        # title, ⋯ and × at the right); on and off live in its ⋯ and in app menu › Canvases, and "Live"
+        # follows the title while an output takes the canvas. The last one on stays on.
         saved = self.settings.get("canvases")
         if os.environ.get("STREAMY_CANVASES"):  # check runs: which canvases start on
             saved = os.environ["STREAMY_CANVASES"].split(",")
         self.canvas_on: set[str] = {f for f in saved if f in FORMATS} if isinstance(saved, list) and saved else \
             set(FORMATS)
-        #: Each preview panel's header: its own canvas's chip as its title (on = composited), and the other
-        #: canvas's chip while that one is off (to turn it on, which opens its panel).
-        self.canvas_chips: list[tuple[str, ToggleChip]] = []
-        self._chip_owner: dict[ToggleChip, str] = {}
         self.preview_tiles: dict[str, DockTile] = {}
+        self._live_marks: dict[str, Gtk.Widget] = {}
         for fmt in FORMATS:
-            chips = []
-            for key in FORMATS:
-                chip = ToggleChip(FORMATS[key][0].split()[0], icon="rectangle-horizontal" if key == "landscape"
-                                  else "smartphone", active=key in self.canvas_on,
-                                  on_toggle=lambda on, k=key: self._canvas_chip(k, on))
-                self.canvas_chips.append((key, chip))
-                self._chip_owner[chip] = fmt
-                chips.append(chip)
-            chips.sort(key=lambda c, f=fmt: self._chip_key(c) != f)
-            tile = DockTile(fmt, FORMATS[fmt][0].split()[0], "rectangle-horizontal" if fmt == "landscape"
-                            else "smartphone", self.arranges[fmt], main=True, actions=chips, **self._closable())
+            tile = DockTile(fmt, canvas_name(fmt), CANVAS_GLYPHS[fmt], self.arranges[fmt], main=True,
+                            more=lambda f=fmt: self._canvas_more(f), **self._closable())
             tile.add_css_class("streamy-preview")
-            # Its own chip (glyph and name in one pill) is its title.
-            tile.title_label.set_visible(False)
-            glyph = tile.header.get_first_child()
-            if glyph is not None and glyph.has_css_class("lumaui-dock-tile-icon"):
-                glyph.set_visible(False)
+            if not hasattr(tile, "set_status"):
+                self._live_marks[fmt] = self._live_mark(tile)
             tile.connect("notify::width", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
             tile.connect("notify::height", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
             self.preview_tiles[fmt] = tile
@@ -499,7 +491,7 @@ class StreamyWindow(AppWindow):
             if fmt not in self.canvas_on and self._is_open(fmt) and hasattr(self.dock, "close_tile"):
                 self.dock.close_tile(fmt)
         lumaui_set_class(self.preview_tiles[self.project.format], "streamy-editing", True)
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
 
     @staticmethod
     def _closable() -> dict:
@@ -547,7 +539,7 @@ class StreamyWindow(AppWindow):
         self.outputs = Outputs()
         self.dest_store = DestinationStore.load(data_dir() / "destinations.json")
         self.dest_panel = DestinationsPanel(self.dest_store, center=self.center, host=self.host, outputs=self.outputs,
-                                            on_changed=self._sync_canvas_chips)
+                                            on_changed=self._sync_canvas_state)
         self.stats_panel = StatsPanel(outputs=self.outputs, store=self.dest_store)
         self.chat_panel = ChatPanel(center=self.center, host=self.host, path=data_dir() / "chat.json",
                                     outputs=self.outputs)
@@ -562,7 +554,7 @@ class StreamyWindow(AppWindow):
     def _row_state(self, _outputs, _row_id: str, _state: str, _words: str) -> None:
         """A destination row changed: taps open or close, chips show what is live, the bar follows."""
         self.engine.sync_taps()
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
         live = self.outputs.live()
         self.stats_panel.set_live(live)
         self.chat_panel.set_live(live)
@@ -612,7 +604,7 @@ class StreamyWindow(AppWindow):
             other = next((f for f in self._shown_canvases()), None)
             if other is not None:
                 self._edit_canvas(other)
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
 
     def _canvas_used(self, fmt: str) -> list[str]:
         """What sends canvas ``fmt`` now, by name."""
@@ -655,7 +647,7 @@ class StreamyWindow(AppWindow):
             self._sync_canvases()
         else:
             self._canvas_chip(key, key not in self.canvas_on)
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
 
     def _canvas_off(self, key: str, *, end: bool = False) -> None:
         if end:
@@ -2131,8 +2123,8 @@ class StreamyWindow(AppWindow):
 
     # ── Audio inset ──
 
-    #: A strip's narrowest: under it the Audio inset scrolls, so it never pushes the Widgets/Audio seam.
-    STRIP_WIDTH = 220
+    #: A strip's narrowest: it shrinks to this (its words ellipsize) and never runs past the panel's edge.
+    STRIP_WIDTH = 132
 
     def _refresh_audio(self) -> None:
         """A strip per sound, each a comfortable fixed width, in a row that wraps: the mute and monitor keys,
@@ -2146,7 +2138,7 @@ class StreamyWindow(AppWindow):
         self.audio_empty.set_visible(not sounds)
         box.get_parent().get_parent().set_visible(bool(sounds))
         for w in sounds:
-            strip = Gtk.Box(hexpand=False, halign=Gtk.Align.START)
+            strip = Gtk.Box(hexpand=True, halign=Gtk.Align.FILL)
             strip.set_size_request(self.STRIP_WIDTH, -1)
             strip.add_css_class("streamy-strip")
             strip.update_property([Gtk.AccessibleProperty.LABEL], [w.name])
@@ -2180,6 +2172,8 @@ class StreamyWindow(AppWindow):
             line.add_css_class("streamy-strip-head")
             name = TypeLabel(w.name, role="row-title")
             name.set_hexpand(True)
+            name.label.set_ellipsize(3)
+            name.label.set_width_chars(1)
             line.append(name)
             level = TypeLabel("Muted" if w.muted else "−∞", role="caption")
             level.add_css_class("streamy-strip-db")
@@ -2191,6 +2185,7 @@ class StreamyWindow(AppWindow):
             device = TypeLabel(self.source_summary(w), role="caption")
             device.set_hexpand(True)
             device.label.set_ellipsize(3)
+            device.label.set_width_chars(1)
             sub.append(device)
             gain = TypeLabel(self._db_words(w), role="caption")
             gain.add_css_class("streamy-strip-db")
@@ -2359,7 +2354,7 @@ class StreamyWindow(AppWindow):
         else:
             items.append(BarAction("radio-tower", "Go live", primary=True, on_activate=self.go_live))
         # The canvases are the Preview header's chips now.
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
         self.center.show_bar(items)
 
     def _arrange_menu(self) -> list:
@@ -2966,14 +2961,48 @@ class StreamyWindow(AppWindow):
 
     # ── Canvas format and layouts ──
 
-    def _chip_key(self, chip) -> str:
-        return next(k for k, c in self.canvas_chips if c is chip)
+    @staticmethod
+    def _live_mark(tile) -> Gtk.Widget:
+        """Until DockTile has set_status: a red dot and "Live" right after the title; the mark takes the
+        title's slack so ⋯ and × stay at the header's right edge."""
+        mark = Gtk.Box(spacing=6, hexpand=True, halign=Gtk.Align.START, valign=Gtk.Align.CENTER)
+        mark.add_css_class("streamy-live-mark")
+        dot = Gtk.Box(valign=Gtk.Align.CENTER)
+        dot.add_css_class("lumaui-toggle-chip-live")
+        mark.append(dot)
+        mark.append(Gtk.Label(label="Live"))
+        mark.get_first_child().set_visible(False)
+        mark.get_last_child().set_visible(False)
+        tile.title_label.set_hexpand(False)
+        tile.header.insert_child_after(mark, tile.title_label)
+        return mark
 
-    def _sync_canvas_chips(self) -> None:
-        for key, chip in getattr(self, "canvas_chips", []):
-            chip.set_active(key in self.canvas_on)
-            chip.set_live(bool(self._canvas_used(key)))
-            chip.set_visible(key == self._chip_owner.get(chip) or key not in self.canvas_on)
+    def _canvas_more(self, fmt: str) -> list:
+        """A canvas panel's ⋯: turn it off, and the other canvas on or off ("· Off" while it is off)."""
+        from luma_appkit import MenuItem
+
+        rows = []
+        for key in sorted(FORMATS, key=lambda k: k != fmt):
+            name = canvas_name(key)
+            if key in self.canvas_on:
+                rows.append(MenuItem(f"Turn off {name}", icon="eye-off",
+                                     on_activate=lambda k=key: self._canvas_chip(k, False)))
+            else:
+                rows.append(MenuItem(f"{name} · Off", icon=CANVAS_GLYPHS[key], note="Turn on",
+                                     on_activate=lambda k=key: self._canvas_chip(k, True)))
+        return rows
+
+    def _sync_canvas_state(self) -> None:
+        """Canvas state as words: "Live" after a canvas panel's title while an output takes it."""
+        for fmt, tile in getattr(self, "preview_tiles", {}).items():
+            live = bool(self._canvas_used(fmt))
+            if hasattr(tile, "set_status"):
+                tile.set_status("Live" if live else None, tone="live")
+                continue
+            mark = self._live_marks.get(fmt)
+            if mark is not None:
+                mark.get_first_child().set_visible(live)
+                mark.get_last_child().set_visible(live)
 
     def set_format(self, key: str) -> None:
         """Edit canvas ``key`` (turning it on, its panel open, when it was off)."""

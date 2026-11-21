@@ -23,7 +23,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
-    ActionCenter, ActionEditor, AppIcon, BarAction, IconOnlyButton, ListEmptyState, ModeSwitch, NavigationList,
+    ActionCenter, ActionEditor, AppIcon, BarAction, IconOnlyButton, ModeSwitch, NavigationList,
     PanelHeading, PanelRow, RowLead, SidebarRow, Switch, TextButton, Toast, ToggleChip,
 )
 from luma_appkit.action_bubble import FloatingMenu, MenuItem  # noqa: E402
@@ -94,7 +94,7 @@ class DestinationsPanel(Gtk.Box):
         scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
         scroll.set_child(self.nav)
         self.append(scroll)
-        add = IconOnlyButton("plus", "Add destination", on_click=self.add_menu)
+        add = IconOnlyButton("plus", "Add a destination", on_click=self.add_menu)
         self.actions = [add]
         self._narrow = False
         from luma_appkit import WidthWatch
@@ -147,13 +147,9 @@ class DestinationsPanel(Gtk.Box):
             self.list.remove(child)
             child = following
         self._rows.clear()
-        streams = [r for r in self.store.rows if r.is_stream]
-        for row in self.store.rows:
+        # The recording is the first row; destinations added with + follow it in the order they came.
+        for row in sorted(self.store.rows, key=lambda r: r.is_stream):
             self.list.append(self._row(row))
-        if not streams:
-            empty = Gtk.ListBoxRow(selectable=False, activatable=False)
-            empty.set_child(ListEmptyState("Add where Go live sends: Twitch, YouTube, Kick, TikTok or a server"))
-            self.list.insert(empty, 0)
 
     def _row(self, row: Destination) -> SidebarRow:
         chip = ToggleChip(canvas_label(row.canvas), icon=CANVAS_ICONS[row.canvas], active=True,
