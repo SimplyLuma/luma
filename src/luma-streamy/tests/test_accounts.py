@@ -12,6 +12,10 @@ from luma_streamy import accounts  # noqa: E402
 from luma_streamy.accounts import SignInError, TwitchSignIn, YouTubeSignIn  # noqa: E402
 
 
+#: The browser coming back to the loopback answer, never through a proxy.
+LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 class FakeHttp:
     """Answers from a script: (method, url prefix) -> list of (status, body), consumed in order."""
 
@@ -95,7 +99,7 @@ class YouTubeTest(unittest.TestCase):
 
         # The browser coming back (loopback only; no network).
         def browser():
-            urllib.request.urlopen(f"{query['redirect_uri']}/?code=c0de&state={query['state']}", timeout=5).read()
+            LOCAL.open(f"{query['redirect_uri']}/?code=c0de&state={query['state']}", timeout=5).read()
 
         threading.Thread(target=browser, daemon=True).start()
         tokens = flow.wait(timeout=10)
@@ -111,7 +115,7 @@ class YouTubeTest(unittest.TestCase):
         flow = YouTubeSignIn(http=FakeHttp({}))
         url = flow.begin()
         redirect = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))["redirect_uri"]
-        threading.Thread(target=lambda: urllib.request.urlopen(f"{redirect}/?code=x&state=wrong", timeout=5).read(),
+        threading.Thread(target=lambda: LOCAL.open(f"{redirect}/?code=x&state=wrong", timeout=5).read(),
                          daemon=True).start()
         with self.assertRaises(SignInError):
             flow.wait(timeout=10)

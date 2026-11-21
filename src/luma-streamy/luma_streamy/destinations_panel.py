@@ -101,6 +101,20 @@ class DestinationsPanel(Gtk.Box):
             outputs.connect("tick", lambda *_a: self._refresh_live())
         self.refresh()
 
+    #: Below this panel width a row's canvas chip shows its glyph alone, so the status keeps its words.
+    NARROW = 440
+
+    def do_size_allocate(self, width: int, height: int, baseline: int) -> None:
+        Gtk.Box.do_size_allocate(self, width, height, baseline)
+        narrow = width < self.NARROW
+        if narrow != getattr(self, "_narrow", None):
+            self._narrow = narrow
+            GLib.idle_add(lambda: self._fit_chips() and False)
+
+    def _fit_chips(self) -> None:
+        for widget in self._rows.values():
+            widget.chip.label.set_visible(not getattr(self, "_narrow", False))
+
     # ── Keyring ──
 
     @property
@@ -167,6 +181,7 @@ class DestinationsPanel(Gtk.Box):
         hold.connect("pressed", lambda _g, x, y, r=row, w=widget: self._menu(r, w, x, y))
         widget.add_controller(hold)
         widget.chip, widget.switch = chip, switch
+        chip.label.set_visible(not getattr(self, "_narrow", False))
         self._rows[row.id] = widget
         return widget
 

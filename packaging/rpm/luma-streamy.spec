@@ -64,6 +64,10 @@ Requires:       pipewire-gstreamer
 # Software H.264 for computers without a hardware encoder.
 Requires:       gstreamer1-plugin-openh264
 Requires:       xdg-desktop-portal
+# Chat sockets and sign-in (Soup 3 through GObject introspection).
+Requires:       libsoup3
+# SRT destinations.
+Recommends:     gstreamer1-plugins-bad-free-extras
 
 %description
 Streamy puts displays, windows, cameras, images and sound together in scenes
@@ -85,6 +89,7 @@ install -d %{buildroot}%{python3_sitelib}/luma_streamy
 install -m 0644 luma_streamy/*.py %{buildroot}%{python3_sitelib}/luma_streamy/
 install -D -m 0755 bin/streamy %{buildroot}%{_bindir}/streamy
 install -D -m 0644 style/streamy.css %{buildroot}%{_datadir}/luma-streamy/streamy.css
+install -D -m 0644 -t %{buildroot}%{_datadir}/luma-streamy/logos data/logos/*.svg
 install -D -m 0644 data/org.projectluma.Streamy.desktop \
   %{buildroot}%{_datadir}/applications/org.projectluma.Streamy.desktop
 install -D -m 0644 data/org.projectluma.Streamy.metainfo.xml \

@@ -55,20 +55,28 @@ class SignInError(RuntimeError):
     """Why signing in stopped, in words a person reads."""
 
 
+def config_file() -> dict:
+    """The first oauth.json found ({} when none)."""
+    home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    for path in (home / "streamy" / "oauth.json", Path("/etc/luma-streamy/oauth.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
 def config(platform: str) -> dict:
     env = {"twitch": {"client_id": os.environ.get("STREAMY_TWITCH_CLIENT_ID")},
            "youtube": {"client_id": os.environ.get("STREAMY_YOUTUBE_CLIENT_ID"),
                        "client_secret": os.environ.get("STREAMY_YOUTUBE_CLIENT_SECRET")}}[platform]
     if env.get("client_id"):
         return {k: v for k, v in env.items() if v}
-    home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
-    for path in (home / "streamy" / "oauth.json", Path("/etc/luma-streamy/oauth.json")):
-        try:
-            found = json.loads(path.read_text(encoding="utf-8")).get(platform)
-        except (OSError, ValueError, AttributeError):
-            continue
-        if isinstance(found, dict) and found.get("client_id"):
-            return found
+    found = config_file().get(platform)
+    if isinstance(found, dict) and found.get("client_id"):
+        return found
     return {"client_id": PLACEHOLDER}
 
 
