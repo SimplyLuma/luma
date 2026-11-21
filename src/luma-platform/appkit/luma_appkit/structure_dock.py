@@ -184,6 +184,15 @@ def tree_dock(node, key: str, target: str, zone: str):
     return _replace_slot(rest, slot, new)
 
 
+def _split_holding(node, key: str):
+    """The split that has `key` itself as one side, if any."""
+    if isinstance(node, str) or node is None or "tabs" in node:
+        return None
+    if key in (node["start"], node["end"]):
+        return node
+    return _split_holding(node["start"], key) or _split_holding(node["end"], key)
+
+
 def tree_dock_edge(node, key: str, edge: str, share: float = EDGE_SHARE):
     """Move tile `key` to the dock's own `edge`: a full-height column (left, right) or a full-width row
     (top, bottom) taking `share` of the dock; everything else keeps its arrangement in the rest."""
@@ -204,7 +213,8 @@ class DockTile(Gtk.Box):
 
     def __init__(self, key: str, title: str, icon: str, child: Gtk.Widget, *, main: bool = False,
                  bare: bool = False, fit: bool = False, phone: str | None = None,
-                 actions: Iterable[Gtk.Widget] = (), more: Callable[[], list] | None = None) -> None:
+                 actions: Iterable[Gtk.Widget] = (), more: Callable[[], list] | None = None,
+                 closable: bool = False) -> None:
         """``bare``: the content alone, without the well or the header (the stage an app's work is
         shown on, such as a preview); it still takes its place in the layout and receives drops.
         ``fit``: as large as the content asks for along its split, up to the dock's ``fit_max``;
@@ -222,6 +232,8 @@ class DockTile(Gtk.Box):
             raise ValueError('only a tile that fits its content stays inline on a phone (fit=True)')
         self.key, self.title, self.icon, self.main, self.fit, self.phone = key, title, icon, main, fit, phone
         self.more = more
+        #: Its More menu has "Close panel" (``Dock.on_close`` may refuse); ``Dock.open_tile`` brings it back.
+        self.closable = closable
         self.dock: Dock | None = None
         self.add_css_class("lumaui-dock-tile")
         self.set_overflow(Gtk.Overflow.HIDDEN)
@@ -296,6 +308,10 @@ class DockTile(Gtk.Box):
             if rows and moves:
                 rows.append(None)
             rows += moves
+        if self.dock is not None and self.closable and self.dock.can_close(self.key):
+            if rows:
+                rows.append(None)
+            rows.append(MenuItem("Close panel", icon="x", on_activate=lambda: self.dock.request_close(self.key)))
         if rows:
             FloatingMenu(rows, label=f"More for {self.title.lower()}").popup(button)
 
@@ -337,8 +353,10 @@ class Dock(Gtk.Overlay):
             self.tiles[tile.key] = tile
         if not self.tiles:
             raise ValueError("a dock has at least one tile")
-        mains = [t for t in self.tiles.values() if t.main]
-        self.main_key = mains[0].key if mains else next(iter(self.tiles))
+        #: Closed tiles and the place each last had: key -> {"beside", "edge", "share"}.
+        self._closed: dict[str, dict] = {}
+        #: Called with a tile's key before "Close panel" closes it; returning False keeps it open.
+        self.on_close: Callable[[str], bool | None] | None = None
         self.phone = False
         self._tree = None
         self._panes: list[tuple[Gtk.Paned, dict]] = []
@@ -367,6 +385,14 @@ class Dock(Gtk.Overlay):
         from .structure_adapt import WidthWatch
 
         self._width_watch = WidthWatch(self, on_tier=lambda tier: self._set_phone(tier == "phone"))
+
+    @property
+    def main_key(self) -> str:
+        """The main tile: the first open tile made with ``main=True`` (several may be: whichever is open
+        leads on a phone), else the first open tile."""
+        keys = tree_keys(self._tree) if getattr(self, "_tree", None) is not None else list(self.tiles)
+        mains = [k for k in keys if self.tiles[k].main]
+        return mains[0] if mains else (keys[0] if keys else next(iter(self.tiles)))
 
     # ── The island ──
 
@@ -400,8 +426,12 @@ class Dock(Gtk.Overlay):
         return tree
 
     def layout(self):
-        """The current arrangement as plain data (see the module's docs)."""
-        return self._copy(self._tree)
+        """The current arrangement as plain data (see the module's docs). With closed tiles it is
+        ``{"layout": tree, "closed": {key: {"beside", "edge", "share"}}}``."""
+        tree = self._copy(self._tree)
+        if not self._closed:
+            return tree
+        return {"layout": tree, "closed": {k: dict(v) for k, v in self._closed.items()}}
 
     @staticmethod
     def _copy(node):
@@ -444,9 +474,21 @@ class Dock(Gtk.Overlay):
         return clean
 
     def set_layout(self, layout) -> None:
-        seen: set[str] = set()
+        closed: dict[str, dict] = {}
+        if isinstance(layout, dict) and "layout" in layout:
+            for key, place in (layout.get("closed") or {}).items():
+                if key in self.tiles:
+                    closed[key] = {k: place[k] for k in ("beside", "edge", "share")
+                                   if isinstance(place, dict) and k in place}
+            layout = layout["layout"]
+        seen: set[str] = set(closed)
         tree = self._clean(layout, seen)
-        for key in self.tiles:  # tiles the layout doesn't name join at the end
+        if tree is None:  # every tile closed: the main one opens
+            first = next((k for k, t in self.tiles.items() if t.main), next(iter(self.tiles)))
+            closed.pop(first, None)
+            tree = first
+        self._closed = closed
+        for key in self.tiles:  # tiles the layout doesn't name (nor closes) join at the end
             if key not in seen:
                 tree = key if tree is None else self.split("h", 0.75, tree, key)
         self._tree = tree
@@ -757,6 +799,80 @@ class Dock(Gtk.Overlay):
         self._changed()
         if rearranged and self.on_rearrange is not None:
             self.on_rearrange(previous, self.layout())
+
+    # ── Closing and opening tiles ──
+
+    def is_open(self, key: str) -> bool:
+        return key in tree_keys(self._tree)
+
+    def can_close(self, key: str) -> bool:
+        """A tile can close while another stays open."""
+        return self.is_open(key) and len(tree_keys(self._tree)) > 1
+
+    def request_close(self, key: str) -> bool:
+        """A person's "Close panel": ``on_close(key)`` first (False keeps it), then close it."""
+        if not self.can_close(key):
+            return False
+        if self.on_close is not None and self.on_close(key) is False:
+            return False
+        self.close_tile(key)
+        return True
+
+    def close_tile(self, key: str) -> None:
+        """Take tile ``key`` out of the layout; its place is remembered for ``open_tile``."""
+        if not self.can_close(key):
+            return
+        self._closed[key] = self._place_of(key)
+        self._apply(tree_remove(self._tree, key), rearranged=True)
+
+    def open_tile(self, key: str, *, beside: str | None = None, edge: str = "right", size: int | None = None) -> None:
+        """Bring tile ``key`` back: at ``edge`` of ``beside``'s place (``"tabs"`` stacks it there), else
+        where it last was, else to the right of the main tile. ``size`` (px along the new split) sizes it."""
+        if key not in self.tiles or self.is_open(key):
+            return
+        place = self._closed.pop(key, {})
+        share = place.get("share") if beside is None else None
+        if beside is None and place.get("beside") in tree_keys(self._tree):
+            beside, edge = place["beside"], place.get("edge", "right")
+        if beside is None or not self.is_open(beside):
+            beside, edge = self.main_key, "right"
+        if edge not in ZONES:
+            raise ValueError(f"a tile opens at one of {ZONES}, not {edge!r}")
+        slot_widget = next((w for slot, w in self._slots if beside in (slot["tabs"] if isinstance(slot, dict)
+                                                                       else [slot])), None)
+        tree = tree_dock(self._tree, key, beside, edge)
+        split = _split_holding(tree, key)
+        if split is not None and edge != "tabs":
+            first = split["start"] == key
+            if size is not None and slot_widget is not None:
+                along = slot_widget.get_width() if split["split"] == "h" else slot_widget.get_height()
+                share = size / along if along > 0 else None
+            if share is not None:
+                share = min(0.95, max(0.05, share))
+                split["ratio"] = share if first else 1 - share
+        self._apply(tree, rearranged=True)
+
+    def _place_of(self, key: str) -> dict:
+        """Where tile ``key`` is: beside which tile, on which side, with what share of the split."""
+        def find(node, parent=None):
+            if node == key:
+                return parent
+            if isinstance(node, str):
+                return None
+            if "tabs" in node:
+                return node if key in node["tabs"] else None
+            return find(node["start"], node) or find(node["end"], node)
+
+        parent = find(self._tree)
+        if isinstance(parent, dict) and "tabs" in parent:
+            return {"beside": next(k for k in parent["tabs"] if k != key), "edge": "tabs"}
+        if not isinstance(parent, dict):
+            return {}
+        first = parent["start"] == key
+        other = parent["end"] if first else parent["start"]
+        edge = ({"h": "left", "v": "top"} if first else {"h": "right", "v": "bottom"})[parent["split"]]
+        share = parent["ratio"] if first else 1 - parent["ratio"]
+        return {"beside": tree_keys(other)[0], "edge": edge, "share": round(share, 4)}
 
     # ── Tab groups ──
 
@@ -1079,8 +1195,9 @@ class Dock(Gtk.Overlay):
                            column_spacing=8, row_spacing=8)
         keys.add_css_class("lumaui-dock-keys")
         inline = []
+        main_key = self.main_key
         for key, tile in self.tiles.items():
-            if key == self.main_key:
+            if key == main_key or key in self._closed:
                 continue
             if tile.phone == "inline":
                 inline.append(tile)  # at its own height under the main tile: nothing to open
@@ -1089,7 +1206,7 @@ class Dock(Gtk.Overlay):
                                    on_click=lambda k=key: self.open_drawer(k)))
         keys.set_visible(keys.get_first_child() is not None)
         box.append(keys)
-        main = self.tiles[self.main_key]
+        main = self.tiles[main_key]
         main.set_vexpand(True)
         box.append(main)
         for tile in inline:
