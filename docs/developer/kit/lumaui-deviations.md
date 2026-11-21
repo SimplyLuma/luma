@@ -181,7 +181,5 @@ Depot (`depot-redesign`) against the Design Center mockup:
 
 Settings › Sound › Volume mixer (`settings-volume-mixer`) against the Design Center reference page:
 
-- `mixer-no-messages-row`: the reference lists Messages under Other sounds. A message's alert is the Shell's event sound whichever app sent it, so it has no volume of its own; the page lists System sounds and Phone.
-- `mixer-no-messages-row-card`, `-phone`, `-icon`: what follows from it: the Other sounds group is one row (53 px) shorter, Phone sits where the reference draws Messages, and the Messages icon is not drawn.
 - `mixer-group-wells`, `-chip`: Playing now and Other sounds are the standard Settings group, a filled well, where the reference draws hairline cards on the page; a row's plain output picker is its fill over that well.
 - `mixer-tiles-taller`, `-below`: the output tiles are the Sound page's own, about 2 px taller than the reference's; the hero is that much taller and what follows sits up to 4 px lower.

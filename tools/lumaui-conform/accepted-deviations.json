@@ -639,41 +639,6 @@
       "gtk_value": "^18$"
     },
     {
-      "id": "mixer-no-messages-row",
-      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
-      "apps": ["settings-volume-mixer"],
-      "reason": "A message's alert is the Shell's event sound whichever app sent it, so it has no volume of its own: Other sounds lists System sounds and Phone, and the reference's Messages row is not drawn.",
-      "subject": "^text \"(Messages|New message sounds|90%)\"$",
-      "prop": "^missing$"
-    },
-    {
-      "id": "mixer-no-messages-row-card",
-      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
-      "apps": ["settings-volume-mixer"],
-      "reason": "mixer-no-messages-row: without the Messages row the Other sounds group is one row (53 px) shorter.",
-      "subject": "^card \"System sounds\"$",
-      "prop": "^size$",
-      "max_delta": 56
-    },
-    {
-      "id": "mixer-no-messages-row-phone",
-      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
-      "apps": ["settings-volume-mixer"],
-      "reason": "mixer-no-messages-row: Phone is the second row, where the reference draws Messages, so its words and percent sit one row (53 px) higher.",
-      "subject": "^text \"(Phone|Ringtone and calls|100%)\"$",
-      "prop": "^position$",
-      "max_delta": 56
-    },
-    {
-      "id": "mixer-no-messages-row-icon",
-      "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
-      "apps": ["settings-volume-mixer"],
-      "reason": "mixer-no-messages-row: the Messages row's app icon is not drawn.",
-      "subject": "^icon app-icon$",
-      "prop": "^missing$",
-      "max_count": 1
-    },
-    {
       "id": "mixer-group-wells",
       "doc": "lumaui-deviations.md: Settings Volume mixer (mixer-*)",
       "apps": ["settings-volume-mixer"],
