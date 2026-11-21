@@ -186,7 +186,7 @@ class LaunchAfterFailedMigration(unittest.TestCase):
              patch('luma_installer.launcher._launch_deb', return_value=0) as launch:
             self.assertEqual(launcher.main(['deb-steam-launcher-abc']), 0)
         launch.assert_called_once()
-        # The record as stored, with the category pair every launch settles first.
+        # The record as stored, with the identity every launch settles first.
         launched = launch.call_args[0][0]
         self.assertEqual({key: launched[key] for key in record}, record)
         self.assertIn('mcs_level', launched)

@@ -194,6 +194,13 @@ def remove(application_id: str, delete_data: bool = False) -> str:
                 Path.home() / ".local/share/luma/installer/data" / sha256,
                 Path.home() / ".local/share/luma/installer/data",
             )
+            if kind in {"deb", "rpm", "appimage", "portable"}:
+                # Its saved passwords are part of its data.
+                try:
+                    from . import capsule_identity, capsule_secrets
+                    capsule_secrets.forget(capsule_identity.keyring_tag(record))
+                except Exception:  # noqa: BLE001 - never a reason to keep the application
+                    pass
     remove_record(application_id)
     if kind == "snap":
         return "Removed. snapd manages the retained snapshot according to system policy."

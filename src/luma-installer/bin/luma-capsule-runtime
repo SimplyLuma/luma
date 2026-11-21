@@ -1,0 +1,6 @@
+#!/usr/bin/python3
+# Installed as /usr/libexec/luma-capsule-runtime/crun: Podman knows a runtime
+# by its file name, and this is crun with the application scoped.
+from luma_installer.capsule_scope import runtime_main
+
+raise SystemExit(runtime_main())

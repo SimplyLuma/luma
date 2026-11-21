@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.100%{?dist}
+Release:        1.luma.101%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -45,6 +45,11 @@ Requires:       policycoreutils
 Requires:       podman
 # PID 1 in every package capsule: reaps orphaned processes (podman --init).
 Requires:       catatonit
+# The capsule runtime is crun with the application scoped (capsule_scope).
+Requires:       crun
+# The application socket and what a client on it may do.
+Requires:       pipewire >= 1.2
+Requires:       wireplumber >= 0.5.9
 # Debian capsules reach the network through slirp4netns (backends._install_deb).
 Requires:       slirp4netns
 # Publisher repository keys and APT index signatures are checked with gpg.
@@ -167,6 +172,14 @@ printf 'enable luma-icon-plates.service\nenable luma-icon-plates.path\n' > %{bui
 install -D -m 0755 bin/luma-installer-service %{buildroot}%{_bindir}/luma-installer-service
 install -D -m 0755 bin/luma-capsule-open %{buildroot}%{_libexecdir}/luma-capsule-open
 install -D -m 0755 bin/luma-capsule-launch %{buildroot}%{_bindir}/luma-capsule-launch
+# crun with the application scoped; Podman knows a runtime by its file name.
+install -D -m 0755 bin/luma-capsule-runtime %{buildroot}%{_libexecdir}/luma-capsule-runtime/crun
+install -D -m 0644 data/pipewire/60-luma-application-socket.conf \
+  %{buildroot}%{_datadir}/pipewire/pipewire.conf.d/60-luma-application-socket.conf
+install -D -m 0644 data/pipewire/70-luma-application-access.conf \
+  %{buildroot}%{_datadir}/wireplumber/wireplumber.conf.d/70-luma-application-access.conf
+install -D -m 0644 data/pipewire/application-capture.lua \
+  %{buildroot}%{_datadir}/wireplumber/scripts/luma/application-capture.lua
 install -D -m 0755 bin/luma-app-data-broker %{buildroot}%{_libexecdir}/luma-app-data-broker
 install -D -m 0755 bin/luma-seed-app-baseline %{buildroot}%{_bindir}/luma-seed-app-baseline
 install -D -m 0644 data/luma-app-baseline.service %{buildroot}%{_unitdir}/luma-app-baseline.service
@@ -244,6 +257,12 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %files -f depot-trust.files
 %{_libexecdir}/luma-capsule-open
 %{_datadir}/selinux/packages/luma_application.cil
+%dir %{_libexecdir}/luma-capsule-runtime
+%{_libexecdir}/luma-capsule-runtime/crun
+%{_datadir}/pipewire/pipewire.conf.d/60-luma-application-socket.conf
+%{_datadir}/wireplumber/wireplumber.conf.d/70-luma-application-access.conf
+%dir %{_datadir}/wireplumber/scripts/luma
+%{_datadir}/wireplumber/scripts/luma/application-capture.lua
 %{_datadir}/applications/io.luma.Valet.desktop
 %{_datadir}/applications/io.luma.Install.desktop
 %license LICENSE.md
@@ -314,6 +333,50 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.101
+- Package capsules and sandboxed AppImages no longer reach the whole session.
+  ADR-052, step 1.
+- Keyring (capsule_secrets): the Secret Service is not let through the
+  filtered bus. A broker in the launcher owns a per-application name of the
+  same length on the session bus, and a relay in front of the application's
+  bus socket exchanges the two names message by message, so every client
+  (libsecret or direct D-Bus) finds org.freedesktop.secrets. The broker
+  forwards to the real service and adds the attribute luma:application to
+  every stored entry and every search; entries without it cannot be read,
+  changed or deleted, and the keyring cannot be locked, deleted or re-aliased.
+  Sessions are opened end to end, so secrets pass through encrypted. A record
+  written before this may, for 90 days, take over an older entry whose
+  attributes a search names in full; the entry stays visible to the session.
+  Removing an application with its data deletes its entries.
+- Accessibility: the capsule gets a filtered accessibility bus with the calls
+  Flatpak allows (Socket.Embed/Unembed, GetRegisteredEvents, key listener
+  queries and notifications), and org.a11y.Bus is limited to GetAddress and
+  its properties.
+- PipeWire: pipewire.conf.d/60-luma-application-socket.conf adds the socket
+  pipewire-0-application with access "luma-application" and moves the access
+  module to socket-based mode (pipewire-0 "default", pipewire-0-manager
+  "unrestricted"). wireplumber.conf.d/70-luma-application-access.conf gives
+  that access the client-node factory, the settings and default metadata and
+  Audio/Sink nodes only, and scripts/luma/application-capture.lua refuses
+  capture streams from it (a sink's monitor would record every application).
+  The launcher mounts that socket as the capsule's pipewire-0 and never the
+  session's own. The PulseAudio socket is unchanged.
+- X11 (capsule_display): the Xauthority file and /tmp/.X11-unix are no longer
+  mounted. The capsule gets one socket, display :724, answered by the
+  launcher, which forwards to the session's X server and inserts the cookie
+  into the connection setup. X clients still share one server.
+- Landlock (capsule_scope, ABI 6): abstract Unix sockets and signals are
+  scoped to the application. bubblewrap sandboxes are started through the
+  scope; Podman capsules use /usr/libexec/luma-capsule-runtime/crun, which
+  scopes the container's first process. no_new_privs is set as a result.
+  Not applied on kernels without ABI 6, to a record with "scope": false, or
+  to a process that joins a running capsule.
+- Sound: capsules get the PulseAudio client library (libpulse0,
+  pulseaudio-libs), which Chromium, Electron, Firefox, SDL and Qt open at run
+  time and do not declare; without it a browser in a capsule played nothing.
+  Capsule runtime version 5; existing capsules are brought up to date on
+  their next start.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.100
 - Package capsules run under an allocated SELinux category pair instead of
   one derived from a hash of the package, which let two applications land on

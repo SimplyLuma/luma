@@ -97,7 +97,7 @@
       "source_sha256": "49422bda503b9dd99a3746a6b5158e457728ad8c3e09e97da36403a50185a90e",
       "version": "0.1.5",
       "pending": {
-        "reason": "only host-side luma_installer.system_app_updates changed (luma-application-installer 1.luma.96); the app does not run it, the next Depot rebuild carries it; 1.luma.97 changes only Valet (installer, workflow.added_appimage); 1.luma.98 changes only the capsule launcher (launcher); 1.luma.99 changes Valet and the capsule launcher (appimage_run, backends, capsule_runtime, desktop, installer, launcher); 1.luma.100 changes only the capsule launcher (backends, capsule_identity, launcher)",
+        "reason": "only host-side luma_installer.system_app_updates changed (luma-application-installer 1.luma.96); the app does not run it, the next Depot rebuild carries it; 1.luma.97 changes only Valet (installer, workflow.added_appimage); 1.luma.98 changes only the capsule launcher (launcher); 1.luma.99 changes Valet and the capsule launcher (appimage_run, backends, capsule_runtime, desktop, installer, launcher); 1.luma.100 changes only the capsule launcher (backends, capsule_identity, launcher); 1.luma.101 changes the capsule launcher and removal (backends, capsule_display, capsule_identity, capsule_runtime, capsule_scope, capsule_secrets, launcher, manager)",
         "expires": "2026-11-23"
       }
     },
