@@ -602,10 +602,17 @@ class Engine(GObject.Object):
     def _close(self) -> None:
         if self.pipeline is None:
             return
-        for widget_id in list(self.placeholders):
-            self._remove_placeholder(widget_id)
-        for widget_id in list(self.branches):
-            self._remove_branch(widget_id)
+        # Everything goes to NULL with the pipeline, in one state change, before anything is unlinked or
+        # dropped: no branch stops on its own while the mixers it feeds are torn down.
+        branches = list(self.branches.values()) + list(self.placeholders.values())
+        self.branches, self.placeholders = {}, {}
+        self._placeholder_words.clear()
+        self._revs.clear()
+        self._applied_rev.clear()
+        for branch in branches:
+            if branch.watchdog:
+                GLib.source_remove(branch.watchdog)
+                branch.watchdog = 0
         pipeline = self.pipeline
         pipeline.get_bus().remove_signal_watch()
         programs, self.programs = self.programs, {}
@@ -727,9 +734,10 @@ class Engine(GObject.Object):
             self._close()  # nothing to show and nothing sent: no pipeline at all
             return
         self._open()
-        self._sync_programs()
+        # Branches leave before the compositors they feed change.
         for widget_id in [i for i in self.branches if i not in wanted]:
             self._remove_branch(widget_id)
+        self._sync_programs()
         for zorder, widget in enumerate(scene.widgets if scene else []):
             if widget.id not in wanted:
                 continue
@@ -1374,8 +1382,10 @@ class Engine(GObject.Object):
         pipeline.call_async(stop, elements)
 
     def _remove_branch(self, widget_id: str) -> None:
-        """Take a widget out without waiting: detach it from the mixers when its pads are idle, then
-        stop it on GStreamer's thread pool (a stuck source can take its time) and drop it."""
+        """Take a widget out without waiting. Its data stops at once (a probe drops it before the
+        mixers); its elements go to NULL on GStreamer's thread pool (a stuck source can take its time);
+        only then, back on the main loop, do its pads unlink from the mixers and its elements leave the
+        pipeline. A sound mixer goes only once no stopping branch still feeds it."""
         branch = self.branches.pop(widget_id, None)
         if branch is None or self.pipeline is None:
             return
@@ -1387,28 +1397,35 @@ class Engine(GObject.Object):
             self._remove_layer(branch, fmt)
         pipeline = self.pipeline
         if branch.pad is not None:
-            last = branch.elements[-1].get_static_pad("src")
-            # An unlinked live source posts not-linked; keep its data out of the way first.
-            last.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM, lambda *_a: Gst.PadProbeReturn.DROP)
-            last.unlink(branch.pad)
-            branch.pad.get_parent_element().release_request_pad(branch.pad)
+            # Nothing more reaches the sound mixer; the pad stays linked until the branch is NULL.
+            branch.elements[-1].get_static_pad("src").add_probe(
+                Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST | Gst.PadProbeType.EVENT_DOWNSTREAM,
+                lambda *_a: Gst.PadProbeReturn.DROP)
 
-        def stop(_pipeline, elements) -> None:
+        def stop(_pipeline, elements) -> None:  # on the pool
             for element in elements:
                 element.set_state(Gst.State.NULL)
-            GLib.idle_add(drop, elements)
+            GLib.idle_add(drop)
 
-        def drop(elements) -> bool:
-            for element in elements:
+        def drop() -> bool:  # on the main loop, every element NULL
+            if branch.pad is not None:
+                last = branch.elements[-1].get_static_pad("src")
+                if last.get_peer() is branch.pad:
+                    last.unlink(branch.pad)
+                mixer = branch.pad.get_parent_element()
+                if mixer is not None:
+                    mixer.release_request_pad(branch.pad)
+                branch.pad = None
+            for element in branch.elements:
                 if element.get_parent() is pipeline:
                     pipeline.remove(element)
+            if not branch.picture and self.pipeline is pipeline:
+                self._sync_sound()
             return False
 
         for element in branch.elements:
             element.set_locked_state(True)  # the pipeline's own state changes leave it alone now
         pipeline.call_async(stop, branch.elements)
-        if not branch.picture:
-            self._sync_sound()
 
     # ── Sound ──
 
@@ -1434,16 +1451,21 @@ class Engine(GObject.Object):
             return
         if not self._sound or self.pipeline is None:
             return
+        mixer = self.pipeline.get_by_name("audiomixer")
+        if mixer is not None and mixer.numsinkpads:
+            return  # a stopping branch still feeds it: the last one's drop() comes back here
         # The sound tap goes with the mixer it hangs from (nothing flows there once it stops).
         for element in self._sound_tap:
             element.set_state(Gst.State.NULL)
             self.pipeline.remove(element)
         self._sound_tap = []
-        for spec in graph.sound_program():
-            element = self.pipeline.get_by_name(spec.name)
-            if element is not None:
-                element.set_state(Gst.State.NULL)
-                self.pipeline.remove(element)
+        elements = [self.pipeline.get_by_name(spec.name) for spec in graph.sound_program()]
+        elements = [e for e in elements if e is not None]
+        for element in elements:
+            element.set_locked_state(True)
+            element.set_state(Gst.State.NULL)
+        for element in elements:
+            self.pipeline.remove(element)
         self._sound = False
 
     # ── Outputs ──
