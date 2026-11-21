@@ -305,7 +305,10 @@ class Output:
                 self.stats.dropped += 1  # the encoder or the network is far behind
                 return
             self.stats.frames += 1
-        out = buffer.copy()
+        # copy_region, not copy(): in Python copy() is the boxed copy, a ref, and setting its time
+        # would change the buffer the other output receives too.
+        out = buffer.copy_region(Gst.BufferCopyFlags.FLAGS | Gst.BufferCopyFlags.TIMESTAMPS |
+                                 Gst.BufferCopyFlags.META | Gst.BufferCopyFlags.MEMORY, 0, buffer.get_size())
         out.pts = buffer.pts - self.t0
         out.dts = Gst.CLOCK_TIME_NONE
         src.emit("push-buffer", out)

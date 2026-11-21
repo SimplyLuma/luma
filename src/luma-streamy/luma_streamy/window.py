@@ -1100,10 +1100,16 @@ class StreamyWindow(AppWindow):
 
     def _camera_rows(self, w: Widget) -> list:
         cameras = self.portals.cameras if self.portals is not None else None
+        if self.portals is None:
+            return [ListEmptyState("No camera found")]
         if cameras is None or not cameras.ready:
+            error = getattr(self, "_camera_error", None)
+            if error is not None:
+                return [ListEmptyState(self.CAMERA_ERRORS.get(error, error))]
+            self._look_for_cameras()
             return [ListEmptyState("Looking for cameras…")]
         if not cameras.cameras:
-            return [ListEmptyState("No camera found")]
+            return [ListEmptyState(cameras.error or "No camera found")]
         current = self._camera_of(w)
         rows: list = [PanelHeading("Camera")]
         for camera in cameras.cameras:
@@ -1660,8 +1666,35 @@ class StreamyWindow(AppWindow):
         self._regrow("source")
 
     def _cameras_changed(self) -> None:
+        self._camera_error = None
         self._refresh_bar()
         self._regrow("source")
+
+    #: Why the camera list is empty, in words.
+    CAMERA_ERRORS = {"denied": "Camera access is turned off for Streamy", "failed": "The camera service did not answer",
+                     "timeout": "No camera found", "no camera": "No camera found"}
+
+    def _look_for_cameras(self) -> None:
+        """Ask the camera portal for the list (once); after 3 s without an answer, say so instead of waiting."""
+        if getattr(self, "_camera_asked", False):
+            return
+        self._camera_asked = True
+
+        def failed(reason: str) -> None:
+            self._camera_asked = False
+            self._camera_error = reason
+            self._regrow("source")
+
+        def late() -> bool:
+            cameras = self.portals.cameras
+            if cameras is None or not cameras.ready:
+                self._camera_asked = cameras is not None  # a watch on its way keeps going; else ask again later
+                self._camera_error = "timeout"
+                self._regrow("source")
+            return False
+
+        self.portals.watch_cameras(self._cameras_changed, failed)
+        GLib.timeout_add_seconds(3, late)
 
     # ── The bar ──
 

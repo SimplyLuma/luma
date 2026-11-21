@@ -239,6 +239,8 @@ class CameraWatch:
     def __init__(self, fd: int, on_changed: Callable[[], None]) -> None:
         self.cameras: list[Camera] = []
         self.ready = False
+        #: Why there is no list (the device provider failed), in words; None when it is fine.
+        self.error: str | None = None
         self.on_changed = on_changed
         self._lock = threading.Lock()
         threading.Thread(target=self._run, args=(fd,), name="streamy-cameras", daemon=True).start()
@@ -249,8 +251,13 @@ class CameraWatch:
         gi.require_version("Gst", "1.0")
         from gi.repository import Gst
 
-        provider, _devices_now = _devices(fd, "Video/Source")
+        try:
+            provider, _devices_now = _devices(fd, "Video/Source")
+        except Exception as error:  # noqa: BLE001 - the list must come back, empty, whatever failed
+            print(f"streamy: cameras: {error}", flush=True)
+            provider = None
         if provider is None:
+            self.error = "The camera list could not be read"
             self._publish([])
             return
         self._provider = provider
@@ -269,7 +276,11 @@ class CameraWatch:
         if provider:
             for device in provider.get_devices():
                 if device.get_device_class().startswith("Video/Source"):
-                    camera = _camera(device)
+                    try:
+                        camera = _camera(device)
+                    except Exception as error:  # noqa: BLE001 - one odd device never hides the others
+                        print(f"streamy: camera {device.get_display_name()}: {error}", flush=True)
+                        camera = None
                     if camera is not None:
                         cameras.append(camera)
         with self._lock:
