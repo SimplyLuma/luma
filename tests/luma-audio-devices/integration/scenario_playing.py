@@ -115,7 +115,8 @@ def main() -> int:
         gone = time.monotonic()
         check(bool(wait_for(lambda: row("PlayerA").get("streams") == [], 3)) and row("PlayerA").get("listed") is True,
               "its row stays when its last stream closes")
-        check(near(row("PlayerA").get("volume"), 0.5), "and keeps showing its volume")
+        shown = row("PlayerA")
+        check(near(shown.get("volume"), 0.5), f"and keeps showing its volume ({shown.get('volume')}, muted {shown.get('muted')})")
         time.sleep(max(0.0, 8.5 - (time.monotonic() - gone)))
         check(row("PlayerA").get("listed") is True, "the row is still there after 8.5 seconds")
         check(bool(wait_for(lambda: "PlayerA" not in applications(), 3.5)),

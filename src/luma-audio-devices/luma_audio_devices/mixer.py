@@ -159,9 +159,20 @@ class Mixer:
             gone_at = old.gone_at if old.gone_at is not None else now
             if now - gone_at >= LINGER_SECONDS:
                 continue
-            rows[key] = Application(key, old.name, old.icon, old.desktop_id, "app", old.volume, old.muted,
+            # It shows the level WirePlumber remembers for the app (what its
+            # next stream starts at), not whatever its last stream reported
+            # while it was being torn down.
+            volume, muted = old.volume, old.muted
+            saved = graph.metadata_json("luma-app-audio", SAVED_STATE_PREFIX + key)
+            if isinstance(saved, dict):
+                if isinstance(saved.get("volume"), (int, float)):
+                    volume = apps.linear_to_cubic(saved["volume"])
+                if isinstance(saved.get("mute"), bool):
+                    muted = saved["mute"]
+            rows[key] = Application(key, old.name, old.icon, old.desktop_id, "app", volume, muted,
                                     "", False, pid=old.pid, browser=old.browser, binary=old.binary,
                                     pids=set(old.pids), order=old.order, gone_at=gone_at)
+            measured.add(key)
 
         # System sounds is always a row: its volume holds for sounds not yet
         # played (WirePlumber's route-settings value, as pavucontrol uses).
@@ -212,6 +223,14 @@ class Mixer:
         changed = _public(rows) != _public(self.applications)
         self.applications = rows
         return changed
+
+    def saved_state_keys(self) -> list[str]:
+        """App keys whose remembered level the service asks WirePlumber to
+        publish: the other sounds, and every app in the playing list."""
+        keys = [key for key, _name in OTHER_SOUNDS]
+        keys += [row.key for row in self.applications.values()
+                 if row.kind == "app" and row.listed and row.key not in keys]
+        return keys
 
     def next_deadline(self) -> float | None:
         """When the next lingering row leaves, for the service's one timer."""

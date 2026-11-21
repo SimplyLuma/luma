@@ -43,7 +43,7 @@ from .airplay import AirPlayManager  # noqa: E402
 from .battery import Batteries  # noqa: E402
 from .captures import CaptureError, CaptureManager  # noqa: E402
 from .levels import LevelMeters  # noqa: E402
-from .mixer import OTHER_SOUNDS, Mixer  # noqa: E402
+from .mixer import Mixer  # noqa: E402
 from .mpris import Players  # noqa: E402
 from .avahi import AirPlayDiscovery  # noqa: E402
 from .pipewire import GraphMonitor, PipeWireUnavailable, WirePlumberControl  # noqa: E402
@@ -101,7 +101,7 @@ class AudioDevicesService(Gio.Application):
         self._browse_watches: dict[str, int] = {}
         self._tick_id = 0
         self._linger_id = 0
-        self._watched_saved = False
+        self._watched_saved: set[str] = set()
         self._save_id = 0
         self._started = False
         self._default: str | None = None
@@ -189,7 +189,7 @@ class AudioDevicesService(Gio.Application):
 
     def _pipewire_connected(self) -> None:
         self.airplay.pipewire_reconnected()
-        self._watched_saved = False
+        self._watched_saved = set()
 
     def _outputs_changed(self, nodes) -> None:
         now = time.time()
@@ -230,9 +230,9 @@ class AudioDevicesService(Gio.Application):
         self._emit_signal("OutputsChanged")
 
     def _streams_changed(self) -> None:
-        self._watch_saved_levels()
         if self.mixer.update(self.graph.graph, time.monotonic(), self.players.players()):
             self._emit_applications()
+        self._watch_saved_levels()
         self._schedule_linger()
         self.captures.graph_changed()
         if self.levels.active:
@@ -255,13 +255,15 @@ class AudioDevicesService(Gio.Application):
         self._linger_id = GLib.timeout_add(max(0, int((deadline - time.monotonic()) * 1000) + 20), expired)
 
     def _watch_saved_levels(self) -> None:
-        """Ask WirePlumber to publish the remembered level of the other
-        sounds (app.state:<key>), once per connection."""
-        if self._watched_saved or not self.control.app_audio_ready:
+        """Ask WirePlumber to publish the remembered level (app.state:<key>)
+        of the other sounds and of each app in the playing list, once per
+        key and connection."""
+        if not self.control.app_audio_ready:
             return
-        self._watched_saved = True
-        for key, _name in OTHER_SOUNDS:
-            self.control.app_audio_command("app.watch:" + key, {})
+        for key in self.mixer.saved_state_keys():
+            if key not in self._watched_saved:
+                self._watched_saved.add(key)
+                self.control.app_audio_command("app.watch:" + key, {})
 
     def _note_used(self, node_name: str | None, now: float) -> None:
         output = self._output_nodes.get(node_name or "")

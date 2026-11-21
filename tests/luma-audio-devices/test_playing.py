@@ -147,6 +147,19 @@ class Linger(unittest.TestCase):
         self.mixer.update(self.graph, 105.0)
         self.assertAlmostEqual(listed(self.mixer)[0]["volume"], 0.5, places=3)
 
+    def test_a_lingering_row_shows_the_remembered_level(self):
+        # Its last stream may report anything while it is torn down.
+        self.graph.apply([stream(40, {"application.id": "org.projectluma.Tide"}, volume=1.0),
+                          {"id": 9, "type": "PipeWire:Interface:Metadata", "props": {"metadata.name": "luma-app-audio"},
+                           "metadata": [{"subject": 0, "key": "app.state:org.projectluma.Tide",
+                                         "value": '{"volume": 0.125, "mute": false}'}]}])
+        self.mixer.update(self.graph, 104.0)
+        self.graph.apply([gone(40)])
+        self.mixer.update(self.graph, 105.0)
+        self.assertAlmostEqual(listed(self.mixer)[0]["volume"], 0.5, places=3)
+        self.assertIn("org.projectluma.Tide", self.mixer.saved_state_keys())
+        self.assertEqual(self.mixer.saved_state_keys()[:2], ["org.projectluma.Messages", "org.projectluma.Phone"])
+
     def test_the_next_track_keeps_the_row(self):
         self.graph.apply([gone(40)])
         self.mixer.update(self.graph, 105.0)
