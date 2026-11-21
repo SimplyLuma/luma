@@ -201,6 +201,9 @@ class Branch:
     crop: tuple | None = None
     #: A picture that never changes by itself (an image, a card): the preview may rest while only these show.
     still: bool = False
+    #: The device it opens (a camera: one stream at a time, see Engine._releasing) and when it started.
+    device: str = ""
+    started: float = 0.0
 
     def frame(self, fmt: str = "landscape") -> Gst.Element | None:
         layer = self.layers.get(fmt)
@@ -465,6 +468,8 @@ class Engine(GObject.Object):
         self._preview_sizes: dict[str, tuple[int, int]] = {}
         self.enabled = False
         self._generation = 0
+        #: Devices whose last stream is still stopping (device -> streams stopping).
+        self._releasing: dict[str, int] = {}
         self._scene: Scene | None = None
         #: Atomic layer geometry: each mixer pad's geometry per lumaframe revision, applied by the
         #: mixer's samples-selected for the buffer it actually composites (see _samples_selected).
@@ -613,10 +618,13 @@ class Engine(GObject.Object):
         self._placeholder_words.clear()
         self._revs.clear()
         self._applied_rev.clear()
+        devices = [b.device for b in branches if b.device]
         for branch in branches:
             if branch.watchdog:
                 GLib.source_remove(branch.watchdog)
                 branch.watchdog = 0
+        for device in devices:
+            self._releasing[device] = self._releasing.get(device, 0) + 1
         pipeline = self.pipeline
         pipeline.get_bus().remove_signal_watch()
         programs, self.programs = self.programs, {}
@@ -636,8 +644,12 @@ class Engine(GObject.Object):
         self.pipeline = None
         # Off the window's thread: a source still stuck opening holds its state lock, and the
         # pipeline's own NULL waits on it. Nothing here needs the old pipeline any more.
-        threading.Thread(target=pipeline.set_state, args=(Gst.State.NULL,), name="streamy-close",
-                         daemon=True).start()
+        def close() -> None:
+            pipeline.set_state(Gst.State.NULL)
+            for device in devices:
+                GLib.idle_add(self._released, device)
+
+        threading.Thread(target=close, name="streamy-close", daemon=True).start()
         self._sound = False
         self._sound_tap = []
         for fmt in programs:
@@ -835,9 +847,26 @@ class Engine(GObject.Object):
         layer = branch.layers.pop(fmt, None)
         if layer is None or self.pipeline is None:
             return
+        pipeline = self.pipeline
         self._forget_pad(layer.pad)
-        self._stop_then_unlink(layer.elements, layer.elements[0].get_static_pad("sink"),
-                               layer.frame.get_static_pad("src") if layer.pad is not None else None)
+        tee = branch.elements[-1]
+        if layer.tee_pad is not None:
+            layer.tee_pad.unlink(layer.elements[0].get_static_pad("sink"))
+            tee.release_request_pad(layer.tee_pad)
+        src = layer.frame.get_static_pad("src")
+        if layer.pad is not None:
+            src.add_probe(Gst.PadProbeType.BLOCK_DOWNSTREAM, lambda *_a: Gst.PadProbeReturn.DROP)
+            src.unlink(layer.pad)
+            layer.pad.get_parent_element().release_request_pad(layer.pad)
+        for element in layer.elements:
+            element.set_locked_state(True)
+
+        def stop(_pipeline, elements) -> None:
+            for element in elements:
+                element.set_state(Gst.State.NULL)
+            GLib.idle_add(lambda: [pipeline.remove(e) for e in elements if e.get_parent() is pipeline] and False)
+
+        pipeline.call_async(stop, layer.elements)
 
     def _style_layer(self, layer: Layer, view: Widget, zorder: int, *, fade: int = FADE_MS,
                      alpha: float | None = None) -> None:
@@ -943,7 +972,20 @@ class Engine(GObject.Object):
                     if layer.pad is not None:
                         layer.pad.set_property("zorder", zorder)
 
+    @staticmethod
+    def device_of(widget: Widget) -> str:
+        """The device a widget's capture holds alone: a camera (its PipeWire node takes one format at a
+        time, so a stream asking a new mode while the last one still holds it gets no picture)."""
+        if widget.kind == "camera":
+            return f"camera:{widget.source.get('camera') or widget.id}"
+        return ""
+
     def _add_branch(self, widget: Widget, zorder: int) -> None:
+        device = "" if self.fake and not os.environ.get("STREAMY_FAKE_DEVICES") else self.device_of(widget)
+        if device and self._releasing.get(device):
+            # The last stream on this device is still stopping: this one opens once it has let go
+            # (Engine._released shows the scene again), never beside it.
+            return
         fd = node = None
         if not self.fake and self.sources is not None and widget.kind in ("display", "window", "camera", "app-audio"):
             fd, node = self.sources(widget)
@@ -960,7 +1002,7 @@ class Engine(GObject.Object):
             self.pipeline.add(element)
         self._link_chain(elements)
         branch = Branch(widget.id, elements, None, widget.has_picture, generation=self._generation, view=widget,
-                        zorder=zorder)
+                        zorder=zorder, device=device, started=time.monotonic())
         branch.still = graph.is_still(widget, self.fake)
         if not widget.has_picture:
             target = self.pipeline.get_by_name(chain.target)
@@ -1341,6 +1383,8 @@ class Engine(GObject.Object):
     def _fade_in(self, branch: Branch, widget: Widget) -> bool:
         if self.branches.get(branch.widget_id) is not branch:
             return False
+        if branch.device:
+            log(f"widget {branch.widget_id}: first picture after {(time.monotonic() - branch.started) * 1000:.0f} ms")
         self.emit("widget-ready", widget.id)
         steps = 10
 
@@ -1382,41 +1426,19 @@ class Engine(GObject.Object):
         elements, branch.monitor = branch.monitor, []
         if not elements or self.pipeline is None:
             return
-        self._stop_then_unlink(elements, elements[0].get_static_pad("sink"))
-
-    def _stop_then_unlink(self, elements: list, sink: Gst.Pad, src: Gst.Pad | None = None) -> None:
-        """Take a chain out in the order GStreamer needs: its data dropped at once (at the request pad
-        it hangs from, and at its own ``src`` into a mixer), its elements NULL on the pool, then, on the
-        main loop, its request pads released and its elements removed."""
         pipeline = self.pipeline
-        upstream = sink.get_peer()
-        downstream = src.get_peer() if src is not None else None
-        for pad in (upstream, src):
-            if pad is not None:
-                pad.add_probe(Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST | Gst.PadProbeType.EVENT_DOWNSTREAM,
-                              lambda *_a: Gst.PadProbeReturn.DROP)
+        sink_pad = elements[0].get_static_pad("sink")
+        peer = sink_pad.get_peer()
+        if peer is not None:
+            peer.unlink(sink_pad)
+            peer.get_parent_element().release_request_pad(peer)
         for element in elements:
             element.set_locked_state(True)
-
-        def drop() -> bool:
-            for peer, pad in ((upstream, sink), (src, downstream)):
-                if peer is None or pad is None:
-                    continue
-                if peer.get_peer() is pad:
-                    peer.unlink(pad)
-                request = peer if peer is upstream else pad  # the tee's or the mixer's request pad
-                owner = request.get_parent_element()
-                if owner is not None:
-                    owner.release_request_pad(request)
-            for element in elements:
-                if element.get_parent() is pipeline:
-                    pipeline.remove(element)
-            return False
 
         def stop(_pipeline, items) -> None:
             for element in items:
                 element.set_state(Gst.State.NULL)
-            GLib.idle_add(drop)
+            GLib.idle_add(lambda: [pipeline.remove(e) for e in items if e.get_parent() is pipeline] and False)
 
         pipeline.call_async(stop, elements)
 
@@ -1440,6 +1462,9 @@ class Engine(GObject.Object):
             branch.elements[-1].get_static_pad("src").add_probe(
                 Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST | Gst.PadProbeType.EVENT_DOWNSTREAM,
                 lambda *_a: Gst.PadProbeReturn.DROP)
+        device = branch.device
+        if device:
+            self._releasing[device] = self._releasing.get(device, 0) + 1
 
         def stop(_pipeline, elements) -> None:  # on the pool
             for element in elements:
@@ -1458,6 +1483,8 @@ class Engine(GObject.Object):
             for element in branch.elements:
                 if element.get_parent() is pipeline:
                     pipeline.remove(element)
+            if device:
+                self._released(device)
             if not branch.picture and self.pipeline is pipeline:
                 self._sync_sound()
             return False
@@ -1465,6 +1492,17 @@ class Engine(GObject.Object):
         for element in branch.elements:
             element.set_locked_state(True)  # the pipeline's own state changes leave it alone now
         pipeline.call_async(stop, branch.elements)
+
+    def _released(self, device: str) -> bool:
+        """A stream on ``device`` has stopped: one waiting for it opens now."""
+        left = self._releasing.get(device, 0) - 1
+        if left > 0:
+            self._releasing[device] = left
+            return False
+        self._releasing.pop(device, None)
+        if self.pipeline is not None and self._scene is not None:
+            self.show_scene(self._scene, skip=self._skip, states=self._states)
+        return False
 
     # ── Sound ──
 

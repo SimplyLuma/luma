@@ -236,8 +236,8 @@ class Row:
         words = og.error_words(message, self.kind)
         if not self.is_stream:
             self.stats.state, self.stats.words = "error", words
+            self.outputs._row_gone(self)  # gone before anyone hears it ended
             self.outputs.emit("row-state", self.id, "error", words)
-            self.outputs._row_gone(self)
             return
         self.attempt += 1
         self.stats.reconnects += 1
@@ -302,8 +302,8 @@ class Row:
                 os.unlink(self.target)  # a header alone is not a recording
             except OSError:
                 pass
+        self.outputs._row_gone(self)  # gone before anyone hears it ended: listeners see it off
         self.outputs.emit("row-state", self.id, "off", "")
-        self.outputs._row_gone(self)
 
     # ── Stats (main loop, ≤1 Hz) ──
 
@@ -594,10 +594,10 @@ class Outputs(GObject.Object):
         self.emit("problem", f"The encoder stopped: {message}")
         for row in list(encode.rows.values()):
             row.stats.state, row.stats.words = "error", "The encoder stopped"
-            self.emit("row-state", row.id, "error", row.stats.words)
             row.stopping = True
             row._teardown()
             self._row_gone(row)
+            self.emit("row-state", row.id, "error", row.stats.words)
         encode.close()
 
     # ── Media from the engine (GStreamer threads) ──

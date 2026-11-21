@@ -188,6 +188,11 @@ class StreamyWindow(AppWindow):
         self._build_outputs()
         self._watch_lock()
         self.refresh_all()
+        # Esc clears the selection first (before the Inspector's own Esc closes it), unless a field or the
+        # bar's editor has it.
+        escape = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        escape.connect("key-pressed", self._escape)
+        self.add_controller(escape)
         self.connect("close-request", self._closing)
         self.connect("notify::is-active", lambda *_a: self._update_preview_running())
         self.connect("realize", self._watch_surface)
@@ -257,10 +262,12 @@ class StreamyWindow(AppWindow):
                         icon="rectangle-horizontal" if key == "landscape" else "smartphone",
                         checked=lambda k=key: k in getattr(self, "canvas_on", ()))
                 for key, (label, _w, _h) in FORMATS.items())),
-            CommandGroup("Panels", tuple(
-                Command(f"panel.{key}", label, lambda k=key: self._toggle_panel(k), icon=icon,
-                        checked=lambda k=key: hasattr(self, "dock") and self._is_open(k))
-                for key, label, icon in (("stats", "Stats", "activity"), ("chat", "Chat", "message-circle")))),
+            CommandGroup("Panels", (
+                Command("panel.inspector", "Inspector", self.toggle_inspector, icon="settings-2",
+                        shortcut=("Ctrl", "I"), checked=lambda: hasattr(self, "inspector") and self.inspector.shown),
+                *(Command(f"panel.{key}", label, lambda k=key: self._toggle_panel(k), icon=icon,
+                          checked=lambda k=key: hasattr(self, "dock") and self._is_open(k))
+                  for key, label, icon in (("stats", "Stats", "activity"), ("chat", "Chat", "message-circle"))))),
             CommandGroup("Layouts", layouts + (
                 Command("layout.save", "Save layout…", self.save_layout, icon="download"),)),
             CommandGroup(None, (
@@ -465,6 +472,11 @@ class StreamyWindow(AppWindow):
         blank.connect("pressed", lambda _g, _n, x, y: self.widget_list.get_row_at_y(int(y)) is None and
                       self._add_widget_menu(widgets, point=(x, y)))
         widgets.add_controller(blank)
+        # A click on the blank space under the rows clears the selection.
+        clear = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
+        clear.connect("pressed", lambda _g, _n, _x, y: self.widget_list.get_row_at_y(int(y)) is None and
+                      self.deselect())
+        widgets.add_controller(clear)
         hold = Gtk.GestureLongPress(touch_only=True)
         hold.connect("pressed", lambda _g, x, y: self.widget_list.get_row_at_y(int(y)) is None and
                      self._add_widget_menu(widgets, point=(x, y)))
@@ -555,9 +567,10 @@ class StreamyWindow(AppWindow):
         """A destination row changed: taps open or close, chips show what is live, the bar follows."""
         self.engine.sync_taps()
         self._sync_canvas_state()
-        live = self.outputs.live()
-        self.stats_panel.set_live(live)
-        self.chat_panel.set_live(live)
+        for r in self.dest_store.rows:
+            row = self.outputs.rows.get(r.id)
+            if not r.is_stream and row is not None:
+                self._record_target = row.target
         states = {r.id: (self.outputs.stats(r.id).state if self.outputs.stats(r.id) else "off")
                   for r in self.dest_store.rows}
         streams = [states[r.id] for r in self.dest_store.rows if r.is_stream and r.id in self.outputs.rows]
@@ -693,10 +706,15 @@ class StreamyWindow(AppWindow):
         body.append(self.host)
         # The Inspector: a fixed column beside the island, always there (a bottom drawer on a phone);
         # the selection's Source, Look and Arrange, or the scene's own settings when nothing is selected.
-        self.inspector = DetailsPane("Inspector", main=True, raised=True)
+        # Closable (×, app menu › Panels, Ctrl+I); closed, it stays closed (saved) until asked for: Source,
+        # Look, Arrange or Ctrl+I open it on that section. Selecting or switching scenes never opens it.
+        self.inspector = DetailsPane("Inspector", main=True, raised=True, closable=True,
+                                     on_close=self._inspector_closed)
         self._inspector_sections: dict[str, Gtk.Widget] = {}
         body.append(FixedColumn(self.inspector, INSPECTOR_WIDTH))
         self.inspector.show(open=True, subject="scene")
+        if self.settings.get("inspector") == "closed":
+            self.inspector.close()
         # The toggle (F9) moves the sidebar into a drawer below its width, so it comes after the frame.
         self.sidebar_toggle = SidebarToggle(self.sidebar, drawer_below=901)
         # The title row is the app menu alone; the toggle shows only where the sidebar is a drawer
@@ -2105,7 +2123,7 @@ class StreamyWindow(AppWindow):
         if heading is None:
             return
         self._inspector_asked = True
-        self.inspector.open()
+        self._open_inspector()
         GLib.timeout_add(500, lambda: setattr(self, "_inspector_asked", False) or False)
         scroll = self._inspector_scroll()
 
@@ -2291,42 +2309,31 @@ class StreamyWindow(AppWindow):
                 for kind in self._addable()]
 
     def _refresh_bar(self) -> None:
+        """The bar: the selection (its chip and quick actions) on the left when there is one, then always
+        the two outputs. Record becomes "Stop recording" with its running time while recording; Go live
+        becomes "End stream" with the LIVE time and bitrate while live (or "Add a destination" when no
+        stream row would go live). Each runs on its own; both can run together."""
         items: list = []
         live = self.stream_state != "off"
-        if live:
-            self.readout = BarChip(self._stream_word(), meta=clock(time.monotonic() - (self.live_since or
-                                                                                       time.monotonic())),
-                                   detail=self._stream_words(), live=True)
-            items.append(self.readout)
-        elif self.recording_since is not None:
-            self.readout = BarChip("Recording", meta=clock(time.monotonic() - self.recording_since), live=True)
-            items.append(self.readout)
-        else:
-            self.readout = None
         w = self._selected_widget()
+        more = None
         if w is not None:
-            if items:
-                items.append(SEPARATOR)
             cause = self.cause_line(w, self.widget_errors.get(w.id))
             items.append(BarChip(w.name, detail=cause, on_dismiss=self.deselect) if cause else
                          BarChip(w.name, on_dismiss=self.deselect))
             # Source first: what makes the widget work, its summary as the key's words.
-            # Editing is the Inspector's; the bar keeps the summary and the quick actions.
             items.append(BarAction(KINDS[w.kind][1], self.source_summary(w), on_activate=lambda: self._grow("source")))
             if w.has_picture:
                 items.append(BarAction("crop", tooltip="Crop on the canvas",
                                        on_activate=lambda: self.arrange.set_cropping(w.id)))
-            # A widget without its source ends the bar with the fix, as the bar's one key.
             fix = self.fix_words(w, self.widget_errors[w.id]) if w.id in self.widget_errors else None
             if fix:
                 items.append(BarAction("monitor-up" if w.kind in ("display", "window") else "rotate-ccw", fix,
-                                       primary=True, on_activate=lambda: self.retry_widget(w)))
+                                       on_activate=lambda: self.retry_widget(w)))
             elif w.id in self.widget_waiting:
-                # The stream is open and may yet start; Try again reconnects it, no picker.
-                items.append(BarAction("rotate-ccw", "Try again", primary=True,
+                items.append(BarAction("rotate-ccw", "Try again",
                                        on_activate=lambda: (self.widget_waiting.discard(w.id),
                                                             self._restart_widget(w))))
-            # Rare and destructive ones wait under ⋯, so the chip keeps its name while an editor is open.
             if w.has_picture:
                 switch = BarAction("eye" if not w.visible else "eye-off", "Show" if not w.visible else "Hide",
                                    on_activate=self.toggle_hidden)
@@ -2336,22 +2343,60 @@ class StreamyWindow(AppWindow):
             more = [switch, BarAction("pencil", "Rename", on_activate=lambda: self.rename_widget(w)),
                     BarAction("copy", "Duplicate", on_activate=self.duplicate_selected),
                     BarAction("trash-2", "Delete", danger=True, on_activate=self.delete_selected)]
-            if live:
-                more.append(BarAction("square", "End stream…", danger=True, on_activate=self.ask_end_stream))
-            self.center.show_bar(items, more=more)
-            return
-        items.append(BarAction("plus", "Add widget", menu=self._add_menu))
+            items.append(SEPARATOR)
+        else:
+            items.append(BarAction("plus", "Add widget", menu=self._add_menu))
+        self.readouts = {}
         if self.recording_since is not None:
-            items.append(BarAction("square", "Stop recording", record=True, on_activate=self.toggle_record))
+            self.readouts["record"] = BarChip("Recording", meta=clock(time.monotonic() - self.recording_since),
+                                              live=True)
+            items.append(self.readouts["record"])
+            items.append(BarAction("square", "Stop recording", record=True, on_activate=self.stop_recording))
         else:
             items.append(BarAction("circle", "Record", on_activate=self.toggle_record))
         if live:
-            items.append(BarAction("square", "End stream", danger=True, on_activate=self.ask_end_stream))
-        else:
+            self.readouts["stream"] = BarChip(self._stream_word(), meta=clock(time.monotonic() - (
+                self.live_since or time.monotonic())), detail=self._stream_words(), live=True)
+            items.append(self.readouts["stream"])
+            items.append(BarAction("square", "End stream", danger=True, primary=True, on_activate=self.ask_end_stream))
+        elif self._streams_ready():
             items.append(BarAction("radio-tower", "Go live", primary=True, on_activate=self.go_live))
-        # The canvases are the Preview header's chips now.
+        else:
+            items.append(BarAction("plus", "Add a destination", primary=True, on_activate=self.add_destination))
         self._sync_canvas_state()
-        self.center.show_bar(items)
+        self._sync_output_title()
+        if more is not None:
+            self.center.show_bar(items, more=more)
+        else:
+            self.center.show_bar(items)
+
+    def _streams_ready(self) -> bool:
+        """Some stream destination goes live with Go live."""
+        store = getattr(self, "dest_store", None)
+        return store is not None and any(r.is_stream and r.enabled for r in store.rows)
+
+    def add_destination(self) -> None:
+        """The Destinations panel, shown, with its + menu open."""
+        if not self._is_open("destinations") and hasattr(self.dock, "open_tile"):
+            self.dock.open_tile("destinations")
+        if hasattr(self.dock, "show_tile"):
+            self.dock.show_tile("destinations")
+        self.dest_panel.add_menu()
+
+    def _sync_output_title(self) -> None:
+        """The window says what it sends: "LIVE" and "● Recording" by the app's name and in its title."""
+        words = []
+        if self.stream_state != "off":
+            words.append("LIVE" if self.stream_state == "on" else self._stream_word())
+        if self.recording_since is not None:
+            words.append("● Recording")
+        text = " · ".join(words)
+        if text == getattr(self, "_output_title", None):
+            return
+        self._output_title = text
+        if hasattr(self, "set_identity_subtitle"):
+            self.set_identity_subtitle(text)
+        self.set_title(f"{text} — Streamy" if text else "Streamy")
 
     def _arrange_menu(self) -> list:
         return [MenuItem("Bring to front", icon="arrow-up", note="Ctrl+]", on_activate=lambda: self.restack(1)),
@@ -2389,12 +2434,12 @@ class StreamyWindow(AppWindow):
         return f"{kbps} · {dropped}"
 
     def _every_second(self) -> bool:
-        if self.readout is not None:
-            if self.stream_state != "off" and self.live_since is not None:
-                self.readout.update(self._stream_word(), meta=clock(time.monotonic() - self.live_since),
-                                    detail=self._stream_words())
-            elif self.recording_since is not None:
-                self.readout.update(meta=clock(time.monotonic() - self.recording_since))
+        readouts = getattr(self, "readouts", {})
+        if "stream" in readouts and self.live_since is not None:
+            readouts["stream"].update(self._stream_word(), meta=clock(time.monotonic() - self.live_since),
+                                      detail=self._stream_words())
+        if "record" in readouts and self.recording_since is not None:
+            readouts["record"].update(meta=clock(time.monotonic() - self.recording_since))
         # The sidebar picture every 3 s: rendering it costs the window's thread a texture import.
         self._ticks = getattr(self, "_ticks", 0) + 1
         if self._ticks % 3 == 1:
@@ -2476,6 +2521,39 @@ class StreamyWindow(AppWindow):
 
     def deselect(self) -> None:
         self.select(None)
+
+    def _open_inspector(self) -> None:
+        self.inspector.open()
+        if self.settings.get("inspector") == "closed" and not self._phone():
+            self._setting("inspector", "open")
+
+    def _inspector_closed(self) -> None:
+        if not self._phone():  # a phone's drawer closing is not the panel closed
+            self._setting("inspector", "closed")
+
+    def toggle_inspector(self) -> None:
+        """App menu › Panels › Inspector, Ctrl+I: open (on the selection's Source) or close."""
+        if self.inspector.shown:
+            self.inspector.close()
+        elif self._selected_widget() is not None:
+            self._grow("source")
+        else:
+            self._open_inspector()
+
+    def _phone(self) -> bool:
+        from luma_appkit.structure_adapt import is_phone
+
+        return is_phone(self)
+
+    def _escape(self, _controller, keyval: int, _code: int, state) -> bool:
+        if keyval != Gdk.KEY_Escape or state & Gtk.accelerator_get_default_mod_mask():
+            return False
+        if self.selected is None and not getattr(self, "selection", []):
+            return False
+        if isinstance(self.get_focus(), Gtk.Text) or self.center.grown or self.center.state in ("editor", "split"):
+            return False  # a field's or the bar's own Esc first
+        self.deselect()
+        return True
 
     def _canvas_selected(self, widget_id) -> None:
         if not self._building:
@@ -2903,7 +2981,7 @@ class StreamyWindow(AppWindow):
 
     def switch_scene(self, scene_id: str) -> None:
         self.project.activate(scene_id)
-        self.selected = None
+        self.select(None)  # a selection belongs to its scene
         self._show_scene()
         self._ask_missing_sources()
         self._changed(structure=True)
@@ -3037,24 +3115,23 @@ class StreamyWindow(AppWindow):
     # ── Recording ──
 
     def toggle_record(self) -> None:
-        if any(not r.is_stream for r in self.dest_store.rows):
-            # The recording is a destination row (its canvas, container and folder are the row's).
-            problem = self.dest_panel.record(self.recording_since is None)
-            if problem:
-                Toast.show(self.host, problem, kind="error")
-            return
+        """Record, or stop recording: the Recording destination row (its canvas, container and folder)."""
         if self.recording_since is not None:
-            self.engine.stop_record()
+            self.stop_recording()
             return
-        folder = recordings_dir()
-        folder.mkdir(parents=True, exist_ok=True)
-        name = time.strftime("Streamy %Y-%m-%d %H.%M.%S.mkv")
-        try:
-            self.engine.start_record(str(folder / name), container="mkv")
-        except EngineError as error:
-            Toast.show(self.host, str(error), kind="error")
-            return
-        self.recording_path = folder / name
+        problem = self.dest_panel.record(True)
+        if problem:
+            Toast.show(self.host, problem, kind="error")
+        self._refresh_bar()
+
+    def stop_recording(self) -> None:
+        self.dest_panel.record(False)
+        self._refresh_bar()
+
+    def _show_file(self, path: str) -> None:
+        file = Gio.File.new_for_path(path)
+        launcher = Gtk.FileLauncher.new(file)
+        launcher.open_containing_folder(self, None, None)
 
     # ── Going live ──
 
@@ -3080,21 +3157,14 @@ class StreamyWindow(AppWindow):
         return server, key
 
     def go_live(self) -> None:
+        """Every stream row that goes live with Go live starts; with none, the Destinations panel opens
+        on its + menu."""
         if self.stream_state != "off":
             return
-        if any(r.is_stream and r.enabled for r in self.dest_store.rows):
-            self.dest_panel.go_live(record=False)
+        if self._streams_ready():
+            self.dest_panel.go_live(record=None if self.dest_panel.record_with_live() else False)
             return
-        # No destination yet: the Destinations panel opens to add one.
-        if not self._is_open("destinations") and hasattr(self.dock, "open_tile"):
-            self.dock.open_tile("destinations")
-        self.dock.show_tile("destinations")
-        self.dest_panel.add_menu(self.panel_tiles["destinations"].actions)
-        server, key = self._destination()
-        if not key and self.destination != "custom":
-            self.edit_destination(then_go=True)
-            return
-        self._start_stream(server, key)
+        self.add_destination()
 
     def _start_stream(self, server: str, key: str) -> None:
         try:
@@ -3174,7 +3244,11 @@ class StreamyWindow(AppWindow):
                 self.recording_since = time.monotonic()
             elif state == "off":
                 if self.recording_since is not None:
-                    Toast.show(self.host, "Recording saved", kind="saved")
+                    path = getattr(self, "_record_target", None)
+                    if path and os.path.exists(path):
+                        Toast.show(self.host, "Saved", kind="saved", action=("Show file", lambda p=path: self._show_file(p)))
+                    else:
+                        Toast.show(self.host, "Recording saved", kind="saved")
                 self.recording_since = None
         elif kind == "stream":
             if state == "off" and self.stream_state != "off":

@@ -24,7 +24,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from luma_appkit import (  # noqa: E402
     ActionCenter, ActionEditor, AppIcon, BarAction, IconOnlyButton, ModeSwitch, NavigationList,
-    PanelHeading, PanelRow, RowLead, SidebarRow, Switch, TextButton, Toast, ToggleChip,
+    PanelHeading, PanelRow, RowLead, SidebarRow, Switch, TextButton, Toast,
 )
 from luma_appkit.action_bubble import FloatingMenu, MenuItem  # noqa: E402
 from luma_appkit.bar_panel import panel_list  # noqa: E402
@@ -106,10 +106,7 @@ class DestinationsPanel(Gtk.Box):
         self.refresh()
 
     def _tier(self, tier: str) -> None:
-        """On a phone a row's canvas chip shows its glyph alone, so the status keeps its words."""
         self._narrow = tier == "phone"
-        for widget in self._rows.values():
-            widget.chip.label.set_visible(not self._narrow)
 
     # ── Keyring ──
 
@@ -151,19 +148,31 @@ class DestinationsPanel(Gtk.Box):
         for row in sorted(self.store.rows, key=lambda r: r.is_stream):
             self.list.append(self._row(row))
 
+    def _canvas_choice(self, row: Destination) -> ModeSwitch:
+        """The row's canvas as two glyphs (landscape | vertical); one is always the chosen one."""
+        choice = ModeSwitch([(key, canvas_label(key), CANVAS_ICONS[key]) for key in ("landscape", "vertical")],
+                            current=row.canvas, compact=True, label=f"{row.label} canvas",
+                            on_change=lambda key, r=row: self._set_canvas(r, key))
+        for key, button in choice.buttons.items():
+            # Glyphs alone; the name is the tooltip and the accessible name.
+            button.label_widget.set_visible(False)
+            button.set_tooltip_text(canvas_label(key))
+            button.update_property([Gtk.AccessibleProperty.LABEL], [canvas_label(key)])
+        return choice
+
     def _row(self, row: Destination) -> SidebarRow:
-        chip = ToggleChip(canvas_label(row.canvas), icon=CANVAS_ICONS[row.canvas], active=True,
-                          live=self._live(row.id), on_toggle=lambda _on, r=row: self._switch_canvas(r))
-        chip.update_property([Gtk.AccessibleProperty.LABEL], [f"Canvas: {canvas_label(row.canvas)}"])
-        chip.set_tooltip_text("Switch canvas")
-        switch = Switch(active=row.enabled, on_toggle=lambda on, r=row: self._toggle(r, on),
-                        label=f"Send to {row.label}" if row.is_stream else "Record when going live")
         trail = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
-        trail.append(chip)
-        trail.append(switch)
+        choice = self._canvas_choice(row)
+        trail.append(choice)
+        switch = None
+        if row.is_stream:
+            # On: this destination goes live with Go live.
+            switch = Switch(active=row.enabled, on_toggle=lambda on, r=row: self._toggle(r, on),
+                            label=f"{row.label} goes live with Go live")
+            trail.append(switch)
         title = row.account or row.label
         widget = SidebarRow(title, lead=lead_for(row), subtitle=self.status(row), trail=trail,
-                            muted=not row.enabled)
+                            muted=row.is_stream and not row.enabled)
         widget.row_id = row.id
         widget.set_activatable(True)
         menu = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
@@ -172,8 +181,7 @@ class DestinationsPanel(Gtk.Box):
         hold = Gtk.GestureLongPress(touch_only=True)
         hold.connect("pressed", lambda _g, x, y, r=row, w=widget: self._menu(r, w, x, y))
         widget.add_controller(hold)
-        widget.chip, widget.switch = chip, switch
-        chip.label.set_visible(not self._narrow)
+        widget.chip, widget.switch = choice, switch
         self._rows[row.id] = widget
         return widget
 
@@ -184,13 +192,13 @@ class DestinationsPanel(Gtk.Box):
             if state == "live" and not row.is_stream:
                 stats = self.outputs.stats(row.id) if self.outputs is not None else None
                 since = stats.started if stats is not None and stats.started else time.monotonic()
-                return f"Recording · {_clock(time.monotonic() - since)}"
+                size = f" · {_size(stats.bytes)}" if stats is not None and stats.bytes else ""
+                return f"Recording · {_clock(time.monotonic() - since)}{size}"
             return words
-        detail = canvas_label(row.canvas)
         if not row.is_stream:
-            return f"{row.container.upper()} · {detail}" + ("" if row.enabled else " · Off")
+            return f"{row.container.upper()} · {_home(row.folder or str(recordings_dir()))}"
         if not row.enabled:
-            return "Off"
+            return "Skipped when going live"
         if row.signs_in and not row.account and not self.key_for(row):
             return f"Sign in to {PLATFORMS[row.platform][0]}"
         if not row.ingest:
@@ -198,6 +206,15 @@ class DestinationsPanel(Gtk.Box):
         if not self.key_for(row) and row.ingest.startswith(("rtmp://", "rtmps://")) and row.platform != "custom":
             return "Needs a stream key"
         return "Ready"
+
+    def record_with_live(self) -> bool:
+        """The Recording row's "Record whenever I go live"."""
+        return any(r.enabled for r in self.store.rows if not r.is_stream)
+
+    def _set_record_with_live(self, row: Destination) -> None:
+        row.enabled = not row.enabled
+        self.store.update(row)
+        self._changed()
 
     def _live(self, row_id: str) -> bool:
         return self.states.get(row_id, ("off", ""))[0] in ("connecting", "live", "reconnecting", "finishing")
@@ -207,7 +224,6 @@ class DestinationsPanel(Gtk.Box):
         if widget is None or row is None:
             return
         widget.set_subtitle(self.status(row))
-        widget.chip.set_live(self._live(row_id))
 
     def _row_state(self, _outputs, row_id: str, state: str, words: str) -> None:
         if state == "off":
@@ -241,19 +257,25 @@ class DestinationsPanel(Gtk.Box):
         self._update(row.id)
         self._changed()
 
-    def _switch_canvas(self, row: Destination) -> bool:
+    def _set_canvas(self, row: Destination, canvas: str) -> None:
+        widget = self._rows.get(row.id)
+        if canvas == row.canvas:
+            return
         if self._live(row.id):
             Toast.show(self.host, "End this destination to change its canvas", kind="warning")
-            return False
-        row.canvas = "vertical" if row.canvas == "landscape" else "landscape"
+            if widget is not None:
+                GLib.idle_add(lambda: widget.chip.set_current(row.canvas) and False)
+            return
+        row.canvas = canvas
         self.store.update(row)
-        widget = self._rows.get(row.id)
-        if widget is not None:
-            widget.chip.label.set_label(canvas_label(row.canvas))
-            widget.chip.update_property([Gtk.AccessibleProperty.LABEL], [f"Canvas: {canvas_label(row.canvas)}"])
         self._update(row.id)
         self._changed()
-        return False  # the chip keeps its look: it names the canvas, it isn't a switch
+
+    def _switch_canvas(self, row: Destination) -> None:
+        self._set_canvas(row, "vertical" if row.canvas == "landscape" else "landscape")
+        widget = self._rows.get(row.id)
+        if widget is not None:
+            widget.chip.set_current(row.canvas)
 
     def _menu(self, row: Destination, anchor: Gtk.Widget, x: float, y: float) -> None:
         rows = [MenuItem("Edit…", icon="pencil", on_activate=lambda: self.edit(row.id)),
@@ -265,7 +287,12 @@ class DestinationsPanel(Gtk.Box):
                 rows.append(MenuItem("Sign out", icon="log-out", on_activate=lambda: self.sign_out(row)))
             rows += [None, MenuItem("Remove", icon="trash-2", danger=True, on_activate=lambda: self.remove(row))]
         else:
-            rows.append(MenuItem("Open folder", icon="folder", on_activate=lambda: self._open_folder(row)))
+            target = self.outputs.rows[row.id].target if self.outputs is not None and row.id in self.outputs.rows else None
+            if target:
+                rows.append(MenuItem("Show file", icon="file", on_activate=lambda: _show_file(target, self)))
+            rows += [MenuItem("Record whenever I go live", icon="circle-dot", selected=row.enabled,
+                              on_activate=lambda: self._set_record_with_live(row)),
+                     MenuItem("Open folder", icon="folder", on_activate=lambda: self._open_folder(row))]
         FloatingMenu(rows, label=row.label, title=row.label).popup(anchor, x=x, y=y)
 
     def _changed(self) -> None:
@@ -578,6 +605,23 @@ class DestinationsPanel(Gtk.Box):
     def live_canvases(self) -> set[str]:
         """Canvases some live row takes (their chips carry the red dot)."""
         return {r.canvas for r in self.store.rows if self._live(r.id)}
+
+
+def _show_file(path: str, widget: Gtk.Widget) -> None:
+    Gtk.FileLauncher.new(Gio.File.new_for_path(path)).open_containing_folder(widget.get_root(), None, None)
+
+
+def _home(path: str) -> str:
+    """A folder as people read it: ~ for the home folder."""
+    home = str(Path.home())
+    return "~" + path[len(home):] if path == home or path.startswith(home + "/") else path
+
+
+def _size(n: int) -> str:
+    for unit, scale in (("GB", 1e9), ("MB", 1e6), ("KB", 1e3)):
+        if n >= scale:
+            return f"{n / scale:.1f} {unit}"
+    return f"{n} B"
 
 
 def _clock(seconds: float) -> str:
