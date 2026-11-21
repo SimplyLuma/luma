@@ -27,7 +27,7 @@ gi.require_version("GstBase", "1.0")
 from gi.repository import GLib, GObject, Gst, GstBase  # noqa: E402,F401 (GstBase: Aggregator.peek_next_sample)
 
 from . import graph  # noqa: E402
-from .graph import Chain, Element, EncoderChoice  # noqa: E402
+from .graph import ALPHA_FORMATS, ALPHA_FOURCCS, Chain, Element, EncoderChoice, only_alpha, prefer_alpha  # noqa: E402,F401
 from .model import FORMATS, Project, Scene, Widget  # noqa: E402
 
 FADE_MS = 300
@@ -172,48 +172,6 @@ def crop_meta(buffer: Gst.Buffer) -> tuple[int, int, int, int] | None:
 
 
 #: Formats with alpha: SHM names and DRM fourccs (DMABuf drm-format, "AR24:<modifier>").
-ALPHA_FORMATS = ("BGRA", "RGBA", "ARGB", "ABGR")
-ALPHA_FOURCCS = ("AR24", "AB24", "RA24", "BA24")
-
-
-def prefer_alpha(caps: str) -> str:
-    """``caps`` with every format list ordered alpha first, so a window cast with transparent
-    (rounded) corners is offered and taken with its alpha rather than as an opaque XR24/BGRx."""
-    import re
-
-    def order(found: re.Match) -> str:
-        items = [v.strip() for v in found.group(2).split(",")]
-        alpha = [v for v in items if v in ALPHA_FORMATS or v.split(":")[0] in ALPHA_FOURCCS]
-        return f"{found.group(1)}{{ {', '.join(alpha + [v for v in items if v not in alpha])} }}"
-
-    return re.sub(r"(\b(?:drm-)?format=\(string\))\{([^}]*)\}", order, caps)
-
-
-def only_alpha(caps: str) -> str:
-    """``caps`` cut to the formats with alpha (DMABuf AR24/AB24… with their modifiers, system-memory
-    BGRA/RGBA…); "" when none is left. A PipeWire producer picks the first format of its own list that
-    the consumer takes, so ordering alone never wins over a producer that lists XR24 first."""
-    import re
-
-    kept = []
-    for part in caps.split(";"):
-        part = part.strip()
-        if not part:
-            continue
-        key = "drm-format" if "drm-format=" in part else "format"
-        found = re.search(rf"\b{key}=\(string\)(\{{[^}}]*\}}|[^,;]+)", part)
-        if found is None:
-            continue
-        value = found.group(1)
-        items = [v.strip() for v in value.strip("{} ").split(",")] if value.startswith("{") else [value.strip()]
-        alpha = [v for v in items if v in ALPHA_FORMATS or v.split(":")[0] in ALPHA_FOURCCS]
-        if not alpha:
-            continue
-        text = alpha[0] if len(alpha) == 1 else "{ " + ", ".join(alpha) + " }"
-        kept.append(part[:found.start(1)] + text + part[found.end(1):])
-    return "; ".join(kept)
-
-
 def log(text: str) -> None:
     """One line for the journal (stderr is the app unit's journal)."""
     import sys
@@ -754,7 +712,7 @@ class Engine(GObject.Object):
         composited = bool(self.wanted_canvases())
         # No canvas composited: pictures capture nothing (the sound still runs, for its meters).
         wanted = {w.id: w for w in shown if w.id not in skip and (composited or not w.has_picture)}
-        if not wanted and not self.outputs and not (composited and shown):
+        if not wanted and not self._sent_canvases() and not (composited and shown):
             self._close()  # nothing to show and nothing sent: no pipeline at all
             return
         self._open()
@@ -807,7 +765,7 @@ class Engine(GObject.Object):
     def _idle_check(self) -> None:
         """Nothing captures, shows or is sent: the program goes, so it costs nothing."""
         def idle() -> bool:
-            return not self.branches and not self.outputs and not self.placeholders and not self.programs
+            return not self.branches and not self._sent_canvases() and not self.placeholders and not self.programs
 
         if self.pipeline is not None and idle():
             GLib.idle_add(lambda: (self._close() if idle() else None) and False)

@@ -63,6 +63,51 @@ def argb(rgb: str, alpha: float) -> int:
     return (a << 24) | int(rgb, 16)
 
 
+# ── Formats ──
+
+ALPHA_FORMATS = ("BGRA", "RGBA", "ARGB", "ABGR")
+ALPHA_FOURCCS = ("AR24", "AB24", "RA24", "BA24")
+
+
+def prefer_alpha(caps: str) -> str:
+    """``caps`` with every format list ordered alpha first, so a window cast with transparent
+    (rounded) corners is offered and taken with its alpha rather than as an opaque XR24/BGRx."""
+    import re
+
+    def order(found: re.Match) -> str:
+        items = [v.strip() for v in found.group(2).split(",")]
+        alpha = [v for v in items if v in ALPHA_FORMATS or v.split(":")[0] in ALPHA_FOURCCS]
+        return f"{found.group(1)}{{ {', '.join(alpha + [v for v in items if v not in alpha])} }}"
+
+    return re.sub(r"(\b(?:drm-)?format=\(string\))\{([^}]*)\}", order, caps)
+
+
+def only_alpha(caps: str) -> str:
+    """``caps`` cut to the formats with alpha (DMABuf AR24/AB24… with their modifiers, system-memory
+    BGRA/RGBA…); "" when none is left. A PipeWire producer picks the first format of its own list that
+    the consumer takes, so ordering alone never wins over a producer that lists XR24 first."""
+    import re
+
+    kept = []
+    for part in caps.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        key = "drm-format" if "drm-format=" in part else "format"
+        found = re.search(rf"\b{key}=\(string\)(\{{[^}}]*\}}|[^,;]+)", part)
+        if found is None:
+            continue
+        value = found.group(1)
+        items = [v.strip() for v in value.strip("{} ").split(",")] if value.startswith("{") else [value.strip()]
+        alpha = [v for v in items if v in ALPHA_FORMATS or v.split(":")[0] in ALPHA_FOURCCS]
+        if not alpha:
+            continue
+        text = alpha[0] if len(alpha) == 1 else "{ " + ", ".join(alpha) + " }"
+        kept.append(part[:found.start(1)] + text + part[found.end(1):])
+    return "; ".join(kept)
+
+
+
 # ── Pictures ──
 
 def frame_props(widget: Widget) -> dict:
