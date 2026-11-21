@@ -474,12 +474,17 @@ async function pillScenario() {
     check('the pill is up while a screen is shared', pill.visible && pill.mapped);
     const counter = new PaintCounter();
     pill.add_child(counter);
+    // The same probe outside the pill: shows the probe itself is painted.
+    const control = new PaintCounter();
+    Main.layoutManager.uiGroup.add_child(control);
+    control.set_position(pill.x, pill.y);
     let stagePaints = 0;
     const id = global.stage.connect('after-paint', () => stagePaints++);
     const before = frames('S').length;
     for (let i = 0; i < 300; i++) {
         // Repaint the pill itself each frame, as an animation behind it would.
         pill.queue_redraw();
+        control.queue_redraw();
         await new Promise(r => {
             const h = global.stage.connect('after-paint', () => {
                 global.stage.disconnect(h);
@@ -490,11 +495,14 @@ async function pillScenario() {
     global.stage.disconnect(id);
     const streamed = frames('S').length - before;
     check('the pill is painted on the screen in every one of 300 frames',
-        counter.screen >= 300, {screen: counter.screen, stagePaints});
+        counter.screen >= 300, {screen: counter.screen, capture: counter.capture,
+            control: control.screen, stagePaints,
+            flag: Clutter.PaintFlag.CAPTURE});
     check('the pill is painted into none of the stream frames',
         counter.capture === 0 || !pill.surface.mapped, {capture: counter.capture, streamed});
     check('the stream kept delivering frames', streamed > 10, streamed);
     counter.destroy();
+    control.destroy();
     // The application's frame where the pill is: no pill violet in it.
     await until('S snapshot', () => GLib.file_test(`${OUT}/stream-S.png`, GLib.FileTest.EXISTS), 10000);
     const [px, py] = pill.get_transformed_position();
