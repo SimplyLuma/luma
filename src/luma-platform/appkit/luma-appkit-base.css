@@ -2536,6 +2536,9 @@ lumaui-media-row.compact > box.lumaui-media-row-badge { border-radius: var(--lum
 lumaui-media-row label.lumaui-media-row-title { color: @luma_ink; }
 lumaui-media-row box.lumaui-media-row-line { margin-top: 2px; }
 lumaui-media-row.compact box.lumaui-media-row-line { margin-top: 1px; }
+/* In a panel the line is the panel's second ink. */
+lumaui-media-row.compact box.lumaui-media-row-line,
+lumaui-media-row.compact box.lumaui-media-row-line > label { color: alpha(@luma_ink, .62); }
 lumaui-media-row lumaui-media-row-level { margin-right: var(--lumaui-media-row-level-end); color: @luma_state; }
 lumaui-media-row lumaui-media-row-level:dir(rtl) { margin-right: 0; margin-left: var(--lumaui-media-row-level-end); }
 lumaui-media-row lumaui-media-row-level.off { color: @luma_faint; }
@@ -2550,10 +2553,11 @@ lumaui-media-row button.lumaui-media-row-key {
 lumaui-media-row button.lumaui-media-row-key:hover { background: @luma_fill; color: @luma_ink; }
 lumaui-media-row button.lumaui-media-row-key:active { background: @luma_control_fill; }
 lumaui-media-row button.lumaui-media-row-key:focus-visible { outline: 2px solid @luma_focus_ring; outline-offset: 1px; }
-/* Play/pause is the filled one: a round chip that sits in the row, with no edge or drop. */
+/* Play/pause is the raised one: a round chip with the kit's raised-chip edge. */
 lumaui-media-row button.lumaui-media-row-key.play {
   min-width: var(--lumaui-media-row-regular-play); min-height: var(--lumaui-media-row-regular-play);
-  border-radius: 9999px; background: @luma_chip; color: @luma_ink; box-shadow: none;
+  border-radius: 9999px; background: @luma_chip; color: @luma_ink;
+  box-shadow: inset 0 1px 0 @luma_chip_highlight, 0 0 0 1px @luma_chip_ring, 0 1px 2px @luma_chip_shadow;
   -gtk-icon-size: var(--lumaui-media-row-regular-play-icon);
 }
 lumaui-media-row button.lumaui-media-row-key.play:hover { filter: brightness(var(--lumaui-hover-brightness)); }

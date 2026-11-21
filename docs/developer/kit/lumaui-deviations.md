@@ -183,3 +183,5 @@ Settings › Sound › Volume mixer (`settings-volume-mixer`) against the Design
 
 - `mixer-group-wells`, `-chip`: Playing now and Other sounds are the standard Settings group, a filled well, where the reference draws hairline cards on the page; a row's plain output picker is its fill over that well.
 - `mixer-tiles-taller`, `-below`: the output tiles are the Sound page's own, about 2 px taller than the reference's; the hero is that much taller and what follows sits up to 4 px lower.
+- `media-row-pause-glyph`: the reference's compact pause glyph is two CSS bars the spec capture does not list as an icon; the row draws `lumaui-pause-filled` there.
+- `media-row-panel-chip`: the compact and touch play key is the toolkit's raised chip (`@luma_chip`); the reference's sheet uses the Shell's own sheet chip, a slightly darker grey.
