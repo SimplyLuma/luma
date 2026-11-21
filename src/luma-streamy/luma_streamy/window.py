@@ -174,6 +174,8 @@ class StreamyWindow(AppWindow):
         self.refresh_all()
         self.connect("close-request", self._closing)
         self.connect("notify::is-active", lambda *_a: self._update_preview_running())
+        self.connect("realize", self._watch_surface)
+        self.connect("unmap", lambda *_a: self._update_preview_running())
         GLib.idle_add(self._start_engine)
 
     def _repair_project(self) -> None:
@@ -404,17 +406,29 @@ class StreamyWindow(AppWindow):
             Toast.show(self.host, str(error), kind="error")
             return False
         self._ask_missing_sources()
-        self._tick = GLib.timeout_add(1000, self._every_second)
+        if not getattr(self, "_tick", 0):  # once: the engine restarts each time the window is shown again
+            self._tick = GLib.timeout_add(1000, self._every_second)
         return False
+
+    def _on_screen(self) -> bool:
+        """Mapped, and neither minimized nor suspended (another workspace, covered: nothing of it shows)."""
+        surface = self.get_surface()
+        hidden = Gdk.ToplevelState.MINIMIZED | getattr(Gdk.ToplevelState, "SUSPENDED", 0)
+        return self.get_mapped() and not (surface is not None and surface.get_state() & hidden)
+
+    def _watch_surface(self, *_args) -> None:
+        surface = self.get_surface()
+        if surface is not None and getattr(self, "_watched_surface", None) is not surface:
+            self._watched_surface = surface
+            surface.connect("notify::state", lambda *_a: self._update_preview_running())
 
     def _update_preview_running(self) -> None:
         """The program runs while the window is shown or something is sent; otherwise nothing captures."""
-        visible = self.get_mapped() and not (self.get_surface() and
-                                              self.get_surface().get_state() & Gdk.ToplevelState.MINIMIZED)
+        visible = self._on_screen()
         if not visible and not self.engine.outputs and self.engine.running:
             self.engine.stop()
-        elif visible and not self.engine.running:
-            self._start_engine()
+        elif visible and not self.engine.running and getattr(self, "_tick", 0):
+            self._start_engine()  # shown again (the first start is _start_engine's own, at idle)
 
     def _fill_fake_sources(self) -> None:
         for scene in self.project.scenes:
@@ -1815,7 +1829,7 @@ class StreamyWindow(AppWindow):
         """The active scene's sidebar picture, at most once a second and only while the sidebar shows."""
         paintable = self.engine.paintable
         scene = self.project.active_scene
-        if paintable is None or scene is None or not self.sidebar.get_mapped():
+        if paintable is None or scene is None or not self.sidebar.get_mapped() or not self._on_screen():
             return
         if not any(w.has_picture and w.visible and w.id not in self.widget_errors for w in scene.widgets):
             if self._thumbs.pop(scene.id, None) is not None:
