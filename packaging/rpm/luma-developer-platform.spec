@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.140%{?dist}
+Release:        1.luma.141%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,16 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.141
+- Dock: tiles dock anywhere by their header or tab (a long press on touch):
+  edge bands of another tile split it, its middle stacks the two as tabs,
+  the dock's outer edge makes a full-height column or full-width row; a live
+  preview glides to the landing rectangle, nothing reflows until release,
+  Esc cancels; no docking on a phone. on_rearrange(previous, new) for undo.
+- Dock tab groups: {"tabs": [keys], "current": key} in layouts, a tab strip
+  with the current tile's actions and More, show_tile(key).
+- tree_dock(), tree_dock_edge(), tree_remove(), tree_keys() on plain layouts.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.140
 - FloatingMenu.popup(anchor, x=, y=) / luma_floating_menu_popup_at(): a
   context menu with its corner on a point, flipped at the window's edges.

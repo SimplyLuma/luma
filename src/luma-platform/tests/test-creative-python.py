@@ -4,8 +4,9 @@
 import time
 import gi
 
+gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
-from gi.repository import GLib, GObject, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, GObject, Gtk  # noqa: E402
 
 Gtk.init()
 
@@ -369,35 +370,162 @@ def panel_checked_states():
     assert choices.selected == "f"
 
 
-def dock_header_drag():
-    """A header drag shows the drop target as it moves and moves the tile on release (the drag's
-    content can't be read back in PyGObject, so the dock follows its own moving tile)."""
-    from gi.repository import Gdk
+def docking_trees():
+    """Docking as plain data: every zone, the dock's own edges, tabs and emptied places."""
+    from luma_appkit.structure_dock import tree_dock, tree_dock_edge, tree_keys, tree_remove
+
+    t = {"split": "h", "ratio": 0.6, "start": "a", "end": {"split": "v", "ratio": 0.5, "start": "b", "end": "c"}}
+    side = lambda zone: tree_dock(t, "c", "a", zone)["start"]  # c leaves b's split; a's place splits
+    assert tree_dock(t, "c", "a", "left")["end"] == "b"
+    assert side("left") == {"split": "h", "ratio": 0.5, "start": "c", "end": "a"}
+    assert side("right") == {"split": "h", "ratio": 0.5, "start": "a", "end": "c"}
+    assert side("top") == {"split": "v", "ratio": 0.5, "start": "c", "end": "a"}
+    assert side("bottom") == {"split": "v", "ratio": 0.5, "start": "a", "end": "c"}
+    assert tree_dock(t, "c", "a", "left")["ratio"] == 0.6, "the other shares stay"
+    tabbed = tree_dock(t, "c", "a", "tabs")
+    assert tabbed == {"split": "h", "ratio": 0.6, "start": {"tabs": ["a", "c"], "current": "c"}, "end": "b"}
+    assert tree_keys(tabbed) == ["a", "c", "b"]
+    # Onto a tab: the group takes it; onto a group's edge: the group splits.
+    three = tree_dock(tabbed, "b", "c", "tabs")
+    assert three == {"tabs": ["a", "c", "b"], "current": "b"}
+    split_group = tree_dock(three, "b", "a", "right")
+    assert split_group == {"split": "h", "ratio": 0.5, "start": {"tabs": ["a", "c"], "current": "a"}, "end": "b"}
+    # Out of a group of two: the group becomes the one left, and an emptied split goes.
+    out = tree_dock(tabbed, "c", "b", "bottom")
+    assert out == {"split": "h", "ratio": 0.6, "start": "a", "end": {"split": "v", "ratio": 0.5,
+                                                                      "start": "b", "end": "c"}}
+    assert tree_remove(t, "b") == {"split": "h", "ratio": 0.6, "start": "a", "end": "c"}
+    assert tree_remove(tree_remove(t, "b"), "c") == "a" and tree_remove("a", "a") is None
+    assert tree_remove({"tabs": ["a", "b", "c"], "current": "b"}, "b") == {"tabs": ["a", "c"], "current": "a"}
+    # The dock's own edges: a full-height column or full-width row, a quarter of the dock.
+    assert tree_dock_edge(t, "a", "right") == {"split": "h", "ratio": 0.75,
+                                               "start": {"split": "v", "ratio": 0.5, "start": "b", "end": "c"},
+                                               "end": "a"}
+    assert tree_dock_edge(t, "c", "top")["start"] == "c" and tree_dock_edge(t, "c", "top")["ratio"] == 0.25
+    assert tree_dock(t, "a", "a", "left") is t
+    for bad in (lambda: tree_dock(t, "c", "a", "middle"), lambda: tree_dock_edge(t, "a", "centre")):
+        try:
+            bad()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("refused")
+
+
+def _drag(dock, widget, to, *, release=True):
+    """A person's drag of `widget` (a header or tab) to `to` (dock coordinates)."""
+    from gi.repository import Graphene
+
+    gesture = next(c for c in [widget.observe_controllers().get_item(i)
+                               for i in range(widget.observe_controllers().get_n_items())]
+                   if isinstance(c, Gtk.GestureDrag) and not isinstance(c, Gtk.GestureLongPress))
+    ok, start = widget.compute_point(dock, Graphene.Point().init(12, 10))
+    assert ok
+    gesture.emit("drag-begin", 12, 10)
+    gesture.emit("drag-update", (to[0] - start.x) / 2, (to[1] - start.y) / 2)
+    gesture.emit("drag-update", to[0] - start.x, to[1] - start.y)
+    if release:
+        gesture.emit("drag-end", to[0] - start.x, to[1] - start.y)
+    return gesture
+
+
+def docking_drag():
+    """Headers dock tiles by dragging: edge bands split, the middle makes tabs, the dock's edge a column;
+    a preview shows where; Esc cancels; on_rearrange gets the previous layout."""
     from luma_appkit import Dock, DockTile
 
-    a = DockTile("a", "A", "layers", Gtk.Box(), main=True)
-    b = DockTile("b", "B", "layers", Gtk.Box())
-    d = Dock([a, b], layout=Dock.split("h", 0.5, "a", "b"))
-    window = Gtk.Window(default_width=900, default_height=600)
+    tiles = {k: DockTile(k, k.upper(), "layers", Gtk.Box()) for k in ("a", "b", "c")}
+    d = Dock(tiles.values(), layout={"split": "h", "ratio": 0.5, "start": "a",
+                                     "end": {"split": "v", "ratio": 0.5, "start": "b", "end": "c"}})
+    undo = []
+    d.on_rearrange = lambda previous, new: undo.append((previous, new))
+    window = Gtk.Window(default_width=1000, default_height=640)
     window.set_child(d)
     window.present()
     settle()
-    source = next(c for c in [b.header.observe_controllers().get_item(i)
-                              for i in range(b.header.observe_controllers().get_n_items())]
-                  if isinstance(c, Gtk.DragSource))
-    provider = source.emit("prepare", 4, 4)
-    assert isinstance(provider, Gdk.ContentProvider) and "gchararray" in provider.ref_formats().to_string()
-    target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
-    ok, box = a.compute_bounds(d)
-    assert ok
-    x, y = box.get_x() + 6, box.get_y() + box.get_height() / 2  # a's left band
-    assert d._drop_motion(target, x, y) == 0, "no drag under way: no target"
-    b.add_css_class("moving")  # what the header's drag-begin does
-    assert d._drop_motion(target, x, y) == Gdk.DragAction.MOVE and d.target.get_visible()
-    assert d._dropped(target, f"lumaui-dock-tile:b", x, y)
-    b.remove_css_class("moving")
-    layout = d.layout()
-    assert layout["start"] == "b" and layout["end"] == "a", layout
+
+    def box(widget):
+        ok, r = widget.compute_bounds(d)
+        assert ok
+        return r.get_x(), r.get_y(), r.get_width(), r.get_height()
+
+    # c over a's right band: the preview is a's right half; release splits a.
+    ax, ay, aw, ah = box(tiles["a"])
+    g = _drag(d, tiles["c"].header, (ax + aw * 0.9, ay + ah / 2), release=False)
+    assert d.target.get_visible() and tiles["c"].has_css_class("moving")
+    settle(0.2)
+    r = d._target_rect
+    assert abs(r.x - (ax + aw / 2)) <= 2 and abs(r.width - aw / 2) <= 2 and abs(r.height - ah) <= 2, (r.x, r.width)
+    assert d.layout()["end"]["end"] == "c", "nothing moves until release"
+    g.emit("drag-end", 0, 0)
+    assert not d.target.get_visible() and not tiles["c"].has_css_class("moving")
+    assert d.layout() == {"split": "h", "ratio": 0.5, "start": {"split": "h", "ratio": 0.5, "start": "a", "end": "c"},
+                          "end": "b"}, d.layout()
+    assert len(undo) == 1 and undo[0][0]["end"]["end"] == "c"
+    settle()
+    # b onto the middle of a: tabs, b showing; the tab strip switches.
+    ax, ay, aw, ah = box(tiles["a"])
+    _drag(d, tiles["b"].header, (ax + aw / 2, ay + ah / 2))
+    settle()
+    assert d.layout() == {"split": "h", "ratio": 0.5, "start": {"tabs": ["a", "b"], "current": "b"}, "end": "c"}, \
+        d.layout()
+    widget = next(w for slot, w in d._slots if isinstance(slot, dict))
+    assert widget.has_css_class("lumaui-dock-tabs") and tiles["b"].get_mapped() and not tiles["a"].get_mapped()
+    assert tiles["b"].more_button.get_parent() is widget.tools
+    widget.buttons["a"].emit("clicked")
+    settle()
+    assert d.layout()["start"]["current"] == "a" and tiles["a"].get_mapped()
+    assert tiles["b"].more_button.get_parent() is tiles["b"].header
+    # A tab dragged to the dock's right edge: a full-height column, a quarter of the dock.
+    root = d._root_widget
+    rx, ry, rw, rh = box(root)
+    g = _drag(d, widget.buttons["b"], (rx + rw - 6, ry + rh / 2), release=False)
+    settle(0.2)
+    r = d._target_rect
+    assert abs(r.width - rw * 0.25) <= 2 and abs(r.height - rh) <= 2 and abs(r.x + r.width - (rx + rw)) <= 2
+    g.emit("drag-end", 0, 0)
+    settle()
+    assert d.layout()["end"] == "b" and d.layout()["ratio"] == 0.75, d.layout()
+    assert "tabs" not in str(d.layout()), "a group left with one tile is that tile"
+    # Esc cancels: nothing moves, the preview goes.
+    before = d.layout()
+    ax, ay, aw, ah = box(tiles["a"])
+    g = _drag(d, tiles["c"].header, (ax + aw / 2, ay + ah / 2), release=False)
+    assert d.target.get_visible()
+    keys = next(c for c in [window.observe_controllers().get_item(i)
+                            for i in range(window.observe_controllers().get_n_items())]
+                if isinstance(c, Gtk.EventControllerKey) and c.get_propagation_phase() == Gtk.PropagationPhase.CAPTURE)
+    assert keys.emit("key-pressed", Gdk.KEY_Escape, 0, 0)
+    g.emit("drag-end", 0, 0)
+    assert d.layout() == before and not d.target.get_visible() and not tiles["c"].has_css_class("moving")
+    # A click on a header (no real move) is not a drag.
+    from gi.repository import Graphene
+    ok, here = tiles["c"].header.compute_point(d, Graphene.Point().init(12, 10))
+    g = _drag(d, tiles["c"].header, (here.x + 3, here.y + 2))
+    assert d.layout() == before and not d.target.get_visible(), (before, d.layout())
+    # Tabs survive set_layout; a bare tile never joins a group.
+    d.set_layout({"tabs": ["a", "b", "zz"], "current": "zz"})
+    assert d.layout()["start"] == {"tabs": ["a", "b"], "current": "a"} or d.layout() == {"split": "h", "ratio": 0.75,
+                                                                                        "start": {"tabs": ["a", "b"], "current": "a"},
+                                                                                        "end": "c"}, d.layout()
+    # Tiles that fit their content stack as tabs too: the group fits like its current tile.
+    fit = Dock([DockTile("p", "P", "monitor", Gtk.Box(), main=True, bare=True),
+                DockTile("m", "M", "volume-2", Gtk.Box(height_request=120), fit=True),
+                DockTile("w", "W", "layers", Gtk.Box(height_request=80), fit=True)],
+               layout={"split": "v", "ratio": 0.6, "start": "p", "end": {"tabs": ["m", "w"], "current": "m"}})
+    other = Gtk.Window(default_width=900, default_height=600)
+    other.set_child(fit)
+    other.present()
+    settle()
+    assert fit._fits(fit.layout()["end"]) and fit.layout()["end"]["current"] == "m"
+    other.destroy()
+    # A phone: no docking.
+    window.set_default_size(400, 700)
+    settle()
+    assert d.phone
+    before = d.layout()
+    _drag(d, tiles["a"].header, (20, 200))
+    assert d.layout() == before and not d.target.get_visible()
     window.destroy()
 
 
@@ -430,7 +558,8 @@ if __name__ == "__main__":
     fit_group()
     sidebar_headings()
     meter_track()
-    dock_header_drag()
+    docking_trees()
+    docking_drag()
     dock_equal_split()
     panel_checked_states()
     GLib.MainContext.default().iteration(False)
