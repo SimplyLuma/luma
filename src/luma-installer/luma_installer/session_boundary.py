@@ -146,6 +146,13 @@ def _desktop_schema_files(source: Path) -> list[Path]:
         return []
 
 
+def _readable_by_applications(folder: Path) -> None:
+    """The store's file type: every application may read it, none may write it."""
+    from .app_store import FILE_TYPE, selinux_enabled
+    if selinux_enabled():
+        subprocess.run(["chcon", "-R", "-t", FILE_TYPE, str(folder)], capture_output=True, check=False)
+
+
 def desktop_schemas(holder: Path | None = None, source: Path = SCHEMA_SOURCE) -> Path | None:
     """A folder with the device's settings-daemon schemas, compiled; None when there are none.
 
@@ -176,6 +183,7 @@ def desktop_schemas(holder: Path | None = None, source: Path = SCHEMA_SOURCE) ->
             if result.returncode != 0 or not (partial / "gschemas.compiled").is_file():
                 return None
             partial.chmod(0o755)
+            _readable_by_applications(partial)
             try:
                 partial.rename(final)
             except OSError:
