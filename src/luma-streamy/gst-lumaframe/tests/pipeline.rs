@@ -871,26 +871,31 @@ fn source_latency_replaces_upstream_minimum() {
     .unwrap()
     .downcast::<gst::Pipeline>()
     .unwrap();
+    // The tests' one GL display: a display of its own breaks the others running in parallel.
+    pipeline.set_context(&gl_display_context());
     pipeline.set_state(gst::State::Playing).unwrap();
     let _ = pipeline.state(gst::ClockTime::from_seconds(5));
     let frame = pipeline.by_name("f").unwrap();
-    let pad = frame.static_pad("src").unwrap();
-    let min = |pad: &gst::Pad| {
+    let src = frame.static_pad("src").unwrap();
+    let sink = frame.static_pad("sink").unwrap();
+    let min = |pad: &gst::Pad, peer: bool| {
         let mut q = gst::query::Latency::new();
-        assert!(pad.query(&mut q));
+        assert!(if peer {
+            pad.peer_query(&mut q)
+        } else {
+            pad.query(&mut q)
+        });
         let (live, min, _max) = q.result();
         assert!(live);
         min
     };
+    let upstream = min(&sink, true);
+    assert!(upstream > gst::ClockTime::ZERO, "a live source answers some latency");
     assert_eq!(frame.property::<i64>("source-latency"), -1);
-    assert_eq!(
-        min(&pad),
-        gst::ClockTime::from_nseconds(33_333_333),
-        "upstream's: one source frame"
-    );
+    assert_eq!(min(&src, false), upstream, "passed through by default");
     frame.set_property("source-latency", 0i64);
-    assert_eq!(min(&pad), gst::ClockTime::ZERO);
+    assert_eq!(min(&src, false), gst::ClockTime::ZERO);
     frame.set_property("source-latency", 2_000_000i64);
-    assert_eq!(min(&pad), gst::ClockTime::from_mseconds(2));
+    assert_eq!(min(&src, false), gst::ClockTime::from_mseconds(2));
     pipeline.set_state(gst::State::Null).unwrap();
 }
