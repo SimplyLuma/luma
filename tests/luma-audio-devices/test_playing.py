@@ -181,6 +181,59 @@ class Linger(unittest.TestCase):
         self.assertIsNone(self.mixer.next_deadline())
 
 
+class ScopedEventSounds(unittest.TestCase):
+    """Messages is an other sound only once an event sound carried its app ID."""
+
+    def other(self, mixer):
+        return [r["id"] for r in mixer.rows() if r["other"]]
+
+    def test_an_unscoped_alert_is_system_sounds(self):
+        graph = Graph()
+        graph.apply([stream(50, {"application.name": "Messages", "media.role": "event"})])
+        mixer = Mixer(_Index(), _Control())
+        mixer.update(graph, 0.0)
+        self.assertEqual(self.other(mixer), ["@system", "org.projectluma.Phone"])
+        self.assertEqual(listed(mixer), [])
+        self.assertEqual(mixer.applications["@system"].streams, [50])
+
+    def test_an_alert_with_the_app_id_is_its_own_row(self):
+        graph = Graph()
+        graph.apply([stream(50, {"application.id": "org.projectluma.Messages", "media.role": "event"})])
+        mixer = Mixer(_Index(), _Control())
+        mixer.update(graph, 0.0)
+        self.assertEqual(self.other(mixer), ["@system", "org.projectluma.Messages", "org.projectluma.Phone"])
+        self.assertEqual(listed(mixer), [])
+        self.assertEqual(mixer.applications["org.projectluma.Messages"].streams, [50])
+        self.assertIn("org.projectluma.Messages", mixer.saved_state_keys())
+        # It stays, silent, at the level WirePlumber remembers for it.
+        graph.apply([gone(50), {"id": 9, "type": "PipeWire:Interface:Metadata",
+                                "props": {"metadata.name": "luma-app-audio"},
+                                "metadata": [{"subject": 0, "key": "app.state:org.projectluma.Messages",
+                                              "value": '{"volume": 0.125, "mute": false}'}]}])
+        mixer.update(graph, 1.0)
+        row = mixer.applications["org.projectluma.Messages"]
+        self.assertTrue(row.other)
+        self.assertFalse(row.listed)
+        self.assertAlmostEqual(row.volume, 0.5, places=3)
+        self.assertIsNone(mixer.next_deadline())
+
+    def test_never_heard_with_its_id_it_has_no_row(self):
+        graph = Graph()
+        graph.apply([{"id": 9, "type": "PipeWire:Interface:Metadata", "props": {"metadata.name": "luma-app-audio"},
+                      "metadata": [{"subject": 0, "key": "app.state:org.projectluma.Messages", "value": "{}"}]}])
+        mixer = Mixer(_Index(), _Control())
+        mixer.update(graph, 0.0)
+        self.assertNotIn("org.projectluma.Messages", self.other(mixer))
+
+    def test_its_media_is_in_the_playing_list(self):
+        graph = Graph()
+        graph.apply([stream(50, {"application.id": "org.projectluma.Messages", "media.role": "event"}),
+                     stream(51, {"application.id": "org.projectluma.Messages"})])
+        mixer = Mixer(_Index(), _Control())
+        mixer.update(graph, 0.0)
+        self.assertEqual([r["id"] for r in listed(mixer)], ["org.projectluma.Messages"])
+
+
 class WithoutAPlayer(unittest.TestCase):
     def test_stream_without_mpris_is_the_app_itself(self):
         graph = Graph()

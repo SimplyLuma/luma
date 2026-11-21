@@ -135,7 +135,7 @@
       GetApplications (version 2): the mixer. One entry per app with a sound
       stream, running or corked, however many streams it has; it stays for 10
       seconds after the app's last stream closes. The other sounds (System
-      sounds, Phone) are always present, with their remembered
+      sounds, Phone, and Messages once an alert carried its app ID) are always present, with their remembered
       volume. Other sounds first, then apps in the order they started.
       Keys:
         id (s)          the app key: Flatpak app id, application.id, name or

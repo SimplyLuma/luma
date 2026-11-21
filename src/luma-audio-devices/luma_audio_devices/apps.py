@@ -19,7 +19,7 @@ import os
 import re
 
 __all__ = (
-    "KEY_PROPERTIES", "SYSTEM_KEY", "app_key", "is_system_sound", "is_app_playback",
+    "KEY_PROPERTIES", "SCOPED_EVENT_APPS", "SYSTEM_KEY", "app_key", "is_system_sound", "is_app_playback",
     "is_portal_remote", "capture_includes", "cubic_to_linear", "linear_to_cubic",
     "stream_volume", "AppIdentity", "DesktopIndex",
 )
@@ -34,6 +34,10 @@ KEY_PROPERTIES = (
 )
 SYSTEM_ROLES = frozenset(("notification", "event"))
 SYSTEM_KEY = "@system"
+# Apps whose own event sounds have their own level: an event stream that
+# carries one of these app IDs (application.id or the portal's app ID, never
+# a name or a binary) is that app's, not System sounds.
+SCOPED_EVENT_APPS = frozenset(("org.projectluma.Messages",))
 
 
 def _nonempty(value) -> str | None:
@@ -56,9 +60,23 @@ def app_key(props: dict, client: dict | None = None) -> tuple[str | None, str | 
     return None, None
 
 
-def is_system_sound(props: dict) -> bool:
+def scoped_event_app(props: dict, client: dict | None = None) -> str | None:
+    """The app ID an event sound carries when that app levels its own event
+    sounds (SCOPED_EVENT_APPS), else None."""
+    client = client or {}
+    for value in (props.get("pipewire.access.portal.app_id"), client.get("pipewire.access.portal.app_id"),
+                  props.get("application.id")):
+        value = _nonempty(value)
+        if value is not None:
+            return value if value in SCOPED_EVENT_APPS else None
+    return None
+
+
+def is_system_sound(props: dict, client: dict | None = None) -> bool:
     role = _nonempty(props.get("media.role"))
-    return role is not None and role.lower() in SYSTEM_ROLES
+    if role is None or role.lower() not in SYSTEM_ROLES:
+        return False
+    return scoped_event_app(props, client) is None
 
 
 def _truthy(value) -> bool:

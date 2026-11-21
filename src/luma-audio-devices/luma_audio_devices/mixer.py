@@ -10,7 +10,9 @@ its MPRIS player when it has one (mpris.py); without one the row is the app's
 own name and icon.
 
 "Other sounds" (System sounds, Phone) are rows that stay while
-silent: their volume holds for sounds not yet played.
+silent: their volume holds for sounds not yet played. Messages joins them
+once an event sound has carried its app ID (apps.SCOPED_EVENT_APPS): only
+then can its alert be levelled apart from System sounds.
 
 Volume, mute and output changes go to WirePlumber as luma-app-audio commands
 (luma/app-audio.lua), which applies them to every stream of the app and
@@ -40,6 +42,11 @@ SYSTEM_ROUTE_KEY = "restore.stream.Output/Audio.media.role:Notification"
 # Shell's event sound whichever app sent it, so it is System sounds.
 OTHER_SOUNDS = (
     ("org.projectluma.Phone", "Phone"),
+)
+# Other sounds listed only once one of their event sounds carried the app's
+# ID: (app key, name when no desktop entry is installed).
+SCOPED_OTHER_SOUNDS = (
+    ("org.projectluma.Messages", "Messages"),
 )
 SAVED_STATE_PREFIX = "app.state:"
 
@@ -100,15 +107,19 @@ class Mixer:
         anything a client shows changed."""
         rows: dict[str, Application] = {}
         measured: set[str] = set()   # rows with a stream that reported its volume
+        media: set[str] = set()      # rows with a stream that is not an event sound
         for stream in graph.stream_nodes():
             if not apps.is_app_playback(stream.props):
                 continue
-            if apps.is_system_sound(stream.props):
+            if apps.is_system_sound(stream.props, stream.client):
                 key = apps.SYSTEM_KEY
             else:
                 key, _source = apps.app_key(stream.props, stream.client)
                 if key is None:
                     continue
+            if apps.scoped_event_app(stream.props, stream.client) is None or \
+                    (stream.props.get("media.role") or "").strip().lower() not in apps.SYSTEM_ROLES:
+                media.add(key)
             row = rows.get(key)
             if row is None:
                 identity = self._identify(key, stream.props, stream.client)
@@ -203,6 +214,26 @@ class Mixer:
                     apps.linear_to_cubic(volume) if isinstance(volume, (int, float)) else 1.0,
                     mute is True, "", False, listed=False)
             row.other = True
+        # An app that levels its own event sounds is an other sound once one
+        # carried its ID: while one sounds, or while WirePlumber remembers a
+        # level for it. It is in the playing list only for its other streams.
+        for key, fallback_name in SCOPED_OTHER_SOUNDS:
+            row = rows.get(key)
+            if row is not None and key in media:
+                continue
+            saved = graph.metadata_json("luma-app-audio", SAVED_STATE_PREFIX + key)
+            saved = saved if isinstance(saved, dict) else {}
+            if row is None:
+                if not isinstance(saved.get("volume"), (int, float)) and not isinstance(saved.get("mute"), bool):
+                    continue
+                identity = self._identify(key, {"application.name": fallback_name}, {})
+                row = rows[key] = Application(
+                    key, identity.name, identity.icon, identity.desktop_id, "app",
+                    apps.linear_to_cubic(saved["volume"]) if isinstance(saved.get("volume"), (int, float)) else 1.0,
+                    saved.get("mute") is True, "", False)
+            row.other = True
+            row.listed = False
+            row.gone_at = None
 
         for row in rows.values():
             if not row.streams and row.kind != "system" and not row.other:
@@ -230,7 +261,7 @@ class Mixer:
     def saved_state_keys(self) -> list[str]:
         """App keys whose remembered level the service asks WirePlumber to
         publish: the other sounds, and every app in the playing list."""
-        keys = [key for key, _name in OTHER_SOUNDS]
+        keys = [key for key, _name in OTHER_SOUNDS + SCOPED_OTHER_SOUNDS]
         keys += [row.key for row in self.applications.values()
                  if row.kind == "app" and row.listed and row.key not in keys]
         return keys

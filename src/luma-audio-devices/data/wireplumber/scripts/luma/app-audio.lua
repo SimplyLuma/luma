@@ -197,10 +197,10 @@ local function app_streams (key)
     if app.is_app_playback (node.properties) then
       local node_key = key_for (node)
       if key == app.SYSTEM_KEY then
-        if app.is_system_sound (node.properties) then
+        if app.is_system_sound (node.properties, client_props (node)) then
           table.insert (found, node)
         end
-      elseif node_key == key and not app.is_system_sound (node.properties) then
+      elseif node_key == key and not app.is_system_sound (node.properties, client_props (node)) then
         table.insert (found, node)
       end
     end
@@ -240,7 +240,7 @@ SimpleEventHook {
   execute = function (event)
     local node = event:get_subject ()
     local props = node.properties
-    if not app.is_app_playback (props) or app.is_system_sound (props) then
+    if not app.is_app_playback (props) or app.is_system_sound (props, client_props (node)) then
       return
     end
     if props ["state.restore-props"] == "false" then
@@ -291,7 +291,7 @@ SimpleEventHook {
   execute = function (event)
     local node = event:get_subject ()
     local props = node.properties
-    if not app.is_app_playback (props) or app.is_system_sound (props) then
+    if not app.is_app_playback (props) or app.is_system_sound (props, client_props (node)) then
       return
     end
     local volume, mute = node_volume (node)
@@ -340,7 +340,7 @@ SimpleEventHook {
       Constraint { "bound-id", "=", props ["event.subject.id"], type = "gobject" },
     }
     if not node or not app.is_app_playback (node.properties) or
-        app.is_system_sound (node.properties) then
+        app.is_system_sound (node.properties, client_props (node)) then
       return
     end
     local key = key_for (node)
@@ -389,7 +389,7 @@ SimpleEventHook {
       Constraint { "media.class", "=", "Stream/Output/Audio" },
     } do
       local props = node.properties
-      if app.is_app_playback (props) and not app.is_system_sound (props) and
+      if app.is_app_playback (props) and not app.is_system_sound (props, client_props (node)) and
           props ["state.restore-target"] ~= "false" then
         local key = key_for (node)
         if key and load_app (key).target == name then
@@ -518,7 +518,7 @@ local function stream_matches (capture, stream_si)
     return false
   end
   local key = key_for (node)
-  if app.is_system_sound (node.properties) then
+  if app.is_system_sound (node.properties, client_props (node)) then
     -- System sounds are part of "all sound", and can be chosen by name.
     return capture.mode == "system" or capture.apps [app.SYSTEM_KEY] == true
   end
