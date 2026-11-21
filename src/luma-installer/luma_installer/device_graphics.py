@@ -9,23 +9,49 @@ links; the application's own commit is never changed.
 
 Three routes, in the order Luma prefers them:
 
-``mesa``    Current Mesa built for the application's userland, with exactly the
-            dependencies that build needs. Nothing else in the tree changes:
-            same C library, same C++ runtime. The layer is built by the
-            distribution's own tools from a named source (for Debian 12, its
-            backports suite) and applied per package, never replacing a
-            package with an older one.
+``mesa``    The default. Current Mesa built for the application's userland, with
+            exactly the dependencies that build needs. Nothing else in the tree
+            changes: same C library, same C++ runtime. The layer is built by
+            the distribution's own tools and applied per package, never
+            replacing a package with an older one. Where current Mesa comes
+            from is data, one row per userland (``data/graphics-layers.json``):
+            the release's backports, a Luma build where the distribution has
+            none, or "release" where the release's own updates carry current
+            Mesa and no layer is kept at all.
 ``host``    The device's own driver files and the libraries they need, the way
             Steam Linux Runtime's pressure-vessel imports them: for each
             library the newer of the device's and the tree's wins, and when
             the device's C library is the newer one it replaces the tree's
             whole C library, dynamic loader included, because drivers built
             against it cannot run on an older one. This changes what the
-            application itself runs on, so it is the fallback for userlands
-            Luma has no Mesa build for.
+            application itself runs on, so it is the fallback: taken only when
+            the data calls for a Mesa layer and the store has none.
 ``nvidia``  The device's NVIDIA userspace, which is built against an old C
             library and runs in any userland. Taken only when its version is
             the loaded kernel module's.
+
+``route_plan`` says which of these a tree gets and why; ``ensure_layers``
+builds or stages what the plan is missing.
+
+Proven: GL through virgl in a virtual machine, on ``mesa`` and ``host``. The
+``nvidia`` route has only met a constructed device root. Still to be proven on
+real hardware, by three commands run inside a tree
+(``luma-app-closure shell APP -- COMMAND``):
+
+    glmark2-wayland        GL_RENDERER is the hardware driver, not llvmpipe
+    vulkaninfo --summary   a physical device of the hardware driver, not llvmpipe (lavapipe)
+    vainfo --display drm   decode profiles (VAEntrypointVLD) are listed
+
+    Intel    i915, xe          iris; ANV; VA-API there is intel-media-driver (iHD), not
+                               Mesa, and no layer carries it yet
+    AMD      amdgpu            radeonsi; RADV; VA-API from radeonsi
+    NVIDIA   nvidia            "NVIDIA ..." from libGLX_nvidia/libEGL_nvidia; Vulkan from
+                               nvidia_icd; vainfo needs nvidia-vaapi-driver in the tree,
+                               so decode may have to be shown through NVDEC instead
+    ARM      panfrost/panthor (Mali, panvk), freedreno (Adreno, turnip), v3d (Raspberry
+             Pi 5, v3dv), asahi (Apple, honeykrisp). Decode on these is V4L2, not
+             VA-API: vainfo is expected to find nothing. ``host`` and ``nvidia``
+             default to x86_64 (``machine=62``); on ARM they take ``machine=183``.
 
 Nothing in the shipped install path uses this module.
 """
@@ -36,6 +62,7 @@ import os
 import re
 import shutil
 import struct
+import tempfile
 from pathlib import Path
 
 from . import closure
@@ -299,11 +326,15 @@ GLIBC_FAMILY = re.compile(r"^(ld-linux.*\.so\.\d+|ld\.so\.1|lib(c|m|dl|rt|pthrea
 MULTIARCH = {62: "x86_64-linux-gnu", 183: "aarch64-linux-gnu", 3: "i386-linux-gnu"}
 
 
+def library_candidates(bits: int = 64, machine: int = 62) -> list[str]:
+    """Where libraries of one word size may live, in Debian's layout and Fedora's."""
+    candidates = [f"usr/lib/{MULTIARCH[machine]}"] if machine in MULTIARCH else []
+    return candidates + ["usr/lib64" if bits == 64 else "usr/lib32", "usr/lib"]
+
+
 def library_dirs(root: Path, bits: int = 64, machine: int = 62) -> list[Path]:
     """The folders a root's loader searches (relative to the root), its C library's first."""
-    candidates = [f"usr/lib/{MULTIARCH[machine]}"] if machine in MULTIARCH else []
-    candidates += ["usr/lib64" if bits == 64 else "usr/lib32", "usr/lib"]
-    present = [Path(entry) for entry in candidates if (root / entry).is_dir()]
+    present = [Path(entry) for entry in library_candidates(bits, machine) if (root / entry).is_dir()]
     return sorted(present, key=lambda entry: not (root / entry / "libc.so.6").exists())
 
 
@@ -540,27 +571,177 @@ def apply_host_layer(layer: Path, record: dict[str, object], root: Path, bits: i
 
 # -- Route "mesa": current Mesa for the userland ----------------------------------
 
-# Where a current Mesa for each userland comes from. Luma's own builds replace
-# these sources as they exist; the mechanism is the same.
-MESA_SOURCES: dict[str, dict[str, object]] = {
-    "debian-12": {"suite": "bookworm-backports", "source": "deb http://deb.debian.org/debian bookworm-backports main"},
-    "ubuntu-22.04": {"suite": "", "source": ""},  # Ubuntu's own updates carry the hardware-enablement Mesa
-    "ubuntu-24.04": {"suite": "", "source": ""},
-    "debian-13": {"suite": "trixie-backports", "source": "deb http://deb.debian.org/debian trixie-backports main"},
+# Where current Mesa for each userland comes from is data, defined per release.
+LAYERS_VERSION = 1
+LAYERS_ENVIRONMENT = "LUMA_GRAPHICS_LAYERS"
+LAYERS_PATHS = (Path("/usr/share/luma/installer/graphics-layers.json"),
+                Path(__file__).resolve().parent.parent / "data/graphics-layers.json")
+# "backports"  the distribution's own backports suite: a layer is built from it.
+# "luma"       a suite Luma builds and publishes: a layer is built from it.
+# "updates"    only what the release's updates carry, which trees already install: nothing to build.
+# "release"    the release's updates carry current Mesa: no layer is wanted.
+LAYER_SOURCES = ("backports", "luma", "updates", "release")
+BUILT_SOURCES = ("backports", "luma")
+LUMA_BUILD_KEYS = ("source_package", "build_depends", "architectures", "cadence")
+
+# The copy used when no file is found. Kept equal to data/graphics-layers.json (a test compares them).
+BUILTIN_LAYERS: dict[str, object] = {
+    "version": 1,
+    "userlands": {
+        "debian-13": {
+            "source": "backports",
+            "suite": "trixie-backports",
+            "apt": "deb http://deb.debian.org/debian trixie-backports main",
+            "luma_build": False,
+            "note": ("Debian's own backports follow upstream Mesa while trixie is the stable release (26.1.6-1~bpo13+1 "
+                 "when the prototype ran). Once Debian 14 is out the suite stops moving and this row becomes a Luma "
+                 "build."),
+        },
+        "ubuntu-24.04": {
+            "source": "updates",
+            "suite": "noble-updates",
+            "luma_build": True,
+            "note": ("Ubuntu has no backports of Mesa. The hardware-enablement Mesa reaches noble-updates with each point "
+                 "release, taken from the interim release before it, so it trails upstream by six months or more and "
+                 "stops at 24.04.5. Trees already install it; a layer of it would add nothing. Current Mesa for noble "
+                 "is Luma's to build."),
+            "build": {
+                "source_package": "mesa",
+                "build_depends": ("The closure of mesa's Build-Depends that noble lacks at the needed version: libdrm, "
+                     "wayland-protocols, directx-headers, spirv-tools and spirv-llvm-translator with the LLVM they are "
+                     "built for, libva headers, and rustc with bindgen and cbindgen for the Rust drivers. Each is built "
+                     "for noble and shipped in the same suite."),
+                "architectures": ["x86_64", "aarch64"],
+                "cadence": ("Rebuilt whenever the system image moves to a new Mesa feature release, and for each point release "
+                     "the image takes, so a tree's Mesa is the device's."),
+            },
+        },
+        "debian-12": {
+            "source": "backports",
+            "suite": "bookworm-backports",
+            "apt": "deb http://deb.debian.org/debian bookworm-backports main",
+            "luma_build": False,
+            "note": ("bookworm-backports carries Mesa 25.0.7-2~bpo12+1 and no longer moves: backports for a superseded "
+                 "release close about a year after the next one. Hardware that needs a newer Mesa than that needs a "
+                 "Luma build for this row (same shape as ubuntu-24.04's)."),
+        },
+        "ubuntu-22.04": {
+            "source": "updates",
+            "suite": "jammy-updates",
+            "luma_build": True,
+            "note": ("Ubuntu has no backports of Mesa. jammy-updates stopped at the hardware-enablement Mesa 23.2 and will"
+                 " not move again. Trees already install it. Current Mesa for jammy is Luma's to build, and it is the "
+                 "widest build of the set."),
+            "build": {
+                "source_package": "mesa",
+                "build_depends": ("As for ubuntu-24.04, and further back: meson, a current LLVM and clang, libdrm, wayland and "
+                     "wayland-protocols, libglvnd, directx-headers, the SPIR-V tools, libva, and a Rust toolchain. jammy's"
+                     " glibc 2.35 and GCC 11 are kept; the layer never replaces the C library or libstdc++."),
+                "architectures": ["x86_64", "aarch64"],
+                "cadence": ("Rebuilt whenever the system image moves to a new Mesa feature release, and for each point release "
+                     "the image takes."),
+            },
+        },
+        "fedora-45": {
+            "source": "release",
+            "luma_build": False,
+            "note": ("Fedora rebases Mesa inside a release: the updates repository carries upstream's latest feature "
+                 "series within weeks of its release. Current here means that series. A tree gets it when its packages"
+                 " are resolved again, so no layer is kept."),
+        },
+        "fedora-44": {
+            "source": "release",
+            "luma_build": False,
+            "note": ("The previous Fedora release takes the same Mesa rebases through its updates repository until shortly"
+                 " before its end of life, about a month after the release two after it. Current here means at most "
+                 "one feature series behind fedora-45; the userland is retired when the release is."),
+        },
+    },
+    "not_yet_userlands": {
+        "el-10": {
+            "source": "release",
+            "luma_build": True,
+            "note": ("Not a userland yet. Enterprise Linux rebases Mesa only at minor releases, months behind upstream and"
+                 " with a reduced driver set. Luma would build mesa from Fedora's packaging against EL 10's toolchain,"
+                 " with the LLVM and Rust from AppStream, for x86_64 and aarch64, on the system image's cadence."),
+        },
+        "el-9": {
+            "source": "release",
+            "luma_build": True,
+            "note": ("Not a userland yet. As el-10, with more to carry: EL 9's meson, libdrm, wayland-protocols and SPIR-V"
+                 " tools are older than current Mesa builds against, so they join the build closure."),
+        },
+    },
 }
+
+
+def check_graphics_layers(data: object) -> list[str]:
+    """What is wrong with a graphics-layers document; empty when it can be used."""
+    if not isinstance(data, dict) or data.get("version") != LAYERS_VERSION or not isinstance(data.get("userlands"), dict):
+        return [f"not a version {LAYERS_VERSION} graphics-layers document"]
+    problems = []
+    for group in ("userlands", "not_yet_userlands"):
+        rows = data.get(group, {})
+        if not isinstance(rows, dict):
+            problems.append(f"{group} is not a table")
+            continue
+        for name, row in rows.items():
+            if not isinstance(row, dict) or row.get("source") not in LAYER_SOURCES:
+                problems.append(f"{name}: source is one of {', '.join(LAYER_SOURCES)}")
+                continue
+            if not isinstance(row.get("luma_build"), bool) or not isinstance(row.get("note"), str) or not row["note"]:
+                problems.append(f"{name}: luma_build and note are required")
+            if row["source"] in BUILT_SOURCES and not (row.get("suite") and str(row.get("apt", "")).startswith("deb ")):
+                problems.append(f"{name}: a {row['source']} source names its suite and its apt line")
+            build = row.get("build")
+            if group == "userlands" and row.get("luma_build") is True and not (
+                    isinstance(build, dict) and all(build.get(key) for key in LUMA_BUILD_KEYS)):
+                problems.append(f"{name}: a Luma build says what is built ({', '.join(LUMA_BUILD_KEYS)})")
+    return problems
+
+
+def load_graphics_layers(path: Path) -> dict[str, object]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise InstallerError(f"{path} cannot be read as graphics layer sources: {error}") from error
+    problems = check_graphics_layers(data)
+    if problems:
+        raise InstallerError(f"{path}: {'; '.join(problems)}")
+    return data
+
+
+def graphics_layers() -> dict[str, object]:
+    """The per-release table: $LUMA_GRAPHICS_LAYERS, the installed file, the source tree's, else the built-in copy."""
+    override = os.environ.get(LAYERS_ENVIRONMENT, "")
+    for path in ([Path(override)] if override else []) + list(LAYERS_PATHS):
+        if path.is_file():
+            try:
+                return load_graphics_layers(path)
+            except InstallerError:
+                continue
+    return BUILTIN_LAYERS
+
+
+def mesa_source(userland: str) -> dict[str, object]:
+    """A userland's row. One without a row wants a layer nothing can build yet."""
+    row = graphics_layers()["userlands"].get(userland)  # type: ignore[union-attr]
+    return dict(row) if row else {"source": "", "luma_build": True, "note": f"No Mesa source is defined for {userland}."}
+
+
+def wants_mesa_layer(row: dict[str, object]) -> bool:
+    """Whether current Mesa for the userland has to come from a layer."""
+    return row.get("source") in BUILT_SOURCES or bool(row.get("luma_build"))
+
 
 MESA_PACKAGES = ("libgl1-mesa-dri", "libglx-mesa0", "libegl-mesa0", "libgbm1", "mesa-vulkan-drivers", "mesa-va-drivers",
                  "libgl1", "libegl1", "libgles2", "libvulkan1", "libva2", "libva-drm2", "libva-wayland2", "libva-x11-2")
 
 MESA_SCRIPT = r"""
 set -e
-if [ -n "$LUMA_MESA_SOURCE" ]; then
-  printf '%s\n' "$LUMA_MESA_SOURCE" > /etc/apt/sources.list.d/luma-mesa.list
-  apt-get -q update
-  apt-get -q -y --no-install-recommends -t "$LUMA_MESA_SUITE" install "$@"
-else
-  apt-get -q -y --no-install-recommends install "$@"
-fi
+printf '%s\n' "$LUMA_MESA_SOURCE" > /etc/apt/sources.list.d/luma-mesa.list
+apt-get -q update
+apt-get -q -y --no-install-recommends -t "$LUMA_MESA_SUITE" install "$@"
 """
 
 PACKAGE_FILES_SCRIPT = r"""
@@ -577,11 +758,18 @@ def build_mesa_layer(userland_name: str, store, work: Path, cache: Path, log_pat
     """Build the Mesa layer for a userland and commit it; returns the ref.
 
     The layer holds, per package, the files of every package the Mesa install
-    added to or changed in the release's minimal root."""
-    source = MESA_SOURCES.get(userland_name)
-    userland = closure.USERLANDS[userland_name]
-    if source is None or userland.family != "deb":
+    added to or changed in the release's minimal root. The suite it installs
+    from is the userland's row in the graphics-layers data."""
+    source = mesa_source(userland_name)
+    userland = closure.USERLANDS.get(userland_name)
+    if userland is None or not source["source"]:
         raise InstallerError(f"No Mesa source is defined for {userland_name}.")
+    if not wants_mesa_layer(source):
+        raise InstallerError(f"{userland_name} needs no Mesa layer: its own updates carry current Mesa.")
+    if source["source"] not in BUILT_SOURCES or not source.get("apt"):
+        raise InstallerError(f"There is no current Mesa for {userland_name} to build a layer from: Luma has to build it first.")
+    if userland.family != "deb":
+        raise InstallerError(f"Mesa layers are built with apt; {userland_name} is not a Debian or Ubuntu release.")
     log = closure.BuildLog(log_path)
     architecture = closure.host_architecture()
     base_ref = closure.ensure_userland(userland_name, architecture, work, cache, store, log)
@@ -599,7 +787,7 @@ def build_mesa_layer(userland_name: str, store, work: Path, cache: Path, log_pat
             "env", "LUMA_SOURCES=" + "\n".join(userland.sources), "LUMA_FOREIGN=", "sh", "-c", closure.DEB_BASE_SCRIPT],
             binds=common))
         log.run("install mesa", closure.sandbox_in_tree(root, [
-            "env", f"LUMA_MESA_SOURCE={source['source']}", f"LUMA_MESA_SUITE={source['suite']}",
+            "env", f"LUMA_MESA_SOURCE={source['apt']}", f"LUMA_MESA_SUITE={source['suite']}",
             "sh", "-c", MESA_SCRIPT, "sh", *MESA_PACKAGES], binds=common))
         lock = closure.parse_lock(log.run("lock", closure.sandbox_in_tree(root, closure.DEB_LOCK, network=False)).stdout)
         fresh = [row for row in lock if base.get((row[0], row[2])) != row[1]]
@@ -630,7 +818,7 @@ def build_mesa_layer(userland_name: str, store, work: Path, cache: Path, log_pat
         closure._run([*closure.userns_prefix(), "python3", "-c", code, str(root), str(layer), str(target / "owned.json")],
                      timeout=1800)
         record = {"schema": closure.SCHEMA, "kind": "graphics", "route": "mesa", "id": f"mesa-{userland_name}",
-                  "userland": userland_name, "architecture": architecture, "source": source["source"],
+                  "userland": userland_name, "architecture": architecture, "source": source["apt"], "suite": source["suite"],
                   "packages": fresh, "mesa": next((row[1] for row in fresh if row[0] == "libgl1-mesa-dri"), "")}
         ref = store.graphics_ref(f"mesa-{userland_name}", architecture)
         store.commit_tree(layer, ref, record, subject=f"Mesa {record['mesa']} for {userland_name}")
@@ -694,17 +882,7 @@ def nvidia_userspace_version(device: Path = Path("/"), bits: int = 64, machine: 
     return ""
 
 
-def nvidia_files(device: Path = Path("/"), module_version: str | None = None, bits: int = 64, machine: int = 62) -> dict[str, object]:
-    """The device's NVIDIA userspace, only when it is the loaded module's.
-
-    A library from one driver release against a module from another fails at
-    the first call, so a mismatch is refused here rather than at launch."""
-    module = nvidia_module_version() if module_version is None else module_version
-    userspace = nvidia_userspace_version(device, bits, machine)
-    if not module:
-        raise InstallerError("The NVIDIA kernel module is not loaded on this device.")
-    if userspace != module:
-        raise InstallerError(f"The NVIDIA libraries on this device are {userspace or 'missing'}; the loaded module is {module}.")
+def _nvidia_libraries(device: Path, bits: int, machine: int) -> dict[str, str]:
     libraries: dict[str, str] = {}
     for folder in library_dirs(device, bits, machine):
         for path in sorted((device / folder).rglob("*.so*")):
@@ -715,13 +893,30 @@ def nvidia_files(device: Path = Path("/"), module_version: str | None = None, bi
             if described is None or described["bits"] != bits or described["machine"] != machine:
                 continue
             libraries[str(path.relative_to(device))] = str(described["soname"]) or path.name
+    return libraries
+
+
+def nvidia_files(device: Path = Path("/"), module_version: str | None = None, bits: int = 64, machine: int = 62) -> dict[str, object]:
+    """The device's NVIDIA userspace, only when it is the loaded module's.
+
+    A library from one driver release against a module from another fails at
+    the first call, so a mismatch is refused here rather than at launch. On
+    x86_64 the 32-bit libraries are listed apart, for trees that have 32-bit
+    programs."""
+    module = nvidia_module_version() if module_version is None else module_version
+    userspace = nvidia_userspace_version(device, bits, machine)
+    if not module:
+        raise InstallerError("The NVIDIA kernel module is not loaded on this device.")
+    if userspace != module:
+        raise InstallerError(f"The NVIDIA libraries on this device are {userspace or 'missing'}; the loaded module is {module}.")
     data = [relative for relative in NVIDIA_DATA if (device / relative).exists()]
-    return {"version": module, "libraries": libraries, "data": data}
+    return {"version": module, "libraries": _nvidia_libraries(device, bits, machine),
+            "libraries32": _nvidia_libraries(device, 32, 3) if machine == 62 else {}, "data": data}
 
 
 def stage_nvidia_layer(device: Path, destination: Path, module_version: str | None = None) -> dict[str, object]:
     files = nvidia_files(device, module_version)
-    for relative in files["libraries"]:  # type: ignore[union-attr]
+    for relative in [*files["libraries"], *files["libraries32"]]:  # type: ignore[misc]
         source = _resolve_in(device, device / relative)
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -737,21 +932,38 @@ def stage_nvidia_layer(device: Path, destination: Path, module_version: str | No
     return {"schema": closure.SCHEMA, "kind": "graphics", "route": "nvidia", "id": f"nvidia-{files['version']}", **files}
 
 
+def _in_tree(relative: str, device_dirs: list[str], tree_dir: Path | None) -> Path:
+    """A device library's place in a tree: the same path below the tree's own library folder."""
+    prefix = max((entry for entry in device_dirs if relative.startswith(entry + "/")), key=len, default="")
+    return tree_dir / relative[len(prefix) + 1:] if prefix and tree_dir is not None else Path(relative)
+
+
 def apply_nvidia_layer(layer: Path, record: dict[str, object], root: Path, bits: int = 64, machine: int = 62) -> dict[str, object]:
     """Lay NVIDIA's userspace into a checkout.
 
-    Its libraries keep the device's paths; the GBM backend also goes where the
-    tree's own libgbm looks for backends."""
-    tree_dirs = library_dirs(root, bits, machine)
-    count = 0
-    for relative in dict(record["libraries"]):  # type: ignore[arg-type]
-        source = layer / relative
-        if not source.is_file():
-            continue
-        _place(source, root / relative)
-        count += 1
-        if source.name == "nvidia-drm_gbm.so" and tree_dirs:
-            _place(source, root / tree_dirs[0] / "gbm" / source.name)
+    Each library goes into the tree's own library folder for its word size,
+    at the path it had below the device's (``gbm/``, ``vdpau/``), so the
+    tree's loader, libgbm and libvdpau find it where they already look,
+    whichever layout the device and the tree have. The 32-bit set is laid in
+    only when the tree has a 32-bit C library. Manifests name libraries by
+    soname and keep their paths."""
+    own = library_dirs(root, bits, machine)[:1]
+    groups = [("libraries", library_candidates(bits, machine), own)]
+    libc32 = find_library(root, "libc.so.6", 32, 3)
+    if libc32 is not None and (elf_dynamic(libc32) or {}).get("bits") == 32:
+        groups.append(("libraries32", library_candidates(32, 3), [libc32.parent.relative_to(root)]))
+    count, placed32, folders = 0, 0, set()
+    for group, device_dirs, tree_dirs in groups:
+        for relative in dict(record.get(group) or {}):  # type: ignore[arg-type]
+            source = layer / relative
+            if not source.is_file():
+                continue
+            target = _in_tree(relative, device_dirs, tree_dirs[0] if tree_dirs else None)
+            _place(source, root / target)
+            count += 1
+            placed32 += group == "libraries32"
+            if target.parent.name not in DRIVER_FOLDERS and target.parent not in tree_dirs:
+                folders.add("/" + str(target.parent))
     for relative in record["data"]:  # type: ignore[union-attr]
         source = layer / relative
         if source.is_dir():
@@ -759,24 +971,104 @@ def apply_nvidia_layer(layer: Path, record: dict[str, object], root: Path, bits:
         elif source.is_file():
             _place(source, root / relative)
             count += 1
-    dirs = sorted({"/" + str(Path(relative).parent) for relative in dict(record["libraries"])  # type: ignore[arg-type]
-                   if Path(relative).parent.name not in DRIVER_FOLDERS})
-    return {"route": "nvidia", "version": record.get("version", ""), "files": count, "library_dirs": dirs,
-            "ldconfig": "", "glibc_replaced": False}
+    return {"route": "nvidia", "version": record.get("version", ""), "files": count, "libraries32": placed32,
+            "library_dirs": sorted(folders), "ldconfig": "", "glibc_replaced": False}
 
 
 # -- Choosing ----------------------------------------------------------------------
 
+def route_plan(userland: str, store, drivers: list[str] | None = None, architecture: str = "", *,
+               sys_root: Path = Path("/sys")) -> dict[str, object]:
+    """Which graphics layers a tree on ``userland`` gets on this device, and why.
+
+    {"refs": layers in the order they are applied, "route": "mesa" | "release" | "host" | "none",
+     "fallback": the data calls for a Mesa layer and the tree is not getting one,
+     "replaces_glibc": the tree's C library gives way to the device's,
+     "nvidia": the driver release whose layer is included, "reason": in words}
+
+    Only the store and the device are read; nothing is built. ``ensure_layers``
+    is the one that fills what is missing."""
+    drivers = gpu_drivers(sys_root) if drivers is None else drivers
+    architecture = architecture or closure.host_architecture()
+    row = mesa_source(userland)
+    mesa, host = store.graphics_ref(f"mesa-{userland}", architecture), store.graphics_ref("host", architecture)
+    plan: dict[str, object] = {"refs": [], "route": "none", "fallback": False, "replaces_glibc": False, "nvidia": ""}
+    refs: list[str] = plan["refs"]  # type: ignore[assignment]
+    if not wants_mesa_layer(row):
+        plan["route"] = "release"
+        reasons = [f"{userland}'s own updates carry current Mesa; no layer is kept for it."]
+    elif store.has_ref(mesa):
+        refs.append(mesa)
+        plan["route"] = "mesa"
+        reasons = [f"Mesa built for {userland} ({row.get('suite') or row['source']}) is in the store."]
+    else:
+        missing = (f"The Mesa layer for {userland} has not been built." if row.get("source") in BUILT_SOURCES and row.get("apt")
+                   else f"There is no current Mesa for {userland} yet: Luma has to build it." if row.get("source")
+                   else str(row["note"]))
+        plan["fallback"] = True
+        if store.has_ref(host):
+            device_glibc = tuple(store.read_record(host).get("glibc_version") or ())
+            tree_glibc = closure.USERLANDS[userland].glibc if userland in closure.USERLANDS else ()
+            refs.append(host)
+            plan["route"] = "host"
+            # Without both versions, assume the usual case: the device is the newer one.
+            plan["replaces_glibc"] = device_glibc > tuple(tree_glibc) if device_glibc and tree_glibc else True
+            reasons = [missing, "The device's own drivers are used instead" + (
+                ", and the tree's C library is replaced by the device's." if plan["replaces_glibc"] else ".")]
+        else:
+            reasons = [missing, "No layer of the device's drivers is in the store either: the tree runs on its own Mesa."]
+    if "nvidia" in drivers:
+        module = nvidia_module_version(sys_root)
+        wanted = store.graphics_ref(f"nvidia-{module}", architecture)
+        if not module:
+            reasons.append("An adapter uses the nvidia driver, but the module's version cannot be read: no NVIDIA layer.")
+        elif store.has_ref(wanted):
+            refs.append(wanted)
+            plan["nvidia"] = module
+            reasons.append(f"NVIDIA {module} matches the loaded module.")
+        else:
+            others = [ref.split("/")[1].removeprefix("nvidia-") for ref in store.refs("graphics/nvidia-")
+                      if ref.endswith("/" + architecture)]
+            reasons.append(f"The loaded NVIDIA module is {module} and the store has no layer for it"
+                           + (f" (it has {', '.join(others)})" if others else "") + ": no NVIDIA layer.")
+    plan["reason"] = " ".join(reasons)
+    return plan
+
+
 def routes_for(userland: str, store, drivers: list[str] | None = None, architecture: str = "") -> list[str]:
     """Refs of the graphics layers a tree on ``userland`` gets on this device, in order."""
-    drivers = gpu_drivers() if drivers is None else drivers
-    refs = []
-    mesa = store.graphics_ref(f"mesa-{userland}", architecture)
-    host = store.graphics_ref("host", architecture)
-    if store.has_ref(mesa):
-        refs.append(mesa)
-    elif store.has_ref(host) and closure.USERLANDS[userland].family == "deb":
-        refs.append(host)
-    if "nvidia" in drivers:
-        refs += [ref for ref in store.refs("graphics/nvidia-") if ref.endswith("/" + (architecture or closure.host_architecture()))][-1:]
-    return refs
+    return route_plan(userland, store, drivers, architecture)["refs"]  # type: ignore[return-value]
+
+
+def ensure_layers(userland: str, store, work: Path, cache: Path, log_path: Path | None = None, *,
+                  drivers: list[str] | None = None, architecture: str = "", device: Path = Path("/"),
+                  sys_root: Path = Path("/sys")) -> dict[str, object]:
+    """Build or stage the layers the plan for ``userland`` lacks; returns the plan as it then stands.
+
+    Nothing here stops an application from starting: a layer that cannot be
+    made is named in the plan's reason and the tree runs on what it has."""
+    drivers = gpu_drivers(sys_root) if drivers is None else drivers
+    architecture = architecture or closure.host_architecture()
+    problems = []
+    row = mesa_source(userland)
+    if (wants_mesa_layer(row) and row.get("source") in BUILT_SOURCES
+            and not store.has_ref(store.graphics_ref(f"mesa-{userland}", architecture))):
+        try:
+            if architecture != closure.host_architecture():
+                raise InstallerError(f"a layer for {architecture} is built on a device of that architecture")
+            build_mesa_layer(userland, store, work, cache, log_path)
+        except Exception as error:  # a failed build of any kind leaves the tree on its own Mesa
+            problems.append(f"Building the Mesa layer failed: {str(error).strip()[-400:] or type(error).__name__}.")
+    module = nvidia_module_version(sys_root) if "nvidia" in drivers else ""
+    if module and not store.has_ref(store.graphics_ref(f"nvidia-{module}", architecture)):
+        try:
+            work.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="graphics-nvidia-", dir=work) as staging:
+                record = stage_nvidia_layer(device, Path(staging), module)
+                store.commit_tree(Path(staging), store.graphics_ref(f"nvidia-{module}", architecture), record,
+                                  subject=str(record["id"]))
+        except Exception as error:  # the same: no NVIDIA layer, and the reason
+            problems.append(f"Staging NVIDIA's libraries failed: {str(error).strip()[-400:] or type(error).__name__}")
+    plan = route_plan(userland, store, drivers, architecture, sys_root=sys_root)
+    plan["reason"] = " ".join([str(plan["reason"]), *problems])
+    return plan

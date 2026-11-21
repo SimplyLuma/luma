@@ -47,3 +47,29 @@ def write_elf(path: Path, soname: str = "", needed: tuple[str, ...] = (), versio
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(header + load + dyn + dynamic + strings + dynsym + verdef + table)
     return path
+
+
+def write_elf32(path: Path, soname: str = "", needed: tuple[str, ...] = ()) -> Path:
+    """A minimal little-endian i386 shared object: a dynamic section and no code."""
+    strings = b"\0"
+    offsets: dict[str, int] = {}
+    for name in (soname, *needed):
+        if name and name not in offsets:
+            offsets[name] = len(strings)
+            strings += name.encode() + b"\0"
+    header_size, entry = 52, 32
+    dynamic_offset = header_size + 2 * entry
+    entries = [(1, offsets[name]) for name in needed]
+    if soname:
+        entries.append((14, offsets[soname]))
+    strtab_offset = dynamic_offset + 8 * (len(entries) + 2)
+    entries += [(5, strtab_offset), (0, 0)]
+    dynamic = b"".join(struct.pack("<iI", tag, value) for tag, value in entries)
+    total = strtab_offset + len(strings)
+    header = (b"\x7fELF" + bytes((1, 1, 1, 0)) + b"\0" * 8
+              + struct.pack("<HHIIIIIHHHHHH", 3, 3, 1, 0, header_size, 0, 0, header_size, entry, 2, 40, 0, 0))
+    load = struct.pack("<IIIIIIII", 1, 0, 0, 0, total, total, 5, 0x1000)
+    dyn = struct.pack("<IIIIIIII", 2, dynamic_offset, dynamic_offset, dynamic_offset, len(dynamic), len(dynamic), 6, 4)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(header + load + dyn + dynamic + strings)
+    return path
