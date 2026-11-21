@@ -18,6 +18,8 @@ class BrowserServices:
         self.on_state = on_state
         self.sessions = {}
         self.state = None
+        self.state_payload = None
+        self.state_metrics = {'published': 0, 'unchanged': 0}
         self.menu = None
         self.updated = threading.Condition()
         self.previous_event = engine.on_event
@@ -55,8 +57,15 @@ class BrowserServices:
         self.evaluate('sidebar', '''(() => {
           if (location.href !== 'chrome://viola/') throw Error('Wrong surface');
           globalThis.__violaNativeProbeUnsubscribe?.();
-          const publish = state => violaNativeStateProbe(JSON.stringify({...state,
-            nativePrettyUrl: typeof prettyUrl === 'function' ? prettyUrl(state.activeUrl) : state.activeUrl}));
+          // A render with nothing new reaches the host as nothing at all.
+          let published = null;
+          const publish = state => {
+            const payload = JSON.stringify({...state,
+              nativePrettyUrl: typeof prettyUrl === 'function' ? prettyUrl(state.activeUrl) : state.activeUrl});
+            if (payload === published) return;
+            published = payload;
+            violaNativeStateProbe(payload);
+          };
           globalThis.__violaNativeProbeUnsubscribe = vela.on('render', publish);
           globalThis.__violaNativeEventUnsubscribe?.forEach(stop => stop());
           globalThis.__violaNativeEventUnsubscribe = ['media:preview', 'download:update', 'permission:prompt']
@@ -74,6 +83,9 @@ class BrowserServices:
         self.engine.call('Runtime.addBinding', {'name': 'violaNativeMediaProbeJSON'}, self.sessions['sidebar'])
         self.evaluate('sidebar', """(() => {
             const pending = new Map();
+            // The sidebar calls stop on every render without media; only the
+            // first stop after an offer has a receiver to tear down.
+            let offered = false;
             const answer = window.__velaPreviewAnswer, stop = window.__velaPreviewStop;
             window.__violaNativeMediaRestore = () => {
                 for (const resolve of pending.values()) resolve(null); pending.clear();
@@ -91,12 +103,16 @@ class BrowserServices:
             };
             window.__velaPreviewAnswer = (offer, generation) => new Promise(resolve => {
                 pending.set(generation, resolve);
+                offered = true;
                 violaNativeMediaProbeJSON(JSON.stringify({kind:'offer', offer, generation, tabId:S?.media?.tabId}));
             });
             window.__velaPreviewStop = () => {
                 for (const resolve of pending.values()) resolve(null); pending.clear();
                 window.__violaNativeMediaHealth = null;
-                violaNativeMediaProbeJSON(JSON.stringify({kind:'stop'}));
+                if (offered) {
+                    offered = false;
+                    violaNativeMediaProbeJSON(JSON.stringify({kind:'stop'}));
+                }
                 stop?.();
             };
             return true;
@@ -144,11 +160,16 @@ class BrowserServices:
             payload = event['params']['payload']
             if len(payload) > 8 * 1024 * 1024:
                 raise RuntimeError('Unexpectedly large browser state')
+            if payload == self.state_payload:
+                self.state_metrics['unchanged'] += 1
+                return
             state = json.loads(payload)
             if not isinstance(state, dict):
                 raise RuntimeError('Invalid browser state')
             with self.updated:
                 self.state = state
+                self.state_payload = payload
+                self.state_metrics['published'] += 1
                 self.updated.notify_all()
             self.on_state(state)
         else:
