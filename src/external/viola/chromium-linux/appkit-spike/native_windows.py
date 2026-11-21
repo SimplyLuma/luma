@@ -5,6 +5,7 @@ import time
 import uuid
 from gi.repository import GLib
 from browser_services import BrowserServices
+from state_renders import StateRenders
 from browser_favicons import BrowserFavicons
 from native_media import NativeMedia
 from native_identity_menu import NativeIdentityMenu
@@ -75,8 +76,8 @@ class NativeWindows:
         def render(state):
             if not context['closed']:
                 window.render_state(state)
-            return False
-        services = BrowserServices(client, lambda state: GLib.idle_add(render, state), native_media=True)
+        renders = window.state_renders = StateRenders(render, GLib.idle_add, GLib.timeout_add)
+        services = BrowserServices(client, renders.push, native_media=True)
         context['services'] = window.services = services
         window.manual_identity = self.manual
         def preview(paintable, tab_id):

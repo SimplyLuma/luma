@@ -104,9 +104,11 @@ class NativeAddress:
             field = getattr(self.host, 'address_field', None)
             if field:
                 (field.add_css_class if secure else field.remove_css_class)('secure')
-            entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY,
-                'lumaui-shield-check-symbolic' if secure else 'channel-insecure-symbolic')
-            entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, None)
+            icon = 'lumaui-shield-check-symbolic' if secure else 'channel-insecure-symbolic'
+            if entry.get_icon_name(Gtk.EntryIconPosition.PRIMARY) != icon:
+                entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, icon)
+            if entry.get_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY) is not None:
+                entry.set_icon_tooltip_text(Gtk.EntryIconPosition.PRIMARY, None)
 
     def update_search_icon(self, generation, tab, items):
         # The existing palette uses Chromium's classifier and configured

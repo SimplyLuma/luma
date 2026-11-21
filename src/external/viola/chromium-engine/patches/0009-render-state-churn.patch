@@ -1,0 +1,182 @@
+diff --git a/chrome/browser/ui/views/viola/viola_product_shell_view.cc b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.cc
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.cc
+@@ -856,6 +856,7 @@
+   sidebar_peeked_ = false;
+   sidebar_peek_closing_ = false;
+   sidebar_collapsed_ = collapsed;
++  ++partial_state_generation_;
+   if (content::WebUI *web_ui = shell_web_contents()->GetWebUI()) {
+     base::DictValue state;
+     state.Set("collapsed", collapsed);
+@@ -1102,6 +1103,7 @@
+   } else if (session_restore_callback_) {
+     state = base::Value(session_restore_state_.Clone());
+   }
++  ++partial_state_generation_;
+   shell_web_contents()->GetWebUI()->CallJavascriptFunctionUnsafe(
+       "__violaHostReceive", base::Value("permission:prompt"),
+       std::move(state));
+diff --git a/chrome/browser/ui/views/viola/viola_product_shell_view.h b/chrome/browser/ui/views/viola/viola_product_shell_view.h
+--- a/chrome/browser/ui/views/viola/viola_product_shell_view.h
++++ b/chrome/browser/ui/views/viola/viola_product_shell_view.h
+@@ -81,6 +81,10 @@
+   bool is_mini_window() const { return mini_window_; }
+   void NoteMiniActivity();
+   bool sidebar_collapsed() const { return sidebar_collapsed_; }
++  // Bumped whenever a partial channel edits the sidebar page's state.
++  uint64_t partial_state_generation() const {
++    return partial_state_generation_;
++  }
+   bool sidebar_effectively_visible() const {
+     return !sidebar_collapsed_ || sidebar_peeked_;
+   }
+@@ -174,6 +178,7 @@
+   std::deque<std::pair<base::DictValue, ExtensionAnswer>> extension_prompts_;
+   int sidebar_width_ = kSidebarWidth;
+   bool sidebar_collapsed_ = false;
++  uint64_t partial_state_generation_ = 0;
+   bool sidebar_modal_visible_ = false;
+   bool sidebar_peeked_ = false;
+   bool sidebar_peek_closing_ = false;
+diff --git a/chrome/browser/ui/webui/viola/viola_message_handler.cc b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+--- a/chrome/browser/ui/webui/viola/viola_message_handler.cc
++++ b/chrome/browser/ui/webui/viola/viola_message_handler.cc
+@@ -1568,6 +1568,7 @@
+   ClearSplitDrag();
+   render_state_timer_.Stop();
+   reconcile_before_render_ = false;
++  last_render_state_.clear();
+   media_timer_.Stop();
+   StopMediaPreviewCapture(/*notify_renderer=*/false);
+   media_tab_id_.clear();
+@@ -1645,8 +1646,10 @@
+   }
+ }
+ 
+-void ViolaMessageHandler::OnTabChangedAt(tabs::TabInterface *, int,
+-                                         TabChangeType) {
++void ViolaMessageHandler::OnTabChangedAt(tabs::TabInterface *, int index,
++                                         TabChangeType change_type) {
++  VLOG(1) << "tab changed index=" << index
++          << " type=" << static_cast<int>(change_type);
+   if (observed_tab_strip_) {
+     ScheduleRenderState(/*reconcile_tab_strip=*/true);
+   }
+@@ -7479,6 +7482,7 @@
+       !IsViolaLibrarySurface(surface)) {
+     return;
+   }
++  last_render_state_.clear();
+   web_ui()->CallJavascriptFunctionUnsafe("__violaHostReceive",
+                                          base::Value("download:update"),
+                                          base::Value(BuildDownloadPayload()));
+@@ -7778,6 +7782,24 @@
+     state.Set("permissionPrompt", base::Value());
+   }
+ 
++  // Tab, media and toolbar observers fire far more often than the state
++  // they feed changes. The page re-renders and republishes every state it
++  // receives, so send only a state that differs from the last one. The
++  // shell's partial channels (sidebar:collapsed, permission:prompt) edit
++  // the page's copy; their generation is part of the comparison.
++  std::string serialized;
++  base::JSONWriter::Write(state, &serialized);
++  viola::ViolaProductShellView *shell = GetProductShellView();
++  const uint64_t partial_generation =
++      shell ? shell->partial_state_generation() : 0;
++  if (serialized == last_render_state_ &&
++      partial_generation == last_render_partial_generation_) {
++    VLOG(1) << "render state unchanged";
++    return;
++  }
++  VLOG(1) << "render state sent bytes=" << serialized.size();
++  last_render_state_ = std::move(serialized);
++  last_render_partial_generation_ = partial_generation;
+   SendHostState("render", base::Value(std::move(state)));
+ }
+ 
+diff --git a/chrome/browser/ui/webui/viola/viola_message_handler.h b/chrome/browser/ui/webui/viola/viola_message_handler.h
+--- a/chrome/browser/ui/webui/viola/viola_message_handler.h
++++ b/chrome/browser/ui/webui/viola/viola_message_handler.h
+@@ -336,6 +336,10 @@
+   std::set<std::string> dismissed_download_guids_;
+   std::string media_tab_id_;
+   std::string media_fingerprint_;
++  // Last render state sent to the page, with the shell's partial-state
++  // generation. An equal state is not sent again.
++  std::string last_render_state_;
++  uint64_t last_render_partial_generation_ = 0;
+   int remote_presence_generation_seen_ = -1;
+   std::string media_capture_tab_id_;
+   uint64_t media_preview_generation_ = 0;
+diff --git a/chrome/browser/ui/webui/viola/viola_organization_store.cc b/chrome/browser/ui/webui/viola/viola_organization_store.cc
+--- a/chrome/browser/ui/webui/viola/viola_organization_store.cc
++++ b/chrome/browser/ui/webui/viola/viola_organization_store.cc
+@@ -2087,10 +2087,14 @@
+   // within one strip. Otherwise two restored windows with the same URL can
+   // silently acquire the same persistent tab identity.
+   std::set<std::string> bound;
++  std::set<const TabStripModel *> live_strips = {tab_strip};
+   ProfileBrowserCollection::GetForProfile(profile_)->ForEach(
+       [&](BrowserWindowInterface *candidate) {
+         TabStripModel *candidate_strip =
+             candidate ? candidate->GetTabStripModel() : nullptr;
++        if (candidate_strip) {
++          live_strips.insert(candidate_strip);
++        }
+         if (!candidate_strip || candidate_strip == tab_strip) {
+           return true;
+         }
+@@ -2103,6 +2107,9 @@
+         }
+         return true;
+       });
++  std::erase_if(asserted_activations_, [&live_strips](const auto &entry) {
++    return !live_strips.contains(entry.first);
++  });
+   for (int index = 0; index < tab_strip->count(); ++index) {
+     const std::string id = TabIdFor(tab_strip->GetWebContentsAt(index));
+     if (!id.empty()) {
+@@ -2193,8 +2200,16 @@
+ 
+   content::WebContents *active = tab_strip->GetActiveWebContents();
+   const std::string active_id = TabIdFor(active);
+-  if (std::optional<std::string> owner =
+-          SpaceIdForTab(organization_, active_id)) {
++  std::optional<std::string> owner = SpaceIdForTab(organization_, active_id);
++  const std::string activation =
++      owner ? base::StrCat({active_id, "\n", *owner}) : std::string();
++  std::string &asserted = asserted_activations_[tab_strip];
++  if (activation == asserted) {
++    owner.reset();
++  } else {
++    asserted = activation;
++  }
++  if (owner) {
+     const std::string previous_active_space =
+         StringOr(&organization_, "activeSpaceId");
+     base::DictValue *space = FindSpace(organization_, *owner);
+@@ -4258,6 +4273,7 @@
+             TabStripUserGestureDetails::GestureType::kOther));
+   }
+   applying_sync_ = false;
++  asserted_activations_.clear();
+   // Dormant remote tabs have no WebContents and produce no tab-strip event.
+   // Invalidate every trusted Viola surface explicitly so the sidebar cannot
+   // keep rendering a pre-merge URL/order until an unrelated local action.
+diff --git a/chrome/browser/ui/webui/viola/viola_organization_store.h b/chrome/browser/ui/webui/viola/viola_organization_store.h
+--- a/chrome/browser/ui/webui/viola/viola_organization_store.h
++++ b/chrome/browser/ui/webui/viola/viola_organization_store.h
+@@ -250,6 +250,11 @@
+   bool restore_materialization_pending_ = false;
+   base::CallbackListSubscription session_restored_subscription_;
+   std::string workspace_lens_id_;
++  // Per window: the active tab and its workspace last written to the
++  // organization. A window writes them again only when they change, so
++  // windows showing different tabs of one workspace do not overwrite each
++  // other on every organization change.
++  std::map<const TabStripModel *, std::string> asserted_activations_;
+   base::ObserverList<Observer> observers_;
+ 
+   base::WeakPtrFactory<ViolaOrganizationStore> weak_factory_{this};

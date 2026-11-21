@@ -50,5 +50,29 @@ class WindowAddressFocus(unittest.TestCase):
         queued[0][1]({'items':[]})
         self.assertEqual(calls,['present'])
 
+    def test_unchanged_state_leaves_address_and_pin_untouched(self):
+        entry=Gtk.Entry();field=Gtk.Box();field.append(entry)
+        bookmark=Gtk.Button(child=Gtk.Image(icon_name='lumaui-pin-symbolic'),tooltip_text='Pin to top')
+        host=SimpleNamespace(state=None,open_popover=None,phone=False,mini=False,new_tab_pending=False,
+            address=entry,address_field=field,toolbar=Gtk.Box(),back=Gtk.Button(),forward=Gtk.Button(),bookmark=bookmark,
+            present_selected_frame=lambda:None,sidebar=SimpleNamespace(render=lambda _:None),
+            responsive=SimpleNamespace(render=lambda:None),address_focused=lambda:False,
+            address_suggestions=SimpleNamespace(owns_focus=lambda:False,refresh_icon=lambda:None,close=lambda:None))
+        insertions=[];tooltips=[]
+        entry.connect('insert-text',lambda *_:insertions.append(1))
+        bookmark.connect('notify::tooltip-text',lambda *_:tooltips.append(1))
+        state={'activeTabId':'t','activeUrl':'https://a.test/','nativePrettyUrl':'a.test','favorites':[]}
+        for _ in range(5):
+            IntegratedWindow.render_state(host,dict(state))
+        self.assertEqual(entry.get_text(),'a.test')
+        self.assertEqual(len(insertions),1)
+        self.assertEqual(tooltips,[])
+        IntegratedWindow.render_state(host,dict(state,favorites=[{'id':'t'}]))
+        self.assertEqual(bookmark.get_tooltip_text(),'Unpin from top')
+        self.assertTrue(bookmark.has_css_class('lumaui-selected'))
+        IntegratedWindow.render_state(host,dict(state,nativePrettyUrl='b.test'))
+        self.assertEqual(entry.get_text(),'b.test')
+        self.assertFalse(bookmark.has_css_class('lumaui-selected'))
+
 
 if __name__=='__main__':unittest.main()
