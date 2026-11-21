@@ -2318,10 +2318,11 @@ window.luma-application-window:not(.fullscreen):not(.lumaui-phone-device):not(.l
 }
 
 /* Shared dark menu material; component spacing and inner surfaces stay native. */
+/* A popover is a surface of its own over other windows: opaque, never a see-through veil. */
 window.luma-treatment-dark popover.menu > contents,
 window.luma-treatment-dark popover.luma-menu-popover > contents,
 window.luma-treatment-dark .lumaui-menu {
-  background-color: alpha(@luma_window, .78);
+  background-color: @luma_bar_surface;
   background-image: none;
   box-shadow: inset 0 0 0 1px alpha(@luma_ink, .16),
               0 2px 6px alpha(@luma_menu_shadow, .18),
@@ -2329,7 +2330,7 @@ window.luma-treatment-dark .lumaui-menu {
 }
 window.luma-treatment-dark popover.menu > arrow,
 window.luma-treatment-dark popover.luma-menu-popover > arrow {
-  background-color: alpha(@luma_window, .78);
+  background-color: @luma_bar_surface;
   background-image: none;
   border-color: alpha(@luma_ink, .16);
 }
