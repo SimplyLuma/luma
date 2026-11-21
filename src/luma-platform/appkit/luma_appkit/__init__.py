@@ -361,6 +361,8 @@ __all__ = [
     "OverrideDot",
     "ToggleChip",
     "Sparkline",
+    "ChatLine",
+    "ChatFeed",
 ]
 
 
@@ -685,6 +687,9 @@ def __getattr__(name: str):
     if name in {"Dock", "DockTile"}:
         from . import structure_dock
         return getattr(structure_dock, name)
+    if name in {"ChatLine", "ChatFeed"}:
+        from . import content_chat
+        return getattr(content_chat, name)
     if name == "Sparkline":
         from .rows_sparkline import Sparkline
         return Sparkline

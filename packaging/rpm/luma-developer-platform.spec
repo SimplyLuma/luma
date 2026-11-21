@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.143%{?dist}
+Release:        1.luma.144%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,13 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.144
+- ChatLine and ChatFeed (luma_appkit): a live chat's lines (lead, badges,
+  the author's colour made readable, selectable text; action and notice
+  kinds; dimmed) and a feed that keeps the newest lines, follows the bottom
+  and offers Jump to newest. readable_color().
+- Lucide: gem.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.143
 - ArrangeView: set_item_shown_rect()/clear_item_shown_rect(): the selection
   outline and crop frame follow the picture actually on screen during a
