@@ -98,7 +98,8 @@ def fitted_tile():
     natural = audio.measure(Gtk.Orientation.VERTICAL, audio.get_width())[1]
     expected = min(natural, int(dock.fit_max * dock.get_height()))
     assert abs(audio.get_height() - expected) <= DOCK["gap"], (audio.get_height(), natural, dock.get_height())
-    assert row.get_height() == row.measure(Gtk.Orientation.VERTICAL, row.get_width())[1], "the row is never squeezed"
+    _, box = row.compute_bounds(row.get_parent())  # its border box: the row's padding included, as measured
+    assert box.get_height() == row.measure(Gtk.Orientation.VERTICAL, int(box.get_width()))[1], "the row is never squeezed"
     ok, bounds = row.compute_bounds(audio)
     assert ok and bounds.origin.x >= 0 and bounds.origin.x + bounds.size.width <= audio.get_width() + 0.5, \
         (bounds.origin.x, bounds.size.width, audio.get_width())

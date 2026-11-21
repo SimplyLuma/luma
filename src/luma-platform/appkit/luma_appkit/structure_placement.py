@@ -81,6 +81,7 @@ class ModeSwitch(Gtk.Box):
     `stop_width=34` keeps numerical stops equal and fixed (Camera zoom).
     Fixed stops override fill and ellipsize long labels without losing their accessible names.
     `ellipsize=True` lets text-only modes shrink to fit a constrained corner.
+    `icon_only=True` shows each mode's glyph alone at every width; its label is the tooltip and accessible name.
     """
 
     __gtype_name__ = "LumaUIModeSwitch"
@@ -88,7 +89,8 @@ class ModeSwitch(Gtk.Box):
     def __init__(self, modes: Sequence[Mode | tuple[str, str]], *, current: str | None = None,
                  on_change: Callable[[str], None] | None = None, label: str = "Mode",
                  labels_only: bool = False, fill: bool = False, compact: bool = False,
-                 size: str = "regular", stop_width: int | None = None, ellipsize: bool = False) -> None:
+                 size: str = "regular", stop_width: int | None = None, ellipsize: bool = False,
+                 icon_only: bool = False) -> None:
         if stop_width is not None and (isinstance(stop_width, bool) or not isinstance(stop_width, int) or stop_width <= 0):
             raise ValueError("stop_width is a positive integer or None")
         if size not in ("regular", "small", "large"):
@@ -97,6 +99,8 @@ class ModeSwitch(Gtk.Box):
             raise ValueError("a mode switch offers at least two modes")
         if any(len(m) == 2 for m in modes):
             labels_only = True
+        if icon_only and (labels_only or any(len(m) < 3 or not m[2] for m in modes)):
+            raise ValueError("an icon-only mode switch gives every mode an icon")
         # A mode may carry a count (v70 Clock's Alarms · 2): (key, label, icon, count).
         counts = {m[0]: m[3] for m in modes if len(m) > 3 and m[3] is not None}
         modes = [(m[0], m[1], None if labels_only else m[2]) for m in modes]
@@ -107,6 +111,8 @@ class ModeSwitch(Gtk.Box):
                          accessible_role=Gtk.AccessibleRole.RADIO_GROUP)
         self.add_css_class("lumaui-modes")
         self.labels_only = labels_only
+        self.icon_only = icon_only
+        lumaui.set_css_class(self, "icon-only", icon_only)
         self.ellipsize = ellipsize
         self.bar_flexible = ellipsize
         self.stop_width = stop_width
@@ -183,6 +189,8 @@ class ModeSwitch(Gtk.Box):
         arrow_keys(self.row, activate=True)
         self._narrow = False
         self._anim = 0
+        if icon_only:
+            self._labels()
         self._watch = WidthWatch(self, self._width_changed)
 
     # ── public API ────────────────────────────────────────────────────────
@@ -248,7 +256,7 @@ class ModeSwitch(Gtk.Box):
 
     def _labels(self) -> None:
         for name, button in self.buttons.items():
-            button.label_widget.set_visible(not self._narrow or name == self._current)
+            button.label_widget.set_visible(not self.icon_only and (not self._narrow or name == self._current))
             lumaui.set_css_class(button, "on", name == self._current)
             # The time left needs room: not on an icon-only tab, nor beside a folded label.
             button.status_text.set_visible(bool(button.status_text.get_label()) and button.label_widget.get_visible()

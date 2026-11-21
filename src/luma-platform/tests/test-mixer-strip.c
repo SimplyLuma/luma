@@ -242,7 +242,7 @@ static void test_row(void) {
   gtk_widget_measure(row, GTK_ORIENTATION_HORIZONTAL, -1, &min_w, &nat_w, NULL, NULL);
   g_assert_cmpint(min_w, >=, LUMA_UI_MIXER_STRIP_WIDTH);
   g_assert_cmpint(min_w, <, 2 * LUMA_UI_MIXER_STRIP_WIDTH);
-  g_assert_cmpint(nat_w, ==, 6 * LUMA_UI_MIXER_STRIP_WIDTH + 5 * LUMA_UI_MIXER_STRIP_ROW_GAP);
+  g_assert_cmpint(nat_w, ==, 6 * LUMA_UI_MIXER_STRIP_WIDTH + 5 * LUMA_UI_MIXER_STRIP_ROW_GAP + 2 * LUMA_UI_MIXER_STRIP_ROW_PADDING);
   gtk_widget_measure(row, GTK_ORIENTATION_VERTICAL, -1, &min_h, &nat_h, NULL, NULL);
   gtk_widget_measure(GTK_WIDGET(luma_mixer_row_get_strip(r, 0)), GTK_ORIENTATION_VERTICAL, -1, &strip_min,
                      &strip_nat, NULL, NULL);
@@ -275,14 +275,14 @@ static void test_row(void) {
   GtkWidget *second = GTK_WIDGET(luma_mixer_strip_get_fader(luma_mixer_row_get_strip(r, 1)));
   gtk_widget_grab_focus(first);
   g_assert_true(press(row, GDK_KEY_Right));
-  g_assert_true(gtk_widget_has_focus(second));
+  g_assert_true(gtk_root_get_focus(gtk_widget_get_root(second)) == second);
   g_assert_true(press(row, GDK_KEY_Left));
-  g_assert_true(gtk_widget_has_focus(first));
+  g_assert_true(gtk_root_get_focus(gtk_widget_get_root(first)) == first);
   g_assert_true(press(row, GDK_KEY_Left));
-  g_assert_true(gtk_widget_has_focus(first));
+  g_assert_true(gtk_root_get_focus(gtk_widget_get_root(first)) == first);
   gtk_widget_set_default_direction(GTK_TEXT_DIR_RTL);
   g_assert_true(press(row, GDK_KEY_Left));
-  g_assert_true(gtk_widget_has_focus(second));
+  g_assert_true(gtk_root_get_focus(gtk_widget_get_root(second)) == second);
   gtk_widget_set_default_direction(GTK_TEXT_DIR_LTR);
 
   /* Remove and append. */

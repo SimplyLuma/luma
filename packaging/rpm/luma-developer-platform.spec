@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.147%{?dist}
+Release:        1.luma.148%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,24 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.148
+- Dock: a tile's header (and tab strip) is a band, @luma_dock_header, one
+  step toward the island from the well, 1px inside its ring with its top
+  corners, and a @luma_dock_header_line hairline under it; header_height
+  tall in all. DockTile.set_status(text, tone=None|"live"): a dot and a word
+  after the title, in the tile's accessible label.
+- MixerStrip/MixerRow (C, luma_appkit): vertical channel strips, a stereo
+  meter with peak hold beside a dB fader, readout, Mute and Monitor;
+  fixed --lumaui-mixer-strip-width, a row that scrolls sideways.
+- RowLead.thumbnail(fit="contain"): one fixed media_thumb tile (56x32) in
+  every state, drawn into by its paintable; a picture within
+  media_thumb_snap_pct of 16:9 fills it, others are contained, none shows
+  a glyph. Its size never follows the paintable.
+- ModeSwitch(icon_only=True): glyphs alone; labels are tooltips and
+  accessible names.
+- Prairie: lumaui-arrow-left (Move left). Every glyph named in luma_appkit
+  and the gallery must be imported (test-lumaui-icon-names.py).
+
 * Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.147
 - ArrangeView: several boxes. Shift+click adds or removes, a rubber band
   from empty canvas selects what it touches (Shift adds), Ctrl+A selects

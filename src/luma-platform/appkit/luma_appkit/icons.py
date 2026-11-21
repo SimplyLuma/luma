@@ -6,7 +6,7 @@ Parts and applications name a glyph by its Lucide name (`"share-2"`,
 the Prairie icon theme (assets/icon-theme/Prairie/symbolic/actions, imported
 by tools/import-lumaui-icons.py) and, so the kit can travel without that
 theme, in an `icons/` folder beside the package, which `ensure_icons()` adds
-to the display's icon theme. tests/unit/test_lumaui_icons.py fails when the
+to the display's icon theme. tests/test-lumaui-icon-names.py fails when the
 kit, the gallery or an application names a glyph that was never imported.
 
 Share is `share-2`, Export is `share`, Upload is `upload`.
