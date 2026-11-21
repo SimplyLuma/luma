@@ -78,11 +78,13 @@ def VolumeSlider(lower: float = 0, upper: float = 100, *, value: float | None = 
 
 
 def MixerStrip(name: str, subtitle: str | None = None, *, db: float = 0.0, min_db: float = -60,
-               max_db: float = 6, muted: bool = False, monitoring: bool = False,
-               on_change=None, on_mute=None, on_monitor=None):
+               max_db: float = 6, muted: bool = False, monitoring: bool = False, icon=None,
+               mute: bool = True, monitor: bool = True, on_change=None, on_mute=None, on_monitor=None):
     """A channel strip; ``on_change(db)``, ``on_mute(muted)`` and ``on_monitor(on)`` hear only the person.
 
-    The setters (``set_db``, ``set_muted``, ``set_monitoring``) are silent.
+    ``icon`` heads it: a Lucide name ("mic"), a theme or app icon name, or a Gio.Icon (an app's).
+    ``mute=False`` / ``monitor=False`` leave that key out (M then does nothing). The setters
+    (``set_db``, ``set_muted``, ``set_monitoring``, ``set_gicon``, ``set_icon_name``) are silent.
     """
     if max_db <= min_db:
         raise ValueError("a strip's max_db must be above its min_db")
@@ -92,6 +94,12 @@ def MixerStrip(name: str, subtitle: str | None = None, *, db: float = 0.0, min_d
     strip.set_db(db)
     strip.set_muted(muted)
     strip.set_monitoring(monitoring)
+    strip.set_mute_visible(mute)
+    strip.set_monitor_visible(monitor)
+    if isinstance(icon, str):
+        strip.set_icon_name(icon)
+    elif icon is not None:
+        strip.set_gicon(icon)
     if on_change is not None:
         strip.connect("moved", lambda _s, value: on_change(value))
     if on_mute is not None:

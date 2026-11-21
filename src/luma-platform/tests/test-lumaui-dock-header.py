@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # SPDX-License-Identifier: Apache-2.0
-"""The dock header band (contrast in every treatment, geometry), DockTile.set_status, ModeSwitch(icon_only)."""
+"""The dock header band (contrast in every treatment, geometry), DockTile.set_status, ModeSwitch(icon_only),
+and the Island under a dock drawing its rim per frame from cached geometry."""
 import re
 import time
 from pathlib import Path
@@ -159,6 +160,35 @@ def icon_only_modes() -> None:
     window.destroy()
 
 
+def island_rim_cache() -> None:
+    """A live child redraws its island every frame: the rim's outline and TV-stage answer are kept."""
+    from luma_appkit import Island
+    from luma_appkit import widgets
+
+    island = Island()
+    island.append(Gtk.Label(label="live"))
+    window = Gtk.Window(child=island, default_width=400, default_height=300)
+    window.present()
+    settle()
+    walks = []
+    original = widgets._on_tv_stage
+    widgets._on_tv_stage = lambda w: walks.append(w) or original(w)
+    try:
+        outlines = set()
+        for _ in range(5):
+            island.queue_draw()
+            settle(0.05)
+            outlines.add(id(island._outline))
+        assert len(outlines) == 1 and island._outline is not None, outlines
+        assert len(walks) <= 1, len(walks)  # asked once after placement, not per frame
+        window.set_default_size(500, 300)
+        settle()
+        assert island._outline_key[0] == island.get_width()
+    finally:
+        widgets._on_tv_stage = original
+        window.destroy()
+
+
 if __name__ == "__main__":
     band_contrast()
     Gtk.init()
@@ -167,4 +197,5 @@ if __name__ == "__main__":
     install_appkit()
     header_and_status()
     icon_only_modes()
+    island_rim_cache()
     print("ok")
