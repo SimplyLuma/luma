@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "userlands": {
+    "debian-13": {
+      "source": "backports",
+      "suite": "trixie-backports",
+      "apt": "deb http://deb.debian.org/debian trixie-backports main",
+      "luma_build": false,
+      "note": "Debian's own backports follow upstream Mesa while trixie is the stable release (26.1.6-1~bpo13+1 when the prototype ran). Once Debian 14 is out the suite stops moving and this row becomes a Luma build."
+    },
+    "ubuntu-24.04": {
+      "source": "updates",
+      "suite": "noble-updates",
+      "luma_build": true,
+      "note": "Ubuntu has no backports of Mesa. The hardware-enablement Mesa reaches noble-updates with each point release, taken from the interim release before it, so it trails upstream by six months or more and stops at 24.04.5. Trees already install it; a layer of it would add nothing. Current Mesa for noble is Luma's to build.",
+      "build": {
+        "source_package": "mesa",
+        "build_depends": "The closure of mesa's Build-Depends that noble lacks at the needed version: libdrm, wayland-protocols, directx-headers, spirv-tools and spirv-llvm-translator with the LLVM they are built for, libva headers, and rustc with bindgen and cbindgen for the Rust drivers. Each is built for noble and shipped in the same suite.",
+        "architectures": ["x86_64", "aarch64"],
+        "cadence": "Rebuilt whenever the system image moves to a new Mesa feature release, and for each point release the image takes, so a tree's Mesa is the device's."
+      }
+    },
+    "debian-12": {
+      "source": "backports",
+      "suite": "bookworm-backports",
+      "apt": "deb http://deb.debian.org/debian bookworm-backports main",
+      "luma_build": false,
+      "note": "bookworm-backports carries Mesa 25.0.7-2~bpo12+1 and no longer moves: backports for a superseded release close about a year after the next one. Hardware that needs a newer Mesa than that needs a Luma build for this row (same shape as ubuntu-24.04's)."
+    },
+    "ubuntu-22.04": {
+      "source": "updates",
+      "suite": "jammy-updates",
+      "luma_build": true,
+      "note": "Ubuntu has no backports of Mesa. jammy-updates stopped at the hardware-enablement Mesa 23.2 and will not move again. Trees already install it. Current Mesa for jammy is Luma's to build, and it is the widest build of the set.",
+      "build": {
+        "source_package": "mesa",
+        "build_depends": "As for ubuntu-24.04, and further back: meson, a current LLVM and clang, libdrm, wayland and wayland-protocols, libglvnd, directx-headers, the SPIR-V tools, libva, and a Rust toolchain. jammy's glibc 2.35 and GCC 11 are kept; the layer never replaces the C library or libstdc++.",
+        "architectures": ["x86_64", "aarch64"],
+        "cadence": "Rebuilt whenever the system image moves to a new Mesa feature release, and for each point release the image takes."
+      }
+    },
+    "fedora-45": {
+      "source": "release",
+      "luma_build": false,
+      "note": "Fedora rebases Mesa inside a release: the updates repository carries upstream's latest feature series within weeks of its release. Current here means that series. A tree gets it when its packages are resolved again, so no layer is kept."
+    },
+    "fedora-44": {
+      "source": "release",
+      "luma_build": false,
+      "note": "The previous Fedora release takes the same Mesa rebases through its updates repository until shortly before its end of life, about a month after the release two after it. Current here means at most one feature series behind fedora-45; the userland is retired when the release is."
+    }
+  },
+  "not_yet_userlands": {
+    "el-10": {
+      "source": "release",
+      "luma_build": true,
+      "note": "Not a userland yet. Enterprise Linux rebases Mesa only at minor releases, months behind upstream and with a reduced driver set. Luma would build mesa from Fedora's packaging against EL 10's toolchain, with the LLVM and Rust from AppStream, for x86_64 and aarch64, on the system image's cadence."
+    },
+    "el-9": {
+      "source": "release",
+      "luma_build": true,
+      "note": "Not a userland yet. As el-10, with more to carry: EL 9's meson, libdrm, wayland-protocols and SPIR-V tools are older than current Mesa builds against, so they join the build closure."
+    }
+  }
+}

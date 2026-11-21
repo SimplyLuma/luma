@@ -160,13 +160,17 @@ class DisplayRelay:
         self.path.unlink(missing_ok=True)
 
 
-def relay_for_session(listen: Path, runtime: Path) -> DisplayRelay | None:
-    """A relay to the session's X server, or None when there is no local one."""
-    number = session_display()
+def relay_for_session(listen: Path, runtime: Path, display: str | None = None,
+                      authority: str | None = None) -> DisplayRelay | None:
+    """A relay to the session's X server, or None when there is no local one.
+
+    ``display`` and ``authority`` name another server of this session instead:
+    the one a hidden compositor keeps for a trial start."""
+    number = session_display(display)
     if number is None or not (SOCKETS / f"X{number}").exists():
         return None
     cookie = None
-    authority = os.environ.get("XAUTHORITY")
+    authority = os.environ.get("XAUTHORITY") if display is None else authority
     if authority:
         try:
             resolved = Path(authority).resolve(strict=True)

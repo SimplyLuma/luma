@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""One store for every application tree (ADR-052, Applications 3): prototype.
+"""One store for every application tree (ADR-052, Applications 3).
 
 Trees are commits in a single OSTree repository in ``bare-user-only`` mode, the
 mode Flatpak uses for per-person installations: every file is an ordinary file
@@ -12,14 +12,13 @@ privilege is involved.
   commit stays as its parent, and rolling back moves the ref to it.
 * Space is reclaimed by ref: removing an application deletes its refs and
   prunes whatever no other ref reaches.
-* Each application is allocated its own pair of SELinux categories here, once,
-  so two applications can never share a pair.
+* An application's SELinux category pair is not kept here: it is allocated with
+  every other installed application's (``capsule_identity``).
 
 A ``bare-user-only`` repository keeps each file's mode in the stored file's own
 mode bits. Nothing else may change them: a recursive ``chmod`` or an ACL change
 over the store alters what every tree in it means. ``verify`` checks for that.
 
-Nothing in the shipped install path uses this module.
 """
 from __future__ import annotations
 
@@ -109,6 +108,23 @@ class Store:
     def graphics_ref(name: str, architecture: str = "") -> str:
         return f"graphics/{name}/{architecture or closure.host_architecture()}"
 
+    @staticmethod
+    def pending_ref(app_id: str, architecture: str = "") -> str:
+        """Where a new tree of an application waits until it has been tried and the application is closed."""
+        return f"pending/{app_id}/{architecture or closure.host_architecture()}"
+
+    def promote(self, ref: str, commit: str) -> None:
+        """Make ``commit`` the tree ``ref`` names; its parent stays behind it for rollback."""
+        with self._locked():
+            self._ostree("reset", ref, commit)
+
+    def delete_ref(self, ref: str) -> None:
+        with self._locked():
+            self._ostree("refs", "--delete", ref, check=False)
+
+    def has_commit(self, commit: str) -> bool:
+        return bool(commit) and self._ostree("show", commit, check=False).returncode == 0
+
     def refs(self, prefix: str = "") -> list[str]:
         if not (self.repo / "config").is_file():
             return []
@@ -144,14 +160,18 @@ class Store:
 
     # -- trees -------------------------------------------------------------------------
 
-    def commit_tree(self, tree: Path, ref: str, record: dict[str, object], subject: str = "") -> str:
-        """Commit a built root. The record travels inside the tree."""
+    def commit_tree(self, tree: Path, ref: str, record: dict[str, object], subject: str = "", parent: str = "") -> str:
+        """Commit a built root. The record travels inside the tree.
+
+        ``parent`` is the commit kept behind this one when it is made on another ref than its predecessor's."""
         self.ensure()
         closure._write_in_tree(tree, closure.RECORD_PATH, closure.record_json(record))
         arguments = ["commit", f"--branch={ref}", f"--tree=dir={tree}", "--canonical-permissions", "--no-xattrs",
                      f"--subject={subject or ref}"]
         if not self.fsync:
             arguments.append("--fsync=false")
+        if parent:
+            arguments.append(f"--parent={parent}")
         with self._locked():
             return self._ostree(*arguments, userns=True).stdout.strip()
 
@@ -217,7 +237,11 @@ class Store:
         self.ensure()
         kept = self.packages / f"{sha256}{path.suffix.lower()}"
         if not kept.exists():
-            shutil.copyfile(path, kept)
+            try:
+                # Valet's staged copy and this one are the same bytes on the same disk: one file, two names.
+                os.link(path, kept)
+            except OSError:
+                shutil.copyfile(path, kept)
         return kept
 
     def kept_package(self, record: dict[str, object]) -> str:
@@ -249,11 +273,8 @@ class Store:
         with self._locked():
             for ref in refs:
                 self._ostree("refs", "--delete", ref)
-            state = self._state()
-            categories = dict(state.get("categories") or {})
-            categories.pop(app_id, None)
-            state["categories"] = categories
-            self._write_state(state)
+            for ref in self.refs(f"pending/{app_id}/"):
+                self._ostree("refs", "--delete", ref)
         for record in records:
             kept = self.kept_package(record)
             if kept and not self._package_in_use(Path(kept).stem):
@@ -299,38 +320,26 @@ class Store:
             before = self.disk_bytes()
             self._ostree("prune", "--refs-only", f"--depth={ROLLBACK_DEPTH}")
             freed = before - self.disk_bytes()
-        if not self.refs():
-            # Nothing installed: the store itself goes, so removal leaves no file.
+            self._drop_empty_ref_folders()
+        if not self.refs("app/") and not self.refs("pending/"):
+            # No application left: the userlands and graphics layers that served them go
+            # too, and the store itself, so removing the last one leaves no file.
             remove_checkout(self.root)
         return {"checkouts": removed, "freed_bytes": max(freed, 0)}
+
+    def _drop_empty_ref_folders(self) -> None:
+        """A deleted ref leaves the folders it was named in (refs/heads/app/ID); an application that is gone leaves none."""
+        heads = self.repo / "refs/heads"
+        for folder, _folders, _files in os.walk(heads, topdown=False):
+            if Path(folder) != heads:
+                try:
+                    os.rmdir(folder)
+                except OSError:
+                    pass  # not empty: still names a ref
 
     def verify(self) -> bool:
         """Whether every object still matches its checksum (content and mode)."""
         return self._ostree("fsck", "--quiet", check=False, timeout=7200).returncode == 0
-
-    # -- identity ----------------------------------------------------------------------
-
-    def categories(self, app_id: str) -> str:
-        """The application's own SELinux category pair, allocated once."""
-        with self._locked():
-            state = self._state()
-            allocated = dict(state.get("categories") or {})
-            if app_id in allocated:
-                return str(allocated[app_id])
-            taken = set(allocated.values())
-            seed = int.from_bytes(hashlib.sha256(app_id.encode()).digest()[:8], "big")
-            for attempt in range(1024 * 1023):
-                value = seed + attempt
-                first, second = value % 1024, (value // 1024) % 1023
-                second += second >= first
-                low, high = sorted((first, second))
-                level = f"s0:c{low},c{high}"
-                if level not in taken:
-                    allocated[app_id] = level
-                    state["categories"] = allocated
-                    self._write_state(state)
-                    return level
-        raise InstallerError("No free application identity is left.")
 
     # -- measurement -------------------------------------------------------------------
 

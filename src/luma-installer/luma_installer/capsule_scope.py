@@ -89,12 +89,40 @@ def restrict(scopes: int) -> bool:
         os.close(ruleset)
 
 
-def prefix(abstract: bool = True, signal: bool = True) -> list[str]:
-    """What to put in front of a command to run it scoped; empty when the kernel cannot."""
-    flags = [flag for flag, wanted in (("--abstract", abstract), ("--signal", signal)) if wanted]
-    if not flags or not supported():
+SECCOMP_PLACEHOLDER = "{luma-seccomp-fd}"
+
+
+def prefix(abstract: bool = True, signal: bool = True, seccomp: bool = False) -> list[str]:
+    """What to put in front of a command to run it scoped; empty when the kernel cannot.
+
+    With `seccomp`, the command is bubblewrap and carries `seccomp_arguments()`:
+    the system-call filter (sandbox_seccomp.py) is opened here, after every
+    wrapper that would not pass a descriptor on, and its number is written
+    into bubblewrap's options.
+    """
+    flags = [flag for flag, wanted in (("--abstract", abstract), ("--signal", signal)) if wanted] if supported() else []
+    if seccomp:
+        flags.append("--seccomp")
+    if not flags:
         return []
     return [sys.executable or "/usr/bin/python3", "-m", "luma_installer.capsule_scope", *flags, "--"]
+
+
+def seccomp_arguments() -> list[str]:
+    """Bubblewrap's options for the filter; only behind `prefix(seccomp=True)`."""
+    return ["--seccomp", SECCOMP_PLACEHOLDER]
+
+
+def with_filter(command: list[str]) -> tuple[list[str], int | None]:
+    """The command with the filter's descriptor in place of the placeholder (or without the option)."""
+    if SECCOMP_PLACEHOLDER not in command:
+        return command, None
+    from . import sandbox_seccomp
+    descriptor = sandbox_seccomp.descriptor()
+    index = command.index(SECCOMP_PLACEHOLDER)
+    if descriptor is None:
+        return command[:index - 1] + command[index + 1:], None
+    return command[:index] + [str(descriptor)] + command[index + 1:], descriptor
 
 
 def strip(arguments: list[str]) -> list[str]:
@@ -129,7 +157,7 @@ def runtime_main(argv: list[str] | None = None) -> int:
 def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     if "--" not in values or not values[values.index("--") + 1:]:
-        print("usage: capsule_scope [--abstract] [--signal] -- COMMAND [ARGUMENT ...]", file=sys.stderr)
+        print("usage: capsule_scope [--abstract] [--signal] [--seccomp] -- COMMAND [ARGUMENT ...]", file=sys.stderr)
         return 2
     flags, command = values[:values.index("--")], values[values.index("--") + 1:]
     scopes = ((SCOPE_ABSTRACT_UNIX_SOCKET if "--abstract" in flags else 0)
@@ -137,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
     if scopes and not restrict(scopes):
         # Never a reason not to open what the person asked for.
         print("luma-capsule-scope: this kernel cannot scope the application; continuing without", file=sys.stderr)
+    command, descriptor = with_filter(command)
+    if "--seccomp" in flags and descriptor is None:
+        print("luma-capsule-scope: no system-call filter for this machine; continuing without", file=sys.stderr)
     try:
         os.execvp(command[0], command)
     except OSError as error:

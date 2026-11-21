@@ -1,0 +1,14 @@
+[Unit]
+Description=Move installed application capsules to the application store
+Documentation=https://simplyluma.com/apps
+After=graphical-session.target
+PartOf=graphical-session.target
+# Each move downloads packages and builds a tree; not on battery.
+ConditionACPower=true
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/luma-app-migrate --all
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=20

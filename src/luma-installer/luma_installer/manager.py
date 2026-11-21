@@ -106,6 +106,39 @@ def _remove_exports(application_id: str, exported_command: object = None) -> Non
     remove_command(exported_command)
 
 
+def _forget_socket_folder() -> None:
+    """The launchers' socket folder in the runtime directory, once none of them has a socket there.
+
+    Every running launcher keeps its bus socket in it, so an empty folder means none is running.
+    """
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    try:
+        (runtime / "luma-installer-bus").rmdir()
+    except OSError:
+        pass  # not there, or in use
+
+
+def _remove_from_store(record: dict[str, object]) -> None:
+    """Take an application's trees out of the store, and what a move from a capsule still kept beside them."""
+    from . import closure_launcher, store_install
+    from .app_store import Store
+    application_id = str(dict(record["store"])["id"])  # type: ignore[arg-type]
+    store = Store()
+    try:
+        store.remove(application_id)
+    except InstallerError:
+        pass  # already gone from the store; the record and exports still have to go
+    closure_launcher.remove_runtime(application_id)
+    migration = record.get("migration")
+    capsule = dict(migration.get("capsule") or {}) if isinstance(migration, dict) else {}
+    leaving = dict(migration.get("leaving") or {}) if isinstance(migration, dict) else {}
+    for image in [*capsule_refresh.images(capsule), *[str(image) for image in leaving.get("images") or []]]:
+        subprocess.run(["podman", "image", "rm", "--force", image], check=False, capture_output=True)
+    if not store.root.exists():
+        # The last application from the store: its download cache has nothing left to serve.
+        store_install.forget_scratch()
+
+
 def reconcile() -> None:
     """Forget RPM removals once the rebooted deployment proves them absent."""
     cleanup_abandoned_user_transactions()
@@ -166,6 +199,8 @@ def remove(application_id: str, delete_data: bool = False) -> str:
             record_path = records_root() / f"{safe_id(application_id)}.json"
             record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             return "Removal is staged. Restart to enter the deployment without this system component."
+    elif capsule_refresh.in_store(record):
+        _remove_from_store(record)
     elif kind in {"deb", "rpm"}:
         _run(["podman", "image", "rm", "--force", str(record["image"])])
         capsule_refresh.forget(record)
@@ -192,11 +227,22 @@ def remove(application_id: str, delete_data: bool = False) -> str:
             Path.home() / ".local/share/luma/installer/staging" / sha256,
             Path.home() / ".local/share/luma/installer/staging",
         )
+        try:
+            from .facts import forget_artwork
+            forget_artwork(sha256)
+        except Exception:  # noqa: BLE001 - a cache; never a reason to keep the application
+            pass
         if delete_data:
             _safe_remove_tree(
                 Path.home() / ".local/share/luma/installer/data" / sha256,
                 Path.home() / ".local/share/luma/installer/data",
             )
+            if record.get("data_home"):
+                _safe_remove_tree(record["data_home"], Path.home() / ".local/share/luma/apps-data")
+                try:
+                    (Path.home() / ".local/share/luma/apps-data").rmdir()
+                except OSError:
+                    pass
             if kind in {"deb", "rpm", "appimage", "portable"}:
                 # Its saved passwords are part of its data.
                 try:
@@ -204,7 +250,18 @@ def remove(application_id: str, delete_data: bool = False) -> str:
                     capsule_secrets.forget(capsule_identity.keyring_tag(record))
                 except Exception:  # noqa: BLE001 - never a reason to keep the application
                     pass
+    if kind in {"deb", "rpm", "appimage", "portable"}:
+        # The log of its build for the store, whether that build was used or not (a move that failed).
+        try:
+            from . import store_install
+            store_install.forget_log(application_id)
+        except Exception:  # noqa: BLE001 - never a reason to keep the application
+            pass
     remove_record(application_id)
+    # The lock its updates were taken under is the application's too.
+    (records_root() / f".refresh-{safe_id(application_id)}.lock").unlink(missing_ok=True)
+    if kind in {"deb", "rpm", "appimage", "portable"}:
+        _forget_socket_folder()
     if kind == "snap":
         return "Removed. snapd manages the retained snapshot according to system policy."
     return "Removed. Private application data was deleted." if delete_data else "Removed. Private application data was retained."
@@ -216,7 +273,7 @@ def update(application_id: str) -> str:
     if kind == "flatpak":
         _run(["flatpak", "update", "--user", "--noninteractive", "--assumeyes", str(record["flatpak_id"])])
         return "Flatpak checked its signed origin and applied the newest compatible update."
-    if capsule_refresh.kind_of(record):
+    if capsule_refresh.managed(record):
         status = capsule_refresh.refresh(str(record["application_id"]), force=True)
         return {
             "updated": "The capsule's packages were updated from their signed repositories. "
@@ -238,7 +295,7 @@ def update_states(application_id: str | None = None) -> dict[str, dict[str, obje
     """
     wanted = safe_id(application_id) if application_id else None
     return {str(record.get("application_id")): capsule_refresh.summary(record) for record in iter_records()
-            if capsule_refresh.kind_of(record) and wanted in (None, record.get("application_id"))}
+            if capsule_refresh.managed(record) and wanted in (None, record.get("application_id"))}
 
 
 def _energy(values) -> int:
@@ -350,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if values.action == "rollback":
             capsule_refresh.rollback(str(_record(values.application_id)["application_id"]), "Rolled back on request.")
-            print("Rolled back to the previous capsule.")
+            print("Rolled back to the previous version.")
             return 0
         if values.action == "updates":
             print(json.dumps(update_states(values.application_id), indent=2, sort_keys=True))

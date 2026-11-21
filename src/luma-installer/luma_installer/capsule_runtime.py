@@ -134,12 +134,12 @@ def login_environment(user: str) -> list[tuple[str, str]]:
         values += [("USER", user), ("LOGNAME", user)]
     return values
 
-_BUS_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)+")
+from . import bus_names as _bus_names  # noqa: E402
+
+_BUS_NAME = _bus_names.NAME
 # Names the session's own services answer to. An application whose launcher
 # happens to be named after one of them still never gets to own it.
-_RESERVED_BUS_PREFIXES = ("org.freedesktop.", "org.gtk.", "org.a11y.", "org.mpris.", "org.projectluma.",
-                          "io.luma.", "org.gnome.Shell", "org.gnome.Mutter", "org.gnome.SessionManager",
-                          "org.gnome.SettingsDaemon", "org.gnome.ScreenSaver", "org.gnome.keyring")
+_RESERVED_BUS_PREFIXES = _bus_names.RESERVED_PREFIXES
 
 
 def own_bus_names(record: dict[str, object]) -> list[str]:
@@ -169,16 +169,15 @@ def own_bus_names(record: dict[str, object]) -> list[str]:
     if record.get("desktop_path"):
         candidates.append(Path(str(record["desktop_path"])).name.removesuffix(".desktop"))
     candidates.append(str(record.get("startup_wm_class") or ""))
-    names: list[str] = []
-    for name in candidates:
-        if (len(name) <= 200 and _BUS_NAME.fullmatch(name) and name not in names
-                and not any(name == prefix.rstrip(".") or name.startswith(prefix) for prefix in _RESERVED_BUS_PREFIXES)):
-            names.append(name)
-    return names[:8]
+    # What its package declares and its program registers (bus_names.py), found when it was installed.
+    recorded = record.get("bus_names")
+    if isinstance(recorded, list):
+        candidates.extend(name for name in recorded if isinstance(name, str))
+    return _bus_names.select(candidates)
 
 
 def own_bus_arguments(record: dict[str, object]) -> list[str]:
-    return [argument for name in own_bus_names(record) for argument in (f"--own={name}", f"--own={name}.*")]
+    return _bus_names.proxy_arguments(own_bus_names(record))
 
 HANDOFF_UNSAFE_COUNTS = frozenset((9, 10, 11, 12, 13, 32))
 HANDOFF_PADDING = "--luma-handoff"

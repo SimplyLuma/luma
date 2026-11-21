@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from luma_installer import closure_launcher as launcher
+from luma_installer import session_boundary
 
 RECORD = {"application_id": "vendor-app", "id": "vendor-app", "name": "Vendor", "format": "deb"}
 
@@ -28,7 +29,7 @@ class Sandbox(unittest.TestCase):
         for path in (self.home / "Documents", self.runtime / "pulse", self.checkout / "usr/share/zoneinfo",
                      self.checkout / "usr/bin", base / "data", base / "instance/tmp"):
             path.mkdir(parents=True)
-        for name in ("wayland-0", "pipewire-0", "pulse/native"):
+        for name in ("wayland-0", "pipewire-0", "pipewire-0-application", "pulse/native", "keyring-ssh", "accessibility.a11y"):
             (self.runtime / name).touch()
         self.data, self.instance = base / "data", base / "instance"
         self.bus = self.runtime / "proxy.bus"
@@ -38,12 +39,16 @@ class Sandbox(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def build(self, **overrides) -> tuple[list[str], dict[str, str]]:
-        options = {"data": self.data, "instance": self.instance, "runtime": self.runtime, "bus_socket": self.bus,
-                   "level": "s0:c10,c20", "folders": [self.home / "Documents"],
-                   "environment": {"WAYLAND_DISPLAY": "wayland-0", "LANG": "en_US.UTF-8", "XDG_CURRENT_DESKTOP": "GNOME",
-                                   "SSH_AUTH_SOCK": "/run/user/1000/keyring/ssh", "HOME": "/elsewhere"}}
+        environment = {"WAYLAND_DISPLAY": "wayland-0", "LANG": "en_US.UTF-8", "XDG_CURRENT_DESKTOP": "GNOME",
+                       "SSH_AUTH_SOCK": "/run/user/1000/keyring/ssh", "HOME": "/elsewhere", "DISPLAY": ":0",
+                       "XAUTHORITY": str(self.runtime / "xauth")}
+        session = session_boundary.view(self.runtime, Path(f"/run/user/{os.getuid()}"), environment,
+                                        accessibility=self.runtime / "accessibility.a11y", bus_socket=self.bus)
+        options = {"data": self.data, "instance": self.instance, "session": session,
+                   "level": "s0:c10,c20", "folders": [self.home / "Documents"], "environment": environment}
+        record = {**RECORD, **overrides.pop("record", {})}
         options.update(overrides)
-        return launcher.sandbox_arguments(self.checkout, dict(RECORD), **options)
+        return launcher.sandbox_arguments(self.checkout, record, **options)
 
     def test_no_container_engine_and_the_tree_is_the_read_only_root(self):
         arguments, _env = self.build()
@@ -73,9 +78,16 @@ class Sandbox(unittest.TestCase):
         uid = os.getuid()
         read_only = pairs(arguments, "--ro-bind")
         self.assertIn((str(self.runtime / "wayland-0"), f"/run/user/{uid}/wayland-0"), read_only)
-        self.assertIn((str(self.runtime / "pipewire-0"), f"/run/user/{uid}/pipewire-0"), read_only)
-        self.assertIn((str(self.bus), f"/run/user/{uid}/bus"), pairs(arguments, "--bind"))
-        self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], f"unix:path=/run/user/{uid}/bus")
+        # The socket on which an application can only play, never PipeWire's own.
+        self.assertIn((str(self.runtime / "pipewire-0-application"), f"/run/user/{uid}/pipewire-0"), read_only)
+        self.assertNotIn(str(self.runtime / "pipewire-0"), [source for source, _inside in read_only])
+        self.assertIn((str(self.runtime / "accessibility.a11y"), f"/run/user/{uid}/at-spi/bus"), read_only)
+        self.assertIn((str(self.bus), f"/run/user/{uid}/proxy.bus"), pairs(arguments, "--bind"))
+        self.assertEqual(env["DBUS_SESSION_BUS_ADDRESS"], f"unix:path=/run/user/{uid}/proxy.bus")
+        # The session's X display and its cookie stay outside.
+        self.assertNotIn("XAUTHORITY", env)
+        self.assertNotIn("DISPLAY", env)
+        self.assertNotIn("keyring-ssh", " ".join(arguments))
         self.assertEqual(env["PULSE_SERVER"], f"unix:/run/user/{uid}/pulse/native")
         self.assertNotIn((str(self.runtime), f"/run/user/{uid}"), read_only + pairs(arguments, "--bind"))
         self.assertNotIn("SSH_AUTH_SOCK", env)
@@ -97,23 +109,27 @@ class Sandbox(unittest.TestCase):
         self.assertIn((str(self.instance / "tmp"), "/tmp"), pairs(arguments, "--bind"))
         self.assertIn((str(self.instance), "/run/luma"), pairs(arguments, "--ro-bind"))
 
-    def test_only_the_displays_own_x11_socket_is_shared(self):
-        with tempfile.TemporaryDirectory() as folder:
-            sockets = Path(folder)
-            (sockets / "X0").touch()
-            (sockets / "X1").touch()
-            self.assertEqual(launcher.x11_socket(":0", sockets), sockets / "X0")
-            self.assertEqual(launcher.x11_socket(":1.0", sockets), sockets / "X1")
-            self.assertIsNone(launcher.x11_socket(":7", sockets))
-            self.assertIsNone(launcher.x11_socket("remote:0", sockets))
-            self.assertIsNone(launcher.x11_socket("", sockets))
+    def test_x_is_a_socket_of_the_applications_own(self):
+        from luma_installer import capsule_display
+        relay = capsule_display.DisplayRelay(self.runtime / "app.x11", Path("/tmp/.X11-unix/X0"), b"cookie")
+        session = session_boundary.view(self.runtime, Path("/run/user/1"), {"DISPLAY": ":0"}, display=relay)
+        arguments, env = self.build(session=session)
+        self.assertIn((str(self.runtime / "app.x11"), "/tmp/.X11-unix/X724"), pairs(arguments, "--bind"))
+        self.assertEqual(env["DISPLAY"], ":724")
+        self.assertNotIn("XAUTHORITY", env)
+
+    def test_the_hidden_start_has_no_network_and_a_moved_capsule_keeps_its_old_home_name(self):
+        arguments, _env = self.build(network=False, record={"legacy_home": True})
+        self.assertIn("--unshare-net", arguments)
+        self.assertIn(("person", str(self.home.parent / "luma")), pairs(arguments, "--symlink"))
+        plain, _env = self.build()
+        self.assertNotIn("--unshare-net", plain)
+        self.assertEqual(pairs(plain, "--symlink"), [])
 
     def test_a_console_application_keeps_its_terminal(self):
         windowed, _env = self.build()
         self.assertIn("--new-session", windowed)
-        arguments, _env = launcher.sandbox_arguments(self.checkout, {**RECORD, "terminal": True}, data=self.data,
-                                                     instance=self.instance, runtime=self.runtime, bus_socket=None,
-                                                     folders=[], environment={})
+        arguments, _env = self.build(record={"terminal": True})
         self.assertNotIn("--new-session", arguments)
 
 
@@ -126,6 +142,8 @@ class Payload(unittest.TestCase):
         self.assertEqual(arguments[:2], ["/opt/vendor/app", "--flag"])
         self.assertIn("--ozone-platform=wayland", arguments)
         self.assertIn("--enable-wayland-ime", arguments)
+        # A file to open follows a switch with a value, never a bare one an application's own parser would give it to.
+        self.assertIn("=", arguments[-2])
         self.assertEqual(arguments[-1], "https://example.org")
         plain = launcher.payload({"id": "x", "exports": {"command": "mousepad"}}, True, [])
         self.assertEqual(plain, ["mousepad"])
@@ -163,18 +181,22 @@ class SharedPolicy(unittest.TestCase):
             self.assertTrue(callable(getattr(policy, name)), name)
         self.assertIn("XDG_CURRENT_DESKTOP", policy.DESKTOP_IDENTITY)
 
-    def test_x11_works_with_or_without_a_cookie_to_hand_over(self):
-        with tempfile.TemporaryDirectory() as folder:
-            base = Path(folder).resolve()
-            for name in ("checkout", "data", "instance/tmp", "run"):
-                (base / name).mkdir(parents=True)
-            options = {"data": base / "data", "instance": base / "instance", "runtime": base / "run", "bus_socket": None,
-                       "folders": [], "environment": {"DISPLAY": ":0"}}
-            with patch.object(launcher, "x11_socket", return_value=Path("/tmp/.X11-unix/X0")), \
-                    patch.object(launcher.capsule_launcher, "_runtime_authority", None, create=True):
-                _arguments, env = launcher.sandbox_arguments(base / "checkout", dict(RECORD), **options)
-            self.assertEqual(env["DISPLAY"], ":0")
-            self.assertNotIn("XAUTHORITY", env)
+    def test_the_identity_and_the_confinement_are_the_capsules(self):
+        tree = {"format": "deb", "exports": {"name": "Vendor", "bus_names": ["org.vendor.App"], "command": "vendor"}}
+        described = launcher.guard_record("vendor-app", tree, {"application_id": "deb-vendor-1", "sha256": "ab" * 32,
+                                                               "mcs_level": "s0:c5,c9"})
+        self.assertEqual(described["application_id"], "deb-vendor-1")
+        self.assertEqual(described["id"], "vendor-app")
+        self.assertIn("--own=org.vendor.App", launcher.runtime_policy.own_bus_arguments(described))
+        with patch.object(launcher, "selinux_enabled", return_value=True), patch.object(Path, "exists", return_value=True):
+            self.assertEqual(launcher.application_level(described), "s0:c5,c9")
+        with patch.object(launcher.capsule_launcher.capsule_scope, "supported", return_value=True), \
+                patch.object(launcher.capsule_launcher.sandbox_seccomp, "program", return_value=b"filter"):
+            front, options = launcher.capsule_launcher._confinement(described)
+            self.assertEqual(front[-4:], ["--abstract", "--signal", "--seccomp", "--"])
+            self.assertEqual(options, ["--seccomp", launcher.capsule_launcher.capsule_scope.SECCOMP_PLACEHOLDER])
+            front, options = launcher.capsule_launcher._confinement({**described, "seccomp": False, "scope": False})
+            self.assertEqual((front, options), ([], []))
 
 
 class Integration(unittest.TestCase):

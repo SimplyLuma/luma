@@ -106,20 +106,30 @@ def kind_of(record: dict[str, object]) -> str:
     return "rpm" if kind == "portable" else ""
 
 
+def in_store(record: dict[str, object]) -> bool:
+    """Whether the application is a tree in the application store (store_refresh.py) rather than a capsule."""
+    return isinstance(record.get("store"), dict) and bool(record["store"].get("id"))  # type: ignore[union-attr]
+
+
+def managed(record: dict[str, object]) -> bool:
+    """Whether this application is updated here: a capsule, or a tree in the store."""
+    return bool(kind_of(record)) or in_store(record)
+
+
 def state(record: dict[str, object]) -> dict[str, object]:
     value = record.get("refresh")
     return dict(value) if isinstance(value, dict) else {}
 
 
 def summary(record: dict[str, object]) -> dict[str, object]:
-    """What a list of applications shows about this capsule's updates."""
-    if not kind_of(record):
+    """What a list of applications shows about this application's updates."""
+    if not managed(record):
         return {}
     current = state(record)
     status = str(current.get("status") or "never checked")
     if current.get("held"):
         status = "held"
-    elif current.get("pending_image"):
+    elif current.get("pending_image") or current.get("pending_commit"):
         status = "update waiting"
     return {
         "status": status,
@@ -127,8 +137,10 @@ def summary(record: dict[str, object]) -> dict[str, object]:
         "checked_unix": int(current.get("checked_unix") or 0),
         "updated_unix": int(current.get("updated_unix") or 0),
         "packages_updated": int(current.get("packages_updated") or 0),
-        "can_roll_back": bool(current.get("previous_image")),
-        "vendor_repositories": list(current.get("vendor_repositories") or []),
+        "can_roll_back": bool(current.get("previous_image") or current.get("previous_commit")),
+        "in_store": in_store(record),
+        # Recorded when the application was installed; confirmed at every check.
+        "vendor_repositories": list(current.get("vendor_repositories") or record.get("vendor_repositories") or []),
         "detail": str(current.get("detail") or ""),
     }
 
@@ -168,7 +180,7 @@ def _save(application_id: str, **changes: object) -> dict[str, object]:
 
 def hold(application_id: str, held: bool = True) -> dict[str, object]:
     record = read_record(application_id)
-    if not kind_of(record):
+    if not managed(record):
         raise InstallerError("This application has no capsule to update.")
     return _save(application_id, held=bool(held) or None)
 
@@ -271,12 +283,15 @@ def _exec(container: str, command: list[str], *, timeout: int = 600, check: bool
 
 
 @contextmanager
-def hidden_display(runtime: Path | None = None) -> Iterator[tuple[Path, str] | None]:
+def hidden_display(runtime: Path | None = None, x11: bool = False) -> Iterator[tuple[Path, str] | None]:
     """A Wayland display nobody sees, for one start; None when there cannot be one.
 
     The session's own compositor runs a second time, headless, with one
     virtual monitor. It reaches the session bus through a filter that grants
     nothing, so it cannot answer for the real shell.
+
+    With ``x11`` the hidden compositor also keeps an X server of its own, for
+    an application that still needs one; `hidden_x11` says where it is.
     """
     runtime = runtime or Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
     address = os.environ.get("DBUS_SESSION_BUS_ADDRESS")
@@ -297,13 +312,17 @@ def hidden_display(runtime: Path | None = None) -> Iterator[tuple[Path, str] | N
         environment = {**os.environ, "DBUS_SESSION_BUS_ADDRESS": f"unix:path={bus}", "XDG_RUNTIME_DIR": str(runtime)}
         for variable in ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY"):
             environment.pop(variable, None)
+        report = runtime / f"{name}.x11"
+        # The compositor tells what it starts where its X server is; that is how it is learned here.
+        tell = ["--", "sh", "-c", 'printf "%s\\n%s\\n" "$DISPLAY" "$XAUTHORITY" > "$1.partial" && mv "$1.partial" "$1"; '
+                'exec sleep infinity', "sh", str(report)] if x11 else []
         processes.append(subprocess.Popen(
-            [compositor, "--headless", "--wayland", "--no-x11", "--wayland-display", name,
-             "--virtual-monitor", "1280x800"], env=environment,
+            [compositor, "--headless", "--wayland", *([] if x11 else ["--no-x11"]), "--wayland-display", name,
+             "--virtual-monitor", "1280x800", *tell], env=environment,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         socket = runtime / name
         for _attempt in range(1500):  # half a second when idle; a busy device takes longer
-            if socket.exists() or processes[-1].poll() is not None:
+            if (socket.exists() and (not x11 or report.exists())) or processes[-1].poll() is not None:
                 break
             time.sleep(0.02)
         yield (socket, name) if socket.exists() and processes[-1].poll() is None else None
@@ -315,8 +334,18 @@ def hidden_display(runtime: Path | None = None) -> Iterator[tuple[Path, str] | N
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-        for leftover in (bus, runtime / name, runtime / f"{name}.lock"):
+        for leftover in (bus, runtime / name, runtime / f"{name}.lock", runtime / f"{name}.x11",
+                         runtime / f"{name}.x11.partial"):
             leftover.unlink(missing_ok=True)
+
+
+def hidden_x11(runtime: Path, name: str) -> tuple[str, str] | None:
+    """(DISPLAY, XAUTHORITY) of the hidden compositor's X server, or None when it has none."""
+    try:
+        display, authority = (runtime / f"{name}.x11").read_text().split("\n")[:2]
+    except (OSError, ValueError):
+        return None
+    return (display, authority) if display else None
 
 
 def smoke_arguments(record: dict[str, object], image: str, home: Path, display: tuple[Path, str] | None,
@@ -423,7 +452,7 @@ def metered() -> bool:
 
 
 def due(record: dict[str, object], now: float | None = None) -> bool:
-    if not kind_of(record):
+    if not managed(record):
         return False
     current = state(record)
     if current.get("held"):
@@ -435,6 +464,9 @@ def refresh(application_id: str, *, force: bool = False,
             start: Callable[[dict[str, object], str], tuple[bool, str]] = hidden_start) -> str:
     """Bring one capsule up to date. Returns its status afterwards."""
     application_id = safe_id(application_id)
+    if in_store(read_record(application_id)):
+        from . import store_refresh
+        return store_refresh.refresh(application_id, force=force)
     with _locked(application_id):
         record = read_record(application_id)
         kind = kind_of(record)
@@ -535,7 +567,7 @@ def unconfirmed(record: dict[str, object]) -> bool:
     """Whether this start is the first real one on a refreshed image."""
     current = state(record)
     return current.get("status") == "updated" and current.get("confirmed") is False \
-        and bool(current.get("previous_image"))
+        and bool(current.get("previous_image") or current.get("previous_commit"))
 
 
 def confirm(record: dict[str, object]) -> dict[str, object]:
@@ -547,6 +579,9 @@ def confirm(record: dict[str, object]) -> dict[str, object]:
 def rollback(application_id: str, reason: str = "") -> dict[str, object]:
     """Go back to the previous image and do not take that update again."""
     record = read_record(safe_id(application_id))
+    if in_store(record):
+        from . import store_refresh
+        return store_refresh.rollback(application_id, reason)
     current = state(record)
     previous = str(current.get("previous_image") or "")
     if not previous or not _image_exists(previous):
@@ -606,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if refresh_all(log=lambda line: print(line, flush=True)) else 0
         if values.status:
             rows = {str(r.get("application_id")): summary(r) for r in iter_records()
-                    if kind_of(r) and values.application_id in (None, r.get("application_id"))}
+                    if managed(r) and values.application_id in (None, r.get("application_id"))}
             print(json.dumps(rows, indent=2, sort_keys=True))
             return 0
         if not values.application_id:

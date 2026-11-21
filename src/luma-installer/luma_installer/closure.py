@@ -132,6 +132,33 @@ TOOLKIT_BASELINE = {
 
 DEB_ARCHITECTURES = {"x86_64": "amd64", "aarch64": "arm64"}
 
+BASELINE_VERSION = 1
+BASELINE_FILES = ("/usr/share/luma/installer/userland-baseline.json",
+                  str(Path(__file__).resolve().parent.parent / "data/userland-baseline.json"))
+
+
+def baseline_for(userland: str) -> dict[str, object]:
+    """{"version", "packages", "toolkit"} for a release: the recorded baseline (data/userland-baseline.json).
+
+    The lists above are what is used when the data file is not installed."""
+    family = USERLANDS[userland].family
+    fallback = {"version": BASELINE_VERSION, "packages": list(BASELINE[family]),
+                "toolkit": [list(pair) for pair in TOOLKIT_BASELINE[family]]}
+    for candidate in (os.environ.get("LUMA_USERLAND_BASELINE", ""), *BASELINE_FILES):
+        if not candidate:
+            continue
+        try:
+            data = json.loads(Path(candidate).read_text())
+            row = data["userlands"][userland]
+            packages = [name for name in row["packages"] if isinstance(name, str) and _SAFE.fullmatch(name)]
+            toolkit = [[str(shown), str(extra)] for shown, extra in row.get("toolkit") or []
+                       if _SAFE.fullmatch(str(shown)) and _SAFE.fullmatch(str(extra))]
+            if packages:
+                return {"version": int(data["version"]), "packages": packages, "toolkit": toolkit}
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return fallback
+
 
 def host_architecture() -> str:
     machine = platform.machine().lower()
@@ -223,7 +250,7 @@ def candidate_userlands(facts: PackageFacts, prefer: tuple[str, ...] = ()) -> li
     the first of these on which the distribution's package manager resolves
     every dependency; ``build`` walks the list.
     """
-    family = "rpm" if facts.kind in {"rpm", "appimage"} else "deb"
+    family = "rpm" if facts.kind in {"rpm", "appimage", "portable"} else "deb"
     floor = glibc_floor(facts)
     names = []
     wants_t64 = family == "deb" and any(_T64.match(alternative.strip())
@@ -488,7 +515,7 @@ def dnf_command(userland: Userland, architecture: str, verb: list[str]) -> list[
 @dataclass
 class Spec:
     app_id: str
-    kind: str                      # deb | rpm | appimage
+    kind: str                      # deb | rpm | appimage | portable
     userland: str
     package: str = ""              # package name
     package_file: str = ""         # local file, when it came as one
@@ -502,6 +529,8 @@ class Spec:
     added: list[dict[str, str]] = field(default_factory=list)
     from_repository: bool = False  # install by name from a source the package added
     windowed: bool = True
+    command: str = ""              # an unpacked folder (archive): the program to start, under /opt/ID
+    display_name: str = ""
 
 
 @dataclass
@@ -593,28 +622,56 @@ def _package_files(root: Path, spec: Spec, log: BuildLog) -> str:
     return "\n".join("/" + str(path.relative_to(root)) for path in (root / "opt" / spec.app_id).rglob("*"))
 
 
-def _missing_libraries(root: Path, files: str, log: BuildLog) -> list[str]:
-    wanted = "\n".join(line.strip() for line in files.splitlines() if line.strip().startswith("/")
-                       and not line.strip().endswith((".png", ".svg", ".js", ".json", ".txt", ".html")))
-    if not wanted:
-        return []
-    listing = root.parent / "files.list"
-    listing.write_text(wanted[:4_000_000])
-    result = log.run("check libraries", sandbox_in_tree(
-        root, ["sh", "-c", "{ " + runtime_policy.MISSING_LIBRARIES_SCRIPT.strip() + "; } < /tmp/luma-files"],
-        binds=[(str(listing), "/tmp/luma-files", False)], network=False), check=False)
-    # A library the package ships itself is found by the package's own search
-    # path at run time; the loader check does not know that path.
-    shipped = {Path(line.strip()).name for line in files.splitlines()}
-    return [line.strip() for line in result.stdout.splitlines()
-            if re.fullmatch(r"[A-Za-z0-9_.+-]+\.so[\d.]*", line.strip()) and line.strip() not in shipped]
+def _settle_windowed(root: Path, spec: Spec, log: BuildLog) -> None:
+    """A package whose launcher asks for a terminal draws no window: it gets no desktop baseline."""
+    if spec.windowed and _exports(root, spec, _package_files(root, spec, log)).get("terminal"):
+        spec.windowed = False
+
+
+def _library_check(root: Path, spec: Spec, files: str, exports: dict[str, object], log: BuildLog,
+                   step: str = "check libraries") -> dict[str, object]:
+    """What the launcher's program needs and the tree does not have (tree_check.py)."""
+    command = str(exports.get("command") or "")
+    listing, cache_text = root.parent / "files.list", root.parent / "ld.so.cache.txt"
+    listing.write_text(files[:8_000_000])
+    ldconfig = "/sbin/ldconfig.real" if (root / "usr/sbin/ldconfig.real").exists() else "/sbin/ldconfig"
+    cache_text.write_text(log.run("library index", sandbox_in_tree(root, [ldconfig, "-p"], network=False), check=False).stdout)
+    extra = [str(program) for program in exports.get("programs_hint") or []]
+    code = "import sys; from luma_installer import tree_check; raise SystemExit(tree_check.main(sys.argv[1:]))"
+    result = log.run(step, _python_in_userns(code, str(root), command, str(listing), str(cache_text), *extra), check=False)
+    try:
+        return json.loads(result.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"programs": [], "missing": [], "plugin_missing": [], "loaded": 0, "error": result.stderr.strip()[-300:]}
+
+
+def _bus_names(root: Path, spec: Spec, files: str, exports: dict[str, object], programs: list[str], log: BuildLog) -> list[str]:
+    """The session-bus names this application may own (bus_names.py)."""
+    from . import bus_names
+
+    def read(path: str) -> str | None:
+        try:
+            return (root / path.lstrip("/")).read_text(errors="replace")[:65536]
+        except OSError:
+            return None
+    prefix = f"/opt/{spec.app_id}" if spec.kind in {"appimage", "portable"} else ""
+    declared = bus_names.declared(files.splitlines(), read, prefix)
+    words = bus_names.identity_words(spec.package or "", str(exports.get("name") or ""),
+                                     Path(str(exports.get("desktop_path") or "")).stem)
+    command = bus_names.scan_command(words, programs[:4])
+    tokens: list[str] = []
+    if command:
+        tokens = log.run("bus names", sandbox_in_tree(root, command, network=False), check=False, timeout=300).stdout.splitlines()
+    return bus_names.select([Path(str(exports.get("desktop_path") or "")).stem], declared,
+                            [str(exports.get("startup_wm_class") or "")], bus_names.embedded(tokens[:20000], words))
 
 
 def _exports(root: Path, spec: Spec, files: str) -> dict[str, object]:
     """What the application shows the desktop: its launcher, command and icon."""
     from .desktop import desktop_is_console, desktop_mime_types, desktop_window_class, parse_desktop
     lines = [line.strip() for line in files.splitlines() if line.strip().endswith(".desktop")]
-    if spec.kind == "appimage":
+    unpacked = spec.kind in {"appimage", "portable"}
+    if unpacked:
         paths = [line for line in lines if Path(line).parent == Path("/opt") / spec.app_id]
     else:
         paths = [line for line in lines if "/applications/" in line]
@@ -623,23 +680,38 @@ def _exports(root: Path, spec: Spec, files: str) -> dict[str, object]:
         from .backends import _launcher_score
     except ImportError:  # the scoring lives with today's installer
         _launcher_score = None
+    readable = []
     for path in paths:
         try:
-            contents = (root / path.lstrip("/")).read_text(errors="replace")
+            readable.append((path, (root / path.lstrip("/")).read_text(errors="replace")))
         except OSError:
             continue
+    # A launcher the package hides from the applications list (a link handler: VS Code's
+    # "code --open-url") is not how the application is opened, whatever its name scores.
+    shown = [entry for entry in readable if "NoDisplay=true" not in entry[1] and "Hidden=true" not in entry[1]]
+    for path, contents in shown or readable:
         score = _launcher_score(spec.package or spec.app_id, path, contents) if _launcher_score else 0
         if score > best_score:
             best, best_score = path, score
     if not best:
-        return {"chromium": runtime_policy.is_chromium(files)}
+        found: dict[str, object] = {"chromium": runtime_policy.is_chromium(files)}
+        if unpacked and spec.command:
+            # A folder with no launcher of its own: the program its archive was recognised by.
+            found.update({"name": spec.display_name or spec.app_id, "comment": "", "icon": "", "command": spec.command,
+                          "startup_wm_class": Path(spec.command).name, "terminal": False, "mime_types": [], "desktop_path": ""})
+        return found
     contents = (root / best.lstrip("/")).read_text(errors="replace")
     name, comment, icon, command = parse_desktop(contents)
-    if spec.kind == "appimage":
-        command = f"/opt/{spec.app_id}/AppRun"
+    hint = []
+    if unpacked:
+        # The launcher inside the folder names a program by its bare name; the folder is not on PATH.
+        first = command.split()[0] if command.split() else ""
+        hint = [line for line in files.splitlines() if first and Path(line.strip()).name == Path(first).name][:4]
+        command = spec.command or f"/opt/{spec.app_id}/AppRun"
     return {"desktop_path": best, "name": name, "comment": comment, "icon": icon, "command": command,
             "startup_wm_class": desktop_window_class(contents, best), "terminal": desktop_is_console(contents),
-            "mime_types": desktop_mime_types(contents), "chromium": runtime_policy.is_chromium(files)}
+            "mime_types": desktop_mime_types(contents), "chromium": runtime_policy.is_chromium(files),
+            **({"programs_hint": hint} if hint else {})}
 
 
 def _bootstrap_deb(userland: Userland, root: Path, work: Path, cache: Path, spec: Spec, log: BuildLog,
@@ -709,6 +781,11 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
             log.run("update userland", sandbox_in_tree(root, [
                 "env", "LUMA_SOURCES=" + "\n".join(userland.sources_at(spec.stamp)),
                 "LUMA_FOREIGN=" + " ".join(spec.foreign_architectures), "sh", "-c", DEB_BASE_SCRIPT], binds=common))
+    if spec.package_file or spec.added:
+        # A vendor's package registers its repository while it is installed, and converts its signing
+        # key with gpg when gpg is there (VS Code). Without it the source is written and its key is
+        # not: the repository is "not signed" for ever after and no update from the vendor arrives.
+        log.run("signing tool", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", "gpg"], binds=common), check=False)
     before = snapshot_files(root, DEB_SOURCE_PATHS)
     binds = list(common)
     if spec.added and spec.from_repository:
@@ -722,9 +799,11 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
     else:
         target = spec.package
     log.run("install", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", target, *spec.extra_packages], binds=binds))
+    _settle_windowed(root, spec, log)
     baseline: list[str] = []
+    recorded = baseline_for(userland.name)
     if spec.windowed:
-        baseline = list(BASELINE["deb"])
+        baseline = list(recorded["packages"])  # type: ignore[arg-type]
         result = log.run("baseline", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", *baseline], binds=common),
                          check=False)
         if result.returncode != 0:
@@ -733,7 +812,7 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
                         check=False)
     if spec.windowed:
         present = {row[0] for row in parse_lock(log.run("lock", sandbox_in_tree(root, DEB_LOCK, network=False)).stdout)}
-        toolkit = sorted({extra for shown, extra in TOOLKIT_BASELINE["deb"] if shown in present and extra not in present})
+        toolkit = sorted({extra for shown, extra in recorded["toolkit"] if shown in present and extra not in present})  # type: ignore[union-attr]
         if toolkit:
             log.run("toolkit baseline", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", *toolkit], binds=common),
                     check=False)
@@ -743,8 +822,10 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
         log.run("locale", sandbox_in_tree(root, ["sh", "-c", runtime_policy.DEBIAN_LOCALE_SCRIPT, "sh", language],
                                           binds=common), check=False)
     files = _package_files(root, spec, log)
+    exports = _exports(root, spec, files)
+    checked = _library_check(root, spec, files, exports, log)
     undeclared: list[str] = []
-    for soname in _missing_libraries(root, files, log):
+    for soname in [*checked["missing"], *checked["plugin_missing"]]:  # type: ignore[misc]
         for candidate in runtime_policy.deb_package_candidates(soname):
             known = log.run(f"find {soname}", sandbox_in_tree(root, ["apt-cache", "show", "--no-all-versions", candidate],
                                                                binds=[lists], network=False), check=False)
@@ -754,10 +835,12 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
     if undeclared:
         log.run("undeclared libraries", sandbox_in_tree(
             root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", *sorted(set(undeclared))], binds=common), check=False)
+        checked = _library_check(root, spec, files, exports, log, "check libraries again")
+    exports["bus_names"] = _bus_names(root, spec, files, exports, list(checked["programs"]), log)  # type: ignore[arg-type]
     lock = parse_lock(log.run("lock", sandbox_in_tree(root, DEB_LOCK, network=False)).stdout)
     added = added_repositories(root, before, DEB_SOURCE_PATHS)
-    record = _record(spec, userland, lock, added or spec.added, baseline, sorted(set(undeclared)), language,
-                     _exports(root, spec, files), log)
+    record = _record(spec, userland, lock, added or spec.added, baseline, sorted(set(undeclared)), language, exports, log,
+                     checked, int(recorded["version"]))  # type: ignore[call-overload]
     return Built(root, record)
 
 
@@ -811,17 +894,19 @@ def _build_rpm(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
         before = snapshot_files(root, RPM_SOURCE_PATHS)
         log.run("install", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", target, *spec.extra_packages]),
                                            binds=binds, target="/target"))
+        _settle_windowed(root, spec, log)
     else:
         log.run("userland", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", *packages, *spec.extra_packages]),
                                             binds=binds, target="/target"))
     baseline = []
+    recorded = baseline_for(userland.name)
     if spec.windowed:
-        baseline = list(BASELINE["rpm"])
+        baseline = list(recorded["packages"])  # type: ignore[arg-type]
         log.run("baseline", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", "--skip-unavailable", *baseline]),
                                             binds=binds, target="/target"), check=False)
     if spec.windowed:
         present = {row[0] for row in parse_lock(log.run("lock", sandbox_on_host(RPM_LOCK, binds=[(str(root), "/target", True)])).stdout)}
-        toolkit = sorted({extra for shown, extra in TOOLKIT_BASELINE["rpm"] if shown in present and extra not in present})
+        toolkit = sorted({extra for shown, extra in recorded["toolkit"] if shown in present and extra not in present})  # type: ignore[union-attr]
         if toolkit:
             log.run("toolkit baseline", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", *toolkit]),
                                                         binds=binds, target="/target"), check=False)
@@ -831,22 +916,29 @@ def _build_rpm(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
         _run([*userns_prefix(), "sh", "-c", 'mkdir -p "$2" && cp -a "$1"/. "$2"/', "sh", str(payload), str(destination)],
              timeout=1800)
     files = _package_files(root, spec, log)
-    undeclared = _missing_libraries(root, files, log)
+    exports = _exports(root, spec, files)
+    checked = _library_check(root, spec, files, exports, log)
+    undeclared = [*checked["missing"], *checked["plugin_missing"]]  # type: ignore[misc]
     if undeclared:
         suffix = "()(64bit)" if spec.architecture in {"x86_64", "aarch64"} else ""
         log.run("undeclared libraries", sandbox_on_host(dnf_command(
             userland, spec.architecture, ["install", "--skip-unavailable", *[f"{name}{suffix}" for name in undeclared]]),
             binds=binds, target="/target"), check=False)
+        checked = _library_check(root, spec, files, exports, log, "check libraries again")
+    exports["bus_names"] = _bus_names(root, spec, files, exports, list(checked["programs"]), log)  # type: ignore[arg-type]
     lock = parse_lock(log.run("lock", sandbox_on_host(RPM_LOCK, binds=[(str(root), "/target", True)])).stdout)
     added = added_repositories(root, before, RPM_SOURCE_PATHS) if spec.kind == "rpm" else []
-    record = _record(spec, userland, lock, added or spec.added, baseline, sorted(set(undeclared)), language,
-                     _exports(root, spec, files), log)
+    record = _record(spec, userland, lock, added or spec.added, baseline, sorted(set(undeclared)), language, exports, log,
+                     checked, int(recorded["version"]))  # type: ignore[call-overload]
     return Built(root, record)
 
 
 def _record(spec: Spec, userland: Userland, lock: list[list[str]], added: list[dict[str, str]], baseline: list[str],
-            undeclared: list[str], language: str, exports: dict[str, object], log: BuildLog) -> dict[str, object]:
+            undeclared: list[str], language: str, exports: dict[str, object], log: BuildLog,
+            checked: dict[str, object] | None = None, baseline_version: int = BASELINE_VERSION) -> dict[str, object]:
     version = next((row[1] for row in lock if row[0] == spec.package.partition(":")[0]), "")
+    checked = checked or {}
+    exports = {key: value for key, value in exports.items() if key != "programs_hint"}
     return {
         "schema": SCHEMA, "kind": "application", "id": spec.app_id, "format": spec.kind,
         "origin": {"package": spec.package, "version": version, "sha256": spec.sha256,
@@ -857,7 +949,12 @@ def _record(spec: Spec, userland: Userland, lock: list[list[str]], added: list[d
         "repositories": userland.sources_at(spec.stamp) if userland.family == "deb" else
                         ["fedora", *(["updates"] if spec.updates else [])],
         "stamp": spec.stamp, "updates": spec.updates, "extra_packages": list(spec.extra_packages),
-        "baseline": baseline, "undeclared": undeclared, "language": language, "windowed": spec.windowed,
+        "baseline": baseline, "baseline_version": baseline_version, "undeclared": undeclared,
+        # What the launcher's program still cannot load, and what its plugins cannot: the first fails the build's check.
+        "programs": list(checked.get("programs") or []), "unresolved": list(checked.get("missing") or []),
+        "plugin_unresolved": list(checked.get("plugin_missing") or []),
+        "command": spec.command, "display_name": spec.display_name,
+        "language": language, "windowed": spec.windowed,
         "packages": lock, "exports": exports,
         "build": {"seconds": round(time.monotonic() - log.started, 1), "steps": log.steps},
     }
@@ -906,7 +1003,8 @@ def spec_from_record(record: dict[str, object], package_file: str = "") -> Spec:
                 foreign_architectures=tuple(record.get("foreign_architectures") or ()),
                 extra_packages=tuple(record.get("extra_packages") or ()), language=str(record.get("language") or ""),
                 added=added, from_repository=bool(origin.get("from_repository")) or has_source or not origin.get("file"),
-                windowed=bool(record.get("windowed", True)))
+                windowed=bool(record.get("windowed", True)), command=str(record.get("command") or ""),
+                display_name=str(record.get("display_name") or ""))
 
 
 def build(spec: Spec, work: Path, cache: Path, store=None, log_path: Path | None = None,

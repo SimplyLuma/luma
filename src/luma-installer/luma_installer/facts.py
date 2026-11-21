@@ -121,6 +121,28 @@ def rpm_identity(report, desktop):
     return entry, icon
 
 
+def forget_artwork(sha256):
+    """Drop what reviewing a package file cached about it; its application is being removed."""
+    import base64
+    import hashlib
+    import json
+    root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "luma/installer/artwork"
+    cache = root / (sha256 + "-v2.json")
+    try:
+        result = json.loads(cache.read_text())
+        raw = base64.b64decode(result.get("artwork") or "", validate=True)
+        if raw and result.get("suffix") in {".png", ".svg", ".xpm"}:
+            (root / (hashlib.sha256(raw).hexdigest() + result["suffix"])).unlink(missing_ok=True)
+    except (OSError, ValueError):
+        pass
+    cache.unlink(missing_ok=True)
+    for folder in (root, root.parent):
+        try:
+            folder.rmdir()
+        except OSError:
+            break
+
+
 def flatpak_metadata(data):
     if isinstance(data, bytes): data = data.decode("utf-8")
     parser = configparser.ConfigParser(interpolation=None, strict=False)
