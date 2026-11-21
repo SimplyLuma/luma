@@ -118,15 +118,17 @@ def check(app) -> None:
         return next(c for c in walk(row) if isinstance(c, InlineRenameField))
 
     scene = win.project.active_scene
+    pump(1.0)  # the rows rebuilt by the menu rows above are settled
+    # The field is in the row at once; used before its focus timer, so a window without focus (Xvfb)
+    # never finishes it first.
     win.rename_scene(scene.id)
-    pump(0.3)
     field = field_in(win._scene_rows[scene.id])
     field.set_text("Renamed here")
     field.emit("activate")
     pump(0.2)
     assert win.project.active_scene.name == "Renamed here", win.project.active_scene.name
-    win.rename_scene(scene.id)
     pump(0.3)
+    win.rename_scene(scene.id)
     field = field_in(win._scene_rows[scene.id])
     field.set_text("Never")
     field._finished = True  # as Esc does
@@ -135,7 +137,6 @@ def check(app) -> None:
     assert win.project.active_scene.name == "Renamed here"
     w = win.project.active_scene.widgets[0]
     win.rename_widget(w)
-    pump(0.3)
     field = field_in(win._widget_rows[w.id])
     field.set_text("Cam")
     field.emit("activate")
@@ -172,18 +173,86 @@ def check(app) -> None:
     print("a dragged seam holds", sized)
     outputs(win)
     inspector(win)
+    several(win)
     win.close()  # the engine stops with the window, before the interpreter goes
     pump(1.0)
     app.quit()
 
 
+def several(win) -> None:
+    """Several widgets: the list and the canvas agree, Mixed where their Look differs, every command acts on
+    all of them as one undo step."""
+    from luma_appkit import TypeLabel
+
+    scene = next(sc for sc in win.project.scenes if sum(w.has_picture for w in sc.widgets) >= 2)
+    win.switch_scene(scene.id)
+    pump(0.2)
+    a, b = [w for w in scene.widgets if w.has_picture][:2]
+    win.project.set_effect(a, "corner_radius", 0)
+    win.project.set_effect(b, "corner_radius", 30)
+    # Two rows chosen in the list (as Ctrl+click does): the selection follows.
+    win.widget_list.unselect_all()
+    win.widget_list.select_row(win._widget_rows[a.id])
+    win.widget_list.select_row(win._widget_rows[b.id])
+    pump(0.2)
+    assert set(win.selection) == {a.id, b.id}, win.selection
+    assert win.inspector_tile.title == "2 widgets", win.inspector_tile.title
+    words = [w.label.get_label() for w in walk(win.inspector) if isinstance(w, TypeLabel)]
+    assert "Mixed" in words, words
+    steps = len(win.history.undos)
+
+    def now():  # undo restores a copy of the project: look them up again
+        sc = win.project.scene(scene.id)
+        return sc, sc.widget(a.id), sc.widget(b.id)
+
+    win.apply_look_all("card")
+    sc, wa, wb = now()
+    assert win._look_of(wa) == win._look_of(wb) == "card"
+    win.toggle_hidden()
+    sc, wa, wb = now()
+    assert not wa.visible and not wb.visible
+    win.toggle_lock()
+    sc, wa, wb = now()
+    assert wa.locked and wb.locked
+    win.restack(1)
+    sc, wa, wb = now()
+    assert [w.id for w in sc.widgets[-2:]] == [a.id, b.id], [w.name for w in sc.widgets]
+    assert len(win.history.undos) == steps + 4, (len(win.history.undos), steps)
+    for _ in range(3):
+        win.undo()
+    pump(0.2)
+    sc, wa, wb = now()
+    assert wa.visible and wb.visible and not wa.locked
+    win.set_selection([a.id, b.id])
+    count = len(sc.widgets)
+    win.duplicate_selected()
+    pump(0.2)
+    sc, wa, wb = now()
+    assert len(sc.widgets) == count + 2 and len(win.selection) == 2, (len(sc.widgets), win.selection)
+    win.delete_selected()
+    pump(0.2)
+    assert len(now()[0].widgets) == count
+    win.undo()
+    pump(0.2)
+    assert len(now()[0].widgets) == count + 2
+    win.undo()
+    pump(0.2)
+    assert len(now()[0].widgets) == count
+    win.set_selection([a.id, b.id])
+    win._widget_menu(a.id, win.arrange)
+    pump(0.2)
+    assert any(getattr(r, "label", "") == "Delete 2 widgets" for r in win._last_menu if r is not None)
+    win.select(None)
+    print("several: list and canvas agree, Mixed, one undo step per command")
+
+
 def inspector(win) -> None:
     """Closed, the Inspector stays closed through selections and scene switches (and is saved so);
     Source/Look/Arrange or Ctrl+I open it."""
-    pane = win.inspector
-    pane.close()
+    win.toggle_inspector()
     pump(0.1)
-    assert not pane.shown and win.settings.get("inspector") == "closed"
+    closed = win.dock.layout()
+    assert not win._inspector_shown() and "inspector" in closed.get("closed", {}), closed
     scene = next(sc for sc in win.project.scenes if any(w.has_picture for w in sc.widgets))
     win.switch_scene(scene.id)
     for w in scene.widgets:
@@ -194,18 +263,18 @@ def inspector(win) -> None:
         pump(0.1)
     win.switch_scene(scene.id)
     pump(0.1)
-    assert not pane.shown, "the Inspector reopened by itself"
+    assert not win._inspector_shown(), "the Inspector reopened by itself"
     picture = next(w for w in win.project.active_scene.widgets if w.has_picture)
     win.select(picture.id)
     win._grow("look")
     pump(0.1)
-    assert pane.shown and win.settings.get("inspector") == "open"
+    assert win._inspector_shown() and "inspector" not in win.dock.layout().get("closed", {})
     win.toggle_inspector()
     pump(0.1)
-    assert not pane.shown
+    assert not win._inspector_shown()
     win.toggle_inspector()
     pump(0.1)
-    assert pane.shown
+    assert win._inspector_shown()
     win.select(None)
     print("inspector: closes, stays closed, opens when asked")
 

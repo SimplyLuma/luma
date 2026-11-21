@@ -206,6 +206,10 @@ class Branch:
     #: The device it opens (a camera: one stream at a time, see Engine._releasing) and when it started.
     device: str = ""
     started: float = 0.0
+    #: Its newest picture (on the GPU, as its layers take it): a resize draws it again at once
+    #: (Engine._redraw) instead of waiting for the source's next frame, which a still window sends
+    #: only as a keepalive.
+    last: Gst.Buffer | None = None
 
     def frame(self, fmt: str = "landscape") -> Gst.Element | None:
         layer = self.layers.get(fmt)
@@ -400,6 +404,7 @@ class Program:
     composited: list = field(default_factory=list)  # (program pts, {widget id: box}), newest last
     on_screen: dict = field(default_factory=dict)
     tap: list[Gst.Element] = field(default_factory=list)
+    pacer: list[Gst.Element] = field(default_factory=list)
     #: While something changes (a drag, a Look edit) the mixer reports each frame's layers and the preview
     #: sink each frame shown; idle, neither runs (no Python per frame).
     watching: bool = False
@@ -546,17 +551,45 @@ class Engine(GObject.Object):
         if mixer.find_property("emit-signals") is not None:
             program.handler = mixer.connect("samples-selected", self._samples_selected, program)
         self.programs[fmt] = program
+        self._add_pacer(program)
         if self.want_preview:
             self._add_preview(program)
         # Before any layer links to it: a mixer still in NULL answers FLUSHING, and a still (imagefreeze)
         # that is answered so stops for good.
-        for element in reversed(elements + program.preview):
+        for element in reversed(elements + program.preview + program.pacer):
             element.sync_state_with_parent()
         # Every widget already captured gets its layer here.
         for branch in list(self.branches.values()) + list(self.placeholders.values()):
             if branch.picture and branch.view is not None:
                 self._add_layer(branch, fmt, branch.view, branch.zorder)
         self.emit("preview-changed", fmt)
+
+    def _add_pacer(self, program: Program) -> None:
+        """The canvas's mixer composites on its clock, a frame every 16 ms (graph.pacer)."""
+        chain = graph.pacer(program.fmt)
+        try:
+            elements = [make(e) for e in chain.elements]
+        except EngineError as error:
+            log(f"no pacer for {program.fmt}: {error}")
+            return
+        for element in elements:
+            self.pipeline.add(element)
+        link_all(elements)
+        pad = program.mixer.request_pad_simple("sink_%u")
+        for name, value in chain.pad.items():
+            pad.set_property(name, value)
+        elements[-1].get_static_pad("src").link(pad)
+        source = elements[0]
+
+        def first(_source, _length) -> None:
+            # Once, when it runs (a source not yet started drops what it is given); stamped as it is sent.
+            source.disconnect(handler)
+            picture = Gst.Buffer.new_wrapped(bytes(16 * 16 * 4))
+            picture.duration = graph.PACER_DURATION
+            source.emit("push-buffer", picture)
+
+        handler = source.connect("need-data", first)
+        program.pacer = elements
 
     def _drop_program(self, fmt: str) -> None:
         program = self.programs.pop(fmt, None)
@@ -572,7 +605,7 @@ class Engine(GObject.Object):
             program.mixer.disconnect(program.handler)
             program.handler = 0
         pipeline = self.pipeline
-        items = program.elements + program.preview + program.tap
+        items = program.elements + program.preview + program.tap + program.pacer
         sink = next((e for e in program.preview if e.get_name().startswith("preview-sink")), None)
         if sink is not None:
             # The preview's GTK sink stops here, on the thread its paintable belongs to.
@@ -1012,6 +1045,8 @@ class Engine(GObject.Object):
                 self._add_layer(branch, fmt, widget, zorder)
             elements[-1].get_static_pad("sink").add_probe(
                 Gst.PadProbeType.BUFFER, self._first_picture, (branch, widget))
+            if not branch.still:
+                elements[-1].get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, self._keep_last, branch)
         else:
             self._sync_monitor(branch, widget)
         # State changes run on GStreamer's thread pool: a source that takes its time
@@ -1030,6 +1065,30 @@ class Engine(GObject.Object):
                                                         (alpha, strict, widget.id))
         if os.environ.get("STREAMY_TRACE"):
             self._trace(branch, elements)
+
+    @staticmethod
+    def _keep_last(_pad: Gst.Pad, info: Gst.PadProbeInfo, branch: Branch) -> Gst.PadProbeReturn:
+        branch.last = info.get_buffer()
+        return Gst.PadProbeReturn.OK
+
+    def _redraw(self, frame: Gst.Element) -> None:
+        """``frame`` committed a new revision: its layer draws the source's newest picture again now,
+        stamped now, so the change shows on the next canvas frame (the source may send none for a while)."""
+        sink = frame.get_static_pad("sink")
+        peer = sink.get_peer() if sink is not None else None
+        queue = peer.get_parent_element() if peer is not None else None
+        widget_id = graph.widget_of(frame.get_name())
+        branch = self.branches.get(widget_id) if widget_id else None
+        if queue is None or branch is None or branch.last is None or branch.still or self.pipeline is None:
+            return
+        clock = self.pipeline.get_clock()
+        if clock is None:
+            return
+        picture = branch.last.copy()  # the same GPU memory, its own timestamps
+        picture.pts = clock.get_time() - self.pipeline.get_base_time()
+        picture.dts = Gst.CLOCK_TIME_NONE
+        # Pushed on this thread: the pad's stream lock keeps it in turn with the source's own pictures.
+        queue.get_static_pad("sink").chain(picture)
 
     def _source_buffer(self, pad: Gst.Pad, info: Gst.PadProbeInfo, state: dict) -> Gst.PadProbeReturn:
         """What a capture actually sends: its caps and, for a window cast, the crop region the window
@@ -1168,6 +1227,7 @@ class Engine(GObject.Object):
             revision = self._revision
             revs[revision] = (tuple(pad_props[k] for k in self._GEOMETRY), box)
         frame.set_property("revision", revision)
+        self._redraw(frame)
 
     _last_change = 0.0
     _watch_timer = 0
@@ -1247,6 +1307,7 @@ class Engine(GObject.Object):
             revision = self._revision
             revs[revision] = revs[max(revs)]
         frame.set_property("revision", revision)
+        self._redraw(frame)
 
     def _forget_pad(self, pad: Gst.Pad | None) -> None:
         with self._geom_lock:
@@ -1492,6 +1553,8 @@ class Engine(GObject.Object):
         only then, back on the main loop, do its pads unlink from the mixers and its elements leave the
         pipeline. A sound mixer goes only once no stopping branch still feeds it."""
         branch = self.branches.pop(widget_id, None)
+        if branch is not None:
+            branch.last = None
         if branch is None or self.pipeline is None:
             return
         self._drop_monitor(branch)
