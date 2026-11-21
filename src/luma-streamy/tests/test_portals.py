@@ -263,5 +263,18 @@ class AppAudioTests(unittest.TestCase):
         self.assertNotIn("a", p.captures)
 
 
+
+class CameraListTest(unittest.TestCase):
+    def test_rates_labels_and_one_row_per_camera(self):
+        from luma_streamy.portals import Camera, _rates, camera_label, unique_cameras
+
+        self.assertEqual(_rates("video/x-raw, width=(int)1920, framerate=(fraction){ 30/1, 25/1 }"), [30, 25])
+        self.assertEqual(_rates("image/jpeg, framerate=(fraction)[ 1/1, 60/1 ]"), [1, 60])
+        self.assertEqual(_rates("video/x-raw, framerate=(fraction)30000/1001"), [30])
+        self.assertEqual(camera_label("DJIPocket3 (V4L2)"), "DJIPocket3")
+        rows = unique_cameras([Camera("1", "v", "Cam", (), "v4l2"), Camera("2", "l", "Cam", (), "libcamera"),
+                               Camera("3", "d", "DJIPocket3", (), "v4l2")])
+        self.assertEqual([c.target for c in rows], ["2", "3"])
+
 if __name__ == "__main__":
     unittest.main()

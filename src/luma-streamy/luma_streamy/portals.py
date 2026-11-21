@@ -191,10 +191,34 @@ class Camera:
     name: str  # node.name, stable across boots: what a widget remembers
     label: str  # "Built-in Front Camera"
     modes: tuple = ()  # ((width, height, fps), ...) best first
+    api: str = ""  # "libcamera" | "v4l2"
 
     @property
     def size(self) -> tuple[int, int] | None:
         return self.modes[0][:2] if self.modes else None
+
+
+def _rates(structure: str) -> list[int]:
+    """Whole frame rates in a caps structure's text: one fraction, a list { 30/1, 25/1 } or a range
+    [ 5/1, 30/1 ] (its ends). Read from the text: PyGObject can't hold a GstValueList."""
+    import re
+
+    found = re.search(r"framerate=\(fraction\)(\{[^}]*\}|\[[^\]]*\]|[0-9]+/[0-9]+)", structure)
+    if found is None:
+        return []
+    rates = []
+    for num, den in re.findall(r"([0-9]+)/([0-9]+)", found.group(1)):
+        if int(den):
+            rates.append(round(int(num) / int(den)))
+    return rates
+
+
+def camera_label(description: str) -> str:
+    """A camera's name as people know it: "DJIPocket3", not "DJIPocket3 (V4L2)"."""
+    for suffix in (" (V4L2)", " (libcamera)"):
+        if description.endswith(suffix):
+            return description[: -len(suffix)]
+    return description
 
 
 def _modes(caps) -> tuple:
@@ -208,17 +232,7 @@ def _modes(caps) -> tuple:
         ok_h, height = st.get_int("height")
         if not (ok_w and ok_h):
             continue
-        rates = []
-        if st.has_field("framerate"):
-            value = st.get_value("framerate")
-            for v in (value if isinstance(value, list) else [value]):
-                try:
-                    rates.append(round(v.num / v.denom) if hasattr(v, "num") else round(float(v)))
-                except (TypeError, ZeroDivisionError, ValueError):
-                    pass
-            ok_f, num, den = st.get_fraction("framerate")
-            if ok_f and den:
-                rates.append(round(num / den))
+        rates = _rates(st.to_string()) if st.has_field("framerate") else []
         for fps in rates or [30]:
             if fps > 0:
                 found.add((width, height, fps))
@@ -229,7 +243,19 @@ def _camera(device) -> Camera | None:
     target = _prop(device, "object.serial") or _prop(device, "node.name")
     if target is None:
         return None
-    return Camera(target, _prop(device, "node.name") or target, device.get_display_name(), _modes(device.get_caps()))
+    label = camera_label(_prop(device, "node.description") or device.get_display_name())
+    return Camera(target, _prop(device, "node.name") or target, label, _modes(device.get_caps()),
+                  _prop(device, "device.api") or "")
+
+
+def unique_cameras(cameras: list) -> list:
+    """One row per physical camera: a camera both libcamera and V4L2 show (same name) once, libcamera's."""
+    by_label: dict[str, object] = {}
+    for camera in cameras:
+        kept = by_label.get(camera.label)
+        if kept is None or (getattr(kept, "api", "") != "libcamera" and getattr(camera, "api", "") == "libcamera"):
+            by_label[camera.label] = camera
+    return [c for c in cameras if by_label.get(c.label) is c]
 
 
 class CameraWatch:
@@ -284,7 +310,7 @@ class CameraWatch:
                     if camera is not None:
                         cameras.append(camera)
         with self._lock:
-            self.cameras, self.ready = cameras, True
+            self.cameras, self.ready = unique_cameras(cameras), True
         GLib.idle_add(lambda: self.on_changed() and False)
 
     def find(self, name: str | None) -> Camera | None:
