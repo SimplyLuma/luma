@@ -406,3 +406,14 @@
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row.touch { min-height: 56px; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row.touch .lumaui-media-row-play { width: 44px; height: 44px; border-radius: 22px; }
 .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-media-row.touch .lumaui-media-row-play-icon { icon-size: 18px; }
+/* "More…": every output as a row, in the same well. */
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-all { spacing: 1px; padding: 4px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-output { min-height: 34px; padding: 5px 10px 5px 9px; border-radius: 12px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-output:focus { background-color: rgba(255,255,255,.07); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-output:focus,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-output:hover, .popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-output:focus { background-color: rgba(20,22,26,.06); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-output-content { spacing: 10px; }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-output .lumaui-sound-chip-icon { color: rgba(238,240,244,.82); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-light .lumaui-sound-output .lumaui-sound-chip-icon,
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options.luma-surface-glass .lumaui-sound-output .lumaui-sound-chip-icon { color: rgba(22,25,29,.78); }
+.popup-menu-content.quick-settings.luma-studio-options.lumaui-shell-options .lumaui-sound-output-check { icon-size: 15px; color: -st-accent-color; }

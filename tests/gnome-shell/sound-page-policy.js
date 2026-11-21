@@ -138,11 +138,15 @@ assert(/const MIXER_VERSION = 3;/.test(volume), 'the page needs interface versio
 assert(!/AppMixerRow|AppMixerSection|luma-app-mixer/.test(volume), 'the old rows are gone');
 assert(/this\.menu\._lumaPlainPage = true;/.test(volume) && /new SoundPage\(\{/.test(volume), 'the sheet is the Sound page');
 assert(/this\.menu\._lumaBack = \(\) => \{/.test(volume), 'Back leaves the full output list first');
-assert(/const page = this\.appMixer\.available && !this\._allOutputs;/.test(volume),
+assert(/this\._deviceSection\.actor\.visible = !service;/.test(volume),
     'without the service the sheet is the output list');
 assert(/Util\.spawn\(\['gnome-control-center', 'sound-mixer'\]\)/.test(volume), 'the link opens Settings\' Volume mixer');
 assert(/_lumaBack\?\.\(\)/.test(quickSettings) && /this\._pageMeta/.test(quickSettings) &&
     /menu\._lumaPageOpened\?\.\(\{/.test(quickSettings), 'the page host asks the page');
+assert(/handleEscape\(\) \{[\s\S]*?if \(!menu\._lumaBack\?\.\(\)\)\s*menu\.close\(\);\s*return true;/.test(quickSettings),
+    'Esc steps out of the output list, then back to the main page');
+assert(/_renderAll\(outputs\)/.test(page) && /Model\.outputLabel\(output\)/.test(page) && /output\.detail/.test(page),
+    'the full output list reads the same labels, with how each connects');
 
 // TV: the same rows; OK plays or pauses.
 assert(/playingRows\(mixer\.applications\)/.test(tv), 'the TV panel lists the playing rows');

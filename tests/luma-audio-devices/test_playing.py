@@ -136,6 +136,17 @@ class Linger(unittest.TestCase):
         self.assertEqual([r["id"] for r in listed(self.mixer)], ["Other"])
         self.assertIsNone(self.mixer.next_deadline())
 
+    def test_a_closing_stream_without_a_volume_keeps_the_level(self):
+        # pw-dump can show a stream once more, stripped of its Props, as it leaves.
+        self.graph.apply([{"id": 40, "type": "PipeWire:Interface:Node", "info": {
+            "state": "idle", "props": {"media.class": STREAM, "application.id": "org.projectluma.Tide",
+                                       "object.serial": 1040}, "params": {"Props": []}}}])
+        self.mixer.update(self.graph, 104.0)
+        self.assertAlmostEqual(listed(self.mixer)[0]["volume"], 0.5, places=3)
+        self.graph.apply([gone(40)])
+        self.mixer.update(self.graph, 105.0)
+        self.assertAlmostEqual(listed(self.mixer)[0]["volume"], 0.5, places=3)
+
     def test_the_next_track_keeps_the_row(self):
         self.graph.apply([gone(40)])
         self.mixer.update(self.graph, 105.0)

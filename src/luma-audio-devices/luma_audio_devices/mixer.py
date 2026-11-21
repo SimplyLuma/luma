@@ -98,6 +98,7 @@ class Mixer:
         """Rebuild the rows from the graph and the media players. True when
         anything a client shows changed."""
         rows: dict[str, Application] = {}
+        measured: set[str] = set()   # rows with a stream that reported its volume
         for stream in graph.stream_nodes():
             if not apps.is_app_playback(stream.props):
                 continue
@@ -127,6 +128,7 @@ class Mixer:
             volume = apps.stream_volume(stream.channel_volumes)
             if volume is not None:
                 row.volume = max(row.volume, apps.linear_to_cubic(volume))
+                measured.add(key)
             row.muted = row.muted and stream.mute is True
             row.playing = row.playing or stream.state == "running"
             row.streams.append(stream.node_id)
@@ -142,6 +144,13 @@ class Mixer:
                     row.output = chosen
             if stream.linked_sink and not row.playing_on:
                 row.playing_on = stream.linked_sink
+
+        # A stream on its way in or out reports no volume: the row keeps
+        # what it showed rather than dropping to zero for a moment.
+        for key, row in rows.items():
+            previous = self.applications.get(key)
+            if key not in measured and previous is not None and row.kind == "app":
+                row.volume, row.muted = previous.volume, previous.muted
 
         # An app whose last stream closed keeps its row for LINGER_SECONDS.
         for key, old in self.applications.items():

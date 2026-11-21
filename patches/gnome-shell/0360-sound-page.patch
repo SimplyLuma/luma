@@ -19,8 +19,10 @@ strip per stream, no output key per row, no app without a stream.
 
 quickSettings: a page may be plain (_lumaPlainPage: not a list in a well;
 it may use the work area and fits its own list into it), may put a quiet
-count at the header's end, and is asked before Back or Esc leaves it
-(_lumaBack), so Esc on the Sound page returns to the main page.
+count at the header's end, and is asked before Back leaves it (_lumaBack).
+popupMenu: the menu manager asks an open menu (handleEscape) before Esc
+closes it, so Esc on the Sound page returns to the main page, and from
+its full output list to the page.
 
 The model is held only while the sheet is mapped; the page watches no
 levels and runs no timers.
@@ -39,6 +41,20 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
      <file>ui/lumaPresentation/tv-backdrop.jpg</file>
      <file>ui/shelfMetrics.js</file>
      <file>ui/shelfArrangement.js</file>
+diff --git a/js/ui/popupMenu.js b/js/ui/popupMenu.js
+--- a/js/ui/popupMenu.js
++++ b/js/ui/popupMenu.js
+@@ -1524,6 +1524,10 @@ export class PopupMenuManager {
+                 actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
+                 return Clutter.EVENT_STOP;
+             } else if (symbol === Clutter.KEY_Escape && menu.isOpen) {
++                // A surface may step back inside itself first (Quick
++                // Options: the Sound page to the main page).
++                if (menu.handleEscape?.())
++                    return Clutter.EVENT_STOP;
+                 menu.close(BoxPointer.PopupAnimation.FULL);
+                 return Clutter.EVENT_STOP;
+             }
 diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
 --- a/js/ui/quickSettings.js
 +++ b/js/ui/quickSettings.js
@@ -61,21 +77,17 @@ diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
          this._pageSwitch = new St.Button({style_class: 'luma-options-page-switch', can_focus: true,
              accessible_role: Atk.Role.TOGGLE_BUTTON,
              child: new PopupMenu.Switch(false)});
-@@ -1609,6 +1616,13 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
-         }
-         this.actor.connect('key-press-event', (_a, e) => {
-             if (e.get_key_symbol() === Clutter.KEY_Escape && this._activeMenu) {
-+                // Esc on a page that asks (the Sound page) goes back to the main page.
-+                if (this._activeMenu._lumaBack?.())
-+                    return Clutter.EVENT_STOP;
-+                if (this._activeMenu._lumaPageOpened) {
-+                    this._activeMenu.close();
-+                    return Clutter.EVENT_STOP;
-+                }
+@@ -1612,7 +1619,8 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
                  this.close(); return Clutter.EVENT_STOP;
              }
              return Clutter.EVENT_PROPAGATE;
-@@ -1633,11 +1647,28 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+-        });        this._surfaceLayout = new OptionsSurface(this, indicators);
++        });
++        this._surfaceLayout = new OptionsSurface(this, indicators);
+     }
+ 
+     _showStudioPage(item, open) {
+@@ -1633,11 +1641,28 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
              // Use usable work area, not the full display behind the Shelf.
              const workArea = monitor ? Main.layoutManager.getWorkAreaForMonitor(monitor.index) : null;
              const foot = this._pageFoot.visible ? this._pageFoot.get_preferred_height(-1)[1] / scale : 0;
@@ -107,7 +119,7 @@ diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
              const radio = menu._studioRadio;
              this._pageSwitch.accessible_name = this._pageHeading.text;
              this._pageSwitch.visible = !!radio;
-@@ -1652,6 +1683,9 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+@@ -1652,6 +1677,9 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
          } else if (this._activeMenu === menu) {
              this._activeMenu = null;
              this._pinPageLink(null);
@@ -117,6 +129,25 @@ diff --git a/js/ui/quickSettings.js b/js/ui/quickSettings.js
              this.box.remove_style_class_name('lumaui-mode-detail');
              this._pageRadioBinding?.unbind(); this._pageRadioBinding = null;
              this._pageHost.hide(); this._mainPage?.show();
+@@ -1665,6 +1693,18 @@ export const QuickSettingsMenu = class extends PopupMenu.PopupMenu {
+         }
+     }
+ 
++    // Esc, asked by the menu manager (popupMenu.js _onCapturedEvent) before
++    // it closes everything: a page that asks (_lumaPageOpened: the Sound
++    // page) steps back, first out of a page inside it, then to the main page.
++    handleEscape() {
++        const menu = this._activeMenu;
++        if (!menu?._lumaPageOpened)
++            return false;
++        if (!menu._lumaBack?.())
++            menu.close();
++        return true;
++    }
++
+     // The open page's settings link (addSettingsAction's luma-sheet-link)
+     // moves into the page's foot while it is open, then back to its menu.
+     _pinPageLink(menu) {
 diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
 --- a/js/ui/status/volume.js
 +++ b/js/ui/status/volume.js
@@ -692,7 +723,7 @@ diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
  
          this._audioDevices = getAudioDevices();
          this._audioDevices.connectObject('g-properties-changed',
-@@ -1526,10 +1220,40 @@ class OutputStreamSlider extends StreamSlider {
+@@ -1526,10 +1220,42 @@ class OutputStreamSlider extends StreamSlider {
          return new Gio.ThemedIcon({name: `lumaui-${glyph}-symbolic`});
      }
  
@@ -704,23 +735,25 @@ diff --git a/js/ui/status/volume.js b/js/ui/status/volume.js
 +    // opened by the "More…" chip; Back returns to the Sound page.
 +    _showAllOutputs(all) {
 +        this._allOutputs = !!all;
++        this.soundPage.showAll(this._allOutputs);
 +        this._syncPage();
-+        if (all)
-+            this._deviceSection.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
 +    }
 +
 +    _syncPage() {
 +        if (!this._pageSection)
 +            return;
-+        const page = this.appMixer.available && !this._allOutputs;
-+        this._pageSection.actor.visible = page;
-+        this._deviceSection.actor.visible = !page;
++        // With the service the sheet is the Sound page, or its full output
++        // list (with the AirPlay picker under it); without, GNOME's devices.
++        const service = this.appMixer.available;
++        const page = service && !this._allOutputs;
++        this._pageSection.actor.visible = service;
++        this._deviceSection.actor.visible = !service;
 +        if (this._airPlayItem) {
 +            this._airPlayItem._lumaHidden = page;
 +            this._airPlayItem.visible = !page && this._airPlayItem.available;
 +        }
-+        this.menu._lumaPlainPage = page;
-+        this._page?.setPlain(page);
++        this.menu._lumaPlainPage = service;
++        this._page?.setPlain(service);
 +        this._page?.setTitle(page ? _('Sound') : _('Sound output'));
 +        this._page?.setMeta(page ? this.soundPage.summary : '');
 +    }

@@ -49,7 +49,8 @@ export const SoundPage = GObject.registerClass({
         this._touch = false;
         this._maxHeight = 0;
 
-        this.add_child(this._buildMaster(master, masterIcon, masterValue));
+        this._master = this._buildMaster(master, masterIcon, masterValue);
+        this.add_child(this._master);
 
         const grid = new Clutter.GridLayout({column_homogeneous: true});
         this._outputs = new St.Widget({style_class: 'lumaui-sound-outputs', x_expand: true,
@@ -73,7 +74,14 @@ export const SoundPage = GObject.registerClass({
         this._nothing = new St.Label({style_class: 'lumaui-sound-nothing', text: _('Nothing playing')});
         this.add_child(this._nothing);
 
+        // Every output, for "More…": the same names, with how each connects.
+        this._all = new St.BoxLayout({style_class: 'lumaui-sound-well lumaui-sound-all',
+            orientation: Clutter.Orientation.VERTICAL, x_expand: true, visible: false});
+        this.add_child(this._all);
+        this._showingAll = false;
+
         const foot = new St.BoxLayout({style_class: 'lumaui-sound-foot', x_expand: true});
+        this._foot = foot;
         this._link = new St.Button({style_class: 'lumaui-sound-link', label: _('Volume mixer'),
             can_focus: true, x_align: Clutter.ActorAlign.START});
         this._link.connect('clicked', () => this.emit('open-mixer'));
@@ -143,6 +151,38 @@ export const SoundPage = GObject.registerClass({
         return box;
     }
 
+    // The full output list in place of the page ("More…"), or the page again.
+    showAll(all) {
+        this._showingAll = !!all;
+        this._render();
+        if (all)
+            this._all.get_first_child()?.grab_key_focus();
+    }
+
+    _renderAll(outputs) {
+        this._all.destroy_all_children();
+        for (const output of outputs) {
+            const words = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true,
+                y_align: Clutter.ActorAlign.CENTER});
+            words.add_child(new St.Label({style_class: 'lumaui-media-row-title', text: Model.outputLabel(output)}));
+            if (output.detail)
+                words.add_child(new St.Label({style_class: 'lumaui-media-row-line', text: output.detail}));
+            const content = new St.BoxLayout({style_class: 'lumaui-sound-output-content', x_expand: true});
+            content.add_child(new St.Icon({style_class: 'lumaui-sound-chip-icon', icon_name: Model.outputGlyph(output),
+                y_align: Clutter.ActorAlign.CENTER}));
+            content.add_child(words);
+            content.add_child(new St.Icon({style_class: 'lumaui-sound-output-check', icon_name: 'lumaui-check-symbolic',
+                y_align: Clutter.ActorAlign.CENTER, opacity: output.default ? 255 : 0}));
+            const row = new St.Button({style_class: 'lumaui-sound-output', child: content, can_focus: true,
+                x_expand: true, accessible_name: Model.outputLabel(output)});
+            row.x_align = Clutter.ActorAlign.FILL;
+            if (output.default)
+                row.add_accessible_state(Atk.StateType.CHECKED);
+            row.connect('clicked', () => this._mixer.setDefaultOutput(output.name));
+            this._all.add_child(row);
+        }
+    }
+
     // On screen the model is held; off screen nothing is fetched or tracked.
     _setShown(shown) {
         if (shown === this._shown)
@@ -182,6 +222,14 @@ export const SoundPage = GObject.registerClass({
     }
 
     _render() {
+        const all = this._showingAll && this._mixer.available;
+        this._all.visible = all;
+        for (const part of [this._master, this._outputs, this._playing, this._nothing, this._foot])
+            part.visible = !all;
+        if (all) {
+            this._renderAll(this._mixer.outputs);
+            return;
+        }
         this._renderOutputs();
         const apps = this._mixer.available ? Model.playingRows(this._mixer.applications) : [];
         const seen = new Set();
