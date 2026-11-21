@@ -4,7 +4,7 @@
 
 Name:           luma-developer-platform
 Version:        0.1.0
-Release:        1.luma.142%{?dist}
+Release:        1.luma.143%{?dist}
 Summary:        Adaptive and semantic application platform for Project Luma
 License:        Apache-2.0
 URL:            https://projectluma.org/developers
@@ -378,6 +378,24 @@ done
 %{python3_sitelib}/luma_sdk/
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.143
+- ArrangeView: set_item_shown_rect()/clear_item_shown_rect(): the selection
+  outline and crop frame follow the picture actually on screen during a
+  drag; handles and hit testing keep the live rectangle.
+- ToggleChip (luma_appkit): a checkable chip for a header's actions; a
+  refusing on_toggle keeps it; a live dot.
+- DetailsPane(raised=True) / luma_details_pane_set_raised(): a raised island
+  of its own beside the main one (an Inspector).
+- Dock: close_tile(), open_tile(key, beside=, edge=, size=), is_open(),
+  request_close() with on_close(key) to refuse; DockTile(closable=True) adds
+  "Close panel" to its More menu. Closed tiles and their last places
+  round-trip in layout() ({"layout", "closed"}); several tiles may be main
+  (the first open one leads on a phone); on_rearrange covers close and open.
+- Command icons (app menu rows) resolve through the installed icon theme, so
+  a bare Lucide name shows its glyph on an installed system.
+- Sparkline (luma_appkit): recent values as a line with a soft area, accent,
+  warning or danger, marks, push()/set_values(), an accessible description.
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.142
 - ActionEditor (Python and C): focuses its first field with the text
   selected; a hidden body collapses (no band, one rule); the footer hint

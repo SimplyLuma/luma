@@ -1103,6 +1103,11 @@ void luma_details_pane_set_embedded(LumaDetailsPane *self, gboolean embedded) {
   pane_reflow(self);
 }
 
+void luma_details_pane_set_raised(LumaDetailsPane *self, gboolean raised) {
+  g_return_if_fail(LUMA_IS_DETAILS_PANE(self));
+  luma_ui_set_css_class(self->sheet, "raised", raised);
+}
+
 void luma_details_pane_set_main(LumaDetailsPane *self, gboolean main) {
   g_return_if_fail(LUMA_IS_DETAILS_PANE(self));
   self->main = !!main;

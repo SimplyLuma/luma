@@ -11,7 +11,8 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 Gtk.init()
 
-from luma_appkit import ActionEditor, BarAction, OverrideDot, RowLead, SyncKey, install_appkit  # noqa: E402
+from luma_appkit import (ActionEditor, BarAction, DetailsPane, OverrideDot, RowLead, SyncKey,  # noqa: E402
+                         Sparkline, ToggleChip, install_appkit)
 
 install_appkit()
 
@@ -85,4 +86,52 @@ for bad in (lambda: RowLead.thumbnail(None, fit="fill"), lambda: RowLead.thumbna
         pass
     else:
         raise AssertionError("refused")
+# ToggleChip: its own toggle; a refusal keeps it; the live dot; set_active is the app's state.
+asked = []
+refuse = {"value": False}
+chip = ToggleChip("Vertical", active=True, on_toggle=lambda on: (asked.append(on), not refuse["value"])[1])
+other = ToggleChip("Landscape", active=True)
+assert chip.get_active() and other.get_active() and not chip.live_dot.get_visible()
+refuse["value"] = True
+chip.set_active(True)
+chip.emit("clicked")
+assert chip.get_active() and asked == [False], "refused: the chip stays on"
+refuse["value"] = False
+chip.emit("clicked")
+assert not chip.get_active() and asked == [False, False]
+chip.set_active(True)
+assert chip.get_active() and asked == [False, False], "the app's own state calls nothing"
+chip.set_live(True)
+assert chip.live and chip.live_dot.get_visible() and chip.has_css_class("live")
+
+# DetailsPane(raised=True): the sheet carries .raised (a raised island beside the main one).
+pane = DetailsPane("Inspector", main=True, raised=True)
+assert pane.sheet.has_css_class("raised")
+pane.set_raised(False)
+assert not pane.sheet.has_css_class("raised")
+# Sparkline: a rolling window, tones, marks, a description, and it draws.
+spark = Sparkline([1, 2, 3], capacity=4, label="Bitrate")
+for v in (4, 5):
+    spark.push(v)
+assert spark.values == [2.0, 3.0, 4.0, 5.0]
+spark.mark()
+spark.set_tone("danger")
+assert spark.has_css_class("danger") and not spark.has_css_class("accent")
+for bad in (lambda: spark.set_tone("red"), lambda: Sparkline(capacity=1)):
+    try:
+        bad()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("refused")
+holder = Gtk.Window(default_width=360, default_height=60)
+holder.set_child(spark)
+holder.present()
+settle()
+assert spark.get_height() == 24 and spark.get_width() > 100
+paint = Gtk.WidgetPaintable.new(spark)
+snap = Gtk.Snapshot()
+paint.snapshot(snap, spark.get_width(), spark.get_height())
+assert snap.to_node() is not None, "it draws"
+holder.destroy()
 print("ok")

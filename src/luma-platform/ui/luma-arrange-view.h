@@ -208,6 +208,37 @@ const char *luma_arrange_view_get_cropping(LumaArrangeView *self);
  */
 const char *luma_arrange_view_get_drag_mode(LumaArrangeView *self);
 /**
+ * luma_arrange_view_set_item_shown_rect:
+ * @self: a view
+ * @id: a box's id
+ * @x: the left of the picture actually on screen, in canvas units
+ * @y: its top
+ * @width: its width
+ * @height: its height
+ *
+ * Where the app's picture of the box is on screen now (a frame or two
+ * behind a drag). While set, the selection outline and the crop frame are
+ * drawn there, so they never part from the picture; the handles and hit
+ * testing keep the live rectangle under the pointer. Clear it when the drag
+ * is committed.
+ */
+void luma_arrange_view_set_item_shown_rect(LumaArrangeView *self, const char *id, double x, double y, double width,
+                                           double height);
+void luma_arrange_view_clear_item_shown_rect(LumaArrangeView *self, const char *id);
+/**
+ * luma_arrange_view_get_item_shown_rect:
+ * @self: a view
+ * @id: a box's id
+ * @x: (out) (optional): left
+ * @y: (out) (optional): top
+ * @width: (out) (optional): width
+ * @height: (out) (optional): height
+ *
+ * Returns: whether a shown rectangle is set for the box
+ */
+gboolean luma_arrange_view_get_item_shown_rect(LumaArrangeView *self, const char *id, double *x, double *y,
+                                               double *width, double *height);
+/**
  * luma_arrange_view_set_order:
  * @self: a view
  * @ids: (array zero-terminated=1): the boxes from the bottom to the top;

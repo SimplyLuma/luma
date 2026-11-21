@@ -415,7 +415,11 @@ class DetailsPane(Gtk.Box):
 
     def __init__(self, title: str = "Details", *, main: bool = False,
                  on_close: Callable[[], None] | None = None, closable: bool | None = None,
-                 back: tuple[str, Callable[[], None]] | None = None, embedded: bool = False) -> None:
+                 back: tuple[str, Callable[[], None]] | None = None, embedded: bool = False,
+                 raised: bool = False) -> None:
+        """`raised`: a raised island of its own beside the main one (an editor's Inspector): the content
+        surface, the island's radius, ring and shade, a gap from the island and 320 wide at least, so its
+        fields contrast with it. A drawer on a phone is unchanged."""
         super().__init__(orientation=Gtk.Orientation.VERTICAL, hexpand=False)
         self.add_css_class("lumaui-details-slot")
         self._main = main
@@ -444,6 +448,7 @@ class DetailsPane(Gtk.Box):
         self.sheet.set_vexpand(True)
         self.sheet.update_property([Gtk.AccessibleProperty.LABEL], [title])
         self.sheet.add_css_class("lumaui-details")
+        lumaui.set_css_class(self.sheet, "raised", raised)
         self.handle = Gtk.Box(halign=Gtk.Align.CENTER)
         self.handle.add_css_class("lumaui-drawer-handle")
         self.handle.set_visible(False)
@@ -494,6 +499,10 @@ class DetailsPane(Gtk.Box):
             self.show(main=True)
 
     # ── content ───────────────────────────────────────────────────────────
+
+    def set_raised(self, raised: bool) -> None:
+        """A raised island of its own (see `raised=`)."""
+        lumaui.set_css_class(self.sheet, "raised", raised)
 
     @property
     def _closable(self) -> bool:

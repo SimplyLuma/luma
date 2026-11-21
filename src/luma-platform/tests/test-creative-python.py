@@ -529,6 +529,58 @@ def docking_drag():
     window.destroy()
 
 
+def dock_close_open():
+    """Closing a tile takes it out (its place remembered in the layout data); opening brings it back."""
+    from luma_appkit import Dock, DockTile
+
+    tiles = {k: DockTile(k, k.upper(), "layers", Gtk.Box(), closable=True, main=k in ("land", "vert"))
+             for k in ("land", "vert", "widgets", "audio")}
+    d = Dock(tiles.values(), layout={"split": "h", "ratio": 0.7,
+                                     "start": {"split": "h", "ratio": 0.6, "start": "land", "end": "vert"},
+                                     "end": {"split": "v", "ratio": 0.5, "start": "widgets", "end": "audio"}})
+    undo, asked = [], []
+    d.on_rearrange = lambda previous, new: undo.append((previous, new))
+    window = Gtk.Window(default_width=1200, default_height=700)
+    window.set_child(d)
+    window.present()
+    settle()
+    assert d.main_key == "land" and d.is_open("vert")
+    d.close_tile("vert")
+    settle()
+    layout = d.layout()
+    assert not d.is_open("vert") and tiles["vert"].get_parent() is None
+    assert layout["closed"] == {"vert": {"beside": "land", "edge": "right", "share": 0.4}}, layout
+    assert layout["layout"]["start"] == "land" and len(undo) == 1
+    # The closed set round-trips: set_layout keeps it closed (it doesn't join at the end).
+    d.set_layout(layout)
+    assert not d.is_open("vert") and d.layout() == layout
+    # Reopened at its last place, with its share.
+    d.open_tile("vert")
+    settle()
+    assert d.layout()["start"] == {"split": "h", "ratio": 0.6, "start": "land", "end": "vert"}, d.layout()
+    assert "closed" not in str(d.layout()) and len(undo) == 2
+    # The main tile may close while another main stays: the other leads.
+    d.close_tile("land")
+    assert d.main_key == "vert"
+    settle()
+    # Opened elsewhere at a size: the share is that many px of the target's place.
+    width = tiles["vert"].get_width()
+    d.open_tile("land", beside="vert", edge="left", size=200)
+    settle()
+    split = d.layout()["start"]
+    assert split["start"] == "land" and abs(split["ratio"] - 200 / width) < 0.02, (split, width)
+    # "Close panel": on_close may refuse; the last open tile never closes.
+    d.on_close = lambda key: (asked.append(key), key != "audio")[1]
+    assert not d.request_close("audio") and d.is_open("audio") and asked == ["audio"]
+    assert d.request_close("widgets") and not d.is_open("widgets")
+    for key in ("land", "vert"):
+        d.close_tile(key)
+    assert d.is_open("audio") and not d.can_close("audio")
+    d.close_tile("audio")
+    assert d.is_open("audio"), "the last tile stays"
+    window.destroy()
+
+
 def meter_track():
     """A silent meter's empty track reads against the well it sits on."""
     from luma_appkit import VolumeSlider
@@ -558,6 +610,7 @@ if __name__ == "__main__":
     fit_group()
     sidebar_headings()
     meter_track()
+    dock_close_open()
     docking_trees()
     docking_drag()
     dock_equal_split()

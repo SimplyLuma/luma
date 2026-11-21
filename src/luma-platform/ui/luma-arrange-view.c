@@ -16,6 +16,8 @@ typedef struct {
   gboolean croppable;
   double crop[4]; /* left, top, right, bottom: fractions of the source cut away */
   GdkPaintable *ghost;
+  gboolean has_shown;
+  double shown[4]; /* where the picture on screen is (x, y, w, h), when the app says */
 } Item;
 
 /* What a drag does: move the box, or pull one of its edges or corners. */
@@ -819,9 +821,17 @@ static void luma_arrange_view_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
   double x0 = ox + item->x * scale, y0 = oy + item->y * scale;
   double x1 = x0 + item->w * scale, y1 = y0 + item->h * scale;
   graphene_rect_t frame = GRAPHENE_RECT_INIT((float)x0, (float)y0, (float)(x1 - x0), (float)(y1 - y0));
+  /* The outline and the crop frame sit on the picture actually shown (it may land a frame or two after
+   * the pointer); the handles and hit testing stay on the live rectangle, under the pointer. */
+  Item shown = *item;
+  if (item->has_shown) {
+    shown.x = item->shown[0], shown.y = item->shown[1], shown.w = item->shown[2], shown.h = item->shown[3];
+    frame = GRAPHENE_RECT_INIT((float)(ox + shown.x * scale), (float)(oy + shown.y * scale), (float)(shown.w * scale),
+                               (float)(shown.h * scale));
+  }
   if (in_crop_mode(self, item) || (self->drag_mode != NULL && (g_str_has_prefix(self->drag_mode, "crop") ||
                                                                g_str_equal(self->drag_mode, "pan"))))
-    draw_ghost(snapshot, item, ox, oy, scale, &frame, &colors[NODE_GHOST]);
+    draw_ghost(snapshot, &shown, ox, oy, scale, &frame, &colors[NODE_GHOST]);
   const GdkRGBA *ring = item->locked ? &colors[NODE_LOCKED] : &colors[NODE_FRAME];
   stroke_rect(snapshot, &frame, LUMA_UI_CREATIVE_ARRANGE_FRAME, ring);
   if (item->locked)
@@ -1272,4 +1282,39 @@ const char *luma_arrange_view_get_cropping(LumaArrangeView *self) {
 const char *luma_arrange_view_get_drag_mode(LumaArrangeView *self) {
   g_return_val_if_fail(LUMA_IS_ARRANGE_VIEW(self), NULL);
   return self->drag_mode;
+}
+
+void luma_arrange_view_set_item_shown_rect(LumaArrangeView *self, const char *id, double x, double y, double width,
+                                           double height) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  Item *item = find_item(self, id);
+  g_return_if_fail(item != NULL);
+  item->has_shown = TRUE;
+  item->shown[0] = x;
+  item->shown[1] = y;
+  item->shown[2] = MAX(width, 1);
+  item->shown[3] = MAX(height, 1);
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+void luma_arrange_view_clear_item_shown_rect(LumaArrangeView *self, const char *id) {
+  g_return_if_fail(LUMA_IS_ARRANGE_VIEW(self));
+  Item *item = find_item(self, id);
+  if (item == NULL || !item->has_shown)
+    return;
+  item->has_shown = FALSE;
+  gtk_widget_queue_draw(GTK_WIDGET(self));
+}
+
+gboolean luma_arrange_view_get_item_shown_rect(LumaArrangeView *self, const char *id, double *x, double *y,
+                                               double *width, double *height) {
+  g_return_val_if_fail(LUMA_IS_ARRANGE_VIEW(self), FALSE);
+  Item *item = find_item(self, id);
+  if (item == NULL || !item->has_shown)
+    return FALSE;
+  double *out[4] = {x, y, width, height};
+  for (guint i = 0; i < 4; i++)
+    if (out[i] != NULL)
+      *out[i] = item->shown[i];
+  return TRUE;
 }

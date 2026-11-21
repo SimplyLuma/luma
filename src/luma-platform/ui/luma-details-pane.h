@@ -306,6 +306,14 @@ GObject *luma_details_pane_get_subject(LumaDetailsPane *self);
  */
 void luma_details_pane_set_embedded(LumaDetailsPane *self, gboolean embedded);
 void luma_details_pane_set_main(LumaDetailsPane *self, gboolean main);
+/**
+ * luma_details_pane_set_raised:
+ * @self: a pane
+ * @raised: a raised island of its own beside the main one (an editor's
+ *   Inspector): the content surface, the island's radius, ring and shade, a
+ *   gap from the island, 320 wide at least; a phone's drawer is unchanged
+ */
+void luma_details_pane_set_raised(LumaDetailsPane *self, gboolean raised);
 gboolean luma_details_pane_get_main(LumaDetailsPane *self);
 /**
  * luma_details_pane_set_closable:

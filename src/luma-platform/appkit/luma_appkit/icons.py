@@ -43,7 +43,18 @@ def resolve(name: str) -> str:
     if not name or name.endswith("-symbolic") or "." in name:
         return name
     glyph = icon_name(name)
-    return glyph if any((path / f"{glyph}.svg").is_file() for path in search_paths()) else name
+    if any((path / f"{glyph}.svg").is_file() for path in search_paths()):
+        return glyph
+    # An installed system: the glyphs live in the icon theme (Prairie), not beside the package.
+    try:
+        from gi.repository import Gdk, Gtk
+
+        display = Gdk.Display.get_default()
+        if display is not None and Gtk.IconTheme.get_for_display(display).has_icon(glyph):
+            return glyph
+    except (ImportError, ValueError):
+        pass
+    return name
 
 
 #: The name the package exports: `luma_appkit.lumaui_icon("share-2")`.
