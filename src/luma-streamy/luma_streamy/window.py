@@ -416,7 +416,11 @@ class StreamyWindow(AppWindow):
                      self._add_widget_menu(widgets, point=(x, y)))
         widgets.add_controller(hold)
         self.widgets_tile = DockTile("widgets", "Widgets", "layers", widgets, phone="drawer", actions=[add])
-        self.audio_tile = DockTile("audio", "Audio", "volume-2", audio, phone="drawer")
+        # Its content never sets its width (the layout does; a scene's sounds or their absence never move it).
+        audio_frame = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.EXTERNAL,
+                                         vscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True, vexpand=True)
+        audio_frame.set_child(audio)
+        self.audio_tile = DockTile("audio", "Audio", "volume-2", audio_frame, phone="drawer")
         self.dock = Dock([*self.preview_tiles.values(), self.widgets_tile, self.audio_tile],
                          layout=self.layouts.current, under_bar=True, on_layout=self.layouts.remember)
         self.dock.on_rearrange = self._panels_moved
