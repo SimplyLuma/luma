@@ -1,0 +1,112 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Barbet boot initramfs overlay: hashes, scripts and safety boundaries."""
+import hashlib
+import re
+import subprocess
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+TREE = ROOT / "config/mobile/barbet-initramfs"
+MANIFEST = ROOT / "config/mobile/barbet-initramfs.manifest"
+
+
+def rows():
+    out = []
+    for line in MANIFEST.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        kind, mode, value, path, origin = line.split("\t")
+        out.append((kind, mode, value, path, origin))
+    return out
+
+
+class BarbetInitramfs(unittest.TestCase):
+    def test_manifest_covers_every_file(self) -> None:
+        listed = {r[3]: r for r in rows()}
+        actual = {p.relative_to(TREE).as_posix() for p in TREE.rglob("*") if p.is_file()}
+        self.assertEqual(set(listed), actual)
+        for rel, (kind, mode, value, _, origin) in listed.items():
+            self.assertEqual(kind, "F", rel)
+            self.assertEqual(origin, "branch", rel)
+            path = TREE / rel
+            self.assertEqual(mode, oct(path.stat().st_mode & 0o777)[2:].zfill(4), rel)
+            self.assertEqual(value, hashlib.sha256(path.read_bytes()).hexdigest(), rel)
+
+    def test_no_firmware_payload(self) -> None:
+        self.assertEqual(
+            [p for p in TREE.rglob("*") if p.suffix in {".bin", ".mbn", ".mdt", ".elf", ".fw"}],
+            [],
+        )
+
+    def test_scripts_parse(self) -> None:
+        for path in TREE.rglob("*"):
+            if path.is_file() and (path.suffix == ".sh" or path.name == "50-barbet-usb"):
+                subprocess.run(["sh", "-n", str(path)], check=True)
+
+    def test_hook_does_not_write_identity_storage(self) -> None:
+        hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
+        self.assertNotRegex(hook, re.compile(r"modemst|fsg|fsc|persist|vbmeta|dtbo", re.I))
+
+    def test_hook_leaves_the_shared_platform_units_alone(self) -> None:
+        hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
+        self.assertNotIn("luma-fp6-", hook)
+
+    def test_barbet_owns_an_explicit_read_only_rmtfs_command(self) -> None:
+        path = TREE / "luma-barbet/etc/systemd/system/rmtfs.service.d/99-barbet-read-only.conf"
+        self.assertTrue(path.is_file(), "barbet must not depend on an FP6 wrapper fallback")
+        text = path.read_text()
+        self.assertIn("ExecStart=\nExecStart=/usr/bin/rmtfs -r -P -s\n", text)
+        self.assertNotIn("-W", text)
+        self.assertNotIn(" -o ", text)
+        wifi = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-wifi.service").read_text()
+        self.assertIn("Requires=rmtfs.service", wifi)
+        self.assertIn("After=local-fs.target rmtfs.service", wifi)
+
+    def test_wifi_starts_the_modem_after_ath10k_binds(self) -> None:
+        script = (TREE / "luma-barbet/etc/luma/barbet-wifi-start.sh").read_text()
+        bind = script.index("/sys/bus/platform/devices/18800000.wifi/driver")
+        start = script.index("/sys/class/remoteproc/remoteproc1/state")
+        self.assertLess(bind, start, "the modem must start after ath10k binds")
+        self.assertIn("tqftpserv", script)
+        self.assertIn("wlan0", script)
+        self.assertIn("4096", script, "wait for the TFTP service over QRTR")
+
+    def test_wifi_hands_the_wlan_subsystem_to_the_modem_first(self) -> None:
+        script = (TREE / "luma-barbet/etc/luma/barbet-wifi-start.sh").read_text()
+        adsp_stop = script.index('echo stop > /sys/class/remoteproc/remoteproc0/state')
+        modem_start = script.index('echo start > /sys/class/remoteproc/remoteproc1/state')
+        wlan0_wait = script.index("/sys/class/net/wlan0")
+        self.assertLess(adsp_stop, modem_start)
+        self.assertLess(modem_start, wlan0_wait)
+        unit = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-wifi.service").read_text()
+        self.assertIn("Before=luma-barbet-audio.service", unit)
+
+    def test_firmware_store_uses_the_device_manifest(self) -> None:
+        functions = (TREE / "init_functions.sh").read_text()
+        self.assertIn('/etc/luma-firmware-manifest.sha256', functions)
+        self.assertIn('luma_verify_firmware_store || return 1', functions)
+        start = functions.index("luma_verify_firmware_store() {")
+        body = functions[start:functions.index("\n}\n", start)]
+        self.assertNotIn("267", body, "the file count belongs to firmware.manifest")
+
+    def test_qualcomm_tools_are_package_units(self) -> None:
+        hook = (TREE / "hooks-cleanup/60-barbet-platform.sh").read_text()
+        self.assertNotIn("luma-barbet-tools", hook)
+        self.assertNotIn("tqftpserv.service", hook)
+        self.assertFalse(
+            (TREE / "luma-barbet/etc/systemd/system/tqftpserv.service").exists())
+
+    def test_audio_uses_the_firmware_store(self) -> None:
+        service = (TREE / "luma-barbet/etc/systemd/system/luma-barbet-audio.service").read_text()
+        self.assertIn("/var/lib/luma/device-firmware-barbet/rt5514p_dsp_fw1.bin", service)
+        script = (TREE / "luma-barbet/etc/luma/barbet-audio-start.sh").read_text()
+        self.assertIn("device-firmware-barbet", script)
+        self.assertNotIn("modemst", script)
+        self.assertIn('for file in "$src"/*', script, "merge both stores per file")
+        self.assertNotIn('ln -sfn "$barbet/qcom/sm7250/google/barbet"', script,
+                         "a whole-directory link would shadow the shared store")
+
+
+if __name__ == "__main__":
+    unittest.main()

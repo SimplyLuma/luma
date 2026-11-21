@@ -1,0 +1,9 @@
+#!/bin/sh
+# Barbet: the dwc3 controller does not re-enumerate after s2idle. Rebind it on
+# resume so USB-NCM/SSH returns; the controller name is the one mainline probes
+# on this board.
+[ "${1:-}" = post ] || exit 0
+dev=a600000.ssusb
+[ -e "/sys/bus/platform/drivers/dwc3/$dev" ] || exit 0
+echo "$dev" > /sys/bus/platform/drivers/dwc3/unbind 2>/dev/null || true
+echo "$dev" > /sys/bus/platform/drivers/dwc3/bind 2>/dev/null || true

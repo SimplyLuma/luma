@@ -1,0 +1,15 @@
+[Unit]
+Description=Barbet WCN3990 modem and Wi-Fi bring-up
+Requires=rmtfs.service
+After=local-fs.target rmtfs.service
+Before=luma-barbet-audio.service
+ConditionPathExists=/var/lib/luma/device-firmware
+
+[Service]
+Type=oneshot
+ExecStart=/etc/luma/barbet-wifi-start.sh
+RemainAfterExit=yes
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

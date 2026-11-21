@@ -88,4 +88,5 @@ the kernel command line turns the service off for `fastboot boot` test kernels.
 | Device | `[device_repo]` | Kit |
 |---|---|---|
 | Fairphone 6 | `luma-fairphone-fp6`: modules, firmware, platform, IMS, eSIM, modem stack | boot image + `…-kit.sparse` |
+| Pixel 5a (`google,barbet`) | `luma-google-barbet`: `qbootctl`, `tqftpserv` | boot image + `…-kit.sparse` |
 | Pixel 9 (`google,tokay`) | none yet: modules and firmware are in the boot image | boot image only |

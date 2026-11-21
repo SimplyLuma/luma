@@ -1,0 +1,10 @@
+[Unit]
+Description=Wake WirePlumber for the barbet sound card
+After=luma-barbet-audio.service
+
+[Service]
+Type=simple
+ExecStart=/etc/luma/barbet-audio-rescan.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: Apache-2.0
+schema = 1
+vendor = "google"
+codename = "barbet"
+name = "Google Pixel 5a"
+marketing_name = "Pixel 5a"
+form_factor = "phone"
+year = 2021
+soc = "qcom/sm7250"
+tier = "experimental"
+maintainers = ["@Gibbz"]
+fastboot_product = "barbet"
+
+[kernel]
+# Integration blocked: SimplyLuma/linux has not published a luma-kernel tag
+# carrying this port. Add its actual tag and release after qualification;
+# deliberately omit tag rather than naming a nonexistent release.
+release = "7.2.15"
+config = "luma/config/sm7250.fragment"
+dtb = "qcom/sm7250-google-barbet.dtb"
+
+[boot]
+config = "boot.toml"
+
+[initramfs]
+# The boot ramdisk is the unmodified postmarketOS initramfs plus the barbet
+# overlay (init_functions.sh, init_2nd.sh, deviceinfo, the platform hook and
+# the shared OSTree resolver). The base is the postmarketos-initramfs 3.12.0-r0
+# cpio archive (pmaports 41732e213ba0); the builder replaces the base's
+# deviceinfo with the barbet one.
+ramdisk_sha256 = "52ab1965a0032e323024ef474de78008436b8b89625470be308acf51ce19e05e"
+base = "postmarketos-initramfs 3.12.0-r0"
+init_functions = "config/mobile/barbet-initramfs/init_functions.sh"
+init_functions_sha256 = "dc0ea7972153ee6ab29228f0e04c84763f3dff4f7429a4e63477fb480d5576a3"
+ostree_package = "ostree-2026.5-1.luma.2.fc44"
+ostree_source = "config/mobile/fp6-ostree-source.json"
+
+[firmware]
+manifest = "firmware.manifest"
+manifest_sha256 = "50af5ada21e620bccdbce54b10a0f150214466363b7d5f86851e913a13a623a7"
+files = 85
+store = "/var/lib/luma/device-firmware"
+
+[install]
+guide = "INSTALL.md"
+method = "fastboot"
+# The full install writes userdata and boot_b only. These partitions hold the
+# phone's identity/calibration or the boot chain and are never written.
+preserve = [
+  "boot_a", "modemst1", "modemst2", "fsg", "fsc", "persist", "misc",
+  "dtbo_a", "dtbo_b", "vbmeta_a", "vbmeta_b",
+  "bootloader_a", "bootloader_b", "super", "frp",
+]
+
+[updates]
+ostree_ref = "luma/1/aarch64/nightly"
+
+[device_repo]
+# Signed rpm-md repository (Luma OS Release key) with the Qualcomm userspace
+# services barbet needs. qbootctl marks the A/B slot successful after boot;
+# tqftpserv serves the WLAN firmware to the modem over QRTR. Both come from
+# luma-qcom-userspace (packaging/rpm/luma-qcom-userspace.spec), built from
+# pinned upstream sources and shipped through device repositories.
+id = "luma-google-barbet"
+url = "https://dl.simplyluma.com/os/devices/aarch64/google-barbet/"
+install = ["qbootctl", "tqftpserv"]
+
+[kit]
+compatible = ["google,barbet"]
+# The bootloader rejects `fastboot boot` of a custom image on this phone, so
+# the kit selects slot b and reboots. Both userdata writes stay inside the
+# partition the install owns; boot_a and every other slot stay untouched.
+flash = [
+  "flash userdata {userdata}",
+  "flash userdata {kit}",
+  "flash boot_b {boot}",
+  "--set-active=b",
+  "reboot",
+]
