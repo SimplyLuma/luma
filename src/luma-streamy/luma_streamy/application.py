@@ -70,4 +70,6 @@ def main(argv: list[str] | None = None) -> int:
 
         register_host_app(APP_ID)
     Gst.init(None)
+    # GStreamer's threads (the mixers' per-frame callbacks) wait for the GIL at most 1 ms, not 5.
+    sys.setswitchinterval(0.001)
     return StreamyApplication().run(argv if argv is not None else sys.argv)

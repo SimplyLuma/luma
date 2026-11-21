@@ -169,6 +169,7 @@ class StreamyWindow(AppWindow):
         #: Widgets whose outline follows the picture on screen (a drag, until the picture catches up):
         #: widget id -> the committed rect, or None while the drag goes on.
         self._following: dict[str, tuple | None] = {}
+        self._words_at: dict[str, float] = {}
         self.engine.connect("preview-changed", lambda engine, fmt: self.pictures[fmt].set_paintable(
             engine.paintable_of(fmt)))
 
@@ -2088,7 +2089,10 @@ class StreamyWindow(AppWindow):
         if meter is not None and meter.get_mapped():
             meter.set_levels_db(left, right)
         words = self._level_words.get(widget_id)
-        if words is not None and words.get_mapped():
+        now = time.monotonic()
+        # The words at most 4 times a second: each new label relayouts the window (the meter is 20 Hz).
+        if words is not None and words.get_mapped() and now - self._words_at.get(widget_id, 0.0) >= 0.25:
+            self._words_at[widget_id] = now
             text = self.level_words(max(left, right))
             if words.label.get_label() not in (text, "Muted"):
                 words.label.set_label(text)

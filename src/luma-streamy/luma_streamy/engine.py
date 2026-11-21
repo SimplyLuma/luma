@@ -199,6 +199,8 @@ class Branch:
     view: Widget | None = None
     zorder: int = 0
     crop: tuple | None = None
+    #: A picture that never changes by itself (an image, a card): the preview may rest while only these show.
+    still: bool = False
 
     def frame(self, fmt: str = "landscape") -> Gst.Element | None:
         layer = self.layers.get(fmt)
@@ -674,16 +676,19 @@ class Engine(GObject.Object):
         # The preview is scaled on the GPU to the size it is shown at: no full-size copy for the screen.
         # Bilinear scaling aliases past 2:1, so a large reduction goes in two steps (at most 2:1 each,
         # a box filter in effect); a small one passes the first step through.
+        # Closed while nothing on the canvas moves (stills and cards only, no change under way): the screen
+        # keeps its last picture and neither the scaler nor GTK draws 30 times a second for nothing.
+        valve = make(Element("valve", f"preview-valve-{fmt}", {"drop": False}))
         queue = make(Element("queue", f"preview-queue-{fmt}", {"max-size-buffers": 1, "leaky": 2}))
         half = make(Element("glcolorscale", f"preview-scale-half-{fmt}"))
         half_size = make(Element("capsfilter", f"preview-size-half-{fmt}", {"caps": self._preview_caps(program, 2)}))
         scale = make(Element("glcolorscale", f"preview-scale-{fmt}"))
         size = make(Element("capsfilter", f"preview-size-{fmt}", {"caps": self._preview_caps(program)}))
-        program.preview = [queue, half, half_size, scale, size, bin_]
+        program.preview = [valve, queue, half, half_size, scale, size, bin_]
         for element in program.preview:
             self.pipeline.add(element)
         link_all(program.preview)
-        program.tee.link(queue)
+        program.tee.link(valve)
         program.sink_pad = sink.get_static_pad("sink")
 
     @staticmethod
@@ -706,8 +711,8 @@ class Engine(GObject.Object):
         if program is None:
             return
         program.preview_size = (width, height)
-        for element, factor in ((program.preview[2] if program.preview else None, 2),
-                                (program.preview[4] if program.preview else None, 1)):
+        for element, factor in ((program.preview[3] if program.preview else None, 2),
+                                (program.preview[5] if program.preview else None, 1)):
             if element is not None:
                 element.set_property("caps", Gst.Caps.from_string(self._preview_caps(program, factor)))
 
@@ -873,6 +878,7 @@ class Engine(GObject.Object):
         link_all(elements)
         card = Branch(widget.id, elements, None, True, shown=True, generation=self._generation, view=widget,
                       zorder=zorder, fade=FADE_MS)
+        card.still = True
         self.placeholders[widget.id] = card
         self._placeholder_words[widget.id] = words
         for fmt in self.programs:
@@ -955,6 +961,7 @@ class Engine(GObject.Object):
         self._link_chain(elements)
         branch = Branch(widget.id, elements, None, widget.has_picture, generation=self._generation, view=widget,
                         zorder=zorder)
+        branch.still = graph.is_still(widget, self.fake)
         if not widget.has_picture:
             target = self.pipeline.get_by_name(chain.target)
             pad = target.request_pad_simple("sink_%u")
@@ -1000,6 +1007,12 @@ class Engine(GObject.Object):
         caps = pad.get_current_caps()
         if buffer is None or caps is None:
             return Gst.PadProbeReturn.OK
+        state["n"] = state.get("n", 0) + 1
+        if state["seen"] is not None:
+            if not state["branch"].widget_id.startswith("window"):
+                return Gst.PadProbeReturn.REMOVE  # only a window's crop region changes as it goes
+            if state["n"] % 10:
+                return Gst.PadProbeReturn.OK  # a window resized shows within a third of a second
         st = caps.get_structure(0)
         width, height = st.get_value("width"), st.get_value("height")
         crop = crop_meta(buffer)
@@ -1093,6 +1106,11 @@ class Engine(GObject.Object):
                 pad.set_property(name, value)
         geometry = tuple(pad_props[k] for k in self._GEOMETRY)
         box = (float(widget.x), float(widget.y), float(widget.width), float(widget.height))
+        if pad not in self._applied_rev:
+            # Never composited yet: it takes its geometry now (no frame of it to keep in step with).
+            for name, value in zip(self._GEOMETRY, geometry):
+                if pad.get_property(name) != value:
+                    pad.set_property(name, value)
         if frame.find_property("revision") is None:  # an older lumaframe: as it was, not atomic
             for name, value in zip(self._GEOMETRY, geometry):
                 if pad.get_property(name) != value:
@@ -1126,6 +1144,7 @@ class Engine(GObject.Object):
     def _watch(self) -> None:
         """Something changes: every canvas reports which revision each frame shows, until it settles."""
         self._last_change = time.monotonic()
+        self._preview_flow(True)
         for program in self.programs.values():
             if program.watching:
                 continue
@@ -1137,13 +1156,26 @@ class Engine(GObject.Object):
         if not self._watch_timer:
             self._watch_timer = GLib.timeout_add(500, self._settle)
 
+    def _moving(self) -> bool:
+        """Something on the canvases changes by itself: a live capture (not a still) with a picture."""
+        return any(b.picture and b.layers and not b.still for b in self.branches.values())
+
+    def _preview_flow(self, on: bool) -> None:
+        for program in self.programs.values():
+            if program.preview and program.preview[0].get_property("drop") == on:
+                program.preview[0].set_property("drop", not on)
+
     def _settle(self) -> bool:
         """Nothing changed for a second and every pad shows its latest revision: stop watching."""
         with self._geom_lock:
-            pending = any(revs and self._applied_rev.get(pad) != max(revs) for pad, revs in self._revs.items())
+            # A pad never composited (its source hasn't sent yet) can't be pending: its first buffer
+            # carries the newest revision.
+            pending = any(revs and pad in self._applied_rev and self._applied_rev[pad] != max(revs)
+                          for pad, revs in self._revs.items())
         if pending or time.monotonic() - self._last_change < 1.0:
             return True
         self._watch_timer = 0
+        self._preview_flow(self._moving())
         for program in self.programs.values():
             program.watching = False
             if program.handler:

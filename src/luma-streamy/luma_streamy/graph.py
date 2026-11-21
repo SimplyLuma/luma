@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from .model import Effects, Widget
 
 FPS = 30
+#: The compositors' rate: a drag shows within a screen frame. What is sent is FPS.
+PREVIEW_FPS = 60
 AUDIO_RATE = 48000
 
 
@@ -383,8 +385,9 @@ def program(canvas: tuple[int, int], fmt: str = "landscape") -> list[Element]:
         # than the canvas has its last picture reused.
         Element("glvideomixerelement", f"mixer-{fmt}", {"background": 1, "latency": 0, "force-live": True,
                                                         "start-time-selection": 1}),
+        # Composited at the screen's rate, so a move shows on the next 16 ms frame; outputs take FPS (tap_video).
         Element("capsfilter", f"program-caps-{fmt}", {"caps": f"video/x-raw(memory:GLMemory),width={width},"
-                                                               f"height={height},framerate={FPS}/1,format=RGBA"}),
+                                                               f"height={height},framerate={PREVIEW_FPS}/1,format=RGBA"}),
         Element("tee", f"program-{fmt}", {"allow-not-linked": True}),
     ]
 
@@ -436,6 +439,8 @@ def tap_video(fmt: str = "landscape") -> list[Element]:
     closes while nothing is sent, so an idle tap converts and reads back nothing."""
     return [Element("valve", f"tap-vvalve-{fmt}", {"drop": False}),
             Element("queue", f"tap-vqueue-{fmt}", {"max-size-buffers": 3, "leaky": 2}),
+            Element("videorate", f"tap-rate-{fmt}", {"drop-only": True}),
+            Element("capsfilter", f"tap-fps-{fmt}", {"caps": f"video/x-raw(memory:GLMemory),framerate={FPS}/1"}),
             Element("glcolorconvert", f"tap-glconvert-{fmt}"),
             Element("capsfilter", f"tap-glnv12-{fmt}", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
             Element("gldownload", f"tap-download-{fmt}"),
