@@ -1312,13 +1312,16 @@ class StreamyWindow(AppWindow):
     def _refresh_scenes(self) -> None:
         self.sidebar.clear()
         self._scene_rows = {}
+        self._scene_leads = {}
         self.sidebar.append_section("Scenes", action=("plus", "New scene", self.new_scene))
         for scene in self.project.scenes:
             if self._scene_filter and self._scene_filter not in scene.name.casefold():
                 continue
             count = len(scene.widgets)
-            row = SidebarRow(scene.name, lead=RowLead.thumbnail(self._thumbs.get(scene.id), kind="image", fit="contain",
-                                                                     aspect=self.project.canvas[0] / self.project.canvas[1]),
+            lead = RowLead.thumbnail(self._thumbs.get(scene.id), kind="image", fit="contain",
+                                     aspect=self.project.canvas[0] / self.project.canvas[1])
+            self._scene_leads[scene.id] = lead
+            row = SidebarRow(scene.name, lead=lead,
                              subtitle="Empty" if not count else f"{count} widget" + ("" if count == 1 else "s"))
             row.scene_id = scene.id
             click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
@@ -2420,6 +2423,10 @@ class StreamyWindow(AppWindow):
         if image is None:
             return
         self._thumbs[scene.id] = image
+        lead = getattr(self, "_scene_leads", {}).get(scene.id)
+        if lead is not None and hasattr(lead, "set_paintable"):
+            lead.set_paintable(image)  # in place: the row (and a rename open in it) stays
+            return
         row = self._scene_rows.get(scene.id)
         picture = self._find_picture(row) if row is not None else None
         if picture is not None:
