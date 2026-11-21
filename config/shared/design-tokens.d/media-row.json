@@ -59,9 +59,12 @@
         "row": 65
       },
       "touch": {
-        "row": 56,
+        "row": 64,
+        "art": 44,
+        "padding_y": 10,
         "play": 44,
-        "play_icon": 18
+        "play_icon": 18,
+        "output_height": 40
       },
       "level": {
         "height": 11,

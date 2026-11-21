@@ -3050,9 +3050,12 @@
   --lumaui-media-row-compact-list-radius: 16px;
   --lumaui-media-row-compact-visible-count: 3;
   --lumaui-media-row-compact-row: 65px;
-  --lumaui-media-row-touch-row: 56px;
+  --lumaui-media-row-touch-row: 64px;
+  --lumaui-media-row-touch-art: 44px;
+  --lumaui-media-row-touch-padding-y: 10px;
   --lumaui-media-row-touch-play: 44px;
   --lumaui-media-row-touch-play-icon: 18px;
+  --lumaui-media-row-touch-output-height: 40px;
   --lumaui-media-row-level-height: 11px;
   --lumaui-media-row-level-bar: 2.5px;
   --lumaui-media-row-level-gap: 2px;

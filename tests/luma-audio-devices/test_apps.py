@@ -241,7 +241,7 @@ class MixerModel(unittest.TestCase):
         self.assertTrue(mixer.update(self.graph()))
         rows = {row["id"]: row for row in mixer.rows()}
         # The other sounds first, then apps in the order they started.
-        self.assertEqual(list(rows), ["@system", "org.projectluma.Messages", "org.projectluma.Phone",
+        self.assertEqual(list(rows), ["@system", "org.projectluma.Phone",
                                       "ToneA", "paplay"])
         self.assertEqual([r["id"] for r in rows.values() if r["listed"]], ["ToneA", "paplay"])
         self.assertEqual(rows["paplay"]["output"], "")

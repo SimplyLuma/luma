@@ -101,7 +101,7 @@ class Grouping(unittest.TestCase):
         self.assertEqual(listed(mixer), [])
         # The other sounds are there, silent, and not in the playing list.
         self.assertEqual([r["id"] for r in mixer.rows() if r["other"]],
-                         ["@system", "org.projectluma.Messages", "org.projectluma.Phone"])
+                         ["@system", "org.projectluma.Phone"])
 
     def test_rows_keep_the_order_they_started_in(self):
         graph = Graph()
@@ -158,7 +158,7 @@ class Linger(unittest.TestCase):
         self.mixer.update(self.graph, 105.0)
         self.assertAlmostEqual(listed(self.mixer)[0]["volume"], 0.5, places=3)
         self.assertIn("org.projectluma.Tide", self.mixer.saved_state_keys())
-        self.assertEqual(self.mixer.saved_state_keys()[:2], ["org.projectluma.Messages", "org.projectluma.Phone"])
+        self.assertEqual(self.mixer.saved_state_keys()[:1], ["org.projectluma.Phone"])
 
     def test_the_next_track_keeps_the_row(self):
         self.graph.apply([gone(40)])

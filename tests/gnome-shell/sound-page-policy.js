@@ -51,7 +51,7 @@ assert(M.outputLabel({label: 'Speakers', description: 'Analog Output'}) === 'Spe
 // Playing: one row per app with a stream; never the silent other sounds.
 const apps = [
     {id: '@system', kind: 'system', listed: false, other: true},
-    {id: 'org.projectluma.Messages', kind: 'app', listed: false, other: true, name: 'Messages'},
+    {id: 'org.projectluma.Phone', kind: 'app', listed: false, other: true, name: 'Phone'},
     {id: 'tide', kind: 'app', listed: true, name: 'Tide', player: 'p', title: 'God Only Knows', playing: true},
     {id: 'web', kind: 'app', listed: true, name: 'YouTube', player: 'p', title: 'Synth', playing: false,
         output: 'WH-1000XM5'},

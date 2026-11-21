@@ -72,7 +72,7 @@ def main() -> int:
         listed = [key for key, entry in applications().items() if entry["listed"]]
         check(sorted(listed) == ["PlayerA", "PlayerB"], f"the playing list holds only apps with a stream ({listed})")
         others = [key for key, entry in applications().items() if entry["other"]]
-        check(others == ["@system", "org.projectluma.Messages", "org.projectluma.Phone"],
+        check(others == ["@system", "org.projectluma.Phone"],
               f"the other sounds are present while silent ({others})")
         check(not any(applications()[key]["listed"] for key in others), "a silent other sound is not in the playing list")
 
@@ -174,12 +174,12 @@ def main() -> int:
               "and stays there when the other output is plugged in again")
 
         # Other sounds hold their level while silent.
-        call("SetApplicationVolume", GLib.Variant("(sd)", ("org.projectluma.Messages", 0.9)))
-        check(bool(wait_for(lambda: near(row("org.projectluma.Messages").get("volume"), 0.9), 5)),
+        call("SetApplicationVolume", GLib.Variant("(sd)", ("org.projectluma.Phone", 0.9)))
+        check(bool(wait_for(lambda: near(row("org.projectluma.Phone").get("volume"), 0.9), 5)),
               "an other sound's level is kept while it is silent")
         service.stop()
         service.start()
-        check(bool(wait_for(lambda: near(row("org.projectluma.Messages").get("volume"), 0.9), 5)),
+        check(bool(wait_for(lambda: near(row("org.projectluma.Phone").get("volume"), 0.9), 5)),
               "and read back after the service restarts")
 
         # What outputs are called.

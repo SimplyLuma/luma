@@ -9,7 +9,7 @@ stream is never listed. What the app is playing and its transport come from
 its MPRIS player when it has one (mpris.py); without one the row is the app's
 own name and icon.
 
-"Other sounds" (System sounds, Messages, Phone) are rows that stay while
+"Other sounds" (System sounds, Phone) are rows that stay while
 silent: their volume holds for sounds not yet played.
 
 Volume, mute and output changes go to WirePlumber as luma-app-audio commands
@@ -35,9 +35,10 @@ MAX_VOLUME = 1.5
 LINGER_SECONDS = 10.0
 SYSTEM_ROUTE_KEY = "restore.stream.Output/Audio.media.role:Notification"
 # Apps whose sounds are listed under "Other sounds" whether or not they are
-# sounding: (app key, name when no desktop entry is installed).
+# sounding: (app key, name when no desktop entry is installed). Only apps
+# that play their own sounds belong here: a notification sound is the
+# Shell's event sound whichever app sent it, so it is System sounds.
 OTHER_SOUNDS = (
-    ("org.projectluma.Messages", "Messages"),
     ("org.projectluma.Phone", "Phone"),
 )
 SAVED_STATE_PREFIX = "app.state:"
