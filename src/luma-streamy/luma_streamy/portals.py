@@ -213,6 +213,52 @@ def _rates(structure: str) -> list[int]:
     return rates
 
 
+#: Picture sizes people choose by name (height): offered scaled when the camera lacks them.
+STANDARD_SIZES = ((3840, 2160), (2560, 1440), (1920, 1080), (1280, 720), (854, 480))
+
+
+def size_label(width: int, height: int) -> str:
+    return f"{height}p" if (width, height) in STANDARD_SIZES or width * 9 == height * 16 else f"{width}×{height}"
+
+
+def default_mode(modes) -> tuple[int, int, int] | None:
+    """A new camera's mode: 1080p30 when it has it, else the largest size up to 1080p at the rate
+    nearest 30 (4K costs far more to decode and composite than a stream shows)."""
+    if not modes:
+        return None
+    fits = [m for m in modes if m[1] <= 1080] or list(modes)
+    best = max(m[0] * m[1] for m in fits)
+    return min((m for m in fits if m[0] * m[1] == best), key=lambda m: abs(m[2] - 30))
+
+
+def resolutions(modes) -> list[tuple[str, str]]:
+    """(key, label) per picture size: the camera's own (largest first), then standard sizes it lacks below
+    its largest, made by scaling on the GPU ("720p, scaled"). Key "WxH" or "WxH:scaled"."""
+    sizes = sorted({(m[0], m[1]) for m in modes}, key=lambda s: s[0] * s[1], reverse=True)
+    out = [(f"{w}x{h}", size_label(w, h)) for w, h in sizes]
+    if sizes:
+        top = sizes[0][0] * sizes[0][1]
+        for w, h in STANDARD_SIZES:
+            if (w, h) not in sizes and w * h < top:
+                out.append((f"{w}x{h}:scaled", f"{h}p, scaled"))
+    return out
+
+
+def rates(modes, size: tuple[int, int]) -> list[int]:
+    """Frame rates the camera offers at ``size`` (a scaled size: the rates of the size it is made from)."""
+    found = sorted({m[2] for m in modes if (m[0], m[1]) == tuple(size)}, reverse=True)
+    return found
+
+
+def source_for_scaled(modes, size: tuple[int, int]) -> tuple[int, int] | None:
+    """The camera's own size a scaled size is made from: the smallest at least as large, same shape first."""
+    w, h = size
+    larger = [(m[0], m[1]) for m in modes if m[0] >= w and m[1] >= h]
+    if not larger:
+        return None
+    return min(larger, key=lambda s: (abs(s[0] / s[1] - w / h) > 0.01, s[0] * s[1]))
+
+
 def camera_label(description: str) -> str:
     """A camera's name as people know it: "DJIPocket3", not "DJIPocket3 (V4L2)"."""
     for suffix in (" (V4L2)", " (libcamera)"):

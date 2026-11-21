@@ -134,6 +134,8 @@ def choose_encoders(codec: str) -> EncoderChoice | None:
 #: A capture that has sent no picture in this long says so ("waiting"). It is not a failure:
 #: a window cast sends nothing until the window redraws, so the stream stays open.
 FIRST_PICTURE_S = 8
+#: A change no frame has shown after this long (its source sends nothing new) is applied directly.
+SETTLE_S = 2.0
 
 #: Why a source failed: "busy", "missing" (the device or node is gone), "denied", "format"
 #: (no picture format both ends take) or "stopped" (any other pipeline error).
@@ -143,6 +145,8 @@ REASONS = ("busy", "missing", "denied", "format", "stopped")
 def source_problem(message: str, debug: str) -> str:
     """A source's GStreamer error as one of REASONS."""
     text = f"{message} {debug}".lower()
+    if "not-negotiated" in text or "not negotiated" in text or "no common format" in text:
+        return "format"  # before "busy": a negotiation failure's text can mention a device in use
     if "busy" in text or "ebusy" in text or "in use" in text:
         return "busy"
     if "target not found" in text or "no such" in text or "not found" in text or "removed" in text:
@@ -197,6 +201,11 @@ class Branch:
     view: Widget | None = None
     zorder: int = 0
     crop: tuple | None = None
+    #: A picture that never changes by itself (an image, a card): the preview may rest while only these show.
+    still: bool = False
+    #: The device it opens (a camera: one stream at a time, see Engine._releasing) and when it started.
+    device: str = ""
+    started: float = 0.0
 
     def frame(self, fmt: str = "landscape") -> Gst.Element | None:
         layer = self.layers.get(fmt)
@@ -461,6 +470,8 @@ class Engine(GObject.Object):
         self._preview_sizes: dict[str, tuple[int, int]] = {}
         self.enabled = False
         self._generation = 0
+        #: Devices whose last stream is still stopping (device -> streams stopping).
+        self._releasing: dict[str, int] = {}
         self._scene: Scene | None = None
         #: Atomic layer geometry: each mixer pad's geometry per lumaframe revision, applied by the
         #: mixer's samples-selected for the buffer it actually composites (see _samples_selected).
@@ -472,6 +483,8 @@ class Engine(GObject.Object):
         self._pad_widget: dict[Gst.Pad, str] = {}
         #: Window casts that offered no alpha format: taken opaque (alpha first, not alpha only).
         self._no_alpha: set[str] = set()
+        #: Cameras the GPU couldn't decode (VA failed to negotiate): decoded in software from then on.
+        self._sw_decode: set[str] = set()
         #: Enum properties last set by nick, per (element name, property): a move never re-sets them.
         self._strings: dict[tuple[str, str], str] = {}
 
@@ -609,10 +622,13 @@ class Engine(GObject.Object):
         self._placeholder_words.clear()
         self._revs.clear()
         self._applied_rev.clear()
+        devices = [b.device for b in branches if b.device]
         for branch in branches:
             if branch.watchdog:
                 GLib.source_remove(branch.watchdog)
                 branch.watchdog = 0
+        for device in devices:
+            self._releasing[device] = self._releasing.get(device, 0) + 1
         pipeline = self.pipeline
         pipeline.get_bus().remove_signal_watch()
         programs, self.programs = self.programs, {}
@@ -632,8 +648,12 @@ class Engine(GObject.Object):
         self.pipeline = None
         # Off the window's thread: a source still stuck opening holds its state lock, and the
         # pipeline's own NULL waits on it. Nothing here needs the old pipeline any more.
-        threading.Thread(target=pipeline.set_state, args=(Gst.State.NULL,), name="streamy-close",
-                         daemon=True).start()
+        def close() -> None:
+            pipeline.set_state(Gst.State.NULL)
+            for device in devices:
+                GLib.idle_add(self._released, device)
+
+        threading.Thread(target=close, name="streamy-close", daemon=True).start()
         self._sound = False
         self._sound_tap = []
         for fmt in programs:
@@ -672,16 +692,19 @@ class Engine(GObject.Object):
         # The preview is scaled on the GPU to the size it is shown at: no full-size copy for the screen.
         # Bilinear scaling aliases past 2:1, so a large reduction goes in two steps (at most 2:1 each,
         # a box filter in effect); a small one passes the first step through.
+        # Closed while nothing on the canvas moves (stills and cards only, no change under way): the screen
+        # keeps its last picture and neither the scaler nor GTK draws 30 times a second for nothing.
+        valve = make(Element("valve", f"preview-valve-{fmt}", {"drop": False}))
         queue = make(Element("queue", f"preview-queue-{fmt}", {"max-size-buffers": 1, "leaky": 2}))
         half = make(Element("glcolorscale", f"preview-scale-half-{fmt}"))
         half_size = make(Element("capsfilter", f"preview-size-half-{fmt}", {"caps": self._preview_caps(program, 2)}))
         scale = make(Element("glcolorscale", f"preview-scale-{fmt}"))
         size = make(Element("capsfilter", f"preview-size-{fmt}", {"caps": self._preview_caps(program)}))
-        program.preview = [queue, half, half_size, scale, size, bin_]
+        program.preview = [valve, queue, half, half_size, scale, size, bin_]
         for element in program.preview:
             self.pipeline.add(element)
         link_all(program.preview)
-        program.tee.link(queue)
+        program.tee.link(valve)
         program.sink_pad = sink.get_static_pad("sink")
 
     @staticmethod
@@ -704,8 +727,8 @@ class Engine(GObject.Object):
         if program is None:
             return
         program.preview_size = (width, height)
-        for element, factor in ((program.preview[2] if program.preview else None, 2),
-                                (program.preview[4] if program.preview else None, 1)):
+        for element, factor in ((program.preview[3] if program.preview else None, 2),
+                                (program.preview[5] if program.preview else None, 1)):
             if element is not None:
                 element.set_property("caps", Gst.Caps.from_string(self._preview_caps(program, factor)))
 
@@ -871,6 +894,7 @@ class Engine(GObject.Object):
         link_all(elements)
         card = Branch(widget.id, elements, None, True, shown=True, generation=self._generation, view=widget,
                       zorder=zorder, fade=FADE_MS)
+        card.still = True
         self.placeholders[widget.id] = card
         self._placeholder_words[widget.id] = words
         for fmt in self.programs:
@@ -935,7 +959,20 @@ class Engine(GObject.Object):
                     if layer.pad is not None:
                         layer.pad.set_property("zorder", zorder)
 
+    @staticmethod
+    def device_of(widget: Widget) -> str:
+        """The device a widget's capture holds alone: a camera (its PipeWire node takes one format at a
+        time, so a stream asking a new mode while the last one still holds it gets no picture)."""
+        if widget.kind == "camera":
+            return f"camera:{widget.source.get('camera') or widget.id}"
+        return ""
+
     def _add_branch(self, widget: Widget, zorder: int) -> None:
+        device = "" if self.fake and not os.environ.get("STREAMY_FAKE_DEVICES") else self.device_of(widget)
+        if device and self._releasing.get(device):
+            # The last stream on this device is still stopping: this one opens once it has let go
+            # (Engine._released shows the scene again), never beside it.
+            return
         fd = node = None
         if not self.fake and self.sources is not None and widget.kind in ("display", "window", "camera", "app-audio"):
             fd, node = self.sources(widget)
@@ -943,7 +980,9 @@ class Engine(GObject.Object):
                 return  # not chosen yet: the window asks the portal first
         self._generation += 1
         if widget.has_picture:
-            chain = graph.picture_chain(widget, zorder, fake=self.fake, fd=fd, node=node, generation=self._generation)
+            hw = widget.kind == "camera" and not self.fake and widget.id not in self._sw_decode and graph.hardware_decode()
+            chain = graph.picture_chain(widget, zorder, fake=self.fake, fd=fd, node=node, generation=self._generation,
+                                        hw_decode=hw)
         else:
             chain = graph.sound_chain(widget, fake=self.fake, fd=fd, node=node, generation=self._generation)
             self._ensure_sound()
@@ -952,7 +991,8 @@ class Engine(GObject.Object):
             self.pipeline.add(element)
         self._link_chain(elements)
         branch = Branch(widget.id, elements, None, widget.has_picture, generation=self._generation, view=widget,
-                        zorder=zorder)
+                        zorder=zorder, device=device, started=time.monotonic())
+        branch.still = graph.is_still(widget, self.fake)
         if not widget.has_picture:
             target = self.pipeline.get_by_name(chain.target)
             pad = target.request_pad_simple("sink_%u")
@@ -998,6 +1038,12 @@ class Engine(GObject.Object):
         caps = pad.get_current_caps()
         if buffer is None or caps is None:
             return Gst.PadProbeReturn.OK
+        state["n"] = state.get("n", 0) + 1
+        if state["seen"] is not None:
+            if not state["branch"].widget_id.startswith("window"):
+                return Gst.PadProbeReturn.REMOVE  # only a window's crop region changes as it goes
+            if state["n"] % 10:
+                return Gst.PadProbeReturn.OK  # a window resized shows within a third of a second
         st = caps.get_structure(0)
         width, height = st.get_value("width"), st.get_value("height")
         crop = crop_meta(buffer)
@@ -1091,6 +1137,11 @@ class Engine(GObject.Object):
                 pad.set_property(name, value)
         geometry = tuple(pad_props[k] for k in self._GEOMETRY)
         box = (float(widget.x), float(widget.y), float(widget.width), float(widget.height))
+        if pad not in self._applied_rev:
+            # Never composited yet: it takes its geometry now (no frame of it to keep in step with).
+            for name, value in zip(self._GEOMETRY, geometry):
+                if pad.get_property(name) != value:
+                    pad.set_property(name, value)
         if frame.find_property("revision") is None:  # an older lumaframe: as it was, not atomic
             for name, value in zip(self._GEOMETRY, geometry):
                 if pad.get_property(name) != value:
@@ -1124,6 +1175,7 @@ class Engine(GObject.Object):
     def _watch(self) -> None:
         """Something changes: every canvas reports which revision each frame shows, until it settles."""
         self._last_change = time.monotonic()
+        self._preview_flow(True)
         for program in self.programs.values():
             if program.watching:
                 continue
@@ -1135,13 +1187,44 @@ class Engine(GObject.Object):
         if not self._watch_timer:
             self._watch_timer = GLib.timeout_add(500, self._settle)
 
+    def _moving(self) -> bool:
+        """Something on the canvases changes by itself: a live capture (not a still) with a picture."""
+        return any(b.picture and b.layers and not b.still for b in self.branches.values())
+
+    def _preview_flow(self, on: bool) -> None:
+        for program in self.programs.values():
+            if program.preview and program.preview[0].get_property("drop") == on:
+                program.preview[0].set_property("drop", not on)
+
     def _settle(self) -> bool:
         """Nothing changed for a second and every pad shows its latest revision: stop watching."""
-        with self._geom_lock:
-            pending = any(revs and self._applied_rev.get(pad) != max(revs) for pad, revs in self._revs.items())
-        if pending or time.monotonic() - self._last_change < 1.0:
+        quiet = time.monotonic() - self._last_change
+        if quiet < 1.0:
             return True
+        with self._geom_lock:
+            # A pad never composited (its source hasn't sent yet) can't be pending: its first buffer
+            # carries the newest revision.
+            pending = [(pad, max(revs)) for pad, revs in self._revs.items()
+                       if revs and pad in self._applied_rev and self._applied_rev[pad] != max(revs)]
+        if pending and quiet < SETTLE_S:
+            return True
+        for pad, latest in pending:
+            # Its source sends nothing new (a still window, a paused share): no frame will carry the
+            # change in step, so the pad takes it now and the watch ends.
+            with self._geom_lock:
+                revs = self._revs.get(pad)
+                if not revs or latest not in revs:
+                    continue
+                geometry = revs[latest][0]
+                for old in [r for r in revs if r < latest]:
+                    del revs[old]
+                self._applied[pad] = geometry
+                self._applied_rev[pad] = latest
+            for name, value in zip(self._GEOMETRY, geometry):
+                if pad.get_property(name) != value:
+                    pad.set_property(name, value)
         self._watch_timer = 0
+        self._preview_flow(self._moving())
         for program in self.programs.values():
             program.watching = False
             if program.handler:
@@ -1278,6 +1361,13 @@ class Engine(GObject.Object):
             self._remove_branch(widget_id)
             GLib.idle_add(lambda: self.show_scene(self._scene, skip=self._skip, states=self._states) and False)
             return
+        if branch is not None and reason in ("format", "stopped") and widget_id not in self._sw_decode and \
+                any(e.get_name().endswith("-vapp") for e in branch.elements):
+            log(f"widget {widget_id}: GPU decoding failed ({detail[:160]}); decoding in software")
+            self._sw_decode.add(widget_id)
+            self._remove_branch(widget_id)
+            GLib.idle_add(lambda: self.show_scene(self._scene, skip=self._skip, states=self._states) and False)
+            return
         if widget_id in self.branches:
             log(f"widget {widget_id} failed: {reason}" + (f": {detail}" if detail else ""))
             self._remove_branch(widget_id)
@@ -1307,6 +1397,10 @@ class Engine(GObject.Object):
     def _fade_in(self, branch: Branch, widget: Widget) -> bool:
         if self.branches.get(branch.widget_id) is not branch:
             return False
+        if branch.device:
+            how = "GPU" if any(e.get_name().endswith("-vapp") for e in branch.elements) else "software"
+            log(f"widget {branch.widget_id}: first picture after {(time.monotonic() - branch.started) * 1000:.0f} ms"
+                f" ({how} decode)")
         self.emit("widget-ready", widget.id)
         steps = 10
 
@@ -1363,6 +1457,10 @@ class Engine(GObject.Object):
                               lambda *_a: Gst.PadProbeReturn.DROP)
         for element in elements:
             element.set_locked_state(True)
+        if downstream is not None and downstream.find_property("alpha") is not None:
+            # A mixer keeps compositing a pad's last frame until the pad goes: hidden now, not after NULL.
+            downstream.set_property("alpha", 0.0)
+            self._watch()
 
         def drop() -> bool:
             for peer, pad in ((upstream, sink), (src, downstream)):
@@ -1377,6 +1475,8 @@ class Engine(GObject.Object):
             for element in elements:
                 if element.get_parent() is pipeline:
                     pipeline.remove(element)
+            if self.pipeline is pipeline:
+                self._watch()  # the canvases changed: the preview shows it before it rests
             return False
 
         def stop(_pipeline, items) -> None:
@@ -1406,6 +1506,9 @@ class Engine(GObject.Object):
             branch.elements[-1].get_static_pad("src").add_probe(
                 Gst.PadProbeType.BUFFER | Gst.PadProbeType.BUFFER_LIST | Gst.PadProbeType.EVENT_DOWNSTREAM,
                 lambda *_a: Gst.PadProbeReturn.DROP)
+        device = branch.device
+        if device:
+            self._releasing[device] = self._releasing.get(device, 0) + 1
 
         def stop(_pipeline, elements) -> None:  # on the pool
             for element in elements:
@@ -1424,6 +1527,8 @@ class Engine(GObject.Object):
             for element in branch.elements:
                 if element.get_parent() is pipeline:
                     pipeline.remove(element)
+            if device:
+                self._released(device)
             if not branch.picture and self.pipeline is pipeline:
                 self._sync_sound()
             return False
@@ -1431,6 +1536,17 @@ class Engine(GObject.Object):
         for element in branch.elements:
             element.set_locked_state(True)  # the pipeline's own state changes leave it alone now
         pipeline.call_async(stop, branch.elements)
+
+    def _released(self, device: str) -> bool:
+        """A stream on ``device`` has stopped: one waiting for it opens now."""
+        left = self._releasing.get(device, 0) - 1
+        if left > 0:
+            self._releasing[device] = left
+            return False
+        self._releasing.pop(device, None)
+        if self.pipeline is not None and self._scene is not None:
+            self.show_scene(self._scene, skip=self._skip, states=self._states)
+        return False
 
     # ── Sound ──
 
@@ -1694,9 +1810,17 @@ class Engine(GObject.Object):
             error, debug = message.parse_error()
             source = message.src.get_name() if message.src else ""
             widget_id = graph.widget_of(source)
-            if widget_id is not None and widget_id in self.branches:
+            branch = self.branches.get(widget_id) if widget_id is not None else None
+            if branch is not None and graph.generation_of(source) not in (None, branch.generation):
+                # A branch already replaced (a new mode, a scene shown again) failing as it stops.
+                log(f"{source}: {error.message} (stopping)")
+            elif branch is not None:
                 # One widget failed (a window closed, a camera unplugged or busy): take it out, keep going.
                 self._fail(widget_id, source_problem(error.message, debug or ""),
                            f"{error.message} ({(debug or '').splitlines()[0] if debug else ''})")
+            elif widget_id is not None or source.startswith("p-"):
+                # A widget already out (its second error) or a card: its own words were said; never GStreamer's.
+                log(f"{source}: {error.message}")
             else:
-                self.emit("problem", error.message)
+                log(f"program: {error.message} ({(debug or '').splitlines()[0] if debug else ''})")
+                GLib.idle_add(lambda: self._keep_playing() and False)

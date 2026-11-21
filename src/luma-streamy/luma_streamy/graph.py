@@ -22,11 +22,14 @@ Shape (one pipeline; branches come and go while it runs):
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 from .model import Effects, Widget
 
 FPS = 30
+#: The compositors' rate: a drag shows within a screen frame. What is sent is FPS.
+PREVIEW_FPS = 60
 AUDIO_RATE = 48000
 
 
@@ -145,7 +148,22 @@ def mixer_pad_props(widget: Widget, zorder: int) -> dict:
     }
 
 
-def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node: str | None) -> list[Element]:
+def hardware_decode() -> bool:
+    """VA decoding is there (vajpegdec and vapostproc) and not turned off (STREAMY_DECODE=software)."""
+    global _HW
+    if _HW is None:
+        from gi.repository import Gst
+
+        _HW = os.environ.get("STREAMY_DECODE") != "software" and all(
+            Gst.ElementFactory.find(name) is not None for name in ("vajpegdec", "vapostproc"))
+    return _HW
+
+
+_HW: bool | None = None
+
+
+def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node: str | None,
+                  hw_decode: bool = False) -> list[Element]:
     kind = widget.kind
     if fake:
         if widget.source.get("fake-silent"):
@@ -195,7 +213,16 @@ def _capture_head(widget: Widget, prefix: str, fake: bool, fd: int | None, node:
                 "caps": f"video/x-raw,width={w},height={h},framerate={fps}/1;"
                         f"image/jpeg,width={w},height={h},framerate={fps}/1"}))
         # Cameras may send MJPEG; decodebin passes raw pictures through.
-        head += [Element("decodebin", f"{prefix}-decode"), Element("videoconvert", f"{prefix}-convert")]
+        if hw_decode:
+            # The GPU decodes (vajpegdec) and vapostproc hands GL a DMABuf: no picture crosses the CPU.
+            # A raw camera's frames are uploaded by vapostproc the same way.
+            head += [Element("decodebin", f"{prefix}-decode"),
+                     Element("vapostproc", f"{prefix}-vapp"),
+                     Element("capsfilter", f"{prefix}-dmabuf", {"caps": "video/x-raw(memory:DMABuf)"})]
+        else:
+            # Software: a VA decoder's VA memory is something videoconvert can't take.
+            head += [Element("decodebin", f"{prefix}-decode", {"force-sw-decoders": True}),
+                     Element("videoconvert", f"{prefix}-convert")]
     return head
 
 
@@ -225,18 +252,27 @@ def branch_prefix(widget: Widget, generation: int) -> str:
     return f"w-{widget.id}-g{generation}"
 
 
+_BRANCH_NAME = re.compile(r"^w-(.+?)-g(\d+)(?:-|$)")
+
+
 def widget_of(element_name: str) -> str | None:
-    """The widget id in a branch element's name, or None."""
-    if not element_name.startswith("w-") or "-g" not in element_name:
-        return None
-    return element_name[2:].rsplit("-g", 1)[0]
+    """The widget id in a branch element's name ("w-<id>-g<n>-<part>"), or None."""
+    match = _BRANCH_NAME.match(element_name)
+    return match.group(1) if match else None
+
+
+def generation_of(element_name: str) -> int | None:
+    """The branch generation in a branch element's name, or None."""
+    match = _BRANCH_NAME.match(element_name)
+    return int(match.group(2)) if match else None
 
 
 def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | None = None,
-                  node: str | None = None, generation: int = 0) -> Chain:
-    """A picture widget from its source to its glvideomixer pad."""
+                  node: str | None = None, generation: int = 0, hw_decode: bool = False) -> Chain:
+    """A picture widget from its source to its glvideomixer pad (a camera decoded on the GPU with
+    ``hw_decode``)."""
     prefix = branch_prefix(widget, generation)
-    elements = _capture_head(widget, prefix, fake, fd, node)
+    elements = _capture_head(widget, prefix, fake, fd, node, hw_decode)
     elements += [
         Element("queue", f"{prefix}-queue", {"max-size-buffers": 2, "leaky": 2}),
         Element("glupload", f"{prefix}-upload"),
@@ -245,6 +281,12 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
     ]
     if is_still(widget, fake):
         elements += freeze(prefix)
+    scaled = widget.source.get("scaled") if widget.kind == "camera" else None
+    if isinstance(scaled, (list, tuple)) and len(scaled) == 2:
+        # A size the camera lacks: made on the GPU right after capture, so everything after is smaller.
+        elements += [Element("glcolorscale", f"{prefix}-scale"),
+                     Element("capsfilter", f"{prefix}-scaled", {"caps": f"video/x-raw(memory:GLMemory),format=RGBA,"
+                                                                          f"width={int(scaled[0])},height={int(scaled[1])}"})]
     if widget.kind == "camera":
         elements.append(Element("glvideoflip", f"{prefix}-flip", {"method": flip_method(widget)}))
     # Captured once; each canvas on takes its own layer from this tee (layer_chain).
@@ -335,7 +377,7 @@ def sound_chain(widget: Widget, *, fake: bool = False, fd: int | None = None, no
         Element("audioconvert", f"{prefix}-aconvert"),
         Element("audioresample", f"{prefix}-resample"),
         Element("volume", f"{prefix}-volume", volume_props(widget)),
-        Element("level", f"{prefix}-level", {"interval": 50_000_000, "post-messages": True}),
+        Element("level", f"{prefix}-level", {"interval": 100_000_000, "post-messages": True}),
         # The monitor (headphones) hangs off this tee only while it is on.
         Element("tee", f"{prefix}-atee", {"allow-not-linked": True}),
         Element("queue", f"{prefix}-aqueue", {"max-size-time": 200_000_000, "leaky": 2}),
@@ -374,8 +416,9 @@ def program(canvas: tuple[int, int], fmt: str = "landscape") -> list[Element]:
         # than the canvas has its last picture reused.
         Element("glvideomixerelement", f"mixer-{fmt}", {"background": 1, "latency": 0, "force-live": True,
                                                         "start-time-selection": 1}),
+        # Composited at the screen's rate, so a move shows on the next 16 ms frame; outputs take FPS (tap_video).
         Element("capsfilter", f"program-caps-{fmt}", {"caps": f"video/x-raw(memory:GLMemory),width={width},"
-                                                               f"height={height},framerate={FPS}/1,format=RGBA"}),
+                                                               f"height={height},framerate={PREVIEW_FPS}/1,format=RGBA"}),
         Element("tee", f"program-{fmt}", {"allow-not-linked": True}),
     ]
 
@@ -427,6 +470,8 @@ def tap_video(fmt: str = "landscape") -> list[Element]:
     closes while nothing is sent, so an idle tap converts and reads back nothing."""
     return [Element("valve", f"tap-vvalve-{fmt}", {"drop": False}),
             Element("queue", f"tap-vqueue-{fmt}", {"max-size-buffers": 3, "leaky": 2}),
+            Element("videorate", f"tap-rate-{fmt}", {"drop-only": True}),
+            Element("capsfilter", f"tap-fps-{fmt}", {"caps": f"video/x-raw(memory:GLMemory),framerate={FPS}/1"}),
             Element("glcolorconvert", f"tap-glconvert-{fmt}"),
             Element("capsfilter", f"tap-glnv12-{fmt}", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
             Element("gldownload", f"tap-download-{fmt}"),

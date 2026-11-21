@@ -31,8 +31,17 @@ from . import graph  # noqa: E402
 from .engine import Engine, EngineError  # noqa: E402
 from .devices import AudioDevices  # noqa: E402
 from .layouts import PRESETS, LayoutStore  # noqa: E402
+from .readout import Readout  # noqa: E402
 from .undo import History  # noqa: E402
 from .model import FORMATS, KINDS, ModelError, Project, ProjectStore, Widget  # noqa: E402
+
+
+CANVAS_GLYPHS = {"landscape": "rectangle-horizontal", "vertical": "smartphone"}
+
+
+def canvas_name(fmt: str) -> str:
+    """"Landscape", "Vertical": a canvas by its short name."""
+    return FORMATS[fmt][0].split()[0]
 
 
 def lumaui_set_class(widget: Gtk.Widget, name: str, on: bool) -> None:
@@ -169,6 +178,7 @@ class StreamyWindow(AppWindow):
         #: Widgets whose outline follows the picture on screen (a drag, until the picture catches up):
         #: widget id -> the committed rect, or None while the drag goes on.
         self._following: dict[str, tuple | None] = {}
+        self._words_at: dict[str, float] = {}
         self.engine.connect("preview-changed", lambda engine, fmt: self.pictures[fmt].set_paintable(
             engine.paintable_of(fmt)))
 
@@ -176,7 +186,14 @@ class StreamyWindow(AppWindow):
         self._build_canvas()
         self._build_insets()
         self.set_body(self._body())
+        self._build_outputs()
+        self._watch_lock()
         self.refresh_all()
+        # Esc clears the selection first (before the Inspector's own Esc closes it), unless a field or the
+        # bar's editor has it.
+        escape = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        escape.connect("key-pressed", self._escape)
+        self.add_controller(escape)
         self.connect("close-request", self._closing)
         self.connect("notify::is-active", lambda *_a: self._update_preview_running())
         self.connect("realize", self._watch_surface)
@@ -237,7 +254,8 @@ class StreamyWindow(AppWindow):
                 Command("output.live", "Go live", self.go_live, icon="radio-tower", shortcut=("Ctrl", "L")),
                 Command("output.end", "End stream…", self.ask_end_stream, icon="square",
                         enabled=lambda: self.stream_state != "off"),
-                Command("app.destinations", "Destinations…", self.edit_destination, icon="radio-tower"),
+                Command("app.destinations", "Destinations", lambda: self._toggle_panel("destinations"),
+                        icon="radio-tower", checked=lambda: self._is_open("destinations")),
                 Command("app.recordings", "Show recordings", self.show_recordings, icon="folder-open"),
             )),
             CommandGroup("Canvases", tuple(
@@ -245,6 +263,12 @@ class StreamyWindow(AppWindow):
                         icon="rectangle-horizontal" if key == "landscape" else "smartphone",
                         checked=lambda k=key: k in getattr(self, "canvas_on", ()))
                 for key, (label, _w, _h) in FORMATS.items())),
+            CommandGroup("Panels", (
+                Command("panel.inspector", "Inspector", self.toggle_inspector, icon="settings-2",
+                        shortcut=("Ctrl", "I"), checked=lambda: hasattr(self, "inspector") and self.inspector.shown),
+                *(Command(f"panel.{key}", label, lambda k=key: self._toggle_panel(k), icon=icon,
+                          checked=lambda k=key: hasattr(self, "dock") and self._is_open(k))
+                  for key, label, icon in (("stats", "Stats", "activity"), ("chat", "Chat", "message-circle"))))),
             CommandGroup("Layouts", layouts + (
                 Command("layout.save", "Save layout…", self.save_layout, icon="download"),)),
             CommandGroup(None, (
@@ -283,7 +307,8 @@ class StreamyWindow(AppWindow):
                                   on_activate=on(fmt, lambda wid: self._grow("look")),
                                   on_crop=on(fmt, self._canvas_cropped),
                                   on_crop_commit=on(fmt, self._canvas_crop_committed),
-                                  on_drag_mode=self._drag_mode)
+                                  on_drag_mode=self._drag_mode,
+                                  **self._group_handlers(fmt))
             # The video always has room around it, whatever the stage's size.
             arrange.set_fit_margins(STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN)
             arrange.update_property([Gtk.AccessibleProperty.LABEL], [f"{FORMATS[fmt][0].split()[0]} canvas"])
@@ -300,6 +325,57 @@ class StreamyWindow(AppWindow):
             press.connect("pressed", lambda *_a, f=fmt: self._edit_canvas(f))
             arrange.add_controller(press)
             self.pictures[fmt], self.arranges[fmt] = picture, arrange
+
+    def _group_handlers(self, fmt: str) -> dict:
+        """Several widgets at once (LumaUI ArrangeView multi-selection), where this LumaUI has it."""
+        import inspect
+
+        params = inspect.signature(ArrangeView.__init__).parameters
+        if "on_selection" not in params:
+            return {}
+        on = self._on_canvas
+        return {"on_selection": on(fmt, self._canvas_selection), "on_group_change": on(fmt, self._group_changed),
+                "on_group_commit": on(fmt, self._group_committed)}
+
+    def _canvas_selection(self, ids: list) -> None:
+        self.selection = list(ids)
+        if len(self.selection) == 1:
+            self.select(self.selection[0])
+        elif not self.selection:
+            self.select(None)
+        else:
+            self.selected = self.selection[-1]
+            self._refresh_inspector()
+
+    def _group_changed(self, rects: dict) -> None:
+        """A group move or scale, live: every widget's box on the canvas edited (crop and Look kept)."""
+        if not getattr(self, "_group_checkpoint", False):
+            self._checkpoint(f"Move {len(rects)} widgets")
+            self._group_checkpoint = True
+        for widget_id, (x, y, width, height) in rects.items():
+            try:
+                _scene, w = self.project.find_widget(widget_id)
+            except ModelError:
+                continue
+            self.project.set_rect(widget_id, x, y, width, height)
+            self.engine.update_widget(w)
+            for fmt, arrange in self.arranges.items():
+                if fmt != self.project.format:
+                    view = self.project.view_on(w, fmt)
+                    arrange.set_item_rect(w.id, view.x, view.y, view.width, view.height)
+
+    def _group_committed(self, rects: dict) -> None:
+        if not getattr(self, "_group_checkpoint", False):
+            self._checkpoint(f"Move {len(rects)} widgets")  # a nudge: one step
+        self._group_checkpoint = True
+        self._group_changed(rects)
+        self._group_checkpoint = False
+        self._changed()
+
+    def _selected_ids(self) -> list[str]:
+        ids = [i for i in getattr(self, "selection", []) if self.project.active_scene and
+               self.project.active_scene.widget(i)]
+        return ids if len(ids) > 1 else ([self.selected] if self.selected else [])
 
     @property
     def arrange(self) -> ArrangeView:
@@ -367,36 +443,22 @@ class StreamyWindow(AppWindow):
         audio.append(audio_scroll)
         # The preview is an inset like the others (same radius, gaps and surface), the canvas fitted
         # inside it with room on every side.
-        # The canvases, in the Preview's header: on = composited and shown. Until both can be shown side
-        # by side, turning one on shows it instead of the other; the last one on stays on.
-        from luma_appkit import ToggleChip
-
+        # The canvases: on = composited and shown. Each preview panel has the dock's own header (glyph and
+        # title, ⋯ and × at the right); on and off live in its ⋯ and in app menu › Canvases, and "Live"
+        # follows the title while an output takes the canvas. The last one on stays on.
         saved = self.settings.get("canvases")
         if os.environ.get("STREAMY_CANVASES"):  # check runs: which canvases start on
             saved = os.environ["STREAMY_CANVASES"].split(",")
         self.canvas_on: set[str] = {f for f in saved if f in FORMATS} if isinstance(saved, list) and saved else \
             set(FORMATS)
-        #: Each preview panel's header: its own canvas's chip as its title (on = composited), and the other
-        #: canvas's chip while that one is off (to turn it on, which opens its panel).
-        self.canvas_chips: list[tuple[str, ToggleChip]] = []
-        self._chip_owner: dict[ToggleChip, str] = {}
         self.preview_tiles: dict[str, DockTile] = {}
+        self._live_marks: dict[str, Gtk.Widget] = {}
         for fmt in FORMATS:
-            chips = []
-            for key in FORMATS:
-                # The panel's own glyph leads its header: its own chip needs none.
-                chip = ToggleChip(FORMATS[key][0].split()[0], icon=None if key == fmt else
-                                  "rectangle-horizontal" if key == "landscape" else "smartphone",
-                                  active=key in self.canvas_on,
-                                  on_toggle=lambda on, k=key: self._canvas_chip(k, on))
-                self.canvas_chips.append((key, chip))
-                self._chip_owner[chip] = fmt
-                chips.append(chip)
-            chips.sort(key=lambda c, f=fmt: self._chip_key(c) != f)
-            tile = DockTile(fmt, FORMATS[fmt][0].split()[0], "rectangle-horizontal" if fmt == "landscape"
-                            else "smartphone", self.arranges[fmt], main=True, actions=chips, **self._closable())
+            tile = DockTile(fmt, canvas_name(fmt), CANVAS_GLYPHS[fmt], self.arranges[fmt], main=True,
+                            more=lambda f=fmt: self._canvas_more(f), **self._closable())
             tile.add_css_class("streamy-preview")
-            tile.title_label.set_visible(False)  # its own chip names it
+            if not hasattr(tile, "set_status"):
+                self._live_marks[fmt] = self._live_mark(tile)
             tile.connect("notify::width", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
             tile.connect("notify::height", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
             self.preview_tiles[fmt] = tile
@@ -411,6 +473,11 @@ class StreamyWindow(AppWindow):
         blank.connect("pressed", lambda _g, _n, x, y: self.widget_list.get_row_at_y(int(y)) is None and
                       self._add_widget_menu(widgets, point=(x, y)))
         widgets.add_controller(blank)
+        # A click on the blank space under the rows clears the selection.
+        clear = Gtk.GestureClick(button=Gdk.BUTTON_PRIMARY)
+        clear.connect("pressed", lambda _g, _n, _x, y: self.widget_list.get_row_at_y(int(y)) is None and
+                      self.deselect())
+        widgets.add_controller(clear)
         hold = Gtk.GestureLongPress(touch_only=True)
         hold.connect("pressed", lambda _g, x, y: self.widget_list.get_row_at_y(int(y)) is None and
                      self._add_widget_menu(widgets, point=(x, y)))
@@ -421,7 +488,14 @@ class StreamyWindow(AppWindow):
                                          vscrollbar_policy=Gtk.PolicyType.NEVER, hexpand=True, vexpand=True)
         audio_frame.set_child(audio)
         self.audio_tile = DockTile("audio", "Audio", "volume-2", audio_frame, phone="drawer")
-        self.dock = Dock([*self.preview_tiles.values(), self.widgets_tile, self.audio_tile],
+        # Destinations, Stats and Chat: their content comes once the bar exists (their editors grow it).
+        self.panel_boxes = {key: Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True, hexpand=True)
+                            for key in ("destinations", "stats", "chat")}
+        self.panel_tiles = {key: DockTile(key, title, icon, self.panel_boxes[key], phone="drawer", **self._closable())
+                            for key, title, icon in (("destinations", "Destinations", "radio-tower"),
+                                                     ("stats", "Stats", "activity"),
+                                                     ("chat", "Chat", "message-circle"))}
+        self.dock = Dock([*self.preview_tiles.values(), self.widgets_tile, self.audio_tile, *self.panel_tiles.values()],
                          layout=self.layouts.current, under_bar=True, on_layout=self.layouts.remember)
         self.dock.on_rearrange = self._panels_moved
         if hasattr(self.dock, "on_close"):
@@ -430,7 +504,7 @@ class StreamyWindow(AppWindow):
             if fmt not in self.canvas_on and self._is_open(fmt) and hasattr(self.dock, "close_tile"):
                 self.dock.close_tile(fmt)
         lumaui_set_class(self.preview_tiles[self.project.format], "streamy-editing", True)
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
 
     @staticmethod
     def _closable() -> dict:
@@ -439,7 +513,8 @@ class StreamyWindow(AppWindow):
         return {"closable": True} if "closable" in inspect.signature(DockTile.__init__).parameters else {}
 
     def _is_open(self, key: str) -> bool:
-        return self.dock.is_open(key) if hasattr(self.dock, "is_open") else True
+        dock = getattr(self, "dock", None)
+        return dock.is_open(key) if dock is not None and hasattr(dock, "is_open") else True
 
     @staticmethod
     def _wrap_labels(widget: Gtk.Widget) -> None:
@@ -463,6 +538,71 @@ class StreamyWindow(AppWindow):
             self.engine.set_preview_size(round((x1 - x0) * (scale or self.get_scale_factor())), 0, fmt=fmt)
         return False
 
+    # ── Destinations, Stats, Chat ──
+
+    def _build_outputs(self) -> None:
+        """The outputs fan-out (one encode per canvas and preset, a pipeline per destination row) and its
+        panels; the engine feeds it from the canvases' taps while a row is live."""
+        from .chat_panel import ChatPanel
+        from .destinations import DestinationStore
+        from .destinations_panel import DestinationsPanel
+        from .outputs import Outputs
+        from .stats_panel import StatsPanel
+
+        self.outputs = Outputs()
+        self.dest_store = DestinationStore.load(data_dir() / "destinations.json")
+        self.dest_panel = DestinationsPanel(self.dest_store, center=self.center, host=self.host, outputs=self.outputs,
+                                            on_changed=self._sync_canvas_state)
+        self.stats_panel = StatsPanel(outputs=self.outputs, store=self.dest_store)
+        self.chat_panel = ChatPanel(center=self.center, host=self.host, path=data_dir() / "chat.json",
+                                    outputs=self.outputs)
+        for key, panel in (("destinations", self.dest_panel), ("stats", self.stats_panel), ("chat", self.chat_panel)):
+            self.panel_boxes[key].append(panel)
+            for action in getattr(panel, "actions", []):
+                self.panel_tiles[key].actions.append(action)
+        self.engine.fanout = self.outputs
+        self.outputs.connect("row-state", self._row_state)
+        self._sync_stats_canvases()
+
+    def _row_state(self, _outputs, _row_id: str, _state: str, _words: str) -> None:
+        """A destination row changed: taps open or close, chips show what is live, the bar follows."""
+        self.engine.sync_taps()
+        self._sync_canvas_state()
+        for r in self.dest_store.rows:
+            row = self.outputs.rows.get(r.id)
+            if not r.is_stream and row is not None:
+                self._record_target = row.target
+        states = {r.id: (self.outputs.stats(r.id).state if self.outputs.stats(r.id) else "off")
+                  for r in self.dest_store.rows}
+        streams = [states[r.id] for r in self.dest_store.rows if r.is_stream and r.id in self.outputs.rows]
+        stream = "on" if "live" in streams else "reconnecting" if "reconnecting" in streams else \
+            "starting" if "connecting" in streams else "off"
+        if stream != self.stream_state:
+            if stream != "off" and self.live_since is None:
+                self.live_since = time.monotonic()
+            self._output_state(None, "stream", stream)
+        recording = any(r.id in self.outputs.rows for r in self.dest_store.rows if not r.is_stream)
+        if recording != (self.recording_since is not None):
+            self._output_state(None, "record", "on" if recording else "off")
+
+    def _sync_stats_canvases(self) -> None:
+        panel = getattr(self, "stats_panel", None)
+        if panel is None:
+            return
+        for fmt in FORMATS:
+            on = fmt in self.engine.programs
+            panel.set_canvas(fmt, fps=float(graph.FPS) if on else None, frame_ms=None)
+
+    def _toggle_panel(self, key: str) -> None:
+        """App menu › Panels: show a closed panel (where it was), or close an open one."""
+        if not hasattr(self.dock, "open_tile"):
+            return
+        if self._is_open(key):
+            self.dock.close_tile(key)
+        else:
+            self.dock.open_tile(key)
+        self.layouts.remember(self.dock.layout())
+
     # ── Canvases on and off ──
 
     def _shown_canvases(self) -> list[str]:
@@ -473,11 +613,12 @@ class StreamyWindow(AppWindow):
 
     def _sync_canvases(self) -> None:
         self.engine.set_canvases(self._shown_canvases())
+        self._sync_stats_canvases()
         if self.project.format not in self.canvas_on or not self._is_open(self.project.format):
             other = next((f for f in self._shown_canvases()), None)
             if other is not None:
                 self._edit_canvas(other)
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
 
     def _canvas_used(self, fmt: str) -> list[str]:
         """What sends canvas ``fmt`` now, by name."""
@@ -486,8 +627,8 @@ class StreamyWindow(AppWindow):
             if output.fmt == fmt:
                 names.append("the recording" if kind == "record" else "the stream")
         fanout = getattr(self, "outputs", None)
-        if fanout is not None and hasattr(fanout, "live_rows"):
-            names += [row for row in fanout.live_rows(fmt)]
+        if fanout is not None:
+            names += [r.label for r in self.dest_store.rows if r.canvas == fmt and r.id in fanout.rows]
         return names
 
     def _canvas_chip(self, key: str, on: bool) -> bool:
@@ -520,13 +661,16 @@ class StreamyWindow(AppWindow):
             self._sync_canvases()
         else:
             self._canvas_chip(key, key not in self.canvas_on)
-        self._sync_canvas_chips()
+        self._sync_canvas_state()
 
     def _canvas_off(self, key: str, *, end: bool = False) -> None:
         if end:
             for kind, output in list(self.engine.outputs.items()):
                 if output.fmt == key:
                     (self.engine.stop_stream if kind == "stream" else self.engine.stop_record)()
+            for row in self.dest_store.rows:
+                if row.canvas == key and row.id in self.outputs.rows:
+                    self.outputs.stop(row.id)
         self.canvas_on.discard(key)
         if self._is_open(key) and hasattr(self.dock, "close_tile"):
             self.dock.close_tile(key)
@@ -563,10 +707,15 @@ class StreamyWindow(AppWindow):
         body.append(self.host)
         # The Inspector: a fixed column beside the island, always there (a bottom drawer on a phone);
         # the selection's Source, Look and Arrange, or the scene's own settings when nothing is selected.
-        self.inspector = DetailsPane("Inspector", main=True, raised=True)
+        # Closable (×, app menu › Panels, Ctrl+I); closed, it stays closed (saved) until asked for: Source,
+        # Look, Arrange or Ctrl+I open it on that section. Selecting or switching scenes never opens it.
+        self.inspector = DetailsPane("Inspector", main=True, raised=True, closable=True,
+                                     on_close=self._inspector_closed)
         self._inspector_sections: dict[str, Gtk.Widget] = {}
         body.append(FixedColumn(self.inspector, INSPECTOR_WIDTH))
         self.inspector.show(open=True, subject="scene")
+        if self.settings.get("inspector") == "closed":
+            self.inspector.close()
         # The toggle (F9) moves the sidebar into a drawer below its width, so it comes after the frame.
         self.sidebar_toggle = SidebarToggle(self.sidebar, drawer_below=901)
         # The title row is the app menu alone; the toggle shows only where the sidebar is a drawer
@@ -643,16 +792,157 @@ class StreamyWindow(AppWindow):
     def _source_for(self, widget: Widget):
         if self.portals is None:
             return None, None
+        if widget.kind == "camera" and not widget.source.get("mode"):
+            from .portals import default_mode
+
+            camera = self._camera_of(widget)
+            mode = default_mode(camera.modes) if camera is not None else None
+            if mode is not None:
+                widget.source["mode"] = list(mode)  # a new camera starts at 1080p30, not its largest mode
+                if mode[1] > 1080:
+                    widget.source["scaled"] = [1920, 1080]  # a camera with nothing smaller: 1080p, scaled
         return self.portals.source_for(widget)
 
     def _ask_missing_sources(self) -> None:
+        """The scene's sources without a capture reconnect, one at a time: each from its restore token,
+        silently. One that brought up a picker (it took a person's answer) stops the walk; the rest wait
+        for "Share" in the bar. Nothing is asked while the session is locked."""
         scene = self.project.active_scene
-        if scene is None or self.fake or self.portals is None:
+        if scene is None or self.fake or self.portals is None or getattr(self, "locked", False):
             return
-        for w in scene.widgets:
-            if w.kind in ("display", "window", "camera", "app-audio") and w.visible and \
-                    w.id not in self.portals.captures and w.id not in self.widget_errors:
-                self._choose_source(w, restore=True)
+        wanted = [w for w in scene.widgets if w.kind in ("display", "window", "camera", "app-audio") and w.visible
+                  and w.id not in self.portals.captures and w.id not in self.widget_errors]
+        # Only what restores without a picker starts by itself (a camera, a share with its restore token);
+        # the rest say "Needs sharing again" and wait for Share in the bar: no picker pops up on its own.
+        silent = [w for w in wanted if w.kind == "camera" or w.source.get("restore-token")]
+        later = [w for w in wanted if w not in silent]
+        for w in later:
+            self.widget_errors[w.id] = "reshare"
+        wanted = silent
+        if later:
+            self._share_queue = [w.id for w in later] + [i for i in getattr(self, "_share_queue", [])
+                                                          if i not in {w.id for w in later}]
+            self._show_scene()
+            self.refresh_all()
+            GLib.idle_add(lambda: self._offer_share_again() and False)
+        queued = [i for i in getattr(self, "_share_queue", []) if i not in {w.id for w in wanted}]
+        self._auto_queue = [w.id for w in wanted]
+        self._share_queue = queued
+        if not getattr(self, "_sharing", None) and self._auto_queue:
+            self._share_next(auto=True)
+
+    def _share_next(self, *, auto: bool) -> None:
+        queue = getattr(self, "_auto_queue", []) if auto else getattr(self, "_share_queue", [])
+        scene = self.project.active_scene
+        while queue:
+            widget_id = queue.pop(0)
+            if not auto:
+                self.widget_errors.pop(widget_id, None)  # its picker now
+            w = scene.widget(widget_id) if scene is not None else None
+            if w is None or w.id in self.portals.captures or not w.visible:
+                continue
+            self._sharing = (w.id, time.monotonic(), auto)
+            self._choose_source(w, restore=True)
+            return
+        self._sharing = None
+
+    def _shared_one(self, widget_id: str) -> None:
+        """A queued source answered (shared or not): the next one, unless that took a picker."""
+        sharing = getattr(self, "_sharing", None)
+        if sharing is None or sharing[0] != widget_id:
+            return
+        _wid, started, auto = sharing
+        self._sharing = None
+        if not auto:
+            # One picker at a time, walked by the person's Share: the next follows this one's answer; a
+            # Cancel stops the walk (the rest keep their Share).
+            if self.widget_errors.get(widget_id) == "unshared":
+                for other in getattr(self, "_share_queue", []):
+                    self.widget_errors[other] = "reshare"
+                self._show_scene()
+                self._offer_share_again()
+            elif getattr(self, "_share_queue", []):
+                self._share_next(auto=False)
+            return
+        if auto and time.monotonic() - started > 2.0 and getattr(self, "_auto_queue", []):
+            # A picker came up: the rest wait for the person.
+            self._share_queue = self._auto_queue + [i for i in getattr(self, "_share_queue", [])
+                                                    if i not in self._auto_queue]
+            self._auto_queue = []
+            for widget_id in self._share_queue:
+                self.widget_errors[widget_id] = "reshare"
+            self._show_scene()
+            self._offer_share_again()
+            return
+        self._share_next(auto=auto)
+
+    def _offer_share_again(self) -> None:
+        scene = self.project.active_scene
+        waiting = [w for w in (scene.widgets if scene else []) if w.id in self._share_queue]
+        if not waiting:
+            return
+        kinds = {w.kind for w in waiting}
+        what = "windows" if kinds == {"window"} else "sources"
+        words = f"Share {len(waiting)} {what} again" if len(waiting) > 1 else f"Share {waiting[0].name} again"
+        self.center.grow("share-again", panel_list([
+            PanelRow(words, icon="monitor-up", on_activate=lambda: self._share_next(auto=False))]))
+
+    # ── The session's lock ──
+
+    def _watch_lock(self) -> None:
+        """Locked, nothing asks for a share (a picker can't be answered over the lock screen): sources that
+        end are paused, and come back after unlock (silently from their tokens, else one at a time)."""
+        self.locked = False
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        except GLib.Error:
+            return
+        self._lock_bus = bus
+        bus.signal_subscribe(None, "org.gnome.ScreenSaver", "ActiveChanged", "/org/gnome/ScreenSaver", None,
+                             Gio.DBusSignalFlags.NONE, lambda *a: self._lock_changed(bool(a[5].unpack()[0])))
+
+        def answered(source, result) -> None:
+            try:
+                self._lock_changed(bool(source.call_finish(result).unpack()[0]))
+            except GLib.Error:
+                pass
+
+        bus.call("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver", "org.gnome.ScreenSaver", "GetActive", None,
+                 GLib.VariantType.new("(b)"), Gio.DBusCallFlags.NONE, 2000, None, answered)
+        # logind's LockedHint too, for a session without the screen saver's interface.
+        try:
+            system = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        except GLib.Error:
+            return
+        self._logind_bus = system
+
+        def changed(*args) -> None:
+            props = args[5].unpack()[1] if args[5] is not None else {}
+            if "LockedHint" in props:
+                self._lock_changed(bool(props["LockedHint"]))
+
+        try:
+            session = system.call_sync("org.freedesktop.login1", "/org/freedesktop/login1",
+                                       "org.freedesktop.login1.Manager", "GetSession", GLib.Variant("(s)", ("auto",)),
+                                       GLib.VariantType.new("(o)"), Gio.DBusCallFlags.NONE, 1000, None).unpack()[0]
+        except GLib.Error:
+            return
+        system.signal_subscribe("org.freedesktop.login1", "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                                session, None, Gio.DBusSignalFlags.NONE, changed)
+
+    def _lock_changed(self, locked: bool) -> None:
+        if locked == self.locked:
+            return
+        self.locked = locked
+        from .engine import log
+
+        log("session locked: shares wait" if locked else "session unlocked")
+        if not locked:
+            paused = [wid for wid, reason in self.widget_errors.items() if reason == "paused"]
+            for widget_id in paused:
+                self.widget_errors.pop(widget_id, None)
+            self.refresh_all()
+            GLib.timeout_add(1000, lambda: self._ask_missing_sources() and False)
 
     def _choose_source(self, widget: Widget, *, restore: bool) -> None:
         if self.portals is None or self.fake:
@@ -674,6 +964,7 @@ class StreamyWindow(AppWindow):
                 self.project.place_natural(widget.id)
             self._changed(structure=True)
             self._show_scene()
+            self._shared_one(widget.id)
 
         def failed(reason: str) -> None:
             # Every ending leaves the widget saying what happened and offering the fix; nothing
@@ -710,6 +1001,8 @@ class StreamyWindow(AppWindow):
     def _show_scene(self) -> None:
         states = {wid: "waiting" for wid in self.widget_waiting}
         states.update({wid: "choose" for wid, reason in self.widget_errors.items() if reason in ("unshared", "nocamera")})
+        states.update({wid: "Paused while locked" for wid, reason in self.widget_errors.items() if reason == "paused"})
+        states.update({wid: "Needs sharing again" for wid, reason in self.widget_errors.items() if reason == "reshare"})
         self.engine.show_scene(self.project.active_scene, skip=set(self.widget_errors), states=states)
         self._close_offscene_sound()
 
@@ -801,12 +1094,8 @@ class StreamyWindow(AppWindow):
         if not width or not height or w.source.get("size") == [width, height]:
             return
         w.source["size"] = [width, height]
-        if not w.stretched and w.height:
-            # Fitted inside the box it had, centred: it never grows past where it was placed.
-            cx, cy = w.x + w.width / 2, w.y + w.height / 2
-            aspect = width / height
-            bw, bh = (w.width, w.width / aspect) if w.width / w.height < aspect else (w.height * aspect, w.height)
-            w.x, w.y, w.width, w.height = cx - bw / 2, cy - bh / 2, bw, bh
+        # Fitted inside the box it had on each canvas, centred: it never grows past where it was placed.
+        if self.project.reshape(w, fit=True):
             self.engine.update_widget(w)
             self._sync_rect(w)
         self._changed()
@@ -834,6 +1123,8 @@ class StreamyWindow(AppWindow):
             "busy": f"{name} is in use by another app",
             "denied": f"Streamy isn't allowed to use {name[0].lower() + name[1:] if name.startswith('The ') else name}",
             "nocamera": "No camera found",
+            "paused": "Paused while locked",
+            "reshare": "Needs sharing again",
             "missing": f"{name} stopped responding" if w.kind == "camera" else f"{name} is gone",
             "format": f"{name} sends a picture Streamy can't read" if w.has_picture else
                       f"{name} sends sound Streamy can't read",
@@ -848,13 +1139,18 @@ class StreamyWindow(AppWindow):
             return
         from .engine import log
 
+        if getattr(self, "locked", False) and reason in ("ended", "stopped", "missing", "timeout", "unshared"):
+            reason = "paused"  # it comes back after unlock
         log(f"{w.kind} widget {w.name!r}: {self.cause_line(w, reason)} ({reason})")
         self.widget_waiting.discard(widget_id)
         self.widget_errors[widget_id] = reason
         if self.portals is not None:
             self.portals.close(widget_id)
         self._show_scene()  # its card says so in its place
-        if reason == "timeout":
+        self._shared_one(widget_id)
+        if reason == "paused":
+            pass
+        elif reason == "timeout":
             Toast.show(self.host, "The picker stopped waiting. Share again when you're ready.", kind="warning")
         elif reason != "unshared":  # a person who pressed Cancel knows
             Toast.show(self.host, f"{w.name} couldn't start", kind="warning")
@@ -1155,6 +1451,13 @@ class StreamyWindow(AppWindow):
         elif not pane.main:
             pane.show(open=True, main=True)
         w = self._selected_widget()
+        several = [i for i in getattr(self, "selection", []) if self.project.active_scene and
+                   self.project.active_scene.widget(i)]
+        if len(several) > 1:
+            self._inspector_for = None
+            pane.set_title(f"{len(several)} widgets")
+            self._inspector_section("arrange", "Arrange", self._group_panel(several))
+            return
         self._inspector_for = w.id if w is not None else None
         # With both canvases on, the Inspector names the one its edits go to.
         on = f" · {FORMATS[self.project.format][0].split()[0]}" if len(getattr(self, "canvas_on", ())) > 1 else ""
@@ -1171,6 +1474,32 @@ class StreamyWindow(AppWindow):
             self._inspector_section("arrange", "Arrange", self._arrange_panel(w))
         if scroll is not None and keep == self._inspector_for:
             GLib.idle_add(lambda: scroll.get_vadjustment().set_value(offset) and False)
+
+    def _group_panel(self, ids: list[str]) -> Gtk.Widget:
+        """Several widgets: align and distribute them within their box (LumaUI align_rects)."""
+        rows = []
+        try:
+            from luma_appkit import align_rects, distribute_rects
+        except ImportError:
+            return self._panel(TypeLabel("Move or scale them together on the canvas", role="body", wrap=True))
+        scene = self.project.active_scene
+
+        def apply(fn) -> None:
+            rects = {i: (w.x, w.y, w.width, w.height) for i in ids if (w := scene.widget(i)) is not None}
+            self._group_committed(fn(rects))
+
+        for how, label, icon in (("left", "Align left", "align-start-vertical"), ("centre", "Align centres", "align-center-vertical"),
+                                 ("right", "Align right", "align-end-vertical"), ("top", "Align tops", "align-start-horizontal"),
+                                 ("middle", "Align middles", "align-center-horizontal"), ("bottom", "Align bottoms", "align-end-horizontal")):
+            rows.append(PanelRow(label, icon=icon, closes=False,
+                                 on_activate=lambda h=how: apply(lambda r: align_rects(r, h, canvas=self.project.canvas))))
+        if len(ids) > 2:
+            rows.append(PanelRow("Distribute across", icon="between-horizontal-end", closes=False,
+                                 on_activate=lambda: apply(lambda r: distribute_rects(r, "h"))))
+            rows.append(PanelRow("Distribute down", icon="between-vertical-end", closes=False,
+                                 on_activate=lambda: apply(lambda r: distribute_rects(r, "v"))))
+        rows.append(PanelRow(f"Delete {len(ids)} widgets", icon="trash-2", danger=True, on_activate=self.delete_selected))
+        return self._panel(*rows)
 
     def _inspector_section(self, key: str, title: str, content: Gtk.Widget) -> None:
         heading = self.inspector.add_section(title)
@@ -1267,7 +1596,9 @@ class StreamyWindow(AppWindow):
             camera = self._camera_of(w)
             name = camera.label if camera else w.source.get("device-name") or "Camera"
             mode = self._mode_of(w, camera)
-            return f"{name} · {mode[1]}p {mode[2]}" if mode else name
+            scaled = w.source.get("scaled")
+            height = scaled[1] if scaled else mode[1] if mode else None
+            return f"{name} · {height}p{mode[2]}" if mode else name
         if w.kind == "microphone":
             return self.devices.words("source", w.source.get("device"))
         if w.kind == "desktop-audio":
@@ -1338,14 +1669,17 @@ class StreamyWindow(AppWindow):
             rows.append(PanelRow(camera.label, icon="camera", selected=current is not None and camera.name == current.name,
                                  closes=False, on_activate=lambda c=camera: self._choose_camera(w, c.name)))
         if current is not None and current.modes:
-            mode = self._mode_of(w, current)
-            choices = []
-            for width, height, fps in current.modes[:6]:
-                key = f"{width}x{height}@{fps}"
-                choices.append((key, f"{height}p {fps}"))
-            rows.append(PropertyChoice("Picture", choices,
-                                       current=f"{mode[0]}x{mode[1]}@{mode[2]}" if mode else choices[0][0],
-                                       on_change=lambda key: self._choose_mode(w, key)))
+            from .portals import rates, resolutions
+
+            mode = self._mode_of(w, current) or current.modes[0]
+            scaled = w.source.get("scaled")
+            size_key = f"{scaled[0]}x{scaled[1]}:scaled" if scaled else f"{mode[0]}x{mode[1]}"
+            rows.append(PropertyChoice("Resolution", resolutions(current.modes), current=size_key,
+                                       on_change=lambda key: self._choose_size(w, key)))
+            fps = [(str(r), f"{r} fps") for r in rates(current.modes, mode[:2])]
+            if len(fps) > 1:
+                rows.append(PropertyChoice("Frame rate", fps, current=str(mode[2]),
+                                           on_change=lambda key: self._choose_rate(w, int(key))))
         rows.append(PanelSwitch("flip-horizontal-2", "Mirror", active=bool(w.source.get("mirror")),
                                 on_toggle=lambda on: self._set_source(w, "mirror", on, "Mirror")))
         return rows
@@ -1404,6 +1738,38 @@ class StreamyWindow(AppWindow):
         w.source["camera"] = name
         w.source.pop("mode", None)
         w.source.pop("sized", None)
+        self._reconnect(w)
+
+    def _choose_size(self, w: Widget, key: str) -> None:
+        """A camera's resolution, live (the capture reconnects; the camera stays chosen), undoable. A scaled
+        size captures the smallest of the camera's own sizes that holds it and scales on the GPU."""
+        from .portals import rates, source_for_scaled
+
+        camera = self._camera_of(w)
+        if camera is None:
+            return
+        size, _sep, scaled = key.partition(":")
+        width, height = (int(v) for v in size.split("x"))
+        native = source_for_scaled(camera.modes, (width, height)) if scaled else (width, height)
+        if native is None:
+            return
+        current = self._mode_of(w, camera)
+        fps_options = rates(camera.modes, native)
+        fps = min(fps_options, key=lambda r: abs(r - (current[2] if current else 30))) if fps_options else 30
+        self._checkpoint("Change resolution")
+        w.source["mode"] = [native[0], native[1], fps]
+        if scaled:
+            w.source["scaled"] = [width, height]
+        else:
+            w.source.pop("scaled", None)
+        self._reconnect(w)
+
+    def _choose_rate(self, w: Widget, fps: int) -> None:
+        mode = self._mode_of(w, self._camera_of(w))
+        if mode is None or mode[2] == fps:
+            return
+        self._checkpoint("Change frame rate")
+        w.source["mode"] = [mode[0], mode[1], fps]
         self._reconnect(w)
 
     def _choose_mode(self, w: Widget, key: str) -> None:
@@ -1758,7 +2124,7 @@ class StreamyWindow(AppWindow):
         if heading is None:
             return
         self._inspector_asked = True
-        self.inspector.open()
+        self._open_inspector()
         GLib.timeout_add(500, lambda: setattr(self, "_inspector_asked", False) or False)
         scroll = self._inspector_scroll()
 
@@ -1772,8 +2138,8 @@ class StreamyWindow(AppWindow):
 
     # ── Audio inset ──
 
-    #: A strip's narrowest: under it the Audio inset scrolls, so it never pushes the Widgets/Audio seam.
-    STRIP_WIDTH = 220
+    #: A strip's narrowest: it shrinks to this (its words ellipsize) and never runs past the panel's edge.
+    STRIP_WIDTH = 132
 
     def _refresh_audio(self) -> None:
         """A strip per sound, each a comfortable fixed width, in a row that wraps: the mute and monitor keys,
@@ -1787,7 +2153,7 @@ class StreamyWindow(AppWindow):
         self.audio_empty.set_visible(not sounds)
         box.get_parent().get_parent().set_visible(bool(sounds))
         for w in sounds:
-            strip = Gtk.Box(hexpand=False, halign=Gtk.Align.START)
+            strip = Gtk.Box(hexpand=True, halign=Gtk.Align.FILL)
             strip.set_size_request(self.STRIP_WIDTH, -1)
             strip.add_css_class("streamy-strip")
             strip.update_property([Gtk.AccessibleProperty.LABEL], [w.name])
@@ -1821,8 +2187,10 @@ class StreamyWindow(AppWindow):
             line.add_css_class("streamy-strip-head")
             name = TypeLabel(w.name, role="row-title")
             name.set_hexpand(True)
+            name.label.set_ellipsize(3)
+            name.label.set_width_chars(1)
             line.append(name)
-            level = TypeLabel("Muted" if w.muted else "−∞", role="caption")
+            level = Readout("Muted" if w.muted else "−∞", widest=("Muted", "−60 dB"), role="caption")
             level.add_css_class("streamy-strip-db")
             level.update_property([Gtk.AccessibleProperty.LABEL], ["Level"])
             line.append(level)
@@ -1832,6 +2200,7 @@ class StreamyWindow(AppWindow):
             device = TypeLabel(self.source_summary(w), role="caption")
             device.set_hexpand(True)
             device.label.set_ellipsize(3)
+            device.label.set_width_chars(1)
             sub.append(device)
             gain = TypeLabel(self._db_words(w), role="caption")
             gain.add_css_class("streamy-strip-db")
@@ -1870,10 +2239,13 @@ class StreamyWindow(AppWindow):
         if meter is not None and meter.get_mapped():
             meter.set_levels_db(left, right)
         words = self._level_words.get(widget_id)
-        if words is not None and words.get_mapped():
+        now = time.monotonic()
+        # The words 4 times a second, to be read (a Readout only redraws; the meter moves at 10 Hz).
+        if words is not None and words.get_mapped() and now - self._words_at.get(widget_id, 0.0) >= 0.25:
+            self._words_at[widget_id] = now
             text = self.level_words(max(left, right))
-            if words.label.get_label() not in (text, "Muted"):
-                words.label.set_label(text)
+            if words.get_label() not in (text, "Muted"):
+                words.set_label(text)
 
     def _set_volume(self, w: Widget, value: float) -> None:
         w.volume_db = round(value)
@@ -1938,42 +2310,31 @@ class StreamyWindow(AppWindow):
                 for kind in self._addable()]
 
     def _refresh_bar(self) -> None:
+        """The bar: the selection (its chip and quick actions) on the left when there is one, then always
+        the two outputs. Record becomes "Stop recording" with its running time while recording; Go live
+        becomes "End stream" with the LIVE time and bitrate while live (or "Add a destination" when no
+        stream row would go live). Each runs on its own; both can run together."""
         items: list = []
         live = self.stream_state != "off"
-        if live:
-            self.readout = BarChip(self._stream_word(), meta=clock(time.monotonic() - (self.live_since or
-                                                                                       time.monotonic())),
-                                   detail=self._stream_words(), live=True)
-            items.append(self.readout)
-        elif self.recording_since is not None:
-            self.readout = BarChip("Recording", meta=clock(time.monotonic() - self.recording_since), live=True)
-            items.append(self.readout)
-        else:
-            self.readout = None
         w = self._selected_widget()
+        more = None
         if w is not None:
-            if items:
-                items.append(SEPARATOR)
             cause = self.cause_line(w, self.widget_errors.get(w.id))
             items.append(BarChip(w.name, detail=cause, on_dismiss=self.deselect) if cause else
                          BarChip(w.name, on_dismiss=self.deselect))
             # Source first: what makes the widget work, its summary as the key's words.
-            # Editing is the Inspector's; the bar keeps the summary and the quick actions.
             items.append(BarAction(KINDS[w.kind][1], self.source_summary(w), on_activate=lambda: self._grow("source")))
             if w.has_picture:
                 items.append(BarAction("crop", tooltip="Crop on the canvas",
                                        on_activate=lambda: self.arrange.set_cropping(w.id)))
-            # A widget without its source ends the bar with the fix, as the bar's one key.
             fix = self.fix_words(w, self.widget_errors[w.id]) if w.id in self.widget_errors else None
             if fix:
                 items.append(BarAction("monitor-up" if w.kind in ("display", "window") else "rotate-ccw", fix,
-                                       primary=True, on_activate=lambda: self.retry_widget(w)))
+                                       on_activate=lambda: self.retry_widget(w)))
             elif w.id in self.widget_waiting:
-                # The stream is open and may yet start; Try again reconnects it, no picker.
-                items.append(BarAction("rotate-ccw", "Try again", primary=True,
+                items.append(BarAction("rotate-ccw", "Try again",
                                        on_activate=lambda: (self.widget_waiting.discard(w.id),
                                                             self._restart_widget(w))))
-            # Rare and destructive ones wait under ⋯, so the chip keeps its name while an editor is open.
             if w.has_picture:
                 switch = BarAction("eye" if not w.visible else "eye-off", "Show" if not w.visible else "Hide",
                                    on_activate=self.toggle_hidden)
@@ -1983,22 +2344,60 @@ class StreamyWindow(AppWindow):
             more = [switch, BarAction("pencil", "Rename", on_activate=lambda: self.rename_widget(w)),
                     BarAction("copy", "Duplicate", on_activate=self.duplicate_selected),
                     BarAction("trash-2", "Delete", danger=True, on_activate=self.delete_selected)]
-            if live:
-                more.append(BarAction("square", "End stream…", danger=True, on_activate=self.ask_end_stream))
-            self.center.show_bar(items, more=more)
-            return
-        items.append(BarAction("plus", "Add widget", menu=self._add_menu))
+            items.append(SEPARATOR)
+        else:
+            items.append(BarAction("plus", "Add widget", menu=self._add_menu))
+        self.readouts = {}
         if self.recording_since is not None:
-            items.append(BarAction("square", "Stop recording", record=True, on_activate=self.toggle_record))
+            self.readouts["record"] = BarChip("Recording", meta=clock(time.monotonic() - self.recording_since),
+                                              live=True)
+            items.append(self.readouts["record"])
+            items.append(BarAction("square", "Stop recording", record=True, on_activate=self.stop_recording))
         else:
             items.append(BarAction("circle", "Record", on_activate=self.toggle_record))
         if live:
-            items.append(BarAction("square", "End stream", danger=True, on_activate=self.ask_end_stream))
-        else:
+            self.readouts["stream"] = BarChip(self._stream_word(), meta=clock(time.monotonic() - (
+                self.live_since or time.monotonic())), detail=self._stream_words(), live=True)
+            items.append(self.readouts["stream"])
+            items.append(BarAction("square", "End stream", danger=True, primary=True, on_activate=self.ask_end_stream))
+        elif self._streams_ready():
             items.append(BarAction("radio-tower", "Go live", primary=True, on_activate=self.go_live))
-        # The canvases are the Preview header's chips now.
-        self._sync_canvas_chips()
-        self.center.show_bar(items)
+        else:
+            items.append(BarAction("plus", "Add a destination", primary=True, on_activate=self.add_destination))
+        self._sync_canvas_state()
+        self._sync_output_title()
+        if more is not None:
+            self.center.show_bar(items, more=more)
+        else:
+            self.center.show_bar(items)
+
+    def _streams_ready(self) -> bool:
+        """Some stream destination goes live with Go live."""
+        store = getattr(self, "dest_store", None)
+        return store is not None and any(r.is_stream and r.enabled for r in store.rows)
+
+    def add_destination(self) -> None:
+        """The Destinations panel, shown, with its + menu open."""
+        if not self._is_open("destinations") and hasattr(self.dock, "open_tile"):
+            self.dock.open_tile("destinations")
+        if hasattr(self.dock, "show_tile"):
+            self.dock.show_tile("destinations")
+        self.dest_panel.add_menu()
+
+    def _sync_output_title(self) -> None:
+        """The window says what it sends: "LIVE" and "● Recording" by the app's name and in its title."""
+        words = []
+        if self.stream_state != "off":
+            words.append("LIVE" if self.stream_state == "on" else self._stream_word())
+        if self.recording_since is not None:
+            words.append("● Recording")
+        text = " · ".join(words)
+        if text == getattr(self, "_output_title", None):
+            return
+        self._output_title = text
+        if hasattr(self, "set_identity_subtitle"):
+            self.set_identity_subtitle(text)
+        self.set_title(f"{text} — Streamy" if text else "Streamy")
 
     def _arrange_menu(self) -> list:
         return [MenuItem("Bring to front", icon="arrow-up", note="Ctrl+]", on_activate=lambda: self.restack(1)),
@@ -2022,6 +2421,12 @@ class StreamyWindow(AppWindow):
         return {"reconnecting": "Reconnecting", "starting": "Connecting"}.get(self.stream_state, "Live")
 
     def _stream_words(self) -> str:
+        live = [self.outputs.stats(r.id) for r in self.dest_store.rows if r.is_stream and r.id in self.outputs.rows]
+        live = [st for st in live if st is not None and st.state == "live"]
+        if live:
+            kbps = f"{round(sum(st.bitrate_kbps for st in live)):,} kbps"
+            dropped = sum(st.dropped_network + st.dropped_encoder for st in live)
+            return f"{kbps} · " + ("no dropped frames" if not dropped else f"{dropped:,} dropped")
         stats = self.engine.stats("stream")
         if stats is None:
             return "Connecting"
@@ -2030,12 +2435,12 @@ class StreamyWindow(AppWindow):
         return f"{kbps} · {dropped}"
 
     def _every_second(self) -> bool:
-        if self.readout is not None:
-            if self.stream_state != "off" and self.live_since is not None:
-                self.readout.update(self._stream_word(), meta=clock(time.monotonic() - self.live_since),
-                                    detail=self._stream_words())
-            elif self.recording_since is not None:
-                self.readout.update(meta=clock(time.monotonic() - self.recording_since))
+        readouts = getattr(self, "readouts", {})
+        if "stream" in readouts and self.live_since is not None:
+            readouts["stream"].update(self._stream_word(), meta=clock(time.monotonic() - self.live_since),
+                                      detail=self._stream_words())
+        if "record" in readouts and self.recording_since is not None:
+            readouts["record"].update(meta=clock(time.monotonic() - self.recording_since))
         # The sidebar picture every 3 s: rendering it costs the window's thread a texture import.
         self._ticks = getattr(self, "_ticks", 0) + 1
         if self._ticks % 3 == 1:
@@ -2097,9 +2502,10 @@ class StreamyWindow(AppWindow):
     # ── Selection ──
 
     def select(self, widget_id: str | None) -> None:
-        if widget_id == self.selected:
+        if widget_id == self.selected and len(getattr(self, "selection", [])) <= 1:
             return
         self.selected = widget_id
+        self.selection = [widget_id] if widget_id else []
         w = self._selected_widget()
         for fmt, arrange in self.arranges.items():
             arrange.set_selected(widget_id if w is not None and w.has_picture and fmt == self.project.format
@@ -2116,6 +2522,39 @@ class StreamyWindow(AppWindow):
 
     def deselect(self) -> None:
         self.select(None)
+
+    def _open_inspector(self) -> None:
+        self.inspector.open()
+        if self.settings.get("inspector") == "closed" and not self._phone():
+            self._setting("inspector", "open")
+
+    def _inspector_closed(self) -> None:
+        if not self._phone():  # a phone's drawer closing is not the panel closed
+            self._setting("inspector", "closed")
+
+    def toggle_inspector(self) -> None:
+        """App menu › Panels › Inspector, Ctrl+I: open (on the selection's Source) or close."""
+        if self.inspector.shown:
+            self.inspector.close()
+        elif self._selected_widget() is not None:
+            self._grow("source")
+        else:
+            self._open_inspector()
+
+    def _phone(self) -> bool:
+        from luma_appkit.structure_adapt import is_phone
+
+        return is_phone(self)
+
+    def _escape(self, _controller, keyval: int, _code: int, state) -> bool:
+        if keyval != Gdk.KEY_Escape or state & Gtk.accelerator_get_default_mod_mask():
+            return False
+        if self.selected is None and not getattr(self, "selection", []):
+            return False
+        if isinstance(self.get_focus(), Gtk.Text) or self.center.grown or self.center.state in ("editor", "split"):
+            return False  # a field's or the bar's own Esc first
+        self.deselect()
+        return True
 
     def _canvas_selected(self, widget_id) -> None:
         if not self._building:
@@ -2256,6 +2695,20 @@ class StreamyWindow(AppWindow):
         Toast.show(self.host, f"{w.name} added", kind="added")
 
     def delete_selected(self) -> None:
+        ids = self._selected_ids()
+        if len(ids) > 1:
+            self._checkpoint(f"Delete {len(ids)} widgets")
+            for widget_id in ids:
+                self.project.remove_widget(widget_id)
+                self.widget_errors.pop(widget_id, None)
+                self.widget_waiting.discard(widget_id)
+                if self.portals is not None:
+                    self.portals.close(widget_id)
+            self.selected, self.selection = None, []
+            self._show_scene()
+            self._changed(structure=True)
+            Toast.show(self.host, f"Deleted {len(ids)} widgets", kind="deleted", undo=self.undo)
+            return
         w = self._selected_widget()
         if w is None:
             return
@@ -2529,7 +2982,7 @@ class StreamyWindow(AppWindow):
 
     def switch_scene(self, scene_id: str) -> None:
         self.project.activate(scene_id)
-        self.selected = None
+        self.select(None)  # a selection belongs to its scene
         self._show_scene()
         self._ask_missing_sources()
         self._changed(structure=True)
@@ -2583,14 +3036,48 @@ class StreamyWindow(AppWindow):
 
     # ── Canvas format and layouts ──
 
-    def _chip_key(self, chip) -> str:
-        return next(k for k, c in self.canvas_chips if c is chip)
+    @staticmethod
+    def _live_mark(tile) -> Gtk.Widget:
+        """Until DockTile has set_status: a red dot and "Live" right after the title; the mark takes the
+        title's slack so ⋯ and × stay at the header's right edge."""
+        mark = Gtk.Box(spacing=6, hexpand=True, halign=Gtk.Align.START, valign=Gtk.Align.CENTER)
+        mark.add_css_class("streamy-live-mark")
+        dot = Gtk.Box(valign=Gtk.Align.CENTER)
+        dot.add_css_class("lumaui-toggle-chip-live")
+        mark.append(dot)
+        mark.append(Gtk.Label(label="Live"))
+        mark.get_first_child().set_visible(False)
+        mark.get_last_child().set_visible(False)
+        tile.title_label.set_hexpand(False)
+        tile.header.insert_child_after(mark, tile.title_label)
+        return mark
 
-    def _sync_canvas_chips(self) -> None:
-        for key, chip in getattr(self, "canvas_chips", []):
-            chip.set_active(key in self.canvas_on)
-            chip.set_live(bool(self._canvas_used(key)))
-            chip.set_visible(key == self._chip_owner.get(chip) or key not in self.canvas_on)
+    def _canvas_more(self, fmt: str) -> list:
+        """A canvas panel's ⋯: turn it off, and the other canvas on or off ("· Off" while it is off)."""
+        from luma_appkit import MenuItem
+
+        rows = []
+        for key in sorted(FORMATS, key=lambda k: k != fmt):
+            name = canvas_name(key)
+            if key in self.canvas_on:
+                rows.append(MenuItem(f"Turn off {name}", icon="eye-off",
+                                     on_activate=lambda k=key: self._canvas_chip(k, False)))
+            else:
+                rows.append(MenuItem(f"{name} · Off", icon=CANVAS_GLYPHS[key], note="Turn on",
+                                     on_activate=lambda k=key: self._canvas_chip(k, True)))
+        return rows
+
+    def _sync_canvas_state(self) -> None:
+        """Canvas state as words: "Live" after a canvas panel's title while an output takes it."""
+        for fmt, tile in getattr(self, "preview_tiles", {}).items():
+            live = bool(self._canvas_used(fmt))
+            if hasattr(tile, "set_status"):
+                tile.set_status("Live" if live else None, tone="live")
+                continue
+            mark = self._live_marks.get(fmt)
+            if mark is not None:
+                mark.get_first_child().set_visible(live)
+                mark.get_last_child().set_visible(live)
 
     def set_format(self, key: str) -> None:
         """Edit canvas ``key`` (turning it on, its panel open, when it was off)."""
@@ -2629,18 +3116,23 @@ class StreamyWindow(AppWindow):
     # ── Recording ──
 
     def toggle_record(self) -> None:
+        """Record, or stop recording: the Recording destination row (its canvas, container and folder)."""
         if self.recording_since is not None:
-            self.engine.stop_record()
+            self.stop_recording()
             return
-        folder = recordings_dir()
-        folder.mkdir(parents=True, exist_ok=True)
-        name = time.strftime("Streamy %Y-%m-%d %H.%M.%S.mkv")
-        try:
-            self.engine.start_record(str(folder / name), container="mkv")
-        except EngineError as error:
-            Toast.show(self.host, str(error), kind="error")
-            return
-        self.recording_path = folder / name
+        problem = self.dest_panel.record(True)
+        if problem:
+            Toast.show(self.host, problem, kind="error")
+        self._refresh_bar()
+
+    def stop_recording(self) -> None:
+        self.dest_panel.record(False)
+        self._refresh_bar()
+
+    def _show_file(self, path: str) -> None:
+        file = Gio.File.new_for_path(path)
+        launcher = Gtk.FileLauncher.new(file)
+        launcher.open_containing_folder(self, None, None)
 
     # ── Going live ──
 
@@ -2666,13 +3158,14 @@ class StreamyWindow(AppWindow):
         return server, key
 
     def go_live(self) -> None:
+        """Every stream row that goes live with Go live starts; with none, the Destinations panel opens
+        on its + menu."""
         if self.stream_state != "off":
             return
-        server, key = self._destination()
-        if not key and self.destination != "custom":
-            self.edit_destination(then_go=True)
+        if self._streams_ready():
+            self.dest_panel.go_live(record=None if self.dest_panel.record_with_live() else False)
             return
-        self._start_stream(server, key)
+        self.add_destination()
 
     def _start_stream(self, server: str, key: str) -> None:
         try:
@@ -2743,6 +3236,7 @@ class StreamyWindow(AppWindow):
                                  action="End stream", on_confirm=self._end_stream)
 
     def _end_stream(self) -> None:
+        self.dest_panel.end()
         self.engine.stop_stream()
 
     def _output_state(self, _engine, kind: str, state: str) -> None:
@@ -2751,7 +3245,11 @@ class StreamyWindow(AppWindow):
                 self.recording_since = time.monotonic()
             elif state == "off":
                 if self.recording_since is not None:
-                    Toast.show(self.host, "Recording saved", kind="saved")
+                    path = getattr(self, "_record_target", None)
+                    if path and os.path.exists(path):
+                        Toast.show(self.host, "Saved", kind="saved", action=("Show file", lambda p=path: self._show_file(p)))
+                    else:
+                        Toast.show(self.host, "Recording saved", kind="saved")
                 self.recording_since = None
         elif kind == "stream":
             if state == "off" and self.stream_state != "off":

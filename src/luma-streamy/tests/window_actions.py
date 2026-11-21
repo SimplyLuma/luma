@@ -170,9 +170,104 @@ def check(app) -> None:
         assert boxes() == sized, ("the seam moved back", other.name, boxes(), sized)
     assert sized["landscape"][1] < before["landscape"][1], (sized, before)
     print("a dragged seam holds", sized)
+    outputs(win)
+    inspector(win)
     win.close()  # the engine stops with the window, before the interpreter goes
     pump(1.0)
     app.quit()
+
+
+def inspector(win) -> None:
+    """Closed, the Inspector stays closed through selections and scene switches (and is saved so);
+    Source/Look/Arrange or Ctrl+I open it."""
+    pane = win.inspector
+    pane.close()
+    pump(0.1)
+    assert not pane.shown and win.settings.get("inspector") == "closed"
+    scene = next(sc for sc in win.project.scenes if any(w.has_picture for w in sc.widgets))
+    win.switch_scene(scene.id)
+    for w in scene.widgets:
+        win.select(w.id)
+        pump(0.05)
+    for other in win.project.scenes:
+        win.switch_scene(other.id)
+        pump(0.1)
+    win.switch_scene(scene.id)
+    pump(0.1)
+    assert not pane.shown, "the Inspector reopened by itself"
+    picture = next(w for w in win.project.active_scene.widgets if w.has_picture)
+    win.select(picture.id)
+    win._grow("look")
+    pump(0.1)
+    assert pane.shown and win.settings.get("inspector") == "open"
+    win.toggle_inspector()
+    pump(0.1)
+    assert not pane.shown
+    win.toggle_inspector()
+    pump(0.1)
+    assert pane.shown
+    win.select(None)
+    print("inspector: closes, stays closed, opens when asked")
+
+
+def outputs(win) -> None:
+    """The bar's own keys, pressed: Record shows Stop recording at once and Stop ends it (three times);
+    Go live with no stream destination is "Add a destination" and opens the Destinations + menu."""
+    import time
+
+    shown = []
+    show_bar = win.center.show_bar
+    win.center.show_bar = lambda items, **kw: (shown.append(list(items)), show_bar(items, **kw))[1]
+
+    def key(label):
+        win._refresh_bar()
+        for item in shown[-1]:
+            if getattr(item, "label", None) == label and getattr(item, "on_activate", None):
+                return item
+        raise AssertionError(f"no {label!r} key in the bar: {[getattr(i, 'label', i) for i in shown[-1]]}")
+
+    def labels():
+        return [getattr(i, "label", None) for i in shown[-1]]
+
+    win.select(None)
+    pump(0.2)
+    for turn in range(3):
+        key("Record").on_activate()
+        pump(0.3)
+        if win.recording_since is None:
+            # No encoder in this container: the bar still says why, and Record stays Record.
+            assert "Record" in labels(), labels()
+            print("record: no encoder here; Record stays", labels())
+            break
+        assert "Stop recording" in labels() and "Go live" in labels() or "Add a destination" in labels(), labels()
+        pump(1.0)
+        key("Stop recording").on_activate()
+        started = time.monotonic()
+        while win.recording_since is not None and time.monotonic() - started < 15:
+            pump(0.2)
+        assert win.recording_since is None, f"recording {turn} did not stop"
+        assert "Record" in labels(), labels()
+    else:
+        print("record: started and stopped 3 times; the bar followed each")
+    # A selection never takes the outputs away.
+    scene = next(sc for sc in win.project.scenes if any(w.has_picture for w in sc.widgets))
+    win.switch_scene(scene.id)
+    picture = next(w for w in scene.widgets if w.has_picture)
+    win.select(picture.id)
+    pump(0.1)
+    assert "Record" in labels() and ("Go live" in labels() or "Add a destination" in labels()), labels()
+    win.select(None)
+    if not win._streams_ready():
+        grown = []
+        grow = win.center.grow
+        win.center.grow = lambda name=None, *a, **kw: (grown.append(name), grow(name, *a, **kw))[1]
+        key("Add a destination").on_activate()
+        pump(0.2)
+        win.center.grow = grow
+        assert "add-destination" in grown, grown
+        win.center.fold()
+        print("go live with no destination: Add a destination opens the + menu")
+    win.center.show_bar = show_bar
 
 
 def main() -> int:
