@@ -42,7 +42,10 @@ cleanup() {
   true
 }
 cleanup
-mkdir -p /run/dbus; [ -S /run/dbus/system_bus_socket ] || dbus-daemon --system --fork 2>/dev/null
+mkdir -p /run/dbus
+dbus-send --system --dest=org.freedesktop.DBus --type=method_call --print-reply / \
+    org.freedesktop.DBus.GetId >/dev/null 2>&1 ||
+  { rm -f /run/dbus/system_bus_socket /run/dbus/pid /run/dbus/messagebus.pid; dbus-daemon --system --fork 2>/dev/null; }
 rm -rf /run/systemd/seats
 if [ "$mode" != ring ]; then
   # The Shell makes its screen shield only where it can lock (fake-gdm.py).
