@@ -154,7 +154,11 @@ def build_tree(store: Store, application_id: str, kind: str, *, package_file: Pa
             closure.remove_tree(built.root.parent)
     try:
         phase("Prepare graphics", 2/3)
-        plan = device_graphics.ensure_layers(str(tree["userland"]), store, work, cache, log)
+        if tree.get("windowed", True):
+            plan = device_graphics.ensure_layers(str(tree["userland"]), store, work, cache, log)
+        else:
+            # A console program draws nothing; no graphics layer is built on its account.
+            plan = {"route": "", "reason": "A console program; no graphics layer."}
         closure_launcher.deployment(store, application_id, commit=commit)
         _forced("launch")
         works, why = (start or closure_launcher.hidden_start)(store, application_id, record, commit=commit)

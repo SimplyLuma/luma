@@ -107,6 +107,12 @@ def refresh(application_id: str, *, force: bool = False,
                 return str(current.get("status") or "current")
             require_free_space(store.root, 2 * 1024 ** 3, "update this application")
             spec = closure.spec_from_record(tree, store.kept_package(tree))
+            if spec.package_file and any(name.partition(":")[0] == spec.package.partition(":")[0]
+                                         for name, _old, _new in resolved["changes"]):  # type: ignore[misc]
+                # A repository of the tree now carries a newer build of the package itself. Its package
+                # manager would take that one; rebuilding from the kept file would bring the old one
+                # back and the same update would be found again at every check.
+                spec.package_file, spec.from_repository = "", True
             pending = store.pending_ref(app)
             try:
                 built = store_install.build_tree(store, app, str(tree["format"]), spec=spec,

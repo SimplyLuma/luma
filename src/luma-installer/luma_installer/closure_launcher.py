@@ -292,6 +292,9 @@ def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, 
         arguments.extend(("--bind", str(folder), str(folder)))
     env = {"HOME": str(home), "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/games",
            "GTK_USE_PORTAL": "1", "BROWSER": "/usr/bin/xdg-open",
+           # The person's dconf database stays outside, and the tree has no service to write one of
+           # its own: GSettings keeps the application's settings in a file in its data folder.
+           "GSETTINGS_BACKEND": "keyfile",
            "XDG_DATA_DIRS": "/usr/local/share:/usr/share:/run/host/share",
            "XCURSOR_PATH": f"{home}/.icons:/usr/share/icons:/run/host/share/icons",
            "LUMA_CAPSULE_DESKTOP_ID": capsule_launcher._desktop_id(record)}

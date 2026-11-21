@@ -622,6 +622,12 @@ def _package_files(root: Path, spec: Spec, log: BuildLog) -> str:
     return "\n".join("/" + str(path.relative_to(root)) for path in (root / "opt" / spec.app_id).rglob("*"))
 
 
+def _settle_windowed(root: Path, spec: Spec, log: BuildLog) -> None:
+    """A package whose launcher asks for a terminal draws no window: it gets no desktop baseline."""
+    if spec.windowed and _exports(root, spec, _package_files(root, spec, log)).get("terminal"):
+        spec.windowed = False
+
+
 def _library_check(root: Path, spec: Spec, files: str, exports: dict[str, object], log: BuildLog,
                    step: str = "check libraries") -> dict[str, object]:
     """What the launcher's program needs and the tree does not have (tree_check.py)."""
@@ -783,6 +789,7 @@ def _build_deb(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
     else:
         target = spec.package
     log.run("install", sandbox_in_tree(root, ["sh", "-c", DEB_INSTALL_SCRIPT, "sh", target, *spec.extra_packages], binds=binds))
+    _settle_windowed(root, spec, log)
     baseline: list[str] = []
     recorded = baseline_for(userland.name)
     if spec.windowed:
@@ -877,6 +884,7 @@ def _build_rpm(spec: Spec, userland: Userland, work: Path, cache: Path, store, l
         before = snapshot_files(root, RPM_SOURCE_PATHS)
         log.run("install", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", target, *spec.extra_packages]),
                                            binds=binds, target="/target"))
+        _settle_windowed(root, spec, log)
     else:
         log.run("userland", sandbox_on_host(dnf_command(userland, spec.architecture, ["install", *packages, *spec.extra_packages]),
                                             binds=binds, target="/target"))
