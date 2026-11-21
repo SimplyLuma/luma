@@ -1,0 +1,12 @@
+[Unit]
+Description=Move installed application capsules to the application store, one at a time
+Documentation=https://simplyluma.com/apps
+PartOf=graphical-session.target
+
+[Timer]
+OnStartupSec=20min
+OnUnitInactiveSec=12h
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=graphical-session.target

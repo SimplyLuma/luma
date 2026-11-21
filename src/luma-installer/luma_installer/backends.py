@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from . import appimage_payload, capsule_identity, capsule_runtime, network
+from . import appimage_payload, capsule_identity, capsule_runtime, network, store_install
 from .desktop import (applications_root, capsule_declared_schemes, command_name, desktop_is_console,
                       desktop_mime_types, desktop_window_class, export_command, parse_desktop,
                       parse_desktop_entry, register_handlers, safe_id, write_launcher, write_record)
@@ -30,8 +30,9 @@ TOOL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # The shape of the launcher metadata a record was written with. A record behind
 # this is rewritten from the package the next time the application is opened;
-# 7 added the link schemes an application declares for itself.
-LAUNCHER_METADATA_VERSION = 7
+# 7 added the link schemes an application declares for itself, 8 the session
+# bus names it may own.
+LAUNCHER_METADATA_VERSION = 8
 
 
 def _run(arguments: list[str], *, timeout: int = 1800) -> subprocess.CompletedProcess[str]:
@@ -432,7 +433,33 @@ def _container_desktop(container: str, package: str = "", kind: str = "", identi
         "so it did not guess. Install a package that publishes its own application entry.")
 
 
-def _prepare_runtime(container: str, package: str, kind: str, console: bool) -> dict[str, object]:
+EXECUTABLES_SCRIPT = 'while IFS= read -r f; do [ -f "$f" ] && [ ! -L "$f" ] && [ -x "$f" ] && echo "$f"; done | head -n 64'
+
+
+def _capsule_bus_names(container: str, package: str, name: str, desktop_path: str, files: str) -> list[str]:
+    """The session-bus names the capsule's application may own (bus_names.py)."""
+    from . import bus_names
+
+    def read(path: str) -> str | None:
+        result = subprocess.run(["podman", "exec", container, "cat", path], capture_output=True, text=True, check=False)
+        return result.stdout[:65536] if result.returncode == 0 else None
+    try:
+        declared = bus_names.declared(files.splitlines(), read)
+        words = bus_names.identity_words(package, name, Path(desktop_path).stem)
+        programs = subprocess.run(["podman", "exec", "-i", container, "sh", "-c", EXECUTABLES_SCRIPT], input=files[:4_000_000],
+                                  capture_output=True, text=True, check=False, timeout=120).stdout.split("\n")
+        command = bus_names.scan_command(words, [program for program in programs if program.startswith("/")])
+        tokens: list[str] = []
+        if command:
+            tokens = subprocess.run(["podman", "exec", container, *command], capture_output=True, text=True, check=False,
+                                    timeout=300, errors="replace").stdout.splitlines()
+        return bus_names.select(declared, bus_names.embedded(tokens[:20000], words))
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+
+def _prepare_runtime(container: str, package: str, kind: str, console: bool, name: str = "",
+                     desktop_path: str = "") -> dict[str, object]:
     """Give a capsule what a desktop system would have given the application
     (capsule_runtime.py): the graphics stack for anything with a window, and
     note whether the payload is Chromium-based so it starts on Wayland."""
@@ -444,7 +471,8 @@ def _prepare_runtime(container: str, package: str, kind: str, console: bool) -> 
     files = capsule_runtime.package_files(container, package, kind)
     missing = _provide_missing_libraries(container, kind, files)
     return {"chromium": capsule_runtime.is_chromium(files), "missing_libraries": missing,
-            "runtime_version": capsule_runtime.RUNTIME_VERSION}
+            "runtime_version": capsule_runtime.RUNTIME_VERSION,
+            "bus_names": _capsule_bus_names(container, package, name, desktop_path, files)}
 
 
 def _provide_locale(container: str, kind: str) -> None:
@@ -459,7 +487,11 @@ def _provide_locale(container: str, kind: str) -> None:
 
 def _provide_missing_libraries(container: str, kind: str, files: str) -> list[str]:
     """Install what the package links against but never declared; return what is still missing."""
-    missing = capsule_runtime.missing_libraries(container, files)
+    # A library the package ships itself is found through the program's own
+    # search path; asking the distribution for it installs a second copy of a
+    # bundled toolkit beside the application's own.
+    shipped = {Path(line.strip()).name for line in files.splitlines()}
+    missing = [name for name in capsule_runtime.missing_libraries(container, files) if name not in shipped]
     command = capsule_runtime.library_install_command(kind, container, missing)
     if command:
         phase("Add missing libraries", 1/3)
@@ -467,7 +499,7 @@ def _provide_missing_libraries(container: str, kind: str, files: str) -> list[st
             _fetch(["podman", "exec", container, *command], source="the capsule's package index")
         except InstallerError:
             pass
-        missing = capsule_runtime.missing_libraries(container, files)
+        missing = [name for name in capsule_runtime.missing_libraries(container, files) if name not in shipped]
     return missing
 
 
@@ -682,6 +714,11 @@ def _install_deb(report: PackageReport) -> str:
         ])
         _run([podman, "start", container])
         _fetch([podman, "exec", container, "apt-get", "update"], source="the Debian package index")
+        # Before the package: a vendor's install script turns its repository
+        # key into a keyring with gpg, and without it the repository it adds
+        # can never be read, so the vendor's own updates never arrive.
+        _fetch([podman, "exec", container, "env", "DEBIAN_FRONTEND=noninteractive",
+                "apt-get", "install", "-y", "--no-install-recommends", "gpg"], source="the Debian package index")
         _fetch([
             podman, "exec", container, "env", "DEBIAN_FRONTEND=noninteractive",
             "apt-get", "install", "-y", "--no-install-recommends", "/tmp/application.deb", "libglib2.0-bin",
@@ -692,7 +729,7 @@ def _install_deb(report: PackageReport) -> str:
         window_class = desktop_window_class(desktop_contents, desktop_path)
         exported_icon = _export_container_icon(container, icon, application_id)
         console = desktop_is_console(desktop_contents)
-        runtime = _prepare_runtime(container, package, "deb", console)
+        runtime = _prepare_runtime(container, package, "deb", console, name, desktop_path)
         _commit_container(podman, container, output_image)
         committed = True
         phase("Register", 2/3)
@@ -746,7 +783,7 @@ def _install_rpm_capsule(report: PackageReport) -> str:
         window_class = desktop_window_class(desktop_contents, desktop_path)
         exported_icon = _export_container_icon(container, icon, application_id)
         console = desktop_is_console(desktop_contents)
-        runtime = _prepare_runtime(container, package, "rpm", console)
+        runtime = _prepare_runtime(container, package, "rpm", console, name, desktop_path)
         _commit_container(podman, container, output_image)
         committed = True
         phase("Register", 2/3)
@@ -805,25 +842,45 @@ def install(report: PackageReport) -> str:
         if fingerprint(report.path)[1] != report.sha256:
             raise InstallerError("The package changed after review. Reopen it and review the new fingerprint.")
         phase("Install application", 1/3)
-        if report.kind == "appimage":
-            return _install_appimage(report)
-        if report.kind == "portable":
-            return _install_portable(report)
-        if report.kind in {"flatpak", "flatpakref", "flatpakrepo"}:
-            return _install_flatpak(report)
-        if report.kind == "deb":
-            return _install_deb(report)
-        if report.kind == "rpm" and not report.requires_system_change:
-            return _install_rpm_capsule(report)
-        if report.kind in {"rpm", "snap"}:
-            return _install_system(report)
-        raise InstallerError("The selected format has no installation backend.")
+        fallback = None
+        if (report.kind in store_install.KINDS and not (report.kind == "rpm" and report.requires_system_change)
+                and store_install.enabled()):
+            # The application store first (store_install.py). If the build,
+            # the library check or the hidden start fails there, the package
+            # is installed the way it was before, and its record says why.
+            try:
+                return store_install.install(report, stage_user_copy(report.path, report.sha256))
+            except store_install.Fallback as failure:
+                fallback = failure
+        name = _install_earlier(report)
+        if fallback is not None:
+            store_install.note_fallback(report.sha256, fallback)
+        return name
+
+
+def _install_earlier(report: PackageReport) -> str:
+    """One podman capsule per package, or the unpacked folder: what every install was before the store."""
+    if report.kind == "appimage":
+        return _install_appimage(report)
+    if report.kind == "portable":
+        return _install_portable(report)
+    if report.kind in {"flatpak", "flatpakref", "flatpakrepo"}:
+        return _install_flatpak(report)
+    if report.kind == "deb":
+        return _install_deb(report)
+    if report.kind == "rpm" and not report.requires_system_change:
+        return _install_rpm_capsule(report)
+    if report.kind in {"rpm", "snap"}:
+        return _install_system(report)
+    raise InstallerError("The selected format has no installation backend.")
 
 
 PACKAGE_IDENTITY = re.compile(r"[A-Za-z0-9][A-Za-z0-9+_.:-]*")
 
 
 def _private_home(record: dict[str, object]) -> Path | None:
+    if isinstance(record.get("data_home"), str) and record.get("store"):
+        return Path(str(record["data_home"]))
     sha256 = record.get("sha256")
     if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
         return None
@@ -959,6 +1016,8 @@ def refresh_capsule_launcher(record: dict[str, object]) -> dict[str, object]:
                    "desktop_path": desktop_path, "startup_wm_class": window_class,
                    "terminal": console, "exported_command": exported_command,
                    "command_not_exported": shim_refusal, "mime_types": mime_types,
+                   "bus_names": _capsule_bus_names(container, package, name, desktop_path,
+                                                   capsule_runtime.package_files(container, package, kind)),
                    "launcher_metadata_version": LAUNCHER_METADATA_VERSION}
         write_record(application_id, updated)
         return updated

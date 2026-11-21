@@ -106,6 +106,31 @@ def _remove_exports(application_id: str, exported_command: object = None) -> Non
     remove_command(exported_command)
 
 
+def _remove_from_store(record: dict[str, object]) -> None:
+    """Take an application's trees out of the store, and what a move from a capsule still kept beside them."""
+    from . import closure_launcher, store_install
+    from .app_store import Store
+    application_id = str(dict(record["store"])["id"])  # type: ignore[arg-type]
+    store = Store()
+    try:
+        store.remove(application_id)
+    except InstallerError:
+        pass  # already gone from the store; the record and exports still have to go
+    closure_launcher.remove_runtime(application_id)
+    store_install.log_path(application_id).unlink(missing_ok=True)
+    try:
+        store_install.log_path(application_id).parent.rmdir()
+    except OSError:
+        pass
+    migration = record.get("migration")
+    capsule = dict(migration.get("capsule") or {}) if isinstance(migration, dict) else {}
+    for image in capsule_refresh.images(capsule):
+        subprocess.run(["podman", "image", "rm", "--force", image], check=False, capture_output=True)
+    if not store.root.exists():
+        # The last application from the store: its download cache has nothing left to serve.
+        shutil.rmtree(Path(os.environ.get("LUMA_APP_SCRATCH") or Path.home() / ".cache/luma/app-closures"), ignore_errors=True)
+
+
 def reconcile() -> None:
     """Forget RPM removals once the rebooted deployment proves them absent."""
     cleanup_abandoned_user_transactions()
@@ -166,6 +191,8 @@ def remove(application_id: str, delete_data: bool = False) -> str:
             record_path = records_root() / f"{safe_id(application_id)}.json"
             record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             return "Removal is staged. Restart to enter the deployment without this system component."
+    elif capsule_refresh.in_store(record):
+        _remove_from_store(record)
     elif kind in {"deb", "rpm"}:
         _run(["podman", "image", "rm", "--force", str(record["image"])])
         capsule_refresh.forget(record)
@@ -197,6 +224,12 @@ def remove(application_id: str, delete_data: bool = False) -> str:
                 Path.home() / ".local/share/luma/installer/data" / sha256,
                 Path.home() / ".local/share/luma/installer/data",
             )
+            if record.get("data_home"):
+                _safe_remove_tree(record["data_home"], Path.home() / ".local/share/luma/apps-data")
+                try:
+                    (Path.home() / ".local/share/luma/apps-data").rmdir()
+                except OSError:
+                    pass
             if kind in {"deb", "rpm", "appimage", "portable"}:
                 # Its saved passwords are part of its data.
                 try:
@@ -216,7 +249,7 @@ def update(application_id: str) -> str:
     if kind == "flatpak":
         _run(["flatpak", "update", "--user", "--noninteractive", "--assumeyes", str(record["flatpak_id"])])
         return "Flatpak checked its signed origin and applied the newest compatible update."
-    if capsule_refresh.kind_of(record):
+    if capsule_refresh.managed(record):
         status = capsule_refresh.refresh(str(record["application_id"]), force=True)
         return {
             "updated": "The capsule's packages were updated from their signed repositories. "
@@ -238,7 +271,7 @@ def update_states(application_id: str | None = None) -> dict[str, dict[str, obje
     """
     wanted = safe_id(application_id) if application_id else None
     return {str(record.get("application_id")): capsule_refresh.summary(record) for record in iter_records()
-            if capsule_refresh.kind_of(record) and wanted in (None, record.get("application_id"))}
+            if capsule_refresh.managed(record) and wanted in (None, record.get("application_id"))}
 
 
 def _energy(values) -> int:

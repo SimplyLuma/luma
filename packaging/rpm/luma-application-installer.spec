@@ -2,7 +2,7 @@
 
 Name:           luma-application-installer
 Version:        0.1.0
-Release:        1.luma.102%{?dist}
+Release:        1.luma.103%{?dist}
 Summary:        Project Luma universal application package broker
 License:        Apache-2.0
 URL:            https://projectluma.org/applications
@@ -52,6 +52,18 @@ Requires:       pipewire >= 1.2
 Requires:       wireplumber >= 0.5.9
 # Debian capsules reach the network through slirp4netns (backends._install_deb).
 Requires:       slirp4netns
+# The application store (ADR-052): trees are commits in an OSTree repository,
+# built on the device by each distribution's own tools, without root.
+Requires:       ostree
+Requires:       util-linux-core
+Requires:       shadow-utils-subid
+# Debian and Ubuntu userlands: the bootstrap and the archive keys it is checked against.
+Requires:       debootstrap
+Requires:       debian-keyring
+Requires:       ubu-keyring
+# Fedora userlands: dnf5 --installroot, checked against the release keys.
+Requires:       dnf5
+Requires:       fedora-gpg-keys
 # Publisher repository keys and APT index signatures are checked with gpg.
 Requires:       gnupg2
 Requires:       polkit
@@ -177,6 +189,16 @@ install -D -m 0644 data/luma-capsule-refresh.service %{buildroot}%{_userunitdir}
 install -D -m 0644 data/luma-capsule-refresh.timer %{buildroot}%{_userunitdir}/luma-capsule-refresh.timer
 ln -s ../luma-capsule-refresh.timer \
   %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-capsule-refresh.timer
+# The application store: its tool, the per-release data it builds from, and
+# the background move of existing capsules into it.
+install -D -m 0755 bin/luma-app-closure %{buildroot}%{_bindir}/luma-app-closure
+install -D -m 0755 bin/luma-app-migrate %{buildroot}%{_bindir}/luma-app-migrate
+install -D -m 0644 data/userland-baseline.json %{buildroot}%{_datadir}/luma/installer/userland-baseline.json
+install -D -m 0644 data/graphics-layers.json %{buildroot}%{_datadir}/luma/installer/graphics-layers.json
+install -D -m 0644 data/luma-app-migrate.service %{buildroot}%{_userunitdir}/luma-app-migrate.service
+install -D -m 0644 data/luma-app-migrate.timer %{buildroot}%{_userunitdir}/luma-app-migrate.timer
+ln -s ../luma-app-migrate.timer \
+  %{buildroot}%{_userunitdir}/graphical-session.target.wants/luma-app-migrate.timer
 # crun with the application scoped; Podman knows a runtime by its file name.
 install -D -m 0755 bin/luma-capsule-runtime %{buildroot}%{_libexecdir}/luma-capsule-runtime/crun
 install -D -m 0644 data/pipewire/60-luma-application-socket.conf \
@@ -309,6 +331,13 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_userunitdir}/luma-capsule-refresh.service
 %{_userunitdir}/luma-capsule-refresh.timer
 %{_userunitdir}/graphical-session.target.wants/luma-capsule-refresh.timer
+%{_bindir}/luma-app-closure
+%{_bindir}/luma-app-migrate
+%{_datadir}/luma/installer/userland-baseline.json
+%{_datadir}/luma/installer/graphics-layers.json
+%{_userunitdir}/luma-app-migrate.service
+%{_userunitdir}/luma-app-migrate.timer
+%{_userunitdir}/graphical-session.target.wants/luma-app-migrate.timer
 %{_libexecdir}/luma-app-data-broker
 %{_bindir}/luma-seed-app-baseline
 %{_unitdir}/luma-app-baseline.service
@@ -342,6 +371,34 @@ update-desktop-database %{_datadir}/applications >/dev/null 2>&1 || :
 %{_unitdir}/timers.target.wants/luma-depot-appstream.timer
 
 %changelog
+* Sat Nov 21 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.103
+- Package files (.deb, .rpm, AppImage, archives) are installed into the
+  application store (ADR-052): a tree of the package and its dependencies,
+  built on the device by its own distribution's tools without root, kept as
+  a commit in one OSTree repository and started with bubblewrap. No
+  container engine runs at launch. If the build, the library check or a
+  hidden first start fails, the package is installed as a podman capsule as
+  before and its record says why (store_install, store_fallback).
+- One session boundary for capsules and store applications
+  (session_boundary): keyring broker, filtered accessibility bus, play-only
+  sound socket, an X socket without the session's cookie, Landlock scope,
+  allocated category pairs, systemd scope.
+- A system-call filter for everything started with bubblewrap
+  (sandbox_seccomp), modelled on Flatpak's; nested user namespaces stay.
+- SELinux: executable JIT memory for an application's own anonymous files,
+  watches on its read-only tree, file contexts for the store.
+- Session-bus names an application may own are derived from its package's
+  launchers, D-Bus service files and program (bus_names).
+- The undeclared-library check follows the launcher's program and skips
+  libraries the package ships (tree_check); the desktop baseline is recorded
+  per release (userland-baseline.json).
+- Updates for store applications: hidden start, swap between runs,
+  rollback, hold, vendor repositories recorded at install (store_refresh),
+  on the capsule refresh schedule.
+- Existing capsules move to the store in the background, one at a time
+  (luma-app-migrate.timer); a capsule is kept until its application has
+  started from the store once.
+- Requires ostree, debootstrap, debian-keyring, ubu-keyring, dnf5.
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.102
 - Security updates for package capsules (capsule_refresh). Once a day, on
   mains power and an unmetered connection, luma-capsule-refresh.timer runs

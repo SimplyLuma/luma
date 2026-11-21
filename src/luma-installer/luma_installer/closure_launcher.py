@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Start an application from its tree with bubblewrap (ADR-052, Applications 4): prototype.
+"""Start an application from its tree with bubblewrap (ADR-052, Applications 4).
 
 No container engine runs. The launcher puts together one namespace:
 
@@ -8,11 +8,13 @@ No container engine runs. The launcher puts together one namespace:
 * its private data folder as the home, at the person's real home path, with
   the person's own folders (Documents, Downloads, ...) at their real paths:
   the same policy as today's capsules, taken from ``launcher``;
-* the session: Wayland, PipeWire and PulseAudio sockets, the session bus
-  through ``xdg-dbus-proxy`` (the same proxy today's launcher starts, so its
-  rules apply here as they change), the host's fonts, icon and cursor themes;
-* the application's SELinux type with its own category pair, and its own
-  systemd scope under ``app.slice``.
+* the session exactly as a capsule gets it (``session_boundary``): Wayland,
+  the play-only sound socket, the filtered session and accessibility buses,
+  the keyring through the broker, an X socket without the session's cookie;
+  and the host's fonts, icon and cursor themes;
+* the application's SELinux type with the category pair allocated for it
+  (``capsule_identity``), its own systemd scope under ``app.slice``, the
+  Landlock scope and the system-call filter (``sandbox_seccomp``).
 
 User namespaces stay available inside (Chromium's sandbox needs them). The
 process is its own PID namespace with bubblewrap as its reaper.
@@ -21,7 +23,8 @@ A second start of a running application gets a second namespace over the same
 home and the same per-application /tmp, so the application's own
 single-instance handoff finds its first window.
 
-Nothing in the shipped install path uses this module.
+``launch_record`` is what ``luma-capsule-launch`` calls for an application
+whose record names a tree in the store.
 """
 from __future__ import annotations
 
@@ -34,10 +37,14 @@ import shutil
 import signal
 import socket
 import subprocess
+import fcntl
 import sys
+import tempfile
 import threading
+import time
 from pathlib import Path
 
+from . import capsule_identity, capsule_display, launch_guard, session_boundary
 from . import capsule_runtime as runtime_policy
 from . import closure, device_graphics
 from . import launcher as capsule_launcher
@@ -151,13 +158,16 @@ def alias_home(root: Path, host_home: Path = Path("/home")) -> None:
         pass
 
 
-def deployment(store: Store, app_id: str, graphics: list[str] | None = None, architecture: str = "") -> tuple[Path, dict[str, object]]:
-    """The read-only checkout the application runs from, and its record."""
+def deployment(store: Store, app_id: str, graphics: list[str] | None = None, architecture: str = "",
+               commit: str = "") -> tuple[Path, dict[str, object]]:
+    """The read-only checkout the application runs from, and its record.
+
+    ``commit`` names a tree other than the one in use: one waiting to be tried."""
     ref = store.app_ref(app_id, architecture)
-    commit = store.resolve(ref)
+    commit = commit or store.resolve(ref)
     if not commit:
         raise InstallerError(f"{app_id} is not in the application store.")
-    record = store.read_record(ref)
+    record = store.read_record(commit)
     if graphics is None:
         graphics = device_graphics.routes_for(str(record["userland"]), store, architecture=architecture)
     layer_commits = [store.resolve(layer) for layer in graphics]
@@ -224,15 +234,6 @@ def set_zone(instance: Path, zone: str) -> None:
     partial.replace(link)
 
 
-def x11_socket(display: str, folder: Path = Path("/tmp/.X11-unix")) -> Path | None:
-    """The socket of a local X display (":0", ":1.0"), or None."""
-    name = display.split(".", 1)[0]
-    if not name.startswith(":") or not name[1:].isdigit():
-        return None
-    socket_path = folder / f"X{name[1:]}"
-    return socket_path if socket_path.exists() else None
-
-
 def exec_label(level: str) -> str:
     return f"system_u:system_r:{APPLICATION_TYPE}:{level}"
 
@@ -252,17 +253,17 @@ def label_data(data: Path, level: str) -> None:
         subprocess.run(["chcon", "-R", wanted, str(data)], capture_output=True, check=False)
 
 
-def private_home(app_id: str) -> Path:
-    data = data_home(app_id)
+def private_home(app_id: str, data: Path | None = None) -> Path:
+    data = data or data_home(app_id)
     data.mkdir(mode=0o700, parents=True, exist_ok=True)
     for folder in (".config", ".cache", ".local/share", ".local/state"):
         (data / folder).mkdir(mode=0o700, parents=True, exist_ok=True)
     return data
 
 
-def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, instance: Path, runtime: Path,
-                      bus_socket: Path | None, level: str = "", folders: list[Path] | None = None,
-                      environment: dict[str, str] | None = None) -> tuple[list[str], dict[str, str]]:
+def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, instance: Path,
+                      session: session_boundary.View, level: str = "", folders: list[Path] | None = None,
+                      environment: dict[str, str] | None = None, network: bool = True) -> tuple[list[str], dict[str, str]]:
     """The bubblewrap command (without the payload) and the environment inside."""
     host = dict(os.environ if environment is None else environment)
     uid = os.getuid()
@@ -274,6 +275,8 @@ def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, 
                  "--tmpfs", "/run", "--dir", "/run/user", "--perms", "0700", "--dir", str(inside),
                  "--ro-bind", str(instance), "/run/luma", "--bind", str(instance / "tmp"), "/tmp",
                  "--tmpfs", "/var/tmp"]
+    if not network:
+        arguments.append("--unshare-net")
     if not record.get("terminal"):
         arguments.append("--new-session")
     for relative in ("block", "bus", "class", "dev", "devices"):
@@ -282,39 +285,21 @@ def sandbox_arguments(checkout: Path, record: dict[str, object], *, data: Path, 
         arguments.extend(("--dev-bind", node, node))
     # The private home at the person's real home path; their own folders over it.
     arguments.extend(("--tmpfs", str(home.parent), "--bind", str(data), str(home)))
+    if record.get("legacy_home") and home.name != "luma":
+        # Settings written when a capsule's home was /home/luma name that path.
+        arguments.extend(("--symlink", home.name, str(home.parent / "luma")))
     for folder in (capsule_launcher._person_folders() if folders is None else folders):
         arguments.extend(("--bind", str(folder), str(folder)))
-    env = {"HOME": str(home), "XDG_RUNTIME_DIR": str(inside), "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/games",
+    env = {"HOME": str(home), "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/games",
            "GTK_USE_PORTAL": "1", "BROWSER": "/usr/bin/xdg-open",
            "XDG_DATA_DIRS": "/usr/local/share:/usr/share:/run/host/share",
            "XCURSOR_PATH": f"{home}/.icons:/usr/share/icons:/run/host/share/icons",
            "LUMA_CAPSULE_DESKTOP_ID": capsule_launcher._desktop_id(record)}
-    wayland = host.get("WAYLAND_DISPLAY", "")
-    if wayland and (runtime / wayland).exists():
-        arguments.extend(("--ro-bind", str(runtime / wayland), str(inside / wayland)))
-        env["WAYLAND_DISPLAY"] = wayland
-    else:
-        wayland = ""
-    for relative in ("pipewire-0", "pulse/native", "at-spi/bus"):
-        if (runtime / relative).exists():
-            arguments.extend(("--ro-bind", str(runtime / relative), str(inside / relative)))
-    if (runtime / "pulse/native").exists():
-        env["PULSE_SERVER"] = f"unix:{inside / 'pulse/native'}"
-    if bus_socket is not None:
-        arguments.extend(("--bind", str(bus_socket), str(inside / "bus")))
-        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={inside / 'bus'}"
-    display_socket = x11_socket(host.get("DISPLAY", ""))
-    if display_socket is not None:
-        # The display's own socket, not the folder of every display's.
-        arguments.extend(("--ro-bind", str(display_socket), str(display_socket)))
-        env["DISPLAY"] = host["DISPLAY"]
-        # Today's launcher hands over the session's X cookie; once it stops (the
-        # cookie stays out of capsules), there is nothing to hand over here either.
-        find_authority = getattr(capsule_launcher, "_runtime_authority", None)
-        authority = find_authority(runtime) if find_authority is not None else None
-        if authority is not None:
-            arguments.extend(("--ro-bind", str(authority), str(inside / authority.name)))
-            env["XAUTHORITY"] = str(inside / authority.name)
+    # The session: the same sockets and variables a capsule gets, and nothing else of the runtime folder.
+    if any(mount.inside.parent == capsule_display.SOCKETS for mount in session.mounts):
+        arguments.extend(("--dir", str(capsule_display.SOCKETS)))
+    arguments.extend(session.bubblewrap())
+    env.update(session.environment)
     # Fonts and themes are the device's; the tree's own stay visible beside them.
     for source, destination in (("/usr/share/fonts", "/run/host/fonts"), ("/usr/local/share/fonts", "/run/host/local-fonts"),
                                 (str(Path.home() / ".local/share/fonts"), "/run/host/user-fonts"),
@@ -369,26 +354,65 @@ def scope_prefix(app_id: str) -> list[str]:
             f"--unit=app-luma-{name}-{os.getpid()}.scope", "--"]
 
 
+def guard_record(app_id: str, tree: dict[str, object], record: dict[str, object] | None = None) -> dict[str, object]:
+    """One record for everything that asks about the application while it starts:
+    what its tree exports, under what Valet recorded when it was installed."""
+    exports = dict(tree.get("exports") or {})  # type: ignore[arg-type]
+    described = {"application_id": app_id, "sha256": app_id, "name": exports.get("name") or app_id,
+                 "icon": exports.get("icon") or "", "terminal": exports.get("terminal"), "chromium": exports.get("chromium"),
+                 "desktop_path": exports.get("desktop_path") or "", "startup_wm_class": exports.get("startup_wm_class") or "",
+                 "bus_names": exports.get("bus_names") or []}
+    return {**described, **(record or {}), "format": tree.get("format"), "id": app_id,
+            "bus_names": exports.get("bus_names") or (record or {}).get("bus_names") or []}
+
+
+def application_level(record: dict[str, object]) -> str:
+    """The application's category pair, from the one allocator; "" where the policy is not loaded."""
+    if not (selinux_enabled() and Path("/usr/share/selinux/packages/luma_application.cil").exists()):
+        return ""
+    return capsule_identity.level(record)
+
+
+def running_lock(instance: Path):
+    """Held, shared, by every running launcher of the application; a refresh asks for it alone."""
+    instance.mkdir(mode=0o700, parents=True, exist_ok=True)
+    handle = open(instance / ".running", "a")
+    fcntl.flock(handle, fcntl.LOCK_SH)
+    return handle
+
+
+def is_running(app_id: str) -> bool:
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    try:
+        with open(runtime / "luma-apps" / app_id / ".running", "a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return False
+
+
 def launch(store: Store, app_id: str, extra: list[str] | None = None, *, graphics: list[str] | None = None,
-           command: list[str] | None = None) -> int:
-    checkout, record = deployment(store, app_id, graphics)
+           command: list[str] | None = None, record: dict[str, object] | None = None, watched: bool = False) -> int:
+    """Start the application. ``record`` is what Valet keeps for it: identity, keyring state, data folder."""
+    checkout, tree = deployment(store, app_id, graphics)
     uid = os.getuid()
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
+    inside = Path(f"/run/user/{uid}")
     instance = runtime / "luma-apps" / app_id
     runtime_files(instance, checkout, app_id)
-    data = private_home(app_id)
-    level = ""
-    if selinux_enabled() and Path("/usr/share/selinux/packages/luma_application.cil").exists():
-        level = store.categories(app_id)
+    described = guard_record(app_id, tree, record)
+    data = private_home(app_id, Path(str(described["data_home"])) if described.get("data_home") else None)
+    level = application_level(described)
+    if level:
         label_data(data, level)
         label_data(instance, level)
-    exports = dict(record.get("exports") or {})  # type: ignore[arg-type]
-    guard_record = {"application_id": app_id, "name": exports.get("name") or app_id, "icon": exports.get("icon") or "",
-                    "terminal": exports.get("terminal"), "chromium": exports.get("chromium"), "sha256": app_id,
-                    "desktop_path": exports.get("desktop_path") or "", "startup_wm_class": exports.get("startup_wm_class") or "",
-                    "format": record.get("format"), "id": app_id}
-    proxy, bus_socket = capsule_launcher._start_bus_proxy(
-        runtime, hashlib.sha256(app_id.encode()).hexdigest(), runtime_policy.own_bus_arguments(guard_record))
+    identity = hashlib.sha256(app_id.encode()).hexdigest()
+    held = running_lock(instance)
+    proxy, bus_socket = capsule_launcher._start_bus_proxy(runtime, identity, runtime_policy.own_bus_arguments(described),
+                                                         described)
+    display = capsule_launcher._start_display(runtime, identity)
 
     def stopped(_signal: int, _frame: object) -> None:
         # Being told to stop is an ordinary way for an application to end: the
@@ -397,28 +421,123 @@ def launch(store: Store, app_id: str, extra: list[str] | None = None, *, graphic
 
     previous = signal.signal(signal.SIGTERM, stopped) if threading.current_thread() is threading.main_thread() else None
     try:
-        arguments, env = sandbox_arguments(checkout, guard_record, data=data, instance=instance, runtime=runtime,
-                                           bus_socket=bus_socket, level=level)
-        program = command if command is not None else payload(record, "WAYLAND_DISPLAY" in env, list(extra or []))
-        full = [*scope_prefix(app_id), *arguments, "--", *program]
+        session = session_boundary.view(runtime, inside, dict(os.environ),
+                                        accessibility=proxy.accessibility if proxy is not None else None,
+                                        bus_socket=bus_socket, display=display)
+        arguments, env = sandbox_arguments(checkout, described, data=data, instance=instance, session=session, level=level)
+        front, filter_options = capsule_launcher._confinement(described)
+        program = command if command is not None else payload(tree, session.wayland, list(extra or []))
+        full = [*scope_prefix(app_id), *front, *arguments, *filter_options, "--", *program]
         if command is not None:
             return subprocess.run(full, env=env, check=False).returncode
-        return capsule_launcher._guarded(guard_record, full, env)
+        return capsule_launcher._guarded(described, full, env, watched=watched)
     finally:
         if previous is not None:
             signal.signal(signal.SIGTERM, previous)
         capsule_launcher._stop_bus_proxy(proxy, bus_socket)
+        if display is not None:
+            display.stop()
+        held.close()
 
 
-def remove_data(app_id: str) -> None:
-    shutil.rmtree(data_home(app_id), ignore_errors=True)
+SMOKE_SECONDS = 10.0
+
+
+def hidden_start(store: Store, app_id: str, record: dict[str, object] | None = None, *, commit: str = "",
+                 seconds: float = SMOKE_SECONDS) -> tuple[bool, str]:
+    """Start a tree where nobody sees it: (it works, why or why not).
+
+    The sandbox the launcher builds, minus the person: a home that is thrown
+    away, no network, no session bus, no sound, none of the person's folders,
+    and a headless display of its own. It has to stay up for a few seconds
+    without failing. A new tree is tried this way before it is ever used.
+    """
+    from . import capsule_refresh
+    checkout, tree = deployment(store, app_id, commit=commit)
+    exports = dict(tree.get("exports") or {})  # type: ignore[arg-type]
+    console = bool(exports.get("terminal")) or not tree.get("windowed", True)
+    described = guard_record(app_id, tree, record)
+    uid = os.getuid()
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
+    with tempfile.TemporaryDirectory(prefix="luma-smoke-", dir=capsule_refresh._scratch_root()) as directory, \
+            capsule_refresh.hidden_display(runtime) as display:
+        if display is None and not console:
+            return True, "no hidden display on this system; libraries checked only"
+        home, instance = Path(directory) / "home", Path(directory) / "run"
+        for folder in (".config", ".cache", ".local/share", ".local/state"):
+            (home / folder).mkdir(mode=0o700, parents=True, exist_ok=True)
+        runtime_files(instance, checkout, app_id)
+        level = application_level(described)
+        if level:
+            label_data(home, level)
+            label_data(instance, level)
+        environment = session_boundary.cleaned(dict(os.environ))
+        if display is not None and not console:
+            environment.update({"WAYLAND_DISPLAY": display[1], "XDG_SESSION_TYPE": "wayland"})
+        session = session_boundary.view(runtime, Path(f"/run/user/{uid}"), environment, sound=False)
+        arguments, env = sandbox_arguments(checkout, described, data=home, instance=instance, session=session, level=level,
+                                           folders=[], environment=environment, network=False)
+        front, filter_options = capsule_launcher._confinement(described)
+        command = str(exports.get("command") or "")
+        if console:
+            # A console program needs a terminal to stay up; finding it proves the tree is whole.
+            program = ["sh", "-c", 'command -v "$1" >/dev/null', "sh", (shlex.split(command) or ["sh"])[0]]
+        else:
+            program = payload(tree, session.wayland, [])
+        started = time.monotonic()
+        try:
+            process = subprocess.Popen([*front, *arguments, *filter_options, "--", *program], env=env,
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        except OSError as error:
+            return False, str(error)
+        try:
+            _out, errors = process.communicate(timeout=120 if console else seconds)
+        except subprocess.TimeoutExpired:
+            # Still up after the wait: that is the pass.
+            process.terminate()
+            try:
+                process.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+            return (True, f"stayed up for {seconds:g} s") if not console else (False, "did not answer")
+        elapsed = time.monotonic() - started
+        tail = [line for line in errors.decode("utf-8", "replace").splitlines() if line.strip()][-launch_guard.STDERR_LINES:]
+        failure = launch_guard.classify(process.returncode, elapsed, tail)
+        if failure is None and process.returncode == 0:
+            return True, f"exited cleanly after {elapsed:.1f} s"
+        return False, (tail[-1] if tail else f"exited with status {process.returncode} after {elapsed:.1f} s")[:300]
+
+
+def launch_record(record: dict[str, object], extra: list[str] | None = None) -> int:
+    """Start an installed application whose record names a tree in the store."""
+    from . import store_refresh
+    app_id = str(dict(record["store"])["id"])  # type: ignore[arg-type]
+    watched = store_refresh.unconfirmed(record)
+    status = launch(Store(), app_id, extra, record=record, watched=watched)
+    if not watched:
+        return status
+    failure, capsule_launcher._watched_failure = capsule_launcher._watched_failure, None
+    return store_refresh.after_watched_start(record, status, failure, extra)
+
+
+def remove_runtime(app_id: str) -> None:
+    """What a start leaves in the session's runtime folder."""
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
     shutil.rmtree(runtime / "luma-apps" / app_id, ignore_errors=True)
-    for folder in (data_home(app_id).parent, runtime / "luma-apps"):
-        try:
-            folder.rmdir()
-        except OSError:
-            pass
+    try:
+        (runtime / "luma-apps").rmdir()
+    except OSError:
+        pass
+
+
+def remove_data(app_id: str, data: Path | None = None) -> None:
+    shutil.rmtree(data or data_home(app_id), ignore_errors=True)
+    remove_runtime(app_id)
+    try:
+        data_home(app_id).parent.rmdir()
+    except OSError:
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -142,26 +142,26 @@ class StoreBehaviour(unittest.TestCase):
         with self.assertRaises(InstallerError):
             third.pull(self.store.repo)
 
-    def test_every_application_gets_its_own_category_pair(self):
-        self.store.ensure()
-        levels = {self.store.categories(f"app-{number}") for number in range(40)}
-        self.assertEqual(len(levels), 40)
-        self.assertEqual(self.store.categories("app-3"), self.store.categories("app-3"))
-        for level in levels:
-            low, high = (int(part[1:]) for part in level.removeprefix("s0:").split(","))
-            self.assertTrue(0 <= low < high <= 1023)
+    def test_a_new_tree_waits_on_its_own_ref_and_is_promoted_with_its_predecessor_behind_it(self):
+        first = self.commit("tool", {"usr/bin/tool": "one"})
+        built = tree(self.base / "next", {**self.shared, "usr/bin/tool": "two"})
+        pending = self.store.pending_ref("tool")
+        second = self.store.commit_tree(built, pending, {"id": "tool", "kind": "application"}, parent=first)
+        ref = self.store.app_ref("tool")
+        self.assertEqual(self.store.resolve(ref), first)
+        self.assertEqual(self.store.read_record(second)["id"], "tool")
+        self.store.promote(ref, second)
+        self.store.delete_ref(pending)
+        self.assertEqual(self.store.resolve(ref), second)
+        self.assertEqual(self.store.rollback(ref), first)
+        self.assertTrue(self.store.has_commit(first))
+        self.assertFalse(self.store.has_commit("0" * 64))
 
-
-class Categories(unittest.TestCase):
-    def test_a_collision_moves_to_the_next_free_pair(self):
-        with tempfile.TemporaryDirectory() as folder:
-            store = Store(Path(folder) / "store")
-            first = store.categories("one")
-            state = store._state()
-            state["categories"] = {"other": store.categories("two"), "one": first}
-            store._write_state(state)
-            store._write_state({"categories": {"other": first}})
-            self.assertNotEqual(store.categories("one"), first)
+    def test_removing_the_last_application_removes_the_store(self):
+        self.commit("tool", {"usr/bin/tool": "one"})
+        self.store.commit_tree(tree(self.base / "userland", {"etc/os-release": "x"}), self.store.userland_ref("debian-13"), {"id": "debian-13", "kind": "userland"})
+        self.store.remove("tool")
+        self.assertFalse(self.store.root.exists())
 
 
 if __name__ == "__main__":

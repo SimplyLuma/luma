@@ -1,0 +1,30 @@
+{
+ "version": 1,
+ "comment": "What every windowed application's tree gets beside its package's own dependency closure, per release. Loaders only: drivers come from the device (graphics-layers.json). Raise 'version' when a list changes; trees built on an older version are rebuilt at their next refresh.",
+ "userlands": {
+  "debian-13": {
+   "packages": ["libgl1", "libegl1", "libgles2", "libgbm1", "libvulkan1", "libpulse0", "libasound2-plugins", "libsecret-1-0", "ca-certificates", "libglib2.0-bin"],
+   "toolkit": [["libqt5gui5t64", "qtwayland5"], ["libqt6gui6", "qt6-wayland"]]
+  },
+  "ubuntu-24.04": {
+   "packages": ["libgl1", "libegl1", "libgles2", "libgbm1", "libvulkan1", "libpulse0", "libasound2-plugins", "libsecret-1-0", "ca-certificates", "libglib2.0-bin"],
+   "toolkit": [["libqt5gui5t64", "qtwayland5"], ["libqt6gui6t64", "qt6-wayland"]]
+  },
+  "debian-12": {
+   "packages": ["libgl1", "libegl1", "libgles2", "libgbm1", "libvulkan1", "libpulse0", "libasound2-plugins", "libsecret-1-0", "ca-certificates", "libglib2.0-bin"],
+   "toolkit": [["libqt5gui5", "qtwayland5"], ["libqt6gui6", "qt6-wayland"]]
+  },
+  "ubuntu-22.04": {
+   "packages": ["libgl1", "libegl1", "libgles2", "libgbm1", "libvulkan1", "libpulse0", "libasound2-plugins", "libsecret-1-0", "ca-certificates", "libglib2.0-bin"],
+   "toolkit": [["libqt5gui5", "qtwayland5"], ["libqt6gui6", "qt6-wayland"]]
+  },
+  "fedora-45": {
+   "packages": ["mesa-libGL", "mesa-libEGL", "mesa-libgbm", "libglvnd-gles", "vulkan-loader", "pulseaudio-libs", "alsa-plugins-pulseaudio", "libsecret", "ca-certificates", "glib2"],
+   "toolkit": [["qt5-qtbase-gui", "qt5-qtwayland"], ["qt6-qtbase-gui", "qt6-qtwayland"]]
+  },
+  "fedora-44": {
+   "packages": ["mesa-libGL", "mesa-libEGL", "mesa-libgbm", "libglvnd-gles", "vulkan-loader", "pulseaudio-libs", "alsa-plugins-pulseaudio", "libsecret", "ca-certificates", "glib2"],
+   "toolkit": [["qt5-qtbase-gui", "qt5-qtwayland"], ["qt6-qtbase-gui", "qt6-qtwayland"]]
+  }
+ }
+}
