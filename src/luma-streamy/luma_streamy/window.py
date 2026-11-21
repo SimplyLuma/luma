@@ -74,9 +74,15 @@ class FixedColumn(Gtk.Widget):
         if child is None or not child.get_visible():
             return 0, 0, -1, -1
         if orientation == Gtk.Orientation.HORIZONTAL:
+            from luma_appkit import lumaui_tokens
+
+            root = self.get_root()
+            window = (root.get_width() or root.get_default_size()[0]) if isinstance(root, Gtk.Window) else 0
+            if 0 < window <= lumaui_tokens.PHONE_MAX_WIDTH:
+                return 0, 0, -1, -1  # a phone: the pane is a bottom drawer
             minimum, natural, _b, _n = child.measure(orientation, -1)
             if natural == 0:
-                return 0, 0, -1, -1  # its sheet is elsewhere (a phone's drawer)
+                return 0, 0, -1, -1  # its sheet is elsewhere (a drawer)
             # Never narrower than its content needs; once wider, it stays that wide (one reflow at most).
             self._width = max(self._width, minimum)
             return self._width, self._width, -1, -1
@@ -919,6 +925,15 @@ class StreamyWindow(AppWindow):
         keep = getattr(self, "_inspector_for", None)
         pane.clear()
         self._inspector_sections = {}
+        from luma_appkit.structure_adapt import is_phone
+
+        if is_phone(self):
+            # A phone: the Inspector is a drawer that opens when asked (a key in the bar), never over
+            # the preview on its own.
+            if not getattr(self, "_inspector_asked", False):
+                pane.show(open=False, main=False)
+        elif not pane.main:
+            pane.show(open=True, main=True)
         w = self._selected_widget()
         self._inspector_for = w.id if w is not None else None
         if w is None:
@@ -1508,7 +1523,9 @@ class StreamyWindow(AppWindow):
         heading = self._inspector_sections.get(key)
         if heading is None:
             return
+        self._inspector_asked = True
         self.inspector.open()
+        GLib.timeout_add(500, lambda: setattr(self, "_inspector_asked", False) or False)
         scroll = self._inspector_scroll()
 
         def reveal() -> bool:
