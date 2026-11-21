@@ -72,6 +72,10 @@ def is_app_playback(props: dict) -> bool:
         return False
     if props.get("luma.audio-levels") or props.get("luma.audio-capture.id"):
         return False
+    # The playback half of a loopback or filter (WirePlumber's role sinks, an
+    # equalizer): plumbing between an app and an output, not an app.
+    if props.get("node.link-group"):
+        return False
     return True
 
 

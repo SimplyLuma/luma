@@ -89,6 +89,10 @@ function M.is_app_playback (props)
   if props ["luma.audio-levels"] or props ["luma.audio-capture.id"] then
     return false
   end
+  -- The playback half of a loopback or filter is plumbing, not an app.
+  if props ["node.link-group"] then
+    return false
+  end
   return true
 end
 

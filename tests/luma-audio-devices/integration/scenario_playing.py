@@ -20,7 +20,9 @@ import time
 from gi.repository import GLib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scenario_outputs import DAC, RESULTS, SPEAKER, Service, add, check, remove, run, wait_for  # noqa: E402
+from scenario_outputs import (  # noqa: E402
+    DAC, RESULTS, SPEAKER, Service, add, check, default, dump, remove, run, wait_for,
+)
 from scenario_mixer import applications, call, linked_to, stop, stream_volume, tone  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -33,6 +35,18 @@ def outputs() -> dict[str, dict]:
 
 def row(name: str) -> dict:
     return applications().get(name, {})
+
+
+def where(stream_name: str) -> str:
+    """Which outputs an app's streams are linked to, and the default: for a failed check's line."""
+    graph = dump()
+    nodes = {o["id"]: (o.get("info") or {}).get("props") or {} for o in graph
+             if o["type"] == "PipeWire:Interface:Node"}
+    sources = {i for i, p in nodes.items() if p.get("application.name") == stream_name}
+    sinks = sorted({nodes.get((o.get("info") or {}).get("input-node-id"), {}).get("node.name", "?")
+                    for o in graph if o["type"] == "PipeWire:Interface:Link"
+                    and (o.get("info") or {}).get("output-node-id") in sources})
+    return f"{stream_name} on {sinks or 'nothing'}, default {default()}"
 
 
 def near(value, target: float, tolerance: float = 0.01) -> bool:
@@ -129,7 +143,7 @@ def main() -> int:
         # Its output unplugged: it plays on the main output and keeps its choice.
         remove(DAC)
         check(bool(wait_for(lambda: linked_to("PlayerA", SPEAKER[0]), 5)),
-              "with its output unplugged the app plays on the main output")
+              f"with its output unplugged the app plays on the main output ({where('PlayerA')})")
         check(bool(wait_for(lambda: row("PlayerA").get("output") == "" and
                             row("PlayerA").get("playing_on") == SPEAKER[0], 3)),
               "and reads as following the main output")
@@ -138,19 +152,20 @@ def main() -> int:
         check(bool(wait_for(lambda: linked_to("PlayerA", DAC[0]), 6)),
               "plugged back in, the app returns to its output")
         check(linked_to("PlayerB", SPEAKER[0]) and not linked_to("PlayerB", DAC[0]),
-              "an app that follows the main output stays on it")
+              f"an app that follows the main output stays on it ({where('PlayerB')})")
         check(bool(wait_for(lambda: row("PlayerA").get("output") == DAC[0], 3)), "and reads as on its own output again")
         # Started while its output is away, it still returns when it comes back.
         remove(DAC)
         stop(first)
         first = tone("PlayerA", 440)
         check(bool(wait_for(lambda: linked_to("PlayerA", SPEAKER[0]), 5)),
-              "started while its output is away, the app plays on the main output")
+              f"started while its output is away, the app plays on the main output ({where('PlayerA')})")
         add(DAC)
         check(bool(wait_for(lambda: linked_to("PlayerA", DAC[0]), 6)), "and moves to its output when it appears")
         # Set back to the main output, it no longer follows the DAC.
         call("SetApplicationOutput", GLib.Variant("(ss)", ("PlayerA", "")))
-        check(bool(wait_for(lambda: linked_to("PlayerA", SPEAKER[0]), 5)), "set back, it follows the main output")
+        check(bool(wait_for(lambda: linked_to("PlayerA", SPEAKER[0]), 5)),
+              f"set back, it follows the main output ({where('PlayerA')})")
         remove(DAC)
         add(DAC)
         time.sleep(1.5)

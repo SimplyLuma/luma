@@ -11,5 +11,6 @@
   {"case": "event role lower case", "props": {"application.name": "canberra", "media.role": "event", "media.class": "Stream/Output/Audio"}, "key": "canberra", "system": true, "playback": true},
   {"case": "level meter", "props": {"application.id": "org.projectluma.AudioDevices", "stream.monitor": "true", "media.class": "Stream/Output/Audio"}, "key": "org.projectluma.AudioDevices", "system": false, "playback": false},
   {"case": "capture node", "props": {"luma.audio-capture.id": "ab12", "media.class": "Audio/Source/Virtual/Capture"}, "key": null, "system": false, "playback": false},
-  {"case": "recording stream", "props": {"application.name": "Recorder", "media.class": "Stream/Input/Audio"}, "key": "Recorder", "system": false, "playback": false}
+  {"case": "recording stream", "props": {"application.name": "Recorder", "media.class": "Stream/Input/Audio"}, "key": "Recorder", "system": false, "playback": false},
+  {"case": "playback half of a role loopback", "props": {"application.name": "WirePlumber", "node.name": "output.loopback.sink.role.multimedia", "node.link-group": "loopback-1-11", "media.class": "Stream/Output/Audio"}, "key": "WirePlumber", "system": false, "playback": false}
 ]
