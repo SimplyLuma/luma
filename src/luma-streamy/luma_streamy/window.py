@@ -301,7 +301,15 @@ class StreamyWindow(AppWindow):
             self.select(None)
         else:
             self.selected = self.selection[-1]
+            self._building = True
+            self.widget_list.unselect_all()
+            for widget_id in self.selection:
+                row = self._widget_rows.get(widget_id)
+                if row is not None:
+                    self.widget_list.select_row(row)
+            self._building = False
             self._refresh_inspector()
+            self._refresh_bar()
 
     def _group_changed(self, rects: dict) -> None:
         """A group move or scale, live: every widget's box on the canvas edited (crop and Look kept)."""
@@ -327,6 +335,16 @@ class StreamyWindow(AppWindow):
         self._group_changed(rects)
         self._group_checkpoint = False
         self._changed()
+
+    def _targets(self) -> list[Widget]:
+        """What a command acts on: every selected widget, in the scene's order (top last)."""
+        scene = self.project.active_scene
+        ids = set(self._selected_ids())
+        return [w for w in scene.widgets if w.id in ids] if scene is not None else []
+
+    @staticmethod
+    def _count(ws: list, one: str, several: str) -> str:
+        return f"{one} {ws[0].name}" if len(ws) == 1 else f"{several} {len(ws)} widgets"
 
     def _selected_ids(self) -> list[str]:
         ids = [i for i in getattr(self, "selection", []) if self.project.active_scene and
@@ -378,7 +396,9 @@ class StreamyWindow(AppWindow):
         as the taller one's content (capped; past that each scrolls in its inset)."""
         self.widget_nav = NavigationList("files")
         self.widget_list = self.widget_nav.list
-        self.widget_list.connect("row-selected", self._widget_row_selected)
+        # Several at once: Shift+click extends a range, Ctrl+click adds or removes one (GtkListBox).
+        self.widget_list.set_selection_mode(Gtk.SelectionMode.MULTIPLE)
+        self.widget_list.connect("selected-rows-changed", self._widget_rows_changed)
         add = IconOnlyButton("plus", "Add widget")
         add.connect("clicked", lambda *_a: self.center.grow("add", panel_list(self._add_menu())))
         # The mixer: a channel strip per sound (LumaUI MixerStrip), left to right, scrolling sideways.
@@ -1405,6 +1425,9 @@ class StreamyWindow(AppWindow):
         if len(several) > 1:
             self._inspector_for = None
             self.inspector_tile.set_title(f"{len(several)} widgets")
+            pictures = [w for w in self._targets() if w.has_picture]
+            if len(pictures) > 1:
+                self._inspector_section("look", "Look", self._group_look_panel(pictures))
             self._inspector_section("arrange", "Arrange", self._group_panel(several))
             return
         self._inspector_for = w.id if w is not None else None
@@ -1424,30 +1447,66 @@ class StreamyWindow(AppWindow):
         if scroll is not None and keep == self._inspector_for:
             GLib.idle_add(lambda: scroll.get_vadjustment().set_value(offset) and False)
 
+    def _group_look_panel(self, ws: list[Widget]) -> Gtk.Widget:
+        """Several pictures' Look: a value they share shows; where they differ the row says Mixed, and a
+        change applies to all (one undo step per drag)."""
+        current = self._shared_look(ws)
+        tiles = BarTiles([BarTile(icon, label, lambda k=key: self.apply_look_all(k), on=key == current)
+                          for key, (label, icon, _v) in self.LOOKS.items()], columns=5, size="compact")
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        rows.add_css_class("streamy-rows")
+        effects = [self.project.effects_on(w) for w in ws]
+        ids = tuple(w.id for w in ws)
+
+        def mixed(values) -> Gtk.Widget | None:
+            if len({round(v, 2) for v in values}) <= 1:
+                return None
+            word = TypeLabel("Mixed", role="caption")
+            word.set_tooltip_text("Their values differ; a change applies to all")
+            return word
+
+        def setter(name: str, label: str):
+            def apply(v: float) -> None:
+                self._checkpoint(f"Change {label.lower()}", key=(ids, name))
+                for w in ws:
+                    if name == "shadow":
+                        self._shadow_to(w, v)
+                    else:
+                        self.project.set_effect(w, name, v)
+                    self.engine.update_widget(w)
+                self._changed()
+            return apply
+
+        for name, label, low, high, unit, values in (
+                ("corner_radius", "Corners", 0, 200, "px", [fx.corner_radius for fx in effects]),
+                ("stroke_width", "Border", 0, 40, "px", [fx.stroke_width for fx in effects]),
+                ("shadow", "Shadow", 0, 100, "%", [self.shadow_strength(fx) for fx in effects])):
+            rows.append(self._slider(label, values[-1], low, high, setter(name, label), unit=unit, trail=mixed(values)))
+        return self._panel(tiles, rows)
+
     def _group_panel(self, ids: list[str]) -> Gtk.Widget:
-        """Several widgets: align and distribute them within their box (LumaUI align_rects)."""
+        """Several widgets: align and distribute them within their box (LumaUI align_rects), and what applies
+        to all of them (order, hide, lock, duplicate, delete)."""
+        ws = self._targets()
         rows = []
-        try:
-            from luma_appkit import align_rects, distribute_rects
-        except ImportError:
-            return self._panel(TypeLabel("Move or scale them together on the canvas", role="body", wrap=True))
-        scene = self.project.active_scene
-
-        def apply(fn) -> None:
-            rects = {i: (w.x, w.y, w.width, w.height) for i in ids if (w := scene.widget(i)) is not None}
-            self._group_committed(fn(rects))
-
-        for how, label, icon in (("left", "Align left", "align-start-vertical"), ("centre", "Align centres", "align-center-vertical"),
-                                 ("right", "Align right", "align-end-vertical"), ("top", "Align tops", "align-start-horizontal"),
-                                 ("middle", "Align middles", "align-center-horizontal"), ("bottom", "Align bottoms", "align-end-horizontal")):
-            rows.append(PanelRow(label, icon=icon, closes=False,
-                                 on_activate=lambda h=how: apply(lambda r: align_rects(r, h, canvas=self.project.canvas))))
-        if len(ids) > 2:
-            rows.append(PanelRow("Distribute across", icon="between-horizontal-end", closes=False,
-                                 on_activate=lambda: apply(lambda r: distribute_rects(r, "h"))))
-            rows.append(PanelRow("Distribute down", icon="between-vertical-end", closes=False,
-                                 on_activate=lambda: apply(lambda r: distribute_rects(r, "v"))))
-        rows.append(PanelRow(f"Delete {len(ids)} widgets", icon="trash-2", danger=True, on_activate=self.delete_selected))
+        if sum(1 for w in ws if w.has_picture) > 1:
+            for how, label, icon in self.GROUP_ALIGN:
+                rows.append(PanelRow(label, icon=icon, closes=False, on_activate=lambda h=how: self._align_selection(h)))
+            if len(ids) > 2:
+                rows.append(PanelRow("Distribute across", icon="between-horizontal-end", closes=False,
+                                     on_activate=lambda: self._align_selection("", distribute="h")))
+                rows.append(PanelRow("Distribute down", icon="between-vertical-end", closes=False,
+                                     on_activate=lambda: self._align_selection("", distribute="v")))
+            rows += [PanelRow("Bring forward", icon="arrow-up", closes=False, on_activate=lambda: self.restack_all_by(1)),
+                     PanelRow("Send backward", icon="arrow-down", closes=False, on_activate=lambda: self.restack_all_by(-1))]
+            shown = any(w.visible for w in ws if w.has_picture)
+            rows.append(PanelRow("Hide all" if shown else "Show all", icon="eye-off" if shown else "eye", closes=False,
+                                 on_activate=self.toggle_hidden))
+        locked = all(w.locked for w in ws)
+        rows += [PanelRow("Unlock all" if locked else "Lock all", icon="lock-open" if locked else "lock", closes=False,
+                          on_activate=self.toggle_lock),
+                 PanelRow(f"Duplicate {len(ids)} widgets", icon="copy", closes=False, on_activate=self.duplicate_selected),
+                 PanelRow(f"Delete {len(ids)} widgets", icon="trash-2", danger=True, on_activate=self.delete_selected)]
         return self._panel(*rows)
 
     def _inspector_section(self, key: str, title: str, content: Gtk.Widget) -> None:
@@ -1793,16 +1852,35 @@ class StreamyWindow(AppWindow):
         self._effects_changed(w)
         self._regrow("look")
 
+    def _shared_look(self, ws: list[Widget]) -> str | None:
+        looks = {self._look_of(w) for w in ws}
+        return looks.pop() if len(looks) == 1 else None
+
+    def apply_look_all(self, key: str) -> None:
+        ws = [w for w in self._targets() if w.has_picture]
+        if not ws:
+            return
+        self._checkpoint(f"Look {self.LOOKS[key][0]}")
+        for w in ws:
+            for name, value in self.LOOKS[key][2].items():
+                self.project.set_effect(w, name, value)
+            self.engine.update_widget(w)
+        self._changed()
+        self._regrow("look")
+
     @staticmethod
     def shadow_strength(fx) -> float:
         return round(min(100.0, max(fx.shadow_blur / 0.6, fx.shadow_opacity / 0.45 * 100 if fx.shadow_blur else 0)))
 
     def _set_shadow(self, w: Widget, strength: float) -> None:
+        self._shadow_to(w, strength)
+        self._effects_changed(w)
+
+    def _shadow_to(self, w: Widget, strength: float) -> None:
         """One slider for the shadow: blur, drop and darkness grow together."""
         self.project.set_effect(w, "shadow_blur", strength * 0.6)
         self.project.set_effect(w, "shadow_y", round(strength * 0.2))
         self.project.set_effect(w, "shadow_opacity", 0.0 if strength <= 0 else 0.2 + 0.25 * strength / 100)
-        self._effects_changed(w)
 
     def _look_panel(self, w: Widget) -> Gtk.Widget:
         fx = self.project.effects_on(w)
@@ -2378,10 +2456,9 @@ class StreamyWindow(AppWindow):
                                  else None)
         self._building = True
         row = self._widget_rows.get(widget_id) if widget_id else None
+        self.widget_list.unselect_all()
         if row is not None:
             self.widget_list.select_row(row)
-        else:
-            self.widget_list.unselect_all()
         self._building = False
         self._refresh_inspector()
         self._refresh_bar()
@@ -2427,9 +2504,48 @@ class StreamyWindow(AppWindow):
         if not self._building:
             self.select(widget_id)
 
-    def _widget_row_selected(self, _list, row) -> None:
-        if not self._building:
-            self.select(getattr(row, "widget_id", None) if row is not None else None)
+    def _widget_rows_changed(self, listbox) -> None:
+        if self._building:
+            return
+        rows = sorted(listbox.get_selected_rows(), key=lambda r: r.get_index())
+        ids = [r.widget_id for r in rows if getattr(r, "widget_id", None)]
+        focus = listbox.get_focus_child()
+        primary = getattr(focus, "widget_id", None) if focus in rows else None
+        self.set_selection(ids, primary=primary)
+
+    def set_selection(self, ids: list[str], primary: str | None = None) -> None:
+        """Select several widgets (the list, the canvas and the Inspector agree); ``primary`` (else the last)
+        is the one the canvas's handles and the bar name."""
+        scene = self.project.active_scene
+        ids = [i for i in dict.fromkeys(ids) if scene is not None and scene.widget(i) is not None]
+        if len(ids) <= 1:
+            self.select(ids[0] if ids else None)
+            return
+        if primary in ids:
+            ids = [i for i in ids if i != primary] + [primary]
+        self.selection, self.selected = ids, ids[-1]
+        self._show_selection()
+        self._refresh_inspector()
+        self._refresh_bar()
+
+    def _show_selection(self) -> None:
+        """The list's rows and the edited canvas's boxes show ``self.selection``."""
+        self._building = True
+        self.widget_list.unselect_all()
+        for widget_id in self.selection:
+            row = self._widget_rows.get(widget_id)
+            if row is not None:
+                self.widget_list.select_row(row)
+        self._building = False
+        scene = self.project.active_scene
+        pictures = [i for i in self.selection if scene is not None and (w := scene.widget(i)) and w.has_picture]
+        for fmt, arrange in self.arranges.items():
+            if fmt != self.project.format:
+                arrange.set_selected(None)
+            elif hasattr(arrange, "set_selection"):
+                arrange.set_selection(pictures or None)
+            else:
+                arrange.set_selected(pictures[-1] if pictures else None)
 
     # ── Direct manipulation ──
 
@@ -2591,53 +2707,85 @@ class StreamyWindow(AppWindow):
         Toast.show(self.host, f"Deleted {removed.name}", kind="deleted", undo=self.undo)
 
     def duplicate_selected(self) -> None:
-        w = self._selected_widget()
+        ws = self._targets()
         scene = self.project.active_scene
-        if w is None or scene is None:
+        if not ws or scene is None:
             return
         import copy
 
         from .model import new_id
 
-        self._checkpoint(f"Duplicate {w.name}")
-        twin = copy.deepcopy(w)
-        twin.id = new_id(w.kind)
-        twin.name = ""
-        twin.name = self.project._next_widget_name(scene, w.kind)
-        twin.source.pop("restore-token", None)  # a second share: its own picker
-        if w.has_picture:
-            twin.x, twin.y = w.x + 40, w.y + 40
-        scene.widgets.insert(scene.widgets.index(w) + 1, twin)
-        self.selected = twin.id
+        self._checkpoint(self._count(ws, "Duplicate", "Duplicate"))
+        twins = []
+        for w in ws:
+            twin = copy.deepcopy(w)
+            twin.id = new_id(w.kind)
+            twin.name = ""
+            twin.name = self.project._next_widget_name(scene, w.kind)
+            twin.source.pop("restore-token", None)  # a second share: its own picker
+            if w.has_picture:
+                twin.x, twin.y = w.x + 40, w.y + 40
+            scene.widgets.insert(scene.widgets.index(w) + 1, twin)
+            twins.append(twin.id)
+        self.selected, self.selection = twins[-1], twins
         self._changed(structure=True)
         self._show_scene()
         self._ask_missing_sources()
+        if len(twins) > 1:
+            self.set_selection(twins)
 
     def toggle_hidden(self) -> None:
-        w = self._selected_widget()
-        if w is not None:
-            self._set_visible(w, not w.visible)
+        """Hide them all (any shown), or show them all."""
+        ws = [w for w in self._targets() if w.has_picture]
+        if ws:
+            self._set_visible_all(ws, not any(w.visible for w in ws))
 
     def _set_visible(self, w: Widget, visible: bool) -> None:
-        self._checkpoint(("Show " if visible else "Hide ") + w.name)
-        w.visible = visible
+        self._set_visible_all([w], visible)
+
+    def _set_visible_all(self, ws: list[Widget], visible: bool) -> None:
+        self._checkpoint(self._count(ws, "Show" if visible else "Hide", "Show" if visible else "Hide"))
+        for w in ws:
+            w.visible = visible
         self._show_scene()
         self._changed(structure=True)
 
     def toggle_lock(self) -> None:
-        w = self._selected_widget()
-        if w is not None:
-            self._checkpoint(("Unlock " if w.locked else "Lock ") + w.name)
-            w.locked = not w.locked
-            self._changed(structure=True)
+        """Lock them all (any unlocked), or unlock them all."""
+        ws = self._targets()
+        if not ws:
+            return
+        lock = not all(w.locked for w in ws)
+        self._checkpoint(self._count(ws, "Lock" if lock else "Unlock", "Lock" if lock else "Unlock"))
+        for w in ws:
+            w.locked = lock
+        self._changed(structure=True)
 
     def restack(self, direction: int) -> None:
-        w = self._selected_widget()
+        """To the front (or back), keeping their order among themselves."""
+        ws = self._targets()
         scene = self.project.active_scene
-        if w is None or scene is None:
+        if not ws or scene is None:
             return
         self._checkpoint("Bring to front" if direction > 0 else "Send to back")
-        self.project.move_widget(w.id, len(scene.widgets) if direction > 0 else 0)
+        for w in (ws if direction > 0 else reversed(ws)):
+            self.project.move_widget(w.id, len(scene.widgets) if direction > 0 else 0)
+        self.engine.restack(scene)
+        self._changed(structure=True)
+
+    def restack_all_by(self, step: int) -> None:
+        """One place forward (or backward) each, past the next widget that is not selected."""
+        ws = self._targets()
+        scene = self.project.active_scene
+        if not ws or scene is None:
+            return
+        self._checkpoint("Bring forward" if step > 0 else "Send backward")
+        chosen = {w.id for w in ws}
+        for w in (reversed(ws) if step > 0 else ws):
+            index = scene.widgets.index(w)
+            target = index + (1 if step > 0 else -1)
+            if 0 <= target < len(scene.widgets) and scene.widgets[target].id not in chosen:
+                self.project.move_widget(w.id, target)
         self.engine.restack(scene)
         self._changed(structure=True)
 
@@ -2649,6 +2797,9 @@ class StreamyWindow(AppWindow):
         scene = self.project.active_scene
         w = scene.widget(widget_id) if scene else None
         if w is None:
+            return
+        if len(self._selected_ids()) > 1 and w.id in self._selected_ids():
+            self._selection_menu(anchor, x, y)
             return
         self.select(w.id)
         rows: list = [MenuItem("Change source…", icon="monitor-up", on_activate=lambda: self._grow("source"))]
@@ -2696,6 +2847,54 @@ class StreamyWindow(AppWindow):
                  MenuItem("Delete", icon="trash-2", danger=True, shortcut="Delete", on_activate=self.delete_selected)]
         FloatingMenu(rows, label=w.name, title=w.name).popup(anchor, x=x, y=y)
         self._last_menu = rows  # tests activate each row
+
+    def _selection_menu(self, anchor: Gtk.Widget, x: float | None = None, y: float | None = None) -> None:
+        """Several widgets' menu: what applies to all of them at once (one undo step each)."""
+        from luma_appkit.action_bubble import FloatingMenu
+
+        ws = self._targets()
+        pictures = [w for w in ws if w.has_picture]
+        title = f"{len(ws)} widgets"
+        rows: list = []
+        if pictures:
+            order = [MenuItem("Bring to front", icon="bring-to-front", shortcut="Ctrl+]", on_activate=lambda: self.restack(1)),
+                     MenuItem("Bring forward", icon="arrow-up", on_activate=lambda: self.restack_all_by(1)),
+                     MenuItem("Send backward", icon="arrow-down", on_activate=lambda: self.restack_all_by(-1)),
+                     MenuItem("Send to back", icon="send-to-back", shortcut="Ctrl+[", on_activate=lambda: self.restack(-1))]
+            align = [MenuItem(label, icon=icon, on_activate=lambda h=how: self._align_selection(h))
+                     for how, label, icon in self.GROUP_ALIGN]
+            current = self._shared_look(pictures)
+            look = [MenuItem(label, icon=icon, selected=key == current, on_activate=lambda k=key: self.apply_look_all(k))
+                    for key, (label, icon, _v) in self.LOOKS.items()]
+            rows += [MenuItem("Order", icon="layers", submenu=order),
+                     MenuItem("Align", icon="align-center-horizontal", submenu=align),
+                     MenuItem("Look", icon="squircle", submenu=look), None]
+            shown = any(w.visible for w in pictures)
+            rows.append(MenuItem("Hide" if shown else "Show", icon="eye-off" if shown else "eye", shortcut="Ctrl+H",
+                                 on_activate=self.toggle_hidden))
+        locked = all(w.locked for w in ws)
+        rows += [MenuItem("Duplicate", icon="copy", on_activate=self.duplicate_selected),
+                 MenuItem("Unlock" if locked else "Lock", icon="lock-open" if locked else "lock", on_activate=self.toggle_lock),
+                 None,
+                 MenuItem(f"Delete {len(ws)} widgets", icon="trash-2", danger=True, shortcut="Delete",
+                          on_activate=self.delete_selected)]
+        FloatingMenu(rows, label=title, title=title).popup(anchor, x=x, y=y)
+        self._last_menu = rows  # tests activate each row
+
+    #: Several widgets aligned within their box (LumaUI align_rects).
+    GROUP_ALIGN = (("left", "Align left", "align-start-vertical"), ("centre", "Align centres", "align-center-vertical"),
+                   ("right", "Align right", "align-end-vertical"), ("top", "Align tops", "align-start-horizontal"),
+                   ("middle", "Align middles", "align-center-horizontal"), ("bottom", "Align bottoms", "align-end-horizontal"))
+
+    def _align_selection(self, how: str, distribute: str | None = None) -> None:
+        from luma_appkit import align_rects, distribute_rects
+
+        rects = {w.id: (w.x, w.y, w.width, w.height) for w in self._targets() if w.has_picture}
+        if len(rects) < 2:
+            return
+        moved = distribute_rects(rects, distribute) if distribute else align_rects(rects, how, canvas=self.project.canvas)
+        self._group_committed(moved)
+        self._refresh_inspector()
 
     def _canvas_menu(self, x: float, y: float) -> bool:
         """Right click (or long press) on the canvas: the menu of the widget under it, topmost first."""
@@ -2796,6 +2995,9 @@ class StreamyWindow(AppWindow):
     def restack_by(self, w: Widget, step: int) -> None:
         scene = self.project.active_scene
         if scene is None:
+            return
+        if len(self._selected_ids()) > 1 and w.id in self._selected_ids():
+            self.restack_all_by(step)
             return
         index = scene.widgets.index(w)
         self._checkpoint("Bring forward" if step > 0 else "Send backward")

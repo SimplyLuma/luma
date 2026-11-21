@@ -83,12 +83,12 @@ class LayoutTest(unittest.TestCase):
                 store.save_as(" ", mine)
             again = LayoutStore(path)
             self.assertEqual(tree(again.current), mine)
-            self.assertEqual(tree(again.get(key))["ratio"], 0.8)
+            self.assertEqual(tree(again.get(key))["start"]["ratio"], 0.8)  # the Inspector joined at the right
             self.assertEqual([label for _k, label in again.names()],
                              ["Default", "Insets beside", "Compact", "Talk show"])
             preset = again.get("side")
             preset["ratio"] = 0.1
-            self.assertEqual(again.get("side")["ratio"], 0.72)  # presets are copied, never changed
+            self.assertEqual(again.get("side")["start"]["ratio"], 0.72)  # presets are copied, never changed
             again.forget("Talk show")
             self.assertEqual(len(LayoutStore(path).names()), 3)
             with self.assertRaises(KeyError):
