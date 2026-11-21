@@ -40,7 +40,7 @@ BuildRequires:  python3-gobject
 BuildRequires:  python3-cairo
 BuildRequires:  gtk4 >= 4.22
 BuildRequires:  libadwaita >= 1.9
-BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.139
+BuildRequires:  luma-developer-platform >= 0.1.0-1.luma.143
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  dbus-daemon
 
@@ -49,7 +49,7 @@ Requires:       python3-gobject
 Requires:       gtk4 >= 4.22
 Requires:       libadwaita >= 1.9
 # Dock (fitted, movable seams), NavigationList, ArrangeView with crop, ColorPicker and the AudioMeter.
-Requires:       luma-developer-platform >= 0.1.0-1.luma.139
+Requires:       luma-developer-platform >= 0.1.0-1.luma.143
 Requires:       google-figtree-fonts
 # The program graph: GL upload, mixing and conversion (base), FLV/MKV/MP4
 # muxers, PulseAudio capture and level meters (good), RTMP(S), VA-API
@@ -171,6 +171,15 @@ gtk4-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1
 - Inspector beside the island (Source, Look, Arrange; the scene with nothing
   selected); menus at the pointer with Order/Size/Align/Look submenus; inline
   rename in rows; per-field Look overrides with a sync key; panel moves undo
+- Landscape and Vertical are separate preview panels with canvas chips; each
+  source is captured once and teed to one compositor per canvas, which runs
+  only while its panel shows or an output takes it; edits go to the canvas
+  clicked
+- Window casts negotiate alpha formats only, opaque when none is offered
+- Every camera on the portal is listed (V4L2 and libcamera, one row each);
+  sound devices get short names; monitoring is one "Hear it on" choice
+- Stills and placeholder cards are uploaded once; per-frame layer reports
+  run only while something changes
 
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.7
 - lumaframe: content-x/-y/-width/-height pick the source region before

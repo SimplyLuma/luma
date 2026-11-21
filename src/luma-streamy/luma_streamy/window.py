@@ -34,6 +34,10 @@ from .layouts import PRESETS, LayoutStore  # noqa: E402
 from .undo import History  # noqa: E402
 from .model import FORMATS, KINDS, ModelError, Project, ProjectStore, Widget  # noqa: E402
 
+
+def lumaui_set_class(widget: Gtk.Widget, name: str, on: bool) -> None:
+    (widget.add_css_class if on else widget.remove_css_class)(name)
+
 APP_ID = "org.projectluma.Streamy"
 STAGE_MARGIN = 16
 SECRET_KIND = "stream-key"
@@ -149,7 +153,7 @@ class StreamyWindow(AppWindow):
             self._fill_fake_sources()
 
         self.engine = engine or Engine(sources=self._source_for)
-        self.engine.effects_of = lambda widget: self.project.effects_on(widget)
+        self.engine.view_of = lambda widget, fmt: self.project.view_on(widget, fmt)
         if self.portals is not None:
             self.portals.on_cameras = self._cameras_changed
             self.portals.on_ready = lambda _widget_id: self._show_scene()
@@ -165,7 +169,8 @@ class StreamyWindow(AppWindow):
         #: Widgets whose outline follows the picture on screen (a drag, until the picture catches up):
         #: widget id -> the committed rect, or None while the drag goes on.
         self._following: dict[str, tuple | None] = {}
-        self.engine.connect("preview-changed", lambda engine: self.picture.set_paintable(engine.paintable))
+        self.engine.connect("preview-changed", lambda engine, fmt: self.pictures[fmt].set_paintable(
+            engine.paintable_of(fmt)))
 
         self._build_sidebar()
         self._build_canvas()
@@ -235,10 +240,10 @@ class StreamyWindow(AppWindow):
                 Command("app.destinations", "Destinations…", self.edit_destination, icon="radio-tower"),
                 Command("app.recordings", "Show recordings", self.show_recordings, icon="folder-open"),
             )),
-            CommandGroup("Canvas", tuple(
-                Command(f"view.{key}", label, lambda k=key: self.set_format(k),
+            CommandGroup("Canvases", tuple(
+                Command(f"view.{key}", label, lambda k=key: self._canvas_command(k),
                         icon="rectangle-horizontal" if key == "landscape" else "smartphone",
-                        checked=lambda k=key: self.project.format == k)
+                        checked=lambda k=key: k in getattr(self, "canvas_on", ()))
                 for key, (label, _w, _h) in FORMATS.items())),
             CommandGroup("Layouts", layouts + (
                 Command("layout.save", "Save layout…", self.save_layout, icon="download"),)),
@@ -265,23 +270,76 @@ class StreamyWindow(AppWindow):
         self._scene_filter = ""
 
     def _build_canvas(self) -> None:
-        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.FILL, can_shrink=True)
-        self.picture.add_css_class("streamy-program")
-        self.arrange = ArrangeView(self.picture, canvas=self.project.canvas, on_select=self._canvas_selected,
-                                   on_change=self._canvas_changed, on_commit=self._canvas_committed,
-                                   on_activate=lambda wid: self._grow("look"),
-                                   on_crop=self._canvas_cropped, on_crop_commit=self._canvas_crop_committed,
-                                   on_drag_mode=self._drag_mode)
-        # The video always has room around it, whatever the stage's size.
-        self.arrange.set_fit_margins(STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN)
-        self.arrange.update_property([Gtk.AccessibleProperty.LABEL], ["Scene"])
-        menu = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
-        menu.connect("pressed", lambda g, _n, x, y: self._canvas_menu(x, y) and
-                     g.set_state(Gtk.EventSequenceState.CLAIMED))
-        self.arrange.add_controller(menu)
-        hold = Gtk.GestureLongPress(touch_only=True)
-        hold.connect("pressed", lambda g, x, y: self._canvas_menu(x, y) and g.set_state(Gtk.EventSequenceState.CLAIMED))
-        self.arrange.add_controller(hold)
+        """A preview per canvas (Landscape, Vertical), each its own panel; an edit applies to the canvas
+        it is made on, which becomes the one edited (``project.format``)."""
+        self.pictures: dict[str, Gtk.Picture] = {}
+        self.arranges: dict[str, ArrangeView] = {}
+        for fmt, (_label, cw, ch) in FORMATS.items():
+            picture = Gtk.Picture(content_fit=Gtk.ContentFit.FILL, can_shrink=True)
+            picture.add_css_class("streamy-program")
+            on = self._on_canvas
+            arrange = ArrangeView(picture, canvas=(cw, ch), on_select=on(fmt, self._canvas_selected),
+                                  on_change=on(fmt, self._canvas_changed), on_commit=on(fmt, self._canvas_committed),
+                                  on_activate=on(fmt, lambda wid: self._grow("look")),
+                                  on_crop=on(fmt, self._canvas_cropped),
+                                  on_crop_commit=on(fmt, self._canvas_crop_committed),
+                                  on_drag_mode=self._drag_mode)
+            # The video always has room around it, whatever the stage's size.
+            arrange.set_fit_margins(STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN, STAGE_MARGIN)
+            arrange.update_property([Gtk.AccessibleProperty.LABEL], [f"{FORMATS[fmt][0].split()[0]} canvas"])
+            menu = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+            menu.connect("pressed", lambda g, _n, x, y, f=fmt: self._on_canvas(f, self._canvas_menu)(x, y) and
+                         g.set_state(Gtk.EventSequenceState.CLAIMED))
+            arrange.add_controller(menu)
+            hold = Gtk.GestureLongPress(touch_only=True)
+            hold.connect("pressed", lambda g, x, y, f=fmt: self._on_canvas(f, self._canvas_menu)(x, y) and
+                         g.set_state(Gtk.EventSequenceState.CLAIMED))
+            arrange.add_controller(hold)
+            # A press anywhere on a canvas makes it the one edited (before its own gestures run).
+            press = Gtk.GestureClick(button=0, propagation_phase=Gtk.PropagationPhase.CAPTURE)
+            press.connect("pressed", lambda *_a, f=fmt: self._edit_canvas(f))
+            arrange.add_controller(press)
+            self.pictures[fmt], self.arranges[fmt] = picture, arrange
+
+    @property
+    def arrange(self) -> ArrangeView:
+        """The canvas edited."""
+        return self.arranges[self.project.format]
+
+    @property
+    def picture(self) -> Gtk.Picture:
+        return self.pictures[self.project.format]
+
+    def _on_canvas(self, fmt: str, callback):
+        """``callback`` for a gesture on canvas ``fmt``: that canvas is the one edited first."""
+        def run(*args):
+            self._edit_canvas(fmt)
+            return callback(*args)
+        return run
+
+    def _edit_canvas(self, fmt: str) -> None:
+        """Edits go to canvas ``fmt`` (the panel last clicked): placements switch losslessly; the
+        selection moves to its preview and the Inspector names it."""
+        if fmt == self.project.format or fmt not in FORMATS:
+            return
+        self.project.set_format(fmt)
+        for key, arrange in self.arranges.items():
+            arrange.set_selected(self.selected if key == fmt and self._selected_picture() else None)
+        for key, tile in getattr(self, "preview_tiles", {}).items():
+            lumaui_set_class(tile, "streamy-editing", key == fmt)
+        self._refresh_inspector()
+        self._refresh_bar()
+
+    def _selected_picture(self) -> bool:
+        scene = self.project.active_scene
+        w = scene.widget(self.selected) if scene is not None and self.selected else None
+        return w is not None and w.has_picture
+
+    def _sync_rect(self, w: Widget) -> None:
+        """Every preview's box for ``w`` where its canvas has it (a linked placement follows)."""
+        for fmt, arrange in self.arranges.items():
+            view = self.project.view_on(w, fmt)
+            arrange.set_item_rect(w.id, view.x, view.y, view.width, view.height)
 
     def _build_insets(self) -> None:
         """The island: the preview as the bare stage; Widgets and Audio side by side under it, as tall
@@ -307,13 +365,36 @@ class StreamyWindow(AppWindow):
         # by side, turning one on shows it instead of the other; the last one on stays on.
         from luma_appkit import ToggleChip
 
-        self.canvas_chips = {key: ToggleChip(FORMATS[key][0].split()[0], icon="rectangle-horizontal"
-                                             if key == "landscape" else "smartphone",
-                                             active=self.project.format == key,
-                                             on_toggle=lambda on, k=key: self._canvas_chip(k, on))
-                             for key in FORMATS}
-        self.preview_tile = DockTile("preview", "Preview", "monitor", self.arrange, main=True,
-                                     actions=list(self.canvas_chips.values()))
+        saved = self.settings.get("canvases")
+        if os.environ.get("STREAMY_CANVASES"):  # check runs: which canvases start on
+            saved = os.environ["STREAMY_CANVASES"].split(",")
+        self.canvas_on: set[str] = {f for f in saved if f in FORMATS} if isinstance(saved, list) and saved else \
+            set(FORMATS)
+        #: Each preview panel's header: its own canvas's chip as its title (on = composited), and the other
+        #: canvas's chip while that one is off (to turn it on, which opens its panel).
+        self.canvas_chips: list[tuple[str, ToggleChip]] = []
+        self._chip_owner: dict[ToggleChip, str] = {}
+        self.preview_tiles: dict[str, DockTile] = {}
+        for fmt in FORMATS:
+            chips = []
+            for key in FORMATS:
+                # The panel's own glyph leads its header: its own chip needs none.
+                chip = ToggleChip(FORMATS[key][0].split()[0], icon=None if key == fmt else
+                                  "rectangle-horizontal" if key == "landscape" else "smartphone",
+                                  active=key in self.canvas_on,
+                                  on_toggle=lambda on, k=key: self._canvas_chip(k, on))
+                self.canvas_chips.append((key, chip))
+                self._chip_owner[chip] = fmt
+                chips.append(chip)
+            chips.sort(key=lambda c, f=fmt: self._chip_key(c) != f)
+            tile = DockTile(fmt, FORMATS[fmt][0].split()[0], "rectangle-horizontal" if fmt == "landscape"
+                            else "smartphone", self.arranges[fmt], main=True, actions=chips, **self._closable())
+            tile.add_css_class("streamy-preview")
+            tile.title_label.set_visible(False)  # its own chip names it
+            tile.connect("notify::width", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
+            tile.connect("notify::height", lambda *_a, f=fmt: GLib.idle_add(self._size_preview, f))
+            self.preview_tiles[fmt] = tile
+        self.preview_tile = self.preview_tiles["landscape"]
         # The panels belong to the app, not the scene: their sizes are the saved layout's (a person's seam
         # drags), never their content's, so switching scenes moves nothing; long lists scroll inside.
         # On a phone each is a key over the preview and a bottom drawer, so the preview keeps the screen.
@@ -330,20 +411,122 @@ class StreamyWindow(AppWindow):
         widgets.add_controller(hold)
         self.widgets_tile = DockTile("widgets", "Widgets", "layers", widgets, phone="drawer", actions=[add])
         self.audio_tile = DockTile("audio", "Audio", "volume-2", audio, phone="drawer")
-        self.dock = Dock([self.preview_tile, self.widgets_tile, self.audio_tile], layout=self.layouts.current,
-                         under_bar=True, on_layout=self.layouts.remember)
+        self.dock = Dock([*self.preview_tiles.values(), self.widgets_tile, self.audio_tile],
+                         layout=self.layouts.current, under_bar=True, on_layout=self.layouts.remember)
         self.dock.on_rearrange = self._panels_moved
-        self.preview_tile.connect("notify::width", lambda *_a: GLib.idle_add(self._size_preview))
+        if hasattr(self.dock, "on_close"):
+            self.dock.on_close = self._panel_closing
+        for fmt in FORMATS:
+            if fmt not in self.canvas_on and self._is_open(fmt) and hasattr(self.dock, "close_tile"):
+                self.dock.close_tile(fmt)
+        lumaui_set_class(self.preview_tiles[self.project.format], "streamy-editing", True)
+        self._sync_canvas_chips()
 
-    def _size_preview(self) -> bool:
-        x0, _y0 = self.arrange.canvas_to_view(0, 0)
-        x1, _y1 = self.arrange.canvas_to_view(*self.project.canvas)
+    @staticmethod
+    def _closable() -> dict:
+        import inspect
+
+        return {"closable": True} if "closable" in inspect.signature(DockTile.__init__).parameters else {}
+
+    def _is_open(self, key: str) -> bool:
+        return self.dock.is_open(key) if hasattr(self.dock, "is_open") else True
+
+    def _size_preview(self, fmt: str = "landscape") -> bool:
+        arrange = self.arranges[fmt]
+        _label, cw, ch = FORMATS[fmt]
+        x0, _y0 = arrange.canvas_to_view(0, 0)
+        x1, _y1 = arrange.canvas_to_view(cw, ch)
         if x1 - x0 > 8:
             # Device pixels at the surface's own (fractional) scale: the picture is drawn 1:1.
             surface = self.get_surface()
             scale = surface.get_scale() if surface is not None and hasattr(surface, "get_scale") else None
-            self.engine.set_preview_size(round((x1 - x0) * (scale or self.get_scale_factor())), 0)
+            self.engine.set_preview_size(round((x1 - x0) * (scale or self.get_scale_factor())), 0, fmt=fmt)
         return False
+
+    # ── Canvases on and off ──
+
+    def _shown_canvases(self) -> list[str]:
+        """The canvases composited for the screen: on, with their panel open (the edited one first)."""
+        shown = [f for f in FORMATS if f in self.canvas_on and self._is_open(f)]
+        shown.sort(key=lambda f: f != self.project.format)
+        return shown
+
+    def _sync_canvases(self) -> None:
+        self.engine.set_canvases(self._shown_canvases())
+        if self.project.format not in self.canvas_on or not self._is_open(self.project.format):
+            other = next((f for f in self._shown_canvases()), None)
+            if other is not None:
+                self._edit_canvas(other)
+        self._sync_canvas_chips()
+
+    def _canvas_used(self, fmt: str) -> list[str]:
+        """What sends canvas ``fmt`` now, by name."""
+        names = []
+        for kind, output in self.engine.outputs.items():
+            if output.fmt == fmt:
+                names.append("the recording" if kind == "record" else "the stream")
+        fanout = getattr(self, "outputs", None)
+        if fanout is not None and hasattr(fanout, "live_rows"):
+            names += [row for row in fanout.live_rows(fmt)]
+        return names
+
+    def _canvas_chip(self, key: str, on: bool) -> bool:
+        if on:
+            self.canvas_on.add(key)
+            if not self._is_open(key) and hasattr(self.dock, "open_tile"):
+                self._open_canvas_panel(key)
+            self._setting("canvases", sorted(self.canvas_on))
+            self._sync_canvases()
+            return True
+        if len(self.canvas_on - {key}) == 0:
+            Toast.show(self.host, "One canvas stays on", kind="info")
+            return False
+        used = self._canvas_used(key)
+        if used:
+            label = FORMATS[key][0].split()[0]
+            self.center.grow("canvas-off", panel_list([
+                PanelHeading(f"Turning {label} off ends {', '.join(used)}"),
+                PanelRow(f"End and turn {label} off", icon="square", destructive=True,
+                         on_activate=lambda: self._canvas_off(key, end=True)),
+                PanelRow("Keep it on", icon="x")]))
+            return False
+        self._canvas_off(key)
+        return True
+
+    def _canvas_command(self, key: str) -> None:
+        """App menu › Canvases: a canvas on with its panel closed shows its panel again; else on ↔ off."""
+        if key in self.canvas_on and not self._is_open(key) and hasattr(self.dock, "open_tile"):
+            self._open_canvas_panel(key)
+            self._sync_canvases()
+        else:
+            self._canvas_chip(key, key not in self.canvas_on)
+        self._sync_canvas_chips()
+
+    def _canvas_off(self, key: str, *, end: bool = False) -> None:
+        if end:
+            for kind, output in list(self.engine.outputs.items()):
+                if output.fmt == key:
+                    (self.engine.stop_stream if kind == "stream" else self.engine.stop_record)()
+        self.canvas_on.discard(key)
+        if self._is_open(key) and hasattr(self.dock, "close_tile"):
+            self.dock.close_tile(key)
+        self._setting("canvases", sorted(self.canvas_on))
+        self._sync_canvases()
+
+    def _open_canvas_panel(self, key: str) -> None:
+        """A canvas's panel opens beside the other preview: Vertical to its right at 9:16 of its height."""
+        other = next((f for f in FORMATS if f != key and self._is_open(f)), None)
+        size = None
+        if other is not None:
+            height = self.preview_tiles[other].get_height() - 40  # less its header
+            _l, cw, ch = FORMATS[key]
+            size = max(160, int(height * cw / ch) + 2 * STAGE_MARGIN)
+        self.dock.open_tile(key, beside=other, edge="right" if key == "vertical" else "left", size=size)
+
+    def _panel_closing(self, key: str):
+        """Closing a preview panel hides it; the canvas stays on (and composited while sent)."""
+        GLib.idle_add(lambda: self._sync_canvases() and False)
+        return True
 
     def _body(self) -> Gtk.Widget:
         from luma_appkit import DetailsPane, Island
@@ -400,6 +583,7 @@ class StreamyWindow(AppWindow):
     # ── Engine and sources ──
 
     def _start_engine(self) -> bool:
+        self.engine.set_canvases(self._shown_canvases())
         try:
             self.engine.start(self.project)
         except EngineError as error:
@@ -604,7 +788,7 @@ class StreamyWindow(AppWindow):
             bw, bh = (w.width, w.width / aspect) if w.width / w.height < aspect else (w.height * aspect, w.height)
             w.x, w.y, w.width, w.height = cx - bw / 2, cy - bh / 2, bw, bh
             self.engine.update_widget(w)
-            self.arrange.set_item_rect(w.id, w.x, w.y, w.width, w.height)
+            self._sync_rect(w)
         self._changed()
         self._refresh_bar()
 
@@ -781,7 +965,6 @@ class StreamyWindow(AppWindow):
             if self.selected and self.selected not in after:
                 self.selected = None
             self.formats.set_current(self.project.format)
-            self.arrange.set_canvas_size(*self.project.canvas)
             self._label_history()
             self._changed(structure=True)
             self._show_scene()
@@ -859,19 +1042,21 @@ class StreamyWindow(AppWindow):
 
     def _refresh_canvas(self) -> None:
         scene = self.project.active_scene
-        self.arrange.clear()
-        self.arrange.set_canvas_size(*self.project.canvas)
-        if scene is None:
-            return
-        for w in scene.widgets:
-            if not w.has_picture:
+        for fmt, arrange in self.arranges.items():
+            arrange.clear()
+            arrange.set_canvas_size(*FORMATS[fmt][1:])
+            if scene is None:
                 continue
-            add_arrange_item(self.arrange, ArrangeItem(w.id, w.name, w.x, w.y, w.width, w.height, locked=w.locked,
-                                                       visible=w.visible, keeps_aspect=True,
-                                                       croppable=True,
-                                                       crop=(w.effects.crop_left, w.effects.crop_top,
-                                                             w.effects.crop_right, w.effects.crop_bottom)))
-        if self.selected and scene.widget(self.selected) and scene.widget(self.selected).has_picture:
+            for w in scene.widgets:
+                if not w.has_picture:
+                    continue
+                v = self.project.view_on(w, fmt)
+                add_arrange_item(arrange, ArrangeItem(w.id, w.name, v.x, v.y, v.width, v.height, locked=w.locked,
+                                                      visible=w.visible, keeps_aspect=True, croppable=True,
+                                                      crop=(v.effects.crop_left, v.effects.crop_top,
+                                                            v.effects.crop_right, v.effects.crop_bottom)))
+        if scene is not None and self.selected and scene.widget(self.selected) and \
+                scene.widget(self.selected).has_picture:
             self.arrange.set_selected(self.selected)
 
     def _refresh_widgets(self) -> None:
@@ -950,13 +1135,15 @@ class StreamyWindow(AppWindow):
             pane.show(open=True, main=True)
         w = self._selected_widget()
         self._inspector_for = w.id if w is not None else None
+        # With both canvases on, the Inspector names the one its edits go to.
+        on = f" · {FORMATS[self.project.format][0].split()[0]}" if len(getattr(self, "canvas_on", ())) > 1 else ""
         if w is None:
             scene = self.project.active_scene
-            pane.set_title(scene.name if scene else "Scene")
+            pane.set_title((scene.name if scene else "Scene") + on)
             if scene is not None:
                 self._inspector_section("scene", "Scene", self._scene_panel(scene))
             return
-        pane.set_title(w.name)
+        pane.set_title(w.name + (on if w.has_picture else ""))
         self._inspector_section("source", "Source", self._source_panel(w))
         if w.has_picture:
             self._inspector_section("look", "Look", self._look_panel(w))
@@ -1143,14 +1330,14 @@ class StreamyWindow(AppWindow):
         return rows
 
     def _device_rows(self, w: Widget, kind: str) -> list:
+        """The Source's devices, inline, the chosen one marked."""
         current = w.source.get("device")
-        heading = "Microphone" if kind == "source" else "Output heard"
-        rows: list = [PanelHeading(heading),
-                      PanelRow(self.devices.words(kind, None), icon="mic" if kind == "source" else "speaker",
-                               selected=not current, closes=False,
-                               on_activate=lambda: self._choose_device(w, None))]
+        icon = "mic" if kind == "source" else "speaker"
+        default = self.devices.default(kind)
+        rows: list = [PanelRow("System default", icon=icon, subtitle=default.label if default else None,
+                               selected=not current, closes=False, on_activate=lambda: self._choose_device(w, None))]
         for device in self.devices.of(kind):
-            rows.append(PanelRow(device.label, icon="mic" if kind == "source" else "speaker",
+            rows.append(PanelRow(device.label, icon=icon, subtitle=self.devices.subtitle(device),
                                  selected=current == device.name, closes=False,
                                  on_activate=lambda d=device: self._choose_device(w, d.name)))
         if not self.devices.of(kind):
@@ -1158,15 +1345,21 @@ class StreamyWindow(AppWindow):
         return rows
 
     def _monitor_rows(self, w: Widget) -> list:
-        current = w.source.get("monitor-device")
+        """Monitoring: Off, Monitor, Monitor + output; while on, one "Hear it on" choice."""
         rows = [PropertyChoice("Monitor", [("off", "Off"), ("only", "Monitor"), ("both", "Monitor + output")],
-                               current=w.monitor, segments=True, on_change=lambda mode: self._set_monitor(w, mode)),
-                PanelRow(self.devices.words("sink", None), icon="headphones", selected=not current, closes=False,
-                         on_activate=lambda: self._set_source(w, "monitor-device", None, "Monitor output"))]
-        for device in self.devices.of("sink"):
-            rows.append(PanelRow(device.label, icon="headphones", selected=current == device.name, closes=False,
-                                 on_activate=lambda d=device: self._set_source(w, "monitor-device", d.name,
-                                                                               "Monitor output")))
+                               current=w.monitor, segments=True, on_change=lambda mode: self._set_monitor(w, mode))]
+        if w.monitor != "off":
+            default = self.devices.default("sink")
+            choices = [("", f"System default ({default.label})" if default else "System default")]
+            for device in self.devices.of("sink"):
+                extra = self.devices.subtitle(device)
+                choices.append((device.name, f"{device.label} · {extra}" if extra else device.label))
+            current = w.source.get("monitor-device") or ""
+            if current not in {key for key, _l in choices}:
+                current = ""
+            rows.append(PropertyChoice("Hear it on", choices, current=current,
+                                       on_change=lambda key: self._set_source(w, "monitor-device", key or None,
+                                                                              "Monitor output")))
         return rows
 
     def _gain_slider(self, w: Widget) -> Gtk.Widget:
@@ -1394,7 +1587,7 @@ class StreamyWindow(AppWindow):
         self._checkpoint(f"Match {self._primary_words()}")
         self.project.match_primary(w.id)
         self.engine.update_widget(w)
-        self.arrange.set_item_rect(w.id, w.x, w.y, w.width, w.height)
+        self._sync_rect(w)
         self._changed()
         self._regrow("arrange")
 
@@ -1822,12 +2015,15 @@ class StreamyWindow(AppWindow):
                                     detail=self._stream_words())
             elif self.recording_since is not None:
                 self.readout.update(meta=clock(time.monotonic() - self.recording_since))
-        self._update_thumbnail()
+        # The sidebar picture every 3 s: rendering it costs the window's thread a texture import.
+        self._ticks = getattr(self, "_ticks", 0) + 1
+        if self._ticks % 3 == 1:
+            self._update_thumbnail()
         return True
 
     def _update_thumbnail(self) -> None:
-        """The active scene's sidebar picture, at most once a second and only while the sidebar shows."""
-        paintable = self.engine.paintable
+        """The active scene's sidebar picture, every few seconds and only while the sidebar shows."""
+        paintable = self.engine.paintable_of(self.project.primary) or self.engine.paintable
         scene = self.project.active_scene
         if paintable is None or scene is None or not self.sidebar.get_mapped() or not self._on_screen():
             return
@@ -1884,10 +2080,9 @@ class StreamyWindow(AppWindow):
             return
         self.selected = widget_id
         w = self._selected_widget()
-        if w is not None and w.has_picture:
-            self.arrange.set_selected(widget_id)
-        else:
-            self.arrange.set_selected(None)
+        for fmt, arrange in self.arranges.items():
+            arrange.set_selected(widget_id if w is not None and w.has_picture and fmt == self.project.format
+                                 else None)
         self._building = True
         row = self._widget_rows.get(widget_id) if widget_id else None
         if row is not None:
@@ -1914,7 +2109,7 @@ class StreamyWindow(AppWindow):
     def _set_rect(self, w: Widget, x, y, width, height, *, commit: bool) -> None:
         self.project.set_rect(w.id, x, y, width, height)
         self.engine.update_widget(w)
-        self.arrange.set_item_rect(w.id, w.x, w.y, w.width, w.height)
+        self._sync_rect(w)
         if commit:
             self._changed()
 
@@ -1926,10 +2121,16 @@ class StreamyWindow(AppWindow):
         self.project.set_rect(widget_id, x, y, width, height)
         self._following[widget_id] = None
         self.engine.update_widget(w)
+        for fmt, arrange in self.arranges.items():
+            if fmt != self.project.format:  # the other canvas's box follows a linked placement
+                view = self.project.view_on(w, fmt)
+                arrange.set_item_rect(w.id, view.x, view.y, view.width, view.height)
 
-    def _frame_shown(self, _engine, widget_id: str, x: float, y: float, width: float, height: float) -> None:
+    def _frame_shown(self, _engine, fmt: str, widget_id: str, x: float, y: float, width: float,
+                     height: float) -> None:
         """The preview on screen now draws ``widget_id`` here: a dragged widget's outline stays on its picture."""
-        if widget_id not in self._following or not hasattr(self.arrange, "set_item_shown_rect"):
+        if fmt != self.project.format or widget_id not in self._following or \
+                not hasattr(self.arrange, "set_item_shown_rect"):
             return
         self.arrange.set_item_shown_rect(widget_id, x, y, width, height)
         final = self._following[widget_id]
@@ -2361,34 +2562,20 @@ class StreamyWindow(AppWindow):
 
     # ── Canvas format and layouts ──
 
-    def _canvas_chip(self, key: str, on: bool) -> bool:
-        if not on:
-            return False  # one canvas is always on
-        if self.engine.outputs:
-            Toast.show(self.host, "The canvas can't change while recording or live", kind="warning")
-            return False
-        self.set_format(key)
-        return self.project.format == key
+    def _chip_key(self, chip) -> str:
+        return next(k for k, c in self.canvas_chips if c is chip)
 
     def _sync_canvas_chips(self) -> None:
-        for key, chip in getattr(self, "canvas_chips", {}).items():
-            chip.set_active(self.project.format == key)
-            chip.set_live(bool(self.engine.outputs) and self.project.format == key)
+        for key, chip in getattr(self, "canvas_chips", []):
+            chip.set_active(key in self.canvas_on)
+            chip.set_live(bool(self._canvas_used(key)))
+            chip.set_visible(key == self._chip_owner.get(chip) or key not in self.canvas_on)
 
     def set_format(self, key: str) -> None:
-        if key == self.project.format:
-            return
-        if self.engine.outputs:
-            self.formats.set_current(self.project.format)
-            Toast.show(self.host, "The canvas can't change while recording or live", kind="warning")
-            return
-        self._checkpoint("Change canvas")
-        self.project.set_format(key)
-        self.arrange.set_canvas_size(*self.project.canvas)
-        self.engine.set_canvas(self.project)
-        if self.engine.paintable is not None:
-            self.picture.set_paintable(self.engine.paintable)
-        self._changed(structure=True)
+        """Edit canvas ``key`` (turning it on, its panel open, when it was off)."""
+        if key not in self.canvas_on or not self._is_open(key):
+            self._canvas_chip(key, True)
+        self._edit_canvas(key)
 
     def use_layout(self, key: str) -> None:
         layout = self.layouts.get(key)

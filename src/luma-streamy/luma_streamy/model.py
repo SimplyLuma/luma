@@ -264,6 +264,22 @@ class Project:
         _l, pw, ph = FORMATS[self.primary]
         return derive_placement(tuple(float(v) for v in source), (pw, ph), FORMATS[fmt][1:])
 
+    def view_on(self, w: Widget, fmt: str) -> Widget:
+        """``w`` as canvas ``fmt`` draws it: its placement and Look there (``w`` itself on the canvas
+        edited when its Look there is the base one). Never changes ``w``."""
+        effects = self.effects_on(w, fmt)
+        if fmt == self.format and effects is w.effects:
+            return w
+        view = copy.copy(w)
+        view.effects = effects
+        if fmt != self.format and w.has_picture:
+            rect = self.placement_on(w, fmt)
+            if rect is None:
+                _l, cw, ch = FORMATS[self.format]
+                rect = derive_placement((w.x, w.y, w.width, w.height), (cw, ch), FORMATS[fmt][1:])
+            view.x, view.y, view.width, view.height = (float(v) for v in rect)
+        return view
+
     def match_primary(self, widget_id: str) -> Widget:
         """Link a widget's placement on the secondary canvas to the primary again."""
         _scene, w = self.find_widget(widget_id)

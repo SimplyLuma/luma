@@ -62,7 +62,7 @@ def main(mode: str, limit_ms: float | None) -> int:
     window = Gtk.Window(default_width=PREVIEW_WIDTH, default_height=PREVIEW_WIDTH * 9 // 16)
     picture = Gtk.Picture()
     window.set_child(picture)
-    engine.connect("preview-changed", lambda e: picture.set_paintable(e.paintable))
+    engine.connect("preview-changed", lambda e, *_f: picture.set_paintable(e.paintable))
     window.present()
     run_for(300)  # mapped, with its GL context, before the sink asks for it
     engine.set_preview_size(PREVIEW_WIDTH, 0)
@@ -71,8 +71,8 @@ def main(mode: str, limit_ms: float | None) -> int:
 
     pipeline = engine.pipeline
     branch = engine.branches[box.id]
-    frame, pad = branch.elements[-1], branch.pad
-    mixer = pipeline.get_by_name("mixer")
+    frame, pad = branch.frame("landscape"), branch.layers["landscape"].pad
+    mixer = pipeline.get_by_name("mixer-landscape")
     clock = pipeline.get_clock()
     step: dict = {}  # the step under way: {"set": t, "target": (xpos, width), "rev": n, "pts": P, stage: t}
     steps: list[dict] = []

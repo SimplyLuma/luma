@@ -2,8 +2,8 @@
 """Inset layouts: the built-in presets, the person's saved ones, and the last used.
 
 A layout is LumaUI's Dock arrangement: a tree of ``{"split": "h"|"v",
-"ratio", "start", "end"}`` with the tile keys (preview, audio) at
-its leaves (preview, audio). Pure Python; the window hands them to ``Dock.set_layout``.
+"ratio", "start", "end"}`` with the tile keys (landscape, vertical,
+widgets, audio) at its leaves. Pure Python; the window hands them to ``Dock.set_layout``.
 """
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ from pathlib import Path
 
 from .model import atomic_write
 
-TILES = ("preview", "widgets", "audio")
+TILES = ("landscape", "vertical", "widgets", "audio")
+#: Tiles a person may close (they then sit in the layout's "closed" record, LumaUI Dock).
+CLOSABLE = ("landscape", "vertical")
 
 
 def split(orientation: str, ratio: float, start, end) -> dict:
@@ -20,19 +22,46 @@ def split(orientation: str, ratio: float, start, end) -> dict:
 
 
 PRESETS: dict[str, tuple[str, object]] = {
-    "default": ("Default", split("v", 0.72, "preview", split("h", 0.5, "widgets", "audio"))),
-    "side": ("Insets beside", split("h", 0.72, "preview", split("v", 0.5, "widgets", "audio"))),
-    "compact": ("Compact", split("v", 0.88, "preview", split("h", 0.5, "widgets", "audio"))),
+    # Both canvases side by side, Vertical at about 9:16 of the preview's height.
+    "default": ("Default", split("v", 0.72, split("h", 0.7, "landscape", "vertical"),
+                                 split("h", 0.5, "widgets", "audio"))),
+    "side": ("Insets beside", split("h", 0.72, split("h", 0.7, "landscape", "vertical"),
+                                     split("v", 0.5, "widgets", "audio"))),
+    "compact": ("Compact", split("v", 0.88, split("h", 0.7, "landscape", "vertical"),
+                                 split("h", 0.5, "widgets", "audio"))),
 }
 
 
 def valid(layout):
-    """A dock layout holding every tile once: unknown or repeated keys dropped, missing tiles added."""
+    """A dock layout holding every open tile once: unknown or repeated keys dropped, missing tiles added.
+    A layout with closed tiles is ``{"layout": tree, "closed": {key: place}}`` (LumaUI Dock); kept so."""
+    if isinstance(layout, dict) and "layout" in layout and "split" not in layout and "tabs" not in layout:
+        closed = layout.get("closed")
+        closed = {k: v for k, v in closed.items() if k in CLOSABLE} if isinstance(closed, dict) else {}
+        for key in [k for k in closed if _names(layout.get("layout"), k)]:
+            closed.pop(key)  # an open tile is never also closed
+        if len(closed) >= len(CLOSABLE):
+            closed.pop(CLOSABLE[0], None)  # a preview stays open
+        tree = _valid_tree(layout.get("layout"), set(closed))
+        return {"layout": tree, "closed": closed} if closed else tree
+    return _valid_tree(layout, set())
+
+
+def _names(node, key: str) -> bool:
+    if isinstance(node, str):
+        return node == key
+    if isinstance(node, dict) and "tabs" in node:
+        return key in node["tabs"]
+    return isinstance(node, dict) and (_names(node.get("start"), key) or _names(node.get("end"), key))
+
+
+def _valid_tree(layout, closed: set[str]):
     seen: set[str] = set()
 
     def clean(node):
         if isinstance(node, str):
-            if node in TILES and node not in seen:
+            node = "landscape" if node == "preview" else node  # the one preview before two canvases
+            if node in TILES and node not in seen and node not in closed:
                 seen.add(node)
                 return node
             return None
@@ -58,7 +87,17 @@ def valid(layout):
     tree = clean(layout)
     if tree is None:
         return PRESETS["default"][1]
-    if seen == {"preview", "audio"} and isinstance(tree, dict) and "widgets" not in seen:
+    if "vertical" not in seen and "vertical" not in closed and "landscape" in seen:
+        # A layout from before two canvases: Vertical opens to the right of Landscape.
+        def beside(node):
+            if node == "landscape":
+                return split("h", 0.7, "landscape", "vertical")
+            if isinstance(node, dict) and "split" in node:
+                return {**node, "start": beside(node["start"]), "end": beside(node["end"])}
+            return node
+        tree = beside(tree)
+        seen.add("vertical")
+    if seen >= {"landscape", "audio"} and isinstance(tree, dict) and "widgets" not in seen:
         # A layout from before the Widgets inset: Widgets joins Audio, side by side.
         def join(node):
             if node == "audio":
@@ -68,7 +107,7 @@ def valid(layout):
             return node
         return join(tree)
     for key in TILES:
-        if key not in seen:
+        if key not in seen and key not in closed:
             tree = split("h", 0.75, tree, key)
     return tree
 

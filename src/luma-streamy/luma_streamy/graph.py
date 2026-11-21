@@ -7,9 +7,11 @@ engine instantiates them; the tests check them without GStreamer.
 
 Shape (one pipeline; branches come and go while it runs):
 
-    picture widget:  source ! … ! glupload ! glcolorconvert ! lumaframe ! queue ! mixer.sink_N
+    picture widget:  source ! … ! glupload ! glcolorconvert ! tee        (captured once)
+                       └ per canvas on: queue ! lumaframe ! mixer-<canvas>.sink_N
     sound widget:    source ! audioconvert ! audioresample ! volume ! level ! queue ! audiomixer.sink_N
-    program:         glvideomixer ! video/x-raw(memory:GLMemory),WxH,fps ! tee
+    program, per canvas (landscape, vertical), only while shown or sent:
+                     glvideomixer ! video/x-raw(memory:GLMemory),WxH,fps ! tee
                        ├ queue ! gtk4paintablesink                 (the preview, while shown)
                        ├ queue ! <video encoder> ! parse ! tee      (only while live or recording)
                      audiomixer ! audio/x-raw,48 kHz,stereo ! tee
@@ -200,10 +202,18 @@ def picture_chain(widget: Widget, zorder: int, *, fake: bool = False, fd: int | 
         elements += freeze(prefix)
     if widget.kind == "camera":
         elements.append(Element("glvideoflip", f"{prefix}-flip", {"method": flip_method(widget)}))
-    elements += [
-        Element("lumaframe", f"{prefix}-frame", frame_props(widget)),
-    ]
-    return Chain(elements, "mixer", mixer_pad_props(widget, zorder))
+    # Captured once; each canvas on takes its own layer from this tee (layer_chain).
+    elements.append(Element("tee", f"{prefix}-vtee", {"allow-not-linked": True}))
+    return Chain(elements)
+
+
+def layer_chain(widget: Widget, zorder: int, prefix: str, fmt: str) -> Chain:
+    """A picture widget drawn on canvas ``fmt``: ``widget`` is placed and styled as that canvas has it.
+    The queue lets one canvas's mixer never hold up another's."""
+    return Chain([Element("queue", f"{prefix}-{fmt}-lqueue", {"max-size-buffers": 1, "max-size-bytes": 0,
+                                                               "max-size-time": 0, "leaky": 2}),
+                  Element("lumaframe", f"{prefix}-{fmt}-frame", frame_props(widget))],
+                 f"mixer-{fmt}", mixer_pad_props(widget, zorder))
 
 
 # ── Placeholders ──
@@ -238,9 +248,9 @@ def placeholder_chain(widget: Widget, zorder: int, words: str, generation: int =
         Element("glcolorconvert", f"{prefix}-glconvert"),
         Element("capsfilter", f"{prefix}-rgba", {"caps": "video/x-raw(memory:GLMemory),format=RGBA"}),
         *freeze(prefix),
-        Element("lumaframe", f"{prefix}-frame", frame_props(widget)),
+        Element("tee", f"{prefix}-vtee", {"allow-not-linked": True}),
     ]
-    return Chain(elements, "mixer", mixer_pad_props(widget, zorder))
+    return Chain(elements)
 
 
 def placeholder_words(widget: Widget, state: str) -> str:
@@ -311,16 +321,17 @@ def volume_props(widget: Widget) -> dict:
 
 # ── Program ──
 
-def program(canvas: tuple[int, int]) -> list[Element]:
+def program(canvas: tuple[int, int], fmt: str = "landscape") -> list[Element]:
+    """One canvas's compositor: mixer-<fmt> ! caps ! tee program-<fmt>."""
     width, height = canvas
     return [
         # No added latency: a move or resize shows on the next program frame; a source that is slower
         # than the canvas has its last picture reused.
-        Element("glvideomixerelement", "mixer", {"background": 1, "latency": 0, "force-live": True,
-                                          "start-time-selection": 1}),
-        Element("capsfilter", "program-caps", {"caps": f"video/x-raw(memory:GLMemory),width={width},height={height},"
-                                                        f"framerate={FPS}/1,format=RGBA"}),
-        Element("tee", "program", {"allow-not-linked": True}),
+        Element("glvideomixerelement", f"mixer-{fmt}", {"background": 1, "latency": 0, "force-live": True,
+                                                        "start-time-selection": 1}),
+        Element("capsfilter", f"program-caps-{fmt}", {"caps": f"video/x-raw(memory:GLMemory),width={width},"
+                                                               f"height={height},framerate={FPS}/1,format=RGBA"}),
+        Element("tee", f"program-{fmt}", {"allow-not-linked": True}),
     ]
 
 
@@ -366,16 +377,16 @@ def choose(available: set[str], codec: str) -> EncoderChoice | None:
     return EncoderChoice(video, audio, codec)
 
 
-def tap_video() -> list[Element]:
+def tap_video(fmt: str = "landscape") -> list[Element]:
     """Program pictures for the encoders: converted to NV12 on the GPU, read back once. The valve
     closes while nothing is sent, so an idle tap converts and reads back nothing."""
-    return [Element("valve", "tap-vvalve", {"drop": False}),
-            Element("queue", "tap-vqueue", {"max-size-buffers": 3, "leaky": 2}),
-            Element("glcolorconvert", "tap-glconvert"),
-            Element("capsfilter", "tap-glnv12", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
-            Element("gldownload", "tap-download"),
-            Element("capsfilter", "tap-nv12", {"caps": "video/x-raw,format=NV12"}),
-            Element("appsink", "tap-video", {"emit-signals": True, "drop": True, "max-buffers": 4,
+    return [Element("valve", f"tap-vvalve-{fmt}", {"drop": False}),
+            Element("queue", f"tap-vqueue-{fmt}", {"max-size-buffers": 3, "leaky": 2}),
+            Element("glcolorconvert", f"tap-glconvert-{fmt}"),
+            Element("capsfilter", f"tap-glnv12-{fmt}", {"caps": "video/x-raw(memory:GLMemory),format=NV12"}),
+            Element("gldownload", f"tap-download-{fmt}"),
+            Element("capsfilter", f"tap-nv12-{fmt}", {"caps": "video/x-raw,format=NV12"}),
+            Element("appsink", f"tap-video-{fmt}", {"emit-signals": True, "drop": True, "max-buffers": 4,
                                              "sync": False, "async": False})]
 
 

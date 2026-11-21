@@ -19,28 +19,41 @@ class LayoutTest(unittest.TestCase):
     def test_valid(self):
         self.assertEqual(valid(None), PRESETS["default"][1])
         self.assertEqual(valid("junk"), PRESETS["default"][1])
+        both = split("h", 0.7, "landscape", "vertical")
         tree = valid(split("v", 7, "audio", split("h", 0.3, "audio", "ghost")))
-        self.assertEqual(tree, split("h", 0.75, split("h", 0.75, "audio", "preview"), "widgets"))
-        self.assertEqual(valid(split("x", 0.5, "audio", "preview")), PRESETS["default"][1])
-        # A layout from before the Widgets inset: Widgets joins Audio; a moved seam keeps its size.
+        self.assertEqual(sorted(leaves(tree)), sorted(TILES))
+        self.assertEqual(valid(split("x", 0.5, "audio", "landscape")), PRESETS["default"][1])
+        # A layout from before two canvases and the Widgets inset: "preview" is Landscape, Vertical opens
+        # to its right, Widgets joins Audio; a moved seam keeps its size.
         old = {**split("v", 0.7, "preview", "audio"), "size": 180}
-        self.assertEqual(valid(old), {**split("v", 0.7, "preview", split("h", 0.5, "widgets", "audio")), "size": 180})
+        self.assertEqual(valid(old), {**split("v", 0.7, both, split("h", 0.5, "widgets", "audio")), "size": 180})
+
+    def test_closed_tiles_stay_closed(self):
+        tree = split("v", 0.7, "landscape", split("h", 0.5, "widgets", "audio"))
+        closed = {"layout": tree, "closed": {"vertical": {"beside": "landscape", "edge": "right", "share": 0.3}}}
+        self.assertEqual(valid(closed), closed)
+        # Both previews closed: Landscape opens again; an open tile is never also closed.
+        none = {"layout": split("h", 0.5, "widgets", "audio"), "closed": {"landscape": {}, "vertical": {}}}
+        self.assertNotIn("landscape", valid(none)["closed"])
+        self.assertIn("landscape", leaves(valid(none)["layout"]))
+        self.assertEqual(valid({"layout": tree, "closed": {"landscape": {}}}), valid(tree))
 
     def test_tab_groups_are_kept(self):
-        tree = split("v", 0.7, "preview", {"tabs": ["widgets", "audio", "widgets", "nope"], "current": "audio"})
-        self.assertEqual(valid(tree), split("v", 0.7, "preview", {"tabs": ["widgets", "audio"], "current": "audio"}))
+        both = split("h", 0.7, "landscape", "vertical")
+        tree = split("v", 0.7, both, {"tabs": ["widgets", "audio", "widgets", "nope"], "current": "audio"})
+        self.assertEqual(valid(tree), split("v", 0.7, both, {"tabs": ["widgets", "audio"], "current": "audio"}))
         # One tab left is that tile; the missing one joins.
-        self.assertEqual(valid(split("v", 0.7, "preview", {"tabs": ["widgets"], "current": "widgets"})),
-                         split("h", 0.75, split("v", 0.7, "preview", "widgets"), "audio"))
+        self.assertEqual(valid(split("v", 0.7, both, {"tabs": ["widgets"], "current": "widgets"})),
+                         split("h", 0.75, split("v", 0.7, both, "widgets"), "audio"))
 
     def test_store(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "layouts.json"
             store = LayoutStore(path)
             self.assertEqual(store.current, PRESETS["default"][1])
-            mine = split("h", 0.6, "audio", split("v", 0.5, "preview", "widgets"))
+            mine = split("h", 0.6, "audio", split("v", 0.5, split("h", 0.7, "landscape", "vertical"), "widgets"))
             store.remember(mine)
-            key = store.save_as("Talk show", split("v", 0.8, "preview", split("h", 0.5, "audio", "widgets")))
+            key = store.save_as("Talk show", split("v", 0.8, "landscape", split("h", 0.5, "audio", split("h", 0.5, "widgets", "vertical"))))
             self.assertEqual(key, "saved:Talk show")
             with self.assertRaises(ValueError):
                 store.save_as("compact", mine)

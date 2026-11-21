@@ -16,6 +16,7 @@ def render(window: Gtk.Window, path: str) -> bool:
     Gtk.WidgetPaintable.new(window).snapshot(snapshot, width, height)
     node = snapshot.to_node()
     if node is None or window.get_renderer() is None:
+        print(f"render: node {node} renderer {window.get_renderer()} mapped {window.get_mapped()} {width}x{height}", flush=True)
         return False  # not drawn yet: try again in a moment
     texture = window.get_renderer().render_texture(node, Graphene.Rect().init(0, 0, width, height))
     texture.save_to_png(path)
@@ -277,6 +278,16 @@ def schedule(window, path: str) -> None:
             return False
         return True
 
+    if os.environ.get("STREAMY_SHOT_FRAMES"):
+        frames = [0]
+        clock = window.get_frame_clock()
+        if clock is not None:
+            clock.connect("after-paint", lambda *_a: frames.__setitem__(0, frames[0] + 1))
+        GLib.timeout_add(1000, lambda: print(f"frames painted {frames[0]}", flush=True) or True)
+    if os.environ.get("STREAMY_SHOT_LAYOUT"):  # a dock layout (JSON) to shoot, e.g. Vertical docked small
+        import json
+
+        window.dock.set_layout(json.loads(os.environ["STREAMY_SHOT_LAYOUT"]))
     GLib.timeout_add(2500, select)
     GLib.timeout_add(int(os.environ.get("STREAMY_SHOT_DELAY", "5000")),
                      lambda: GLib.timeout_add(500, shoot) and False)

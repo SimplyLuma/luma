@@ -37,7 +37,7 @@ def main() -> int:
                                          "video/x-raw,format=RGBA ! appsink name=probe emit-signals=true "
                                          "max-buffers=8 drop=false sync=false", True)
     engine.pipeline.add(tap)
-    engine.pipeline.get_by_name("program").link(tap)
+    engine.pipeline.get_by_name("program-landscape").link(tap)
     tap.sync_state_with_parent()
     edges = []
 

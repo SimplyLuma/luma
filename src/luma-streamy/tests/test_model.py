@@ -140,6 +140,20 @@ class ModelTest(unittest.TestCase):
         project.reset_secondary(scene.id)
         self.assertFalse(any(w.own.get("placement") for w in scene.widgets))
 
+    def test_view_on_each_canvas(self):
+        cam = self.project.add_widget(self.scene.id, "camera", aspect=16 / 9)
+        self.project.set_rect(cam.id, 960, 0, 960, 540)
+        self.assertIs(self.project.view_on(cam, "landscape"), cam)
+        v = self.project.view_on(cam, "vertical")  # linked: landscape scaled to the width, centred
+        self.assertEqual((v.x, v.width), (540, 540))
+        self.assertAlmostEqual(v.y, (1920 - 1080 * 1080 / 1920) / 2)
+        self.assertEqual((cam.x, cam.width), (960, 960))  # the widget itself never changes
+        cam.look["vertical"] = {"corner_radius": 3}
+        self.assertEqual(self.project.view_on(cam, "vertical").effects.corner_radius, 3)
+        self.project.set_format("vertical")
+        self.assertEqual(self.project.view_on(cam, "landscape").x, 960)
+        self.assertEqual(self.project.view_on(cam, "vertical").x, 540)
+
     def test_sizes_keep_shape(self):
         for fmt in ("landscape", "vertical"):
             project = Project.starter(); project.set_format(fmt)
