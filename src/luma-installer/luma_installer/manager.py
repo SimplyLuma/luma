@@ -220,6 +220,11 @@ def remove(application_id: str, delete_data: bool = False) -> str:
             Path.home() / ".local/share/luma/installer/staging" / sha256,
             Path.home() / ".local/share/luma/installer/staging",
         )
+        try:
+            from .facts import forget_artwork
+            forget_artwork(sha256)
+        except Exception:  # noqa: BLE001 - a cache; never a reason to keep the application
+            pass
         if delete_data:
             _safe_remove_tree(
                 Path.home() / ".local/share/luma/installer/data" / sha256,

@@ -297,7 +297,8 @@ def publish(application_id: str, record: dict[str, object], checkout: Path, icon
     record = {**record, "icon": exported_icon, "exported_command": exported_command, "command_not_exported": refusal}
     record.pop("comment", None)
     write_record(application_id, record)
-    return record
+    # As it is stored: with the identity the launcher and a watched first start read from it.
+    return read_record(application_id)
 
 
 def application_identity(kind: str, title: str, sha256: str) -> str:

@@ -422,6 +422,11 @@ class Migration(Home):
             switched = store_refresh.before_start(record)
         self.assertEqual(switched["store"]["id"], self.APP)
         self.assertTrue(self.new_data.is_dir())
+        # The start that follows is watched and ends in a confirmation: it reads the identity from this record.
+        self.assertEqual(switched["application_id"], self.APP)
+        with patch.object(store_migration.subprocess, "run"):
+            store_refresh.after_watched_start(switched, 0, None, [])
+        self.assertEqual(read_record(self.APP)["migration"]["state"], "done")
 
     def test_only_capsules_are_candidates(self):
         self.assertTrue(store_migration.eligible(self.capsule))
