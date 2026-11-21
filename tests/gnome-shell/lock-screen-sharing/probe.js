@@ -262,9 +262,13 @@ async function lockScenario() {
     }
     await until('restored', () => clientStep('R', 'start'), 10000);
     const restored = clientStep('R', 'start');
+    // The one picker after unlock is the new request's (checked below); the
+    // backend restored this one without asking.
+    const portalLog = readText(`${OUT}/luma-portal.log`);
     check('the restored share started after unlock, without a picker',
         restored?.response === 0 && restored.t > tUnlock &&
-        !seen.some(s => s.picker && s.t < (restored?.t ?? 0) && s.t > tLock), restored);
+        portalLog.includes('restored a previous choice') &&
+        !portalLog.includes('no longer applies'), restored);
     await until('the waiting picker', () => share()._picker, 10000);
     const pickerAt = seen.find(s => s.picker && s.t > tLock)?.t ?? now();
     check('the new request is asked after unlock, in the normal session',
@@ -328,9 +332,11 @@ async function lifecycleScenario() {
     check('a stopping backend says why', readText(`${OUT}/luma-portal.log`).includes('the backend is stopping'));
 
     check('H: a share shows its ring', await shareOnce('H', window));
+    // Mutter ends the session on its own (only its owner may call Stop on
+    // the bus; the compositor's remote access handle stops it from inside).
     const path = lastMutterSession();
-    Gio.DBus.session.call('org.gnome.Mutter.ScreenCast', path, 'org.gnome.Mutter.ScreenCast.Session',
-        'Stop', null, null, Gio.DBusCallFlags.NONE, -1, null, null);
+    const handle = [...share()._handles].at(-1);
+    handle?.stop();
     check('the Mutter session ended underneath: ring and pill go',
         await until('H gone', () => sharesShown() === 0, 8000), {path, left: sharesShown()});
     check('H: the application is told', await until('H closed', () => clientStep('H', 'session-closed'), 8000));
@@ -428,20 +434,21 @@ async function readPng(path) {
 // A shared screen: the pill is on the screen in every frame and in none of
 // the frames the application receives; Dismiss puts it away and the sharing
 // mark brings it back.
+// A one-pixel child of the pill's surface: painted exactly when the surface
+// paints its children, which is what the pill holds back from captures.
 const PaintCounter = GObject.registerClass(
-class PaintCounter extends Clutter.Effect {
+class PaintCounter extends Clutter.Actor {
     _init() {
-        super._init();
+        super._init({width: 1, height: 1, reactive: false});
         this.screen = 0;
         this.capture = 0;
     }
 
-    vfunc_paint(node, paintContext, flags) {
+    vfunc_paint(paintContext) {
         if (paintContext.get_paint_flags() & (Clutter.PaintFlag.CAPTURE ?? 0))
             this.capture++;
         else
             this.screen++;
-        super.vfunc_paint(node, paintContext, flags);
     }
 });
 
@@ -459,7 +466,7 @@ async function pillScenario() {
     const pill = share()._pill;
     check('the pill is up while a screen is shared', pill.visible && pill.mapped);
     const counter = new PaintCounter();
-    pill.surface.add_effect(counter);
+    pill.surface.add_child(counter);
     let stagePaints = 0;
     const id = global.stage.connect('after-paint', () => stagePaints++);
     const before = frames('S').length;
@@ -479,7 +486,7 @@ async function pillScenario() {
     check('the pill is painted into none of the stream frames',
         counter.capture === 0 || !pill.surface.mapped, {capture: counter.capture, streamed});
     check('the stream kept delivering frames', streamed > 10, streamed);
-    pill.surface.remove_effect(counter);
+    counter.destroy();
     // The application's frame where the pill is: no pill violet in it.
     await until('S snapshot', () => GLib.file_test(`${OUT}/stream-S.png`, GLib.FileTest.EXISTS), 10000);
     const [px, py] = pill.get_transformed_position();
@@ -498,7 +505,7 @@ async function pillScenario() {
     await shot('pill-on-screen');
     check('the frame the application received has no pill in it', violet === 0, violet);
 
-    pill.dismissButton.emit('clicked');
+    pill.dismissButton.emit('clicked', 0);
     await wait(500);
     const mark = Main.panel?.statusArea?.screenSharing;
     check('Dismiss puts the pill away', !pill.visible);
@@ -560,11 +567,12 @@ async function ringScenario() {
     const window = await openWindow('org.luma.test.Reel', 'Ring');
     window.move_resize_frame(true, 300, 220, 900, 560);
     await wait(800);
-    share().SessionStarted('/ring/1', new GLib.Variant('a{sv}', {
+    // As the D-Bus wrapper hands it over: a dict of variants.
+    share().SessionStarted('/ring/1', {
         'app-id': new GLib.Variant('s', ''),
         'windows': new GLib.Variant('at', [window.get_id()]),
         'monitors': new GLib.Variant('as', []),
-    }));
+    });
     await wait(500);
     const shots = [];
     const take = async (name, extra = {}) => {

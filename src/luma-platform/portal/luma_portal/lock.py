@@ -42,10 +42,14 @@ class SessionLock:
         self.refresh()
 
     def refresh(self) -> None:
-        """Ask the screen shield again (once at start, and when Mutter says it is locked)."""
+        """Ask the screen shield again (once at start, and when Mutter says it is locked).
+
+        The call may start the service: org.gnome.ScreenSaver is the Shell's
+        D-Bus-activated proxy, and its signals reach us only once it runs.
+        """
         self._connection.call(
             SCREENSAVER_NAME, SCREENSAVER_PATH, SCREENSAVER_IFACE, "GetActive",
-            None, GLib.VariantType("(b)"), Gio.DBusCallFlags.NO_AUTO_START, -1,
+            None, GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, -1,
             None, self._on_get_active, None)
 
     def _on_get_active(self, source, result, _data=None) -> None:
