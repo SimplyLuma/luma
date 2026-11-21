@@ -191,6 +191,8 @@ lumaui-value-range > thumb {
 }
 lumaui-value-range:focus-visible > thumb { outline: 2px solid @luma_focus_ring; outline-offset: 2px; }
 lumaui-value-range:disabled { opacity: 0.35; }
+/* Mixed (set_mixed): the selection disagrees; the knob rests dimmed and the readout says so. */
+.lumaui-value-slider.mixed lumaui-value-range { opacity: 0.5; }
 .lumaui-value-slider.row {
   min-height: var(--lumaui-media-adjust-row-height); padding: 0 var(--lumaui-media-adjust-row-padding-x);
   border-radius: var(--lumaui-media-adjust-row-radius); border-spacing: var(--lumaui-media-adjust-row-gap);

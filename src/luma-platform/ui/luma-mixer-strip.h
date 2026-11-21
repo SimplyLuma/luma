@@ -16,6 +16,10 @@ G_BEGIN_DECLS
  * full name as its tooltip) over its device, then a dB scale beside an
  * upright LumaVolumeSlider carrying a stereo LumaAudioMeter (peak hold and
  * ballistics are the meter's), the value readout, and Mute and Monitor keys.
+ * An app's or device's icon can head it (luma_mixer_strip_set_gicon()), and
+ * either key can be left out (an output without monitoring, a fixed input):
+ * the strip is a generic channel, for an app's audio panel or the system's
+ * volume mixer alike.
  *
  * The fader runs from the range's low end (spoken and shown as −∞) to its
  * top; 0 dB is marked and a double click returns to it. Up and Down step
@@ -27,8 +31,8 @@ G_BEGIN_DECLS
  * not, since they are read against one another.
  *
  * Tree: lumaui-mixer-strip(.muted)(.monitoring) > box.lumaui-mixer-content >
- * label.lumaui-mixer-name, label.lumaui-mixer-device,
- * box.lumaui-mixer-body > (.lumaui-mixer-scale, lumaui-volume-slider),
+ * box.lumaui-mixer-head > (image.lumaui-mixer-icon, label.lumaui-mixer-name,
+ * label.lumaui-mixer-device), box.lumaui-mixer-body > (.lumaui-mixer-scale, lumaui-volume-slider),
  * label.lumaui-mixer-readout, box.lumaui-mixer-keys >
  * button.lumaui-mixer-key.mute, button.lumaui-mixer-key.monitor.
  */
@@ -66,6 +70,39 @@ void luma_mixer_strip_set_muted(LumaMixerStrip *self, gboolean muted);
 gboolean luma_mixer_strip_get_muted(LumaMixerStrip *self);
 void luma_mixer_strip_set_monitoring(LumaMixerStrip *self, gboolean monitoring);
 gboolean luma_mixer_strip_get_monitoring(LumaMixerStrip *self);
+/**
+ * luma_mixer_strip_set_gicon:
+ * @self: a strip
+ * @icon: (nullable): the channel's icon (an app's, a device's), or NULL for none
+ */
+void luma_mixer_strip_set_gicon(LumaMixerStrip *self, GIcon *icon);
+/**
+ * luma_mixer_strip_get_gicon:
+ * @self: a strip
+ *
+ * Returns: (transfer none) (nullable): the channel's icon
+ */
+GIcon *luma_mixer_strip_get_gicon(LumaMixerStrip *self);
+/**
+ * luma_mixer_strip_set_icon_name:
+ * @self: a strip
+ * @icon: (nullable): a Lucide name ("mic") for the kit's glyph, or a theme or application icon name
+ */
+void luma_mixer_strip_set_icon_name(LumaMixerStrip *self, const char *icon);
+/**
+ * luma_mixer_strip_set_mute_visible:
+ * @self: a strip
+ * @visible: whether the strip offers Mute (and M mutes)
+ */
+void luma_mixer_strip_set_mute_visible(LumaMixerStrip *self, gboolean visible);
+gboolean luma_mixer_strip_get_mute_visible(LumaMixerStrip *self);
+/**
+ * luma_mixer_strip_set_monitor_visible:
+ * @self: a strip
+ * @visible: whether the strip offers Monitor
+ */
+void luma_mixer_strip_set_monitor_visible(LumaMixerStrip *self, gboolean visible);
+gboolean luma_mixer_strip_get_monitor_visible(LumaMixerStrip *self);
 /**
  * luma_mixer_strip_set_levels_db:
  * @self: a strip

@@ -148,6 +148,23 @@ for bad in (lambda: RowLead.thumbnail(None, fit="fill"), lambda: RowLead.thumbna
         pass
     else:
         raise AssertionError("refused")
+# ValueSlider Mixed: the readout says so until one value is applied by a move, a reset or set_value.
+from luma_appkit import ValueSlider  # noqa: E402
+
+moved = []
+look = ValueSlider("Opacity", 100, 0, 100, unit="%", default=100, on_change=moved.append)
+look.set_mixed(40)
+assert look.mixed and look.has_css_class("mixed") and look.value_label.get_label() == "Mixed" and look.value == 40
+assert not look.has_css_class("set") and moved == []
+look.range.emit("value-changed", 55.0)
+assert not look.mixed and not look.has_css_class("mixed") and moved == [55.0]
+look.set_mixed()
+assert look.value == 100 and look.mixed
+look.reset()
+assert not look.mixed and moved[-1] == 100, moved
+look.set_mixed()
+look.set_value(20)
+assert not look.mixed and look.value_label.get_label() != "Mixed"
 # ToggleChip: its own toggle; a refusal keeps it; the live dot; set_active is the app's state.
 asked = []
 refuse = {"value": False}

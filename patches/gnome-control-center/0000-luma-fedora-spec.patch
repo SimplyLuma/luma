@@ -126,7 +126,7 @@
 +Patch1107:      0108-lumaui-sound-volume-mixer-rows.patch
  
  BuildRequires:  blueprint-compiler >= %{blueprint_compiler_version}
-+BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.149
++BuildRequires:  luma-developer-platform-devel >= 0.1.0-1.luma.150
 +BuildRequires:  pkgconfig(xkbcommon)
 +# GTestDBus in the adapter tests spawns a private bus.
 +BuildRequires:  dbus-daemon
@@ -143,7 +143,7 @@
  # Versioned library deps
 +Requires:       luma-shell-state >= 0.2.0-1.luma.34
 +Requires:       gnome-shell >= 50.3-1.luma.119.creator20261021.1
-+Requires:       luma-developer-platform >= 0.1.0-1.luma.149
++Requires:       luma-developer-platform >= 0.1.0-1.luma.150
 +# Settings › Apps › Background Activity shows and changes what the Luma
 +# background service runs; without it the page says so and changes nothing.
 +Recommends:     luma-background
