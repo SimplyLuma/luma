@@ -6,7 +6,7 @@
 
 Name:           luma-streamy
 Version:        0.1.0
-Release:        1.luma.8%{?dist}
+Release:        1.luma.9%{?dist}
 Summary:        Stream and record your screen, windows and camera
 # The app: Apache-2.0. gst-lumaframe: MPL-2.0. Vendored crates (Cargo.lock):
 # gstreamer-rs and glib-rs (MIT OR Apache-2.0, MIT), memchr (Unlicense OR
@@ -167,6 +167,17 @@ gtk4-update-icon-cache --force --quiet %{_datadir}/icons/hicolor >/dev/null 2>&1
 %{_libdir}/gstreamer-1.0/libgstlumavideofx.so
 
 %changelog
+* Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.9
+- Outputs: one encode per canvas and quality, teed to RTMP(S), SRT, WHIP and
+  recording rows, each reconnecting on its own; Destinations, Stats and Chat
+  panels (Twitch and YouTube sign-in, read-only Twitch and Kick chat)
+- Camera Resolution and Frame rate choices, sizes the camera lacks scaled on
+  the GPU; new cameras start at 1080p30; MJPEG decodes in software
+- Nothing asks for a share while the session is locked; sources that need a
+  picker wait for one Share in the bar
+- The preview rests while only stills show; compositing at 60 fps, outputs at
+  30 fps; level words at 4 Hz
+
 * Fri Nov 20 2026 Project Luma <maintainers@projectluma.org> - 0.1.0-1.luma.8
 - lumaframe: a revision property commits property changes together and
   stamps output buffers; downscaled content is box-filtered over each output
